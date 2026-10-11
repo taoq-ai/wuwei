@@ -100,7 +100,6 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     record(root)
-    answered(root)
     unit = workspace.watch_unit(root)[1]
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text('')
@@ -122,16 +121,6 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, 'load', lambda kind, config: fakes.get(kind) or real(kind, config))
     return SimpleNamespace(root=root, plugin=plugin, bin=bin_dir, probes=probes, service=service,
                            host=host, code_host=code_host, vcs=vcs, installed=installed, mp=monkeypatch)
-
-
-def answered(root):
-    """An earlier day's interview.json answering every setup question (#530)."""
-    from wuwei import interview
-    path = root / '.wuwei/days/2026-09-29/interview.json'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({row['id']: ({'acme/widget': row['choices'][0][0]} if row['scope'] == 'repo'
-                                            else row['choices'][0][0]) for row in interview.QUESTIONS}))
-    return path
 
 
 def record(root, day=TODAY, **changes):
@@ -187,7 +176,7 @@ def test_outcome_findings_before_unmeasured():
 
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
-    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'calibrate',
+    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade',
                                  'watch-install', 'trace-decisions', 'mcp-reports'}
 
 
@@ -298,7 +287,7 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
     rows = doctor.diagnose()
     assert names(rows, 'install') and names(rows, 'host')
     assert [(r['name'], r['status']) for r in rows if r['section'] == 'workspace'] == [('workspace', 'fail')]
-    assert row(rows, 'workspace')['fix'].startswith(W('setup --shadow'))
+    assert row(rows, 'workspace')['fix'].startswith(W('init --shadow'))
     assert names(rows, 'gates') == names(rows, 'day') == []
     assert names(rows, 'guards') == ['outside workspace']
     assert doctor.outcome(rows) == 1
@@ -310,7 +299,7 @@ def test_workspace_rows_healthy(ws):
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
         'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
         'outbound classes', 'outbound tiers', 'register', 'calibration', 'drift',
-        'interview', 'profile', 'posture', 'telemetry']
+        'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
@@ -462,10 +451,12 @@ def test_workspace_spec_row(ws, spec, plugins, status):
 
 def test_workspace_calibration_and_shadow(ws, monkeypatch):
     (ws.root / '.wuwei/calibration.json').unlink()
-    assert row(doctor.diagnose(), 'calibration')['status'] == 'warn'
+    found = row(doctor.diagnose(), 'calibration')
+    assert (found['status'], found['value'], found['fix']) == ('warn', 'never applied', W('config promote'))
     state.append_event('calibration.drift', {'repo': 'acme/widget', 'changed': ['runner']}, ws.root)
     found = row(doctor.diagnose(), 'drift')
-    assert found['status'] == 'warn' and found['apply'] == 'calibrate' and 'acme/widget' in found['value']
+    assert found['status'] == 'warn' and 'apply' not in found and 'acme/widget' in found['value']
+    assert found['fix'] == W('config promote')
     observe = '[security]\nposture = "observe"\n[guards]\nshadow_since = "{}"\n[adapters]'
     config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-30')))
     found = row(doctor.diagnose(), 'posture')
@@ -485,27 +476,12 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
 
 
-def test_workspace_interview_counts_the_unanswered(ws):
-    # #530: the same count init --upgrade prints; a workspace past day one still owes them.
-    from wuwei import interview
-    assert row(doctor.diagnose(), 'interview')['value'] == 'all setup questions answered'
-    path = answered(ws.root)
-    path.write_text(json.dumps({'cap': '2'}))
-    count = len(interview.unanswered(ws.root, ['acme/widget']))
-    found = row(doctor.diagnose(), 'interview')
-    assert (found['status'], found['value'], found['fix']) == (
-        'warn', f'{count} questions unanswered',
-        'the planner asks them on cards (' + W('calibrate --questions') + '), or ' + W('setup in a host terminal'))  # #635
-    path.write_text('not json')
-    assert row(doctor.diagnose(), 'interview')['status'] == 'unmeasured'
-
-
 def test_workspace_telemetry_question_pending(ws):
-    # #422: share unset behaves as off but the interview question is still owed.
+    # #422: share unset behaves as off, and the choice is still owed; #832: config set makes it.
     config(ws.root, CONFIG.replace('share = "off"', 'share = ""'))
     found = row(doctor.diagnose(), 'telemetry')
     assert (found['status'], found['value'], found['fix']) == (
-        'warn', 'sharing not chosen yet (pending interview question)', W('calibrate --interview telemetry'))
+        'warn', 'sharing not chosen yet', W('config set telemetry.share \'"anonymous"\' (or "attributed" or "off")'))
     config(ws.root, CONFIG.replace('share = "off"', 'enabled = false'))
     assert row(doctor.diagnose(), 'telemetry')['status'] == 'ok'
 
@@ -811,7 +787,7 @@ def test_pr_flow_rows():
         assert rows[name]['fix'] and rows[name]['docs']
     assert rows['owner.handles']['fix'] == W("config set owner.handles '[\"<code-host login>\"]'")
     assert rows['shepherd.lead_login']['fix'] == W("config set shepherd.lead_login '\"<lead login>\"'")
-    assert rows['shepherd.authors']['fix'].startswith(W('setup'))
+    assert rows['shepherd.authors']['fix'].startswith('add "<email>" = {login = "<login>"')
     assert '{login = "<login>", mention = "<chat id>"}' in rows['shepherd.authors']['fix']
     for name in ('adapters.tracker', 'adapters.chat', 'adapters.review_bot'):
         assert rows[name]['status'] == 'ok' and rows[name]['value'].startswith('none: ')
@@ -1047,12 +1023,12 @@ def test_trace_decisions_changed_since_preview(ws, capsys):
 
 
 def two_fixes(ws, monkeypatch):
-    """calibrate and init-upgrade due, each with a fake preview and an apply that records its call."""
+    """watch-install and init-upgrade due, each with a fake preview and an apply that records its call."""
     applied = []
-    rows = [doctor._row('workspace', 'calibration', 'warn', 'old', 'wuwei calibrate', apply='calibrate'),
+    rows = [doctor._row('workspace', 'watch', 'warn', 'old', 'wuwei watch install', apply='watch-install'),
             doctor._row('workspace', 'template', 'warn', 'drift', 'wuwei init --upgrade', apply='init-upgrade')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
-    for name, command in (('calibrate', 'wuwei calibrate'), ('init-upgrade', 'wuwei init --upgrade')):
+    for name, command in (('watch-install', 'wuwei watch install'), ('init-upgrade', 'wuwei init --upgrade')):
         monkeypatch.setitem(doctor.FIXES, name, (command, lambda root, name=name: (f'preview {name}\n', name),
                                                  lambda root, token: applied.append(token) or 0))
     return applied
@@ -1071,29 +1047,29 @@ def test_fix_widget_prints_the_owner_step_card(ws, monkeypatch, capsys):
     assert built['header'] == 'Owner step' and built['multiSelect'] is False
     assert built['question'].startswith('Owner step: bin/wuwei doctor --fix (')
     assert built['record'] == 'bin/wuwei doctor --fix'
-    assert '[calibrate] wuwei calibrate' in built['options'][0]['description']
+    assert '[watch-install] wuwei watch install' in built['options'][0]['description']
     assert not asked and not applied and not events(ws.root, 'doctor.fixed')
     assert doctor.run(widget_args(widget=False)) == 1
     refusal = capsys.readouterr().err
     assert json.dumps(built) in refusal
     owner.answer_card(ws.root, refusal)
     doctor.run(widget_args(widget=False))
-    assert sorted(applied) == ['calibrate', 'init-upgrade']
+    assert sorted(applied) == ['init-upgrade', 'watch-install']
 
 
 def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     applied = two_fixes(ws, monkeypatch)
-    assert doctor.run(widget_args(widget=False, apply='calibrate'), confirm=lambda digest: True) == 1
+    assert doctor.run(widget_args(widget=False, apply='watch-install'), confirm=lambda digest: True) == 1
     out = capsys.readouterr().out
-    assert '[calibrate]' in out and '[init-upgrade]' not in out
-    assert applied == ['calibrate'] and len(events(ws.root, 'doctor.fixed')) == 1
+    assert '[watch-install]' in out and '[init-upgrade]' not in out
+    assert applied == ['watch-install'] and len(events(ws.root, 'doctor.fixed')) == 1
     assert doctor.run(widget_args(widget=False, apply='nope'), confirm=lambda digest: True) == 2
-    assert 'nope' in capsys.readouterr().err and applied == ['calibrate']
+    assert 'nope' in capsys.readouterr().err and applied == ['watch-install']
     assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) == 2
-    assert applied == ['calibrate']
-    for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'calibrate'}, {'apply': 'calibrate'}):
+    assert applied == ['watch-install']
+    for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'watch-install'}, {'apply': 'watch-install'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
-    assert applied == ['calibrate']
+    assert applied == ['watch-install']
 def test_workspace_config_unknown_key_warns(ws):
     config(ws.root, CONFIG.replace('[adapters]\n', '[adapters]\ncode_hst = "github"\n'))
     found = row(doctor.diagnose(), 'config')
@@ -1165,7 +1141,7 @@ def test_no_stray_stderr(ws, monkeypatch, capsys):
     assert capsys.readouterr().err == ''
 
 
-def test_setup_shadow_without_workspace(ws, tmp_path, monkeypatch):
+def test_init_shadow_without_workspace(ws, tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE')
     elsewhere = tmp_path / 'elsewhere'
     elsewhere.mkdir()
@@ -1174,13 +1150,12 @@ def test_setup_shadow_without_workspace(ws, tmp_path, monkeypatch):
     ws.vcs.results['identity'] = Result(2, None, 'git.identity: could not run: git exited 1')
     rows = doctor.diagnose()
     launcher = str(ws.plugin / 'bin/wuwei')
-    assert row(rows, 'workspace')['fix'] == f'{launcher} setup --shadow in the directory that holds your repositories'
+    assert row(rows, 'workspace')['fix'] == f'{launcher} init --shadow in the directory that holds your repositories'
     found = row(rows, 'git identity')
-    assert found['status'] == 'ok' and found['value'] == "not set globally; setup reads each repository's own identity"
+    assert found['status'] == 'ok' and found['value'] == 'not set globally; repositories set their own'
 
 
 def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
-    from wuwei.commands import setup
     launcher = str(ws.plugin / 'bin/wuwei')
     rows = [doctor._row('workspace', 'config', 'fail', 'x', 'wuwei init --upgrade'),
             doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm'),
@@ -1189,7 +1164,6 @@ def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
         f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm',
         '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan']
     assert f'{launcher} init --upgrade' in doctor.render(rows)
-    assert setup.ending(rows, [], [])[0] == f'Next: {launcher} init --upgrade'
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     doctor.run(Namespace(section=None, json=True, widget=False, apply=None, fix=False))
     assert json.loads(capsys.readouterr().out)['rows'][0]['fix'] == f'{launcher} init --upgrade'
@@ -1441,7 +1415,7 @@ def options(**changes):
 @pytest.mark.parametrize('changes, flags', [
     ({'json': True}, ['--json']), ({'fix': True}, ['--fix']),
     ({'fix': True, 'widget': True}, ['--fix', '--widget']),
-    ({'fix': True, 'apply': 'calibrate'}, ['--fix', '--apply', 'calibrate']),
+    ({'fix': True, 'apply': 'watch-install'}, ['--fix', '--apply', 'watch-install']),
     ({'section': 'pr-flow'}, ['--section', 'pr-flow'])])
 def test_doctor_hands_over_to_the_pointer(ws, tmp_path, monkeypatch, changes, flags):
     """#645: any copy runs the doctor of the install .wuwei/executable names, same options."""

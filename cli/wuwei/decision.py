@@ -125,7 +125,7 @@ def evaluate(text, lenses=None, write=False):
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     if 'Class' in fields and fields['Class'] not in CLASSES:
         raise ValueError(f'Class: expected one of {", ".join(CLASSES)}; fix it in the record; bin/wuwei decision template shows a valid one')
-    from wuwei.profiles import ROLES
+    from wuwei.commands.agents import ROLES
     if 'Role' in fields and fields['Role'] not in ROLES:
         raise ValueError(f'Role: expected one of {", ".join(ROLES)}; fix it in the record; bin/wuwei decision template shows a valid one')
     options, passing, _, scores = _scored(fields)
@@ -159,7 +159,7 @@ def _explained(fields, rows, ids, lenses):
         if len(title) > 40 or re.search(r'["`$\\]', title) or title.casefold() in seen:
             raise ValueError(f'Options: title {title} must be unique, at most 40 characters, without a quote, backtick, $ or backslash; write a different title; {hint}')
         seen.add(title.casefold())
-    from wuwei.commands.setup import assignment, declared
+    from wuwei.commands.config import assignment, declared
     for option, cell in table(fields['Value'], ['Option', 'Value'], 'Value') if 'Value' in fields else ():
         if option not in ids or not declared(assignment(cell)):
             raise ValueError(f'Value: row {option} must name an option and read <key> = <TOML value> with a '
@@ -270,7 +270,7 @@ def record_widget(identifier, fields, record=RECORD, level='brief', *, root):
 
 def config_keys(fields):
     """#600: option id -> (key, value) it sets: its Value row, else its #529 title."""
-    from wuwei.commands.setup import assignment
+    from wuwei.commands.config import assignment
     cells = dict(table(fields['Value'], ['Option', 'Value'], 'Value')) if 'Value' in fields else {}
     found = {row[0]: assignment(cells.get(row[0], row[1])) for row in options(fields)}
     return {option: value for option, value in found.items() if value}

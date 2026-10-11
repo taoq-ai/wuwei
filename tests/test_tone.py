@@ -8,7 +8,6 @@ import pytest
 from test_plan import root  # noqa: F401 (fixture)
 from test_protect_state import payload, workspace  # noqa: F401 (fixture)
 from test_reasons import ROOT, _sources, _text, all_reasons
-from wuwei import interview
 from wuwei.__main__ import main
 from wuwei.commands.lint import AVERAGE, LONGEST, line, measure, sentences
 
@@ -19,7 +18,7 @@ BUDGETS = {'reasons': (0, 3.1), 'cards': (0, 3.1), 'skills': (0, 2.9), 'charters
 
 
 def _cards():
-    """The literal question and option descriptions of every widget( call, and the interview."""
+    """The literal question and option descriptions of every widget( call."""
     for _, source in _sources():
         for node in ast.walk(ast.parse(source)):
             if (isinstance(node, ast.Call) and node.args
@@ -29,9 +28,6 @@ def _cards():
                     for elt in node.args[2].elts:
                         if isinstance(elt, ast.Tuple) and len(elt.elts) == 2:
                             yield from (text for text, _ in _text(elt.elts[1]))
-    for row in interview.QUESTIONS:
-        yield row['question']
-        yield from (text for _, text, _ in row['choices'])
 
 
 @functools.cache
@@ -160,7 +156,7 @@ def test_why_last_refusal_reads_at_the_rule(workspace, monkeypatch, capsys):
     _at_rule(lines)
 
 
-def test_three_fixture_cards_read_at_the_rule(root, monkeypatch):
+def test_fixture_cards_read_at_the_rule(root, monkeypatch):
     import os
     from test_plan import proposal
     from wuwei import plan
@@ -169,7 +165,6 @@ def test_three_fixture_cards_read_at_the_rule(root, monkeypatch):
     monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 8 * 1024**3)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
     plan.propose(proposal(), root)
-    cards = [plan.gate_widget(root), close.widget(root, 'A', {'status': 'building', 'phase': 'build'}),
-             interview.widgets(root, ['fixture-org/web'])[0]]
+    cards = [plan.gate_widget(root), close.widget(root, 'A', {'status': 'building', 'phase': 'build'})]
     for card in cards:
         _at_rule([card['question'], *(option['description'] for option in card['options'])], owner_ok=False)

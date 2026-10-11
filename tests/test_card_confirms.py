@@ -1,6 +1,5 @@
 """#529: an answer given on an Ask card is the confirmation of the config write it leads to."""
 
-from argparse import Namespace
 from hashlib import sha256
 import io
 import json
@@ -114,141 +113,16 @@ def test_record_gate_records_no_answer_for_others(ws):
     assert asked(ws) == sorted(['goals', sessions.card_topic('Goals\n' + goals, 'Yes')])
 
 
-# Phase 2: interview cards.
+# Phase 2: config cards.
 
 def main(*args):
     from wuwei.__main__ import main as entry
     return entry(list(args))
 
 
-def interview_card(root, qid, reply):
-    """The planner asked the interview row's widget and the owner answered reply."""
-    from wuwei import interview
-    row = interview.question(qid)
-    widget = next(w for w in interview.widgets(root, [], [qid]))
-    assert answer(root, row['header'], widget['question'], reply) == (0, '')
-
-
 def config(root):
     import tomllib
     return tomllib.loads((root / '.wuwei/config.toml').read_text())
-
-
-def test_questions_with_ids_reprint_answered_rows(ws, capsys):
-    (ws / 'widget').mkdir()
-    with (ws / '.wuwei/config.toml').open('a') as stream:
-        stream.write('[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n')
-    earlier = ws / '.wuwei/days/2026-09-27/interview.json'
-    earlier.parent.mkdir(parents=True)
-    earlier.write_text(json.dumps({'cap': '2'}))
-    assert main('calibrate', '--questions') == 0
-    assert 'cap' not in [w['id'] for w in json.loads(capsys.readouterr().out)]
-    assert main('calibrate', '--questions', 'cap', 'seats') == 0
-    widgets = json.loads(capsys.readouterr().out)
-    assert [(w['id'], w['header']) for w in widgets] == [('cap', 'At once'), ('seats', 'Agents')]
-    assert [w['record'] for w in widgets] == ['wuwei calibrate --answer "cap=<label>"',
-                                              'wuwei calibrate --answer "seats=<label>"']
-
-
-@pytest.mark.parametrize('qid,reply,key,value', [
-    ('cap', '5', ('cap',), 5), ('seats', '6', ('host', 'seats'), 6)])
-def test_calibrate_answer_writes_the_card_answer(ws, monkeypatch, capsys, qid, reply, key, value):
-    no_terminal(monkeypatch)
-    interview_card(ws, qid, reply)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    assert main('calibrate', '--answer', f'{qid}={reply}') == 0, capsys.readouterr().err
-    out = capsys.readouterr()
-    assert f"replaced: {'.'.join(key)} = {value} (was " in out.out + out.err
-    written = config(ws)
-    for part in key:
-        written = written[part]
-    assert written == value
-    assert events(ws, 'config.set') == [{'keys': ['.'.join(key)], 'card': qid}]
-    assert json.loads((workspace.day_dir(ws) / 'interview.json').read_text())[qid] == reply
-    assert 'Next:' not in capsys.readouterr().out
-
-
-@pytest.mark.parametrize('case', ['other answer', 'strict', 'no session'])
-def test_calibrate_answer_without_the_card_answer_keeps_promote(ws, monkeypatch, capsys, case):
-    no_terminal(monkeypatch)
-    interview_card(ws, 'cap', '3' if case == 'other answer' else '5')
-    if case == 'strict':
-        strict(ws)
-    if case != 'no session':
-        monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    else:
-        monkeypatch.setattr('sys.stdin', Terminal())  # a host terminal
-    before = (ws / '.wuwei/config.toml').read_text()
-    assert main('calibrate', '--answer', 'cap=5') == 0
-    assert (ws / '.wuwei/config.toml').read_text() == before
-    assert json.loads((workspace.day_dir(ws) / 'interview.json').read_text())['cap'] == '5'
-    assert 'config.set' not in [json.loads(line)['kind'] for line in
-                                (workspace.day_dir(ws) / 'events.jsonl').read_text().splitlines()]
-    assert 'bin/wuwei config promote' in capsys.readouterr().out
-
-
-def test_unrelated_gate_question_with_the_header_confirms_nothing(ws, monkeypatch, capsys):
-    no_terminal(monkeypatch)
-    text = decision.gate(ws) + 'Should the deploy seat keep watching the logs today?'
-    assert answer(ws, 'Autonomy', text, 'Autonomous') == (0, '')
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    before = (ws / '.wuwei/config.toml').read_text()
-    assert main('calibrate', '--answer', 'autonomy=Autonomous') == 0
-    assert (ws / '.wuwei/config.toml').read_text() == before
-    assert 'bin/wuwei config promote' in capsys.readouterr().out
-
-
-@pytest.mark.parametrize('reply,values', [
-    ('Autonomous', ('observe', 'send', 'auto', 'autonomous')),
-    ('Supervised', ('guarded', 'ask', 'card', 'supervised'))])
-def test_one_autonomy_answer_writes_four_keys(ws, monkeypatch, capsys, reply, values):
-    # #530 acceptance 1, #816: one card answer writes the four keys through the #529 path.
-    no_terminal(monkeypatch)
-    interview_card(ws, 'autonomy', reply)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    assert main('calibrate', '--answer', f'autonomy={reply}') == 0, capsys.readouterr().err
-    written = config(ws)
-    assert (written['security']['posture'], written['outbound']['default_tier'],
-            written['outbound']['learn'], written['autonomy']['mode']) == values
-    assert not written.get('guards', {}).get('shadow_since')
-    assert events(ws, 'config.set') == [{'keys': ['security.posture', 'outbound.default_tier',
-                                                  'outbound.learn', 'autonomy.mode'], 'card': 'autonomy'}]
-    assert 'Next:' not in capsys.readouterr().out
-
-
-def test_allowlist_card_writes_exactly_the_proposed_rules(ws, monkeypatch, capsys):
-    # #530 acceptance 3: the answered card writes settings.local.json and no config key.
-    from wuwei.commands import init
-    no_terminal(monkeypatch)
-    (ws / '.wuwei/executable').write_text('bin/wuwei\n')
-    before = (ws / '.wuwei/config.toml').read_text()
-    interview_card(ws, 'allowlist', 'Allow')
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    assert main('calibrate', '--answer', 'allowlist=Allow') == 0, capsys.readouterr().err
-    rules = init.allow_rules(workspace.load_config(ws), 'bin/wuwei')
-    assert json.loads((ws / '.claude/settings.local.json').read_text()) == {'permissions': {'allow': rules}}
-    out = capsys.readouterr().out
-    assert all(f'Wrote .claude/settings.local.json: {rule}' in out for rule in rules)
-    assert 'config promote' not in out and (ws / '.wuwei/config.toml').read_text() == before
-    assert 'config.set' not in [json.loads(line)['kind'] for line in
-                                (workspace.day_dir(ws) / 'events.jsonl').read_text().splitlines()]
-
-
-@pytest.mark.parametrize('case', ['not now', 'no card', 'strict'])
-def test_allowlist_without_the_card_answer_writes_nothing(ws, monkeypatch, capsys, case):
-    no_terminal(monkeypatch)
-    (ws / '.wuwei/executable').write_text('bin/wuwei\n')
-    reply = 'Not now' if case == 'not now' else 'Allow'
-    if case != 'no card':
-        interview_card(ws, 'allowlist', reply)
-    if case == 'strict':
-        strict(ws)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    assert main('calibrate', '--answer', f'allowlist={reply}') == 0, capsys.readouterr().err
-    assert not (ws / '.claude/settings.local.json').exists()
-    out = capsys.readouterr().out
-    assert ('Next: run bin/wuwei calibrate --interview allowlist in a host terminal' in out) is (reply == 'Allow')
-    assert 'config promote' not in out
 
 
 # Phase 3: decision cards.
@@ -297,7 +171,7 @@ def set_from_card(key='cap', value='5', card='D-1'):
 
 
 def test_assignment_titles():
-    from wuwei.commands.setup import assignment
+    from wuwei.commands.config import assignment
     assert assignment('cap = 5') == ('cap', 5)
     assert assignment('outbound.default_tier = "ask"') == ('outbound.default_tier', 'ask')
     for title in ('Keep', 'cap = five', 'repos.0 = 1', 'cap 5', 'Keep the current cap'):
@@ -424,7 +298,7 @@ def test_config_set_without_an_answer_names_the_owner_step_card(ws, monkeypatch,
 def test_config_set_event_is_reserved_and_silent(ws, capsys):
     from wuwei.signal import classify
     assert main('event', 'config.set', '{}') == 1
-    assert 'wuwei config set --from-card or wuwei calibrate --answer' in capsys.readouterr().err
+    assert 'wuwei config set --from-card' in capsys.readouterr().err
     assert classify({'kind': 'config.set', 'payload': {'keys': ['cap'], 'card': 'cap'}}, {})[0] == 'silent'
 
 
@@ -500,69 +374,6 @@ def test_widget_of_a_value_card_prints_the_config_command(ws, capsys):
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
 
 
-# #600: calibrate --questions proposes the fast checks of a repository with none configured.
-
-def paper(root, mode='autonomous', makefile='test:\n\ttrue\n'):
-    (root / '.wuwei/config.toml').write_text(
-        f'[security]\nposture = "observe"\n[autonomy]\nmode = "{mode}"\n' + PAPER)
-    (root / 'paper').mkdir(exist_ok=True)
-    if makefile:
-        (root / 'paper/Makefile').write_text(makefile)
-
-
-def proposed(capsys, *ids):
-    assert main('calibrate', '--questions', *ids) == 0
-    out = capsys.readouterr()
-    return json.loads(out.out), out.err
-
-
-def test_calibrate_takes_the_detected_checks_under_mandate(ws, capsys):
-    paper(ws)
-    widgets, err = proposed(capsys)
-    assert 'calibrate: D-1 taken under mandate (Routine): repos.0.fast_checks = ["make test"]' in err
-    assert 'replaced: repos.0.fast_checks = ["make test"] (was [])' in err
-    assert 'D-1' not in [widget.get('header') for widget in widgets]
-    assert config(ws)['repos'][0]['fast_checks'] == ['make test']
-    assert state.read_state(ws)['decision_outcomes']['D-1']['decided_by'] == 'mandate'
-    text = (workspace.day_dir(ws) / 'decisions/D-1.md').read_text()
-    assert 'Outcome: A' in text and 'Decided-by: mandate' in text  # the digest lists it
-    assert events(ws, 'config.set') == [{'keys': ['repos.0.fast_checks'], 'card': 'D-1'}]
-
-
-def test_calibrate_records_none_with_the_reason_and_asks_once(ws, capsys):
-    from wuwei import calibrate
-    paper(ws, makefile=None)
-    before = (ws / '.wuwei/config.toml').read_text()
-    _, err = proposed(capsys)
-    assert 'repos.0.fast_checks = []' in err
-    assert (ws / '.wuwei/config.toml').read_text() == before
-    assert calibrate.NOTHING in (workspace.day_dir(ws) / 'decisions/D-1.md').read_text()
-    proposed(capsys)
-    assert not (workspace.day_dir(ws) / 'decisions/D-2.md').exists()
-
-
-def test_calibrate_asks_the_card_under_supervised(ws, capsys):
-    paper(ws, mode='supervised')
-    before = (ws / '.wuwei/config.toml').read_text()
-    widgets, _ = proposed(capsys)
-    card = next(widget for widget in widgets if widget.get('header') == 'D-1')
-    assert card['record'] == 'wuwei config set --from-card D-1'
-    assert card['options'][0]['label'] == 'Detected (Recommended)'
-    assert 'D-1' in state.read_state(ws)['decision_routes']
-    assert (ws / '.wuwei/config.toml').read_text() == before
-
-
-def test_calibrate_with_question_ids_or_no_checkout_writes_no_record(ws, capsys):
-    paper(ws)
-    proposed(capsys, 'cap')
-    assert not (workspace.day_dir(ws) / 'decisions').exists()
-    (ws / 'paper/Makefile').unlink()
-    (ws / 'paper').rmdir()
-    widgets, err = proposed(capsys)
-    assert 'acme/paper' in err and 'paper' in err and widgets
-    assert not (workspace.day_dir(ws) / 'decisions').exists()
-
-
 # #599: the card answer confirms without WUWEI_SESSION_ID in the environment.
 
 def record_text(root, identifier='D-1'):
@@ -603,13 +414,6 @@ def test_config_set_from_card_without_the_session_id(ws, monkeypatch, capsys):
     config_card(ws)
     planner_bash(monkeypatch)
     assert set_from_card() == 0, capsys.readouterr().err
-    assert config(ws)['cap'] == 5
-
-
-def test_calibrate_answer_without_the_session_id(ws, monkeypatch, capsys):
-    interview_card(ws, 'cap', '5')
-    planner_bash(monkeypatch)
-    assert main('calibrate', '--answer', 'cap=5') == 0, capsys.readouterr().err
     assert config(ws)['cap'] == 5
 
 

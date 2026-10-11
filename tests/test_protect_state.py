@@ -717,18 +717,6 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
     capsys.readouterr()
 
 
-@pytest.mark.parametrize('tool', ['Write', 'Bash'])
-@pytest.mark.parametrize('name', ['interview.json', 'profile.json'])
-def test_interview_answers_are_protected(workspace, tool, name):
-    from wuwei.guards.protect_state import check_bash, check_file
-    target = f'.wuwei/days/2026-10-01/{name}'
-    if tool == 'Bash':
-        code, reason = check_bash(payload(workspace, tool, command='echo {} | tee ' + target))
-    else:
-        code, reason = check_file(payload(workspace, tool, file_path=target))
-    assert code == 1 and 'outside agent tools' in reason
-
-
 @pytest.mark.parametrize('script, expected', [
     ('for r in a b; do cat .wuwei/$r/report.json; done', (0, '')),
     ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),

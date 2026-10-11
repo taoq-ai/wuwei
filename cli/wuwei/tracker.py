@@ -12,6 +12,9 @@ from wuwei import state, workspace
 
 CLASSES = workspace.TRACKER_CLASSES
 KINDS = workspace.TRACKER_KINDS
+# ponytail: a one-segment /name (a slash command) is not a path; a path-shaped CODEOWNERS key
+# such as /src/api/ is dropped, which is conservative.
+ABSOLUTE = re.compile(r'''(?:^|[\s"'`=(,])(?:~/|[A-Za-z]:[\\/]|/[^\s/]+/)''')
 
 
 def ticket(data, item):
@@ -135,7 +138,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
     """The one ticket creator: tracker create <item> and --bug|--triage|--follow-up; row is
     an item record not in today's proposal (#636: an owner-named item from plan add); seat is
     the role a seat declares, recorded on the event (#644)."""
-    from wuwei import profiles, registry
+    from wuwei import registry
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
     if config['adapters']['tracker'] == 'none':
@@ -172,7 +175,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         title = ' '.join(title.split())
         lines = [f'Evidence: {line}' for line in evidence]
         parent = ticket(data, subject)
-    if any(profiles.ABSOLUTE.search(text) for text in (title, *lines)):
+    if any(ABSOLUTE.search(text) for text in (title, *lines)):
         return registry.Result(1, reason='tracker create: refused: absolute path in title or evidence; '
                                          'write paths relative to the repository, such as cli/x.py:12')
     draft = {'title': title, 'description': '\n'.join(lines), 'item': subject,
@@ -271,7 +274,7 @@ def _settle(root, key, update, **payload):
 def log(root):
     """The only comment writer: today's story per ticket, once per key, with the daily cap.
     Each comment is claimed before the port call, so a crash is never posted twice."""
-    from wuwei import profiles, registry
+    from wuwei import registry
     config = workspace.load_config(root)
     if config['adapters']['tracker'] == 'none':
         return 0
@@ -304,7 +307,7 @@ def log(root):
                                next(iter(counts))),
                           [key for key, *_ in folded]))
         for key, kind, text, category, keys in sends:
-            if profiles.ABSOLUTE.search(text):
+            if ABSOLUTE.search(text):
                 code = 1
                 print(f'tracker log: {key}: refused: absolute path in the comment; remove the path '
                       'from the record it quotes (this comment is not retried)', file=sys.stderr)
@@ -346,7 +349,7 @@ def log(root):
 
 def creates_labels(config):
     """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
-    below strict; setup and init --upgrade from a host terminal create on any tracker."""
+    below strict; init --upgrade from a host terminal creates on any tracker."""
     from wuwei import outward
     return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
 
@@ -388,7 +391,7 @@ def relabel(port, root, config, item, ticket, failed):
 
 
 def ensure_labels(root, prefix, create):
-    """The lines setup and init --upgrade print after creating the missing labels."""
+    """The lines init --upgrade prints after creating the missing labels."""
     result = labels(root, workspace.load_config(root), create)
     if result.exit:
         return [f'tracker labels not created: {result.reason}; run bin/wuwei doctor']

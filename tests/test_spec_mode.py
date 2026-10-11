@@ -330,7 +330,7 @@ def test_builder_stop_names_its_artifacts(ws, item, monkeypatch):
     assert spec.check_stop({**stop, 'agent_type': 'wuwei:sentinel-arch'}) == (0, '')
 
 
-def test_present_and_detect(tmp_path):
+def test_present(tmp_path):
     from wuwei import specmode
     plugins = tmp_path / 'plugins.json'
     cfg = config(f'[scanner.mcp]\nplugins_file = "{plugins}"\n')
@@ -340,13 +340,6 @@ def test_present_and_detect(tmp_path):
     assert specmode.present(first, 'speckit', cfg) is False
     assert specmode.present(first, 'superpowers', cfg) is None
     assert specmode.present(first, 'none', cfg) is True
-    assert specmode.detect([first, second], cfg) == 'speckit'
-    plugins.write_text('{"plugins": {"superpowers@superpowers-marketplace": []}}')
-    assert specmode.detect([first, second], cfg) == 'superpowers'
-    (second / 'openspec').mkdir()
-    assert specmode.detect([first, second], cfg) == 'openspec'
-    (first / '.specify').mkdir()
-    assert specmode.detect([first, second], cfg) == 'speckit'
 
 
 # #614: a Claude Code subagent cannot write analysis.md; the seat hands the report to the CLI.

@@ -118,8 +118,6 @@ def ci_block(refs, tree):
 def mandate(root):
     """Design 5.2: what a seat decides alone, records, or sends to the owner."""
     from wuwei import decision
-    from wuwei.interview import BLOCK
-    from wuwei.promotion import safe_path
     config = workspace.load_config(root)
     assumed = config['autonomy']['mode'] == 'autonomous'
     recorded = ['retry', 'park', 'accept-residual', 'merge'] if assumed else []
@@ -132,18 +130,10 @@ def mandate(root):
     if recorded:
         record.append(f'Decision records of class {", ".join(recorded)}: write the record and run '
                       'wuwei decision route D-n.')
-    lead = safe_path(root, '.wuwei/charters/lead.md', label='lead charter')
-    risk = None
-    if lead.is_file():
-        text = lead.read_text(encoding='utf-8')
-        found = re.search(r'^- risk: (.+)$', text[text.find(BLOCK):], re.M) if BLOCK in text else None
-        risk = found and found.group(1)
     to_owner = ('Go to the owner, as a decision record you cite by id: one-way doors (when unsure, it '
                 'is one-way), messages to people, scope agreed with other people, deploys, '
                 "trust-boundary findings, anything outside the item's goals"
                 + (f', decision records of class {", ".join(owner)}.' if owner else '.'))
-    if risk:
-        to_owner += f' Trust surface: {risk}'
     if config['deploy']['deny']:
         to_owner += f' Commands the owner runs: {", ".join(config["deploy"]["deny"])}.'
     to_owner += (' A confirmation from a person outside the loop is never a precondition: write the '

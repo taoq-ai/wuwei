@@ -26,7 +26,8 @@ def register(subparsers):
 
 def run_fix(args):
     """#646: today's seat_findings.<id>; plan add <id> --from-finding admits it as a small item."""
-    from wuwei import profiles, state
+    from wuwei import state
+    from wuwei.tracker import ABSOLUTE
     if args.fix is None:
         print('wuwei note: pass add <slug> or --fix "<title>"', file=sys.stderr)
         return UNRUN
@@ -36,7 +37,7 @@ def run_fix(args):
               else 'the title must be at most 120 characters' if len(title) > 120
               else 'the title must hold letters or digits' if not words
               else 'the title must not hold an absolute path; name the file from the repository root'
-              if profiles.ABSOLUTE.search(title) else '')
+              if ABSOLUTE.search(title) else '')
     if reason:
         print(f'wuwei note: {reason}', file=sys.stderr)
         return FINDINGS

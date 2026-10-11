@@ -254,13 +254,13 @@ def _edit(inputs, root, source=None):
 
 def _add_row(root, added):
     """#496: append the card's tier row to outbound.tiers; the card answer is the confirmation."""
-    from wuwei.commands import setup
+    from wuwei.commands import config as config_command
 
     def change(_, raw):
         rows = [{key: value for key, value in row.items() if value}
                 for row in workspace.load_config(root, raw=raw)['outbound']['tiers']]
-        return raw if added in rows else setup._settle(raw, [(('outbound',), 'tiers', [*rows, added])])
-    return setup._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
+        return raw if added in rows else config_command._settle(raw, [(('outbound',), 'tiers', [*rows, added])])
+    return config_command._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
 
 
 def approve(root, draft_id, *, answered, edit=False, source=None, always=False):

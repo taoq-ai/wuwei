@@ -84,8 +84,6 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     assert code == 1 and 'CAP 3' in reason
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
     step = json.loads(day.run('next', '--json'))
-    while step['state'] == 'calibrate':  # the first day's card comes once (#551)
-        step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
     assert 'D waits' in step['why'] and 'A-builder started first' in step['why']
     assert 'seats 3/3 by owner (builder, builder, builder)' in day.run('status', '--line')
@@ -147,7 +145,7 @@ def test_docs_skill_and_charter_name_the_parallel_start():
     assert '### Seats per goal' in (ROOT / 'docs/site/concepts.md').read_text()
     row = next(line for line in (ROOT / 'docs/site/configuration.md').read_text().splitlines()
                if line.startswith('| `cap`'))
-    assert 'calibrate' in row and 'morning gate' in row
+    assert 'morning gate' in row
     assert 'seats' in (ROOT / 'charters/lead.md').read_text()
 
 

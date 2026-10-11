@@ -31,7 +31,6 @@ def root(tmp_path, monkeypatch):
 def calibrated(root):
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n')
-    (root / '.wuwei/calibration.json').write_text('{"example/project": {}}')
 
 
 def planned(root):
@@ -52,7 +51,6 @@ def approved(root, items, cap=1, **extra):
     day(root, gate_approved=True, approved_items=list(items), cap=cap, planner_session_id='S',
         items={name: {'phase': phase, **fields} for name, (phase, fields) in items.items()},
         **extra)
-    seen(root, 'calibrate')
 
 
 def row(capsys, *args):
@@ -73,24 +71,29 @@ SHAPE = {'state', 'action', 'command', 'why', 'then'}
 
 
 def test_setup_rows(root, capsys):
+    # #832: repositories are added in the session, each on its Owner step card; no host terminal.
     code, found = row(capsys)
-    assert code == 0 and set(found) == SHAPE and found['action'] == 'card'
-    assert (found['state'], found['command']) == ('setup', 'bin/wuwei setup')
-    assert 'host terminal' in found['why'] and found['then'] == next_command.THEN['owner']
+    assert code == 0 and set(found) == SHAPE and found['action'] == 'run'
+    assert (found['state'], found['command']) == (
+        'setup', 'wuwei config add-repo --name <owner/repo> --path <path> --branch <branch>')
+    assert found['then'] == next_command.THEN['setup'] and 'Owner step card' in found['then']
+    assert 'host terminal' not in found['why'] + found['then']
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n')
-    assert row(capsys)[1]['state'] == 'setup'
+    # calibration.json is the drift baseline, not a day gate: doctor names config promote
+    assert row(capsys)[1]['state'] == 'session'
 
 
 def test_setup_row_outside_workspace(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
     code, found = row(capsys)
-    assert code == 0 and set(found) == SHAPE and found['action'] == 'card'
-    assert (found['state'], found['command']) == ('no-workspace', 'bin/wuwei setup --shadow')
+    assert code == 0 and set(found) == SHAPE and found['action'] == 'run'
+    assert (found['state'], found['command']) == ('no-workspace', 'bin/wuwei init --shadow')
+    assert found['then'] == next_command.THEN['run'] and 'host terminal' not in found['why'] + found['then']
     capsys.readouterr()
     assert main(['next']) == 0
-    assert capsys.readouterr().out == f"no-workspace: {found['why']} {found['then']}\nbin/wuwei setup --shadow\n"
+    assert capsys.readouterr().out == f"no-workspace: {found['why']} {found['then']}\nbin/wuwei init --shadow\n"
 
 
 def seen(root, *states):
@@ -189,12 +192,6 @@ def test_cards_after_the_gate_come_once(root, capsys):
     found = row(capsys)[1]
     assert found['command'] == 'wuwei goals edit --file .wuwei/days/2026-09-30/goals.md'
     ran(root, found['command'])
-    found = row(capsys)[1]
-    # Calibration asks what setup did not cover, whatever the day (#530); this fixture has every
-    # answer unasked, so the card carries the printed questions.
-    assert (found['state'], found['action']) == ('calibrate', 'card') and found['widget']
-    assert 'Next: line' in found['then'] and 'calibrate --interview allowlist' in found['then']
-    ran(root, found['widget'][0]['record'].replace('<label>', 'x'))
     found = row(capsys)[1]
     assert (found["state"], found["action"], found.get("item")) == ("decision", "card", "D-1"), found
     passed = [json.loads(line)['payload'] for line in
@@ -785,28 +782,6 @@ def test_no_rehearse_row(root, capsys):
     # #815: no rehearsal ledger; the owner card comes first.
     approved(root, {}, decision_routes={'D-1': 'owner'})
     assert coarse(root)['state'] == 'decision'
-
-
-@pytest.mark.parametrize('answered', [False, True])
-def test_unanswered_setup_questions_are_asked_on_any_day(root, capsys, answered):
-    # #530: a workspace on day 5 that never answered the interview gets the cards at the next plan.
-    from wuwei import interview
-    for name in ('2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29'):
-        (root / '.wuwei/days' / name).mkdir(parents=True)
-    if answered:
-        (root / '.wuwei/days/2026-09-29/interview.json').write_text(json.dumps({
-            row['id']: ({'example/project': row['choices'][0][0]} if row['scope'] == 'repo' else row['choices'][0][0])
-            for row in interview.QUESTIONS}))
-    planned(root)
-    day(root, gate_approved=True, planner_session_id='S')
-    found = row(capsys)[1]
-    if answered:  # the list is []: the row passes in the same call
-        assert found['state'] != 'calibrate'
-        return
-    assert (found['state'], found['action'], found['command']) == ('calibrate', 'card', 'wuwei calibrate --questions')
-    assert found['widget'][0]['id'] == 'autonomy'
-    ran(root, found['widget'][0]['record'].replace('<label>', 'Autonomous'))
-    assert row(capsys)[1]['state'] != 'calibrate'
 
 
 @pytest.mark.parametrize('kind,producer', [('seat adhoc', 'wuwei seat start'),

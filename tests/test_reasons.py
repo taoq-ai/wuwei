@@ -23,7 +23,7 @@ OWNER = re.compile(r'\bthe owner\b', re.I)
 # Caught and replaced before anyone reads it (research.md KEEP row).
 KEEP = {('workspace.py', 'time component required')}
 # Person-facing scope (spec Assumptions): whole modules, or named top-level functions.
-PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py')
+PERSON_MODULES = ('commands/doctor.py', 'commands/config.py')
 PERSON_PARTS = {'commands/next.py': {'step'}}
 
 
@@ -321,13 +321,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('commands/setup.py', '(owner, host terminal)', 12),
-    ('commands/setup.py', 'watch install in a host terminal', 12),
-    ('interview.py', 'bin/wuwei setup in a host terminal', 12),
-    ('commands/calibrate.py', 'host terminal', 12),
-    ('commands/next.py', 'show the owner that line for a host terminal', 12),
-    ('commands/next.py', 'in a host terminal in the project directory', 12),
-    ('commands/next.py', 'calibration still need you in a host terminal', 12),
     ('commands/next.py', 'show that line to the owner for a host terminal', 13),
     ('commands/memory.py', 'forgetting proposal (host terminal)', 13),
     ('consolidation.py', '_host_confirm', 13),

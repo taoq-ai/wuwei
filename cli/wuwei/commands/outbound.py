@@ -394,7 +394,7 @@ def apply(root, proposal, option, decision_id=None):
     """Write what the answer approved through the owner edit frame; the answer is the
     confirmation. One outbound.learned event (ids only) after a write."""
     from wuwei import state
-    from wuwei.commands import setup
+    from wuwei.commands.config import _edit, _settle, merged
     choice = option
     for row in [*proposal['channels'], *proposal['people']]:
         if option == f"{row['id']}-{_other_class(row)}":  # #496: approve with this entry's other class
@@ -422,12 +422,12 @@ def apply(root, proposal, option, decision_id=None):
         settings += [(('outward', 'modes'), proposal['server'], mode)] if mode else []
         for key, ids in (('work_channels', team), ('external_channels', client)):  # #496: by class.
             if ids:
-                settings += setup.merged(config, ['outbound', key], ids, add=True)
+                settings += merged(config, ['outbound', key], ids, add=True)
         settings += [(('outbound', 'people'), f"slack:{row['id']}", row['entry']) for row in people]
         settings += [(('outbound', 'owner', 'slack'), key, value) for key, value in owner.items()]
-        return setup._settle(raw, settings)
+        return _settle(raw, settings)
 
-    code = setup._edit('outbound learn', 'learned connector', lambda *args, **kwargs: True, change, root)
+    code = _edit('outbound learn', 'learned connector', lambda *args, **kwargs: True, change, root)
     if code == CLEAN:
         state.append_event('outbound.learned', {
             'decision': decision_id, 'option': option, 'mode': 'card' if decision_id else 'auto',

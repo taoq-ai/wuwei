@@ -14,9 +14,9 @@ from wuwei import metrics, workspace
 from wuwei.__main__ import main
 
 
-def prepare(day, skip=()):
-    """The walking day's workspace: the planner session, a calibrated repository, the item
-    worktree stub and every setup question but those in skip answered on an earlier day."""
+def prepare(day):
+    """The walking day's workspace: the planner session, a calibrated repository and the item
+    worktree stub."""
     day.patch.setenv('WUWEI_SESSION_ID', 'planner')
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
 
@@ -26,13 +26,6 @@ def prepare(day, skip=()):
         path.symlink_to(day.repo)
         return {'path': str(path), 'branch': branch}
     day.patch.setattr(workspace, 'create_worktree', worktree)
-    # Not the first day: the calibration questions were answered on an earlier one (#530 asks
-    # them any day until answered).
-    from wuwei import interview
-    (day.root / '.wuwei/days/2026-09-28').mkdir(parents=True)
-    (day.root / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(
-        {row['id']: {'acme/widget': ''} if row['scope'] == 'repo' else '' for row in interview.QUESTIONS
-         if row['id'] not in skip}))
     return day
 
 
@@ -195,32 +188,32 @@ def approve_at_head(day):
 @pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('choice', ['Autonomous', 'Supervised'])
 def test_posture_day(tmp_path, monkeypatch, choice):
-    # #530 E: a whole day under the setup answer. Under autonomous the owner answers the gate and
-    # one client draft; under supervised every owner-only action asks on a card. #816: the
-    # repository's merge policy merges under both answers.
+    # #530 E: a whole day under the autonomy choice, set in config (#832). Under autonomous the
+    # owner answers the gate and one client draft; under supervised every owner-only action asks
+    # on a card. #816: the repository's merge policy merges under both choices.
     from fakes.day import Day
     from test_decision_classes import LEAD, record
-    from wuwei import interview, workspace
+    from wuwei import workspace
     started, answered, steps, routes = time.monotonic(), [], set(), {}
     autonomous = choice == 'Autonomous'
-    day = prepare(Day(tmp_path / 'workspace', monkeypatch), skip={'autonomy'})
+    day = prepare(Day(tmp_path / 'workspace', monkeypatch))
     # Spec mode runs advisory under observe (design 5.10): no spec-first refusal to meet.
     day.runtime.spec = not autonomous
     path = day.root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('fast_checks = ["demo-check"]\n',
                                              'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
                                              'merge = {auto = true, soak_minutes = 0}\n')
-                    + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n[deploy]\nworkflows = ["deploy.yml"]\n')
+                    + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n'
+                    + ('default_tier = "send"\nlearn = "auto"\n[security]\nposture = "observe"\n[autonomy]\nmode = "autonomous"\n'
+                       if autonomous else
+                       'default_tier = "ask"\nlearn = "card"\n[security]\nposture = "guarded"\n[autonomy]\nmode = "supervised"\n')
+                    + '[deploy]\nworkflows = ["deploy.yml"]\n')
 
     def card(day, action):
         for widget in action['widget']:
             labels = [option['label'] for option in widget['options']]
-            label = (choice if action['state'] == 'calibrate' else
-                     next((name for name in labels if name.startswith('Allow')), None)
+            label = (next((name for name in labels if name.startswith('Allow')), None)
                      or next((name for name in labels if 'Recommended' in name), labels[0]))
-            if action['state'] == 'calibrate':
-                autonomy = next(row for row in interview.QUESTIONS if row['id'] == 'autonomy')
-                assert widget['header'] == autonomy['header'] and choice in labels, widget
             ask(day, widget, label)
             answered.append((action['state'], action.get('item'), widget['header'], label))
 
@@ -281,8 +274,7 @@ def test_posture_day(tmp_path, monkeypatch, choice):
     if autonomous:
         extra = [f"{ident}: {row['cisr']}" for ident, row in data.get('decision_routes', {}).items()]
         assert not extra, extra
-        assert sorted({state for state, *_ in answered}) == ['calibrate', 'gate']
-        assert [(state, header) for state, _, header, _ in answered if state == 'calibrate'] == [('calibrate', 'Autonomy')]
+        assert sorted({state for state, *_ in answered}) == ['gate']
         assert [row['destination'] for row in data['drafts'].values()] == ['C0CLIENT'], data['drafts']
         assert {name: verdict for name, (_, verdict) in routes.items()} == dict.fromkeys(
             ('routine', 'consequential', 'exploratory'), 'mandate')
@@ -336,13 +328,9 @@ def test_fresh_day_goals_reach_an_approved_plan(day):
 
 def test_multi_repository_dispatch_runs(day):
     # #603: with two repositories every start command next returns exits 0 and names --repo.
-    from wuwei import interview
     with (day.root / '.wuwei/config.toml').open('a') as config:
         config.write('[[repos]]\nname = "acme/other"\npath = "other"\ndefault_branch = "main"\n')
     (day.root / 'other').mkdir()
-    (day.root / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(
-        {row['id']: dict.fromkeys(('acme/widget', 'acme/other'), '') if row['scope'] == 'repo' else ''
-         for row in interview.QUESTIONS}))
     propose = day.proposal
 
     def proposal(*args, **kwargs):

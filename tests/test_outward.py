@@ -953,7 +953,7 @@ def test_owner_facing_templates_are_plain():
     from wuwei import outward
     cli = Path(__file__).resolve().parents[1] / 'cli/wuwei'
     for name in ('report.py', 'decision.py', 'retro.py',
-                 'interview.py', 'watch.py', 'commands/decision.py', 'commands/status.py'):
+                 'watch.py', 'commands/decision.py', 'commands/status.py'):
         for node in ast.walk(ast.parse((cli / name).read_text(encoding='utf-8'))):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 assert '\u2014' not in node.value and outward.tells(node.value) == [], (name, node.value)

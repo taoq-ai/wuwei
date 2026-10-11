@@ -1,10 +1,11 @@
 """Planner decisions use recorded evidence and never launch agents."""
 
 import json
+import os
 
 import pytest
 
-from wuwei import state, workspace
+from wuwei import dispatch, state, workspace
 
 
 PASS = 'Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
@@ -2786,3 +2787,190 @@ def test_a_day_value_never_changes_the_tier(root, monkeypatch):
     after = tier()
     assert before == after and 'depth' not in after
     assert not any(reason.startswith('pace') for reason in after['reasons'])
+
+
+# Moved from test_calibrate (#832): CAP and the seat ceiling live in dispatch.host.
+
+
+# #658: seats that are subagents of one process do not read free memory; process seats smooth it.
+
+PROCESS = {'builder': {'runtime': 'codex', 'model': 'm'}}
+
+
+@pytest.fixture
+def ports(monkeypatch):
+    from fakes.code_host import Fake as Host
+    from fakes.host import Fake as Memory
+    from fakes.vcs import Fake as Vcs
+    from wuwei import registry
+
+    selected = {'vcs': Vcs(), 'code_host': Host(),
+                'host': Memory({'free_memory': registry.Result(0, 10240 * 2**20)})}
+    monkeypatch.setattr(registry, 'load', lambda kind, config: selected[kind])
+    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
+    return selected
+
+
+@pytest.fixture
+def workspace_root(tmp_path, monkeypatch, ports):
+    (tmp_path / '.wuwei').mkdir()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T09:00:00Z')
+    return tmp_path
+
+
+def seat_day(root, cost):
+    from wuwei import state
+    for free, running in ((10240, 0), (10240 - cost, 1)):
+        state.append_event('seat launched', {'name': f'seat-{running}', 'item': 'A',
+                                             'free_mib': free, 'running': running}, root)
+
+
+def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
+    # #528, #658: on process seats, one derivation from free memory above the floor, the seat cost and the cores.
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    memory = lambda mib: ports['host'].results.update(free_memory=registry.Result(0, mib * 2**20))
+    memory(8192)
+    assert dispatch.host(workspace_root, config, policy=PROCESS) == {
+        'cores': 4, 'free_mib': 8192, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4,
+        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores',
+        'reading': 4}
+    memory(3072)
+    # the derived seat ceiling always holds one three-role gate, so a gate never deadlocks
+    assert (dispatch.host(workspace_root, config, policy=PROCESS)['cap'], dispatch.host(workspace_root, config, policy=PROCESS)['seats']) == (2, 3)
+    memory(2048)
+    assert dispatch.host(workspace_root, config, policy=PROCESS, running=2)['cap'] == 3
+    assert dispatch.host(workspace_root, config, policy=PROCESS, free=8192)['cap'] == 4
+    memory(512)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['cap'] == 1
+    memory(8192)
+    config['cap'] = 1
+    owner = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (owner['cap'], owner['seats'], owner['bound']) == (1, 4, 'owner')
+    assert owner['text'] == ('cap 1 (owner): config cap; the host fits 4 '
+                             '(8 GB free, 1 GB per seat, 4 cores)')
+    config['cap'], config['host']['seats'] = 0, 2
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'seats', 'bound')] == [2, 2, 'memory']
+    seat_day(workspace_root, 1536)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['text'].endswith('1.5 GB per seat, 4 cores')
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    assert dispatch.host(workspace_root, config, policy=PROCESS) == {
+        'unmeasured': 'vm_stat failed', 'cap': 1, 'seats': 2, 'bound': 'unmeasured',
+        'text': 'cap 1 (unmeasured): vm_stat failed'}
+    memory(8192)
+    monkeypatch.setattr(os, 'cpu_count', lambda: None)
+    unmeasured = dispatch.host(workspace_root, {**config, 'cap': 3, 'host': {**config['host'], 'seats': 0}}, policy=PROCESS)
+    assert 'cores' in unmeasured['unmeasured'] and 'run bin/wuwei doctor, then retry' in unmeasured['unmeasured'] and (unmeasured['cap'], unmeasured['seats']) == (3, 4)
+
+
+def test_host_seat_ceiling_holds_one_gate_on_a_two_core_host(workspace_root, monkeypatch):
+    from wuwei import dispatch, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setattr(os, 'cpu_count', lambda: 2)
+    limits = dispatch.host(workspace_root, workspace.load_config(workspace_root), free=65536)
+    assert (limits['cap'], limits['seats']) == (2, len(dispatch.ROLES))
+
+
+def test_host_falls_back_when_a_past_day_log_is_damaged(workspace_root, monkeypatch):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    events = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
+    events.parent.mkdir(parents=True, exist_ok=True)
+    events.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
+    limits = dispatch.host(workspace_root, workspace.load_config(workspace_root), free=8192, policy=PROCESS)
+    assert (limits['cap'], limits['seats'], limits['seat_mib']) == (4, 4, dispatch.SEAT_MIB)
+    assert 'per-seat tokens unmeasured' in limits['text'] and 'events.jsonl' in limits['text']
+
+
+def usage_day(root, day, *tokens):
+    events = root / '.wuwei/days' / day / 'events.jsonl'
+    events.parent.mkdir(parents=True, exist_ok=True)
+    with events.open('a') as rows:
+        for count in tokens:
+            rows.write(json.dumps({'ts': f'{day}T09:00:00+00:00', 'kind': 'seat.usage', 'payload': {'item': 'A', 'usage': {
+                'input_tokens': count // 2, 'output_tokens': count - count // 2}}}) + '\n')
+
+
+def test_token_budget_bounds_cap(workspace_root, ports, monkeypatch):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    unmeasured = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (unmeasured['cap'], unmeasured['bound']) == (4, 'memory')
+    assert unmeasured['text'].endswith('; budget 200000 tokens a day, per-seat tokens unmeasured')
+    usage_day(workspace_root, '2026-09-30', 100000, 100000)
+    budget = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (budget['cap'], budget['bound']) == (2, 'budget')
+    assert budget['text'] == ('cap 2 (budget): 10 GB free, 1 GB per seat, 4 cores; '
+                              'budget 200000 tokens a day, 0 used, 100000 per seat')
+    usage_day(workspace_root, '2026-10-01', 150000)
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
+    usage_day(workspace_root, '2026-10-01', 150000)
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
+
+
+def test_runtime_rule(workspace_root):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    claude = {'runtime': 'claude', 'model': 'opus'}
+    assert not dispatch.processes(config, {})
+    assert not dispatch.processes(config, {'builder': claude})
+    assert not dispatch.processes(config, {'builder': {'runtime': 'none'}})
+    assert dispatch.processes(config, {**PROCESS, 'sentinel-arch': claude})
+    assert dispatch.processes({**config, 'adapters': {**config['adapters'], 'runtime': 'codex'}}, {})
+    assert not dispatch.processes(config, ['codex']) and not dispatch.processes(config, {'builder': 'codex'})
+    second = {**config, 'gates': {**config['gates'], 'second_opinion': 'codex:gpt-5'}}
+    assert not dispatch.processes(second, {})
+
+
+def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 6\n')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    for mib in (9216, 5120, 7168, 9216, 3072):
+        ports['host'].results['free_memory'] = registry.Result(0, mib * 2**20)
+        limits = dispatch.host(workspace_root, config, policy={})
+        assert (limits['cap'], limits['bound']) == (6, 'host.seats') and 'load' not in limits
+        assert limits['text'] == 'cap 6 (host.seats): subagent runtime, free memory not read'
+        assert dispatch.host(workspace_root, config)['cap'] == 6
+    assert not [call for call in ports['host'].calls if call[0] == 'free_memory']
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    failing = dispatch.host(workspace_root, config, policy={})
+    assert failing['cap'] == 6 and 'unmeasured' not in failing
+    config['host']['seats'] = 0
+    unset = dispatch.host(workspace_root, config, policy={})
+    assert (unset['cap'], unset['seats'], unset['bound']) == (10, 10, 'host.seats')
+    assert unset['text'].endswith('host.seats unset, 10 cores')
+
+
+def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch):
+    from wuwei import registry, state, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    ports['host'].results['free_memory'] = registry.Result(0, 5120 * 2**20)
+    first = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (first['cap'], first['bound'], first['reading']) == (4, 'memory', 4)
+    assert first['text'] == 'cap 4 (memory): 5 GB free, 1 GB per seat, 10 cores'
+    for reading in (8, 4, 6, 8):
+        state.append_event('cap.derived', {'cap': reading, 'bound': 'memory', 'reading': reading}, workspace_root)
+    smoothed = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (smoothed['cap'], smoothed['reading']) == (6, 4)
+    assert smoothed['text'].startswith('cap 6 (memory): median of 8, 4, 6, 8, 4; ')
+    state.append_event('cap.derived', {'cap': 9, 'bound': 'memory', 'reading': 9}, workspace_root)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['text'].startswith(
+        'cap 6 (memory): median of 4, 6, 8, 9, 4; ')
+    log = workspace.day_dir(workspace_root) / 'events.jsonl'
+    log.chmod(0o600)
+    with log.open('a') as rows:
+        rows.write('{"kind": "cap.derived"')
+    damaged = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert damaged['cap'] == 4 and 'median' not in damaged['text'] and '; warning: ' in damaged['text']
+

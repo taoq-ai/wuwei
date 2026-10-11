@@ -361,20 +361,3 @@ def published(root, kind):
     if kind in rules['publish'] and rules['system'] in ('notion', 'confluence'):
         return publish(root, kind)
     return None
-
-
-LINKS = {'notion': r'''https://[\w.-]*notion\.(?:so|site)/[^\s)>\]"']+''',
-         'confluence': r'''https://[\w-]+\.atlassian\.net/wiki/[^\s)>\]"']+'''}
-
-
-def detect(paths):
-    """The first Notion or Confluence link in a repository README or CONTRIBUTING, or None."""
-    pattern = '|'.join(LINKS.values())
-    for path in paths:
-        for name in ('README.md', 'README', 'CONTRIBUTING.md', 'CONTRIBUTING'):
-            file = Path(path) / name
-            if file.is_file() and not file.is_symlink():
-                found = re.search(pattern, file.read_text(encoding='utf-8', errors='replace'))
-                if found:
-                    return found[0]
-    return None

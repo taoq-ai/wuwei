@@ -106,13 +106,7 @@ def _repo(root, tree, config):
     if repo is None:
         from wuwei.guards.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
-    # #600: no fast checks is a state (CI and the gates are the evidence); strict asks once
-    from wuwei import calibrate
-    name = repo['name']
-    if (not repo['fast_checks'] and workspace.posture(config)[0] == 'strict'
-            and not calibrate.checks_answered(root, name)):
-        raise ValueError(f'posture strict: {name} has no fast checks and no answer on its fast-checks card; ask it with wuwei calibrate --questions --repo {name}, then rerun bin/wuwei build next <item>')
-    return repo
+    return repo  # #600, #832: no fast checks is a state; CI and the gates are the evidence
 
 
 def _save(item, record, root, kind, expected, extra=None, also=None):

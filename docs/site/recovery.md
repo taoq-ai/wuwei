@@ -53,13 +53,11 @@ spans lines.
 
 0.11.0 left an explicit `fast_checks = []` alone. From 0.12.0 a one-line empty list is
 filled by `bin/wuwei config promote`, like the deploy lists. An empty list is a state, not an
-error: items build with checks none configured and CI is the evidence. The fast-checks card
-that `bin/wuwei calibrate --questions` writes proposes what the repository declares.
+error: items build with checks none configured and CI is the evidence, in every posture.
 
 ### A test suite is proposed as a fast check
 
-A test runner is CI only unless measured. `setup` offers to run it once and proposes it only
-when it is fast enough; later, `bin/wuwei calibrate --measure` times each one
+A test runner is CI only unless measured. `wuwei config promote --measure` times each one
 against `calibrate.fast_check_seconds` and proposes only the fast ones
 ([calibration](configuration.md#calibration)).
 

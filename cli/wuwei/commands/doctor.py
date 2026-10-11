@@ -236,8 +236,7 @@ def _host(root, config):
         (repo['identity']['name'] and repo['identity']['email'])
         or resolved((root / Path(repo['path']).expanduser()).resolve())[0] for repo in config['repos'])
     rows.append(_row('host', 'git identity', 'ok', f"{result.data['name']} <{result.data['email']}>") if good else
-                _row('host', 'git identity', 'ok', "not set globally; setup reads each repository's own identity"
-                     if root is None else 'not set globally; repositories set their own') if own else
+                _row('host', 'git identity', 'ok', 'not set globally; repositories set their own') if own else
                 _row('host', 'git identity', 'fail', result.reason or 'missing',
                      'git config --global user.name "<name>" and git config --global user.email "<email>"'))
     if adapters['scanner'] != 'ziran':
@@ -273,7 +272,7 @@ def _workspace(root, config, error, found):
     from wuwei.commands import init
     if root is None:
         return [_row('workspace', 'workspace', 'fail', error or f'no .wuwei/ found from {Path.cwd()}',
-                     'bin/wuwei setup --shadow in the directory that holds your repositories')]
+                     'bin/wuwei init --shadow in the directory that holds your repositories')]
     rows = [_row('workspace', 'workspace', 'ok', str(root / '.wuwei'))]
     if config is not None and found:
         rows.append(_row('workspace', 'config', 'warn', f'loads; {len(found)} unknown keys',
@@ -436,35 +435,23 @@ SHADOW = ('Observe posture has run {days} days. To enforce, set '
 
 
 def _calibration(root, config):
-    from wuwei import calibrate, interview, profiles, watch
+    from wuwei import calibrate, watch
     rows = []
     try:
         approved = calibrate.approved(root)
         rows.append(_row('workspace', 'calibration', 'ok', ', '.join(
             f"{name} {data.get('date', 'undated')}" for name, data in approved.items())) if approved else
-            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei calibrate, then wuwei config promote'))
+            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei config promote'))
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'calibration', 'unmeasured', str(exc), 'fix .wuwei/calibration.json'))
     try:
         drifted = sorted({row['payload'].get('repo', '?') for row in
                           watch.records(workspace.day_dir(root) / 'events.jsonl')
                           if row['kind'] == 'calibration.drift'})
-        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei calibrate',
-                         apply='calibrate') if drifted else _row('workspace', 'drift', 'ok', 'none today'))
+        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei config promote')
+                    if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
         rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
-    try:
-        count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
-        rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
-                    if count else _row('workspace', 'interview', 'ok', 'all setup questions answered'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'interview', 'unmeasured', str(exc), 'wuwei calibrate --interview'))
-    try:
-        name, _ = profiles.load(root, config)
-        rows.append(_row('workspace', 'profile', 'ok',
-                         f"guards profile {config['profile']}; calibration profile {name or 'none'}"))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'profile', 'unmeasured', str(exc), 'wuwei calibrate import <profile>'))
     guards, name = config['guards'], workspace.posture(config)[0]
     shown = f'{name} (from {workspace.posture_source(config)})'
     if guards['mode'] == 'shadow':
@@ -480,8 +467,8 @@ def _calibration(root, config):
                     _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
     telemetry = config['telemetry']
-    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
-                     'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']
+    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet',
+                     'bin/wuwei config set telemetry.share \'"anonymous"\' (or "attributed" or "off")') if telemetry['enabled'] and not telemetry['share']
                 else _row('workspace', 'telemetry', 'ok', f"share {telemetry['share'] or 'off'}"
                           if telemetry['enabled'] else 'disabled'))
     return rows
@@ -575,8 +562,7 @@ def pr_flow(config):
                quoted('shepherd.lead_login', '<lead login>')),
               ('shepherd.authors', f"{len(shepherd['authors'])} mapped" if shepherd['authors'] else '',
                'reviewer mentions in the review ping at pr ping',
-               'bin/wuwei setup (maps your git email and the bot authors), or add '
-               '"<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
+               'add "<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
     if config['adapters']['chat'] != 'none':
         checks.append(('shepherd.review_channel', shepherd['review_channel'], 'the review ping at pr ping',
                        quoted('shepherd.review_channel', '<channel id>')))
@@ -914,12 +900,6 @@ def _supersede(root, token):
     return 0
 
 
-def _calibrate(root, token):
-    from wuwei.commands import calibrate
-    return calibrate.run(Namespace(action=None, target=None, repo=None, measure=False, skip=[],
-                                   interview=None, questions=False, answer=None))
-
-
 def _reports_preview(root):
     from wuwei import mcp
     plan = mcp.migrate(root)
@@ -940,9 +920,6 @@ def _reports(root, token):
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
-    'calibrate': ('wuwei calibrate', lambda root: (
-        "profile the configured repositories; writes today's calibration.md and charter proposals; "
-        'config.toml unchanged\n', None), _calibrate),
     'watch-install': _planned('wuwei watch install', _service('watch')),
     'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
     'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),

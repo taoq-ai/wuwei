@@ -31,7 +31,7 @@ It proposes rule changes; you promote the ones you want.
 
 ### CAP
 
-How many build seats may run at once (`cap`, default 1; `bin/wuwei calibrate` proposes it from the host).
+How many build seats may run at once (`cap`; `0` derives it from the host at every sweep).
 The morning gate asks you to confirm it each day, and the launch guard refuses a builder past it.
 
 ### Seats per goal
@@ -77,7 +77,7 @@ It shows on the status line and reaches your phone.
 ### Digest
 
 The 12-character code a host terminal command shows before it changes a file; type it to confirm.
-Also the summary of waiting decisions sent every two hours when you choose Batch in the interview.
+Also the summary of waiting decisions sent every two hours when you choose Batch.
 
 ### Unmeasured
 
@@ -91,7 +91,7 @@ Seats do not ask you what their mandate lets them decide.
 
 ### Trust surface
 
-Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
+Code where a mistake costs most: auth, credentials, input parsing, permissions, and the boundaries you name in `[boundary]`.
 A change there gets three reviewer agents and is never merged without you.
 
 ### Host terminal
@@ -187,7 +187,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -412,8 +412,8 @@ question card shows the titles, the recommended one first, each with its rationa
 consequence and lens lines, and ends the question with the reasoning. `wuwei decision
 template` prints a valid record.
 
-Every seat prompt ends with a mandate block built from `autonomy.mode`, the interview's
-trust-surface line and `deploy.deny`. It says what the seat decides alone, what it decides
+Every seat prompt ends with a mandate block built from `autonomy.mode` and
+`deploy.deny`. It says what the seat decides alone, what it decides
 and records, and what comes to you. Under `autonomous` the seat assumes `approach`, records
 `retry`, `park`, `accept-residual` and `merge`, and sends every other class to you. Under
 `supervised` every class comes to you. It closes with "Nothing else is a question." Assume and

@@ -251,9 +251,9 @@ def propose(data, root=None):
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
     config = workspace.load_config(root)
-    from wuwei import calibrate
+    from wuwei.dispatch import host
     # #528: CAP derives; the lead's cap is not used. #658: the proposal's seat policy picks the rule
-    limits = calibrate.host(root, config, policy=data.get('seat_policy'))
+    limits = host(root, config, policy=data.get('seat_policy'))
     data = {**data, 'cap': limits['cap'],
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']

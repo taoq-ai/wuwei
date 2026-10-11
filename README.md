@@ -28,8 +28,8 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
 - Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
 - Review [tiers](docs/site/concepts.md#tier): one reviewer for a docs-only change, three gates for code or a [trust surface](docs/site/concepts.md#trust-surface) ([review tiers](docs/site/concepts.md#review-tiers)).
-- Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
-- Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its [digest](docs/site/concepts.md#digest) ([setup](docs/site/daily.md#2-configure)).
+- Calibration of each repository's checks and deploy signals ([calibration](docs/site/configuration.md#calibration)).
+- Setup in the session: `init --shadow`, then each repository and the calibration proposal on an Owner step card ([setup](docs/site/daily.md#2-configure)).
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
@@ -148,20 +148,17 @@ More harnesses are tracked in [issue #441](https://github.com/taoq-ai/wuwei/issu
 
 ## Quick start
 
-From the same project directory, in a [host terminal](docs/site/concepts.md#host-terminal), set up the workspace:
+From the same project directory, create the workspace:
 
 ```sh
-../wuwei-plugin/bin/wuwei setup --shadow
+../wuwei-plugin/bin/wuwei init --shadow
 ```
 
-`setup` runs `init` when there is no workspace and finds the git repositories in the project
-directory (their GitHub names, default branches through `gh`, and commit identities). It checks
-the host, calibrates the repositories and asks the owner interview. It shows the whole
-`config.toml` proposal once and applies it after you answer y. Then it runs
-`doctor` and `mcp check` and ends with one line: `Ready: run /wuwei:wuwei-plan`, or `Next:`
-with the one command still required. Optional items, such as branch protections, are listed
-before it and do not block. A second run proposes nothing new
-([calibration](docs/site/configuration.md#calibration)).
+Then open Claude Code in the project directory. The planner asks which repositories WUWEI works
+on and adds each with `wuwei config add-repo`, then runs `wuwei config promote`, which surveys
+the repositories and proposes their checks and deploy signals. Each shows the `config.toml`
+diff and asks its Owner step card; nothing is written before your Yes. A second
+`config promote` proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
 
 `--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and the `## Shadow` section of the day report lists it. See [security posture](docs/site/concepts.md#security-posture).
 
@@ -193,7 +190,7 @@ Every Claude Code session in the workspace orients itself on start: what WUWEI i
   ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
 - It is early: so far only its author has used it day to day, and the
   [live rehearsal](docs/site/rehearsal.md) is the check before each release.
-- Start a new project with `setup --shadow`: a first week in the observe posture, where the
+- Start a new project with `init --shadow`: a first week in the observe posture, where the
   guards record what they would refuse before they refuse it
   ([security posture](docs/site/security.md#security-posture)).
 

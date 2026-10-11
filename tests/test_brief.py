@@ -464,14 +464,10 @@ def test_the_mandate_is_fixed_by_autonomy(day, monkeypatch):
     assert 'retry, park, accept-residual, merge' in section(prompt, 'Decide and record:')
 
 
-def test_mandate_names_interview_risk_and_deploy_deny(day, monkeypatch):
-    (day[0] / '.wuwei/charters').mkdir()
-    (day[0] / '.wuwei/charters/lead.md').write_text(
-        '# Lead\n\n## Owner preferences (interview)\n'
-        '- risk: Also set trust_surface for changes touching: billing.\n')
+def test_mandate_names_deploy_deny(day, monkeypatch):
     owner = section(mandate_prompt(day, monkeypatch, '[deploy]\ndeny = ["npm publish*"]\n'),
                     'Go to the owner')
-    assert 'billing' in owner and 'npm publish*' in owner
+    assert 'npm publish*' in owner and 'Trust surface' not in owner
 
 
 def test_gate_brief_asks_for_assumption_review(day, monkeypatch):

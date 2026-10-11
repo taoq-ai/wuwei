@@ -544,18 +544,10 @@ def test_dispatch_launches_a_briefed_item_with_no_fast_checks(seat):
     assert [(row['item'], row['action']) for row in entries] == [('A', 'launch')]
 
 
-def test_strict_asks_once_per_repository(seat):
-    from wuwei import calibrate
+def test_strict_builds_without_fast_checks(seat):
+    # #832: no fast checks is a state under strict too; CI and the gates are the evidence.
     root, _, _, _, _ = seat
     no_checks(root, 'strict')
     phase(root, 'planned')
-    with pytest.raises(ValueError, match='wuwei calibrate --questions --repo app'):
-        build.next_action('A', root=root)
-    path = decision.write(calibrate.checks_text(0, 'app', [], []), root)
-    path.write_text(path.read_text().replace('Outcome: pending', 'Outcome: A'))  # Decided-by: owner
-    # a seat-written answer clears nothing
-    with pytest.raises(ValueError, match='fast-checks card'):
-        build.next_action('A', root=root)
-    state._write_state(lambda data: data.update(decision_outcomes={path.stem: {
-        'decided_by': 'owner', 'option': 'B'}}), root, reserved=False)
     assert build.next_action('A', root=root)['action'] == 'launch'
+    assert state.read_state(root)['builds']['A']['commands'] == []

@@ -11,9 +11,8 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei agents` | Plumbing: builds or checks the generated role agents. | [Concepts](concepts.md#roles) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks you; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
-| `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
+| `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` show a diff and ask on a card in the session. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei consolidate` | Reviews memory, packs old days into tarballs, rebuilds digests and proposes forgetting; `consolidate --widget` asks each pending proposal. | [Configuration](configuration.md#host-build-and-memory) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>] [--card <hash>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records your answer. | [Decision record](#decision-record) |
@@ -52,7 +51,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei report` | Shows your report. | [Day close](concepts.md#day-close) |
-| `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.md) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
 | `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. Records an ad-hoc seat before its Agent launch. | [Stuck seats](#stuck-seats) |
@@ -217,7 +215,7 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 in seven sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
-`fast_checks`, calibration, interview, profiles, posture and its observe days, and `memory tiers`, which warns when raw days are older than `consolidation.archive_after_days`), Gates and adapters
+`fast_checks`, calibration, posture and its observe days, and `memory tiers`, which warns when raw days are older than `consolidation.archive_after_days`), Gates and adapters
 (`config check`, the MCP gate and each server in today's registry record), PR flow (the
 settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.authors`,
 `shepherd.review_channel` when chat is set, and the tracker, chat and review-bot adapters; an
@@ -243,8 +241,7 @@ plugin version has a process marker, or when `template_version` is newer than th
 the status line shows the same text after the posture. A hook whose plugin is older than
 `template_version` treats keys it does not know as unknown to it, never refuses over them, and
 records one `config.newer_template` event `{plugin, template, session}` per session and day;
-only the PreToolUse hook writes it and `bin/wuwei event` refuses the kind. `bin/wuwei setup` and
-`bin/wuwei init --upgrade` end with `Restart Claude Code so only this version's hooks run` when
+only the PreToolUse hook writes it and `bin/wuwei event` refuses the kind. `bin/wuwei init --upgrade` ends with `Restart Claude Code so only this version's hooks run` when
 another version's marker is present.
 
 Each row is `ok`, `warn`, `fail`, `unmeasured` or `waiting` (a GitHub rate limit, with its reset) with its value; every row that is not ok
@@ -262,7 +259,6 @@ computed from `config.toml` alone; the planner runs it once at the start of the 
 | --- | --- | --- |
 | `integrity-reconfirm` | `wuwei integrity reconfirm` | a development checkout asks for reconfirmation |
 | `init-upgrade` | `wuwei init --upgrade` | template drift, or `repos = []` above `[[repos]]` tables |
-| `calibrate` | `wuwei calibrate` | calibration drift was flagged today |
 | `watch-install` | `wuwei watch install` | the watch is not installed |
 | `trace-decisions` | `supersede pre-#352 tool-sequence decisions` | today has pending tool-sequence decisions the pre-#352 sweep wrote for a session with no item |
 | `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
@@ -436,7 +432,6 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei config promote` | yes |
 | `bin/wuwei config set <key> <value>` | yes |
 | `bin/wuwei config add-repo --name --path --branch` | yes |
-| `bin/wuwei setup` | yes |
 | `bin/wuwei memory forget F-<n> apply` and `memory forget F-<n> keep` (apply asks) | yes |
 | `bin/wuwei telemetry send [<week>]` | yes |
 

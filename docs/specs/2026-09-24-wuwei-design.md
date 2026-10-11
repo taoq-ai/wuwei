@@ -471,12 +471,11 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 ```
 
 Briefs (amended 2026-10-01, #301). Every seat brief carries a mandate block generated from
-`autonomy.mode` and the owner's calibration interview answers: what the seat decides alone
+`autonomy.mode` (#832): what the seat decides alone
 (what the brief, its charter and the engineering standards already answer), what it
 decides and records (under `autonomous`: two-way open questions inside the item, as
 assumptions, 5.3, and records of class `retry`, `park`, `accept-residual` or `merge`; under
-`supervised`: none), and what goes to the owner (one-way doors, the interview's
-trust-surface areas and owner-run commands, records of every other class; under
+`supervised`: none), and what goes to the owner (one-way doors and owner-run commands, records of every other class; under
 `supervised`, every class). It closes with: nothing else is a question. A
 seat does not ask what it may decide.
 
@@ -485,8 +484,7 @@ from the owner's answers; no step asks the owner to create or edit a file by han
 answers questions (in the session, in the DM, or y/N at a terminal) and may edit any record
 afterwards; the planner records. The host terminal remains for the strict posture and for
 credentials. (owner, 2026-10-05, #529) Outside strict the owner's answer on a card is the
-confirmation of the config write its record command makes: `calibrate --answer` for an
-interview card, `config set --from-card D-n` for a decision whose options carry a `Value:`
+confirmation of the config write its record command makes: `config set --from-card D-n` for a decision whose options carry a `Value:`
 row `KEY = VALUE` (or, as before, a title that reads `KEY = VALUE`). The answer is recorded
 hashed on the planner's session row when the card is answered, and the command writes only
 that answer, as shown (a list is replaced, not extended); an answer that sets nothing (Defer,
@@ -496,10 +494,7 @@ card; under strict the command is printed for a host terminal. (#600) A config r
 `config set` back to that value; the first route stores it two-way and, without a better
 class, `approach`. A config record is never taken under the mandate; it waits for the
 owner's answer on its card. `repos.N.fast_checks = []` means none configured: items build,
-the PR body says `checks: none configured`, CI and the gates are the evidence; strict asks the
-repository's fast-checks card once before its first launch. `calibrate --questions` writes
-that card (detected checks or none, with the reason), taken under the mandate in autonomous
-mode.
+the PR body says `checks: none configured`, CI and the gates are the evidence.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
@@ -785,7 +780,7 @@ Consequential is high risk with low ambiguity, Exploratory is low risk with high
 Strategic is high on both. The classes below (5.8.1) `retry` (a fix round after FIX verdicts),
 `approach` (a builder's task round, a choice between seat procedures), `park` (a parked item's
 next step) and `accept-residual` are Routine by definition. `autonomy.mode` holds the owner's
-setup answer, default `autonomous`: a Routine, Consequential or Exploratory record whose
+choice, default `autonomous`: a Routine, Consequential or Exploratory record whose
 recommendation scores ahead is taken as recommended, written `Decided-by: mandate` by the CLI,
 listed in the digest and in the day report with the reversal command, and never a card; a tie,
 a Strategic record, a one-way record (an `unsure` one too, unless its class is Routine by
@@ -1019,13 +1014,11 @@ recorded worktree contains the path):
 written only by the CLI. The artifacts are written by the seat: they show the work was
 done, never that the owner agreed; only `plan set` lowers the requirement for one item.
 
-Engine presence. `wuwei setup` and `wuwei doctor` look for each engine in each configured
+Engine presence. `wuwei doctor` looks for each engine in each configured
 repository: `.specify/` for spec-kit, `openspec/` for OpenSpec, and a `superpowers@` entry
 in Claude Code's installed plugins file (`scanner.mcp.plugins_file`) for superpowers.
-Setup proposes the engine it finds, spec-kit when it finds none, and the interview asks
-"Which spec engine do your repositories use?" with that answer first. A configured engine
+A configured engine
 absent from a repository is a doctor fail carrying its install line; `none` never is.
-`wuwei calibrate` already reads `.specify/memory/constitution.md` as a convention source.
 
 Seats and owner. The builder, lead and planner charters and the plan skill name the
 configured engine's steps and the skip rule; the orientation block (`wuwei next`) shows the
@@ -1042,9 +1035,8 @@ owner's choice. Nothing runs in a hook. `[telemetry]` in `config.toml`:
 - `enabled` (default true): false stops the aggregate, sharing and the OpenTelemetry
   export (owner, 2026-10-11, #789); the events a day needs are recorded as before.
 - `share` (default `""`, not asked yet, which behaves as `"off"`): `"anonymous"`,
-  `"attributed"` or `"off"`. Set by the interview question below, by the owner with
-  `bin/wuwei config set telemetry.share`, or by `wuwei telemetry off`. A calibration
-  profile (#313) never carries a `telemetry` key: consent is per workspace.
+  `"attributed"` or `"off"`. Set by the owner with `bin/wuwei config set telemetry.share`
+  or by `wuwei telemetry off`.
 - `endpoint` (default: the project's collector URL, empty until the project deploys it):
   where anonymous mode posts. Empty, or not `https://`, keeps every week local.
 - `repository` (default `"taoq-ai/wuwei"`): where attributed mode opens issues.
@@ -1208,18 +1200,9 @@ stays the source of truth and what the aggregation reads.
 `wuwei telemetry preview [<week>]` prints exactly what each mode would send for that final
 week (the latest by default) and names the mode in force. `wuwei telemetry off` sets
 `share = "off"` without a confirmation, since it only narrows what leaves, and records
-`telemetry.off`; turning sharing on is the owner's (the interview or `config set`). Every
+`telemetry.off`; turning sharing on is the owner's (`config set`). Every
 `telemetry.*` event is written only by the CLI; `telemetry.ready` is a `warn` (owner, 2026-10-10, #789) and the rest
 are silent.
-
-Interview. One workspace question after the posture: "Share weekly usage counts with the
-WUWEI project?", choices in this order:
-
-- Anonymous: "Counts only, sent over HTTPS with a random workspace id; no account, nothing
-  about your code or people."
-- Attributed: "The same counts as a GitHub issue opened from your gh account, so it shows
-  your login."
-- Off: "Nothing leaves this machine; the counts stay local."
 
 Project side, in this repository and outside the plugin. `scripts/telemetry-worker/` holds
 the collector: a small function that checks a payload with `telemetry.validate` itself
@@ -1248,7 +1231,7 @@ as comments.
 
 Configuration. `adapters.tracker` is `linear`, `jira`, `github` (issues, plus Projects v2
 when a board is set) or `none`. The schema default stays `none`, so a first day works on
-defaults; `setup` and the interview recommend `linear`. `[tracker]` in `config.toml`:
+defaults. `[tracker]` in `config.toml`:
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -1372,15 +1355,10 @@ returns state changes in one shape for lead time (5.6).
 | `jira` | `PROJ-123` | `JIRA_SITE` (https), `JIRA_EMAIL`, `JIRA_API_TOKEN` | REST: JQL search of `project` not in the Done category, narrowed by `backlog_filter`; create a Task or Bug and a Relates link; add a comment; the transition whose target status has the configured name |
 | `github` | `owner/repo#123` | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only | GraphQL: open issues of `project`, `backlog_filter` as a label; create an issue; add a comment; with `board`, the Projects v2 Status option with the configured name, otherwise a label for `in_review` and closing the issue for `done` |
 
-Setup and health. `setup` reads each repository's README, CONTRIBUTING and pull request
-template for tracker links (`linear.app`, `atlassian.net`) and prints what it found before
-the interview. The interview asks where the backlog lives (Linear first, as recommended;
-Jira; GitHub; none; or `<tracker> <project>` typed in), whether every item needs a ticket
-(every item; all but `light` items; optional), and which tracker updates go without approval
-(progress, pull request and close; those plus new tickets; everything; nothing). `doctor`
+Health. `doctor`
 fails the tracker row when `required` is in force and the adapter cannot read the backlog,
-naming the missing credentials or `bin/wuwei config set tracker.required false`. `setup` and
-`init --upgrade` from a host terminal create the lifecycle labels the tracker port needs (today only the GitHub
+naming the missing credentials or `bin/wuwei config set tracker.required false`.
+`init --upgrade` from a host terminal creates the lifecycle labels the tracker port needs (today only the GitHub
 `in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
 failed in-review move creates the label on the owner's tracker below strict and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
@@ -1399,8 +1377,7 @@ Configuration, `[docs]` in `config.toml`:
 
 - `system`: `notion`, `confluence`, `markdown` (pages as files in the item's repository) or
   `none`. The schema default is `none`, so a workspace that never chose one is unchanged;
-  setup and the interview recommend `notion` unless the repositories' links point
-  elsewhere. The value selects the `docs` port's adapter (section 8); the config check
+  the value selects the `docs` port's adapter (section 8); the config check
   refuses a name with no adapter under `adapters/docs/`.
 - `required_tiers` (default `["standard", "full"]`): the gate tiers, named as
   `repos.gates.floor` names them, whose items carry the docs obligation. `light` items are
@@ -1495,12 +1472,7 @@ is empty, otherwise appends to `draft.ref`, from `kind`, `item`, `title` and a M
 Credentials are named in `.wuwei/env` and kept out of seat environments. Each adapter
 passes the docs port contract test with recorded fixtures; no test reaches the network.
 
-Setup, interview and doctor. The interview asks "Where does your documentation live?" with
-Notion, Confluence, Markdown and None, or a page link as free text that sets `system` and
-`space` together. Setup reads each configured repository's README and CONTRIBUTING for
-documentation links (`notion.so` or `notion.site` for `notion`, `atlassian.net/wiki` for
-`confluence`, with the linked page as `space`) and offers the system it found first; with
-none found Notion leads. `doctor` adds a docs row: `not used` under `none`; under `notion`
+Doctor. `doctor` adds a docs row: `not used` under `none`; under `notion`
 or `confluence`, a fail when `space` is empty, a credential is missing, or `read(space)`
 could not run or found no page; under `markdown`, a fail when `root` is not a directory in
 a configured repository; each fail names the fix; a warn when `publish` is set under

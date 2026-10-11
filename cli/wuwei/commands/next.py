@@ -53,16 +53,14 @@ THEN = {
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
                 'tool. On exit 1 or 2 show the owner the reason; then run wuwei next.'),
+    'setup': ('Ask the owner which repositories WUWEI works on (owner/repo, path, default branch); '
+              'run the command for each, which asks its Owner step card; then run wuwei next.'),
     'gate': ('Ask the widget list with AskUserQuestion. On any Approve option run its record command with '
              '<label> replaced by the chosen label; on Change '
              'something ask the owner what to change, edit {days}/lead.json and run wuwei plan propose '
              '{days}/lead.json again; then run wuwei next.'),
     'goals': ('Under strict the hook refuses and prints the command: show that line to the owner for '
               'a host terminal; then run wuwei next.'),
-    'calibrate': ('Ask the widget list with AskUserQuestion, record each answer with its record '
-                  'command (outside strict the answer writes its config key); when it prints a Next: '
-                  'line, show the owner that line for a host terminal (bin/wuwei config promote, or '
-                  'bin/wuwei calibrate --interview allowlist). Then run wuwei next.'),
     'pr': ('Run it and do any action it prints; when it prints nothing the PR waits on people: end '
            'the turn with wuwei status --line, the watch wakes you when it changes.'),
     'merge': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion. On Yes run it '
@@ -164,18 +162,13 @@ def step(root, ran=()):
     ran: the (state, key) pairs whose command ran since the last recorded action.
     ponytail: one row, not a list; the first runnable item wins and its rows name the rest (#666)."""
     if root is None:
-        return _row('no-workspace', 'No WUWEI workspace here; create one in observe posture in a '
-                    'host terminal in the project directory.',
-                    'bin/wuwei setup --shadow', 'card', THEN['owner'])
+        return _row('no-workspace', 'No WUWEI workspace here; create one in the observe posture in '
+                    'the project directory.', 'bin/wuwei init --shadow')
     config = workspace.load_config(root)
-    # Not calibrate.approved: hook paths must not import calibrate (test_hooks pins it).
-    calibration = root / '.wuwei/calibration.json'
-    if (not config['repos'] or not calibration.is_file()
-            or not json.loads(calibration.read_text(encoding='utf-8'))):
-        return _row('setup', 'Setup is incomplete. Run bin/wuwei setup through Bash: without a terminal it '
-                    'prints the unanswered setup questions as cards to ask (#635); repositories and '
-                    'calibration still need you in a host terminal.', 'bin/wuwei setup', 'card',
-                    THEN['owner'])
+    if not config['repos']:
+        return _row('setup', 'No repository is configured yet.',
+                    'wuwei config add-repo --name <owner/repo> --path <path> --branch <branch>',
+                    then=THEN['setup'])
     directory = workspace.day_dir(root)
     days = f'.wuwei/days/{directory.name}'
     data = state.read_state(directory=directory)
@@ -212,9 +205,6 @@ def step(root, ran=()):
     if (directory / 'goals.md').is_file() and ('goals', '') not in returned:
         return _row('goals', 'Record the goals you approved at the gate.',
                     f'wuwei goals edit --file {days}/goals.md', then=THEN['goals'])
-    if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
-        return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
-                    'wuwei calibrate --questions', 'card', THEN['calibrate'])
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')

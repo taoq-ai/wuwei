@@ -1,5 +1,6 @@
 """Planner decisions from recorded seats and gate verdicts."""
 
+import os
 from pathlib import Path
 import re
 import shlex
@@ -25,6 +26,101 @@ AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'a
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
 # #734: a scratch path in verdict text, workspace-relative or absolute, maybe with :<line>
 SCRATCH_PATH = r'[^\s`\'"()<>\[\]{},;|]*(?:scratchpad|\.wuwei/scratch)/[^\s`\'"()<>\[\]{},;|]+'
+
+
+# ponytail: default seat cost before any seat ran (the default memory floor); measured after.
+SEAT_MIB = 1024
+
+
+def _gb(mib):
+    return f'{round(mib / 1024, 1):g} GB'
+
+
+def processes(config, policy):
+    """#658: True when a seat runtime of the day launches its own process: any runtime but the
+    Claude subagent, and none launches nothing. policy: the seat policy, role to row."""
+    rows = policy.values() if isinstance(policy, dict) else ()
+    names = {config['adapters']['runtime'], *(row.get('runtime') for row in rows if isinstance(row, dict))}
+    return bool(names - {'claude', 'none', None})
+
+
+def host(root, config, running=0, free=None, policy=None):
+    """Capacity (#528, #658): CAP and the seat ceiling. Claude subagent seats take host.seats,
+    else one per core, and never read free memory; seats that are separate processes take the
+    median of today's last five memory readings (the seats that fit above the floor, one per
+    core). Then the owner's values and the token budget; `bound` names what set CAP. `free` is
+    MiB when the caller already measured it; `policy` the day's seat policy when held."""
+    import statistics  # lazy: dispatch is on the hook path (#346)
+
+    from wuwei import metrics, state, workspace
+    from wuwei.guards.agent_launch import free_memory
+
+    owner_cap, owner_seats = config['cap'], config['host']['seats']
+    try:
+        if policy is None:
+            policy = state.read_state(root)['seat_policy']
+        separate = processes(config, policy)
+        if separate and free is None:
+            free = free_memory(config, root) // 2**20
+        cores = os.cpu_count()
+        if not cores:
+            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei doctor, then retry')
+    except (OSError, ValueError) as exc:
+        cap = owner_cap or 1
+        return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
+                'text': f'cap {cap} (unmeasured): {exc}'}
+    days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
+    damaged, memory = None, {}
+    if separate:
+        try:
+            seat = next((cost for day in days
+                         if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
+        except ValueError as exc:
+            # a damaged day log never blocks a launch: default seat cost, budget unmeasured
+            seat, damaged = None, exc
+        seat_mib = seat or SEAT_MIB
+        reading = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
+        try:  # the sweep records each reading on cap.derived; smooth over today's last five
+            readings = [row['payload']['reading'] for row in metrics._events(workspace.day_dir(root)) or []
+                        if row['kind'] == 'cap.derived' and type(row['payload'].get('reading')) is int][-4:]
+        except ValueError as exc:
+            readings, damaged = [], damaged or exc
+        readings.append(reading)
+        fit, rule = statistics.median_low(readings), 'memory'
+        measured = ((f'median of {", ".join(map(str, readings))}; ' if len(readings) > 1 else '')
+                    + f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores')
+        memory = {'free_mib': free, 'seat_mib': seat_mib,
+                  'seat_source': 'default' if seat is None else 'measured', 'reading': reading}
+    else:
+        fit, rule = owner_seats or cores, 'host.seats'
+        measured = 'subagent runtime, free memory not read' + ('' if owner_seats else f'; host.seats unset, {cores} cores')
+    # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
+    seats = owner_seats or max(fit, len(ROLES))
+    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
+    text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
+            if owner_cap else f'cap {cap} ({bound}): {measured}')
+    budget = config['budget']['tokens_per_day']
+    if budget:
+        # ponytail: counts tokens already spent today, not what running seats will still spend;
+        # reserve a per-seat share at launch if this overshoots.
+        try:
+            per_seat = None if damaged else next((statistics.median(tokens) for day in days
+                                                  if (tokens := metrics.seat_tokens(metrics._events(day) or []))), None)
+            used = sum(metrics.seat_tokens(metrics._events(workspace.day_dir(root)) or []))
+        except ValueError as exc:
+            per_seat, damaged = None, damaged or exc
+        if per_seat is None:
+            text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
+        else:
+            per_seat = max(1, round(per_seat))
+            fits = max(1, (budget - used) // per_seat)
+            if fits < cap:
+                cap, bound = fits, 'budget'
+                text = f'cap {cap} (budget): {measured}'
+            text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
+    if damaged:
+        text += f'; warning: {damaged}'
+    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
 
 
 def gate_set(row):
@@ -504,11 +600,10 @@ def launch_set(root=None):
     from wuwei.commands.next import approved
     root = workspace.find_workspace(root)
     data, config = state.read_state(root), workspace.load_config(root)
-    from wuwei import calibrate
     items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
-    limits = calibrate.host(root, config, running=len(running), policy=data['seat_policy'])
+    limits = host(root, config, running=len(running), policy=data['seat_policy'])
     cap, bound = limits['cap'], limits['bound']
     ceiling = limits['seats']
     # #658: under the memory rule every sweep records its reading; CAP smooths over them
@@ -955,9 +1050,8 @@ def opinion(item, root=None):
     runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
     seat = data['seats'].get(name)
     if seat is None or seat['status'] == 'stopped':
-        from wuwei import calibrate
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
-        ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
+        ceiling = host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set')
         head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']

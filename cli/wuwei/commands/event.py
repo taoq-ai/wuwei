@@ -88,7 +88,7 @@ EVENT_PRODUCERS = {
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
     'outbound.thread': 'wuwei outbound learn',
-    'config.set': 'wuwei config set --from-card or wuwei calibrate --answer',
+    'config.set': 'wuwei config set --from-card',
 }
 
 

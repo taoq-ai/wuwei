@@ -42,7 +42,7 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert ('## Tickets seats filed\n| Ticket | Class | Item | Seat |\n| --- | --- | --- | --- |\n'
             '| ENG-2 | bugs | a | sentinel-quality |\n\n') in text
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
-    assert '## Owner preferences\nnone\n' in text
+    assert '## Owner preferences' not in text
     assert '"asks_per_item"' in text and '"unnecessary_asks"' in text
     dora = text.index('## DORA (last 28 days)\n| Key | Value | Source |')
     assert text.index('## Tickets seats filed') < dora < text.index('## Gate verdicts')

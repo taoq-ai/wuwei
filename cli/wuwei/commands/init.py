@@ -86,8 +86,7 @@ def run(args):
         if os.path.exists(staging):
             shutil.rmtree(staging)
     print(f"Created {destination.resolve()}")
-    if getattr(args, 'status_line', True):
-        _status_line(executable)
+    _status_line(executable)
     if (destination.parent / '.git').exists():
         print('This project is a Git repository; add these lines to its .gitignore:')
         print('.wuwei/\n.claude/')
@@ -125,50 +124,8 @@ def settings(root, name='settings.json'):
     return path, data
 
 
-# #530: the reads and local commits the planner and seats run directly; never a push, merge,
-# release, deploy or gh api (design 9.2 I18). Adapters inside the CLI need only the executable's rule.
-# Prefix rules rely on the PreToolUse guards for program-running options (git diff --output, --upload-pack).
-ALLOW = {('vcs', 'git'): ('git status*', 'git diff*', 'git log*', 'git show*', 'git rev-parse*', 'git fetch',
-                          'git add *', 'git commit *', 'git worktree list*'),
-         ('code_host', 'github'): ('gh pr view*', 'gh pr list*', 'gh pr checks*', 'gh pr diff*', 'gh pr status*',
-                                   'gh issue view*', 'gh issue list*', 'gh run view*', 'gh run list*')}
-
-
-def allow_rules(config, executable):
-    """The Claude Code permissions.allow rules WUWEI's own commands and the configured adapters need."""
-    return [f'Bash({executable} *)', *(f'Bash({pattern})' for (key, value), patterns in ALLOW.items()
-                                       if config['adapters'][key] == value for pattern in patterns)]
-
-
-def allow(root):
-    """Add the missing allow rules to .claude/settings.local.json, keeping every other key and rule;
-    returns the rules added. Called only after the owner's answer (#530)."""
-    pointer = Path(root) / '.wuwei/executable'
-    if pointer.is_symlink():
-        raise ValueError(f'.wuwei/executable must not be a symlink; {SYMLINK}')
-    rules = allow_rules(workspace.load_config(root), pointer.read_text(encoding='utf-8').strip())
-    path, data = settings(root, 'settings.local.json')
-    allowed = data.setdefault('permissions', {}).setdefault('allow', [])
-    if not isinstance(allowed, list) or not all(isinstance(rule, str) for rule in allowed):
-        raise ValueError(f'workspace permissions.allow must be a list of strings; {DAMAGED}')
-    added = [rule for rule in rules if rule not in allowed]
-    if added:
-        allowed += added
-        path.parent.mkdir(exist_ok=True)
-        workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
-    return added
-
-
 def _status_command(executable):
     return {"type": "command", "command": shlex.quote(str(executable)) + " status --line"}
-
-
-def status_line(root):
-    """Write the statusLine key into the project's .claude/settings.json, keeping every other key."""
-    path, data = settings(root)
-    data['statusLine'] = _status_command(Path(__file__).resolve().parents[3] / 'bin/wuwei')
-    path.parent.mkdir(exist_ok=True)
-    workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
 
 
 def _status_line(executable):
@@ -255,11 +212,11 @@ def _today_tier(raw, before):
     if (before.get('merge', {}).get('default_tier') != 'today'
             or before.get('security', {}).get('posture') == 'strict'):
         return raw, []
-    from wuwei.commands import setup
+    from wuwei.commands.config import write_value
     lines = []
     for index, repo in enumerate(tomllib.loads(raw).get('repos', [])):
         if 'auto' not in repo.get('merge', {}):
-            raw = setup.write_value(raw, f'repos.{index}.merge.auto', True)
+            raw = write_value(raw, f'repos.{index}.merge.auto', True)
             lines.append(f'repos.{index}.merge.auto = true (was merge.default_tier = "today")')
     return raw, lines
 
@@ -546,14 +503,6 @@ def upgrade(args):
             tracker.creates_labels(workspace.load_config(destination.parent)) or sys.stdin.isatty())
         for line in labelled:
             print(line)
-        from wuwei import interview  # #530: a read, so it prints under --dry-run too and counts no change
-        try:
-            loaded = workspace.load_config(destination.parent, raw=migrated)
-            count = len(interview.unanswered(destination.parent, [repo['name'] for repo in loaded['repos']]))
-            if count:
-                print(f'setup: {count} questions unanswered: {interview.HOW}')
-        except (OSError, ValueError) as exc:
-            print(f'setup: unanswered questions unmeasured: {exc}')
         for name, local_version, base_version in conflicts:
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')

@@ -63,8 +63,8 @@ def run(args):
                      'date': workspace.now().date().isoformat(), 'priority': 1})
             from wuwei.commands.rank import candidate_template
             framework = workspace.load_config(root)['prioritisation']['framework']
-            from wuwei import calibrate
-            print(json.dumps({'goals': [goal], 'cap': calibrate.host(root, workspace.load_config(root))['cap'],
+            from wuwei.dispatch import host
+            print(json.dumps({'goals': [goal], 'cap': host(root, workspace.load_config(root))['cap'],
                 'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
                 'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 6},
                 'sweep': {'manual': 'unmeasured: replace with discovery evidence'},
