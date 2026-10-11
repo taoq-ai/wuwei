@@ -4,11 +4,10 @@ from itertools import chain
 import os
 from pathlib import Path
 import re
-import shlex
 import sys
 
 from wuwei.guards import Guard
-from wuwei.shell import WORKSPACE_ROOT
+from wuwei.shell import WORKSPACE_ROOT, _cd_target, _cwd, _text
 from wuwei.workspace import contains_workspace, worktree_workspace
 from wuwei.exits import DAMAGED, PAYLOAD
 
@@ -27,12 +26,6 @@ _WRITE_CONSTRUCT = (
     r'\bsed\s+(?:--in-place\b|-[^\s]*i)')
 
 
-def _text(value, name):
-    if not isinstance(value, str) or not value or '\0' in value:
-        raise ValueError(f'missing or invalid {name}; {PAYLOAD}')
-    return value
-
-
 def _wuwei_action(argv):
     program = Path(argv[0]).name if argv else ''
     if program == 'wuwei':
@@ -48,353 +41,12 @@ def _wuwei_action(argv):
     return None
 
 
-_OWNER_ACTIONS = {
-    ('decision', 'outcome'): ('The owner records a decision outcome, outside agent tools; show it with bin/wuwei '
-                              'decision show <id> --widget. The owner runs bin/wuwei decision outcome <id> '
-                              '<option> in a host terminal.'),
-    ('drafts', 'approve'): ('The owner approves a draft, outside agent tools; list drafts with bin/wuwei drafts. '
-                            'The owner runs bin/wuwei drafts approve <id> in a host terminal.'),
-    ('grants', 'revoke'): ('The owner revokes a grant, outside agent tools; list grants with bin/wuwei grants. '
-                           'The owner runs bin/wuwei grants revoke <n> in a host terminal.'),
-    ('drafts', 'drop'): ('The owner drops a draft, outside agent tools; list drafts with bin/wuwei drafts. '
-                         'The owner runs bin/wuwei drafts drop <id> in a host terminal.'),
-    ('mcp', 'decide'): ("MCP decisions are the owner's, outside agent tools: show the request, and the owner "
-                        'runs bin/wuwei mcp decide <id> <option> in a host terminal.'),
-    # A whole group: decide's verb position holds the D-n (#354).
-    ('decide', ''): ('The owner answers decisions, outside agent tools; show it with bin/wuwei decision show '
-                     '<id> --widget. The owner runs bin/wuwei decide <id> <option> in a host terminal.'),
-    ('integrity', 'reconfirm'): ('The owner reconfirms integrity, outside agent tools: the owner '
-                                 'runs bin/wuwei integrity reconfirm in a host terminal.'),
-    ('state', 'recover'): ('The owner recovers state, outside agent tools: the owner runs bin/wuwei '
-                           'state recover in a host terminal; bin/wuwei doctor shows what is damaged.'),
-    # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
-    ('watch', 'uninstall'): ('Watch uninstall is an owner action, outside agent tools: the owner runs bin/wuwei '
-                             'watch uninstall in a host terminal.'),
-    # An uninstalled listener reads as off, so a seat could silence a dead-listener report.
-    ('listen', 'uninstall'): ('Listener uninstall is an owner action, outside agent tools: the owner runs '
-                              'bin/wuwei listen uninstall in a host terminal.'),
-    ('goals', 'edit'): ('The owner edits owner memory on the host, outside agent tools; propose the change. '
-                        'The owner runs bin/wuwei goals edit in a host terminal.'),
-    ('voice', 'edit'): ('The owner edits owner memory on the host, outside agent tools; propose the change. '
-                        'The owner runs bin/wuwei voice edit in a host terminal.'),
-    # An acknowledged refusal stops paging, so a seat could silence an impostor alert.
-    ('remote', 'ack'): ('Remote acknowledgements are an owner action, outside agent tools: the owner runs '
-                        'bin/wuwei remote ack in a host terminal.'),
-    # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
-    ('config', 'promote'): ('The owner promotes calibration, outside agent tools: the owner runs '
-                            'bin/wuwei config promote in a host terminal.'),
-    ('config', 'set'): ("Config edits are the owner's answer on a card (#529). The planner asks bin/wuwei "
-                        'calibrate --questions <id> or a decision with options titled <key> = <value>. Then it '
-                        "runs the card's record command; under strict the owner runs bin/wuwei config set <key> "
-                        '<value> in a host terminal.'),
-    ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools; propose the repository. The owner "
-                             'runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
-    # Only the owner lowers the spec requirement for one item (5.10); the planner links an existing
-    # ticket (5.11, #636) below strict; other plan verbs are seat commands.
-    ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
-                      'set <item> spec=skipped --reason <why> in a host terminal. To link an existing ticket, '
-                      "the planner runs bin/wuwei plan set <item> ticket=<id> after the owner's card answer; "
-                      'under strict the owner runs it in a host terminal. A seat or the planner records '
-                      "owner_merge=true itself; clearing it (owner_merge=false) is the owner's, in a host terminal."),
-    # #636: item tickets are the planner's; a class create (--bug, --triage, --follow-up) is a seat's.
-    ('tracker', 'create'): ("Item tickets are the planner's (#636): a seat hands the item back to the planner, "
-                            "which proposes the ticket on the item's card and opens it on the owner's answer. "
-                            'A seat opens a linked bug with bin/wuwei tracker create --bug <item> "<title>" '
-                            '--evidence <file:line>. Under strict the owner runs bin/wuwei tracker create '
-                            '<item> in a host terminal.'),
-    # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
-    # An applied forgetting archives a note or drops a charter rule (design 5.14).
-    ('memory', 'forget'): ('The owner decides what memory to forget, outside agent tools; show the proposals with '
-                           'bin/wuwei consolidate --widget. The owner runs bin/wuwei memory forget <id> '
-                           'apply|keep in a host terminal.'),
-    ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
-                    'setup in a host terminal.'),
-    # #492: listing a connector and proposing it is the planner's; strict asks the card.
-    ('outbound', 'learn'): ('The registered planner session learns connectors, outside seats; hand back to the '
-                            'planner, which runs bin/wuwei outbound learn. The owner can run it in a host terminal.'),
-    ('telemetry', 'send'): ('The owner sends telemetry, outside agent tools; show the payload with bin/wuwei '
-                            'telemetry preview. The owner runs bin/wuwei telemetry send in a host terminal.'),
-}
-# #492: config set on these keys gets this reason instead of the table's.
-GUARD_KEYS = ('outward', 'security', 'outbound', 'grants')
-GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's. An agent tool changes "
-                'them only through a card the owner answered (#529); for an unknown connector, channel or '
-                'person the planner runs bin/wuwei outbound learn. For another value it asks a decision with '
-                'options titled <key> = <value> and runs bin/wuwei config set <key> <value> --from-card D-n.')
-# #661: below strict the owner answers on a card; the planner never hands them a command.
-CARD_FIRST = ("The owner's answer on a card in this session records it: ask the card (bin/wuwei decision "
-              'show <id> --widget for a decision, the Draft card for a draft, the morning gate for goals '
-              'and voice), then run the record command the card names.')
-_OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
-_OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
-# Owner words as tokens; `_` or `.` may precede them so python snippets such as
-# goals.owner_edit( stay relevant.
-_OWNER_VERB = r'(?<![A-Za-z0-9])(?:' + '|'.join(_OWNER_VERBS) + r')(?![A-Za-z0-9])'
-_OWNER_GROUP = r'(?<![A-Za-z0-9])(?:' + '|'.join(sorted(_OWNER_GROUPS)) + r')(?![A-Za-z0-9])'
 _INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
-# Any mention of the CLI word, path segments included, or a dotted owner call such as
-# integrity.reconfirm(); relevance starts here.
-_WUWEI = re.compile(r'\bwuwei\b|-[A-Za-z]*mwuwei\b|\b(?:'
-                    + '|'.join(rf'{g}\.{v}' for g, v in _OWNER_ACTIONS if v) + r')\b')
-# The CLI itself: a path segment such as cli/wuwei/x or .wuwei is a read, not the CLI.
-_CLI_WORD = r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:from|import)\s+wuwei\b'
-# The CLI with a non-literal group or verb: relevant with no verb in the text.
-_CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_OWNER_GROUPS))
-                   + r'))?(?:\s+-\S*)*\s+[$`]')
 # Programs whose arguments are patterns or text, never run (except rg --pre, checked in
 # _write_targets), and that write no file by operand or flag (sort -o, uniq's output
 # operand and tee do, so they are not here). #471: shell.reads adds the classifier's
 # read-only words (cat, jq, sed -n Np, find without an action).
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
-# #730: what an awk or sed script runs or writes. ponytail: a token scan, not a parser; it
-# over-matches (any e, w or W command or flag word, a pipe, a redirect), and a script it
-# cannot clear keeps the refusal.
-_SCRIPT_EFFECT = r'system|getline|[|>]|(?<![A-Za-z])[gpiImM0-9]*[ewW](?![A-Za-z])'
-
-
-def _text_script(argv):
-    """#730: awk or sed whose script runs nothing and writes no file only reads."""
-    words = argv[1:]
-    return (bool(argv) and Path(argv[0]).name in ('awk', 'sed')
-            and all(re.fullmatch(r'-[nEr]+|-e|-F.*', word) for word in words if word.startswith('-'))
-            and not re.search(_SCRIPT_EFFECT, ' '.join(word for word in words if not word.startswith('-'))))
-
-
-def _pattern_args(argv):
-    """#730: grep prints matched lines, never its pattern, so its words are data in any pipe or
-    redirect; --label, rg --replace and rg --pre print or run their words.
-    ponytail: -l and -H print file names, and a file named as a command must already exist;
-    ls | tclsh reaches that today too."""
-    from wuwei.shell import git_kind
-    program = Path(argv[0]).name if argv else ''
-    if program == 'git':
-        return argv[1:2] == ['grep'] and git_kind(argv[1:]) == 'read'
-    return (program == 'grep' and not any(word.startswith('--label') for word in argv)
-            or program == 'rg' and not any(re.match(r'--(?:replace|pre)|-[A-Za-z]*r', word)
-                                           for word in argv[1:]))
-
-
-def _positional(words):
-    # The value after --workspace is a path, not the group (#354).
-    return [word for prev, word in zip(['', *words], words)
-            if not word.startswith('-') and prev != '--workspace']
-
-
-def _pair(words):
-    return tuple((_positional(words) + ['', ''])[:2])
-
-
-def _owner_reason(pair):
-    """The owner-table reason for a (group, verb) pair, a whole-group row included."""
-    return _OWNER_ACTIONS.get(pair) or _OWNER_ACTIONS.get((pair[0], ''))
-
-
-def _seat_docs_set(action):
-    """#419: plan set <item> docs=<value> [--reason <why>] is a seat command; spec= stays the
-    owner's. Only this literal shape passes, so no later word can become the assignment."""
-    rest = list(action[4:])
-    return (len(action) >= 4 and list(action[:2]) == ['plan', 'set'] and not action[2].startswith('-')
-            and action[3].startswith('docs=')
-            and (not rest or len(rest) == 2 and rest[0] == '--reason'
-                 or len(rest) == 1 and rest[0].startswith('--reason='))
-            and not any(re.search(r'[$`*?\[{]', word) for word in action))
-
-
-def _seat_owner_merge(action):
-    """#678: the literal plan set <item> owner_merge=true; it only narrows what WUWEI may merge."""
-    return (len(action) == 4 and list(action[:2]) == ['plan', 'set'] and not action[2].startswith('-')
-            and action[3] == 'owner_merge=true' and not re.search(r'[$`*?\[{]', action[2]))
-
-
-def _planner_pace_set(action):
-    """#579: the literal plan set pace=<word>, nothing after it; the planner's two-way choice."""
-    return (len(action) == 3 and list(action[:2]) == ['plan', 'set']
-            and re.fullmatch(r'pace=[a-z]+', action[2]) is not None)
-
-
-def _seat_class_create(action):
-    """#636: tracker create with one class flag (before any --) is a seat command."""
-    words = list(action[:action.index('--')] if '--' in action else action)
-    return (list(action[:2]) == ['tracker', 'create']
-            and sum(word in ('--bug', '--triage', '--follow-up') for word in words) == 1
-            and not any(re.search(r'[$`*?\[{]', word) for word in action))
-
-
-def _planner_ticket(action):
-    """#636: the literal tracker create <item> or plan set <item> ticket=<id>, nothing more."""
-    action = list(action)
-    return ((len(action) == 3 and action[:2] == ['tracker', 'create']
-             or len(action) == 4 and action[:2] == ['plan', 'set'] and action[3].startswith('ticket='))
-            and not action[2].startswith('-')
-            and not any(re.search(r'[$`*?\[{]', word) for word in action))
-
-
-def _strict(cwd):
-    """The workspace posture is strict; an unreadable one counts as strict (the owner runs it)."""
-    from wuwei import workspace
-    try:
-        root = _workspace(cwd) or worktree_workspace(cwd)
-        return root is None or workspace.posture(workspace.load_config(root))[0] == 'strict'
-    except (OSError, ValueError):
-        return True
-
-
-def _record_card(identifier, cwd):
-    """#599: the card hash of today's D-n record, as its widget's record command names it."""
-    from wuwei import decision
-    try:
-        root = _workspace(cwd) or worktree_workspace(cwd)
-        fields = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))[0]
-        return decision.card_hash(identifier, fields)
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-
-
-def _owner_relevant(text, script=False):
-    """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
-    from wuwei.shell import mentions
-    stripped = re.sub(r"['\"\\]", '', text)
-    return bool(_WUWEI.search(stripped) and (
-        re.search(_CLI_NONLITERAL, stripped) or mentions(text, ('xargs',), script=script)
-        or (re.search(_OWNER_GROUP, stripped) or mentions(text, sorted(_OWNER_GROUPS), script=script))
-        and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
-
-
-# #357, #354, #493, #661: records the planner may write from its own answered gate question.
-_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''), ('decision', 'outcome'),
-               ('drafts', 'approve'), ('drafts', 'drop'), ('config', 'set')}
-
-
-def _gate_edits(payload, root):
-    """(topics the planner's gate asked, caller is the planner): only today's registered
-    planner session, never a seat; strict records nothing, so the owner runs it."""
-    from wuwei import sessions
-    if root is None or 'agent_id' in payload:
-        return frozenset(), False
-    return sessions.gate_topics(root, payload.get('session_id'))
-
-
-def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
-    """One rule for every owner-only action; (code, reason) or None."""
-    from wuwei.commands import read_only
-    from wuwei.shell import _launcher, is_opaque, mentions, reads, snippet_write
-    # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
-    xargs = relevant and mentions(text, ('xargs',), script=script)
-    unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
-    readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS
-                                or reads(c.argv, cwd) and snippet_write(c.argv) != ''
-                                or _text_script(c.argv) or _pattern_args(c.argv))
-               for c in commands]
-    # A pipe feeds an executor unless every later stage is a reader with no redirect.
-    feeds = [False] * len(commands)
-    for index in range(len(commands) - 2, -1, -1):
-        feeds[index] = commands[index].separator == '|' and (
-            not readers[index + 1] or bool(commands[index + 1].writes) or feeds[index + 1])
-    kept = None  # #730: the stage whose mention may reach an executor, for the reason
-    for index, command in enumerate(commands):
-        argv = command.argv
-        named = len(_WUWEI.findall(' '.join([*argv, *command.env.values()])))
-        # A reader's mentions are only text when it stands alone: no redirect, no group or
-        # subshell (scope depth 1, or 2 for a top-level pipe stage), no pipe into an executor.
-        # #730: a pattern program never prints its words, so they are text anywhere.
-        piped = command.separator == '|' or index > 0 and commands[index - 1].separator == '|'
-        if not readers[index] or _pattern_args(argv) or (not command.writes and not feeds[index]
-                                                         and len(command.scope) == (2 if piped else 1)):
-            unseen -= named
-        elif named:
-            kept = (shlex.join(argv), _WUWEI.search(' '.join([*argv, *command.env.values()]))[0])
-        action = _wuwei_action(argv)
-        # A renamed or symlinked launcher is the CLI too; checked only for a literal owner pair.
-        if (action is None and argv and '/' in argv[0] and _owner_reason(_pair(argv[1:]))
-                and _launcher(Path(cwd, argv[0]), cwd)):
-            action = argv[1:]
-        if action is None:
-            program = Path(argv[0]).name if argv else ''
-            if not relevant or readers[index]:
-                continue
-            # A directory such as the cli/wuwei package is read, not run.
-            words = [word for word in argv[1:]
-                     if not ('/' in word and Path(word).name == 'wuwei' and Path(cwd, word).is_dir())]
-            if program == 'git':
-                # A commit message or a search pattern is not a wuwei action.
-                words = [word for before, word in zip([''] + words, words)
-                         if not re.fullmatch(r'-[A-Za-z]*m|--message|--grep|-[SG]', before)
-                         and not re.fullmatch(r'--(?:message|grep)=.*|-[A-Za-z]*m.+|-[SG].+', word, re.S)]
-            # Code from stdin, a heredoc or an inline flag is unseen; a module or file operand is not.
-            hidden = (is_opaque(argv) and '-m' not in argv[1:]
-                      or re.fullmatch(_INTERPRETER, program) and (named or any(
-                          re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
-            word = re.search(_CLI_WORD, ' '.join(words))
-            if hidden or word:
-                return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                           'guard can read it; owner actions run in a host terminal.'
-                           f' Stage: {shlex.join(argv)}; word: {word[0] if word else program}.')
-            continue
-        group, verb = _pair(action)
-        if xargs and not (re.fullmatch(r'[a-z][\w-]*', group) and (
-                group not in _OWNER_GROUPS or re.fullmatch(r'[a-z][\w-]*', verb))):
-            return 2, ('Input-driven owner action: write bin/wuwei <group> <verb> literally instead of from '
-                       'input; owner actions run in a host terminal.')
-        if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
-            return 2, ('Not a literal owner action: write bin/wuwei <group> <verb> without variables; owner '
-                       'actions run in a host terminal.')
-        if read_only(action):  # #348: --help prints usage and runs nothing
-            continue
-        if (reason := _owner_reason((group, verb))) and not (not xargs and (
-                _seat_docs_set(action) or _seat_class_create(action) or _seat_owner_merge(action))):
-            if (group, verb) == ('outbound', 'learn') and edits[1]:
-                continue  # The registered planner session, in any posture.
-            # #579: the registered planner changes the day's pace below strict; strict asks nothing.
-            # #636: so it attaches an item ticket after the owner's card answer.
-            if (not xargs and (_planner_pace_set(action) or _planner_ticket(action)) and edits[1]
-                    and not _strict(cwd)):
-                continue
-            if (group, verb) == ('config', 'set') and (
-                    _positional(action)[2:3] or [''])[0].split('.')[0] in GUARD_KEYS:
-                reason = GUARD_CONFIG
-            if ((group, verb) in _GATE_EDITS or (group, '') in _GATE_EDITS) and edits[1]:
-                if group in edits[0] and any(word == '--file' or word.startswith('--file=')
-                                             for word in action):
-                    continue
-                # Every id word must have been asked, so a --note D-1 cannot carry another record.
-                ids = [word for word in action if re.fullmatch(r'D-[1-9][0-9]*|draft-[0-9a-f]{32}', word)]
-                if (group, verb) == ('drafts', 'approve'):
-                    # #493: approve needs the owner's Send answer; --file/--edit needs Send with an edit.
-                    edited = any(word in ('--file', '--edit') or word.startswith('--file=') for word in action)
-                    ids = [word + (':edit' if edited else ':send') for word in ids]
-                # #529: the card the planner asked; the CLI checks the owner's answer itself.
-                cards = [value for flag, value in zip(action, action[1:]) if flag in ('--card', '--from-card')]
-                cards += [word.split('=', 1)[1] for word in action if word.startswith(('--card=', '--from-card='))]
-                # #661: a decision's card hash is the owner's answer the gate recorded on that card;
-                # #599: or the card the widget's record command names for an asked id.
-                unknown = [card for card in cards if not re.fullmatch(r'[0-9a-f]{1,64}', card) or not any(
-                    topic.startswith(f'{ident}={card}') for ident in ids for topic in edits[0]) and not any(
-                    ident in edits[0] and card == _record_card(ident, cwd) for ident in ids)]
-                if group in ('decide', 'decision') and unknown and ids and not _strict(cwd):
-                    return 1, (f'Unknown card hash {unknown[0]!r}: it is not an answer the owner gave on the '
-                               f'card. Ask it with bin/wuwei decision show {ids[0]} --widget and run the record '
-                               'command the card names.')
-                if group in ('mcp', 'decide', 'decision', 'drafts') and ids and set(ids) <= edits[0]:
-                    continue
-                if ((group, verb) == ('config', 'set') and not xargs and len(cards) == 1
-                        and re.fullmatch(r'D-[1-9][0-9]*', cards[0]) and cards[0] in edits[0]):
-                    continue
-                if not _strict(cwd):  # #661: a card, never a host-terminal command below strict
-                    return 1, reason if group == 'config' else CARD_FIRST
-                # The owner's pasted command prompts y/N, so the card hash words drop.
-                shown = argv if group not in ('decide', 'decision') else [
-                    word for before, word in zip(['', *argv], argv)
-                    if before not in ('--card', '--from-card') and not word.startswith(('--card', '--from-card'))]
-                return 1, f'{reason} Run it in a host terminal: {shlex.join(shown)}'
-            return 1, reason
-    # #471: a call made only of readers runs nothing, so a mention in its input is data.
-    if relevant and unseen > 0 and not all(readers):
-        # A CLI mention sits in a heredoc, comment or other input no argv shows.
-        return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                   'guard can read it; owner actions run in a host terminal.'
-                   + (f' Stage: {kept[0]} feeds a pipe or file; word: {kept[1]}.' if kept
-                      else ' The mention sits in a here-doc, comment or input no stage shows.'))
-    return None
 
 
 def _input(payload, field):
@@ -519,13 +171,6 @@ def _workspace(cwd):
     return root
 
 
-def _cwd(payload):
-    cwd = Path(_text(payload.get('cwd'), 'cwd'))
-    if not cwd.is_absolute():
-        raise ValueError(f'cwd must be absolute; {PAYLOAD}')
-    return cwd.resolve()
-
-
 def check_file(payload):
     try:
         cwd = _cwd(payload)
@@ -633,7 +278,7 @@ def _write_targets(argv, cwd, root):
     # Reader arguments are text; their redirects are checked from command.writes.
     # rg --pre runs a command on each searched file, so those operands are checked.
     if program in _READERS and not (
-            program == 'rg' and any(a == '--pre' or a.startswith('--pre=') for a in argv[1:])) or reads(argv, cwd):
+            program == 'rg' and any(a == '--pre' or a.startswith('--pre=') for a in argv[1:])) or reads(argv):
         return []
     if program in ('ln', 'install', 'rsync', 'rm', 'cp', 'mv', 'tee', 'truncate', 'sed'):
         # Normalized argv has no quote metadata; conservatively check glob matches.
@@ -667,27 +312,6 @@ def _write_targets(argv, cwd, root):
     return protected
 
 
-def _cd_target(command):
-    args = command.argv[1:]
-    while args and args[0] in ('-L', '-P'):
-        args = args[1:]
-    if args and args[0] == '--':
-        args = args[1:]
-    elif args and args[0].startswith('-') and args[0] != '-':
-        raise ValueError('unsupported cd option; use git -C or a subshell')
-    if len(args) > 1:
-        raise ValueError('cd requires a single literal directory; pass one literal directory to cd')
-    env = {**os.environ, **command.env}
-    target = args[0] if args else _text(env.get('HOME'), 'HOME')
-    if target == '~' or target.startswith('~/'):
-        target = _text(env.get('HOME'), 'HOME') + target[1:]
-    if target == '-':
-        target = _text(env.get('OLDPWD'), 'OLDPWD')
-    if env.get('CDPATH') and not Path(target).is_absolute() and not target.startswith(('./', '../')):
-        raise ValueError('CDPATH directory search is opaque; use an absolute path')
-    return target
-
-
 def check_bash(payload):
     try:
         cwd = _cwd(payload)
@@ -696,41 +320,15 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError(f'missing or invalid command; {DAMAGED}')
-        from wuwei.shell import (NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads,
-                                 script_text, snippet_write)
-        from wuwei.workspace import guard_scope
+        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads, snippet_write
 
-        def owner_script(raw):
-            # ponytail: one script level; a script run by a script, or written and run in
-            # one call, is not read. The next call that runs the saved script is.
-            body = script_text(raw, cwd) if root is not None else None
-            # Every owner action in a script names the CLI word, so only such a body is parsed.
-            if body is None or 'wuwei' not in re.sub(r"['\"\\]", '', body):
-                return None
-            relevant = _owner_relevant(script + '\n' + body, script=True)
-            try:
-                found = _owner_action(normalize(body), body, relevant, cwd, script=True)
-            except ParseError:
-                found = relevant and (2, 'Opaque owner script; use the host terminal.')
-            return found if found and guard_scope(payload) is not None else None
-
-        owner_relevant = _owner_relevant(script)
-        words = []
         try:
-            commands = normalize(script, words=words)
+            commands = normalize(script)
         except ParseError as exc:
-            # The literal words, nested sh -c included, still name any script the call runs;
-            # only a .sh or executable word can be one, not a source file it reads.
-            for word in words:
-                if ((word.endswith('.sh') or os.access(Path(cwd, word), os.X_OK))
-                        and (found := owner_script(shlex.quote(word)))):
-                    return found
             shape = classify(script, cwd=cwd)
-            # #347: only text a write can target counts; a word the walk cannot pin may be the CLI.
+            # #347: only text a write can target counts.
             if not shape.readonly and (
-                    (owner_relevant and guard_scope(payload) is not None
-                     and (shape.publishes or _owner_relevant(script, script=True)))
-                    or re.search(_STATE_MENTION, shape.written) or re.search(_STATE_GLOB, shape.written)
+                    re.search(_STATE_MENTION, shape.written) or re.search(_STATE_GLOB, shape.written)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (re.search(_DYNAMIC, script) and re.search(_WRITE_CONSTRUCT, script))))):
@@ -742,14 +340,6 @@ def check_bash(payload):
             if re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script):
                 return 2, UNPARSED
             return 0, ''
-        # normalize unwraps lists, subshells, wrappers, sh -c and xargs down to each script.
-        for command in commands:
-            if found := owner_script(shlex.join(command.argv)):
-                return found
-        edits = _gate_edits(payload, root) if owner_relevant else (frozenset(), False)
-        found = _owner_action(commands, script, owner_relevant, cwd, edits=edits)
-        if found and guard_scope(payload) is not None:
-            return found
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''

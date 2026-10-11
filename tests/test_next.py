@@ -351,7 +351,7 @@ def test_orientation_block(monkeypatch, posture, phrases):
     text = next_command.orientation(ROW, posture, 'speckit strict', 'S')
     assert text.startswith(next_command.HEADER) and len(text.splitlines()) < 30
     shown = next_command.text(ROW).replace('<session id>', 'S')
-    for phrase in ('Next: ' + shown, next_command.LOOP, 'wuwei guide', '\nwuwei plan session S\n',
+    for phrase in ('Next: ' + shown, next_command.LOOP, 'wuwei --help', '\nwuwei plan session S\n',
                    'docs/site/daily.md', 'first word of a plain command', *phrases):
         assert phrase in text
     for phrase in ('SKILL.md', 'Do this now.', 'docs/site/agent.md', 'Start or resume'):
@@ -366,7 +366,7 @@ def test_orientation_by_state(monkeypatch):
     stuck = next_command.orientation(next_command._row(
         'stuck', 'Seat builder-1 ended with no recorded result.',
         'wuwei seat stop builder-1 --unmeasured "seat ended with no recorded result"'), 'guarded', None, 'S')
-    assert 'wuwei seat stop' in stuck and 'wuwei guide' in stuck
+    assert 'wuwei seat stop' in stuck and 'wuwei --help' in stuck
     for phrase in ('/wuwei:', 'plan session', 'SKILL.md'):
         assert phrase not in stuck
 
@@ -404,8 +404,8 @@ def test_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
     lines = text.splitlines()
     assert text.startswith(next_command.HEADER)
     assert any(line.startswith('Next: session: ') for line in lines)
-    assert 'wuwei guide' in text and 'wuwei plan session S' in lines and next_command.LOOP in lines
-    reference = next(index for index, line in enumerate(lines) if line.startswith('Reference: wuwei guide'))
+    assert 'wuwei --help' in text and 'wuwei plan session S' in lines and next_command.LOOP in lines
+    reference = next(index for index, line in enumerate(lines) if line.startswith('Reference: '))
     assert reference < 30 and lines.index('Active constraints:') == reference + 1
 
 

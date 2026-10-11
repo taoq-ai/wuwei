@@ -362,9 +362,8 @@ def test_missing_brief_blocks_on_the_records_floor(tmp_path):
 
 def test_orientation_says_owner_only_asks_below_strict():
     # #530: no orientation text says owner-only actions refuse with no way through below strict.
-    from wuwei import guide
     from wuwei.commands.next import POSTURES
-    for text in (POSTURES['observe'], POSTURES['guarded'], guide.text()):
+    for text in (POSTURES['observe'], POSTURES['guarded']):
         assert 'on a card' in text and 'merges and approvals stay owner-only' in text, text
         assert 'owner-only commands are refused in every posture' not in text
 

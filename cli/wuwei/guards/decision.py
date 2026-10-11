@@ -155,8 +155,8 @@ def _answer(payload, text):
 def record_gate(payload):
     """PostToolUse: note on the planner's session row which records (goals, voice) its
     answered morning gate questions asked, by header `Goals` or `Voice` only, and which
-    decisions it asked, by header `D-n` citing today's record (#354); protect_state lets the
-    planner record them."""
+    decisions it asked, by header `D-n` citing today's record (#354); the record commands read
+    them through sessions.gate_topics."""
     from wuwei.decision import DECISION_ID, today_path
     try:
         context = scope(Path(required_text(payload, 'cwd')).resolve())

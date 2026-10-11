@@ -128,10 +128,10 @@ def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
 
 
 def test_reference_lists_every_cli_command(tmp_path):
-    result = subprocess.run([sys.executable, '-P', '-m', 'wuwei', '--help', '--all'], capture_output=True,
+    result = subprocess.run([sys.executable, '-P', '-m', 'wuwei', '--help'], capture_output=True,
                             text=True, cwd=tmp_path, env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli')})
     assert result.returncode == 0, result.stderr
-    commands = set(re.findall(r'^  ([a-z-]+) ', result.stdout, re.M))
+    commands = set(re.findall(r'^    ([a-z-]+)\s', result.stdout, re.M))
     section = (SITE / 'reference.md').read_text().split('\n## Commands\n', 1)[1].split('\n## ', 1)[0]
     listed = set(re.findall(r'^\| `bin/wuwei ([a-z-]+)`', section, re.M))
     assert listed == commands, (sorted(commands - listed), sorted(listed - commands))

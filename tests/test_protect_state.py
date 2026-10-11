@@ -171,6 +171,10 @@ def test_writes_after_cd_resolve_aliases(workspace, script):
     ('Bash', {'command': 'cd ..'}, 0),
     ('Bash', {'command': '(cd .. && git status)'}, 0),
     ('Bash', {'command': 'echo "unterminated'}, 0),
+    # #730: a word is the CLI only in program position.
+    ('Bash', {'command': 'x=bin/wuwei; $x state set a b'}, 0),
+    ('Bash', {'command': 'grep -n "wuwei decide" notes.txt | sort'}, 0),
+    ('Bash', {'command': 'd=/path/to/tree; ls $d'}, 0),
 ])
 def test_discovered_guards_through_hook(workspace, monkeypatch, capsys, tool, tool_input, expected):
     from wuwei.commands.hook import run
@@ -622,36 +626,6 @@ def test_recorded_executable_is_protected(workspace, tool, fields):
     assert check(payload(workspace, tool, **fields))[0] == 1
 
 
-@pytest.mark.parametrize('command', ['bin/wuwei state recover', 'python3 -P -m wuwei state recover',
-                                     "bin/wuwei 'state' recover > out"])
-def test_seat_cannot_recover_state(workspace, tmp_path, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=command)) == (
-        1, 'The owner recovers state, outside agent tools: the owner runs bin/wuwei state recover '
-        'in a host terminal; bin/wuwei doctor shows what is damaged.')
-    outside = tmp_path / 'outside'
-    outside.mkdir()
-    assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
-
-
-@pytest.mark.parametrize('command', ['bin/wuwei remote ack', 'python3 -P -m wuwei remote ack'])
-def test_seat_cannot_acknowledge_refusals(workspace, tmp_path, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=command)) == (
-        1, 'Remote acknowledgements are an owner action, outside agent tools: the owner runs bin/wuwei '
-        'remote ack in a host terminal.')
-    outside = tmp_path / 'outside'
-    outside.mkdir()
-    assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
-
-
-@pytest.mark.parametrize('command', ['python3 -m pytest -q -k recover', 'grep -rn recover cli/',
-                                     'bin/wuwei state get'])
-def test_unrelated_recover_mentions_are_allowed(workspace, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=command)) == (0, '')
-
-
 @pytest.mark.parametrize('tool', ['Write', 'Edit'])
 def test_state_snapshot_is_protected(workspace, tool):
     from wuwei.guards.protect_state import check_bash, check_file
@@ -764,7 +738,6 @@ def test_interview_answers_are_protected(workspace, tool, name):
     ('cd ..', (1, 'root')),
     ('pushd', (2, 'root')),
     ('cd "$DEST"', (2, 'root')),
-    ('W=$(cat .wuwei/executable); $W drafts approve x', 'kept'),
     ('echo x > .wuwei/days/2026-09-28/state.json', 'kept'),
     ('for r in a; do echo x > .wuwei/days/2026-09-28/state.json; done', 'kept'),
     ('echo x > .wuwei/days/$(date +%F)/state.json', 'kept'),
@@ -789,12 +762,11 @@ def test_issue_347_reads_warns_and_writes(workspace, script, expected):
 @pytest.mark.parametrize('argv, expected', [
     (['cat', 'x'], True), (['less', 'x'], True), (['ls', 'd'], True),
     (['find', 'd', '-name', 'x'], True), (['diff', 'a', 'b'], True),
-    (['sed', '-n', '1,5p', 'x'], True), (['jq', '.', 'x'], True), (['wuwei', 'status'], True),
+    (['sed', '-n', '1,5p', 'x'], True), (['jq', '.', 'x'], True),
     ([], False), (['sed', '-i', 's/a/b/', 'x'], False), (['find', 'd', '-delete'], False),
     (['awk', '1', 'x'], False), (['python3', 'x.py'], False),
     (['python3', '-m', 'json.tool', 'x'], True), (['python3', '-m', 'json.tool', 'x', 'y'], False),
     (['python3', '-m', 'json.tool'], True),
-    (['wuwei', 'config', 'set', 'k', 'v'], False),
     (['python3', '-c', "import json,sys; print(json.load(open('.wuwei/state.json'))['day'])"], True),
     (['python3', '-c', "open('.wuwei/state.json', 'w')"], False),
 ])
@@ -954,10 +926,7 @@ def test_issue_643_write_snippet_names_token(records, posture, monkeypatch, caps
         code, reason = check_bash(payload(records, 'Bash', command=command))
         assert code == 2 and f'Opaque interpreter: {token} in the snippet' in reason, reason
         assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
-    owner = "python3 -c \"from wuwei.commands import main; main(['decide','D-1','once'])\""
-    assert check_bash(payload(records, 'Bash', command=owner))[0] == 2
     assert check_bash(payload(records, 'Bash', command=f'{_READ_643} > {_STATE}'))[0] == 1
-    assert check_bash(payload(records, 'Bash', command="python3 -c 'integrity.reconfirm()'"))[0] != 0
 
 
 @pytest.mark.parametrize('command', [
@@ -984,43 +953,15 @@ def test_issue_349_interpreter_operands_stay_refused(records, posture, command, 
     assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
 
 
-def test_owner_action_reasons_name_the_command():
-    from wuwei.guards import protect_state
-    for (group, verb), reason in protect_state._OWNER_ACTIONS.items():
-        assert f'bin/wuwei {group} {verb}'.strip() in reason and 'host terminal' in reason, reason
-    import inspect
-    source = inspect.getsource(protect_state._owner_action)
-    assert source.count("'Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '") == 2
-
-
 @pytest.mark.parametrize('path', ['.wuwei/memory/digests/2026-W40.md', '.wuwei/memory/forget.json'])
 def test_memory_tier_records_are_producer_only(workspace, path):
     from wuwei.guards.protect_state import check_bash, check_file
     assert check_file(payload(workspace, 'Write', file_path=path))[0] == 1
     for command in (f'cp other {path}', f'mv other {path}', f'rm {path}'):
         assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
-    # forget.json names the owner group and verb, so a redirect into it reads as opaque (exit 2).
-    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] in (1, 2)
+    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] == 1
     assert check_bash(payload(workspace, 'Bash', command=f'cat {path}')) == (0, '')
     assert check_bash(payload(workspace, 'Bash', command='rm -rf .wuwei/memory/digests'))[0] == 1
-
-
-FORGET = ('The owner decides what memory to forget, outside agent tools; show the proposals with '
-          'bin/wuwei consolidate --widget. The owner runs bin/wuwei memory forget <id> '
-          'apply|keep in a host terminal.')
-
-
-@pytest.mark.parametrize('command,expected', [
-    ('bin/wuwei memory forget F-1 apply',
-     (1, FORGET)),
-    ('python3 -P -m wuwei memory forget F-1 keep',
-     (1, FORGET)),
-    ('bin/wuwei memory show 2026-08-01', (0, '')), ('bin/wuwei memory status', (0, '')),
-    ('bin/wuwei consolidate --widget', (0, '')), ('bin/wuwei memory lint', (0, '')),
-])
-def test_memory_forget_is_an_owner_action(workspace, command, expected):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=command)) == expected
 
 
 @pytest.mark.parametrize('target', ['.wuwei/metrics/2026-W40.json', '.wuwei/metrics/token'])
@@ -1029,81 +970,6 @@ def test_telemetry_records_are_protected(workspace, target):
     from wuwei.guards.protect_state import check_file
     code, reason = check_file(payload(workspace, 'Write', file_path=target))
     assert code == 1 and reason
-
-
-def test_seat_cannot_send_telemetry(workspace):
-    from wuwei.guards.protect_state import check_bash
-    code, reason = check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry send'))
-    assert code == 1 and 'bin/wuwei telemetry send in a host terminal' in reason
-    assert check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry preview')) == (0, '')
-
-
-# #492: guard config is never changed from an agent tool, and learn is the planner's.
-def _seat_hook(root, command, monkeypatch, capsys, posture, *, seat=True):
-    from wuwei.commands.hook import run
-    _posture(root, posture)
-    data = {**payload(root, 'Bash', command=command), **({'agent_id': 'seat-1'} if seat else {})}
-    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
-    code = run(SimpleNamespace(event='PreToolUse'))
-    out = capsys.readouterr().out
-    return code, json.loads(out)['hookSpecificOutput']['permissionDecisionReason'] if out.strip() else ''
-
-
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_guard_config_set_refused(workspace, monkeypatch, capsys, posture):
-    # #496: a seat never writes the tier table or the classes.
-    for key in ('outward.tool_patterns', 'outbound.work_channels', 'security.posture', 'grants.x',
-                'outbound.tiers', 'outbound.channel_classes', 'outward.classes'):
-        code, reason = _seat_hook(workspace, f"bin/wuwei config set {key} '[]'", monkeypatch, capsys, posture)
-        assert code == 2 and "owner's" in reason and 'bin/wuwei outbound learn' in reason, reason
-        assert 'calibrate --questions' not in reason and '--from-card D-n' in reason  # #529
-    code, reason = _seat_hook(workspace, 'bin/wuwei config set owner.name \'"Pat"\'', monkeypatch, capsys, posture)
-    assert code == 2 and 'calibrate --questions' in reason
-
-
-def _planner(root, monkeypatch):
-    from wuwei import state
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
-    state._write_state(lambda data: data.update(planner_session_id='fixture'), root, reserved=False)
-
-
-LEARN = 'bin/wuwei outbound learn --tool mcp__00000000-0000-4000-8000-000000000001__send_message'
-
-
-@pytest.mark.parametrize('posture', ['guarded', 'strict'])
-def test_outbound_learn_planner_only(workspace, monkeypatch, capsys, posture):
-    _planner(workspace, monkeypatch)
-    code, reason = _seat_hook(workspace, LEARN, monkeypatch, capsys, posture)
-    assert code == 2 and 'planner' in reason
-    assert _seat_hook(workspace, LEARN, monkeypatch, capsys, posture, seat=False) == (0, '')
-
-
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_item_tickets_are_the_planners(workspace, monkeypatch, capsys, posture):
-    """#636: a seat never attaches an item ticket; the planner does below strict."""
-    _planner(workspace, monkeypatch)
-    # #741: the planner links a bare or full GitHub id the same way
-    for command in ('bin/wuwei tracker create A', 'bin/wuwei plan set A ticket=ENG-1',
-                    'bin/wuwei plan set A ticket=24', 'bin/wuwei plan set A ticket=acme/app#24'):
-        code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture)
-        assert code == 2 and 'planner' in reason, (command, reason)
-        code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)
-        assert ((code, reason) == (0, '') if posture != 'strict' else
-                code == 2 and 'host terminal' in reason), (command, reason)
-    bug = 'bin/wuwei tracker create --bug A Broken --evidence cli/x.py:1'
-    assert _seat_hook(workspace, bug, monkeypatch, capsys, posture) == (0, '')
-    # #644: a gate seat files the bug it finds, naming its role.
-    assert _seat_hook(workspace, bug + ' --seat sentinel-quality', monkeypatch, capsys, posture) == (0, '')
-    for command in ('bin/wuwei tracker create A -- --bug', 'bin/wuwei plan set A ticket=$X'):
-        assert _seat_hook(workspace, command, monkeypatch, capsys, posture)[0] == 2, command
-        assert _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)[0] == 2, command
-    spec = 'bin/wuwei plan set A spec=skipped --reason x'
-    assert _seat_hook(workspace, spec, monkeypatch, capsys, posture, seat=False)[0] == 2
-
-
-def test_config_show_outbound_learn_passes(workspace, monkeypatch, capsys):
-    for command in ('bin/wuwei config show outbound.learn', 'bin/wuwei outbound learn --help'):
-        assert _seat_hook(workspace, command, monkeypatch, capsys, 'strict') == (0, '')
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
@@ -1196,3 +1062,30 @@ def test_scratch_scripts_run_but_climbing_out_is_refused(records, monkeypatch, c
                               ('bash .wuwei/scratch/A/builder/m.sh', 0),
                               ('python3 .wuwei/scratch/../days/2026-09-28/state.json', 2)):
         assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == expected, command
+
+
+@pytest.mark.parametrize('command', [
+    'bin/wuwei decide D-1 A', 'bin/wuwei watch uninstall', 'bin/wuwei tracker create A',
+    'bin/wuwei plan set pace=fast', 'python3 -P -m wuwei goals edit --file g.md',
+    'W=watch; bin/wuwei $W uninstall'])
+def test_any_wuwei_command_passes(workspace, command):
+    """#800: the state guard no longer reads a wuwei group or verb."""
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == (0, '')
+
+
+def test_state_protection_unchanged(workspace):
+    """#800: FR-002, the state-file and workspace-root checks stay."""
+    from wuwei.guards.protect_state import check_bash
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei status > .wuwei/config.toml'):
+        assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
+    assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W drafts approve x')) == (
+        2, UNPARSED)
+    assert check_bash(payload(workspace, 'Bash', command='cd ..')) == (1, WORKSPACE_ROOT)
+
+
+def test_cd_helpers_live_in_shell():
+    from wuwei.shell import _cd_target, _cwd, _text  # noqa: F401
+    with pytest.raises(ValueError):
+        _cwd({'cwd': 'relative'})

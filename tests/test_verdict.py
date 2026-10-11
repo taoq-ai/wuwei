@@ -561,6 +561,21 @@ def test_invariant_read_only_bash_never_lints(tmp_path, command):
                      'wuwei:sentinel-quality') == ((0, ''), [])
 
 
+@pytest.mark.parametrize('cli', ['wuwei', 'PLUGIN/bin/wuwei'])
+def test_planner_cli_read_is_not_a_gate_write(tmp_path, cli):
+    # #800: the plugin's own CLI piped into a reader writes no gate, so a half-written gate file
+    # never refuses the planner's read; a redirect into the gate still lints.
+    from pathlib import Path
+    from wuwei.workspace import day_dir
+    cli = cli.replace('PLUGIN', str(Path(__file__).resolve().parents[1]))
+    gate = day_dir(tmp_path) / 'decisions/gate-a-quality.md'
+    gate.parent.mkdir(parents=True)
+    gate.write_text('Verdict: FIX')
+    assert bash_post(tmp_path, f'{cli} status | grep gate-') == ((0, ''), [])
+    (code, _), _ = bash_post(tmp_path, f'{cli} status > {gate}')
+    assert code == 1
+
+
 def test_invariant_bash_write_lints_by_file_name(tmp_path):
     # #616 (proposed design 9.2 I26): a Bash call that can write lints each gate file with the
     # role its own name implies, never the caller's.

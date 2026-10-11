@@ -228,9 +228,7 @@ def test_the_status_line_names_uncalibrated_roles(ws):
 
 
 def test_cruise_calibration_prints_the_table(ws, capsys):
-    from wuwei import commands
     from wuwei.__main__ import main
-    assert commands.read_only(['cruise', 'calibration'])
     assert main(['cruise', 'calibration']) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].split() == ['kind', 'name', 'scored', 'brier', 'state']

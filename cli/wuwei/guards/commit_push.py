@@ -363,7 +363,7 @@ def check(payload):
         scoped = []
         locations = {(): {initial}}
         mixed = any(command.separator in (';', '||', '|', '&', '\n') for command in commands)
-        from wuwei.guards.protect_state import _cd_target
+        from wuwei.shell import _cd_target
         for command in commands:
             program = Path(command.argv[0]).name
             for depth in range(1, len(command.scope) + 1):

@@ -4,7 +4,7 @@ Use `bin/wuwei` from the installed checkout, or `python3 -P -m wuwei` with the p
 
 ## Commands
 
-Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them and leaves out the plumbing, and `bin/wuwei <command> --help` shows its options. Commands marked plumbing are called by hooks, seats or the plugin, not by you.
+Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its options. Commands marked plumbing are called by hooks, seats or the plugin, not by you.
 
 | Command | What it does | More |
 | --- | --- | --- |
@@ -45,7 +45,6 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei memory` | `lint` checks workspace memory; `memory show <date>` prints a raw or archived day; `memory status` sizes every tier; `memory export --claude` writes the rules block into `memory.export_to`; `memory forget F-n apply` or `keep` is your answer to a forgetting proposal. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics, including `cycle_minutes` and `gate_minutes` per merged item and `cycle_by_tier` (median minutes, items and target per tier). A ticket whose tracker lookup could not run is named with its reason under `lead_time.unmeasured`, and the others still measure. `metrics --week [<week>]` prints a week's telemetry aggregate, computing it when absent. | [Telemetry](configuration.md#telemetry) |
-| `bin/wuwei guide` | Prints the plugin reference a session reads at start: every command, the accepted command forms, the rules, the guard areas by posture and where records live. `init` and `init --upgrade` write the same text into `memory.export_to`. | [What the session knows](agent.md) |
 | `bin/wuwei next` | Prints where the day stands and the one next action; `--json` prints `{state, action, command or prompt and agent_type, why, then}`. Runnable work comes first and an open PR, which waits on people, comes last; a day with more than one item row adds `rows` (`{state, item, command}` in that order) and text mode prints a `Queue:` line. The planner loops on it: run `wuwei next --json`, do the one action, run it again when the result or a completion notification arrives. | [What the session knows](agent.md) |
 | `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
 | `bin/wuwei nudges` | Lists open pages and the nudges `nudges.mode` shows; `--all` lists every open cause. | [Watch state](#watch-state) |

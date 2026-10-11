@@ -232,9 +232,7 @@ def test_no_raise_card_after_a_budget_event_since_the_last_change(ws):
 
 
 def test_cruise_budget_prints_the_table(ws, capsys):
-    from wuwei import commands
     from wuwei.__main__ import main
-    assert commands.read_only(['cruise', 'budget'])
     assert main(['cruise', 'budget']) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].split() == ['class', 'level', 'answered', 'spent', 'allowance', 'burn', 'state']

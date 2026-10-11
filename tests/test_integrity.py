@@ -271,26 +271,6 @@ def test_integrity_files_protected(tmp_path, name):
     assert check_bash(payload)[0] != 0
 
 
-@pytest.mark.parametrize('command', ['bin/wuwei integrity reconfirm',
-    'python3 -P -m wuwei integrity reconfirm', 'bin/wuwei integrity reconfirm > approval'])
-def test_seat_cannot_reconfirm(tmp_path, command):
-    from wuwei.guards.protect_state import check_bash
-    root = workspace_root(tmp_path)
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': command}})[0] != 0
-
-
-@pytest.mark.parametrize('command', [
-    'grep -rn reconfirm cli/', 'python -m pytest -q -k reconfirm',
-    "python3 -c 'reconfirm()'",
-])
-def test_unrelated_reconfirm_mentions_are_allowed(tmp_path, command):
-    from wuwei.guards.protect_state import check_bash
-    root = workspace_root(tmp_path)
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': command}}) == (0, '')
-
-
 def test_integrity_producer_only_state_and_events(tmp_path, monkeypatch):
     from wuwei import state
     from wuwei.commands import event
@@ -470,17 +450,6 @@ def test_release_package_covers_every_shipped_file(tmp_path, monkeypatch):
     assert 'scripts/build-release.py' in workflow
 
 
-@pytest.mark.parametrize('command', ["bin/wuwei 'integrity' 'reconfirm'",
-    'bin/wuwei integ"rity" re"confirm"', 'bin/wuwei integrity re\\confirm',
-    "sh -c 'bin/wuwei integrity reconfirm'", "python3 -c 'integrity.reconfirm()'",
-    "bin/wuwei 'integrity' 'reconfirm' $(date)"])
-def test_reconfirmation_obfuscation_is_relevant(tmp_path, command):
-    from wuwei.guards.protect_state import check_bash
-    root = workspace_root(tmp_path)
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': command}})[0] != 0
-
-
 def test_check_failure_replaces_old_clean_cache(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
@@ -606,15 +575,6 @@ def test_host_confirm_asks_yes_or_no(monkeypatch, answer, expected):
     finally:
         os.close(master)
         os.close(slave)
-
-
-def test_host_action_guard_ignores_outside_workspace_override(tmp_path, monkeypatch):
-    from wuwei.guards.protect_state import check_bash
-    root = workspace_root(tmp_path)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    payload = {'cwd': str(tmp_path), 'tool_name': 'Bash',
-               'tool_input': {'command': 'bin/wuwei integrity reconfirm'}}
-    assert check_bash(payload)[0] == 0
 
 
 def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsys):

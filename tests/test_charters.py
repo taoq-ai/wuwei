@@ -130,7 +130,9 @@ def test_no_charter_holds_its_own_verdict_format():
     assert not [name for name, body in texts.items() if "## Verdict format" in body]
 def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
     # #599
-    from test_guide import RERUN
+    RERUN = ('wuwei decision show D-n --widget', '`wuwei decide D-n "<label>" --card <hash>`',
+             'without asking the card again. Below strict, never show the owner a host-terminal command '
+             'for a card they answered')
     skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert all(part in skill for part in RERUN)
 def test_a_seat_finding_has_its_route():

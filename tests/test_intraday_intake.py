@@ -373,7 +373,7 @@ def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
     assert row['status'] == 'pending' and row['inputs']['draft']['title'] == 'Fix the export'
     assert row['inputs']['draft']['item'] == 'OWN-3'
     assert fake.calls == [] and 'OWN-3' not in day['items']
-    assert drafts.approve(root, key).exit == 0
+    assert drafts.approve(root, key, answered=True).exit == 0
     assert plan.add('OWN-3', root, goal='G-1', title='Fix the export')['action'] == 'build next'
     day = state.read_state(root)
     assert day['tickets']['OWN-3']['source'] == 'create' and len(day['drafts']) == 1

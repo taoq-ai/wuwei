@@ -1024,3 +1024,10 @@ def test_issue_730_a_variable_changed_after_its_assignment_is_not_resolved(comma
     assert shell.mentions(command, ('git',))
     with pytest.raises(shell.ParseError):
         shell.normalize(command)
+
+
+def test_reads_knows_no_cli_command():
+    # #800: the command sets are gone; a CLI call is not a read.
+    from wuwei import shell
+    assert shell.reads(['cat', 'x']) is True
+    assert shell.reads(['wuwei', 'status']) is False

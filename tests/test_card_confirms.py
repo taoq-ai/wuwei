@@ -423,38 +423,6 @@ def test_config_set_in_a_host_terminal_prompts_as_today(ws):
 
 # Phase 4: the hook lets the planner run the card's record command.
 
-def hook(root, command, **extra):
-    from wuwei.guards.protect_state import check_bash
-    return check_bash({'cwd': str(root), 'session_id': 'planner-1', 'tool_input': {'command': command}, **extra})
-
-
-def test_hook_passes_config_set_from_an_asked_card(ws):
-    config_card(ws)
-    for command in ('bin/wuwei config set cap 5 --from-card D-1', 'bin/wuwei config set cap 5 --from-card=D-1',
-                    "bin/wuwei config set outbound.default_tier '\"ask\"' --from-card D-1"):
-        assert hook(ws, command) == (0, ''), command
-    for command in ('bin/wuwei config set cap 5', 'bin/wuwei config set cap 5 --from-card D-2',
-                    'echo D-1 | xargs bin/wuwei config set cap 5 --from-card'):
-        assert hook(ws, command)[0] in (1, 2), command
-    code, reason = hook(ws, 'bin/wuwei config set cap 5 --from-card D-1', agent_id='a1')
-    assert code == 1 and 'calibrate --questions' in reason
-    assert hook(ws, 'bin/wuwei config set cap 5 --from-card D-1', session_id='other')[0] == 1
-
-
-def test_hook_config_set_below_strict_keeps_its_reason_without_a_command(ws):
-    """#661: below strict the planner gets the card-first table reason, no command to paste."""
-    from wuwei.guards.protect_state import _OWNER_ACTIONS
-    config_card(ws)
-    assert hook(ws, 'bin/wuwei config set cap 5') == (1, _OWNER_ACTIONS[('config', 'set')])
-
-def test_hook_under_strict_prints_the_host_terminal_command(ws):
-    config_card(ws)
-    strict(ws)
-    code, reason = hook(ws, 'bin/wuwei config set cap 5 --from-card D-1')
-    assert code == 1
-    assert reason.endswith('Run it in a host terminal: bin/wuwei config set cap 5 --from-card D-1')
-
-
 # Phase 6: config.set is a CLI-only, silent event kind.
 
 def test_config_set_event_is_reserved_and_silent(ws, capsys):
@@ -543,12 +511,6 @@ def test_session_hint_names_value_rows_and_the_previous_line(ws, monkeypatch, ca
     err = capsys.readouterr().err
     assert 'Value:' in err and 'Previous: owner.name = ""' in err
     assert 'bin/wuwei config set --from-card D-n' in err
-
-
-def test_hook_passes_the_short_form_from_the_planner_only(ws):
-    value_card(ws)
-    assert hook(ws, 'bin/wuwei config set --from-card D-1') == (0, '')
-    assert hook(ws, 'bin/wuwei config set --from-card D-1', agent_id='a1')[0] == 1
 
 
 # #600: calibrate --questions proposes the fast checks of a repository with none configured.
@@ -688,17 +650,3 @@ def test_decide_with_card_never_prompts(ws, monkeypatch, capsys, case):
     assert code == 1 and 'Outcome: pending' in record_text(ws)
     assert 'bin/wuwei decision show D-1 --widget' in err
     assert (f'{workspace.owner_cli(ws)} decide D-1 A in a host terminal' in err) is (case == 'strict')
-
-
-def test_hook_refuses_a_seat_record_command_with_card(ws, monkeypatch):
-    # #599: the state fallback is never reached by a seat; the hook refuses it first (I8).
-    config_card(ws)
-    command = f'bin/wuwei decide D-1 A --card {card_of(ws)}'
-    assert hook(ws, command) == (0, '')
-    assert hook(ws, command, agent_id='a1')[0] == 1
-    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
-    assert hook(ws, command, session_id='seat-1')[0] == 1
-    monkeypatch.delenv('WUWEI_SEAT_ROLE')
-    strict(ws)
-    code, reason = hook(ws, command)
-    assert code == 1 and 'host terminal' in reason

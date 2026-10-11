@@ -424,7 +424,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                 continue
             result = tracker.create(root, name)
             if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
-                result = drafts.approve(root, result.data['draft'])
+                result = drafts.approve(root, result.data['draft'], answered=True)
             if result.exit and status == 'missing':  # #646: a small item is approved without it
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
@@ -595,6 +595,21 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     return {'action': 'build next', 'item': item}
 
 
+def _owner_confirm(command, prompt):
+    """#800: the owner's y/N at the host terminal; an agent's Bash has no terminal, so it fails
+    closed whatever its environment says."""
+    from hashlib import sha256
+    from wuwei import integrity
+    try:
+        confirmed = integrity._host_confirm(sha256(command.encode()).hexdigest(), prompt=prompt)
+    except OSError:
+        raise state.StateError(f'{integrity.HOST_TERMINAL}; the owner runs bin/wuwei plan set {command} '
+                               'in a host terminal') from None
+    if not confirmed:
+        raise state.StateError(f'owner confirmation declined; rerun bin/wuwei plan set {command} in a host '
+                               'terminal and answer y')
+
+
 def set_spec(item, assignment, reason=None, root=None):
     """plan set <item> spec=required|skipped: the owner's per-item spec override (5.10)."""
     root = workspace.find_workspace(root)
@@ -605,6 +620,8 @@ def set_spec(item, assignment, reason=None, root=None):
     reason = ' '.join((reason or '').split())  # one line, as plan carry and park
     if value == 'skipped' and not reason:
         raise ValueError(f'spec=skipped needs a reason; run bin/wuwei plan set {item} spec=skipped --reason <why>')
+    if value == 'skipped':  # #800: spec before gates; only the owner skips it
+        _owner_confirm(f'{item} spec=skipped --reason <why>', f'Skip the spec for {item}: {reason}')
 
     def update(data):
         if item not in data['items']:
@@ -624,6 +641,8 @@ def set_owner_merge(item, value, root=None):
                          'owner_merge=true|false')
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
+    if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
+        _owner_confirm(f'{item} owner_merge=false', f'Release the owner merge hold on {item}')
     linked = []
 
     def update(data):

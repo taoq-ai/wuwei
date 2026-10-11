@@ -3,7 +3,7 @@
 import json
 import sys
 
-from wuwei import drafts, state, workspace
+from wuwei import drafts, sessions, state, workspace
 
 
 def register(subparsers):
@@ -35,8 +35,13 @@ def run(args):
         print(json.dumps([drafts.widget(row, workspace.load_config(root), root)] if args.widget else row,
                          indent=2))
         return 0
+    if args.action == 'approve':
+        # #800: an outward send needs the owner's Send answer on the card, or the host y/N.
+        answered = (f"{args.id}:{'edit' if args.edit or args.file else 'send'}"
+                    in sessions.gate_topics(root, sessions.current())[0])
     if args.action:
-        result = (drafts.approve(root, args.id, edit=args.edit, source=args.file, always=args.always)
+        result = (drafts.approve(root, args.id, edit=args.edit, source=args.file, always=args.always,
+                                 answered=answered)
                   if args.action == 'approve'
                   else drafts.drop(root, args.id))
         print(result.reason, file=sys.stderr if result.exit else sys.stdout)

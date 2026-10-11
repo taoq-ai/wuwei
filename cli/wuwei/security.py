@@ -182,7 +182,7 @@ def reads_honeytoken(payload, root, data):
     for command in commands:
         directories = directories | persistent if command.subshell else persistent
         if command.argv and Path(command.argv[0]).name == 'cd':
-            from wuwei.guards.protect_state import _cd_target
+            from wuwei.shell import _cd_target
             destinations = {(base / _cd_target(command)).resolve() for base in directories}
             directories = directories | destinations if command.subshell else destinations
             if len(directories) > 64:

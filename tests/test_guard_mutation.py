@@ -56,7 +56,6 @@ SPECIAL_TESTS = {
     ('wuwei.merge', 'check'): 'test_disabling_merge_policy_makes_its_probe_red',
     ('wuwei.decision', 'lint'): 'test_disabling_decision_lint_makes_its_probe_red',
     ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
-    ('wuwei.guards.protect_state', '_owner_action'): 'test_disabling_owner_rule_makes_its_probe_red',
     ('wuwei.commands.hook', 'reaches_workspace'): 'test_disabling_scope_gate_makes_outside_probe_red',
     **{('wuwei.remote', name): f'test_disabling_remote_{name}_makes_its_probe_red'
        for name in ('sender', 'code_step', 'confirmation', 'memory_floor')},
@@ -100,7 +99,6 @@ def test_special_policies_have_mutation_probes():
     required = {(merge.check.__module__, merge.check.__name__),
                 (decision.lint.__module__, decision.lint.__name__),
                 ('wuwei.guards.deploy', 'check'),
-                ('wuwei.guards.protect_state', '_owner_action'),
                 ('wuwei.commands.hook', 'reaches_workspace'),
                 *(('wuwei.remote', name) for name in ('sender', 'code_step', 'confirmation', 'memory_floor'))}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
@@ -142,24 +140,6 @@ def test_disabling_scope_gate_makes_outside_probe_red(tmp_path, monkeypatch):
     monkeypatch.setattr(hook, 'reaches_workspace', lambda *args: True)
     with pytest.raises(AssertionError):
         assert_outside_clean(TRIAL, place)
-
-
-def test_disabling_owner_rule_makes_its_probe_red(tmp_path, monkeypatch):
-    from wuwei.guards import protect_state
-
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    payload = {'cwd': str(tmp_path), 'tool_name': 'Bash',
-               'tool_input': {'command': 'W=watch; bin/wuwei $W uninstall'}}
-
-    def assert_refused():
-        assert protect_state.check_bash(payload)[0] == 2
-
-    assert_refused()
-    monkeypatch.setattr(protect_state, '_owner_action', lambda *args, **kwargs: None)
-    with pytest.raises(AssertionError):
-        assert_refused()
 
 
 def assert_probe(check, row, root, monkeypatch):

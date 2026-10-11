@@ -98,10 +98,6 @@ def reasons(source, name='module.py'):
         elif (isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple)
               and len(node.value.elts) == 2 and _code(node.value.elts[0])):
             add(node.value.elts[1])
-        elif (isinstance(node, ast.Assign) and name.endswith('protect_state.py')
-              and any(getattr(t, 'id', '') == '_OWNER_ACTIONS' for t in node.targets)):
-            for value in node.value.values:
-                add(value)
     return found
 
 

@@ -263,9 +263,10 @@ def _add_row(root, added):
     return setup._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
 
 
-def approve(root, draft_id, *, edit=False, source=None, always=False):
+def approve(root, draft_id, *, answered, edit=False, source=None, always=False):
     """Host action: claim once, then send through the original adapter implementation;
-    always also adds the card's tier row (#496)."""
+    always also adds the card's tier row (#496). answered: the owner's Send answer is recorded
+    (#800); without it the owner confirms at the host."""
     from datetime import timedelta
     from difflib import SequenceMatcher
     from hashlib import sha256
@@ -310,19 +311,23 @@ def approve(root, draft_id, *, edit=False, source=None, always=False):
         size = sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in
                    SequenceMatcher(None, row['text'], text, autojunk=False).get_opcodes()
                    if tag != 'equal')
-        # #493: outside strict only the owner or the planner after a card answer reaches this
-        # (protect_state), so the recorded answer is the confirmation. A --file text is the
-        # owner's only when they typed it into a Draft card citing this id (record_gate).
+        # #493: outside strict the owner's recorded Send answer is the confirmation (#800: the
+        # caller says whether it is recorded). A --file text is the owner's only when they typed
+        # it into a Draft card citing this id (record_gate).
         planner = data.get('sessions', {}).get(data.get('planner_session_id'), {})
         typed = f'{draft_id}:text:{sha256(text.strip().encode()).hexdigest()}' in planner.get('gate_asked', ())
         # An --edit text comes from an editor, never from a card, so it is confirmed like a --file text.
-        if workspace.posture(config)[0] == 'strict' or (edit or source) and not typed:
+        if workspace.posture(config)[0] == 'strict' or not answered or (edit or source) and not typed:
             try:
                 confirmed = integrity._host_confirm(
                     sha256((draft_id + '\n' + text).encode()).hexdigest(),
                     prompt=f"Send this draft to {row['destination']}:\n{text}" + (f'\n{style}' if style else ''))
             except OSError as exc:
-                return registry.Result(2, reason=str(exc))
+                card = ('' if answered or workspace.posture(config)[0] == 'strict' else
+                        f'ask it with bin/wuwei drafts show {draft_id} --widget and run the record command '
+                        'the card names, or ')
+                return registry.Result(2, reason=f'{exc}; {card}the owner runs bin/wuwei drafts approve '
+                                                 f'{draft_id} in a host terminal')
             if not confirmed:
                 return registry.Result(1, reason='drafts: owner confirmation declined; rerun it in a host terminal and answer y')
 

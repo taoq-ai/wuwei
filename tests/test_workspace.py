@@ -1841,3 +1841,26 @@ def test_owner_cli_quotes_the_root():
     from wuwei.workspace import owner_cli
     assert owner_cli(Path('/w s')) == "bin/wuwei --workspace '/w s'"
     assert owner_cli(Path('/w')) == 'bin/wuwei --workspace /w'
+
+
+def test_upgrade_removes_the_old_guide_block(tmp_path, monkeypatch, capsys):
+    """#800: init writes no guide block; init --upgrade removes the one an older init wrote."""
+    from argparse import Namespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    project = tmp_path / 'project'
+    project.mkdir()
+    assert init.run(Namespace(path=str(project))) == 0
+    path = project / 'CLAUDE.md'
+    assert 'wuwei:guide' not in (path.read_text() if path.exists() else '')
+    old = '# Owner notes\n\n<!-- wuwei:guide:start -->\nold\n<!-- wuwei:guide:end -->\n'
+    path.write_text(old)
+    capsys.readouterr()
+    assert init.upgrade(Namespace(path=str(project), dry_run=True)) == 0
+    assert 'Would upgrade CLAUDE.md: remove the guide block' in capsys.readouterr().out
+    assert path.read_text() == old
+    assert init.upgrade(Namespace(path=str(project), dry_run=False)) == 0
+    assert 'CLAUDE.md: remove the guide block' in capsys.readouterr().out
+    assert '# Owner notes' in path.read_text() and 'wuwei:guide' not in path.read_text()
+    assert init.upgrade(Namespace(path=str(project), dry_run=False)) == 0
+    assert 'guide block' not in capsys.readouterr().out

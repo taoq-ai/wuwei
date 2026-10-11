@@ -262,16 +262,6 @@ def test_grants_command(root, answer, capsys, monkeypatch):
     assert run(root) == (1, card_reason('D-3', 'strict'))
 
 
-def test_seat_cannot_revoke_or_set_grants(root):
-    from wuwei.guards.protect_state import GUARD_CONFIG, check_bash
-    payload = {'cwd': str(root), 'session_id': 'seat-1'}
-    code, reason = check_bash({**payload, 'tool_input': {'command': 'bin/wuwei grants revoke 1'}})
-    assert code == 1 and 'bin/wuwei grants revoke <n> in a host terminal' in reason
-    code, reason = check_bash({**payload, 'tool_input': {'command': "bin/wuwei config set grants.standing '[]'"}})
-    assert code == 1 and GUARD_CONFIG in reason
-    assert check_bash({**payload, 'tool_input': {'command': 'bin/wuwei grants'}}) == (0, '')
-
-
 @pytest.mark.parametrize('option,expected', [('Allow today', (0, '')), ('Ask when it happens', None)])
 def test_planned_card_is_the_day_grant(root, answer, option, expected):
     from test_plan import deploying

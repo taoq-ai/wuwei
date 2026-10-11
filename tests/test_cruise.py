@@ -749,9 +749,8 @@ def test_a_raise_card_without_a_passed_shadow_lands_nothing(ws, monkeypatch):
 
 
 def test_the_owner_sees_the_shadow(ws, capsys):
-    from wuwei import commands, cruise, decision, report, state, workspace
+    from wuwei import cruise, decision, report, state, workspace
     from wuwei.__main__ import main
-    assert 'cruise shadow' in commands.READ_ONLY
     state._write_state(lambda data: None, ws, reserved=False)
     assert main(['cruise', 'shadow']) == 0
     assert capsys.readouterr().out.splitlines()[1:] == ['none']

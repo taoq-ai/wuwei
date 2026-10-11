@@ -269,11 +269,6 @@ lead_login = "lead"
         self.bash(args)
         return self._main(args, expected, stdin, args)
 
-    def owner(self, *args, expected=0):
-        # Owner-only calls are refused to agent tools and run by the owner on the host.
-        self.bash(args, expected=2)
-        return self._main(args, expected, '', args)
-
     def hook(self, event, expected=0, **fields):
         payload = {'session_id': 'planner', 'cwd': str(self.root),
                    'transcript_path': str(self.root / 'planner.jsonl'),

@@ -98,24 +98,25 @@ def run(args):
     finally:
         if os.path.exists(staging):
             shutil.rmtree(staging)
-    guide_path, _ = _guide(destination.parent)
     print(f"Created {destination.resolve()}")
     if getattr(args, 'status_line', True):
         _status_line(executable)
     if (destination.parent / '.git').exists():
         print('This project is a Git repository; add these lines to its .gitignore:')
         print('.wuwei/\n.claude/')
-    if guide_path:
-        print(f'Guide: {guide_path.relative_to(destination.parent)} block written')
     print(LAYOUT)
     return _finish(destination.parent)
 
 
+# #800: the guide block an older init wrote into the memory.export_to file.
+GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
+
+
 def _guide(root, **kwargs):
-    """guide.export, but a block that cannot be written warns and never stops init (#476)."""
-    from wuwei import guide
+    """Remove the old guide block; a file that cannot be written warns and never stops init (#476)."""
+    from wuwei import memory
     try:
-        return guide.export(root, **kwargs)
+        return memory.write_block(root, *GUIDE, '', 'bin/wuwei init --upgrade', **kwargs)
     except (OSError, ValueError) as exc:
         print(f'wuwei init: warning: guide block not written: {exc}; '
               'run bin/wuwei doctor for the fix', file=sys.stderr)
@@ -517,7 +518,7 @@ def upgrade(args):
         if seeded:
             print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
-            print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+            print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
         # #670: doctor runs the dry run, which never contacts the tracker

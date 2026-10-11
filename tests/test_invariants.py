@@ -23,7 +23,8 @@ CALLED = [('grants.py', ('gate', 'evidence'), ('deploy.check', 'commit_push.chec
           ('security.py', ('outbound', 'gh_outbound'), ('outward.check_tier', 'pr.check')),
           ('drafts.py', ('reason',), ('outward.check_tier',)),
           ('outward.py', ('check_tier', 'blocked'), ('outward.check_tier',)),
-          ('integrity.py', ('measure',), ('integrity.check',))]
+          ('integrity.py', ('measure',), ('integrity.check',)),
+          ('shell.py', ('_text', '_cwd', '_cd_target'), ('protect_state.check_bash',))]
 # Walls a later item removes; the note on each row is its rationale: (file, substring, note).
 LATER = 'follow-up, specs/530-posture-day Deferred'
 OWNED = [('guards/commit_push.py', 'config add-repo', LATER),
