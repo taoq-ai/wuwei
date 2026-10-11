@@ -835,37 +835,40 @@ def test_carry_closes_day(case, monkeypatch):
     assert [main(['close']), main(['plan', 'carry', 'A']), main(['close'])] == [1, 0, 0]
 
 
-def test_close_needs_the_merged_ticket_done(case, monkeypatch, capsys):
-    from fakes.tracker import Fake
-    from wuwei import tracker
+def merged_item(case):
     root, host, _ = case
     own(root)
     approved(root, pr=REF)
     for phase in ('implement', 'gate', 'raised', 'merged'):
         state.transition('A', phase, root=root)
-    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
-                       root, reserved=False)
     host.results['pr'].data.update(state='closed', merged=True, merged_at=DAY + 'T11:00:00Z')
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '[adapters]\ntracker = "linear"\n')
+    return root, module('pr_actions').evaluate(root)[1]
+
+
+def test_close_waits_on_an_open_tracker_duty(case, monkeypatch, capsys):
+    """#842: a due duty holds close; a done or skipped one does not; tracker none drops it."""
+    from fakes.tracker import Fake
+    from wuwei import tracker
+    root, rows = merged_item(case)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    state.append_event('duty.due', {'item': 'A', 'duty': 'tracker.done', 'ticket': 'ENG-1',
+                                    'command': 'wuwei tracker move A done'}, root)
+    line = 'A: tracker.done not recorded: bin/wuwei tracker move A done'
+    assert module('closing').unresolved(root, rows) == (1, line)
+    config = root / '.wuwei/config.toml'
+    linear = config.read_text()
+    config.write_text(linear.replace('tracker = "linear"', 'tracker = "none"'))
+    assert module('closing').unresolved(root, rows) == (0, '')
+    config.write_text(linear)
     fake = Fake({'transition': Result(2, reason='LINEAR_API_KEY is missing')})
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, cfg: fake if kind == 'tracker' else load(kind, cfg))
-    rows = module('pr_actions').evaluate(root)[1]
-    line = 'A: ticket ENG-1 is not done: bin/wuwei tracker done A'
-    assert module('closing').unresolved(root, rows) == (1, line)
     monkeypatch.chdir(root)
-    assert main(['tracker', 'done', 'A']) == 2
-    assert module('closing').unresolved(root, rows) == (1, line)
-    config.write_text(config.read_text() + '[tracker]\nstrict_close = false\n')
-    capsys.readouterr()
-    assert module('closing').unresolved(root, rows) == (0, '')
-    assert line in capsys.readouterr().err
-    fake.results['transition'] = Result(0, {})
-    assert main(['tracker', 'done', 'A']) == 0
-    assert fake.calls[-1][:2] == ('transition', ('ENG-1', 'Done'))
-    config.write_text(config.read_text().replace('strict_close = false', 'strict_close = true'))
-    assert module('closing').unresolved(root, rows) == (0, '')
+    assert main(['tracker', 'move', 'A', 'done']) == 2
+    assert module('closing').unresolved(root, rows) == (0, '')  # skipped: the report lists it
     calls = []
     monkeypatch.setattr(tracker, 'log', lambda path: calls.append(path) or 0)
     monkeypatch.setattr(module('steward'), 'run', lambda *a, **k: None)  # metrics: own tests
@@ -873,29 +876,34 @@ def test_close_needs_the_merged_ticket_done(case, monkeypatch, capsys):
     assert calls == [root]
 
 
-def test_close_names_the_ticket_a_small_item_shipped_without(case, monkeypatch, capsys):
-    """#646: a merged light item with no ticket gets its ticket after it ships."""
+def test_close_never_names_a_missing_ticket(case):
+    root, rows = merged_item(case)
+    state._write_state(lambda data: data['items']['A'].update(tier='light'), root, reserved=False)
+    assert module('closing').unresolved(root, rows) == (0, '')
+
+
+def test_a_merge_seen_by_pr_state_records_the_done_duty_once(case, monkeypatch):
+    """#842 F1: a PR merged on the host moves the item through pr_actions, which runs the done
+    duty; a second run, as merge.monitor's, posts nothing again."""
+    from fakes.tracker import Fake
     root, host, _ = case
     own(root)
     approved(root, pr=REF)
-    for phase in ('implement', 'gate', 'raised', 'merged'):
+    for phase in ('implement', 'gate', 'raised'):
         state.transition('A', phase, root=root)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'transition': Result(0, {}), 'comment': Result(0, {'id': 'c-1'})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: fake if kind == 'tracker' else load(kind, cfg))
     host.results['pr'].data.update(state='closed', merged=True, merged_at=DAY + 'T11:00:00Z')
     rows = module('pr_actions').evaluate(root)[1]
-    config = root / '.wuwei/config.toml'
-    base = config.read_text()
-
-    def tier(name):
-        state._write_state(lambda data: data['items']['A'].update(tier=name), root, reserved=False)
-    tier('light')
-    assert module('closing').unresolved(root, rows) == (0, '')  # no tracker: no line
-    config.write_text(base + '[adapters]\ntracker = "linear"\n')
-    line = 'A: shipped without a ticket: bin/wuwei tracker create A'
-    assert module('closing').unresolved(root, rows) == (1, line)
-    config.write_text(config.read_text() + '[tracker]\nstrict_close = false\n')
-    capsys.readouterr()
+    assert state.read_state(root)['items']['A']['phase'] == 'merged'
+    kinds = [row['kind'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+             if row['kind'].startswith('duty.')]
+    assert kinds == ['duty.due', 'duty.done']
     assert module('closing').unresolved(root, rows) == (0, '')
-    assert line in capsys.readouterr().err
-    config.write_text(base + '[adapters]\ntracker = "linear"\n')
-    tier('standard')
-    assert module('closing').unresolved(root, rows) == (0, '')
+    module('dispatch').tracker_call('A', 'done', root)
+    assert [call[0] for call in fake.calls] == ['transition', 'comment']

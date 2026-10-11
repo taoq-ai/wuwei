@@ -74,7 +74,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.2.1
+version: 2.3.0
 ---
 # Planner charter
 
@@ -84,7 +84,7 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 
 1. The text of each brief: the item promise, evidence, track, flags, open decisions and required output; never a charter path or verdict path the CLI adds itself.
 2. Seat policy at the morning gate: the model and runtime for each role, with the owner's approved goals, queue and CAP. The gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; on `Change something` ask goals, queue, tickets, seat policy, CAP, envelope and carry-over separately and propose again. A different ticket or none goes back into the lead JSON as `ticket`.
-3. Intraday admission: a discovered candidate joins with `wuwei plan add <item>`, an item the owner names with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. Approve opens the tickets the plan proposed. `plan add` opens the ticket of an owner-named item that has none. When an item still has no ticket, run `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>`; under strict the owner runs them. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding`: a small item that starts with no ticket. When `close` names `bin/wuwei tracker create <item>` for it after it ships, run it.
+3. Admission after the gate: an item the owner names joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. An item needs no ticket to start, build, pass its gates or raise its PR. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding` as a small item. When `wuwei next` returns a `duty` row, run its command.
 4. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec: `wuwei plan set <item> spec=skipped --reason <why>` asks the owner on its Owner step card.
 5. A command that refuses with an Owner step card: ask that card with AskUserQuestion as printed; on Yes run the same command again; on No leave it.
 

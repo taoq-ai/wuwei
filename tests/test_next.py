@@ -137,7 +137,7 @@ def test_morning_path(root, capsys, monkeypatch):
     monkeypatch.delenv('WUWEI_SESSION_ID')
     assert row(capsys)[1]['command'] == 'wuwei plan session <session id>'
     assert main(['plan', 'session', 'S']) == 0
-    for command in ('wuwei doctor --section pr-flow', 'wuwei mcp check'):
+    for command in ('wuwei doctor --section pr-flow',):
         found = row(capsys)[1]
         seen_rows.append(found)
         assert (found['action'], found['command']) == ('run', command)
@@ -466,20 +466,12 @@ def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
     assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, True).splitlines())
 
 
-@pytest.mark.parametrize('system,fields,expected', [
-    ('notion', {'gates': {'tier': 'standard'}}, 'docs'),
-    ('notion', {'gates': {'tier': 'standard'}, 'docs': {'value': 'new', 'reason': ''}}, 'verdicts'),
-    ('notion', {'gates': {'tier': 'light'}}, 'verdicts'),
-    ('none', {'gates': {'tier': 'standard'}}, 'verdicts'),
-])
-def test_docs_row(root, capsys, system, fields, expected):
-    approved(root, {'ITEM-1': ('gate', fields)})
+def test_item_at_the_gate_gets_verdicts(root, capsys):
+    # #841: no docs row, even under a former [docs] config.
+    approved(root, {'ITEM-1': ('gate', {'gates': {'tier': 'standard'}})})
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[docs]\nsystem = "{system}"\n')
-    found = coarse(root)
-    assert found['state'] == expected
-    if expected == 'docs':
-        assert found['command'].startswith('wuwei plan set ITEM-1 docs=')
+        stream.write('[docs]\nsystem = "notion"\n')
+    assert coarse(root)['state'] == 'verdicts'
 
 
 def test_item_row_shows_the_ticket(root, capsys):
@@ -708,12 +700,17 @@ def test_a_once_row_is_done_when_its_command_ran_not_when_returned(root, capsys)
     assert main(['next']) == 0  # a person's look-up records nothing
     assert (workspace.day_dir(root) / 'events.jsonl').read_text() == events
     ran(root, '/opt/wuwei/bin/wuwei doctor --section pr-flow')
-    assert row(capsys)[1]['state'] == 'mcp'
+    assert row(capsys)[1]['state'] == 'lead'
     assert last_event(root)['payload']['done'] == [['pr-flow', '']]
-    assert row(capsys)[1]['state'] == 'mcp'
+
+
+def test_a_once_row_returned_three_times_is_done(root, capsys):
+    calibrated(root)
+    day(root, planner_session_id='S')
     # ponytail: a once-row returned three times counts as done, so a refused or failed command
     # (no PostToolUse span) never holds the day.
-    assert row(capsys)[1]['state'] == 'mcp'
+    for _ in range(3):
+        assert row(capsys)[1]['state'] == 'pr-flow'
     assert row(capsys)[1]['state'] == 'lead'
 
 
@@ -816,3 +813,34 @@ def test_finding_row(root, capsys):
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)
     assert coarse(root) == before
+
+
+def due(root, item, action, then=None):
+    payload = {'item': item, 'duty': f'tracker.{action}', 'ticket': 'ENG-7'}
+    state.append_event('duty.due', {**payload, 'command': f'wuwei tracker move {item} {action}'}, root)
+    if then:
+        state.append_event(then, {**payload, **({'pr': None} if then == 'duty.done' else {'error': 'x'})}, root)
+
+
+def test_an_open_tracker_duty_is_a_row_beside_the_launches(root):
+    """#842: a due tracker update is a runnable row, also for a merged item, and holds close."""
+    (root / '.wuwei/config.toml').write_text(
+        '[adapters]\ntracker = "linear"\n[[repos]]\nname = "example/project"\npath = "project"\n'
+        'default_branch = "main"\n')
+    (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
+    day(root, gate_approved=True, approved_items=['A', 'M'], cap=2, planner_session_id='S',
+        items={'A': {'phase': 'fix'}, 'M': {'phase': 'merged', 'pr': 'example/project#7'}},
+        tickets={'M': {'id': 'ENG-7', 'source': 'set'}})
+    due(root, 'M', 'done')
+    due(root, 'A', 'claim', 'duty.done')
+    due(root, 'M', 'in_review', 'duty.skipped')
+    found = coarse(root)
+    assert [(r['state'], r['item'], r['command']) for r in found['rows']] == [
+        ('build', 'A', 'wuwei build next A'), ('duty', 'M', 'wuwei tracker move M done')]
+    day(root, items={'M': {'phase': 'merged', 'pr': 'example/project#7'}}, approved_items=['M'])
+    found = coarse(root)
+    assert (found['state'], found['item'], found['command']) == ('duty', 'M', 'wuwei tracker move M done')
+    assert 'M (ENG-7)' in found['why'] and found['then'] == next_command.THEN['run']
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('tracker = "linear"', 'tracker = "none"'))
+    assert coarse(root)['state'] == 'close'

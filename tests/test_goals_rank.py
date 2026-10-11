@@ -1,4 +1,4 @@
-"""Goals, ranking, discovery and intraday decision contracts."""
+"""Goals, ranking and morning discovery contracts."""
 
 import json
 from pathlib import Path
@@ -111,23 +111,6 @@ def test_plan_proposal_rejects_unplanned_missing_and_bad_score(tmp_path):
         _proposal(data, GOALS, 'wsjf')
 
 
-def test_autostart_strict_full_and_safety():
-    from wuwei.discovery import start_decision
-
-    row = {'goal': 'G-1', 'track': 'FULL', 'flags': {}, 'paths': []}
-    config = {'discovery': {'autostart': 'strict'}, 'repos': [{'merge': {'never_auto_paths': ['infra/*']}}]}
-    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
-    config['discovery']['autostart'] = 'goal'
-    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
-    row['paths'] = ['infra/main.tf']
-    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
-    row['paths'] = []
-    row['flags'] = {'risk': True}
-    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
-    row['flags'] = {}
-    assert start_decision(row, config, {'G-1'}, within_budget=False, above_cut=True) == 'owner'
-
-
 def test_discovery_deduplicates_and_marks_unmeasured():
     from wuwei.discovery import dedupe
 
@@ -137,23 +120,6 @@ def test_discovery_deduplicates_and_marks_unmeasured():
     assert result['candidates'] == []
     assert result['sources']['tracker'].startswith('unmeasured:')
     assert result['sources']['scanner'] == 'measured: 1'
-
-
-def test_rank_cli_returns_order_and_bad_goals_line(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-
-    base = tmp_path / '.wuwei'
-    (base / 'memory').mkdir(parents=True)
-    (base / 'memory/goals.md').write_text(GOALS)
-    (base / 'config.toml').write_text('[prioritisation]\nframework = "rice"\n')
-    source = tmp_path / 'candidates.json'
-    source.write_text(json.dumps([candidate('low', reach=5), candidate('high', reach=20)]))
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    assert main(['rank', str(source)]) == 0
-    assert [row['id'] for row in json.loads(capsys.readouterr().out)] == ['high', 'low']
-    (base / 'memory/goals.md').write_text('## G-1\noutcome:\n')
-    assert main(['rank', str(source)]) == 2
-    assert 'line 2' in capsys.readouterr().err
 
 
 def test_discover_reads_ports_and_skips_day_items(tmp_path, monkeypatch):
@@ -234,19 +200,6 @@ def test_morning_plan_reports_discovery_sources(tmp_path, monkeypatch):
     assert 'discovery.tracker: unmeasured' in path.read_text()
 
 
-def test_seat_free_queue_threshold(tmp_path, monkeypatch):
-    from wuwei import discovery
-
-    base = tmp_path / '.wuwei'
-    base.mkdir()
-    (base / 'config.toml').write_text('[discovery]\nmin_queue = 2\n')
-    calls = []
-    monkeypatch.setattr(discovery, 'discover', lambda root: calls.append(root) or {'candidates': []})
-    assert discovery.when_seat_frees(tmp_path, queue_size=2) is None
-    assert discovery.when_seat_frees(tmp_path, queue_size=1) == {'candidates': []}
-    assert calls == [tmp_path]
-
-
 def test_failed_discovery_port_is_unmeasured(tmp_path, monkeypatch):
     from wuwei.discovery import discover
     from wuwei import state
@@ -264,32 +217,6 @@ def test_failed_discovery_port_is_unmeasured(tmp_path, monkeypatch):
 
     result = discover(tmp_path, ports={'review_bot': Bot()})
     assert result['sources']['review_bot'].startswith('unmeasured:')
-
-
-def test_sweep_records_discovery_measurement(tmp_path, monkeypatch):
-    from wuwei import discovery, watch
-
-    root = tmp_path
-    (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('')
-    monkeypatch.setattr(discovery, 'discover', lambda path: {'sources': {'tracker': 'unmeasured'}, 'candidates': []})
-    monkeypatch.setattr(watch.obligations, 'evaluate', lambda path: {})
-    monkeypatch.setattr(watch, 'activity', lambda path: (0, {'stale': [], 'unreadable': 0}))
-    watch.sweep(root, watch_health=(0, ''))
-    events = list((root / '.wuwei/days').glob('*/events.jsonl'))
-    assert events and 'discovery.tracker' in events[0].read_text()
-
-
-@pytest.mark.parametrize('code', [0, 1, 2])
-def test_build_returns_loop_status_without_discovery(monkeypatch, code):
-    from argparse import Namespace
-    from wuwei.commands import build
-    from wuwei import discovery
-
-    monkeypatch.setattr(build, 'run_loop', lambda *args: code)
-    monkeypatch.setattr(discovery, 'when_seat_frees',
-                        lambda *args, **kwargs: pytest.fail('build called discovery'))
-    assert build.run(Namespace(operation='A', arguments=['brief', 'tree'])) == code
 
 
 def test_discovery_red_base_checks_from_code_host_port(tmp_path, monkeypatch):
@@ -361,14 +288,6 @@ def test_plan_producer_files_are_protected(tmp_path, name):
     payload = {'cwd': str(tmp_path), 'tool_name': 'Write',
                'tool_input': {'file_path': f'.wuwei/days/2026-09-28/{name}'}}
     assert check_file(payload)[0] == 1
-
-
-def test_autostart_unknown_risk_or_paths_goes_to_owner():
-    from wuwei.discovery import start_decision
-
-    config = {'discovery': {'autostart': 'goal'}, 'repos': []}
-    assert start_decision({'goal': 'G-1', 'track': 'SLICE'}, config, {'G-1'},
-                          within_budget=True, above_cut=True) == 'owner'
 
 
 def test_goal_guard_override_still_protects_other_workspace(tmp_path, monkeypatch):
@@ -485,20 +404,6 @@ def test_proposed_refuses_bad_objects(change):
         goals.proposed(TEMPLATE.read_text(encoding='utf-8'), [goal])
 
 
-def test_rank_lead_json_on_provisional_goals(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-
-    base = tmp_path / '.wuwei'
-    (base / 'memory').mkdir(parents=True)
-    (base / 'memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
-    (base / 'config.toml').write_text('')
-    source = tmp_path / 'lead.json'
-    source.write_text(json.dumps({'goals': LEAD_GOALS, 'candidates': [candidate('A')]}))
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    assert main(['rank', str(source)]) == 0, capsys.readouterr().err
-    assert [row['id'] for row in json.loads(capsys.readouterr().out)] == ['A']
-
-
 IDS_ONLY = ('the lead JSON names {} without its block; have the lead write goals as blocks '
             '(outcome, measure, target, date, priority), or run /wuwei:wuwei-plan again')
 
@@ -510,18 +415,3 @@ def test_proposed_refuses_ids_only(lead, named):
     with pytest.raises(ValueError) as caught:
         goals.proposed(TEMPLATE.read_text(encoding='utf-8'), lead)
     assert str(caught.value) == IDS_ONLY.format(named)
-
-
-def test_rank_lead_json_ids_only(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-
-    base = tmp_path / '.wuwei'
-    (base / 'memory').mkdir(parents=True)
-    (base / 'memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
-    (base / 'config.toml').write_text('')
-    source = tmp_path / 'lead.json'
-    source.write_text(json.dumps({'goals': ['G-1'], 'candidates': [candidate('A')]}))
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    assert main(['rank', str(source)]) == 2
-    err = capsys.readouterr().err
-    assert err.startswith('wuwei rank: the lead JSON names G-1 without its block;') and 'host terminal' not in err

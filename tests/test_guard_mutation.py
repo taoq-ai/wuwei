@@ -13,10 +13,8 @@ PROBES = {
         ('Agent', {'prompt': 'launch without brief', 'description': 'build',
                    'subagent_type': 'wuwei:builder'}, 1),
     ('agent_launch', 'SubagentStop', None, 'stop'): ('stop event', {}, 'event'),
-    ('agent_launch', 'PreToolUse', 'Agent', 'check_mcp'):
-        ('Agent', {'prompt': 'p', 'description': 'build', 'subagent_type': 'wuwei:builder'}, 2),
     ('answers', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
-        ('AskUserQuestion', {'questions': [{}]}, 2),
+        ('AskUserQuestion', {'questions': [{'header': 'Owner step'}]}, 2),
     ('edges', 'PreToolUse', 'Bash', 'check_bash'): ('Bash', {'command': 'gh pr review 7 --approve'}, 1),
     ('edges', 'PreToolUse', 'Bash', 'check_deploy'): ('Bash', {'command': 'terraform apply'}, 1),
     ('edges', 'PreToolUse', None, 'check_send'): ('mcp__slack__post_message', [], 2),
@@ -32,8 +30,6 @@ PROBES = {
         ('Write', {}, 2),
     ('protect_state', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_scratch'):
         ('Write', {}, 2),
-    ('spec', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_edit'):
-        ('Write', {'file_path': 'src/app.py'}, 2),
     ('spec', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_record'):
         ('Write', {'file_path': 'specs/001-a/spec.md'}, 2),
     ('spec', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 2),
@@ -146,14 +142,8 @@ def assert_probe(check, row, root, monkeypatch):
         monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (root / 'day', 'b', 'builder'))
     elif check.__module__.endswith('.spec'):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
-    elif check.__name__ == 'check_mcp':
-        (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
-        with (root / '.wuwei/config.toml').open('a') as config:
-            config.write('[adapters]\nscanner = "ziran"\n')  # #424: "none" turns the gate off
     elif check.__name__ == 'record_gate':
-        from wuwei import state
-        del payload['agent_id']  # the planner session itself, not a seat
-        monkeypatch.setattr(state, 'read_state', lambda root: {'planner_session_id': 'mutation'})
+        del payload['agent_id']  # a main session, not a seat
     elif check.__name__ == 'check_stop':
         payload.update(agent_type='wuwei:builder', last_assistant_message='Add a cache?')
     elif check.__module__.endswith('.verdict') and check.__name__ == 'check_retro':

@@ -13,5 +13,4 @@ def run(args):
     if workspace.guard_scope({'cwd': str(Path.cwd())}) is None:
         return 0
     print(retro.compile().relative_to(workspace.find_workspace()))
-    from wuwei.commands import docs
-    return docs.listed('retro')
+    return 0

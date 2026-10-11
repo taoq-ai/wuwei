@@ -139,13 +139,15 @@ def test_skills_ask_the_owner_step_card_a_command_prints():
 
 
 def test_a_seat_finding_has_its_route():
-    """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
+    """#646: seats record a small fix with note --fix; the planner adds it. #842: no ticket wall;
+    a due tracker update comes back from wuwei next as a duty row."""
     texts = charter_text()
     assert 'wuwei note --fix "<title>"' in texts["builder.md"]
     assert 'wuwei note --fix "<title>"' in texts["lead.md"]
-    assert "`light` starts without a ticket" in texts["lead.md"]
     assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
-    assert "after it ships" in texts["planner.md"]
+    assert "An item needs no ticket to start" in texts["planner.md"]
+    assert "returns a `duty` row, run its command" in texts["planner.md"]
+    assert "tracker.required" not in texts["lead.md"]
 
 
 def test_gate_copies_start_empty_and_match_the_tree():

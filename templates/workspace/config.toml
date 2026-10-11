@@ -26,18 +26,10 @@ template_version = "" # Plugin version that last wrote this file; init and init 
 [prioritisation]
 framework = "wsjf" # wsjf or rice
 
-[discovery]
-min_queue = 2
-autostart = "strict" # off: next morning; strict: ranked goal SLICE; goal: goal SLICE under CAP
-
 [tracker]
 backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
-# required = true # Every approved item needs a ticket while adapters.tracker is not none.
-# skip_tiers = [] # Gate tiers that need no ticket, for example ["light"].
-# strict_close = true # Close refuses while a merged item's ticket is not done.
 # create = ["bugs", "triage", "follow-ups"] # Ticket classes seats may open besides items.
-# log = ["decisions", "progress", "verdicts", "pr", "close"] # Comment kinds written on tickets.
-# auto = ["progress", "pr", "close"] # Classes and kinds written on their own.
+# log = ["decisions", "progress", "verdicts", "pr", "close"] # Comment kinds tracker log writes; the PR link and merged note are the in_review and done duties.
 # max_per_item_per_day = 10 # Comments per ticket per day; the last one folds the rest.
 # project = "" # Linear team, Jira project key or GitHub owner/repo for new tickets.
 # board = "" # GitHub Projects board as owner/number; empty uses labels.
@@ -45,16 +37,6 @@ backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
 [tracker.states]
 in_review = "In Review"
 done = "Done"
-
-# Docs system: notion, confluence, markdown or none (the default). See configuration.md#docs.
-# [docs]
-# system = "none"
-# required_tiers = ["standard", "full"]
-# space = "" # The Notion or Confluence page new pages go under.
-# root = "docs" # Markdown: the pages directory in each repository.
-# publish = ["report", "retro"]
-# auto = [] # page, report or retro: written on their own.
-# strict_close = true
 
 [owner]
 name = ""
@@ -124,19 +106,8 @@ transcripts = "none"
 severity_threshold = "high" # critical, high, medium or low; trust-boundary findings always block.
 
 [scanner.mcp]
-# Workspace and configured repository paths are checked for this project file.
-project_file = ".mcp.json"
-# Installed plugin registry v2; user installs and matching project/local installs.
+# Installed plugin registry v2, read to find installed plugins.
 plugins_file = "~/.claude/plugins/installed_plugins.json"
-# Top-level mcpServers in user settings. Relative overrides use the workspace.
-user_file = "~/.claude.json"
-# Missing defaults and absent project/plugin MCP files mean no attachment.
-# Explicit user_file/plugins_file overrides must exist. Invalid inputs fail closed.
-# Launch gate: critical, high, medium, low or unmeasured block a launch while guards.enforce is on.
-# Unset, no finding blocks. A check that could not run blocks while guards.enforce is on.
-# block = ["critical"]
-# Seconds for each server's watch-registry call.
-timeout_seconds = 60
 
 [calendar]
 # url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.
@@ -222,7 +193,7 @@ source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated
 [spec]
 # The spec engine each non-trivial item is specified with before it is built: speckit, superpowers, openspec or none.
 engine = "speckit"
-# strict: the hooks refuse source edits and the gates until the engine's steps are done. advisory: warn once per item and day. off: no check.
+# strict: the gates wait until the engine's steps are done. advisory: warn once per item and day. off: no check.
 mode = "strict"
 # Lead tiers whose items need no spec. The owner overrides one item with wuwei plan set <item> spec=required or spec=skipped --reason <why>.
 skip_tiers = ["light"]

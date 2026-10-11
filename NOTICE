@@ -42,12 +42,6 @@ Wikipedia: Signs of AI writing
   Licence: credit only, no text copied
   Used: the source humanizer is based on, so an indirect source of the checklist.
 
-Model Context Protocol
-  Source: https://modelcontextprotocol.io
-  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
-  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
-  Used: the server configuration format the MCP registry gate reads (cli/wuwei/mcp.py).
-
 release-please
   Source: https://github.com/googleapis/release-please
   Licence: Apache-2.0

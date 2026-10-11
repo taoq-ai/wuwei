@@ -104,8 +104,8 @@ section of the day report. When `bin/wuwei doctor` asks after `guards.shadow_day
 ## 3. Plan and the morning gate
 
 Run `/wuwei plan` in Claude Code. The planner registers its session
-(`wuwei plan session`), sweeps live work, asks the lead for candidates, orders them with
-`wuwei rank` and writes the proposal with `wuwei plan propose`. It then asks you one
+(`wuwei plan session`), sweeps live work, asks the lead for candidates and writes the
+proposal with `wuwei plan propose`, which orders the queue by your framework. It then asks you one
 `Morning gate` question, `Approve today's plan as proposed?`. Pick `Change something` to get
 the separate questions on goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
 [envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answer. While `memory/goals.md` has no goals,
@@ -122,8 +122,7 @@ approve it ahead of time: when the seat gets there, the command asks you its own
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
 serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
 joins today's plan. Every builder and gate brief for it quotes your words under `Approved as:`,
-and `wuwei why <item>` shows them. A candidate the discovery sweep found goes through
-`wuwei plan add <item>` and the intraday start policy.
+and `wuwei why <item>` shows them.
 
 The planner asks the morning gate as question cards. After you approve, it records the goals
 and the plan, and you can run the last command yourself. A clean first plan with one
@@ -240,20 +239,13 @@ minutes).
 
 On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
 (spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
-the item's worktree. Under [strict mode](concepts.md#strict-mode) the hooks refuse source edits until the
-steps before implementation are done, and the build loop keeps the item from the gates
-until all of them are. An item the lead marks `tier: light` skips the spec. To skip one
+the item's worktree. Under [strict mode](concepts.md#strict-mode) the build loop keeps the item from the gates
+until all of them are done. An item the lead marks `tier: light` skips the spec. To skip one
 item yourself, run `bin/wuwei plan set <item> spec=skipped --reason <why>` in a host
 terminal; `spec=required` turns the check back on.
 
 Phases move by themselves: `planned`, `implement`, `gate`, `fix`, `delta`, `raised`,
 `merged`. You never move one by hand on this path.
-
-With a [docs system](concepts.md#docs-system) configured, an item tiered standard or full
-carries a [docs obligation](concepts.md#docs-obligation): before its quality gate passes the
-builder records `bin/wuwei plan set <item> docs=<page>|new|none --reason "<why>"`, or under
-markdown writes the file with `bin/wuwei docs page <item>`. `wuwei next` shows a `docs` row
-until it does, and `close` names any merged item whose docs were never written.
 
 To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
 the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
@@ -264,10 +256,11 @@ Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host 
 next pass then follows the normal merge policy. If you merge it by hand instead, the item
 moves to `merged` with the flag still set, so the record shows which way it went.
 
-With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
-per item and Approve opens or links them. An item still without one stops with a line naming
-its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. `wuwei next` and the loop DM show the
-ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
+With a tracker set up, an item can carry a [ticket](concepts.md#ticket); the plan links an
+open one when it is the item's work, and no item waits for one. `wuwei next` shows the ticket
+id beside the item. The ticket's claim, in-review and done updates are duties: one that is
+due shows as a `duty` row in `wuwei next`, and close waits on it. One the tracker refused
+is listed in the day report.
 
 A message to other people through an MCP tool goes out only when that tool is on
 `outward.allow`. Otherwise the refusal names one line, `bin/wuwei config set outward.allow

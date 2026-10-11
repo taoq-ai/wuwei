@@ -15,7 +15,7 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | checks | none, local | local |
 | redactor | builtin | builtin |
 
-The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.md). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement.
+The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.md).
 
 The read-only VCS operation `pushed_branches(repo)` returns unique branch names
 from all local remote-tracking refs, excluding remote HEAD aliases. Close compares
@@ -68,9 +68,6 @@ the exit code.
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
 | review_bot.greptile | `GREPTILE_API_KEY` |
 | calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
-| docs.notion | `NOTION_TOKEN`, a Notion integration token with access to `docs.space` |
-| docs.confluence | `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN`, an Atlassian account email and API token |
-| docs.markdown | No credential; pages are files under `docs.root` in the item's worktree |
 | runtime.codex | `codex.command`, a nonempty command array in config.toml; credentials for the companion are managed by that tool |
 | runtime.claude | No WUWEI credential variable; authenticate the Claude CLI separately |
 | scanner.ziran | No WUWEI credential variable; install and configure ZIRAN separately |

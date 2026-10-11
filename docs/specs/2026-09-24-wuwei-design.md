@@ -168,7 +168,7 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11). An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
 | PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); identity, the default branch and the fast checks stay with the native Git hooks |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
 | PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
@@ -176,7 +176,6 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
-| PreToolUse | Write, Edit, MultiEdit or NotebookEdit in an item worktree, outside the spec engine's directories | under spec mode, a step of the configured engine before implementation is not done for the item (5.10) |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
@@ -658,8 +657,8 @@ target, date, priority. While it has none, the lead proposes goals in its JSON, 
 gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
-Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
-a build seat frees up with the queue below `discovery.min_queue` (default 2). Sources, each
+Discovery, morning (intraday intake retired: owner, 2026-10-11, #843). The lead runs
+discovery at the morning plan with `wuwei discover`. Sources, each
 through its adapter and each reporting "unmeasured" when absent: the tracker backlog, red
 checks on base branches, review-bot and scanner findings, review threads asking for
 follow-up work, regressions in the outcome metrics (5.6), and follow-ups recorded by the
@@ -679,20 +678,12 @@ Prioritisation, `prioritisation.framework` in config:
 
 Either way, ties are broken by goal priority, and every component cites evidence in one
 line; the plan lint refuses a candidate with a missing component or citation for the
-configured framework. `wuwei rank` computes the order; no seat orders the queue by hand. The
+configured framework. `wuwei plan propose` computes the order; no seat orders the queue by hand. The
 steward calibrates: predicted size or effort against actual cycle time per item, and a
 persistent bias becomes a charter proposal.
 
-Intraday starts, `discovery.autostart` in config. In every mode, an item carrying a risk
-flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to the owner.
-
-- `off`: nothing found after the morning gate starts without the owner; every candidate
-  joins the next decision batch.
-- `strict` (default): a candidate starts when it serves a confirmed goal, is on the SLICE
-  track, and ranks above the cut line of the approved queue.
-- `goal`: a candidate starts when it serves a confirmed goal and is on the SLICE track.
-
-Anything that does not start joins the next decision batch as a proposed item.
+After the morning gate, work joins only when the owner names it (`wuwei plan add <item>
+--goal G-n`) or a seat's finding is added (`wuwei plan add <id> --from-finding`).
 
 ### 5.8 Owner decisions (owner, 2026-10-11, #789 part 14; replaces the decision framework of 2026-09-28)
 
@@ -710,8 +701,8 @@ Owner step card of the command that applies the answer; the CLI applies the safe
 | Scope change a reviewer asks on a PR | `wuwei pr act <pr>` | opens a fix round for it | the thread waits for the owner |
 
 A PARK verdict parks the item in code with its reason and no card; the report and `why` show
-it. The process checks stay in code: the round cap, gates at head, the merge policy. The MCP
-registry cards keep their records until their part of #789 lands.
+it. The process checks stay in code: the round cap, gates at head, the merge policy. The D-n
+records of past days stay readable.
 
 ### 5.9 Cockpit, signals and briefings (owner, 2026-09-28) (cockpit, menu bar and briefings retired: owner, 2026-10-11, #789)
 
@@ -758,7 +749,7 @@ Cockpit, menu bar and briefings: retired (owner, 2026-10-11, #789).
 ### 5.10 Specification mode (owner, 2026-10-03, #411)
 
 Every item that is not trivial is specified with one configured spec engine before it is
-built, and the hooks keep the engine's steps in order. `[spec]` in `config.toml`:
+built, and the gates wait for the engine's steps. `[spec]` in `config.toml`:
 
 - `engine` (default `"speckit"`): `speckit`, `superpowers`, `openspec`, or `none`, which
   checks nothing (the behaviour before this section).
@@ -847,13 +838,10 @@ needs its spec after all.
 Enforcement. Cooperative mistake prevention (9.1), in item worktrees only (the item whose
 recorded worktree contains the path):
 
-- PreToolUse on Write, Edit, MultiEdit and NotebookEdit refuses a path outside the
-  engine's own directories (`specs/` and `.specify/`, `docs/superpowers/`, `openspec/`)
-  while a step before implementation is not done. The reason names the next step, its
-  artifact and its command, and the engine's install line when its files are absent from
-  the repository.
-- PostToolUse on the same tools and Bash records each step whose artifact newly appears as
-  one `spec.step` event (item, engine, step, path) per item and day. It never refuses.
+- No hook refuses a source edit for a missing step (#843); the gates wait instead.
+- PostToolUse on Write, Edit, MultiEdit, NotebookEdit and Bash records each step whose
+  artifact newly appears as one `spec.step` event (item, engine, step, path) per item and
+  day. It never refuses.
 - The build loop (5.3) moves an item to the gates (implement to gate, fix to delta) only
   when every step is done, implementation included, on every runtime. A gap goes back to
   the builder as a failing check named `spec`, under the same error signature and stuck
@@ -1081,11 +1069,11 @@ running as the owner can forge `.wuwei/metrics/` (9.1); the payload rules bound 
 forgery can carry out to numbers in the schema.
 ### 5.11 Tracker hygiene (owner, 2026-10-03, #416)
 
-Every work item lives in a ticket in the team's tracker, and the ticket carries the item's
-story: its decisions, progress, verdicts, pull request and close. The tracker port (section
-8) already reads the backlog and moves states (claim, in review, done, 4.6); this section
-makes the ticket required, lets the day open tickets for what it finds, and writes the story
-as comments.
+An item's ticket in the team's tracker carries the item's story: its progress, verdicts,
+pull request and close. The tracker port (section 8) reads the backlog and moves states
+(claim, in review, done, 4.6); this section makes those moves duties the loop follows (#842),
+lets the day open tickets for what it finds, and writes the story as comments. A missing
+ticket never refuses a launch, a gate, a raise or a close (owner, 2026-10-11, #789).
 
 Configuration. `adapters.tracker` is `linear`, `jira`, `github` (issues, plus Projects v2
 when a board is set) or `none`. The schema default stays `none`, so a first day works on
@@ -1093,19 +1081,15 @@ defaults. `[tracker]` in `config.toml`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `required` | `true` | every item needs a ticket; in force only when `adapters.tracker` is not `none` |
-| `skip_tiers` | `[]` | tiers (`light`, `standard`, `full`, as in `repos.gates.floor`) whose items need no ticket |
-| `strict_close` | `true` | day close refuses a merged item whose ticket did not reach the done state |
 | `create` | `["bugs", "triage", "follow-ups"]` | the classes seats may open tickets for |
 | `log` | `["decisions", "progress", "verdicts", "pr", "close"]` | the comment kinds written to an item's ticket |
-| `auto` | `["progress", "pr", "close"]` | the kind a folded comment is filed under; every kind is sent after the lint (#838) |
 | `max_per_item_per_day` | `10` | comments per ticket per day, the fold included |
 | `project` | `""` | where tickets are created: a Linear team id (empty: `backlog_filter`), a Jira project key, or a GitHub `owner/repo` (empty: the first configured repository) |
 | `board` | `""` | GitHub only: a Projects v2 board as `<owner>/<number>`; empty uses labels |
 
 `backlog_filter`, `states.in_review` and `states.done` keep their meaning for every adapter.
-`auto` accepts the comment kinds and the creation classes plus `items`. The config check
-refuses an unknown value in `create`, `log`, `auto` or `skip_tiers`.
+The config check refuses an unknown value in `create` or `log`. `required`, `skip_tiers`,
+`strict_close` and `auto` are retired (#842); `init --upgrade` removes them.
 
 Ticket of an item. `tickets` in `state.json` maps an item id to its ticket id and source,
 written only by the CLI: `plan approve` and `plan add` record the candidate's `ticket` field
@@ -1114,32 +1098,31 @@ candidate discovered from the tracker backlog, the candidate id itself; `wuwei t
 create <item>` records the ticket it opens; `wuwei plan set <item> ticket=<id>` records an
 existing ticket once the adapter's `created(item)` confirms it exists. `plan approve
 --import-yesterday` carries yesterday's tickets with the items. Every tracker operation on an
-item (claim, transitions, comments, history for lead time) uses its ticket id; only while
-`required` is not in force does an item without one fall back to its own id, as before.
+item (claim, transitions, comments, history for lead time) uses its ticket id; an item
+without one falls back to its own id and gets no duty.
 
-Enforcement. While `required` is in force, an item whose tier is not in `skip_tiers` and that
-has no ticket is refused by one CLI function, `tracker.check`, with one reason: `<item> has no
-ticket: bin/wuwei tracker create <item> (opens one from the item's record) or bin/wuwei plan
-set <item> ticket=<id>`. The refusal points:
+Duties (#842). While `adapters.tracker` is not `none`, a new item gets the `tracker.create`
+duty and an item with a recorded ticket the three lifecycle duties; a duty already done on
+any day is not run again.
 
-- `plan approve`: one refusal lists every approved item without a ticket; nothing is approved;
-- `plan add` (intraday intake, 5.7): the candidate becomes an owner proposal with the reason;
-- `build next`, before the claim, and `dispatch next`, before the gates;
-- PreToolUse `Agent` launch for a brief whose item has none (4.1), part of the seat launch
-  contract and so under the `seats` area (9.1).
+| Duty | Due when | Done when | Command `next` names |
+| --- | --- | --- | --- |
+| `tracker.create` | a new candidate is approved (`plan approve`) or an owner-named item is added (`plan add`) with no ticket | the ticket is created and recorded in `tickets` | `wuwei tracker create <item>` |
+| `tracker.claim` | the item's first build starts (`build next`) | the claim (assign, in progress) returns 0 | `wuwei tracker move <item> claim` |
+| `tracker.in_review` | the PR is raised (`pr raise`) or claimed (`pr claim`) | the move to `states.in_review` and the `Pull request: <pr>.` comment both return 0 | `wuwei tracker move <item> in_review` |
+| `tracker.done` | the PR merges (the watch's `merge.completed`, or `pr state` seeing the merge, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
 
-The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
-and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
-ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
-admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
-the ticket exists.
-
-Close. While `required` is in force and `strict_close` is on, `wuwei close` refuses while an
-item merged today has no successful done transition (the `tracker.call` event that the merge
-path writes, 4.6), naming `bin/wuwei tracker done <item>`, which runs the same transition
-again. Carried and parked items keep their tickets open. With `strict_close = false` the same
-line is printed and does not refuse.
+`dispatch.tracker_call` performs each duty. It appends `duty.due {item, duty, ticket,
+command}` before the tracker call and `duty.done {item, duty, ticket, pr}` when every step
+returned 0. When a step fails after the adapter's own retry (unreachable, credentials, a
+rate limit past its wait) it appends `duty.skipped {item, duty, ticket, error}`. It never
+raises and still records `tracker.call` with the exit and reason. A duty is open while its
+last event for the `(item, duty)` pair is `duty.due`. `wuwei next` returns a `duty` row for
+each open duty, beside the build launches and also for a terminal item; `wuwei close` exits 1
+while one is open, naming the item, the duty and the command. Close accepts a skipped duty,
+and the day report lists each one under Skipped duties with its retry command, so a duty is
+never dropped silently and never holds the close forever. Duties live only in events; carried
+and parked items keep their tickets open.
 
 Creation. `wuwei tracker create <item>` opens the item's own ticket (class `items`) from its
 record: the title from the candidate's scope, the description from its evidence, goal and
@@ -1167,11 +1150,13 @@ retried.
 
 | Kind | From (CLI events) | Comment |
 |---|---|---|
-| `decisions` | `decision.decided` for a record naming the item | `Decision D-<n>: <question>. Outcome: <outcome>.` |
 | `progress` | phase changes, builder and gate starts and stops, fast-check results, a park | one line each, such as `Phase: implement.` or `Fast checks: 3 passed, 1 failed.` |
 | `verdicts` | `gate.received` | `Review <role> (<round>): <verdict>, <n> blocking findings.` |
-| `pr` | `pr.raised`, `pr.claimed` | `Pull request: <url>.` |
-| `close` | `wuwei close`, `plan carry` or `plan park` | `Merged in <pr>.`, `Carried to <date>.` or `Parked: <reason>.` |
+| `close` | `plan carry` or `plan park` | `Carried to <date>.` or `Parked: <reason>.` |
+
+The PR link (`Pull request: <pr>.`) and the merged note (`Merged in <pr>.`) are the
+in-review and done duties' own comments, so `tracker log` never writes them; the `pr` kind in
+`log` produces no entry. A fold is filed under the first folded kind.
 
 Sending. Comments and creations are external writes sent as the owner, so they go through
 the tracker port's text-bearing operations, which run the canary check and the outward lint
@@ -1202,129 +1187,20 @@ returns state changes in one shape for lead time (5.6).
 | `github` | `owner/repo#123` | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only | GraphQL: open issues of `project`, `backlog_filter` as a label; create an issue; add a comment; with `board`, the Projects v2 Status option with the configured name, otherwise a label for `in_review` and closing the issue for `done` |
 
 Health. `doctor`
-fails the tracker row when `required` is in force and the adapter cannot read the backlog,
-naming the missing credentials or `bin/wuwei config set tracker.required false`.
-`init --upgrade` from a host terminal creates the lifecycle labels the tracker port needs (today only the GitHub
+fails the tracker row when a configured adapter cannot read the backlog, naming the missing
+credentials or `bin/wuwei config set adapters.tracker '"none"'`.
+`init --upgrade` creates the lifecycle labels the tracker port needs (today only the GitHub
 `in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
 failed in-review move creates the label on the owner's tracker and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
 
 Owner-facing. `wuwei next` and the DM show an item's ticket id beside its name.
 The documentation adds a `[tracker]` section to configuration.md, glossary entries (ticket,
-tracker hygiene, fold), one paragraph in daily.md ("every item has a ticket; you see the
-ticket id in `wuwei next` and in the DM") and reference rows for `tracker create`, `tracker
-log`, `tracker done` and `plan set`.
-### 5.12 Documentation system (owner, 2026-10-03, #418)
+tracker hygiene, fold), one paragraph in daily.md (the ticket id in `wuwei next`, the duty
+rows) and reference rows for `tracker create`, `tracker log`, `tracker move` and `plan set`.
+### 5.12 Documentation system (owner, 2026-10-03, #418) (retired: owner, 2026-10-11, #789)
 
-Where the team's documentation lives, whether an item changed it, and pages written from
-the records. With `docs.system = "none"` nothing in this section applies.
-
-Configuration, `[docs]` in `config.toml`:
-
-- `system`: `notion`, `confluence`, `markdown` (pages as files in the item's repository) or
-  `none`. The schema default is `none`, so a workspace that never chose one is unchanged;
-  the value selects the `docs` port's adapter (section 8); the config check
-  refuses a name with no adapter under `adapters/docs/`.
-- `required_tiers` (default `["standard", "full"]`): the gate tiers, named as
-  `repos.gates.floor` names them, whose items carry the docs obligation. `light` items are
-  exempt by default.
-- `space`: the parent page for `notion` and `confluence`, as its id or its link; for
-  `confluence` it is the `https` link, which also names the site. `root` (default `docs`):
-  the directory, relative to the item's repository, for `markdown`.
-- `publish` (default `["report", "retro"]`): what the day writes there besides item pages.
-- `auto` (default `[]`): kept for older workspaces; every kind is written after the lint
-  (#838).
-- `strict_close` (default `true`): the day close refuses an unmet obligation; `false`
-  lists it in the report instead.
-
-The docs obligation. An item whose recorded gate tier (written when `dispatch next` tiers
-it) is in `required_tiers` carries one `docs` value, set by `wuwei plan set <item>
-docs=<value>` or by `wuwei docs page <item>`:
-
-- `<page>`: the page it updated, as a page id or link, or for `markdown` a path under
-  `root`; `plan set` reads it through the port and refuses a page that does not exist;
-- `new`: a new page under `space`, written from the record after the merge. Under
-  `markdown`, `plan set` refuses `new`; the builder runs `wuwei docs page <item>` before
-  the gate, which records the path;
-- `none, <reason>`: the item changes no documentation; the one-line reason appears in the
-  report.
-
-The builder sets the value before it stands down; the planner may set it. The value is the
-item's own declaration, never an owner approval: the quality gate reviews it and the report
-shows it. An item tiered outside `required_tiers` has no obligation and gets one
-`docs.exempt` event when it is tiered.
-
-Checks, at two points:
-
-- Before the gate verdict. The quality brief names the obligation's reader,
-  `wuwei why <item> --json`, which the sentinel runs when it starts and before its verdict;
-  the brief copies no value (#667). The verdict lint refuses a finding that calls a value
-  recorded at lint time missing. The quality sentinel checks the value against the diff under the `DOC` class: a
-  missing value, or `none` for a change to documented behaviour (a command, a config key,
-  an interface, user-visible output), is a blocking finding naming `plan set <item>
-  docs=...`. `wuwei dispatch receive` refuses a quality `PASS` while the value is missing,
-  so a missing value cannot pass the gate.
-- At close. `wuwei close` refuses while an item merged today in a required tier has no
-  value; has `new` or a `notion` or `confluence` page with no `docs.written` event for it
-  since its merge; or, under `markdown`, names a path its merged PR did not change. Each
-  line names its command: `plan set <item> docs=...` or `wuwei docs page <item>`. With `strict_close = false`
-  these are report lines and close does not refuse. A carried or parked item keeps its
-  obligation for the day it merges.
-
-Writes. `wuwei docs page <item>` renders the item's page from its records: the title (the
-item id and the first line of its scope), what changed (the scope and the PR title), why
-(the outcome of the goal it serves and the item's evidence), how to use it (the PR body's
-`How to use` section when it has one), and links to the PR and the ticket (5.11) when they
-exist. For `new` it creates the page under `space` and records the new page as the item's
-value; for a page it appends a dated section, so edits made by people stay. Under
-`markdown` it writes `<root>/<item>.md`, or the recorded path, in the item's worktree
-before the gate; the builder commits it and it goes out with the item's PR.
-`wuwei docs publish report|retro` writes the day's page once per kind per day, a second
-call naming the first: the report page holds the report's Merged, Parked, Decisions
-answered, Carry and Docs sections under `Report <date>`; the retro page holds the retro's
-Applied and Proposed sections under `Retro <date>`. `wuwei report` and `wuwei retro` publish
-their page when `publish` lists it. Under `markdown`, `publish` has no effect: there is no
-pull request to carry the day's pages.
-
-Content. Every write to `notion` or `confluence` goes through the docs port, which runs
-the canary check and the outward lint (4.3, 4.9) and then writes (#838). Every docs write, `markdown` included, first goes
-through the humanizer pass (`[outward] humanize`, default true, #420). A `markdown` write is a file in the item's worktree
-that leaves through the item's PR and its gates. A rendered page
-holds no raw record (state, events, verdicts, decision files), no absolute path and no
-credential; the renderer refuses rather than strips. Every write is one `docs.written`
-event (item, kind, adapter, page); `docs.written` and
-`docs.exempt` are written only by the CLI. Seats write documentation only through `wuwei
-docs`: the default `outward.tool_patterns` add the Notion and Atlassian MCP write tools
-under channel `docs`, so a direct MCP write meets the same lint and needs `outward.allow`.
-
-Adapters. The `docs` port has two operations: `read(ref)` returns the page's id, title,
-link and last update; `write(draft)` creates a page under `draft.parent` when `draft.ref`
-is empty, otherwise appends to `draft.ref`, from `kind`, `item`, `title` and a Markdown
-`body`, and returns the page's id and link.
-
-- `notion`: REST, pages and blocks: read a page, create a page with the body as blocks,
-  append blocks to a page. Credential `NOTION_TOKEN`.
-- `confluence`: REST, pages: read a page with its version, create a page in the parent's
-  space, append by updating the page with the next version number and the body in storage
-  format. Credentials `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN`; the site comes from
-  `space`.
-- `markdown`: files under `root` in the item's worktree, written atomically; no
-  credentials and no network.
-- `none`: records that it did nothing.
-
-Credentials are named in `.wuwei/env` and kept out of seat environments. Each adapter
-passes the docs port contract test with recorded fixtures; no test reaches the network.
-
-Doctor. `doctor` adds a docs row: `not used` under `none`; under `notion`
-or `confluence`, a fail when `space` is empty, a credential is missing, or `read(space)`
-could not run or found no page; under `markdown`, a fail when `root` is not a directory in
-a configured repository; each fail names the fix; a warn when `publish` is set under
-`markdown`.
-
-Owner-facing: a `[docs]` section in configuration.md, glossary entries for the docs system
-and the docs obligation, one paragraph in daily.md, and reference rows for `wuwei docs
-page`, `wuwei docs publish` and `plan set <item> docs=`. `wuwei next` shows
-an item's unmet obligation.
+Retired with the docs obligation, the page writer, the day page publisher and the docs adapters (#841). What stays: the arch sentinel reviews a change to documented behaviour as code under the `DOC` class, and a docs-only diff gets one reviewer, the goal sentinel.
 
 ### 5.14 Memory over time (owner, 2026-10-03, #443)
 
@@ -1409,21 +1285,13 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
   and prompts the user. Amendment (owner trial, 2026-10-03, #352): only seats park and prompt;
   registered non-seat sessions are noted once per day, and unknown sessions are noted once
   per day.
-- S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
-  servers attached to the session and registers them with `ziran watch-registry`; each
-  morning plan runs the registry check, so a server whose tools changed after approval is
-  flagged before any seat uses it. Amendment (owner, 2026-10-03, #325): the check scans only
-  servers Claude Code would attach (project servers need approval), one server per scanner
-  call, never runs an unpinned `uvx`, `npx` or `pipx run` launcher, and warns by default:
-  `scanner.mcp.block` (default `["critical"]`) sets what blocks launches, while a check that
-  could not run always blocks. Amendment (owner, 2026-10-03, #351): the default list is
-  empty. Amendment (owner, 2026-10-11, #837): with `guards.enforce` on, the findings in
-  `scanner.mcp.block` and a check that could not run block; with it off they pass with a note.
+- S3. MCP audit and drift: retired (owner, 2026-10-11, #789). WUWEI no longer watches attached
+  MCP servers; an `agent_surface` change, MCP config included, is scanned by S4.
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
 
-With the adapter set to `none` or ZIRAN absent, S2 to S4 report "unmeasured" (exit 2).
+With the adapter set to `none` or ZIRAN absent, S2 and S4 report "unmeasured" (exit 2).
 
 ### 7.1 Integrity and canaries (owner, 2026-09-28)
 
@@ -1458,10 +1326,10 @@ that it did nothing and returns exit 2 where a measurement was expected.
 |---|---|---|
 | tracker | `backlog(filter)`, `claim(item)`, `transition(item, state)`, `create(draft)`, `comment(item, text, category)`, `history(item)`, `created(item)`, `labels(create)` | Linear (recommended), Jira, GitHub issues and Projects (5.11) |
 | chat | `post(channel, text, thread)`, `dm(text)` | Slack |
-| docs (5.12) | `read(ref)`, `write(draft)` | Notion (recommended), Confluence, repository Markdown |
+| docs (5.12) (retired by #789, owner, 2026-10-11) | `read(ref)`, `write(draft)` | Notion (recommended), Confluence, repository Markdown |
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
-| scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
+| scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha, method)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
 | inbound (M5) (retired by #789, owner, 2026-10-10) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
@@ -1544,11 +1412,11 @@ The floor blocks whatever the switch says (constitution VII):
   one owner decision from `wuwei next` (4.6, #816).
 
 No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
-default still blocks (the floor, the force push and default-branch edges, day close, spec mode,
-the MCP launch gate), and so do two process checks: a seat launch that matches no logged brief
+default still blocks (the floor, the force push and default-branch edges, day close, the spec check before the gates),
+and so do two process checks: a seat launch that matches no logged brief
 at an unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a
 logged `guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
-directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command
+directory and the CAP, host seat and free memory checks at launch. The unparsed command
 and the workspace root `cd` are logged once per call either way. Plugin integrity is a
 SessionStart warning and refuses no tool call (#839). The traces recorder never refuses: a slow, unreadable or unwritten record
 is a warning and a `traces.slow` or `traces.gap` event.
@@ -1635,7 +1503,7 @@ Three modules, one release, built in dependency order, each with its own impleme
    identity, obligations, outward-text lint, traces.
 2. Team: charters, agent generation, skills, planner flow, steward, runtime adapter.
 3. Memory and security: spine, notes, index, memory lint, consolidation, ZIRAN adapter
-   (S2 to S4, then S1 once the ZIRAN release with plugin agent support exists).
+   (S2 and S4, then S1 once the ZIRAN release with plugin agent support exists).
 
 Upstream prerequisite, in parallel with module 1: the ZIRAN change for S1, planned and
 shipped in the ZIRAN repository under its own spec.
@@ -1647,8 +1515,7 @@ on it. The repository stays PRIVATE until the owner judges it stable enough to p
 
 - Q1. ZIRAN support for Claude Code plugin agent files ships in ZIRAN first; WUWEI pins that
   release (section 7, S1).
-- Q2. ZIRAN has no MCP server; the CLI is the integration surface. `watch-registry` covers
-  MCP drift (section 7, S3).
+- Q2. ZIRAN has no MCP server; the CLI is the integration surface.
 - Q3. Private until stable enough to become public (section 13).
 
 ## 15. Post-v1 (M5): always-on responder and inbound messaging (retired by #789, owner, 2026-10-10)

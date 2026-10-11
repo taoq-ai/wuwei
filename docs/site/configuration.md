@@ -8,7 +8,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -16,7 +16,6 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
-| `[docs]` | [Docs](#docs) |
 
 ## Workspace and repositories
 
@@ -24,24 +23,18 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | --- | --- | --- |
 | `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host and `budget.tokens_per_day`. Claude subagent seats take `host.seats`, or one per core, and free memory is not read; when a seat runtime launches its own process, CAP is the median of today's last five readings of the running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`; a positive number is your override, still bounded by the budget. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
-| `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
-| `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
-| `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items come to you. |
+| `prioritisation.framework` | `"wsjf"` | Ranking formula `wuwei plan propose` orders the queue by: `wsjf` or `rice`. |
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
-| `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one. Below strict the reason names the item's card, where the planner proposes the ticket; under strict it names `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>` for a host terminal. |
-| `tracker.skip_tiers` | `[]` | Gate tiers that need no ticket, for example `["light"]`. The recorded gate tier decides, else the lead's tier. |
-| `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
 | `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`; a seat adds `--seat <role>`, which the retro shows. |
-| `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. |
-| `tracker.auto` | `["progress", "pr", "close"]` | Every class and kind goes out through the tracker port after the outward lint (#838). This list only picks the kind a folded comment is filed under. |
+| `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. The PR link and the merged note are written by the in-review and done [duties](concepts.md#tickets-and-comments). |
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
 | `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
 | `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |
 | `tracker.auth` | `"token"` | How `tracker.github` authenticates: `token` uses `GITHUB_TRACKER_TOKEN`; `gh` uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through `bin/wuwei`. See [GitHub tracker through your gh login](adapters.md#github-tracker-through-your-gh-login). |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
-| `guards.enforce` | `true` | `true` blocks a guard refusal. `false` records it as `guard.would_refuse` and lets the call through; records, merges, approvals, admin merges, deploys and held outward sends still refuse. `init --shadow` writes `false`, and `init --upgrade` maps `security.posture = "observe"` or `guards.mode = "shadow"` to `false`. The outward lint and unknown tool names, another item's scratch directory and the seat capacity and ticket checks at launch are logged either way. `config check` and `doctor` print the setting. |
+| `guards.enforce` | `true` | `true` blocks a guard refusal. `false` records it as `guard.would_refuse` and lets the call through; records, merges, approvals, admin merges, deploys and held outward sends still refuse. `init --shadow` writes `false`, and `init --upgrade` maps `security.posture = "observe"` or `guards.mode = "shadow"` to `false`. The outward lint and unknown tool names, another item's scratch directory and the seat capacity checks at launch are logged either way. `config check` and `doctor` print the setting. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
 | `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
@@ -69,7 +62,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.handles` | `[]` | Bare chat IDs and code host handles the outward lint treats as your name. |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
-| `owner.verbosity.decisions` | `""` | Level for an MCP registry card. Empty uses `owner.verbosity.default`. |
+| `owner.verbosity.decisions` | `""` | Level for decision cards. No command reads it since #789 part 18. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -96,7 +89,7 @@ and lets the turn end.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `spec.engine` | `"speckit"` | The spec engine every non-trivial item is specified with before it is built: `speckit`, `superpowers`, `openspec`, or `none`, which checks nothing. |
-| `spec.mode` | `"strict"` | `strict` refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. With `guards.enforce = false`, `strict` runs as `advisory`. |
+| `spec.mode` | `"strict"` | `strict` keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. With `guards.enforce = false`, `strict` runs as `advisory`. |
 | `spec.skip_tiers` | `["light"]` | Lead tiers (`light`, `standard`, `full`) whose items need no spec. The skip holds only while the diff agrees: at the move to the gates, a computed tier outside this list needs the spec after all. |
 
 Steps per engine, each run by the builder with the engine's own command, read from the artifacts in the item's worktree (the item id lowercased):
@@ -187,8 +180,9 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 | `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
-| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. `none` turns the MCP registry gate off. |
+| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
 | `scanner.severity_threshold` | `"high"` | Blocking threshold: critical, high, medium or low. Trust-boundary findings always block. |
+| `scanner.mcp.plugins_file` | `"~/.claude/plugins/installed_plugins.json"` | Claude Code's installed plugin registry v2, read to find installed plugins: WUWEI's own registration and the spec engine plugin. |
 | `adapters.code_host` | `"github"` | Code host: github or none. |
 | `adapters.vcs` | `"git"` | Version control: git. |
 | `adapters.host` | `"local"` | Host measurement: local or none. |
@@ -238,20 +232,6 @@ remeasure without duplicating a session/chain decision. Commands and argument va
 never enter finding events or decisions. A session identity changed by secret redaction
 uses a stable digest to keep different sessions distinct.
 
-## Docs
-
-The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md#docs-obligation) per review tier. With `system = "none"` nothing here applies.
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `docs.system` | `"none"` | Where documentation lives: `notion`, `confluence`, `markdown` or `none`. Notion needs `NOTION_TOKEN` and Confluence needs `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN` in `.wuwei/env`. |
-| `docs.required_tiers` | `["standard", "full"]` | Review tiers whose items need a docs value before the quality gate passes and before the day closes. A light item records one `docs.exempt` event instead. |
-| `docs.space` | `""` | The Notion or Confluence page new pages go under, as a link. `bin/wuwei doctor` reads it. |
-| `docs.root` | `"docs"` | Under markdown, the directory in each repository that holds the pages. |
-| `docs.publish` | `["report", "retro"]` | Daily pages `wuwei report` and `wuwei retro` publish once per day under notion or confluence. No effect under markdown. |
-| `docs.auto` | `[]` | Kept for older workspaces. Every page kind is written through the docs port after the outward lint (#838). |
-| `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
-
 ## Boundaries and deployment
 
 | Key | Default | Meaning |
@@ -270,7 +250,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 Two commands change one value, each with a diff and its Owner step card, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
-- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set docs.publish '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outward.allow '["mcp__slack__slack_send_message"]' --add`); on a named-entry table such as `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
+- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set spec.skip_tiers '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outward.allow '["mcp__slack__slack_send_message"]' --add`); on a named-entry table such as `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
 - `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
 
 Run `wuwei config promote` after `init` and the `[[repos]]` entries (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout; without `--measure` it runs nothing there. It exits 0 when it applied or found nothing to change, 1 without your Yes, and 2 when it could not run.
@@ -312,7 +292,7 @@ On each sweep the steward compares the fast checks, CI check names and deploy si
 | `outbound.owner` | all empty | Your own identity per surface: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail`, `pages` (your own Slack canvas ids and Notion or Confluence page ids) and `code_host` (login). See [Your own surfaces](#your-own-surfaces). |
 | `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
 
-WUWEI's own outward duties go through its adapter ports, which you configure: a review ping, a tracker comment or ticket, a docs page, the day report and a PR thread reply. Each passes the canary check and the outward lint, and none needs `outward.allow`. A channel limit does not bypass the outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) has the defaults and examples.
+WUWEI's own outward duties go through its adapter ports, which you configure: a review ping, a tracker comment or ticket, the day report and a PR thread reply. Each passes the canary check and the outward lint, and none needs `outward.allow`. A channel limit does not bypass the outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) has the defaults and examples.
 
 ## Your own surfaces
 
@@ -329,117 +309,7 @@ A call with no destination is never yours. Your code-host login is never local: 
 
 ## Goals and discovery
 
-While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
-
-After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
-
-
-### MCP registry checks (S3)
-
-`wuwei init` and `wuwei init --upgrade` discover attached MCP configurations and
-register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIRAN
-0.39.0 or newer. `none`, the default, turns the registry gate off: every MCP
-command and the launch gate exit 0, the first check of the day with attached servers
-prints `mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)`, and doctor shows
-the gate ok. Nothing checks
-attached servers for tool drift or poisoning then. A configured scanner that is
-missing or the wrong version is a check that could not run (exit 2) and blocks
-launches under `guarded` and `strict`. No attached servers is a clean empty registry.
-WUWEI declares no MCP server of its own.
-A `.mcp.json` added to the install, one in a workspace or repo, and any other
-plugin's servers are discovered and checked like any other. Coverage goes by install directory, so another plugin
-whose plugin.json links to WUWEI's is still checked.
-
-`scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
-configured repo. `scanner.mcp.plugins_file` defaults to
-`~/.claude/plugins/installed_plugins.json`; registry v2 user installations and
-project/local installations matching those repos contribute their `.mcp.json`
-and the `mcpServers` object of their `.claude-plugin/plugin.json`.
-`${CLAUDE_PLUGIN_ROOT}` in plugin.json servers is expanded to the install path.
-`scanner.mcp.user_file` defaults to `~/.claude.json` with top-level `mcpServers`.
-Relative overrides resolve against the workspace. Missing default user/plugin
-files and absent project/plugin MCP files are optional; explicit user/plugin
-file overrides must exist. Invalid or unreadable input is exit 2.
-
-Only servers Claude Code would attach are scanned. User-scope and plugin servers
-always attach. A project server (from a workspace or repo `project_file`) attaches
-when, for the repo path or one of that repo's git worktrees under
-`<workspace>/worktrees/`, it is not in `disabledMcpjsonServers` and is in
-`enabledMcpjsonServers` or `enableAllProjectMcpServers` is true. Those keys are read
-from `projects[<path>]` in `scanner.mcp.user_file`, `.claude/settings.json` next to
-that file (`~/.claude/settings.json` by default), and the path's
-`.claude/settings.json` and `.claude/settings.local.json`. An unapproved server is
-reported as `<name>: not attached (unapproved)` and never started. Invalid approval
-state is exit 2. Local-scope servers (`projects[<path>].mcpServers`) are not read.
-
-Each attached server is measured on its own: the check writes a one-server config
-under `.wuwei/ziran/servers` (owner-only, since it copies env and headers) and calls
-the scanner once per server, with `scanner.mcp.timeout_seconds` (default 60) per call.
-A server that cannot be measured, for example an OAuth remote server, is named in the
-reason and does not hide the others' findings. A stdio server launched by `uvx`,
-`npx` or `pipx run` without an exact package version (`pkg@1.2.3`, `pkg==1.2.3`) is
-reported as `<name>: unpinned launcher` and never started; `@latest` and ranges are
-unpinned.
-
-The scanner keeps a snapshot per server under `.wuwei/ziran/snapshots` and untrusted
-raw reports under `.wuwei/ziran/<server>/<digest>.json`, one file per server per
-distinct result (the digest is taken over the report's canonical JSON). A repeat check
-with the same result writes nothing and the `mcp.checked` event records the server as
-`unchanged` (`new` for a new result, `unmeasured` when the run failed); a failed run
-leaves no file. Servers named `servers`, `snapshots` or `snapshot-backup` collide with
-this storage and stay unmeasured. `wuwei doctor` warns about `report-*` directories left
-by v0.12.0, and `wuwei doctor --fix` removes the empty and clean ones and moves each
-readable one into this layout, leaving any that a pending decision still lists. A server whose
-measurement fails keeps its prior snapshot, and a check that could not run restores
-all of them, so retries cannot silently accept drift. After upgrading from v0.11.0
-the first check registers a fresh baseline per server, so drift between the last
-v0.11.0 check and the upgrade is not reported. Events contain server name, drift
-type, severity and tool name only.
-
-Run `bin/wuwei mcp check` before the first morning seat. The plan skill does this
-before the lead, and `bin/wuwei plan propose` checks again. The check exits 2 while
-any server is unmeasured, else 1 while findings await an owner decision, else 0.
-High/critical findings open an owner decision. Medium/low findings remain visible.
-
-`scanner.mcp.block` is unset by default, so no finding blocks. Set it to refuse agent and
-runtime launches and `plan propose`: a pending finding with a listed severity (exit 1), or
-any unmeasured server when the list holds `"unmeasured"` (exit 2). Everything else is a
-warning in the event log. With `guards.enforce = false` the list has no effect. The full
-v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check that could not run
-(invalid input, an interrupted check, a stale or missing record) refuses with exit 2 while
-`guards.enforce` is on. A workspace created before #351 carries `block = ["critical"]` from
-the old template; `bin/wuwei config check` names it, and deleting the line takes the
-default.
-
-For a server that stays unmeasured, you may run
-`bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and answer
-y. It records an owner decision bound to each server's definition;
-later checks report the server as proceeding unmeasured by owner decision until its
-definition changes. Briefs list today's unmeasured servers in an `MCP unmeasured:`
-header line.
-
-A new result with a queued severity opens one decision; a recheck that finds the
-same reports queues nothing more. Its `Context:` is a table with one row per finding
-(Server, Tool, Flag, Severity, Snippet, Since) and one row per unmeasured server,
-followed by `Reports:` with each report path. The snippet is redacted, limited to
-plain characters and cut to 60. Since reads `first measurement`, or
-`changed since <day>` when the server has an accepted baseline.
-
-To answer it, run `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a host terminal
-and answer y. Under
-`observe` and `guarded` the planner asks it in the session and records the answer with
-the same command. The command writes `Outcome:`, `Decided-by: owner` and a
-`Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line
-into the record. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or pass
-`bin/wuwei --workspace <path> mcp decide ...`. On `proceed`
-it stores the accepted `[server, digest]` reports as the baseline in an
-`accepted-*.json` record and re-runs the check, so those findings do not queue again
-while the report stays the same. `defer` keeps the gate as it is, and a later
-`proceed` still works. Agent tools cannot invoke this owner command (its `--help` is
-allowed). A decision file or forged event alone never clears a flag. Confirmation
-cannot excuse exit 2. Pending findings and report references survive rechecks
-and day rollover. The host terminal follows the local friction boundary in
-threat model 9.1; remote authenticated decisions remain M5 work.
+While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei plan propose` reads the lead's candidates, each with a goal or `unplanned` mark, a `score` object and one `evidence_lines` entry per score component, and orders them by the framework. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one. Discovery runs at the morning plan; after the gate, an item joins with `bin/wuwei plan add <item> --goal G-n`.
 
 ## Running the watch
 

@@ -408,25 +408,6 @@ def test_shepherd_role_is_recorded(root):
     assert row['role'] == 'shepherd'
 
 
-class Terminal(io.StringIO):
-    def isatty(self):
-        return True
-
-
-def test_caller_reads_the_planner_from_state(root, monkeypatch):
-    # #599: no WUWEI_SESSION_ID and no terminal on stdin is the planner's Bash.
-    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
-    monkeypatch.setattr(sys, 'stdin', io.StringIO())
-    assert sessions.caller(root) is None  # no planner registered
-    assert main(['plan', 'session', 'planner-1']) == 0
-    assert sessions.caller(root) == 'planner-1'
-    monkeypatch.setattr(sys, 'stdin', Terminal())
-    assert sessions.caller(root) is None
-    assert sessions.caller(root, card=True) == 'planner-1'
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'other')
-    assert sessions.caller(root) == sessions.caller(root, card=True) == 'other'
-
-
 def test_session_start_flags_the_env_file(root, monkeypatch, tmp_path_factory):
     # #599: session.seen says whether SessionStart could export the session id.
     monkeypatch.setenv('CLAUDE_ENV_FILE', str(tmp_path_factory.mktemp('env') / 'env.sh'))

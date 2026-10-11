@@ -238,7 +238,6 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 # Only these root settings are tunable, and only before morning approval.
 OWNER_FIELDS = frozenset({'cap', 'seat_policy'})
 STATE_PRODUCERS = {
-    'mcp': 'wuwei mcp check or owner host decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
     'cap': 'wuwei plan approve or wuwei dispatch next --all',
@@ -258,8 +257,6 @@ STATE_PRODUCERS = {
     'pr_action_done': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
-    'discovery_candidates': 'wuwei dispatch discovery',
-    'intraday_proposals': 'wuwei plan add',
     'seat_findings': 'wuwei note --fix',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
@@ -344,7 +341,6 @@ def _producer_error(parts):
                     'approved_as': 'wuwei plan approve or wuwei plan add',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
                     'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
-                    'docs': 'wuwei plan set or wuwei docs page',
                     'disposition': 'wuwei plan carry, park or resume, wuwei dispatch next or wuwei build',
                     'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
                         parts[2], 'its dedicated command')

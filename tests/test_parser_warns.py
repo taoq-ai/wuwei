@@ -12,7 +12,7 @@ from wuwei import shell
 
 S1 = 'cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done'
 S2 = 'ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml'
-S3 = 'W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check'
+S3 = 'W=$(cat .wuwei/executable); $W plan session abc --take-over; $W next'
 S4 = ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
       'print(open("config.toml").read())\'')
 S5 = 'mkdir -p ../scratch && cd ../scratch && ls'

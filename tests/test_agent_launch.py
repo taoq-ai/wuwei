@@ -7,7 +7,7 @@ import os
 import pytest
 
 from test_brief import day, brief, set_seats
-from wuwei import registry, state
+from wuwei import registry, state, workspace
 
 
 @pytest.fixture
@@ -394,9 +394,9 @@ def test_subagent_stop_resolves_runtime_id_from_brief(launch, monkeypatch, block
         assert state.read_state(day[0])['seats']['runtime-id']['status'] == 'running'
 
 
-def test_builder_stop_requests_discovery(launch, monkeypatch):
+def test_builder_stop_requests_no_discovery(launch, monkeypatch):
+    # #843: no intraday intake; a builder stop records the stop and nothing about discovery.
     from wuwei.guards import agent_launch
-    from wuwei import dispatch
     day, payload = launch
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     assert check(payload) == (0, '')
@@ -405,60 +405,11 @@ def test_builder_stop_requests_discovery(launch, monkeypatch):
     transcript = day[0] / 'builder.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': payload['tool_input']['prompt']}}) + '\n')
-    seen = []
-    monkeypatch.setattr(dispatch, 'discovery', lambda trigger, root: seen.append((trigger, root)))
     stop = {'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
             'agent_transcript_path': str(transcript)}
     assert agent_launch.stop(stop) == (0, '')
-    assert seen == [('seat-free', day[0])]
-
-
-def test_builder_stop_reports_unmeasured_discovery(launch, monkeypatch):
-    from wuwei.guards import agent_launch
-    from wuwei import dispatch
-    day, payload = launch
-    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    assert check(payload) == (0, '')
-    state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
-                       day[0], reserved=False)
-    transcript = day[0] / 'builder.jsonl'
-    transcript.write_text(json.dumps({'type': 'user', 'message': {
-        'content': payload['tool_input']['prompt']}}) + '\n')
-    monkeypatch.setattr(dispatch, 'discovery',
-                        lambda trigger, root: (_ for _ in ()).throw(OSError('unreadable queue')))
-    code, reason = agent_launch.stop({
-        'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
-        'agent_transcript_path': str(transcript)})
-    assert (code, reason) == (2, 'discovery unmeasured: unreadable queue')
     assert state.read_state(day[0])['seats']['gate']['status'] == 'stopped'
-    event = json.loads((day[1] / 'events.jsonl').read_text().splitlines()[-1])
-    assert event['kind'] == 'discovery.unmeasured'
-    assert 'unreadable queue' in event['payload']['reason']
-
-
-def test_builder_stop_retry_does_not_repeat_discovery_failure(launch, monkeypatch):
-    from wuwei.guards import agent_launch
-    from wuwei import dispatch
-    day, payload = launch
-    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    assert check(payload) == (0, '')
-    state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
-                       day[0], reserved=False)
-    transcript = day[0] / 'builder.jsonl'
-    transcript.write_text(json.dumps({'type': 'user', 'message': {
-        'content': payload['tool_input']['prompt']}}) + '\n')
-    calls = []
-    def failing_discovery(trigger, root):
-        calls.append(trigger)
-        raise OSError('tracker down')
-    monkeypatch.setattr(dispatch, 'discovery', failing_discovery)
-    stop = {'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
-            'agent_transcript_path': str(transcript)}
-    assert agent_launch.stop(stop) == (2, 'discovery unmeasured: tracker down')
-    assert agent_launch.stop({**stop, 'stop_hook_active': True}) == (0, '')
-    assert calls == ['seat-free']
-    events = [json.loads(line) for line in (day[1] / 'events.jsonl').read_text().splitlines()]
-    assert sum(event['kind'] == 'discovery.unmeasured' for event in events) == 1
+    assert 'discovery' not in (day[1] / 'events.jsonl').read_text()
 
 
 def test_head_rechecked_after_memory_probe(launch, monkeypatch):
@@ -586,59 +537,12 @@ def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
     assert check(payload) == (0, '')
 
 
-def test_mcp_gate_is_its_own_guard_record(launch, monkeypatch):
-    # The MCP launch gate is its own record; mcp.cached reads guards.enforce.
-    from wuwei import mcp
-    from wuwei.guards import agent_launch
-    assert [(g.event, g.matcher, g.check.__name__) for g in agent_launch.GUARDS] == [
-        ('PreToolUse', 'Agent', 'check_mcp'), ('PreToolUse', 'Agent', 'check'),
-        ('SubagentStop', None, 'stop')]
-    day, payload = launch
-    refused = registry.Result(1, reason='MCP registry findings: x')
-    calls = []
-    monkeypatch.setattr(mcp, 'cached', lambda root: calls.append(root) or refused)
-    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 8 * 1024**3)
-    assert agent_launch.check_mcp(payload) == (1, 'MCP registry findings: x')
-    assert len(calls) == 1
-    assert agent_launch.check(payload) == (0, '')
-    assert len(calls) == 1
-    other = {**payload, 'tool_input': {**payload['tool_input'], 'subagent_type': 'Explore'}}
-    assert agent_launch.check_mcp(other) == (0, '')
-
-
-@pytest.mark.parametrize('enforce', ['true', 'false'])
-def test_mcp_gate_off_without_scanner(launch, monkeypatch, enforce):
-    # #424: adapters.scanner = "none" turns the registry gate off whatever guards.enforce says.
-    from wuwei import mcp
-    from wuwei.guards import agent_launch
-    (root, _, _, _), payload = launch
-    (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
-    with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[guards]\nenforce = {enforce}\n')
-    assert agent_launch.check_mcp(payload) == (0, mcp.NO_SCANNER)
-
-
-def test_hook_denies_launch_on_the_mcp_gate(day, monkeypatch, capsys):
-    import io
-    import sys
-    from wuwei import mcp
-    from wuwei.__main__ import main
-    monkeypatch.setattr(mcp, 'cached', lambda root: registry.Result(1, reason='MCP registry findings: x'))
-    payload = {'cwd': str(day[0]), 'session_id': 'example', 'transcript_path': 'transcript.jsonl',
-               'hook_event_name': 'PreToolUse', 'tool_name': 'Agent',
-               'tool_input': {'prompt': 'launch without brief', 'description': 'build', 'subagent_type': 'builder'}}
-    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
-    assert main(['hook', 'PreToolUse']) == 2
-    reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
-    assert reason == 'MCP registry findings: x'
-
-
-@pytest.mark.parametrize('settings,ticket,code', [
-    ('[adapters]\ntracker = "linear"\n', None, 1),
-    ('[adapters]\ntracker = "linear"\n', 'ENG-1', 0),
-    ('', None, 0),
+@pytest.mark.parametrize('settings,ticket', [
+    ('[adapters]\ntracker = "linear"\n', None),
+    ('[adapters]\ntracker = "linear"\n', 'ENG-1'),
+    ('', None),
 ])
-def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, code):
+def test_launch_needs_no_ticket(launch, monkeypatch, settings, ticket):
     day, payload = launch
     root = day[0]
     from wuwei.guards import agent_launch
@@ -648,10 +552,9 @@ def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, cod
     if ticket:
         state._write_state(lambda data: data.update(tickets={'X': {'id': ticket, 'source': 'set'}}),
                            root, reserved=False)
-    actual, message = check(payload)
-    assert actual == code, message
-    assert ('X has no ticket' in message) == (code == 1)
-    assert bool(state.read_state(root)['seats']) == (code == 0)
+    assert check(payload) == (0, '')
+    assert state.read_state(root)['seats']
+    assert 'has no ticket' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 
 def test_seat_launched_records_free_mib_and_running(launch, monkeypatch):

@@ -269,7 +269,7 @@ def test_ping_failure_is_logged_by_host_only(ws, capsys):
 def test_watch_tick_runs_the_heartbeat_after_the_clock(ws):
     from wuwei import merge
     root, service, _, monkeypatch = ws
-    for module, name in ((watch, 'poll'), (watch, 'pending_discovery'), (merge, 'poll')):
+    for module, name in ((watch, 'poll'), (merge, 'poll')):
         monkeypatch.setattr(module, name, lambda root: 0)
     monkeypatch.setattr(watch, 'sweep', lambda root, watch_health=None: 0)
     monkeypatch.setattr(heartbeat, 'beat', BEAT)

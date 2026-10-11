@@ -27,10 +27,10 @@ def register(subparsers):
     approve.add_argument('--import-yesterday', action='store_true')
     approve.add_argument('--note', help="The owner's own words on the gate card; recorded on each approved "
                                         'item and quoted in its briefs as Approved as:')
-    add = actions.add_parser('add', help='Admit an item after the morning gate: a discovery candidate, '
-                                         'or an item the owner names with --goal')
+    add = actions.add_parser('add', help='Admit an item after the morning gate: an item the owner names '
+                                         "with --goal, or a seat's finding")
     add.add_argument('item')
-    add.add_argument('--goal', help='Goal id for an item the owner names (not a discovery candidate)')
+    add.add_argument('--goal', help='Goal id for an item the owner names')
     add.add_argument('--size', type=float, help="Its size in the framework's unit (default 1)")
     add.add_argument('--title', help='Short title for the record (default: the item id)')
     add.add_argument('--ticket', help='Existing tracker ticket id when a tracker is set')
@@ -45,12 +45,22 @@ def register(subparsers):
     actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
                        ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false')
+                                            'ticket=<id> or owner_merge=true|false')
     assign.add_argument('item', help='The item id')
-    assign.add_argument('assignment', help='spec=required|skipped, docs=<page>|new|none, '
-                                           'ticket=<id> or owner_merge=true|false')
-    assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
+    assign.add_argument('assignment', help='spec=required|skipped, ticket=<id> or owner_merge=true|false')
+    assign.add_argument('--reason', help='Why; required for spec=skipped')
     parser.set_defaults(func=run)
+
+
+def candidate_template(goal, framework):
+    components = ('value', 'time_criticality', 'risk_reduction', 'job_size') if framework == 'wsjf' else ('reach', 'impact', 'confidence', 'effort')
+    score = ({'value': 5, 'time_criticality': 3, 'risk_reduction': 2, 'job_size': 2}
+             if framework == 'wsjf' else
+             {'reach': 10, 'impact': 1, 'confidence': 0.8, 'effort': 2})
+    return {'id': 'EXAMPLE-1', 'goal': goal, 'evidence': 'Replace with source path',
+            'scope': 'Replace with scope', 'overlap': 'none', 'track': 'SLICE',
+            'flags': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': False},
+            'score': score, 'evidence_lines': {key: 'Replace with evidence' for key in components}}
 
 
 def run(args):
@@ -62,7 +72,6 @@ def run(args):
                     {'id': 'G-1', 'outcome': 'Replace with the outcome',
                      'measure': 'Replace with the measure', 'target': 'Replace with the target',
                      'date': workspace.now().date().isoformat(), 'priority': 1})
-            from wuwei.commands.rank import candidate_template
             framework = workspace.load_config(root)['prioritisation']['framework']
             from wuwei.dispatch import host
             print(json.dumps({'goals': [goal], 'cap': host(root, workspace.load_config(root))['cap'],
@@ -87,18 +96,15 @@ def run(args):
             key, _, value = args.assignment.partition('=')
             if key == 'spec':
                 print(plan.set_spec(args.item, args.assignment, args.reason))
-            elif key == 'docs' and value:
-                from wuwei import docs
-                print(docs.assign(args.item, value, args.reason))
             elif key == 'owner_merge':
                 print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
                 print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
-                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '
+                raise ValueError(f'plan set: {args.assignment} is not a spec, ticket or owner_merge value; run '
+                                 f'bin/wuwei plan set {args.item} spec=required|skipped, '
                                  'ticket=<id> or owner_merge=true|false. '
-                                 'Pass --reason "<why>" with spec=skipped or docs=none')
+                                 'Pass --reason "<why>" with spec=skipped')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             plan.dispose(args.item, outcome, args.reason)

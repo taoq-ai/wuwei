@@ -242,10 +242,6 @@ def next_action(item, brief=None, worktree=None, *, root=None):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
-    from wuwei import tracker
-    status, reason = tracker.check(data, config, item, data['items'][item])
-    if status == 'missing':
-        raise PortExit(1, reason)
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record

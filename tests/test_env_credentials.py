@@ -227,7 +227,6 @@ def test_hook_loads_payload_workspace_and_keeps_outside_clean(case, monkeypatch,
 
 def test_init_and_upgrade_provision_private_env(tmp_path, monkeypatch):
     from wuwei.commands import init
-    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
     args = Namespace(path=str(tmp_path), upgrade=False, dry_run=False)
     assert init.run(args) == 0
     path = tmp_path / '.wuwei/env'
@@ -282,8 +281,6 @@ def test_entry_paths(case, entry, monkeypatch):
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
     ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
-    ('', '[docs]\nsystem="notion"\n', ('NOTION_TOKEN',)),
-    ('', '[docs]\nsystem="confluence"\n', ('CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')),
     ('tracker="jira"', '', ('JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
     ('tracker="github"', '', ('GITHUB_TRACKER_TOKEN',)),
 ])
@@ -393,7 +390,7 @@ def test_upgrade_loads_credentials_before_adapter_calls(case, monkeypatch):
     from wuwei.commands import init
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     observed = []
-    monkeypatch.setattr(init, '_register_mcp', lambda root: observed.append(
+    monkeypatch.setattr(init, '_finish', lambda root: observed.append(
         os.environ.get('LINEAR_API_KEY')) or 0)
     assert main(['init', '--upgrade']) == 0
     assert observed == [KEY]
@@ -716,7 +713,6 @@ def test_no_tokens_is_clean_without_a_scope_read(host, capsys):
 
 def test_fresh_init_prints_publishing_layout_once(tmp_path, monkeypatch, capsys):
     from wuwei.commands import init
-    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
     assert main(['init', str(tmp_path)]) == 0
     output = capsys.readouterr().out
     assert 'default_branch' in output and 'GH_TOKEN' in output and 'wuwei config check' in output
@@ -752,11 +748,9 @@ def test_config_check_reports_owner_name(case, capsys):
     assert 'owner.name: set' in output and outward.OWNER_UNSET not in output
 
 
-def test_docs_credentials(case, monkeypatch, capsys):
+def test_notion_and_confluence_credentials_are_scrubbed(case, monkeypatch):
+    # #841: the docs adapters are gone; a workspace env that still holds these never reaches a seat.
     from wuwei import env
-    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n[docs]\nsystem="notion"\n')
-    assert main(['config', 'check']) == 1
-    assert 'docs.notion: NOTION_TOKEN: missing' in capsys.readouterr().out
     for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
         monkeypatch.setenv(name, KEY)
     assert not {'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'} & set(env.child_environment())

@@ -1,6 +1,5 @@
-"""Read discovery sources through ports and decide intraday eligibility."""
+"""Read discovery sources through ports for the morning plan."""
 
-from fnmatch import fnmatchcase
 import re
 
 from wuwei import obligations, registry, state, workspace
@@ -34,34 +33,6 @@ def dedupe(sources, *, tracker_ids=(), day_ids=()):
                 candidates.append({**row, 'source': name})
                 seen.add(row['id'])
     return {'sources': measured, 'candidates': candidates}
-
-
-def start_decision(item, config, confirmed_goals, *, within_budget, above_cut):
-    """Return start or owner; dispatch is the planner's responsibility."""
-    mode = config['discovery']['autostart']
-    if mode not in ('off', 'strict', 'goal'):
-        raise ValueError(f'invalid discovery.autostart; {DAMAGED}')
-    paths = item.get('paths')
-    flags = item.get('flags')
-    if paths is None or flags is None:
-        return 'owner'
-    if not isinstance(flags, dict) or any(type(value) is not bool for value in flags.values()):
-        raise ValueError(f'invalid candidate risk flags; {DAMAGED}')
-    if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-        raise ValueError(f'invalid candidate paths; {DAMAGED}')
-    never_auto = [pattern for repo in config['repos'] for pattern in repo['merge']['never_auto_paths']]
-    if (item.get('goal') not in confirmed_goals or
-            any(flags.values()) or not within_budget or
-            any(fnmatchcase('/'.join(path.split('/')[i:]), pattern)
-                for path in paths for i in range(len(path.split('/'))) for pattern in never_auto)):
-        return 'owner'
-    if item.get('track') not in ('SLICE', 'FULL'):
-        raise ValueError(f'invalid candidate track; {DAMAGED}')
-    if mode == 'off':
-        return 'tomorrow'
-    if item.get('track') != 'SLICE' or mode == 'strict' and not above_cut:
-        return 'owner'
-    return 'start'
 
 
 def discover(root=None, *, ports=None, repo=None):
@@ -219,58 +190,3 @@ def discover(root=None, *, ports=None, repo=None):
     if repo is not None:
         found['candidates'] = [row for row in found['candidates'] if row.get('repo', repo) == repo]
     return found
-
-
-def when_seat_frees(root=None, *, queue_size):
-    root = workspace.find_workspace(root)
-    if queue_size < workspace.load_config(root)['discovery']['min_queue']:
-        return discover(root)
-    return None
-
-
-def intake(root=None, *, trigger, found=None):
-    """Persist discovery evidence, then apply the same gate as plan add."""
-    if trigger not in ('sweep', 'seat-free'):
-        raise ValueError('unknown discovery trigger; use sweep or seat-free')
-    root = workspace.find_workspace(root)
-    found = discover(root) if found is None else found
-    if not isinstance(found, dict) or not isinstance(found.get('candidates'), list):
-        raise ValueError(f'invalid discovery result; {DAMAGED}')
-    candidates = {}
-    for row in found['candidates']:
-        if not isinstance(row, dict) or not isinstance(row.get('id'), str):
-            raise ValueError(f'invalid discovery candidate; {DAMAGED}')
-        candidates[row['id']] = row
-
-    def save(data):
-        data.setdefault('discovery_candidates', {}).update(candidates)
-    state._write_state(save, root, reserved=False, kind='discovery.intake',
-                       payload={'trigger': trigger, 'items': sorted(candidates)})
-    result = {'started': [], 'owner': [], 'tomorrow': []}
-    day = state.read_state(root)
-    if not day['gate_approved']:
-        return result
-    from wuwei import plan
-    for item in candidates:
-        if (item in day['items'] or item in day.get('intraday_proposals', {})
-                or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', item)):
-            continue
-        try:
-            action = plan.add(item, root)['action']
-        except ValueError as exc:
-            def propose(data):
-                data.setdefault('intraday_proposals', {})[item] = {
-                    'decision': 'owner', 'candidate': candidates[item], 'reason': str(exc)}
-            state._write_state(propose, root, reserved=False, kind='plan.proposed',
-                               payload={'item': item, 'decision': 'owner', 'reason': str(exc)})
-            action = 'owner'
-        if action == 'build next':
-            from wuwei.commands import build
-            try:
-                build.next_action(item, root=root)
-            except ValueError as exc:
-                if not str(exc).startswith('no logged builder brief for '):
-                    raise
-                state.append_event('build.requested', {'item': item}, root)
-        result['started' if action == 'build next' else action].append(item)
-    return result

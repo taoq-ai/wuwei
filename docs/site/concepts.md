@@ -108,32 +108,23 @@ A lint checks outward text for its mechanical tells before it is sent.
 ### Spec engine
 
 The tool each non-trivial item is specified with before it is built: spec-kit (default), superpowers or OpenSpec.
-`[spec] engine` picks it; the hooks keep its steps in order in the item's worktree.
+`[spec] engine` picks it; the build loop and `wuwei dispatch next` keep the gates until its steps are done.
 
 ### Strict mode
 
-`[spec] mode = "strict"` (default): source edits and the gates wait until the engine's steps are done.
+`[spec] mode = "strict"` (default): the gates wait until the engine's steps are done.
 `advisory` warns once per item and day instead; `off` checks nothing.
-
-### Docs system
-
-Where the team's documentation lives: Notion, Confluence, Markdown files in the repository, or none.
-WUWEI writes an item's page there from its records, never from memory.
-
-### Docs obligation
-
-An item tiered standard or full must record what it did to the docs before its quality gate passes.
-The value is a page, `new`, or `none` with a reason; the day close checks it again.
 
 ### Ticket
 
 The tracker issue an item is built under: a Linear, Jira or GitHub id such as `ENG-12`.
-With a tracker set, no item is built, reviewed or launched without one.
+An item needs none to start, build, pass its gates or raise its PR.
 
 ### Tracker hygiene
 
-The rule that every item has a ticket, bugs found midway become linked tickets,
-and the item's decisions, progress, verdicts, pull request and close land on its ticket.
+An item's ticket follows its lifecycle as duties (claim, in review with the PR link, done
+with the merged note), bugs found midway become linked tickets, and the item's progress,
+verdicts and carried or parked notes land on its ticket.
 
 ### Fold
 
@@ -160,8 +151,6 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 The day report's `## Shadow` section groups the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
-MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
-
 ## Owner-only actions
 
 An owner-only deploy, release or `deploy.deny` publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and prints an Owner step card for that exact command. The planner asks you the card. Your Yes lets that same command run today; any other command asks its own card. No config line and no hook answers for you.
@@ -183,7 +172,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm` and `wuwei mcp decide`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. `wuwei doctor` lists answered cards whose record never ran. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei state recover` and `wuwei integrity reconfirm`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Outward sends
 
@@ -191,7 +180,7 @@ A message to other people goes out through an MCP tool only when that exact tool
 
 A write whose every destination is yours is local, never an outward send: your Slack DM, your own canvas or page, a mail only to you. It passes without `outward.allow`, and the lint skips its third-person rules. A tool that acts only on your machine, such as the terminal, is local too. See [your own surfaces](configuration.md#your-own-surfaces).
 
-WUWEI's own duties go through its adapter ports, which you configure: review pings, tracker comments and tickets, docs pages, the day report and PR thread replies. Each passes the canary check and the outward lint, then goes out.
+WUWEI's own duties go through its adapter ports, which you configure: review pings, tracker comments and tickets, the day report and PR thread replies. Each passes the canary check and the outward lint, then goes out.
 
 ## Memory
 
@@ -207,17 +196,22 @@ The day starts in parallel. WUWEI derives CAP from the host, by one of two rules
 
 ## Tickets and comments
 
-With `adapters.tracker` set and `tracker.required` on, one rule decides whether an item may
-run: it has a ticket, or its tier is in `tracker.skip_tiers`. `plan approve`, `plan add`,
-`build next`, `dispatch next` and the seat launch all ask it and give the same reason. A
-candidate's `ticket` field, an item discovered from the tracker backlog,
+A missing ticket never stops an item: no launch, gate, raise or close refuses over one.
+A candidate's `ticket` field, an item discovered from the tracker backlog,
 `bin/wuwei tracker create <item>` and `bin/wuwei plan set <item> ticket=<id>` record one.
-The lead proposes a ticket per item: an open one from the backlog, or a new one from the
-item's record. The plan shows it on a `Ticket:` line and the gate card lists it. Below
-strict, Approve opens the tickets the plan proposed and records the links, so no item waits
-on a terminal command; `plan add` opens an owner-named item's ticket.
-Under strict the commands are printed for a host terminal. A seat never opens an item
-ticket: the planner does after your card answer.
+The lead links an open backlog ticket when one is the item's work; the plan shows it on a
+`Ticket:` line and the gate card lists it.
+
+While `adapters.tracker` is not `none`, `plan approve` and `plan add` open the ticket of a
+new item through the `tracker.create` duty; a failure is a skipped duty, never a refusal.
+An item with a ticket then gets three more duties: `tracker.claim` at its first build (assign, in progress), `tracker.in_review` when its PR is
+raised or claimed (the move and a `Pull request: <pr>.` comment) and `tracker.done` when the
+PR merges (the move and a `Merged in <pr>.` comment). Each writes `duty.due` before the
+tracker call and `duty.done` when every step returned 0. When the adapter call fails after
+its retry the duty is recorded `duty.skipped` with the error; close accepts it and the day
+report lists it under Skipped duties with its `bin/wuwei tracker move <item> <duty>` retry.
+A duty still due is a `duty` row in `wuwei next`, beside the build launches and also for a
+merged item, and `wuwei close` waits on it. With `adapters.tracker = "none"` no duty counts.
 Builders and sentinels open a linked bug with
 `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <role>` instead
 of widening the item; the planner opens retro follow-ups with `--follow-up`. The finder files it.
@@ -226,11 +220,11 @@ once per day and writes one `tracker.created` event naming the seat; the retro's
 seats filed section lists who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
-decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
-request and the close outcome. The watch sweep and `wuwei close` run it. Each goes out
-through the tracker port after the outward lint. After `tracker.max_per_item_per_day`
-comments the last one is a fold. `wuwei close` refuses while an item merged today has a
-ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
+progress (phases, seat starts and stops, fast checks), gate verdicts and the carried or
+parked note; the PR link and the merged note are the duties' own comments. The watch sweep
+and `wuwei close` run it. Each goes out through the tracker port after the outward lint.
+After `tracker.max_per_item_per_day` comments the last one is a fold, filed under the first
+folded kind.
 
 ## PR ownership
 

@@ -21,15 +21,6 @@ directory, a symlink or a deeper `.in_use` is still a finding. Install the new r
 run `bin/wuwei init --upgrade`. If it still refuses, `bin/wuwei integrity check` names the
 files. Doctor's `in_use` row counts the markers.
 
-### The MCP gate blocks, or names a server unmeasured
-
-`bin/wuwei mcp check` reports each server on its own. A project server you never approved is
-`not attached (unapproved)` and is never started; an `unpinned launcher` is not run; an
-unreachable or slow server is unmeasured by name. Under `guarded` only a critical finding or
-a check that could not run blocks, and an unmeasured server is a warning in the event log. Accept one with
-`bin/wuwei mcp decide proceed-unmeasured <server>`, or give a slow one more time with
-`scanner.mcp.timeout_seconds` ([MCP registry checks](configuration.md#mcp-registry-checks-s3)).
-
 ### config.toml does not load
 
 Every tool is refused with the parse error, except `ToolSearch` and a `Read`, `Grep` or
@@ -108,15 +99,6 @@ it records.
 `bin/wuwei state recover` restores an unreadable `state.json` from its snapshot; see
 [state recovery](reference.md#state-recovery). Owner-only commands are listed under
 [host terminal actions](reference.md#host-terminal-actions).
-
-### An MCP finding on a server you installed yourself
-
-Under `guarded` the day proceeds and the finding stays open until
-`bin/wuwei mcp decide D-<n> proceed` (or `defer`). Under `strict` seats wait for that
-command; the decision holds the findings table. A `tool_redirect`
-hit on a description that points to a sibling tool of the same server is a known
-scanner heuristic issue, https://github.com/taoq-ai/ziran/issues/447. WUWEI reports
-the severity the scanner gives.
 
 ## Seat launch contract
 

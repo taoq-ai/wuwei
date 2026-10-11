@@ -103,9 +103,6 @@ def _hint(path):
                 '<path> <value> or wuwei state transition <item> <phase>.')
     if tail[:1] == ('days',) and tail[-1:] == ('events.jsonl',):
         return 'events.jsonl is protected: append with the wuwei CLI, wuwei event <kind> [payload].'
-    if tail[:1] == ('ziran',):
-        return ('Registry records are protected: wuwei mcp check writes them and the owner '
-                'runs wuwei mcp decide in a host terminal, outside agent tools.')
     if tail == ('memory', 'goals.md'):
         return ('goals.md is protected: plan approve records the goals the morning gate approved; '
                 "other edits are the owner's, outside agent tools.")

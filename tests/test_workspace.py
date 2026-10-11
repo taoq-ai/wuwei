@@ -76,22 +76,6 @@ def test_init_layout(tmp_path, explicit):
         'template_version = ""', f'template_version = "{version}"', 1)
 
 
-def test_init_without_scanner_exits_0(tmp_path, monkeypatch, capsys):
-    # #424: the template scanner is "none", so the registry gate is off with one line.
-    from argparse import Namespace
-    from wuwei import mcp
-    from wuwei.commands import init
-    project = tmp_path / 'project'
-    project.mkdir()
-    (project / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
-    user = Path.home() / '.claude.json'
-    user.write_text(json.dumps({'projects': {str(project.resolve()): {'enabledMcpjsonServers': ['docs']}}}))
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    assert init.run(Namespace(path=str(project))) == 0
-    err = capsys.readouterr().err
-    assert err.count(mcp.NO_SCANNER) == 1 and 'unmeasured' not in err
-
-
 @pytest.mark.parametrize('flags,enforce', [(('--shadow',), False), ((), True)])
 def test_init_shadow(tmp_path, flags, enforce):
     # #837: --shadow writes guards.enforce = false; --posture is gone.
@@ -233,23 +217,18 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['max_length'] == {}
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
-            'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
-            'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': []}},
+            'plugins_file': '~/.claude/plugins/installed_plugins.json'}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
-        'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
-                    'required': True, 'skip_tiers': [], 'strict_close': True,
                     'create': ['bugs', 'triage', 'follow-ups'],
                     'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
-                    'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+                    'max_per_item_per_day': 10,
                     'project': '', 'board': '', 'auth': 'token'},
-        'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
-                 'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
                  'rate_limit_wait_seconds': 120}, 'profile': 'strict',
@@ -285,8 +264,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'redactor': 'builtin',
-                     'docs': 'none'},
+                     'transcripts': 'none', 'redactor': 'builtin'},
     }
     outward['allow'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['allow']
@@ -398,8 +376,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
     ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
-    ('[scanner.mcp]\nblock = ["severe"]', 'scanner.mcp.block'),
-    ('[scanner.mcp]\ntimeout_seconds = 0', 'scanner.mcp.timeout_seconds'),
+    ('[scanner.mcp]\nplugins_file = 1', 'scanner.mcp.plugins_file'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
     write_config(tmp_path, text)
@@ -472,29 +449,14 @@ def test_outward_humanize_keys(tmp_path):
     assert workspace.load_config(tmp_path)['outward']['humanize'] is True
 
 
-def test_docs_config(tmp_path):
+def test_retired_docs_config_only_warns(tmp_path):
+    # #841: the docs system is gone; a former [docs] table and adapters.docs only warn.
     from wuwei import workspace
-    write_config(tmp_path, '')
-    config = workspace.load_config(tmp_path)
-    assert config['docs'] == {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '',
-                              'root': 'docs', 'publish': ['report', 'retro'], 'auto': [],
-                              'strict_close': True}
-    assert config['adapters']['docs'] == 'none'
-    write_config(tmp_path, '[docs]\nsystem = "wiki"\n')
-    with pytest.raises(workspace.ConfigError, match='docs.system') as error:
-        workspace.load_config(tmp_path)
-    assert 'notion' in str(error.value) and 'adapters.docs' not in str(error.value)
-    for text in ('required_tiers = ["huge"]', 'auto = ["dm"]'):
-        write_config(tmp_path, f'[docs]\n{text}\n')
-        with pytest.raises(workspace.ConfigError):
-            workspace.load_config(tmp_path)
-    write_config(tmp_path, '[adapters]\ndocs = "notion"\n')
+    write_config(tmp_path, '[adapters]\ndocs = "notion"\n[docs]\nsystem = "notion"\n')
     warnings = []
     config = workspace.load_config(tmp_path, warnings=warnings)
-    assert config['adapters']['docs'] == 'none' and 'unknown key adapters.docs' in warnings[0]
-    (tmp_path / '.wuwei/config.toml').write_text(
-        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
-    assert workspace.load_config(tmp_path)['docs']['system'] == 'none'
+    assert 'docs' not in config and 'docs' not in config['adapters']
+    assert any('adapters.docs' in text for text in warnings) and any(' docs' in text for text in warnings)
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):
@@ -1553,19 +1515,18 @@ def test_tracker_hygiene_keys(tmp_path):
     assert config['adapters']['tracker'] == 'none'
     assert config['tracker'] == {
         'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
-        'required': True, 'skip_tiers': [], 'strict_close': True,
         'create': ['bugs', 'triage', 'follow-ups'],
         'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
-        'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+        'max_per_item_per_day': 10,
         'project': '', 'board': '', 'auth': 'token'}
-    for text in ('skip_tiers = ["LIGHT"]', 'auto = ["merge"]', 'log = ["items"]',
+    for text in ('log = ["items"]',
                  'create = ["items"]', 'max_per_item_per_day = 0'):
         write_config(tmp_path, f'[tracker]\n{text}\n')
         with pytest.raises(workspace.ConfigError, match='tracker'):
             workspace.load_config(tmp_path)
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
-    assert workspace.load_config(tmp_path)['tracker']['required'] is True
+    assert 'required' not in workspace.load_config(tmp_path)['tracker']
 
 
 def test_template_derives_cap_and_seats(tmp_path):

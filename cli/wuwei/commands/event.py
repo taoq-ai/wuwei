@@ -23,10 +23,7 @@ EVENT_PRODUCERS = {
     'spec.override': 'owner host wuwei plan set',
     'guard.would_refuse': 'wuwei hook (guards.enforce = false) or wuwei pr raise',
     'traces.noted': 'wuwei sweep', 'traces.unmatched': 'wuwei sweep',
-    'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build, wuwei dispatch opinion or SubagentStop',
-    'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
-    'mcp.decided': 'owner host MCP decision',
     'pr.changed': 'wuwei watch',
     **{f'shepherd.{kind}': 'wuwei sweep obligations --headless or wuwei shepherd'
        for kind in ('overnight', 'swept')},
@@ -36,7 +33,7 @@ EVENT_PRODUCERS = {
     'state.recovered': 'owner host wuwei state recover',
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
     'cap.derived': 'wuwei dispatch next --all',
-    'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
+    'plan.added': 'wuwei plan add',
     'finding.noted': 'wuwei note --fix',
     'plan.session': 'wuwei plan session', 'gate.asked': 'wuwei hook PostToolUse', 'brief written': 'wuwei brief',
     'session.seen': 'wuwei hook SessionStart, Stop and SubagentStop',
@@ -60,11 +57,11 @@ EVENT_PRODUCERS = {
     'reviewer.unresolved': 'wuwei pr raise, ping or reviewers',
     'day.close_requested': 'wuwei close', 'day.closed': 'wuwei close', 'next.action': 'wuwei next',
     'build.parked': 'wuwei build', 'build.held': 'wuwei build', 'build.released': 'wuwei build',
-    'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
-    'discovery.intake': 'wuwei dispatch discovery',
+    'gate.received': 'wuwei dispatch receive',
     'tracker.call': 'wuwei tracker lifecycle',
+    **{f'duty.{step}': 'wuwei tracker lifecycle' for step in ('due', 'done', 'skipped')},
     'tracker.created': 'wuwei tracker create or wuwei plan approve',
-    'tracker.skipped': 'wuwei plan approve or add', 'tracker.folded': 'wuwei tracker log',
+    'tracker.folded': 'wuwei tracker log',
     'tracker.logged': 'wuwei tracker log', 'plan.set': 'wuwei plan set or wuwei init --upgrade',
     'steward.run': 'wuwei steward run',
     'calibration.drift': 'wuwei steward run',
@@ -74,8 +71,6 @@ EVENT_PRODUCERS = {
     'config.newer_template': 'wuwei hook PreToolUse',
     **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
        for action in ('skipped', 'unsent', 'shared', 'ready', 'off')},
-    'docs.set': 'wuwei plan set or wuwei docs page',
-    'docs.written': 'wuwei docs', 'docs.exempt': 'wuwei dispatch next',
 }
 
 

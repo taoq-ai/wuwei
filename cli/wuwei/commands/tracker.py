@@ -2,7 +2,7 @@
 
 import sys
 
-from wuwei import tracker, workspace
+from wuwei import state, tracker, workspace
 from wuwei.exits import UNRUN
 
 
@@ -22,13 +22,13 @@ def register(subparsers):
     create.add_argument('--seat', choices=('builder', 'sentinel-arch', 'sentinel-goal', 'sentinel-quality',
                                            'sentinel-security'),
                         help='Your seat role, recorded on the event (#644)')
-    actions.add_parser('log', help="Write today's decisions, progress, verdicts, PR and close "
-                                   'as ticket comments')
+    actions.add_parser('log', help="Write today's progress, verdicts and carried or parked "
+                                   'notes as ticket comments')
     done = actions.add_parser('done', help="Move the item's ticket to the done state")
     done.add_argument('item')
-    move = actions.add_parser('move', help="Move the item's ticket to a lifecycle state")
+    move = actions.add_parser('move', help="Run the item's tracker duty: claim, in_review or done")
     move.add_argument('item')
-    move.add_argument('state', choices=('in_review', 'done'))
+    move.add_argument('state', choices=('claim', 'in_review', 'done'))
     parser.set_defaults(func=run)
 
 
@@ -42,6 +42,11 @@ def run(args):
             action = 'done' if args.action == 'done' else args.state
             result = dispatch.tracker_call(args.item, action, root)
             reason = f'{args.item}: ticket {action}' if result.exit == 0 else result.reason
+        elif (not args.category and workspace.load_config(root)['adapters']['tracker'] != 'none'
+              and args.subject in state.read_state(root)['items']):
+            from wuwei import dispatch  # #842: a day item's own ticket is its create duty
+            result = dispatch.tracker_call(args.subject, 'create', root)
+            reason = result.reason
         else:
             result = tracker.create(root, args.subject, args.category or 'items', args.title,
                                     args.evidence, seat=args.seat)

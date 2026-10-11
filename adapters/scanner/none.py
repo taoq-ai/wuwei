@@ -13,7 +13,3 @@ def gate(result, threshold, *, root=None):
 
 def traces(file, *, root=None):
     return registry.record_none('scanner', 'traces', root)
-
-
-def mcp(servers, *, root=None):
-    return registry.record_none('scanner', 'mcp', root)

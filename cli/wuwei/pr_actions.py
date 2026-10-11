@@ -241,6 +241,9 @@ def observe(root, host, ref, config, measured):
     for name in merged:  # #647: the item's scratch goes with the confirmed merge
         # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
         shutil.rmtree(root / workspace.SCRATCH / name, ignore_errors=True)
+    from wuwei import dispatch
+    for name in merged:  # #842: a merge seen here (the owner merged on the host) runs the done duty
+        dispatch.tracker_call(name, 'done', root)
     return row
 
 

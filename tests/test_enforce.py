@@ -72,7 +72,6 @@ TABLE = [
     (fixed('agent_launch', 1, 'seat not registered: running seats 4 at host seat ceiling'), False, False),
     (fixed('agent_launch', 1, 'seat not registered: free memory 1 bytes below floor 2'), False, False),
     (fixed('agent_launch', 2, 'seat not registered: free memory unmeasured; retry'), False, False),
-    (fixed('agent_launch', 1, 'seat not registered: P-1 has no ticket: the planner proposes one'), False, False),
 ]
 
 

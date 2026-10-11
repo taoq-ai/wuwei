@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import sys
 
 from wuwei import state, workspace
 from wuwei.exits import PAYLOAD, DAMAGED
@@ -25,25 +24,6 @@ def current():
     """The calling session id that SessionStart exported, or None (host terminal)."""
     value = os.environ.get('WUWEI_SESSION_ID', '').strip()
     return value or None
-
-
-def caller(root, card=False):
-    """#599: the exported session id, else today's planner for a caller with no terminal on
-    stdin or a --card record command; None for a host terminal."""
-    if (session := current()) or (sys.stdin is not None and sys.stdin.isatty() and not card):
-        return session
-    return state.read_state(root).get('planner_session_id')
-
-
-def gate_topics(root, session_id):
-    """(topics and D-n records today's planner session asked through the gate, caller is that
-    planner); an Owner step card counts too (#831)."""
-    if not session_id:
-        return frozenset(), False  # before any state read: a host terminal has no session
-    data = state.read_state(root)
-    if session_id != data.get('planner_session_id'):
-        return frozenset(), False
-    return frozenset(data.get('sessions', {}).get(session_id, {}).get('gate_asked', ())), True
 
 
 def card_topic(card, answer):

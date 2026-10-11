@@ -313,6 +313,11 @@ def test_tracker_none_is_silent_but_tracker_failure_warns():
     from wuwei.signal import classify
     event = {'kind': 'tracker.call', 'payload': {'exit': 2, 'reason': 'tracker adapter is none'}}
     assert classify(event, {})[0] == 'silent'
+    event['payload']['reason'] = ('tracker adapter is none, so tracker updates are skipped; to reach '
+                                  'the tracker, the owner sets adapters.tracker with bin/wuwei config set')
+    assert classify(event, {})[0] == 'silent'
+    assert {classify({'kind': f'duty.{step}', 'payload': {}}, {})[0]
+            for step in ('due', 'done', 'skipped')} == {'silent'}
     event['payload']['reason'] = 'tracker call unmeasured: OSError'
     assert classify(event, {})[0] == 'warn'
 
@@ -326,7 +331,6 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
     expected = {'worktree.hooks_skipped': 'warn',
-                'mcp.finding': 'warn', 'mcp.checked': 'warn', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
@@ -354,22 +358,20 @@ def test_emitted_kinds_have_intended_tiers():
                 'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
                 'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
-                'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent', 'discovery.requested': 'silent',
-                'discovery.intake': 'silent', 'plan.added': 'silent',
-                'discovery.intake': 'silent', 'plan.added': 'silent', 'finding.noted': 'silent',
-                'plan.proposed': 'warn', 'build.requested': 'warn',
+                'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent',
+                'plan.added': 'silent', 'finding.noted': 'silent',
                 'tracker.call': 'warn',
-                'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',
+                'tracker.created': 'silent', 'tracker.folded': 'silent', 'duty.due': 'silent',
+                'duty.done': 'silent', 'duty.skipped': 'silent',
                 'tracker.logged': 'silent', 'plan.set': 'silent',
-                'discovery.unmeasured': 'warn', 'steward.run': 'silent',
+                'steward.run': 'silent',
                 'plan.disposed': 'silent', 'plan.resumed': 'silent',
                 'calibration.drift': 'warn',
                 'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
                 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
-                'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
-                'docs.exempt': 'silent',
+                'spec.warned': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

@@ -1,4 +1,4 @@
-"""Report intraday discovery measurements and candidates."""
+"""Report the morning discovery measurements and candidates."""
 
 import json
 import sys

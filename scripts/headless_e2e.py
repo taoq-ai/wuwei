@@ -304,7 +304,7 @@ launch discovery or ask interactive questions. All work is inside this scratch
 workspace. Use {cli} for every wuwei command, always from the workspace root.
 No network, commits, pushes, PRs, tracker or chat calls. Do not alter config,
 plugin files, state, events or telemetry directly. Follow these steps exactly:
-1. Register your actual planner session as instructed by the skill. Run mcp check,
+1. Register your actual planner session as instructed by the skill. Run
 plan propose proposal.json and plan approve --items A --goals-confirmed.
 2. Probe the launch guard ONCE: call Agent with subagent_type wuwei:builder,
 description "headless refusal probe", prompt "Deliberate test: no brief".
@@ -390,7 +390,7 @@ discovery or ask interactive questions. Use {cli} for every wuwei command, alway
 from the workspace root. Never run state transition, state set or state recover,
 and never edit files under .wuwei directly: the product moves every phase. If a
 command refuses unexpectedly, report it and stop. Follow these steps:
-1. Register your planner session as the skill says. Run mcp check, plan propose
+1. Register your planner session as the skill says. Run plan propose
 proposal.json and plan approve --items A --goals-confirmed.
 2. Run worktree add A. Write brief builder A builder --worktree <that worktree>
 --body "Add REHEARSAL.md with the line status: draft and commit it on the item

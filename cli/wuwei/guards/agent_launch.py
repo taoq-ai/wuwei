@@ -27,19 +27,6 @@ def check(payload):
         return 2, f'agent launch could not run: {exc}'
 
 
-def check_mcp(payload):
-    """The MCP launch gate (#325) as its own record: mcp.cached reads guards.enforce."""
-    try:
-        seat = _seat(payload)
-        if seat is None:
-            return 0, ''
-        from wuwei import mcp
-        measured = mcp.cached(seat[0])
-        return measured.exit, measured.reason
-    except Exception as exc:
-        return 2, f'agent launch could not run: {exc}'
-
-
 def _seat(payload):
     """(root, tool_input, role) for a WUWEI seat launch in a workspace, else None."""
     from wuwei import workspace
@@ -285,11 +272,6 @@ def _check(payload):
             raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
         if len(running) >= limits['seats']:
             raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
-        if logged['item'] in data['items']:
-            from wuwei import tracker  # lazy: hook path (#346)
-            status, reason = tracker.check(data, config, logged['item'], data['items'][logged['item']])
-            if status == 'missing':
-                raise brief.Refused(reason)
         data['seats'][logged['name']] = {
             'id': logged['name'], 'role': logged['role'], 'item': logged['item'],
             'brief': relative, 'head': head, 'status': 'running',
@@ -436,22 +418,7 @@ def stop(payload):
                 payload[RECORDED] = str(root.resolve())
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
-    if payload.get('stop_hook_active'):
-        return 0, ''
-    if role == 'builder' and today:
-        try:
-            from wuwei import dispatch
-            dispatch.discovery('seat-free', root)
-        except (OSError, ValueError, RuntimeError) as exc:
-            try:
-                state.append_event('discovery.unmeasured', {'reason': str(exc)},
-                                   root, directory=directory)
-            except Exception as log_error:
-                import sys
-                print(f'discovery failure could not be recorded: {log_error}', file=sys.stderr)
-            return 2, f'discovery unmeasured: {exc}'
     return 0, ''
 
 
-GUARDS = [Guard('PreToolUse', 'Agent', check_mcp), Guard('PreToolUse', 'Agent', check),
-          Guard('SubagentStop', None, stop)]
+GUARDS = [Guard('PreToolUse', 'Agent', check), Guard('SubagentStop', None, stop)]

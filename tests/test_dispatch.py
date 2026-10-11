@@ -57,6 +57,19 @@ def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     assert dispatch.next_step('A', root)['action'] == 'gates'
 
 
+def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
+    # #843: the spec check before gates stays in dispatch; a light item skips it.
+    (root / '.wuwei/config.toml').write_text('')
+    tree = root / 'tree'
+    tree.mkdir()
+    monkeypatch.setattr(dispatch, 'tier', lambda root, config, row: {
+        'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']})
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree), tier='light'),
+                       root, reserved=False)
+    action = dispatch.next_step('A', root)
+    assert (action['action'], action['roles']) == ('gates', ['quality'])
+
+
 def test_gate_dispatch_requires_builder_stand_down(root):
     from wuwei import dispatch
 
@@ -165,32 +178,6 @@ def test_invalid_verdict_does_not_enter_trusted_state(root):
     with pytest.raises(dispatch.Refused, match='REJECT'):
         record(root, 'quality', 'quality-bad', 'Verdict: PASS\n')
     assert state.read_state(root)['gate_verdicts'] == {}
-
-
-def test_discovery_trigger(root):
-    from wuwei import dispatch
-
-    assert dispatch.discovery('sweep', root) == {'action': 'discover'}
-    assert dispatch.discovery('seat-free', root) == {'action': 'discover'}
-    state._write_state(lambda data: data['items'].update({
-        'B': {'phase': 'planned'}, 'C': {'phase': 'planned'}}), root, reserved=False)
-    assert dispatch.discovery('seat-free', root) == {'action': 'none'}
-    events = [json.loads(line)['kind'] for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    assert events.count('discovery.requested') == 2
-
-
-def test_seat_free_discovery_only_records_the_request(root, monkeypatch):
-    from wuwei import discovery, dispatch
-
-    calls = []
-    monkeypatch.setattr(discovery, 'intake', lambda root, **kwargs: calls.append(kwargs))
-    assert dispatch.discovery('seat-free', root) == {'action': 'discover'}
-    assert calls == []
-    found = {'sources': {}, 'candidates': []}
-    assert dispatch.discovery('sweep', root, found) == {'action': 'discover'}
-    assert calls == [{'trigger': 'sweep', 'found': found}]
-    kinds = [json.loads(line)['kind'] for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    assert kinds.count('discovery.requested') == 2
 
 
 def test_delta_nonblocking_residual_becomes_review_note(root):
@@ -1477,66 +1464,10 @@ def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
     assert outcome['roles'] == ['quality'] and [seat['action'] for seat in outcome['seats']] == ['launch']
 
 
-def docs_events(root, kind):
-    return [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
-            if row['kind'] == kind]
-
-
-@pytest.mark.parametrize('system,paths,expected', [
-    ('notion', [('docs/guide.md', 3, 1)], [{'item': 'A', 'tier': 'light'}]),
-    ('notion', [('cli/wuwei/guards/pr.py', 2, 0)], []),
-    ('none', [('docs/guide.md', 3, 1)], []),
-])
-def test_light_item_records_one_docs_exempt(root, monkeypatch, system, paths, expected):
-    from wuwei import dispatch
-    tiered(root, monkeypatch, paths, extra=f'[docs]\nsystem = "{system}"\n')
-    dispatch.next_step('A', root)
-    dispatch.next_step('A', root)
-    assert [{k: v for k, v in row.items() if k != 'prs_seen'}
-            for row in docs_events(root, 'docs.exempt')] == expected
-
-
-def docs_root(root, system='notion', tier='standard'):
-    (root / '.wuwei/config.toml').write_text(f'[docs]\nsystem = "{system}"\n')
-    standard(root, {**LIGHT, 'tier': 'light'} if tier == 'light' else
-             {'tier': tier, 'computed': tier, 'reasons': [], 'roles': ALL})
-
-
-DOC_FIX = QUALITY_FIX.replace('VAL: PASS', 'VAL: PASS DOC: FINDING')
-
-
-def test_quality_pass_refused_while_docs_value_missing(root):
-    from wuwei import dispatch, docs
-    docs_root(root)
-    with pytest.raises(dispatch.Refused, match='plan set A docs='):
-        record(root, 'quality', 'quality-1', QUALITY_PASS)
-    with pytest.raises(dispatch.Refused, match='DOC: FINDING'):
-        record(root, 'quality', 'quality-2', QUALITY_FIX.replace('VAL: PASS', 'DOC: PASS'))
-    assert state.read_state(root)['gate_verdicts'] == {}
-    assert record(root, 'quality', 'quality-3', DOC_FIX)['verdict'] == 'FIX'
-    record(root, 'arch', 'arch-1', PASS)
-
-
-def test_quality_fix_refused_when_it_calls_a_recorded_docs_value_missing(root):
-    # #667: the lint reads the docs value at receive time, not the brief's copy.
-    from wuwei import dispatch, docs
-    docs_root(root)
-    docs.assign('A', 'none', 'internal refactor', root)
-    with pytest.raises(dispatch.Refused, match='records docs none'):
-        record(root, 'quality', 'quality-1', DOC_FIX.replace('fails when empty', 'the docs value is missing; fails when empty'))
-    assert state.read_state(root)['gate_verdicts'] == {}
-
-
-def test_quality_pass_recorded_after_docs_value(root):
-    from wuwei import docs
-    docs_root(root)
-    docs.assign('A', 'none', 'internal refactor', root)
-    assert record(root, 'quality', 'quality-1', QUALITY_PASS)['verdict'] == 'PASS'
-
-
-@pytest.mark.parametrize('system,tier', [('notion', 'light'), ('none', 'standard')])
-def test_quality_pass_without_docs_obligation(root, system, tier):
-    docs_root(root, system, tier)
+def test_quality_pass_needs_no_docs_value(root):
+    # #841: the quality gate never blocks on a docs page, even under a former [docs] config.
+    (root / '.wuwei/config.toml').write_text('[docs]\nsystem = "notion"\n')
+    standard(root, {'tier': 'standard', 'computed': 'standard', 'reasons': [], 'roles': ALL})
     assert record(root, 'quality', 'quality-1', QUALITY_PASS)['verdict'] == 'PASS'
 
 
@@ -1544,32 +1475,92 @@ TRACKED = '[adapters]\ntracker = "linear"\n'
 NO_SPEC = '[spec]\nengine = "none"\n'
 
 
-def test_dispatch_refuses_an_item_without_a_ticket(root, monkeypatch, capsys):
-    from wuwei.__main__ import main
+def duty_events(root):
+    return [(e['kind'], e['payload']) for e in map(json.loads, (
+        workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+        if e['kind'].startswith('duty.')]
 
-    (root / '.wuwei/config.toml').write_text(NO_SPEC + TRACKED)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['dispatch', 'next', 'A']) == 1
-    err = capsys.readouterr().err
-    assert "A has no ticket: the planner proposes one on the item's card" in err
-    assert 'bin/wuwei' not in err.split('has no ticket')[1]
-    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+
+def ticketed(root, monkeypatch, results, tracker='linear'):
+    from fakes.tracker import Fake
+    from wuwei import registry
+
+    (root / '.wuwei/config.toml').write_text(NO_SPEC + f'[adapters]\ntracker = "{tracker}"\n')
+    fake = Fake(results)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    state._write_state(lambda data: (data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
+                                     data['items']['A'].update(pr='acme/app#5')),
                        root, reserved=False)
-    assert main(['dispatch', 'next', 'A']) == 0
-    assert json.loads(capsys.readouterr().out)['action'] == 'gates'
+    return fake
 
 
-def test_light_item_skips_the_ticket_until_its_tier_rises(root, monkeypatch):
-    from wuwei import dispatch
+@pytest.mark.parametrize('action,text,category', [
+    ('in_review', 'Pull request: acme/app#5.', 'pr'), ('done', 'Merged in acme/app#5.', 'close')])
+def test_tracker_call_records_the_duty_with_its_comment(root, monkeypatch, action, text, category):
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {}),
+                                        'comment': registry.Result(0, {})})
+    assert dispatch.tracker_call('A', action, root).exit == 0
+    day = workspace.day_dir(root).name
+    states = {'in_review': 'In Review', 'done': 'Done'}
+    assert [call[:2] for call in fake.calls] == [
+        ('transition', ('ENG-7', states[action])), ('comment', ('ENG-7', f'[{day} A] {text}', category))]
+    duty = f'tracker.{action}'
+    assert duty_events(root) == [
+        ('duty.due', {'item': 'A', 'duty': duty, 'ticket': 'ENG-7',
+                      'command': f'wuwei tracker move A {action}'}),
+        ('duty.done', {'item': 'A', 'duty': duty, 'ticket': 'ENG-7', 'pr': 'acme/app#5'})]
 
-    extra = TRACKED + '[tracker]\nskip_tiers = ["light"]\n'
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=extra)
-    assert dispatch.next_step('A', root)['tier']['tier'] == 'light'
-    state._write_state(lambda data: data['items']['A'].update(gates={}), root, reserved=False)
-    tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)], lead='light', extra=extra)
-    with pytest.raises(dispatch.Refused, match='A has no ticket'):
-        dispatch.next_step('A', root)
-    assert state.read_state(root)['items']['A']['gates']['tier'] == 'standard'
+
+@pytest.mark.parametrize('results', [
+    {'transition': (2, 'linear.transition: rate limited; retry later')},
+    {'transition': (0, ''), 'comment': (1, 'linear.comment: refused')}])
+def test_a_failed_duty_is_recorded_skipped(root, monkeypatch, results):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {name: registry.Result(code, reason=reason)
+                                 for name, (code, reason) in results.items()})
+    result = dispatch.tracker_call('A', 'done', root)
+    error = [reason for code, reason in results.values() if code][0]
+    assert result.exit and result.reason == error
+    assert duty_events(root)[1:] == [('duty.skipped', {'item': 'A', 'duty': 'tracker.done',
+                                                       'ticket': 'ENG-7', 'error': error})]
+
+
+def test_a_duty_comment_is_claimed_before_it_is_sent(root, monkeypatch):
+    """#842 F4: a crash after the claim never posts the PR link twice on a retry."""
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
+
+    def crash(item, text, category, root=None):
+        fake.calls.append(('comment', (item, text, category), root))
+        raise OSError('connection reset')
+    fake.comment = crash
+    assert dispatch.tracker_call('A', 'in_review', root).exit == 2
+    fake.comment = lambda *args, **kwargs: pytest.fail('posted twice')
+    result = dispatch.tracker_call('A', 'in_review', root)
+    assert result.exit and 'not posted again' in result.reason
+    assert duty_events(root)[-1][0] == 'duty.skipped'
+
+
+def test_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[tracker]\nmax_per_item_per_day = 1\n')
+    state._write_state(lambda data: data.setdefault('tracker_log', {}).update({'progress:A:1': {
+        'outcome': 'written', 'ticket': 'ENG-7', 'kind': 'progress'}}), root, reserved=False)
+    result = dispatch.tracker_call('A', 'done', root)
+    assert result.exit == 1 and 'max_per_item_per_day' in result.reason
+    assert duty_events(root)[-1][0] == 'duty.skipped'
+
+
+def test_no_duty_without_a_ticket_or_a_tracker(root, monkeypatch):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {'claim': registry.Result(0, {})})
+    dispatch.tracker_call('B', 'claim', root)
+    (root / '.wuwei/config.toml').write_text(NO_SPEC)
+    dispatch.tracker_call('A', 'claim', root)
+    assert duty_events(root) == []
 
 
 def test_tracker_call_uses_the_ticket(root, monkeypatch):
@@ -1590,9 +1581,9 @@ def test_tracker_call_uses_the_ticket(root, monkeypatch):
             if e['kind'] == 'tracker.call'] == [('A', 'ENG-7'), ('B', 'B')]
 
 
-LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing; the owner '
-                 'runs bin/wuwei init --upgrade in a host terminal, which creates it, then '
-                 'bin/wuwei tracker move A in_review')
+LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing on a '
+                 'tracker WUWEI does not own. The duty stays skipped in the day report until its owner '
+                 'adds it; ask them to, then run bin/wuwei tracker move A in_review')
 
 
 def moves(root, monkeypatch, labels, orgs='"acme"'):
@@ -1657,13 +1648,13 @@ def test_done_never_reads_labels(root, monkeypatch):
     assert [call[0] for call in fake.calls] == ['transition']
 
 
-def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
+def test_issue_acceptance_dispatch_then_ticket(root, monkeypatch, capsys):
     from fakes.tracker import Fake, ported
     from wuwei import registry
     from wuwei.__main__ import main
 
     (root / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED + '[tracker]\nauto = ["items"]\n')
+        '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED)
     (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
         {'id': 'A', 'scope': 'Add the export button', 'evidence': 'issue 12', 'goal': 'G-1',
          'track': 'SLICE'}]}))
@@ -1673,8 +1664,8 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
                         else load(kind, config))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['dispatch', 'next', 'A']) == 1
-    assert "A has no ticket: the planner proposes one on the item's card" in capsys.readouterr().err
+    assert main(['dispatch', 'next', 'A']) == 0
+    capsys.readouterr()
     assert main(['tracker', 'create', 'A']) == 0
     assert state.read_state(root)['tickets'] == {'A': {'id': 'ENG-7', 'source': 'create'}}
     capsys.readouterr()
@@ -3077,3 +3068,31 @@ def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
         'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
     found = dispatch.next_step('A', root)
     assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner')
+
+
+def test_a_reused_item_id_with_a_new_ticket_runs_its_duty(root, monkeypatch):
+    """#842: a done duty counts only for the same ticket; the same ticket never posts twice."""
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {}),
+                                        'comment': registry.Result(0, {})})
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert [call[0] for call in fake.calls] == ['transition', 'comment']
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-8', 'source': 'set'}}),
+                       root, reserved=False)
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert [call[1][0] for call in fake.calls] == ['ENG-7', 'ENG-7', 'ENG-8', 'ENG-8']
+    assert [(kind, payload['ticket']) for kind, payload in duty_events(root)] == [
+        ('duty.due', 'ENG-7'), ('duty.done', 'ENG-7'), ('duty.due', 'ENG-8'), ('duty.done', 'ENG-8')]
+
+
+def test_create_runs_again_only_while_the_item_has_no_ticket(root, monkeypatch):
+    from wuwei import dispatch
+    ticketed(root, monkeypatch, {})
+    state.append_event('duty.done', {'item': 'A', 'duty': 'tracker.create', 'ticket': 'ENG-1',
+                                     'pr': None}, root)
+    assert dispatch.tracker_call('A', 'create', root).exit == 0  # A has ENG-7: nothing to open
+    assert [kind for kind, _ in duty_events(root)] == ['duty.done']
+    state._write_state(lambda data: data.update(tickets={}), root, reserved=False)
+    dispatch.tracker_call('A', 'create', root)
+    assert [kind for kind, _ in duty_events(root)][1] == 'duty.due'

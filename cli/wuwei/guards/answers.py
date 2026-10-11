@@ -1,7 +1,6 @@
 """The owner's answers to cards asked in the session, recorded for the commands that read them."""
 
 from pathlib import Path
-import re
 
 from wuwei import workspace
 from wuwei.guards import Guard
@@ -18,10 +17,7 @@ def _answer(payload, text):
 
 
 def record_gate(payload):
-    """PostToolUse: record the owner's reply to an Owner step card from any main session (#831),
-    and on the planner's session row which D-n records (by header `D-n` citing today's
-    record, #354) it asked; the record commands read them."""
-    from wuwei.decision import DECISION_ID, today_path
+    """PostToolUse: record the owner's reply to an Owner step card from any main session (#831)."""
     try:
         cwd = Path(required_text(payload, 'cwd')).resolve()
         if 'agent_id' in payload:
@@ -51,25 +47,6 @@ def record_gate(payload):
                     pass  # options not as printed: only the asked topic, which counts as no
         if found:
             state.append_event('gate.asked', {'session_id': session, 'topics': sorted(found)}, root)
-        if len(owner) == len(questions):
-            return 0, ''
-        if not session or session != state.read_state(root).get('planner_session_id'):
-            return 0, ''
-        topics = set()
-        for question in questions:
-            header, text = question.get('header'), required_text(question, 'question')
-            if (isinstance(header, str) and re.fullmatch(DECISION_ID, header)
-                    and re.search(rf'(?<![\w-]){header}(?![\w-])', text) and today_path(header, root).is_file()):
-                topics.add(header)
-        if not topics:
-            return 0, ''
-
-        def update(data):
-            row = data['sessions'][session]
-            row['gate_asked'] = sorted(topics | set(row.get('gate_asked', ())))
-
-        state._write_state(update, root, reserved=False, kind='gate.asked',
-                           payload={'session_id': session, 'topics': sorted(topics)})
         return 0, ''
     except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
         return 2, f'gate record: {exc}'

@@ -17,8 +17,8 @@ ENFORCE = {
             "owner-only. The day report's ## Shadow section lists the would-be refusals."),
     True: ('Guards enforce: records, publishing, plugin integrity and seat launches without a '
            'matching brief block; deploys, releases and approve-tier messages ask on a card; merges '
-           'and approvals stay owner-only; outward text, scratch paths, seat capacity and MCP '
-           'findings below the floor are logged. A refusal names its reason and the accepted form: '
+           'and approvals stay owner-only; outward text, scratch paths and seat capacity '
+           'are logged. A refusal names its reason and the accepted form: '
            'use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
@@ -48,7 +48,6 @@ THEN = {
     'done': 'The day is closed; tomorrow starts with wuwei next.',
     # Planner-facing lines of single rows; step formats {days} and {dm}.
     'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
-    'mcp': 'On exit 1 or 2 show the owner its one-line reason; then run wuwei next.',
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
@@ -105,14 +104,14 @@ def approved(data):
 
 def _seen(directory):
     """(done (state, key) pairs, steward runs, day closed, the PRs whose latest
-    merge event is an owner block) from one read of today's events; only lines
+    merge event is an owner block, the duty rows) from one read of today's events; only lines
     naming a kind next needs are parsed (#346 budget). A row is done when its command ran (the
     done pairs run() records) or it passed with nothing to ask."""
-    done, passed, returns, runs, closed, merges = set(), set(), {}, [], False, {}
+    done, passed, returns, runs, closed, merges, duties = set(), set(), {}, [], False, {}, []
     path = directory / 'events.jsonl'
     for text in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
         if not ('"next.action"' in text or '"steward.run"' in text or '"day.closed"' in text
-                or '"merge.' in text):
+                or '"merge.' in text or '"duty.' in text):
             continue
         row = json.loads(text)
         kind, payload = row.get('kind'), row.get('payload')
@@ -129,12 +128,14 @@ def _seen(directory):
             runs.append(payload)
         elif kind == 'day.closed':
             closed = True
+        elif kind.startswith('duty.'):
+            duties.append(row)
         elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816
             merges[payload.get('pr')] = payload.get('reason') if payload.get('owner') is True else None
     # ponytail: a row returned three times counts as done, so a refused or failed command (no
     # PostToolUse span) never holds the day; evidence from PostToolUseFailure would lift it.
     done |= passed | {key for key, count in returns.items() if count >= 3}
-    return done, runs, closed, merges
+    return done, runs, closed, merges, duties
 
 
 def _carry(root, directory):
@@ -172,15 +173,12 @@ def step(root, ran=()):
         session = os.environ.get('WUWEI_SESSION_ID', '').strip() or '<session id>'
         return _row('session', "Register this session as today's planner.",
                     f'wuwei plan session {session}')
-    returned, runs, closed, merges = _seen(directory)
+    returned, runs, closed, merges, duties = _seen(directory)
     returned |= set(ran)
     if not (directory / 'plan.md').is_file():
         if ('pr-flow', '') not in returned:
             return _row('pr-flow', 'Check the PR flow settings once before the day starts.',
                         'wuwei doctor --section pr-flow', then=THEN['pr-flow'])
-        if ('mcp', '') not in returned:
-            return _row('mcp', 'Check the MCP registry before any seat launches.', 'wuwei mcp check',
-                        then=THEN['mcp'])
         lead = data['seats'].get('lead')
         if not (directory / 'lead.json').is_file() and (lead is None or lead['status'] == 'running'):
             if not (directory / 'briefs/lead.md').is_file():
@@ -204,7 +202,7 @@ def step(root, ran=()):
     for ident, finding in data.get('seat_findings', {}).items():  # #646: proposed once
         if ident not in data['items'] and ('finding', ident) not in returned:
             return _row('finding', f"A seat found a small fix: {finding['scope']}. Add it as a small "
-                        'item; its ticket follows after it ships.',
+                        'item.',
                         f'wuwei plan add {ident} --from-finding', item=ident)
     rows = state.in_flight(data)
     running = {item for _, _, item in rows}
@@ -228,15 +226,8 @@ def step(root, ran=()):
             found.append(_row('build', f'{label} is in {phase}; this is its build loop step.',
                               f'wuwei build next {name}', item=name))
         elif phase in ('gate', 'delta'):
-            from wuwei import docs  # Local: only an item at the gate needs it.
-            if docs.unmet(config, items[name]):
-                found.append(_row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
-                                  'record it before the quality gate.',
-                                  docs.command(config, name).removeprefix('bin/'), item=name,
-                                  then='Choose the value it names, record it, then run wuwei next.'))
-            else:
-                found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
-                                  f'wuwei dispatch next {name}', item=name))
+            found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
+                              f'wuwei dispatch next {name}', item=name))
         elif phase == 'raised':
             pr = items[name].get('pr')
             if merges.get(pr):  # #816: one owner decision for this PR, on its Owner step card
@@ -253,6 +244,13 @@ def step(root, ran=()):
                                   'wuwei dispatch next --all', 'set'))
         elif phase == 'planned' and waiting is None:
             waiting = label
+    if duties and config['adapters']['tracker'] != 'none':  # #842: also for terminal items
+        from wuwei import tracker
+        for name, duty, command in tracker.open_duties(duties):
+            ticket = data.get('tickets', {}).get(name, {}).get('id')
+            label = f'{name} ({ticket})' if ticket else name
+            found.append(_row('duty', f'{label}: the {duty} update is due and not recorded.',
+                              command, item=name))
     queue = [{'state': row['state'], 'item': row.get('item', ''), 'command': row['command']}
              for row in found + prs]
     queue = {'rows': queue} if len(queue) > 1 else {}
@@ -345,9 +343,6 @@ def resolve(row, root):
         return {**keep, **action, 'why': row['why'], 'then': row['then']}
     if row['action'] == 'card' and row['command'].startswith('wuwei '):
         widget = _widget(shlex.split(row['command'])[1:])
-        if name == 'gate':
-            from wuwei import mcp
-            widget += mcp.widget(root)
         return {**row, 'widget': widget} if widget else None
     if name == 'build':
         from wuwei.commands import build

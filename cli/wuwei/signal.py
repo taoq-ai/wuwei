@@ -13,20 +13,22 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
           'decision.decided',
-          'decision.routed', 'mcp.decided',
+          'decision.routed',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
-          'gate.received', 'gate.tiered', 'gate.delta_head', 'discovery.requested', 'discovery.intake',
+          'gate.received', 'gate.tiered', 'gate.delta_head',
           'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
-          'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'finding.noted', 'steward.run', 'plan.approved', 'state.import',
+          'finding.noted',
+          'discovery.requested', 'discovery.intake',  # days before #843
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
           'build.held', 'build.released',
           'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
-          'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'telemetry.off',
+          'docs.set', 'docs.written', 'docs.exempt',  # days before #841
+          'tracker.created', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'duty.due', 'duty.done', 'duty.skipped',  # #842: tracker.call carries the warning
           'cap.derived')
 
 
@@ -47,13 +49,9 @@ def classify(event, state):
         return 'silent', lane
     if kind == 'traces.unmatched':  # #352
         return 'warn', lane
-    if kind == 'mcp.finding':
-        return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
-    if kind == 'mcp.checked':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'tracker.call':
         return ('silent' if payload.get('exit') == 0
-                or payload.get('reason') == 'tracker adapter is none' else 'warn'), lane
+                or str(payload.get('reason')).startswith('tracker adapter is none') else 'warn'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
         return (tier if tier in ('silent', 'warn', 'page') else 'warn'), lane

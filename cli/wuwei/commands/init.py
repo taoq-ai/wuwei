@@ -131,9 +131,8 @@ def _status_line(executable):
 
 
 def _finish(root):
-    code = _register_mcp(root)
     print(integrity.check(root).reason or 'plugin integrity: clean')
-    return code
+    return 0
 
 
 def _worktree_hooks(root):
@@ -149,14 +148,6 @@ def _worktree_hooks(root):
             install(tree, root, vcs)
         except ValueError as exc:
             print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
-
-
-def _register_mcp(root):
-    from wuwei import mcp
-    result = mcp.check(root)
-    if result.reason:
-        print(result.reason, file=sys.stderr)
-    return result.exit
 
 
 def _sections(raw):

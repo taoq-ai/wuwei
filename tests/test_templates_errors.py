@@ -33,30 +33,27 @@ def test_plan_template_can_be_proposed_from_stdin(workspace):
     assert template.returncode == 0, template.stderr
     result = cli(workspace, 'plan', 'propose', '-', input=template.stdout)
     assert result.returncode == 0, result.stderr
-    ranked = cli(workspace, 'rank', '.wuwei/days/2026-09-29/proposal.json')
-    assert ranked.returncode == 0, ranked.stderr
-    assert isinstance(json.loads(ranked.stdout), list) and len(json.loads(ranked.stdout)) == 1
-    assert cli(workspace, 'rank', '-', input=template.stdout).returncode == 0
-    empty = cli(workspace, 'rank', '-', input='{}')
-    assert empty.returncode == 2 and 'candidates must be a list' in empty.stderr
+    proposal = json.loads((workspace / '.wuwei/days/2026-09-29/proposal.json').read_text())
+    assert [row['id'] for row in proposal['candidates']] == ['EXAMPLE-1']
 
 
-def test_rank_template_can_be_ranked_from_stdin(workspace):
-    template = cli(workspace, 'rank', 'template')
-    assert template.returncode == 0, template.stderr
-    result = cli(workspace, 'rank', '-', input=template.stdout)
-    assert result.returncode == 0, result.stderr
+def test_rank_is_no_command_and_plan_template_carries_the_framework(workspace):
+    # #843: plan propose orders the queue; the template helper lives with plan template.
+    from wuwei.commands.plan import candidate_template
+    assert cli(workspace, 'rank', 'template').returncode == 2
+    assert list(candidate_template('G-1', 'rice')['score']) == ['reach', 'impact', 'confidence', 'effort']
+    assert list(candidate_template('G-1', 'wsjf')['evidence_lines']) == [
+        'value', 'time_criticality', 'risk_reduction', 'job_size']
 
 
 def test_rice_templates_use_configured_components(workspace):
     (workspace / '.wuwei/config.toml').write_text('[prioritisation]\nframework = "rice"\n')
-    for command in ('plan', 'rank'):
-        template = cli(workspace, command, 'template')
-        assert template.returncode == 0, template.stderr
-        for component in ('reach', 'impact', 'confidence', 'effort'):
-            assert f'"{component}"' in template.stdout
-        result = cli(workspace, command, 'propose', '-', input=template.stdout) if command == 'plan' else cli(workspace, 'rank', '-', input=template.stdout)
-        assert result.returncode == 0, result.stderr
+    template = cli(workspace, 'plan', 'template')
+    assert template.returncode == 0, template.stderr
+    for component in ('reach', 'impact', 'confidence', 'effort'):
+        assert f'"{component}"' in template.stdout
+    result = cli(workspace, 'plan', 'propose', '-', input=template.stdout)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize('case,cue', [

@@ -2,11 +2,11 @@
 
 ## Current controls
 
-Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and worktrees. Outside that scope, every hook returns 0 before any guard reads or parses the call; a command that names a workspace path literally is in scope. Relevance is checked before parsing; malformed input blocks a relevant call with exit 2 and a reason. CLI state and events use dedicated writers, and the outward policy limits text-bearing adapter calls. With `adapters.scanner = "none"` the MCP registry gate is off and says `not measured`, never clean; trace and agent-surface checks report unmeasured.
+Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and worktrees. Outside that scope, every hook returns 0 before any guard reads or parses the call; a command that names a workspace path literally is in scope. Relevance is checked before parsing; malformed input blocks a relevant call with exit 2 and a reason. CLI state and events use dedicated writers, and the outward policy limits text-bearing adapter calls. With `adapters.scanner = "none"` trace and agent-surface checks report unmeasured, never clean.
 
 ## ZIRAN integration
 
-The ZIRAN scanner adapter provides runtime trace analysis, MCP registry checks and agent-surface gates. Init and upgrade register attached MCP configurations; morning planning checks for drift before any seat launches. The check starts only servers Claude Code would attach, approved and pinned, one at a time through ZIRAN; it never starts an unapproved project server or a `uvx`, `npx` or `pipx run` launcher without an exact version, and reports those by name. High/critical findings require your decision on the host. The security posture decides what blocks. Under `observe` and `guarded` (the default) every finding warns: it is recorded, shown in the plan sweep and in what the planner relays, with `bin/wuwei mcp decide D-<n> proceed`, and launches proceed. `strict` blocks critical, high and unmeasured until `bin/wuwei mcp decide D-<n> proceed`. A check that could not run blocks under `guarded` and `strict`. `scanner.mcp.block` overrides the posture default. Snapshots and accepted decisions are protected producer records, and raw descriptions stay in report files; the decision carries only a redacted snippet of at most 60 plain characters per finding. See [configuration](configuration.md) for discovery paths and the decision flow. Do not treat an unavailable scanner as a clean audit. With `adapters.scanner = "none"`, the default, the registry gate is off: `init`, `mcp check`, `plan propose` and the launch gate exit 0, and the first check of the day with attached servers prints `mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)`. That gives up drift and tool-poisoning detection on every attached server. A configured scanner that cannot start (not on PATH, wrong version) is a check that could not run and blocks launches under `guarded` and `strict`. WUWEI declares no MCP server of its own; the registry gate (`bin/wuwei mcp check`) measures every attached server, including one declared inline in another plugin's `plugin.json`.
+The ZIRAN scanner adapter provides runtime trace analysis (S2) and agent-surface gates (S4). An item whose diff changes prompts, tool definitions, agent tool permissions or MCP config is flagged `agent_surface` and scanned at its security gate. WUWEI does not watch attached MCP servers for tool drift or poisoning; that check (S3) was retired in #789. Do not treat an unavailable scanner as a clean audit: with `adapters.scanner = "none"`, the default, trace and agent-surface checks report unmeasured. WUWEI declares no MCP server of its own.
 
 ## S1: Reviewed role grants in CI
 
@@ -39,7 +39,7 @@ for installation and regeneration details.
 
 ## Security posture
 
-`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `mcp = "off"`. `bin/wuwei config check` prints the effective table and the key it comes from.
+`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `seats = "block"`. `bin/wuwei config check` prints the effective table and the key it comes from.
 
 Under `observe` and `guarded` a guard is a warning or a card, never a wall, with one floor: records are written by the workflow and answered by you. A refusal that names the plain form the seat runs itself is coaching, not a wall. Under `strict`, refusals stay.
 
@@ -48,7 +48,6 @@ Under `observe` and `guarded` a guard is a warning or a card, never a wall, with
 | `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
 | `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
 | `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
-| `mcp` | The MCP registry launch gate | warn | warn | block |
 | `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
 | `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`), and scratch directories (`protect_state.check_scratch`) | warn | warn | block |
 
@@ -59,7 +58,6 @@ Floors no posture and no override lowers:
 - In every posture: `security.outbound` (canary and honeytoken egress) on every outward send, and an MCP send to other people through a tool not on `outward.allow` is refused. `publish` stays yours, and a seat never adds a tool itself: `config set outward.allow` asks your Owner step card.
 - `records` always blocks, with canary and honeytoken egress, owner disposition markers and a seat launch naming a brief that does not exist, whose refusal ends `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
 - Owner-only actions (`deploy`, `pr`, and an unlisted outward send) block, and below `strict` they ask you on a card, with no `owner-only action` line; under `strict` they keep it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only in every posture. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and a missing fast check or gate verdict warns under `observe` and refuses under `guarded`, naming the check the seat runs. A deploy refusal prints the Owner step card for that exact command; your Yes lets that command run ([owner-only actions](concepts.md#owner-only-actions)).
-- MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off` or `adapters.scanner = "none"`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 Runtime trace chains (S2) page and ask you only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `init --shadow` writes `observe`.
 
@@ -72,7 +70,7 @@ The outward lint reads every string in a tool's input, nested lists and objects 
 Where to run each:
 
 - `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. `init --shadow` starts here; after `guards.shadow_days` days `bin/wuwei doctor` asks you to switch to `guarded`.
-- `guarded`: a real project. Records block; publishing asks on a card or names the fix; integrity blocks; seat launches, outward text and MCP findings warn, and each warning is an event in the day's log.
+- `guarded`: a real project. Records block; publishing asks on a card or names the fix; integrity blocks; seat launches and outward text warn, and each warning is an event in the day's log.
 - `strict`: a repository that deploys, or a workspace that holds shared credentials. Everything blocks.
 
 The posture changes only what the cooperative guards refuse. The hard boundaries below (host rules, the credential layout, owner-sent messages) hold in every posture. `config.toml` is a record, so a seat cannot lower its own posture.

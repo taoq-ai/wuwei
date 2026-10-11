@@ -102,9 +102,9 @@ def test_scripted_day(day):
     assert kinds.index('plan.approved') < kinds.index('seat launched') < kinds.index('gate.received') < kinds.index('pr.raised')
     assert kinds.count('seat.usage') == 2
     assert kinds.count('retro.captured') == 7
-    # Design 5.10: one refused source write before the spec, then one spec.step per step.
+    # Design 5.10: no source write is refused for the spec (#843); one spec.step per step.
     refusals = [row['payload']['reason'] for row in events if row['kind'] == 'hook.refusal']
-    assert len([reason for reason in refusals if 'specify first: /speckit.specify' in reason]) == 1
+    assert not [reason for reason in refusals if 'spec mode' in reason]
     assert sorted(row['payload']['step'] for row in events if row['kind'] == 'spec.step') == sorted([
         'specify', 'clarify', 'plan', 'tasks', 'analyze', 'checklist', 'implement'])
     assert 'seat stop unmatched' not in kinds
@@ -197,7 +197,7 @@ def close_trap(payload):
     return stop.check({**payload, 'stop_hook_active': False})
 
 
-@pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei rank'),
+@pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei plan propose'),
                                             ('close_trap', "'stop_hook_active': True")])
 def test_day_names_the_reintroduced_bug(day, monkeypatch, mutation, match):
     from wuwei.guards import Guard, edges, stop

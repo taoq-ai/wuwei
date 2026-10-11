@@ -64,7 +64,7 @@ STILL_K = .55                          # 13:55, the reduced-motion frame
 LOOPS = ['a one-way question reaches you on one card', 'you answer from the phone; seats assume the rest']
 DAY = "tomorrow's plan carries what was learned"
 INDICATORS = ['guards: every call checked, 1 caught', 'heartbeat',
-              'lead: discovery when the queue runs low', 'steward: retro at close, you promote']
+              'lead: morning discovery', 'steward: retro at close, you promote']
 
 A = f'dur="{T:g}s" repeatCount="indefinite"'
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"

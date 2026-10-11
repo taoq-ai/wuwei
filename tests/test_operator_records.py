@@ -4,7 +4,7 @@ import json
 
 from wuwei import plan, state, workspace
 from wuwei.__main__ import main
-from test_intraday_intake import candidate
+from test_plan import candidate
 
 
 def section(text, heading):

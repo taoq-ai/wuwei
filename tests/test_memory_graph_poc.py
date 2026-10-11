@@ -8,8 +8,6 @@ import sys
 
 import pytest
 
-from wuwei import decision
-
 ROOT = Path(__file__).resolve().parents[1]
 POC = ROOT / 'scripts' / 'poc' / 'memory-graph'
 TYPES = ('why', 'touched', 'lesson', 'revert', 'reversed')
@@ -50,9 +48,6 @@ def test_golden_set_matches_corpus(tmp_path):
         phrase = q['answer'].lower()
         assert any(phrase in line for line in lines), q['id']
         assert {path for path, text in files.items() if phrase in text} <= expected, q['id']
-        for path in expected:
-            if '/decisions/' in path:
-                decision.evaluate((root / path).read_text(encoding='utf-8'))
     corpus.generate(tmp_path / 'b', days=6)
     assert tree(root) == tree(tmp_path / 'b')
 
@@ -149,11 +144,11 @@ def test_spike_document_decision_record():
     text = path.read_text(encoding='utf-8')
     conclusions = re.findall(r'^Conclusion: (build|park|drop)$', text, re.M)
     assert len(conclusions) == 1
-    fields, _ = decision.evaluate(text.split('## Decision record', 1)[1])
-    assert fields['Decided-by'] == 'owner'
-    options = dict(decision.table(fields['Options'], ['Option', 'Description'], 'Options'))
+    record = text.split('## Decision record', 1)[1]
+    assert re.search(r'^Decided-by: owner$', record, re.M)
+    options = dict(re.findall(r'^\| ([A-Z]) \| (.+?) \|$', record, re.M))
     start = {'build': 'Build', 'park': 'Defer', 'drop': 'Do nothing'}[conclusions[0]]
-    assert options[fields['Recommendation']].startswith(start)
+    assert options[re.search(r'^Recommendation: (\S+)$', record, re.M)[1]].startswith(start)
     if conclusions[0] == 'build':
         assert '## Follow-up issue' in text
     else:

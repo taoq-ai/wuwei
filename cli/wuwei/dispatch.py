@@ -358,26 +358,52 @@ def step_zero(value, paths, trust_paths, flags=None):
     return False, 'no guard code or trust path in the diff'
 
 
-def tracker_call(item, action, root=None):
-    """Record the tracker measurement without blocking the local build loop."""
-    from wuwei.tracker import relabel, ticket as recorded
+def tracker_call(item, action, root=None, row=None):
+    """Perform one tracker lifecycle update without blocking the local build loop. #842: it is
+    a duty (create for a day item; claim, in_review and done with a recorded ticket): duty.due before
+    the call, then duty.done when every step returned 0, or duty.skipped with the error (the
+    adapter already retried). A duty already done on any day is not run again. row: the item
+    record a create opens the ticket from when it is not in today's proposal."""
+    from wuwei import tracker as hygiene
     root = workspace.find_workspace(root)
-    ticket = item
+    ticket, duty, pr = item, None, None
     try:
         config = workspace.load_config(root)
-        ticket = recorded(state.read_state(root), item) or item
+        data = state.read_state(root)
+        ticket = hygiene.ticket(data, item) or item
         if config['adapters']['tracker'] == 'none':
             result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set')
         else:
-            tracker = registry.load('tracker', config)
-            if action == 'claim':
-                result = tracker.claim(ticket, root=root)
-            elif action in ('in_review', 'done'):
-                result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
-                if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
-                    result = relabel(tracker, root, config, item, ticket, result)  # #670
+            if action not in ('create', 'claim', 'in_review', 'done'):
+                raise ValueError('unknown tracker action; pass create, claim, in_review or done')
+            name = f'tracker.{action}'
+            if (hygiene.ticket(data, item) if action == 'create'
+                    else hygiene.duty_done(root, item, name, ticket)):
+                return registry.Result(0, reason=f'{item}: {name} already recorded')
+            pr = data['items'].get(item, {}).get('pr')
+            if action == 'create':
+                if item in data['items']:  # a duty for a day item; any other subject is refused below
+                    duty = {'item': item, 'duty': name, 'ticket': None}
+                    state.append_event('duty.due', {**duty, 'command': f'wuwei tracker create {item}'}, root)
+                result = hygiene.create(root, item, row=row)
+                if result.exit == 0 and duty:
+                    duty['ticket'] = ticket = result.data['id']
             else:
-                raise ValueError('unknown tracker action; pass claim, in_review or done')
+                if hygiene.ticket(data, item):
+                    duty = {'item': item, 'duty': name, 'ticket': ticket}
+                    state.append_event('duty.due', {**duty, 'command': f'wuwei tracker move {item} {action}'}, root)
+                port = registry.load('tracker', config)
+                if action == 'claim':
+                    result = port.claim(ticket, root=root)
+                else:
+                    result = port.transition(ticket, config['tracker']['states'][action], root=root)
+                    if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
+                        result = hygiene.relabel(port, root, config, item, ticket, result)  # #670
+                    if isinstance(result, registry.Result) and result.exit == 0 and duty and pr:
+                        kind = 'pr' if action == 'in_review' else 'close'
+                        text = f'Pull request: {pr}.' if action == 'in_review' else f'Merged in {pr}.'
+                        result = hygiene.duty_comment(root, config, port, ticket, f'{kind}:{item}:{ticket}:duty',
+                                                      kind, f'[{workspace.day_dir(root).name} {item}] {text}')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
                 raise ValueError(f'invalid tracker result; {ADAPTER_DATA}')
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -385,6 +411,10 @@ def tracker_call(item, action, root=None):
     try:
         state.append_event('tracker.call', {'item': item, 'ticket': ticket, 'action': action,
                            'exit': result.exit, 'reason': result.reason or ''}, root)
+        if duty and result.exit == 0:
+            state.append_event('duty.done', {**duty, 'pr': pr}, root)
+        elif duty:
+            state.append_event('duty.skipped', {**duty, 'error': result.reason or 'failed'}, root)
     except (OSError, ValueError) as exc:
         print(f'tracker call unmeasured: could not record result: {type(exc).__name__}; run bin/wuwei doctor, which tests the tracker adapter', file=sys.stderr)
     return result
@@ -504,8 +534,6 @@ def next_step(item, root=None):
             fresh['items'][item]['gates'] = record
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
-        from wuwei import docs
-        docs.exempt(root, config, item, record['tier'])
         row = data['items'][item] = {**row, 'gates': record}
     if phase == 'gate':
         # Design 5.10 backstop: no gates for an item reached by a manual transition with a gap.
@@ -514,10 +542,6 @@ def next_step(item, root=None):
                                       if row.get('worktree') else None, build=True, where='dispatch')
         if code:
             raise Refused(reason)
-    from wuwei import tracker
-    status, reason = tracker.check(data, config, item, row)
-    if status == 'missing':
-        raise Refused(reason)
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):
@@ -983,13 +1007,6 @@ def receive(item, role, name, round_name='initial', root=None):
         if code:
             raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
-    if base(role) == 'quality':
-        from wuwei import docs
-        config = workspace.load_config(root)
-        if docs.unmet(config, data['items'][item]) and (
-                result == 'PASS' or not re.search(r'\bDOC: *FINDING', text)):
-            raise Refused(f'docs obligation unmet for {item}; have the sentinel write a FIX verdict with a '
-                          f'DOC: FINDING naming {docs.command(config, item)}, then receive it again')
     blocks = sorted(verdict.finding_blocks(text),  # #677: blocking findings first
                     key=lambda block: not re.search(verdict.BLOCKS_YES, block, re.I))
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
@@ -1121,22 +1138,3 @@ def _seat_usage(seat, policy):
         measured['duration'] = (datetime.fromisoformat(seat['stopped_at'])
                                 - datetime.fromisoformat(seat['started_at'])).total_seconds()
     return build.normalize_usage(measured, policy.get('model'))
-
-
-def discovery(trigger, root=None, found=None):
-    """Emit a discovery wake; ranking and starts belong to discovery policy."""
-    if trigger not in ('sweep', 'seat-free'):
-        raise Refused('unknown discovery trigger; run bin/wuwei dispatch discovery sweep or bin/wuwei dispatch discovery seat-free')
-    root = workspace.find_workspace() if root is None else Path(root)
-    data = state.read_state(root)
-    config = workspace.load_config(root)
-    queued = sum(row['status'] == 'queued' and row['phase'] == 'planned'
-                 for row in data['items'].values())
-    needed = trigger == 'sweep' or queued < config['discovery']['min_queue']
-    if needed:
-        state.append_event('discovery.requested', {'trigger': trigger, 'queued': queued}, root)
-    if trigger == 'sweep':
-        # A seat-free request runs on the watch's next tick, off the hook path.
-        from wuwei import discovery as discovery_module
-        discovery_module.intake(root, trigger=trigger, found=found)
-    return {'action': 'discover' if needed else 'none'}

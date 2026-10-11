@@ -725,7 +725,7 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
 
 @pytest.mark.parametrize('script, expected', [
     ('for r in a b; do cat .wuwei/$r/report.json; done', 'unparsed'),
-    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W next', 'unparsed'),
     ('cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done', (2, 'root')),
     ('mkdir -p ../scratch && cd ../scratch && ls', (1, 'root')),
     ('cd ..', (1, 'root')),
@@ -855,7 +855,7 @@ _GOALS = '.wuwei/memory/goals.md'
     ('Bash', f'echo x > {_CONFIG}', 'wuwei config set'),
     ('Write', _STATE, 'wuwei state set'), ('Bash', f'echo x >> {_STATE}', 'wuwei state set'),
     ('Write', _EVENTS, 'wuwei event'), ('Bash', f'echo x >> {_EVENTS}', 'wuwei event'),
-    ('Edit', _REPORT, 'wuwei mcp decide'), ('Bash', f'echo x >> {_REPORT}', 'wuwei mcp decide'),
+    ('Edit', _REPORT, 'use the wuwei CLI'), ('Bash', f'echo x >> {_REPORT}', 'use the wuwei CLI'),
     ('Edit', _GOALS, 'plan approve records the goals'), ('Bash', f'cp /dev/null {_GOALS}', 'plan approve records the goals'),
     ('Write', '.wuwei/integrity/verdict.json', 'wuwei integrity reconfirm'),
     ('Write', '.wuwei/charters/a.md', 'use the wuwei CLI'),

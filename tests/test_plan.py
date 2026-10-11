@@ -126,16 +126,6 @@ def test_cli_approve_passes_the_note(root, monkeypatch):
     assert state.read_state(root)['items']['A']['approved_as'].endswith('owner: "x"')
 
 
-def test_intraday_budget_counts_morning_rank_size(root):
-    plan.propose(proposal(), root)
-    plan.approve(['A'], root, goals_confirmed=True)
-    candidate = {**proposal()['candidates'][0], 'id': 'B', 'paths': ['src/file.py']}
-    candidate['score'] = {**candidate['score'], 'job_size': 5}
-    state._write_state(lambda day: day.setdefault('discovery_candidates', {}).update(B=candidate),
-                       root, reserved=False)
-    assert plan.add('B', root)['action'] == 'owner'
-
-
 def test_import_requires_explicit_approval(root):
     yesterday = root / '.wuwei/days/2026-09-27'
     yesterday.mkdir(parents=True)
@@ -647,31 +637,26 @@ def ticket_lines(root):
 
 
 def test_plan_and_gate_card_show_each_ticket(root):
-    """#636: the plan and the Approve description name an existing ticket or a new one."""
+    """#636, #842: the plan and the Approve description name each linked ticket; no new one."""
     tracked(root)
-    plan.propose(three(A={'ticket': 'ENG-1'}, B={'ticket': 'ENG-2'}), root)
-    assert ticket_lines(root) == ['Ticket: ENG-1 (existing)', 'Ticket: ENG-2 (existing)',
-                                  'Ticket: new Add the export button']
+    plan.propose(three(A={'ticket': 'ENG-1'}, B={'ticket': 'ENG-2'}, C={'tier': 'light'}), root)
+    assert ticket_lines(root) == ['Ticket: ENG-1 (existing)', 'Ticket: ENG-2 (existing)']
     widget = plan.gate_widget(root)
-    assert ('Tickets A ENG-1 (existing), B ENG-2 (existing), C new Add the export button'
-            in widget['options'][0]['description'])
+    assert 'Tickets A ENG-1 (existing), B ENG-2 (existing)' in widget['options'][0]['description']
     assert 'tickets' in widget['options'][-1]['description']
     plan.propose(three(A={'ticket': None}), root)
-    assert ticket_lines(root)[0] == 'Ticket: none'
-    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
-    plan.propose(three(A={'tier': 'light'}), root)
-    assert len(ticket_lines(root)) == 2
+    assert ticket_lines(root) == ['Ticket: none']
     (root / '.wuwei/config.toml').write_text('')
-    plan.propose(three(), root)
+    plan.propose(three(A={'ticket': 'ENG-1'}), root)
     assert ticket_lines(root) == []
     assert 'Tickets' not in plan.gate_widget(root)['options'][0]['description']
 
 
-def opening(root, monkeypatch, enforce='true', created=None, **extra):
-    """#636: A and B link existing tickets, C gets a new one; the fake tracker opens it."""
+def opening(root, monkeypatch, enforce='true', created=None):
+    """A and B link existing tickets, C has none; the fake tracker opens it."""
     from fakes.tracker import Fake, ported
     tracked(root, f'[owner]\nname = "Pat Example"\n[guards]\nenforce = {enforce}\n')
-    plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}, **extra}), root)
+    plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}}), root)
     fake = Fake({'create': created or registry.Result(0, {'id': 'ENG-9',
                                                            'url': 'https://example.test/ENG-9'})})
     port = ported(fake)
@@ -681,65 +666,33 @@ def opening(root, monkeypatch, enforce='true', created=None, **extra):
     return fake
 
 
+def duties(root):
+    return [(e['kind'], e['payload']) for e in events(root) if e['kind'].startswith('duty.')]
+
+
 @pytest.mark.parametrize('posture', ['false', 'true'])
-def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture):
-    """#636 acceptance 1: two links and one new ticket, no terminal command."""
-    from wuwei import tracker
+def test_approve_links_the_proposed_tickets_and_opens_the_new_one_as_a_duty(root, monkeypatch, posture):
+    """#842 F3: A and B link their tickets; C's ticket opens through the tracker.create duty."""
     fake = opening(root, monkeypatch, posture)
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     day = state.read_state(root)
     assert day['tickets'] == {'A': {'id': 'ENG-1', 'source': 'candidate'},
                               'B': {'id': 'ENG-2', 'source': 'candidate'},
                               'C': {'id': 'ENG-9', 'source': 'create'}}
-    assert [call[0] for call in fake.calls] == ['create']
-    assert fake.calls[0][1][0]['item'] == 'C'
-    config = workspace.load_config(root)
-    assert all(tracker.check(day, config, name)[0] == 'ticket' for name in 'ABC')
-    with pytest.raises(state.StateError, match='already approved'):
-        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert len(fake.calls) == 1
+    assert [call[0] for call in fake.calls] == ['create'] and fake.calls[0][1][0]['item'] == 'C'
+    assert duties(root) == [
+        ('duty.due', {'item': 'C', 'duty': 'tracker.create', 'ticket': None,
+                      'command': 'wuwei tracker create C'}),
+        ('duty.done', {'item': 'C', 'duty': 'tracker.create', 'ticket': 'ENG-9', 'pr': None})]
 
 
-def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
-    fake = opening(root, monkeypatch, 'true', A={'ticket': None}, C={'ticket': 'ENG-3'})
-    plan.approve(['A'], root, goals_confirmed=True)
-    assert fake.calls == []
-    assert state.read_state(root)['tickets'] == {'A': {'id': None, 'source': 'none'}}
-    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
-    assert skipped == [{'item': 'A', 'ticket': 'none'}]
-
-
-def test_a_failed_open_refuses_the_approval(root, monkeypatch):
-    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'))
-    with pytest.raises(state.StateError, match='C: linear: unreachable'):
-        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert not state.read_state(root)['approved_items']
-
-
-
-def test_a_small_item_is_approved_without_its_ticket(root, monkeypatch):
-    """#646: the gate opens a light item's ticket, and a failed open does not hold the gate."""
-    fake = opening(root, monkeypatch, 'true', C={'tier': 'light'})
-    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert [call[0] for call in fake.calls] == ['create']
-    assert state.read_state(root)['tickets']['C'] == {'id': 'ENG-9', 'source': 'create'}
-
-
-def test_a_failed_open_does_not_hold_a_small_item(root, monkeypatch):
-    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'),
-            C={'tier': 'light'})
+def test_a_failed_open_is_a_skipped_duty_and_never_refuses(root, monkeypatch):
+    opening(root, monkeypatch, created=registry.Result(2, reason='linear: unreachable'))
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     day = state.read_state(root)
-    assert 'C' in day['approved_items'] and 'C' not in day['tickets']
-
-
-def test_light_candidate_is_approved_without_a_ticket(root):
-    plan.propose(two(A={'tier': 'light'}, B={'ticket': 'ENG-4'}), root)
-    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
-    plan.approve(['A', 'B'], root, goals_confirmed=True)
-    assert state.read_state(root)['tickets'] == {'B': {'id': 'ENG-4', 'source': 'candidate'}}
-    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
-    assert skipped == [{'item': 'A', 'tier': 'light'}]
+    assert day['approved_items'] == ['A', 'B', 'C'] and 'C' not in day['tickets']
+    assert duties(root)[-1] == ('duty.skipped', {'item': 'C', 'duty': 'tracker.create',
+                                                 'ticket': None, 'error': 'linear: unreachable'})
 
 
 def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
@@ -759,10 +712,11 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     assert [e['payload']['item'] for e in events(root) if e['kind'] == 'plan.set'] == ['A']
     assert main(['plan', 'set', 'UNKNOWN', 'ticket=ENG-4']) == 1
     assert main(['plan', 'set', 'A', 'owner=pat']) == 2
+    assert main(['plan', 'set', 'A', 'docs=new']) == 2  # #841: no docs field
     assert main(['plan', 'set', 'A', 'ticket=bad id']) == 2
     fake.results['created'] = registry.Result(1, reason='not found')
     assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
-    assert 'owner=pat is not a spec, docs, ticket or owner_merge value' in capsys.readouterr().err
+    assert 'owner=pat is not a spec, ticket or owner_merge value' in capsys.readouterr().err
 
 
 GITHUB = '[adapters]\ntracker = "github"\n'
@@ -795,7 +749,7 @@ def test_proposed_bare_ticket_is_stored_in_full(root):
     with pytest.raises(ValueError, match='owner/repo#24'):
         plan.propose(two(B={'ticket': '24'}), root)
     assert not (root / '.wuwei/days/2026-09-28/proposal.json').exists()
-    (root / '.wuwei/config.toml').write_text(GITHUB + REPO + '[tracker]\nskip_tiers = ["light"]\n')
+    (root / '.wuwei/config.toml').write_text(GITHUB + REPO)
     plan.propose(two(A={'tier': 'light'}, B={'ticket': '24'}), root)
     written = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())
     assert {row['id']: row.get('ticket') for row in written['candidates']}['B'] == 'acme/app#24'
@@ -977,27 +931,15 @@ def test_the_gate_records_no_day_value(root, monkeypatch):
 
 
 def test_empty_optional_fields_are_absent(root):
-    # #640: an empty ticket, tier or docs (or a null tier or docs) is absent, not a refused
-    # proposal; a null ticket is the owner's none (#636) and keeps its key.
-    plan.propose(two(A={'ticket': '', 'tier': None, 'docs': ''}, B={'ticket': '  ', 'tier': '  '}), root)
+    # #640: an empty ticket or tier (or a null tier) is absent, not a refused proposal; a null
+    # ticket is the owner's none (#636) and keeps its key.
+    plan.propose(two(A={'ticket': '', 'tier': None}, B={'ticket': '  ', 'tier': '  '}), root)
     saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
-    assert not any(key in row for row in saved for key in ('ticket', 'tier', 'docs'))
+    assert not any(key in row for row in saved for key in ('ticket', 'tier'))
     plan.approve(['A', 'B'], root, goals_confirmed=True)
     data = state.read_state(root)
     assert data.get('tickets', {}) == {}
     assert not any('tier' in data['items'][name] for name in ('A', 'B'))
-
-
-def test_add_discovery_candidate_with_empty_ticket(root):
-    plan.propose(proposal(), root)
-    plan.approve(['A'], root, goals_confirmed=True)
-    candidate = {**proposal()['candidates'][0], 'id': 'B', 'ticket': '', 'paths': ['src/file.py']}
-    candidate['score'] = {**candidate['score'], 'job_size': 1}  # ranks above A, so it starts
-    state._write_state(lambda day: day.setdefault('discovery_candidates', {}).update(B=candidate),
-                       root, reserved=False)
-    assert plan.add('B', root)['action'] == 'build next'
-    data = state.read_state(root)
-    assert 'B' in data['items'] and 'B' not in data.get('tickets', {})
 
 
 def test_invalid_ticket_names_item_field_and_form(root):
@@ -1063,3 +1005,209 @@ def test_plan_events_are_reserved(root, capsys):
     from wuwei.__main__ import main
     for kind in ('plan.disposed', 'plan.resumed'):
         assert main(['event', kind, '{}']) == 1
+
+
+def candidate(name='NEW', track='SLICE'):
+    return {
+        'id': name, 'goal': 'G-1', 'track': track, 'evidence': 'tracker item',
+        'scope': 'one function', 'overlap': 'none', 'paths': ['src/file.py'],
+        'flags': {'trust_surface': False, 'boundary_relevant': False,
+                  'agent_surface': False},
+        'estimated_hours': 2,
+        'score': {'value': 5, 'time_criticality': 3,
+                  'risk_reduction': 2, 'job_size': 2},
+        'evidence_lines': {key: 'tracker evidence' for key in
+                           ('value', 'time_criticality', 'risk_reduction', 'job_size')},
+    }
+
+
+# Owner and finding admission after the gate (#843: moved from the intraday intake tests).
+
+@pytest.fixture
+def gated(root, monkeypatch):
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T10:00:00+02:00')
+    plan.propose({'goals': ['G-1'], 'cap': 2,
+                  'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
+                  'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 5},
+                  'sweep': {'manual': 'measured: none'}, 'candidates': []}, root)
+    plan.approve([], root, goals_confirmed=True)
+    return root
+
+
+def test_plan_add_admits_owner_named_item_under_a_goal(gated):
+    result = plan.add('OWN-1', gated, goal='G-1', size=2)
+    day = state.read_state(gated)
+    assert result['action'] == 'build next'
+    assert day['items']['OWN-1']['goal'] == 'G-1'
+    assert day['items']['OWN-1']['budget_size'] == 2
+    assert day['items']['OWN-1']['status'] == 'queued'
+    assert 'OWN-1' in day['approved_items']
+
+
+def test_plan_add_records_the_owner_note_once(gated, monkeypatch):
+    # #731: the owner's words naming the item are its recorded approval; set once, at admission.
+    plan.add('OWN-1', gated, goal='G-1', note='only the annotator change')
+    plan.add('OWN-2', gated, goal='G-1')
+    items = state.read_state(gated)['items']
+    assert items['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
+    assert 'approved_as' not in items['OWN-2']
+    with pytest.raises(state.StateError, match='scope change'):
+        plan.add('OWN-1', gated, goal='G-1', note='more')
+    assert state.read_state(gated)['items']['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    assert main(['plan', 'add', 'OWN-3', '--goal', 'G-1', '--note', 'x']) == 0
+    assert state.read_state(gated)['items']['OWN-3']['approved_as'] == 'owner: "x"'
+
+
+def test_plan_add_records_an_adopted_source(gated):
+    plan.add('PR-8', gated, goal='G-1', title='Fix login', source='adopted')
+    plan.add('OWN-1', gated, goal='G-1')
+    day = state.read_state(gated)
+    assert {key: day['items']['PR-8'][key] for key in ('source', 'title')} == {
+        'source': 'adopted', 'title': 'Fix login'}
+    assert 'source' not in day['items']['OWN-1'] and 'title' not in day['items']['OWN-1']
+    events = [json.loads(line) for line in
+              (gated / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()]
+    added = [e['payload'] for e in events if e['kind'] == 'plan.added']
+    assert [(row['item'], row['source']) for row in added] == [('PR-8', 'adopted'), ('OWN-1', 'owner')]
+
+
+def test_plan_add_unknown_item_without_goal_names_the_form(gated):
+    with pytest.raises(state.StateError, match='plan add OWN-2 --goal G-n'):
+        plan.add('OWN-2', gated)
+    with pytest.raises(state.StateError, match="not one of today's goals"):
+        plan.add('OWN-2', gated, goal='G-9')
+    assert 'OWN-2' not in state.read_state(gated)['items']
+
+
+def test_owner_named_item_with_a_ticket_builds_next(gated):
+    (gated / '.wuwei/config.toml').write_text(
+        '[adapters]\ntracker = "linear"\n')
+    assert plan.add('OWN-3', gated, goal='G-1', ticket='ENG-7')['action'] == 'build next'
+    assert state.read_state(gated)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
+
+
+REPOS = '[[repos]]\nname = "{}"\npath = "{}"\ndefault_branch = "main"\n'
+
+
+@pytest.mark.parametrize('settings,stored', [
+    (REPOS.format('acme/app', 'app'), 'acme/app#24'),
+    ('[tracker]\nproject = "acme/tracker"\n' + REPOS.format('acme/app', 'app'), 'acme/tracker#24'),
+    (REPOS.format('acme/app', 'app') + REPOS.format('acme/lib', 'lib'), 'acme/app#24'),
+])
+def test_owner_named_bare_ticket_is_stored_in_full_and_claimed(gated, monkeypatch, settings, stored):
+    """#741: plan add --ticket 24 stores <repo>#24, and build next claims that id."""
+    from fakes.tracker import Fake
+    from wuwei import dispatch, registry
+    (gated / '.wuwei/config.toml').write_text(GITHUB + settings)
+    fake = Fake({'claim': registry.Result(0, {})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
+                        else load(kind, config))
+    assert plan.add('OWN-3', gated, goal='G-1', ticket='24')['action'] == 'build next'
+    assert state.read_state(gated)['tickets']['OWN-3'] == {'id': stored, 'source': 'candidate'}
+    assert dispatch.tracker_call('OWN-3', 'claim', gated).exit == 0
+    assert fake.calls[-1][:2] == ('claim', (stored,))
+    lines = (gated / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()
+    call, = [row for row in map(json.loads, lines) if row['kind'] == 'tracker.call']
+    assert call['payload']['ticket'] == stored
+
+
+def test_owner_named_bare_ticket_without_a_repository_is_refused(gated, monkeypatch):
+    from wuwei.__main__ import main
+    (gated / '.wuwei/config.toml').write_text(GITHUB)
+    with pytest.raises(ValueError, match='owner/repo#24'):
+        plan.add('OWN-4', gated, goal='G-1', ticket='24')
+    day = state.read_state(gated)
+    assert 'OWN-4' not in day['items'] and 'OWN-4' not in day.get('tickets', {})
+    assert 'OWN-4' not in (gated / '.wuwei/days/2026-09-29/events.jsonl').read_text()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    monkeypatch.chdir(gated)
+    assert main(['plan', 'add', 'OWN-4', '--goal', 'G-1', '--ticket', '24']) == 2
+
+
+@pytest.mark.parametrize('created', [True, False])
+def test_owner_named_item_opens_its_ticket_as_a_duty(gated, monkeypatch, created):
+    """#842 F3: plan add opens the owner's item's ticket as a duty; a failure never refuses."""
+    from fakes.tracker import Fake, ported
+    from wuwei import registry
+    (gated / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Pat Example"\n'
+        '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
+                 if created else registry.Result(2, reason='linear: unreachable')})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    assert plan.add('OWN-3', gated, goal='G-1', title='Fix the export')['action'] == 'build next'
+    (_, (draft,), _), = fake.calls
+    assert draft['title'] == 'Fix the export' and draft['item'] == 'OWN-3'
+    assert ('OWN-3' in state.read_state(gated).get('tickets', {})) is created
+    kinds = [e['kind'] for e in map(json.loads, (gated / '.wuwei/days/2026-09-29/events.jsonl')
+                                    .read_text().splitlines()) if e['kind'].startswith('duty.')]
+    assert kinds == ['duty.due', 'duty.done' if created else 'duty.skipped']
+
+
+def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():
+    top = Path(__file__).resolve().parents[1]
+    for path in ('skills/wuwei-plan/SKILL.md', 'agents/planner.md', 'docs/site/daily.md'):
+        assert 'wuwei plan add <item> --goal G-n' in (top / path).read_text(encoding='utf-8'), path
+
+
+def added_events(gated):
+    return [e['payload'] for e in map(json.loads, (gated / '.wuwei/days/2026-09-29/events.jsonl')
+                                      .read_text().splitlines()) if e['kind'] == 'plan.added']
+
+
+def test_plan_add_records_the_risk_flags_merge_check_reads(gated):
+    # #615: plan.added carries flags in the plan.approved shape, so merge check finds evidence.
+    plan.add('OWN-1', gated, goal='G-1')
+    flags = {key: False for key in plan.FLAGS}
+    assert [row['flags'] for row in added_events(gated)] == [{'OWN-1': flags}]
+
+
+def test_plan_add_backfills_missing_risk_evidence_once(gated):
+    # #615: an item admitted before the fix recovers with the command merge check names.
+    flags = {key: False for key in plan.FLAGS}
+    state._write_state(lambda d: d['items'].update({'OLD': {'goal': 'G-1', 'flags': flags}})
+                       or d['approved_items'].append('OLD'), gated, reserved=False,
+                       kind='plan.added', payload={'item': 'OLD', 'source': 'owner'})
+    assert plan.add('OLD', gated) == {'action': 'risk recorded', 'item': 'OLD'}
+    assert added_events(gated)[-1] == {'item': 'OLD', 'source': 'replan', 'flags': {'OLD': flags}}
+    with pytest.raises(state.StateError, match='already in the plan'):
+        plan.add('OLD', gated)
+    assert len(added_events(gated)) == 2
+
+
+def test_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
+    """#646: a seat's finding joins as a small item with no ticket, even with a tracker required."""
+    from fakes.tracker import Fake, ported
+    from wuwei import registry
+    from wuwei.__main__ import main
+    (gated / '.wuwei/config.toml').write_text(
+        '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9'})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    assert main(['plan', 'add', '--from-finding', 'fix-pin-ruff-in-ci']) == 1
+    assert 'wuwei next' in capsys.readouterr().err
+    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    capsys.readouterr()
+    with pytest.raises(state.StateError, match="not one of today's goals"):
+        plan.add('fix-pin-ruff-in-ci', gated, goal='G-9', source='finding')
+    assert main(['plan', 'add', 'fix-pin-ruff-in-ci', '--from-finding']) == 0
+    assert json.loads(capsys.readouterr().out) == {'action': 'build next', 'item': 'fix-pin-ruff-in-ci'}
+    day = state.read_state(gated)
+    row = day['items']['fix-pin-ruff-in-ci']
+    assert {key: row[key] for key in ('goal', 'track', 'tier', 'source', 'title', 'budget_size')} == {
+        'goal': 'G-1', 'track': 'SLICE', 'tier': 'light', 'source': 'finding',
+        'title': 'Pin ruff in CI', 'budget_size': 1}
+    assert not any(row['flags'].values()) and 'fix-pin-ruff-in-ci' in day['approved_items']
+    assert fake.calls == [] and not day.get('tickets')
+    assert added_events(gated)[-1]['source'] == 'finding'
+
