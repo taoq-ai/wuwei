@@ -489,18 +489,6 @@ def test_second_opinion_brief_names_its_model(day, monkeypatch):
     assert written[-2]['second_opinion'] == 'codex:m1' and 'second_opinion' not in written[-1]
 
 
-def test_mcp_unmeasured_in_brief_header(day, monkeypatch):
-    from wuwei import mcp
-    assert brief(monkeypatch, 'body', 'builder', 'X', 'plain') == 0
-    assert 'MCP unmeasured' not in (day[1] / 'briefs/plain.md').read_text()
-    (day[0] / '.wuwei/ziran').mkdir()
-    mcp._write(day[0], {'exit': 2, 'day': '2026-09-28', 'generation': 'g', 'pending': None, 'reports': [],
-                        'reason': 'MCP registry unmeasured', 'severities': [], 'unmeasured': [['remote', '0' * 64]],
-                        'decided': [['aws', '1' * 64]]})
-    assert brief(monkeypatch, 'body', 'builder', 'X', 'flagged') == 0
-    assert 'MCP unmeasured: aws, remote' in (day[1] / 'briefs/flagged.md').read_text()
-
-
 def spec_line(path):
     return [line for line in path.read_text().splitlines() if line.startswith('Spec:')]
 

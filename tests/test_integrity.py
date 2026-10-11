@@ -546,36 +546,6 @@ def test_sweep_summary_cannot_report_clean_when_integrity_failed(tmp_path, monke
     assert records[0]['exit'] == 1 and records[0]['integrity_owed'] == 1
 
 
-@pytest.mark.parametrize('answer, expected', [('y', True), ('YES', True), ('n', False), ('', False),
-                                              ('ab' * 32, False)])
-def test_host_confirm_asks_yes_or_no(monkeypatch, answer, expected):
-    import builtins
-    import os
-    import pty
-    import select
-    api = core()
-    master, slave = pty.openpty()
-    real_open = builtins.open
-    def terminal_open(path, *args, **kwargs):
-        return real_open(os.ttyname(slave) if path == '/dev/tty' else path, *args,
-                         opener=lambda name, flags: os.open(name, flags | os.O_NOCTTY), **kwargs)
-    monkeypatch.setattr(builtins, 'open', terminal_open)
-    try:
-        fingerprint = 'ab' * 32
-        os.write(master, (answer + '\n').encode())
-        assert api._host_confirm(fingerprint) is expected
-        shown = b''
-        while select.select([master], [], [], 0.2)[0]:
-            shown += os.read(master, 4096)
-        shown = shown.decode()
-        assert 'Confirm? [y/N]' in shown and fingerprint[:12] in shown
-        # The terminal echoes the typed line; the prompt itself never shows the full digest.
-        assert shown.count(fingerprint) == (answer == fingerprint)
-    finally:
-        os.close(master)
-        os.close(slave)
-
-
 def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
     api = core()
@@ -866,15 +836,6 @@ def no_terminal(monkeypatch, tmp_path, mode):
             raise OSError(6, 'Device not configured')
         return real_open(regular, *args, **kwargs)
     monkeypatch.setattr(builtins, 'open', fake_open)
-
-
-@pytest.mark.parametrize('mode', ['missing', 'file'])
-def test_host_confirmation_without_a_terminal_names_the_owner_action(tmp_path, monkeypatch, mode):
-    api = core()
-    no_terminal(monkeypatch, tmp_path, mode)
-    with pytest.raises(OSError) as raised:
-        api._host_confirm('a' * 64)
-    assert str(raised.value) == 'this is an owner action: run it in a host terminal'
 
 
 def test_reconfirm_asks_the_owner_step_card(tmp_path, monkeypatch):

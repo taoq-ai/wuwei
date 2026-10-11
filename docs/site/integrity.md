@@ -6,8 +6,7 @@ signature. Git source archives are unsigned and report a page. A source checkout
 is pinned by `wuwei integrity reconfirm` at a clean commit and passes until HEAD or
 the tracked tree changes; ignored development artifacts do not affect its fingerprint.
 The manifest inventories every packaged file except itself and its signature.
-That includes `.claude-plugin/plugin.json`, which declares no MCP server;
-`bin/wuwei mcp check` measures attached servers only.
+That includes `.claude-plugin/plugin.json`, which declares no MCP server.
 Git metadata and generated Python bytecode are not shipped or measured.
 Claude Code writes one marker file per running Claude process into `.in_use/` at the
 install root, named by the process id, so its plugin cache cleanup skips versions in

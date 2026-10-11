@@ -227,7 +227,6 @@ def test_hook_loads_payload_workspace_and_keeps_outside_clean(case, monkeypatch,
 
 def test_init_and_upgrade_provision_private_env(tmp_path, monkeypatch):
     from wuwei.commands import init
-    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
     args = Namespace(path=str(tmp_path), upgrade=False, dry_run=False)
     assert init.run(args) == 0
     path = tmp_path / '.wuwei/env'
@@ -393,7 +392,7 @@ def test_upgrade_loads_credentials_before_adapter_calls(case, monkeypatch):
     from wuwei.commands import init
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     observed = []
-    monkeypatch.setattr(init, '_register_mcp', lambda root: observed.append(
+    monkeypatch.setattr(init, '_finish', lambda root: observed.append(
         os.environ.get('LINEAR_API_KEY')) or 0)
     assert main(['init', '--upgrade']) == 0
     assert observed == [KEY]
@@ -716,7 +715,6 @@ def test_no_tokens_is_clean_without_a_scope_read(host, capsys):
 
 def test_fresh_init_prints_publishing_layout_once(tmp_path, monkeypatch, capsys):
     from wuwei.commands import init
-    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
     assert main(['init', str(tmp_path)]) == 0
     output = capsys.readouterr().out
     assert 'default_branch' in output and 'GH_TOKEN' in output and 'wuwei config check' in output

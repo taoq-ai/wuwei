@@ -181,12 +181,6 @@ def test_collector_finds_an_or_fallback_wall():
     assert reasons("raise ValueError(result.reason or f'build: {exc}')") == []
 
 
-def test_record_id_hint_matches_its_prefix(tmp_path):
-    from wuwei.decision import today_path
-    with pytest.raises(ValueError, match='such as D-1$'):
-        today_path('../x', tmp_path)
-
-
 def test_family_texts_name_a_next_step_without_a_pronoun():
     for name in exits.FAMILIES:
         text = getattr(exits, name)
@@ -229,7 +223,6 @@ def fresh(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T09:00:00+00:00')
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
     from fakes.integrity import measured
     measured(monkeypatch)
     assert main(['init', str(tmp_path)]) == 0
@@ -313,12 +306,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('decision.py', 'at the host terminal', 18),
-    ('mcp.py', 'host terminal', 18),
-    ('commands/doctor.py', 'mcp.pending(root))} in a host terminal', 18),
-    ('guards/protect_state.py', 'wuwei mcp decide in a host terminal', 18),
-    ('integrity.py', 'run it in a host terminal', 18),
-    ('integrity.py', '/dev/tty', 18),
     ('tracker.py', 'init --upgrade in a host terminal', 20),
     ('watch.py', 'install in a host terminal', 23),
 )
@@ -343,9 +330,7 @@ def test_no_text_sends_the_owner_to_a_terminal():
     found = [f'{rel}: {text[:120]!r}' for rel, text in texts
              if not any(rel == file and part in text for file, part, _ in LEFT)]
     assert not found, 'name the command, which asks its own Owner step card:\n' + '\n'.join(found)
-    # The terminal prompt itself: only modules a later part deletes still call it.
-    prompts = {rel for rel, source in _sources() if '_host_confirm' in source and rel != 'integrity.py'}
-    assert prompts <= {file for file, _, _ in LEFT}, f'use sessions.needs_owner in {prompts - {r[0] for r in LEFT}}'
-    texts += [(rel, '_host_confirm') for rel in prompts]
+    # The terminal prompt itself is gone: the owner answers on an Owner step card.
+    assert not {rel for rel, source in _sources() if '_host_confirm' in source or '/dev/tty' in source}
     stale = [row for row in LEFT if not any(rel == row[0] and row[1] in text for rel, text in texts)]
     assert not stale, f'delete the LEFT rows whose text is gone: {stale}'

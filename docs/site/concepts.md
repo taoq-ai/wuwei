@@ -160,8 +160,6 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 The day report's `## Shadow` section groups the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
-MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
-
 ## Owner-only actions
 
 An owner-only deploy, release or `deploy.deny` publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and prints an Owner step card for that exact command. The planner asks you the card. Your Yes lets that same command run today; any other command asks its own card. No config line and no hook answers for you.
@@ -183,7 +181,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm` and `wuwei mcp decide`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. `wuwei doctor` lists answered cards whose record never ran. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei state recover` and `wuwei integrity reconfirm`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Outward sends
 

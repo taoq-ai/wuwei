@@ -76,22 +76,6 @@ def test_init_layout(tmp_path, explicit):
         'template_version = ""', f'template_version = "{version}"', 1)
 
 
-def test_init_without_scanner_exits_0(tmp_path, monkeypatch, capsys):
-    # #424: the template scanner is "none", so the registry gate is off with one line.
-    from argparse import Namespace
-    from wuwei import mcp
-    from wuwei.commands import init
-    project = tmp_path / 'project'
-    project.mkdir()
-    (project / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
-    user = Path.home() / '.claude.json'
-    user.write_text(json.dumps({'projects': {str(project.resolve()): {'enabledMcpjsonServers': ['docs']}}}))
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    assert init.run(Namespace(path=str(project))) == 0
-    err = capsys.readouterr().err
-    assert err.count(mcp.NO_SCANNER) == 1 and 'unmeasured' not in err
-
-
 @pytest.mark.parametrize('flags,enforce', [(('--shadow',), False), ((), True)])
 def test_init_shadow(tmp_path, flags, enforce):
     # #837: --shadow writes guards.enforce = false; --posture is gone.
@@ -233,8 +217,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['max_length'] == {}
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
-            'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
-            'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': []}},
+            'plugins_file': '~/.claude/plugins/installed_plugins.json'}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'report': ''}},
@@ -398,8 +381,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
     ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
-    ('[scanner.mcp]\nblock = ["severe"]', 'scanner.mcp.block'),
-    ('[scanner.mcp]\ntimeout_seconds = 0', 'scanner.mcp.timeout_seconds'),
+    ('[scanner.mcp]\nplugins_file = 1', 'scanner.mcp.plugins_file'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
     write_config(tmp_path, text)

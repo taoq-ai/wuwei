@@ -47,7 +47,7 @@ TASKS = ('Read the ticket and the {m} module first.', 'Keep the change inside {m
 
 
 def decision_text(question, context, option='A'):
-    """A record in the `wuwei decision template` shape that decision.evaluate accepts."""
+    """A record in the D-n decision record shape."""
     return f'''Question: {question}
 Context: {context}
 Options:

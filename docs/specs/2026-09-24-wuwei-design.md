@@ -710,8 +710,8 @@ Owner step card of the command that applies the answer; the CLI applies the safe
 | Scope change a reviewer asks on a PR | `wuwei pr act <pr>` | opens a fix round for it | the thread waits for the owner |
 
 A PARK verdict parks the item in code with its reason and no card; the report and `why` show
-it. The process checks stay in code: the round cap, gates at head, the merge policy. The MCP
-registry cards keep their records until their part of #789 lands.
+it. The process checks stay in code: the round cap, gates at head, the merge policy. The D-n
+records of past days stay readable.
 
 ### 5.9 Cockpit, signals and briefings (owner, 2026-09-28) (cockpit, menu bar and briefings retired: owner, 2026-10-11, #789)
 
@@ -1409,21 +1409,13 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
   and prompts the user. Amendment (owner trial, 2026-10-03, #352): only seats park and prompt;
   registered non-seat sessions are noted once per day, and unknown sessions are noted once
   per day.
-- S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
-  servers attached to the session and registers them with `ziran watch-registry`; each
-  morning plan runs the registry check, so a server whose tools changed after approval is
-  flagged before any seat uses it. Amendment (owner, 2026-10-03, #325): the check scans only
-  servers Claude Code would attach (project servers need approval), one server per scanner
-  call, never runs an unpinned `uvx`, `npx` or `pipx run` launcher, and warns by default:
-  `scanner.mcp.block` (default `["critical"]`) sets what blocks launches, while a check that
-  could not run always blocks. Amendment (owner, 2026-10-03, #351): the default list is
-  empty. Amendment (owner, 2026-10-11, #837): with `guards.enforce` on, the findings in
-  `scanner.mcp.block` and a check that could not run block; with it off they pass with a note.
+- S3. MCP audit and drift: retired (owner, 2026-10-11, #789). WUWEI no longer watches attached
+  MCP servers; an `agent_surface` change, MCP config included, is scanned by S4.
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
 
-With the adapter set to `none` or ZIRAN absent, S2 to S4 report "unmeasured" (exit 2).
+With the adapter set to `none` or ZIRAN absent, S2 and S4 report "unmeasured" (exit 2).
 
 ### 7.1 Integrity and canaries (owner, 2026-09-28)
 
@@ -1461,7 +1453,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | docs (5.12) | `read(ref)`, `write(draft)` | Notion (recommended), Confluence, repository Markdown |
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
-| scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
+| scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha, method)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
 | inbound (M5) (retired by #789, owner, 2026-10-10) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
@@ -1544,8 +1536,8 @@ The floor blocks whatever the switch says (constitution VII):
   one owner decision from `wuwei next` (4.6, #816).
 
 No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
-default still blocks (the floor, the force push and default-branch edges, day close, spec mode,
-the MCP launch gate), and so do two process checks: a seat launch that matches no logged brief
+default still blocks (the floor, the force push and default-branch edges, day close, spec mode),
+and so do two process checks: a seat launch that matches no logged brief
 at an unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a
 logged `guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
 directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command
@@ -1635,7 +1627,7 @@ Three modules, one release, built in dependency order, each with its own impleme
    identity, obligations, outward-text lint, traces.
 2. Team: charters, agent generation, skills, planner flow, steward, runtime adapter.
 3. Memory and security: spine, notes, index, memory lint, consolidation, ZIRAN adapter
-   (S2 to S4, then S1 once the ZIRAN release with plugin agent support exists).
+   (S2 and S4, then S1 once the ZIRAN release with plugin agent support exists).
 
 Upstream prerequisite, in parallel with module 1: the ZIRAN change for S1, planned and
 shipped in the ZIRAN repository under its own spec.
@@ -1647,8 +1639,7 @@ on it. The repository stays PRIVATE until the owner judges it stable enough to p
 
 - Q1. ZIRAN support for Claude Code plugin agent files ships in ZIRAN first; WUWEI pins that
   release (section 7, S1).
-- Q2. ZIRAN has no MCP server; the CLI is the integration surface. `watch-registry` covers
-  MCP drift (section 7, S3).
+- Q2. ZIRAN has no MCP server; the CLI is the integration surface.
 - Q3. Private until stable enough to become public (section 13).
 
 ## 15. Post-v1 (M5): always-on responder and inbound messaging (retired by #789, owner, 2026-10-10)

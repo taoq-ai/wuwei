@@ -5,7 +5,7 @@ import json
 import pytest
 
 from fakes.tracker import Fake, ported
-from wuwei import integrity, registry, state, tracker, workspace
+from wuwei import registry, state, tracker, workspace
 from wuwei.__main__ import main
 
 
@@ -74,7 +74,6 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\npronouns = "they/them"\n'

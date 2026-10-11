@@ -69,8 +69,8 @@ def development():
 def registered(root=None, config=None):
     """The install directory Claude Code registered for wuwei (the first wuwei@* entry with
     bin/wuwei), or None when the plugins file is missing or lists none; other errors raise."""
-    from wuwei import mcp
-    name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
+    name = (config['scanner']['mcp']['plugins_file'] if config
+            else workspace.SCHEMA['scanner']['mcp']['plugins_file'][1])
     try:
         data = json.loads(((Path(root) if root else Path.cwd()) / Path(name).expanduser()).read_text())
     except FileNotFoundError:
@@ -367,30 +367,6 @@ def fresh(root):
         return result
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
-
-
-HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
-
-
-def _host_confirm(fingerprint, *, prompt=None):
-    # A local friction boundary, not proof against a same-uid process (spec 9.1). The caller
-    # computes, records and compares the digest; the owner answers y/N and never types it (#354).
-    try:
-        reader = open('/dev/tty', 'r')
-    except OSError:
-        raise OSError(HOST_TERMINAL) from None
-    with reader:
-        try:
-            terminal = open('/dev/tty', 'w')
-        except OSError:
-            raise OSError(HOST_TERMINAL) from None
-        with terminal:
-            if not reader.isatty() or not terminal.isatty():
-                raise OSError(HOST_TERMINAL)
-            terminal.write((prompt or f'Plugin installation {fingerprint[:12]} on this host.')
-                           + '\nConfirm? [y/N] ')
-            terminal.flush()
-            return reader.readline().strip().lower() in ('y', 'yes')
 
 
 def reconfirm(root, *, confirm=None):

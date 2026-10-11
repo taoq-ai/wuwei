@@ -29,7 +29,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
 | `bin/wuwei init` | Creates or upgrades a workspace; `--shadow` writes `guards.enforce = false`, so guards log what they would refuse. | [Daily path](daily.md) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | `memory export --claude` writes the charter rules block into `memory.export_to`. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics, including `cycle_minutes` and `gate_minutes` per merged item and `cycle_by_tier` (median minutes, items and target per tier). A ticket whose tracker lookup could not run is named with its reason under `lead_time.unmeasured`, and the others still measure. `metrics --week [<week>]` prints a week's telemetry aggregate, computing it when absent. | [Telemetry](configuration.md#telemetry) |
@@ -86,7 +85,7 @@ For `prioritisation.framework = "rice"`, use `reach` (positive people or systems
 
 ## Owner decisions
 
-What reaches you comes from `bin/wuwei next`, one decision at a time, on the Owner step card of the command that needs it: the morning gate (`plan gate`), a merge the policy does not clear or an item you keep (`merge <pr>`), an ESCALATE verdict (`dispatch next <item>`: Yes opens a fix round, No parks the item), a parked item (`plan resume <item>`: the round cap, a build limit or a scanner chain parked it) and a scope change a reviewer asks on a PR (`pr act <pr>`). A PARK verdict parks the item with no card; `report` and `why` show the reason. A seat records a two-way choice under `Assumptions:` in its spec or PR body and names a one-way, scope or trust-boundary question in its result. The MCP registry cards still write a record under `.wuwei/days/<date>/decisions/` until their part lands.
+What reaches you comes from `bin/wuwei next`, one decision at a time, on the Owner step card of the command that needs it: the morning gate (`plan gate`), a merge the policy does not clear or an item you keep (`merge <pr>`), an ESCALATE verdict (`dispatch next <item>`: Yes opens a fix round, No parks the item), a parked item (`plan resume <item>`: the round cap, a build limit or a scanner chain parked it) and a scope change a reviewer asks on a PR (`pr act <pr>`). A PARK verdict parks the item with no card; `report` and `why` show the reason. A seat records a two-way choice under `Assumptions:` in its spec or PR body and names a one-way, scope or trust-boundary question in its result.
 
 ## Retro and merge configuration
 
@@ -187,13 +186,13 @@ in seven sections: Install (plugin, integrity, `.in_use` markers, hooks, launche
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
 `fast_checks`, calibration, posture and its observe days), Gates and adapters
-(`config check`, the MCP gate and each server in today's registry record), PR flow (the
+(`config check`), PR flow (the
 settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.authors`,
 `shepherd.review_channel` when chat is set, and the tracker, chat and review-bot adapters; an
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, shepherd, heartbeat, stuck seats, open pages, traces gaps, untraced subagents, answered cards not recorded) and Guards (the heartbeat
+(state, planner, watch, shepherd, heartbeat, stuck seats, open pages, traces gaps, untraced subagents) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -231,7 +230,6 @@ computed from `config.toml` alone; the planner runs it once at the start of the 
 | `integrity-reconfirm` | `wuwei integrity reconfirm` | a development checkout asks for reconfirmation |
 | `init-upgrade` | `wuwei init --upgrade` | template drift, or `repos = []` above `[[repos]]` tables |
 | `watch-install` | `wuwei watch install` | the watch is not installed |
-| `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
 
 It previews every fix first (the command's own dry run, or the digest its own confirmation
 would ask for), prints them as one batch, and asks y/N once on `/dev/tty`. Without a
@@ -239,7 +237,7 @@ terminal it exits 2 and applies nothing; any answer but y applies nothing and ex
 is then applied bound to what its preview showed: a plan or digest that changed since the
 preview is refused and reported, and the other fixes still run. Every applied fix appends one
 `doctor.fixed` event `{fix, exit}`, then doctor diagnoses again and exits with that result.
-Decisions stay printed under `Not applied`: `mcp decide`, `security.posture`, `state recover`,
+Decisions stay printed under `Not applied`: `security.posture`, `state recover`,
 repository identity and anything that touches the code host. `--fix` and `--json` together
 are a usage error.
 
@@ -358,10 +356,6 @@ Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` insid
 
 `status --line` adds the posture name after the pages when it is not `guarded`, and `status --json` carries `posture`. Under `observe`, once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, the doctor `posture` row warns, asking you to set `security.posture = "guarded"` or raise `guards.shadow_days`. With an empty `shadow_since` there is no warning. Under `guarded` or `strict` a `guard.would_refuse` event is a warning, one per guard per day, naming the guard, its reason and `security.areas.<area>`; under `observe` it is silent.
 
-With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP registry: not checked (security.areas.mcp = "off")`, runs no scanner and writes no event, and the launch gate passes. A non-zero launch gate reason names the mcp level and either `floor: scanner.mcp.block` or `security.areas.mcp`.
-
-`bin/wuwei mcp check --widget` runs the check, then prints today's pending registry decision as a JSON list with one AskUserQuestion widget. The `proceed` description adds one line per server with today's finding counts by severity since the last `proceed` (server names and severities only, never scanner text). `record` is `wuwei mcp decide D-<n> <label>`, the command that records the answer. With nothing pending, or a pending record from an earlier day, it prints `[]`. `mcp decide --widget` is a usage error.
-
 ## Why
 
 `bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, `adhoc`, a PR ref `owner/repo#<n>`, or an item name. `adhoc` lists today's adhoc seats (see [Stuck seats](#stuck-seats)).
@@ -386,7 +380,6 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | --- | --- |
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
-| `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei watch uninstall` | no |
 | `bin/wuwei config promote` | yes |
 | `bin/wuwei config set <key> <value>` | yes |

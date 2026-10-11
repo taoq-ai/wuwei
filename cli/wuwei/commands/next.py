@@ -17,8 +17,8 @@ ENFORCE = {
             "owner-only. The day report's ## Shadow section lists the would-be refusals."),
     True: ('Guards enforce: records, publishing, plugin integrity and seat launches without a '
            'matching brief block; deploys, releases and approve-tier messages ask on a card; merges '
-           'and approvals stay owner-only; outward text, scratch paths, seat capacity and MCP '
-           'findings below the floor are logged. A refusal names its reason and the accepted form: '
+           'and approvals stay owner-only; outward text, scratch paths and seat capacity '
+           'are logged. A refusal names its reason and the accepted form: '
            'use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
@@ -48,7 +48,6 @@ THEN = {
     'done': 'The day is closed; tomorrow starts with wuwei next.',
     # Planner-facing lines of single rows; step formats {days} and {dm}.
     'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
-    'mcp': 'On exit 1 or 2 show the owner its one-line reason; then run wuwei next.',
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
@@ -178,9 +177,6 @@ def step(root, ran=()):
         if ('pr-flow', '') not in returned:
             return _row('pr-flow', 'Check the PR flow settings once before the day starts.',
                         'wuwei doctor --section pr-flow', then=THEN['pr-flow'])
-        if ('mcp', '') not in returned:
-            return _row('mcp', 'Check the MCP registry before any seat launches.', 'wuwei mcp check',
-                        then=THEN['mcp'])
         lead = data['seats'].get('lead')
         if not (directory / 'lead.json').is_file() and (lead is None or lead['status'] == 'running'):
             if not (directory / 'briefs/lead.md').is_file():
@@ -345,9 +341,6 @@ def resolve(row, root):
         return {**keep, **action, 'why': row['why'], 'then': row['then']}
     if row['action'] == 'card' and row['command'].startswith('wuwei '):
         widget = _widget(shlex.split(row['command'])[1:])
-        if name == 'gate':
-            from wuwei import mcp
-            widget += mcp.widget(root)
         return {**row, 'widget': widget} if widget else None
     if name == 'build':
         from wuwei.commands import build

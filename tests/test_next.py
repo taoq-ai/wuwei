@@ -137,7 +137,7 @@ def test_morning_path(root, capsys, monkeypatch):
     monkeypatch.delenv('WUWEI_SESSION_ID')
     assert row(capsys)[1]['command'] == 'wuwei plan session <session id>'
     assert main(['plan', 'session', 'S']) == 0
-    for command in ('wuwei doctor --section pr-flow', 'wuwei mcp check'):
+    for command in ('wuwei doctor --section pr-flow',):
         found = row(capsys)[1]
         seen_rows.append(found)
         assert (found['action'], found['command']) == ('run', command)
@@ -708,12 +708,17 @@ def test_a_once_row_is_done_when_its_command_ran_not_when_returned(root, capsys)
     assert main(['next']) == 0  # a person's look-up records nothing
     assert (workspace.day_dir(root) / 'events.jsonl').read_text() == events
     ran(root, '/opt/wuwei/bin/wuwei doctor --section pr-flow')
-    assert row(capsys)[1]['state'] == 'mcp'
+    assert row(capsys)[1]['state'] == 'lead'
     assert last_event(root)['payload']['done'] == [['pr-flow', '']]
-    assert row(capsys)[1]['state'] == 'mcp'
+
+
+def test_a_once_row_returned_three_times_is_done(root, capsys):
+    calibrated(root)
+    day(root, planner_session_id='S')
     # ponytail: a once-row returned three times counts as done, so a refused or failed command
     # (no PostToolUse span) never holds the day.
-    assert row(capsys)[1]['state'] == 'mcp'
+    for _ in range(3):
+        assert row(capsys)[1]['state'] == 'pr-flow'
     assert row(capsys)[1]['state'] == 'lead'
 
 

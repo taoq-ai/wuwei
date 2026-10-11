@@ -20,7 +20,7 @@ SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
         'host': 'docs/site/daily.md#1-install-the-signed-release',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
-        'gates': 'docs/site/configuration.md#mcp-registry-checks-s3',
+        'gates': 'docs/site/security.md#ziran-integration',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
         'day': 'docs/site/reference.md#watch-state',
         'guards': 'docs/site/reference.md#heartbeat'}
@@ -165,7 +165,6 @@ def _invoked(root):
 
 
 def _hooks(root, config):
-    from wuwei import mcp
     plugin = integrity.PLUGIN
     try:
         hooks = json.loads((plugin / 'hooks/hooks.json').read_text())
@@ -173,7 +172,8 @@ def _hooks(root, config):
             raise ValueError('no PreToolUse hooks; reinstall the signed release, then run bin/wuwei doctor')
     except (OSError, ValueError, AttributeError) as exc:
         return _row('install', 'hooks', 'fail', f'hooks/hooks.json: {exc}', REINSTALL)
-    name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
+    name = (config['scanner']['mcp']['plugins_file'] if config
+            else workspace.SCHEMA['scanner']['mcp']['plugins_file'][1])
     try:
         listed = integrity.registered(root, config) is not None  # from either launcher (#601)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -409,38 +409,12 @@ def _calibration(root, config):
 
 
 def _gates(root, config):
-    from wuwei import mcp
     from wuwei.commands import config as config_command
     code, text = _capture(config_command.run, Namespace())
     rows = [_row('gates', 'config check', ('ok', 'fail', 'unmeasured')[code], f'exit {code}',
                  'apply the fix each detail line names', docs='docs/site/configuration.md',
                  detail=[line.strip() for line in text.splitlines() if line.strip()] if code else ())]
-    result = mcp.cached(root)
-    rows.append(_row('gates', 'mcp gate', ('ok', 'fail', 'unmeasured')[result.exit], result.reason or 'clean',
-                     '' if not result.exit else 'wuwei mcp check' if result.exit == 2
-                     else f'{mcp.command(mcp.pending(root))} in a host terminal'))
-    legacy = list(Path(root, '.wuwei/ziran').glob('report-*'))
-    if legacy:
-        rows.append(_row('gates', 'mcp reports', 'warn', f'{len(legacy)} report directories in the v0.12.0 layout',
-                         'wuwei doctor --fix', apply='mcp-reports'))
-    if config['adapters']['scanner'] == 'none':  # #424: no record rows.
-        return rows
-    try:
-        record = mcp._read(Path(root).resolve())
-    except (OSError, ValueError) as exc:
-        return rows + [_row('gates', 'mcp servers', 'unmeasured', str(exc), 'wuwei mcp check')]
-    if record and record['day'] == workspace.now().date().isoformat():
-        for name, _ in record['unmeasured']:
-            rows.append(_row('gates', f'mcp {name}', 'warn', 'unmeasured',
-                             f'wuwei mcp decide proceed-unmeasured {name} (or fix the server, then wuwei mcp check)'))
-        for name, _ in record['decided']:
-            rows.append(_row('gates', f'mcp {name}', 'ok', 'proceeding unmeasured by owner decision'))
-        for note in record['reason'].split('; '):
-            name, _, value = note.partition(': ')
-            if value == 'not attached (unapproved)':
-                rows.append(_row('gates', f'mcp {name}', 'ok', value))
     return rows
-
 
 def _docs(root, config):
     """The docs system (#419): its space, credentials and a read of the space, or the markdown root."""
@@ -584,13 +558,6 @@ def _day(root, config, probes):
                          'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
     except watch.ERRORS as exc:
         rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
-    try:
-        ids = _unrecorded(root)
-        rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
-                         f'{", ".join(ids)} answered on a card, not recorded' if ids else 'none',
-                         "the planner runs each card's record command (the card names it)"))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
 
 
@@ -630,26 +597,6 @@ def _tracker_labels(root, config):
         return _row('day', 'tracker labels', 'warn', 'missing: ' + ', '.join(
             f'"{name}"' for name in result.data['missing']), 'wuwei init --upgrade')
     return _row('day', 'tracker labels', 'ok', 'none missing')
-
-
-def _unrecorded(root):
-    """#661: cards the owner answered whose record command never ran."""
-    from wuwei import decision, state
-    data = state.read_state(root)
-    topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
-    return sorted({ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-                   and decision.answered(data, ident := topic.split('=')[0]) is None
-                   and not _owner_on_file(ident, root)})
-
-
-def _owner_on_file(ident, root):
-    """mcp.decide records the owner's option in the D-n file only, never in decision_outcomes."""
-    from wuwei import decision
-    try:
-        text = decision.today_path(ident, root).read_text(encoding='utf-8')
-    except (OSError, UnicodeError):
-        return False
-    return bool(re.search(r'^Decided-by: owner$', text, re.M) and re.search(r'^Outcome: (?!pending$)\S', text, re.M))
 
 
 TIMED = ('refused', 'allowed', 'state_write', 'read_loop')  # the heartbeat probes that carry ms
@@ -779,28 +726,13 @@ def _reconfirm(root, token):
     return result.exit
 
 
-def _reports_preview(root):
-    from wuwei import mcp
-    plan = mcp.migrate(root)
-    return plan, plan
-
-
-def _reports(root, token):
-    from wuwei import mcp
-    if mcp.migrate(root, token) != token:
-        print('move legacy MCP reports: changed since the preview; nothing applied')
-        return 1
-    return 0
-
-
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (mcp decide, guards.enforce, state recover, the code host)
+# apply(root, token) -> exit). Decisions (guards.enforce, state recover, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
     'watch-install': _planned('wuwei watch install', _service('watch')),
-    'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }
 
 

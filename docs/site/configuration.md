@@ -69,7 +69,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.handles` | `[]` | Bare chat IDs and code host handles the outward lint treats as your name. |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
-| `owner.verbosity.decisions` | `""` | Level for an MCP registry card. Empty uses `owner.verbosity.default`. |
+| `owner.verbosity.decisions` | `""` | Level for decision cards. No command reads it since #789 part 18. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -187,8 +187,9 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 | `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
-| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. `none` turns the MCP registry gate off. |
+| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
 | `scanner.severity_threshold` | `"high"` | Blocking threshold: critical, high, medium or low. Trust-boundary findings always block. |
+| `scanner.mcp.plugins_file` | `"~/.claude/plugins/installed_plugins.json"` | Claude Code's installed plugin registry v2, read to find installed plugins: WUWEI's own registration and the spec engine plugin. |
 | `adapters.code_host` | `"github"` | Code host: github or none. |
 | `adapters.vcs` | `"git"` | Version control: git. |
 | `adapters.host` | `"local"` | Host measurement: local or none. |
@@ -332,114 +333,6 @@ A call with no destination is never yours. Your code-host login is never local: 
 While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
 
 After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
-
-
-### MCP registry checks (S3)
-
-`wuwei init` and `wuwei init --upgrade` discover attached MCP configurations and
-register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIRAN
-0.39.0 or newer. `none`, the default, turns the registry gate off: every MCP
-command and the launch gate exit 0, the first check of the day with attached servers
-prints `mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)`, and doctor shows
-the gate ok. Nothing checks
-attached servers for tool drift or poisoning then. A configured scanner that is
-missing or the wrong version is a check that could not run (exit 2) and blocks
-launches under `guarded` and `strict`. No attached servers is a clean empty registry.
-WUWEI declares no MCP server of its own.
-A `.mcp.json` added to the install, one in a workspace or repo, and any other
-plugin's servers are discovered and checked like any other. Coverage goes by install directory, so another plugin
-whose plugin.json links to WUWEI's is still checked.
-
-`scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
-configured repo. `scanner.mcp.plugins_file` defaults to
-`~/.claude/plugins/installed_plugins.json`; registry v2 user installations and
-project/local installations matching those repos contribute their `.mcp.json`
-and the `mcpServers` object of their `.claude-plugin/plugin.json`.
-`${CLAUDE_PLUGIN_ROOT}` in plugin.json servers is expanded to the install path.
-`scanner.mcp.user_file` defaults to `~/.claude.json` with top-level `mcpServers`.
-Relative overrides resolve against the workspace. Missing default user/plugin
-files and absent project/plugin MCP files are optional; explicit user/plugin
-file overrides must exist. Invalid or unreadable input is exit 2.
-
-Only servers Claude Code would attach are scanned. User-scope and plugin servers
-always attach. A project server (from a workspace or repo `project_file`) attaches
-when, for the repo path or one of that repo's git worktrees under
-`<workspace>/worktrees/`, it is not in `disabledMcpjsonServers` and is in
-`enabledMcpjsonServers` or `enableAllProjectMcpServers` is true. Those keys are read
-from `projects[<path>]` in `scanner.mcp.user_file`, `.claude/settings.json` next to
-that file (`~/.claude/settings.json` by default), and the path's
-`.claude/settings.json` and `.claude/settings.local.json`. An unapproved server is
-reported as `<name>: not attached (unapproved)` and never started. Invalid approval
-state is exit 2. Local-scope servers (`projects[<path>].mcpServers`) are not read.
-
-Each attached server is measured on its own: the check writes a one-server config
-under `.wuwei/ziran/servers` (owner-only, since it copies env and headers) and calls
-the scanner once per server, with `scanner.mcp.timeout_seconds` (default 60) per call.
-A server that cannot be measured, for example an OAuth remote server, is named in the
-reason and does not hide the others' findings. A stdio server launched by `uvx`,
-`npx` or `pipx run` without an exact package version (`pkg@1.2.3`, `pkg==1.2.3`) is
-reported as `<name>: unpinned launcher` and never started; `@latest` and ranges are
-unpinned.
-
-The scanner keeps a snapshot per server under `.wuwei/ziran/snapshots` and untrusted
-raw reports under `.wuwei/ziran/<server>/<digest>.json`, one file per server per
-distinct result (the digest is taken over the report's canonical JSON). A repeat check
-with the same result writes nothing and the `mcp.checked` event records the server as
-`unchanged` (`new` for a new result, `unmeasured` when the run failed); a failed run
-leaves no file. Servers named `servers`, `snapshots` or `snapshot-backup` collide with
-this storage and stay unmeasured. `wuwei doctor` warns about `report-*` directories left
-by v0.12.0, and `wuwei doctor --fix` removes the empty and clean ones and moves each
-readable one into this layout, leaving any that a pending decision still lists. A server whose
-measurement fails keeps its prior snapshot, and a check that could not run restores
-all of them, so retries cannot silently accept drift. After upgrading from v0.11.0
-the first check registers a fresh baseline per server, so drift between the last
-v0.11.0 check and the upgrade is not reported. Events contain server name, drift
-type, severity and tool name only.
-
-Run `bin/wuwei mcp check` before the first morning seat. The plan skill does this
-before the lead, and `bin/wuwei plan propose` checks again. The check exits 2 while
-any server is unmeasured, else 1 while findings await an owner decision, else 0.
-High/critical findings open an owner decision. Medium/low findings remain visible.
-
-`scanner.mcp.block` is unset by default, so no finding blocks. Set it to refuse agent and
-runtime launches and `plan propose`: a pending finding with a listed severity (exit 1), or
-any unmeasured server when the list holds `"unmeasured"` (exit 2). Everything else is a
-warning in the event log. With `guards.enforce = false` the list has no effect. The full
-v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check that could not run
-(invalid input, an interrupted check, a stale or missing record) refuses with exit 2 while
-`guards.enforce` is on. A workspace created before #351 carries `block = ["critical"]` from
-the old template; `bin/wuwei config check` names it, and deleting the line takes the
-default.
-
-For a server that stays unmeasured, you may run
-`bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and answer
-y. It records an owner decision bound to each server's definition;
-later checks report the server as proceeding unmeasured by owner decision until its
-definition changes. Briefs list today's unmeasured servers in an `MCP unmeasured:`
-header line.
-
-A new result with a queued severity opens one decision; a recheck that finds the
-same reports queues nothing more. Its `Context:` is a table with one row per finding
-(Server, Tool, Flag, Severity, Snippet, Since) and one row per unmeasured server,
-followed by `Reports:` with each report path. The snippet is redacted, limited to
-plain characters and cut to 60. Since reads `first measurement`, or
-`changed since <day>` when the server has an accepted baseline.
-
-To answer it, run `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a host terminal
-and answer y. Under
-`observe` and `guarded` the planner asks it in the session and records the answer with
-the same command. The command writes `Outcome:`, `Decided-by: owner` and a
-`Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line
-into the record. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or pass
-`bin/wuwei --workspace <path> mcp decide ...`. On `proceed`
-it stores the accepted `[server, digest]` reports as the baseline in an
-`accepted-*.json` record and re-runs the check, so those findings do not queue again
-while the report stays the same. `defer` keeps the gate as it is, and a later
-`proceed` still works. Agent tools cannot invoke this owner command (its `--help` is
-allowed). A decision file or forged event alone never clears a flag. Confirmation
-cannot excuse exit 2. Pending findings and report references survive rechecks
-and day rollover. The host terminal follows the local friction boundary in
-threat model 9.1; remote authenticated decisions remain M5 work.
 
 ## Running the watch
 

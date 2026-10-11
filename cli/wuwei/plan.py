@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import re
-import sys
 
 from wuwei import discovery, dispatch, goals, rank, sessions, state, workspace
 from wuwei.exits import PAYLOAD, PLAN_JSON, SYMLINK
@@ -262,14 +261,6 @@ def propose(data, root=None):
     for row in data['candidates']:  # #741: the lead's tickets, in the one id format
         if row.get('ticket'):
             row['ticket'] = tracker.full_id(config, row['ticket'])
-    from wuwei import mcp
-    measured = mcp.check(root)
-    gate = mcp.cached(root)  # guards.enforce decides refusal; the sweep shows the measurement.
-    if gate.exit:
-        raise (state.StateError if gate.exit == 1 else OSError)(gate.reason)
-    if measured.exit or measured.reason == mcp.NO_SCANNER:  # #351, #424: printed, not only filed.
-        print(measured.reason, file=sys.stderr)
-    data['sweep']['mcp'] = measured.reason or gate.reason or 'MCP registry: no attached servers'
     from wuwei.commands.doctor import pr_flow
     warned = [row['name'] for row in pr_flow(workspace.load_config(root)) if row['status'] != 'ok']
     data['sweep']['pr-flow'] = (f"measured: {len(warned)} warn ({', '.join(warned)}); "

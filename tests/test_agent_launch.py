@@ -586,53 +586,6 @@ def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
     assert check(payload) == (0, '')
 
 
-def test_mcp_gate_is_its_own_guard_record(launch, monkeypatch):
-    # The MCP launch gate is its own record; mcp.cached reads guards.enforce.
-    from wuwei import mcp
-    from wuwei.guards import agent_launch
-    assert [(g.event, g.matcher, g.check.__name__) for g in agent_launch.GUARDS] == [
-        ('PreToolUse', 'Agent', 'check_mcp'), ('PreToolUse', 'Agent', 'check'),
-        ('SubagentStop', None, 'stop')]
-    day, payload = launch
-    refused = registry.Result(1, reason='MCP registry findings: x')
-    calls = []
-    monkeypatch.setattr(mcp, 'cached', lambda root: calls.append(root) or refused)
-    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 8 * 1024**3)
-    assert agent_launch.check_mcp(payload) == (1, 'MCP registry findings: x')
-    assert len(calls) == 1
-    assert agent_launch.check(payload) == (0, '')
-    assert len(calls) == 1
-    other = {**payload, 'tool_input': {**payload['tool_input'], 'subagent_type': 'Explore'}}
-    assert agent_launch.check_mcp(other) == (0, '')
-
-
-@pytest.mark.parametrize('enforce', ['true', 'false'])
-def test_mcp_gate_off_without_scanner(launch, monkeypatch, enforce):
-    # #424: adapters.scanner = "none" turns the registry gate off whatever guards.enforce says.
-    from wuwei import mcp
-    from wuwei.guards import agent_launch
-    (root, _, _, _), payload = launch
-    (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
-    with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[guards]\nenforce = {enforce}\n')
-    assert agent_launch.check_mcp(payload) == (0, mcp.NO_SCANNER)
-
-
-def test_hook_denies_launch_on_the_mcp_gate(day, monkeypatch, capsys):
-    import io
-    import sys
-    from wuwei import mcp
-    from wuwei.__main__ import main
-    monkeypatch.setattr(mcp, 'cached', lambda root: registry.Result(1, reason='MCP registry findings: x'))
-    payload = {'cwd': str(day[0]), 'session_id': 'example', 'transcript_path': 'transcript.jsonl',
-               'hook_event_name': 'PreToolUse', 'tool_name': 'Agent',
-               'tool_input': {'prompt': 'launch without brief', 'description': 'build', 'subagent_type': 'builder'}}
-    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
-    assert main(['hook', 'PreToolUse']) == 2
-    reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
-    assert reason == 'MCP registry findings: x'
-
-
 @pytest.mark.parametrize('settings,ticket,code', [
     ('[adapters]\ntracker = "linear"\n', None, 1),
     ('[adapters]\ntracker = "linear"\n', 'ENG-1', 0),

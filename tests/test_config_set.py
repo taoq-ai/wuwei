@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from wuwei import integrity
 from wuwei.workspace import load_config
 
 
@@ -97,12 +96,12 @@ def test_unchanged_value_asks_nothing(workspace, capsys):
     assert 'No config.toml changes' in capsys.readouterr().out and confirm.digests == []
 
 
-def test_no_host_terminal_is_unrun(workspace, capsys):
+def test_unanswerable_confirmation_is_unrun(workspace, capsys):
     def refuse(digest, **kwargs):
-        raise OSError(integrity.HOST_TERMINAL)
+        raise OSError('no answer')
 
     assert config_set('owner.verbosity.default', '"standard"', refuse) == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert 'no answer' in capsys.readouterr().err
     assert (workspace / '.wuwei/config.toml').read_text() == TEMPLATE
 
 

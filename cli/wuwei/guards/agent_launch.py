@@ -27,19 +27,6 @@ def check(payload):
         return 2, f'agent launch could not run: {exc}'
 
 
-def check_mcp(payload):
-    """The MCP launch gate (#325) as its own record: mcp.cached reads guards.enforce."""
-    try:
-        seat = _seat(payload)
-        if seat is None:
-            return 0, ''
-        from wuwei import mcp
-        measured = mcp.cached(seat[0])
-        return measured.exit, measured.reason
-    except Exception as exc:
-        return 2, f'agent launch could not run: {exc}'
-
-
 def _seat(payload):
     """(root, tool_input, role) for a WUWEI seat launch in a workspace, else None."""
     from wuwei import workspace
@@ -453,5 +440,4 @@ def stop(payload):
     return 0, ''
 
 
-GUARDS = [Guard('PreToolUse', 'Agent', check_mcp), Guard('PreToolUse', 'Agent', check),
-          Guard('SubagentStop', None, stop)]
+GUARDS = [Guard('PreToolUse', 'Agent', check), Guard('SubagentStop', None, stop)]

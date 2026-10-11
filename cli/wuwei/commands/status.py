@@ -90,9 +90,6 @@ def scan(directory, classified_state=None):
                     beat = payload
                 if kind in ('state.transition', 'item.escalated'):
                     continue
-                if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
-                    current = {key: value for key, value in current.items() if key[0] != 'mcp.finding'}
-                    continue
                 if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
                     current.pop(('pr.action', payload.get('pr')), None)
                     continue
@@ -142,14 +139,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.changed' and isinstance(payload, dict):
                     reason = payload.get('summary') or (
                         f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
-                if kind == 'mcp.finding' and isinstance(payload, dict):
-                    from wuwei import mcp  # #351: scanner text only if it is a name.
-                    shown = [value if isinstance(value, str) and mcp.NAME.fullmatch(value) else 'unnamed'
-                             for value in (payload.get('severity'), payload.get('drift_type'),
-                                           payload.get('server_name'))]
-                    waiting = mcp.pending(directory.parents[2])
-                    reason = 'MCP {} {} finding on {}: run '.format(*shown) + (
-                        mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
                 current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason,
                                 'count': current.get(key, {}).get('count', 0) + 1,
                                 'ts': stamp if isinstance(stamp, str) else None}

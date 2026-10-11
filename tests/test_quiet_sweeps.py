@@ -106,18 +106,6 @@ def test_watch_install_uninstall_renders_and_loads(root, tmp_path, monkeypatch):
     assert any(argv[:3] == ['systemctl', '--user', 'disable'] for argv in calls)
 
 
-def test_warnings_clear_pr_action_and_mcp_finding(root):
-    from wuwei.commands.status import attention
-    day = workspace.day_dir(root)
-    state.append_event('watch: clock', {}, root)
-    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'warn'}, root)
-    state.append_event('mcp.finding', {'severity': 'medium'}, root)
-    assert len(attention(day)) == 2
-    state.append_event('pr.action', {'pr': 'x/y#1'}, root)
-    state.append_event('mcp.checked', {'exit': 0}, root)
-    assert attention(day) == []
-
-
 def test_merge_policy_warning_is_per_pr_and_clears_on_merge(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)

@@ -26,8 +26,6 @@ REPO = ('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"
 IDENTITY = ('\n[owner]\nhandles = ["ada"]\n\n[shepherd]\nlead_login = "ada"\n\n'
             '[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n')
 CONFIG = '[adapters]\ncode_host = "github"\n' + REPO + IDENTITY + '\n[telemetry]\nshare = "off"\n'
-DIGEST = 'd' * 64
-ZIRAN = CONFIG.replace('code_host = "github"\n', 'code_host = "github"\nscanner = "ziran"\n')  # #424: record rows
 CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprotected or no admin)'
 TRIAL = 'page: plugin integrity: .in_use/12345'
 
@@ -97,7 +95,6 @@ def ws(tmp_path, monkeypatch):
     seed(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    record(root)
     unit = workspace.watch_unit(root)[1]
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text('')
@@ -119,14 +116,6 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, 'load', lambda kind, config: fakes.get(kind) or real(kind, config))
     return SimpleNamespace(root=root, plugin=plugin, bin=bin_dir, probes=probes, service=service,
                            host=host, code_host=code_host, vcs=vcs, installed=installed, mp=monkeypatch)
-
-
-def record(root, day=TODAY, **changes):
-    path = root / '.wuwei/ziran/status.json'
-    path.parent.mkdir(exist_ok=True)
-    path.unlink(missing_ok=True)
-    path.write_text(json.dumps({'exit': 0, 'day': day, 'reason': '', 'generation': 'g', 'reports': [],
-                                'pending': None, **changes}))
 
 
 def config(root, text):
@@ -175,7 +164,7 @@ def test_outcome_findings_before_unmeasured():
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
     assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade',
-                                 'watch-install', 'mcp-reports'}
+                                 'watch-install'}
 
 
 # US1: the rows
@@ -485,7 +474,6 @@ def test_workspace_retired_shadow_mode(ws, monkeypatch):
 def test_gates_rows(ws):
     rows = doctor.diagnose()
     assert row(rows, 'config check')['status'] == 'ok'
-    assert row(rows, 'mcp gate')['status'] == 'ok'
 
     ws.code_host.results['protection'] = protected(**CLASSIC_404)
     found = row(doctor.diagnose(), 'config check')
@@ -496,86 +484,10 @@ def test_gates_rows(ws):
     ws.code_host.results['protection'] = Result(2, None, 'github.protection: could not run')
     assert row(doctor.diagnose(), 'config check')['status'] == 'unmeasured'
 
-
-def test_gates_without_scanner(ws):
-    # #424: CONFIG leaves adapters.scanner at "none": the gate is off. #808: no own-server rows,
-    # even for a manifest that declares a server.
-    from wuwei import mcp
-    manifest = integrity.PLUGIN / '.claude-plugin/plugin.json'
-    manifest.write_text(json.dumps({**json.loads(manifest.read_text()),
-                                    'mcpServers': {'cockpit': {'command': 'bin/wuwei'}}}))
-    record(ws.root, exit=2, unmeasured=[['docs', DIGEST]], reason='MCP registry unmeasured; docs: unmeasured')
-    rows = doctor.diagnose()
-    assert (row(rows, 'mcp gate')['status'], row(rows, 'mcp gate')['value']) == ('ok', mcp.NO_SCANNER)
-    assert not [r for r in rows if r['section'] == 'gates' and r['name'].startswith('mcp ')
-                and r['name'] != 'mcp gate']
-    assert 'mcp docs' not in names(rows, 'gates')
-
-
-def test_gates_mcp_servers(ws):
-    (ws.root / '.wuwei/config.toml').write_text(ZIRAN)
-    record(ws.root, exit=2, reason='MCP registry unmeasured; docs: scanner check incomplete; '
-           'remote: not attached (unapproved)', unmeasured=[['docs', DIGEST]], decided=[['notes', DIGEST]])
-    rows = doctor.diagnose()
-    found = row(rows, 'mcp docs')
-    assert (found['status'], found['value']) == ('warn', 'unmeasured')
-    assert found['fix'].startswith(W('mcp decide proceed-unmeasured docs'))
-    assert row(rows, 'mcp notes') == {'section': 'gates', 'name': 'mcp notes', 'status': 'ok',
-                                      'value': 'proceeding unmeasured by owner decision'}
-    assert row(rows, 'mcp remote')['value'] == 'not attached (unapproved)'
-    assert row(rows, 'mcp gate')['status'] == 'ok'
-
-    record(ws.root, exit=1, pending=f'.wuwei/days/{TODAY}/decisions/D-1.md', severities=['critical'])
-    assert row(doctor.diagnose(), 'mcp gate')['status'] == 'ok'  # #351: no block list, no block.
-    with (ws.root / '.wuwei/config.toml').open('a') as config:
-        config.write('[scanner.mcp]\nblock = ["critical"]\n')
-    found = row(doctor.diagnose(), 'mcp gate')
-    assert found['status'] == 'fail' and found['fix'] == W('mcp decide D-1 proceed in a host terminal')
-    assert 'Outcome' not in found['fix']
-
-    record(ws.root, day='2026-10-02')
-    found = row(doctor.diagnose(), 'mcp gate')
-    assert found['status'] == 'unmeasured' and found['fix'] == W('mcp check')
-
-
-def test_answered_cards_row(ws):
-    """#661: a card the owner answered whose record command never ran shows on doctor."""
-    from wuwei import decision, sessions
-
-    def asked(*topics, outcomes=None):
-        def update(data):
-            data.setdefault('sessions', {}).setdefault('planner-1', {})['gate_asked'] = list(topics)
-            data.setdefault('decision_outcomes', {}).update(outcomes or {})
-        state._write_state(update, ws.root, reserved=False)
-        return doctor._unrecorded(ws.root)
-
-    assert asked() == []
-    topic = sessions.card_topic('D-2', 'Defer until tomorrow')
-    assert asked('D-2', topic) == ['D-2']
-    found = row(doctor.diagnose(), 'answered cards')
-    assert found['status'] == 'warn' and 'D-2' in found['value']
-    assert found['fix'] == "the planner runs each card's record command (the card names it)"
-    from wuwei.decision import today_path
-    record = today_path('D-2', ws.root)
-    record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text('Decided-by: owner\nOutcome: pending\n')  # an MCP decision waiting on the owner
-    assert asked('D-2', topic) == ['D-2']
-    record.write_text('Decided-by: owner\nOutcome: proceed\n')  # mcp.decide records no state outcome
-    assert asked('D-2', topic) == []
-    record.unlink()
-    assert asked('D-2', topic, outcomes={'D-2': {'option': 'B', 'decided_by': 'owner'}}) == []
-    asked('D-2', topic)
-
-    def broken(data, ident):
-        raise ValueError('decisions: invalid outcomes')
-    ws.mp.setattr(decision, 'answered', broken)
-    found = row(doctor.diagnose(), 'answered cards')
-    assert (found['status'], found['value']) == ('unmeasured', 'decisions: invalid outcomes')
-
 def test_day_rows(ws):
     rows = doctor.diagnose()
     assert names(rows, 'day') == ['state', 'planner', 'watch', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'traces', 'untraced subagents', 'session id', 'answered cards', 'tracker']
+                                  'traces', 'untraced subagents', 'session id', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'untraced subagents')['value'] == 'none today'
     # #676: a subagent stop that matched no seat is named, with the way to register one.
@@ -719,10 +631,8 @@ def test_fix_and_json_are_exclusive(ws, capsys):
 
 def test_trial_failures_then_clean(ws, monkeypatch, capsys):
     monkeypatch.setattr(integrity, 'fresh', lambda root: Result(2, reason=TRIAL))
-    record(ws.root, exit=2, reason='MCP registry unmeasured; docs: scanner check incomplete',
-           unmeasured=[['docs', DIGEST]])
     ws.code_host.results['protection'] = protected(**CLASSIC_404)
-    trial = ZIRAN.replace('["ruff check ."]', '[]')
+    trial = CONFIG.replace('["ruff check ."]', '[]')
     config(ws.root, 'repos = []\n' + trial)
 
     assert main(['doctor']) == 1
@@ -733,23 +643,13 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
     config(ws.root, trial)
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    for text in ('wuwei mcp decide proceed-unmeasured docs', CLASSIC_LINE,
-                 'acme/widget main: required reviews: missing ('):
+    for text in (CLASSIC_LINE, 'acme/widget main: required reviews: missing ('):
         assert text in out, text
 
     monkeypatch.setattr(integrity, 'fresh', lambda root: Result(0))
-    record(ws.root, reason='docs: proceeding unmeasured by owner decision', decided=[['docs', DIGEST]])
     config(ws.root, CONFIG)
     ws.code_host.results['protection'] = protected()
     assert main(['doctor']) == 0, capsys.readouterr().out
-
-
-def test_unapproved_server_is_ok(ws):
-    config(ws.root, ZIRAN)
-    record(ws.root, reason='remote: not attached (unapproved)')
-    rows = doctor.diagnose()
-    assert row(rows, 'mcp remote')['status'] == 'ok'
-    assert doctor.outcome(rows) == 0
 
 
 def pr_flow(extra=''):
@@ -863,18 +763,15 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
 
 
 def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
-    rows = [doctor._row('gates', 'mcp docs', 'warn', 'unmeasured', 'wuwei mcp decide proceed-unmeasured docs'),
-            doctor._row('workspace', 'guards', 'warn', 'log only', 'set guards.enforce = true'),
-            doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover'),
-            doctor._row('gates', 'decision', 'fail', 'pending', 'wuwei mcp decide', apply='mcp-decide')]
+    rows = [doctor._row('workspace', 'guards', 'warn', 'log only', 'set guards.enforce = true'),
+            doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     asked = []
     assert fix(asked.append) == 1
     out = capsys.readouterr().out
     assert not asked and 'Nothing to apply' in out
     notes = out.split('Not applied:', 1)[1]
-    for text in ('wuwei mcp decide proceed-unmeasured docs', 'set guards.enforce = true',
-                 'wuwei state recover', 'wuwei mcp decide'):
+    for text in ('set guards.enforce = true', 'wuwei state recover'):
         assert text in notes
     assert not events(ws.root, 'doctor.fixed')
 
@@ -1004,44 +901,6 @@ def test_in_use_row_names_the_restart(ws):
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value']) == (
         'warn', 'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)')
-
-
-def legacy_reports(root):
-    import hashlib
-    rows = [{'server_name': 'docs', 'drift_type': 'tool_poisoning', 'severity': 'high', 'tool_name': 'search'}]
-    ziran = root / '.wuwei/ziran'
-    for name, body in (('report-a', None), ('report-b', json.dumps(rows, indent=1)), ('report-c', '[]'),
-                       ('report-d', '{'), ('report-e', json.dumps(rows))):
-        (ziran / name).mkdir(parents=True)
-        if body is not None:
-            (ziran / name / 'registry-watch-report.json').write_text(body)
-    record(root, exit=1, pending=f'.wuwei/days/{TODAY}/decisions/D-1.md', severities=['critical'],
-           reports=['.wuwei/ziran/report-e/registry-watch-report.json'])
-    digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-    return ziran, ziran / 'docs' / (digest + '.json')
-
-
-def test_mcp_reports_migration(ws, capsys):
-    ziran, target = legacy_reports(ws.root)
-    body = (ziran / 'report-b/registry-watch-report.json').read_text()
-    found = row(doctor.diagnose(), 'mcp reports')
-    assert (found['status'], found['apply']) == ('warn', 'mcp-reports')
-    fix(lambda digest: True)
-    assert 'mcp-reports: exit 0' in capsys.readouterr().out
-    assert sorted(p.name for p in ziran.glob('report-*')) == ['report-d', 'report-e']
-    assert target.read_text() == body
-
-
-def test_mcp_reports_migration_bound_to_preview(ws, capsys):
-    ziran, target = legacy_reports(ws.root)
-
-    def confirm(digest):
-        (ziran / 'report-f').mkdir()
-        return True
-    fix(confirm)
-    out = capsys.readouterr().out
-    assert 'changed since the preview; nothing applied' in out and 'mcp-reports: exit 1' in out
-    assert (ziran / 'report-a').is_dir() and not target.exists()
 
 
 def test_no_stray_stderr(ws, monkeypatch, capsys):

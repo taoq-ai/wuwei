@@ -41,17 +41,14 @@ def test_morning_gate_and_other_questions_record_nothing(planner):
     assert 'gate.asked' not in [row['kind'] for row in events(planner)]
 
 
-def test_record_gate_notes_asked_decisions(planner):
-    from test_decision import save
-    save(planner)
-    for payload in (asked(planner, 'D-3', 'Which option?'), asked(planner, 'D-9', 'D-9: Which option?'),
-                    asked(planner, 'D-3', 'D-3: Which option?', agent_id='a1'),
-                    asked(planner, 'D-3', 'D-3: Which option?', 'other'),
-                    asked(planner, 'D-3', 'D-30: Which option?')):
-        assert record_gate(payload) == (0, '')
+def test_a_decision_card_records_nothing(planner):
+    # #840: no record command reads asked D-n cards; only the Owner step card is recorded.
+    record = day_dir(planner) / 'decisions/D-1.md'
+    record.parent.mkdir(parents=True)
+    record.write_text('# D-1\n')
+    assert record_gate(asked(planner, 'D-1', 'D-1: Which option?')) == (0, '')
     assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
-    assert record_gate(asked(planner, 'D-3', 'D-3: Which option?')) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['D-3']
+    assert 'gate.asked' not in [row['kind'] for row in events(planner)]
 
 
 def test_owner_step_answer_is_recorded_from_any_main_session(planner):

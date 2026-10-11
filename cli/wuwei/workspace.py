@@ -51,15 +51,13 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'outbound.channel_classes', 'outbound.work_channels', 'outbound.external_channels',
            'outbound.company_domains', 'outbound.sensitive_keywords', 'outbound.sensitive_patterns',
            'outbound.commitment_patterns', 'outbound.disagreement_patterns',
-           'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns')
+           'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
+           'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
+           'scanner.mcp.block')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
-                "mcp": {"project_file": (str, ".mcp.json"),
-                        "plugins_file": (str, "~/.claude/plugins/installed_plugins.json"),
-                        "user_file": (str, "~/.claude.json"),
-                        "timeout_seconds": (int, 60, 1),
-                        "block": [(str, None, ("critical", "high", "medium", "low", "unmeasured")), []]}},
+                "mcp": {"plugins_file": (str, "~/.claude/plugins/installed_plugins.json")}},
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
               "timezone": (str, ""),
@@ -608,7 +606,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 18  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 19  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

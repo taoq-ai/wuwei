@@ -326,7 +326,6 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
     expected = {'worktree.hooks_skipped': 'warn',
-                'mcp.finding': 'warn', 'mcp.checked': 'warn', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',

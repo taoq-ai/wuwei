@@ -372,8 +372,8 @@ def test_path_metrics_count_the_planner_walk(root):
     record('P', 'AskUserQuestion', {'questions': []})
     record('X', 'Bash', {'command': 'git status'})
     record('P', 'Bash', {'command': 'git status'}, agent='builder')
-    state.append_event('next.action', {'state': 'mcp', 'action': 'run', 'item': '', 'traces': 9,
-                                       'named': ['wuwei mcp check']}, root)
+    state.append_event('next.action', {'state': 'pr-flow', 'action': 'run', 'item': '', 'traces': 9,
+                                       'named': ['wuwei doctor --section pr-flow']}, root)
     record('P', 'Bash', {'command': 'wuwei brief lead day lead --body x'})
     value = metrics.collect(root)
     found = metrics.path(metrics._events(workspace.day_dir(root)), metrics._traces(workspace.day_dir(root)), 'P')
@@ -381,7 +381,7 @@ def test_path_metrics_count_the_planner_walk(root):
     events = metrics._events(workspace.day_dir(root))
     found = metrics.path(events, metrics._traces(workspace.day_dir(root)), 'P')
     assert found['off_path'][0] == 'wuwei rank lead.json'
-    assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named mcp
+    assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named pr-flow
     assert metrics.path(events, None, 'P')['off_path'] == metrics.UNMEASURED
     assert set(metrics.path(events, [], None).values()) == {metrics.UNMEASURED}
 

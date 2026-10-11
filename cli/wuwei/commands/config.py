@@ -100,11 +100,6 @@ def run(args):
     enforce = config['guards']['enforce']
     print('Guards: enforce (guards.enforce = true)' if enforce else
           'Guards: log only (guards.enforce = false); records, merges, deploys and unlisted outward sends still refuse')
-    block = config['scanner']['mcp']['block']
-    if block:  # Reported, not a finding (#351).
-        print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
-            'blocks launches at these severities' if enforce else
-            'no effect while guards.enforce = false'))
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')

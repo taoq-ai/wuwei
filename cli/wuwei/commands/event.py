@@ -25,8 +25,6 @@ EVENT_PRODUCERS = {
     'traces.noted': 'wuwei sweep', 'traces.unmatched': 'wuwei sweep',
     'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build, wuwei dispatch opinion or SubagentStop',
-    'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
-    'mcp.decided': 'owner host MCP decision',
     'pr.changed': 'wuwei watch',
     **{f'shepherd.{kind}': 'wuwei sweep obligations --headless or wuwei shepherd'
        for kind in ('overnight', 'swept')},

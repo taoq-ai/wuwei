@@ -14,15 +14,15 @@ from wuwei import workspace
 ROOT = Path(__file__).resolve().parents[1]
 # No security material in these fixtures, so the outward guard has nothing to read.
 TEMPLATE = (ROOT / 'templates/workspace/config.toml').read_text().replace('required = true', 'required = false')
-TYPO = TEMPLATE.replace('block = ["critical"]\n', 'block = ["critical"]\nblok = ["high"]\n')
+TYPO = TEMPLATE.replace('[scanner]\n', '[scanner]\nseverity_treshold = "high"\n')
 OFF = TYPO.replace('enforce = true', 'enforce = false')
 
 
 def typo_line(text):
-    return text.splitlines().index('blok = ["high"]') + 1
+    return text.splitlines().index('severity_treshold = "high"') + 1
 
 
-WARNING = 'unknown key scanner.mcp.blok at line {}; did you mean scanner.mcp.block?'
+WARNING = 'unknown key scanner.severity_treshold at line {}; did you mean scanner.severity_threshold?'
 
 
 @pytest.fixture
@@ -53,8 +53,7 @@ def replay(monkeypatch, capsys, root, session='test'):
 
 def test_unknown_key_warns_with_the_nearest_key(ws):
     found = []
-    # #345 leaves block unset in the template.
-    assert workspace.load_config(ws, warnings=found)['scanner']['mcp']['block'] == []
+    assert workspace.load_config(ws, warnings=found)['scanner']['severity_threshold'] == 'high'
     assert found == ['config.toml: ' + WARNING.format(typo_line(TYPO))]
     again = []
     workspace.load_config(ws, warnings=again)  # the memo keeps the warnings
@@ -367,6 +366,8 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                     .replace('[adapters]\n', '[adapters]\ninbound = "slack"\n', 1)
                     .replace('[shepherd]\n', '[shepherd]\nautostart = false\n', 1)
                     .replace('[owner.verbosity]\n', '[owner.verbosity]\ndm = "full"\n', 1)
+                    .replace('[scanner.mcp]\n', '[scanner.mcp]\nproject_file = ".mcp.json"\n'
+                             'user_file = "~/.claude.json"\ntimeout_seconds = 60\nblock = ["critical"]\n', 1)
                     + '[pace]\ndefault = "fast"\n[listen]\npoll_seconds = 60\n[responder]\nenabled = true\n'
                     + '[control_plane]\nowner = "T1/U1"\n'
                     + '[grants]\nstanding = []\n' + repos
@@ -377,7 +378,8 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     out = capsys.readouterr().out
     for key in ('brief.lead_minutes', 'brief.style', 'pace', 'repos.1.tests', 'listen', 'responder',
                 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
-                'grants'):
+                'grants', 'scanner.mcp.project_file', 'scanner.mcp.user_file',
+                'scanner.mcp.timeout_seconds', 'scanner.mcp.block'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 

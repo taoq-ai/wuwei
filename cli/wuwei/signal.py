@@ -13,7 +13,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
           'decision.decided',
-          'decision.routed', 'mcp.decided',
+          'decision.routed',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
@@ -47,10 +47,6 @@ def classify(event, state):
         return 'silent', lane
     if kind == 'traces.unmatched':  # #352
         return 'warn', lane
-    if kind == 'mcp.finding':
-        return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
-    if kind == 'mcp.checked':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'tracker.call':
         return ('silent' if payload.get('exit') == 0
                 or payload.get('reason') == 'tracker adapter is none' else 'warn'), lane
