@@ -281,8 +281,6 @@ def test_entry_paths(case, entry, monkeypatch):
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
     ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
-    ('', '[docs]\nsystem="notion"\n', ('NOTION_TOKEN',)),
-    ('', '[docs]\nsystem="confluence"\n', ('CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')),
     ('tracker="jira"', '', ('JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
     ('tracker="github"', '', ('GITHUB_TRACKER_TOKEN',)),
 ])
@@ -750,11 +748,9 @@ def test_config_check_reports_owner_name(case, capsys):
     assert 'owner.name: set' in output and outward.OWNER_UNSET not in output
 
 
-def test_docs_credentials(case, monkeypatch, capsys):
+def test_notion_and_confluence_credentials_are_scrubbed(case, monkeypatch):
+    # #841: the docs adapters are gone; a workspace env that still holds these never reaches a seat.
     from wuwei import env
-    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n[docs]\nsystem="notion"\n')
-    assert main(['config', 'check']) == 1
-    assert 'docs.notion: NOTION_TOKEN: missing' in capsys.readouterr().out
     for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
         monkeypatch.setenv(name, KEY)
     assert not {'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'} & set(env.child_environment())

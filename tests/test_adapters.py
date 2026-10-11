@@ -99,8 +99,6 @@ CALLS = [
     ('scanner', 'audit', ('path',), True),
     ('scanner', 'gate', ('result', 'threshold'), True),
     ('scanner', 'traces', ('file',), True),
-    ('docs', 'read', ('ref',), True),
-    ('docs', 'write', ('draft',), False),
 ]
 
 

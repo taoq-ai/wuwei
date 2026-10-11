@@ -343,7 +343,6 @@ def _producer_error(parts):
                     'approved_as': 'wuwei plan approve or wuwei plan add',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
                     'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
-                    'docs': 'wuwei plan set or wuwei docs page',
                     'disposition': 'wuwei plan carry, park or resume, wuwei dispatch next or wuwei build',
                     'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
                         parts[2], 'its dedicated command')

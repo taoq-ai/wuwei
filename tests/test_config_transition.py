@@ -477,6 +477,28 @@ def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 
 
+def test_upgrade_retires_the_docs_system(tmp_path, monkeypatch, capsys):
+    # Part 19 (#841): the [docs] table and adapters.docs leave config.toml; the config loads clean.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    assert '\n[docs]' not in clean
+    path.write_text(clean.replace('[adapters]\n', '[adapters]\ndocs = "notion"\n', 1)
+                    + '[docs]\nsystem = "notion"\nspace = "https://example.com/page"\npublish = ["report"]\n')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    out = capsys.readouterr().out
+    for key in ('adapters.docs', 'docs'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+    warnings = []
+    workspace.load_config(tmp_path, warnings=warnings)
+    assert warnings == []
+
+
 @pytest.mark.parametrize('dry_run', [True, False])
 def test_upgrade_maps_observe_to_enforce_false(tmp_path, monkeypatch, capsys, dry_run):
     # #837: an observe workspace stays log-only after the upgrade, and says so.

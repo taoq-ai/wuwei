@@ -342,9 +342,13 @@ def governing(tree, row, location=None):
     return reference, first, last, ''.join(lines[first - 1:last])
 
 
+def _sections(text, names):
+    found = dict(re.findall(r'^## ([^\n]+)\n(.*?)(?=^## |\Z)', text, re.M | re.S))
+    return '\n'.join(f'## {name}\n{found[name].strip()}\n' for name in names if name in found)
+
+
 def governed(report, spec_text):
     """None when the report has a ## Governing table with a row per spec.md assumption, else the gap."""
-    from wuwei.docs import _sections
     table = _sections(report, ('Governing',))
     if not table:
         return 'the report has no ## Governing table'

@@ -15,9 +15,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` show a diff and ask on a card in the session. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate; `dispatch polish <item>` and `dispatch skip-polish <item>` take or decline a polish round. | [Review tiers](concepts.md#review-tiers) |
-| `bin/wuwei docs` | Writes an item's docs page or publishes the day's page under the [docs system](concepts.md#docs-system). | [Docs](configuration.md#docs) |
-| `bin/wuwei docs page <item>` | Renders the item's page from its records (scope, PR, goal, evidence, links) and refuses absolute paths, `.wuwei/` records and credentials. Under markdown it writes `<docs.root>/<item>.md` in the item's worktree; under notion or confluence it writes through the docs port after the outward lint, and records `docs.written`. | [Docs](configuration.md#docs) |
-| `bin/wuwei docs publish report\|retro` | Publishes today's report or retro page once per day under notion or confluence; `wuwei report` and `wuwei retro` call it when `docs.publish` lists the kind. | [Docs](configuration.md#docs) |
 | `bin/wuwei dora` | Prints the DORA keys over the last 28 days (`--window <days>` changes that). Lead time to merge and to deploy, deployment frequency, change failure rate and time to restore, each with its source or why it is unmeasured. Read-only; exits 2 when the code host could not run. | [DORA keys](concepts.md#dora-keys) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
@@ -36,7 +33,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei note` | `--fix "<title>"` records a small fix a seat found, and `next` proposes it. | [Concepts](concepts.md#memory) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `add <id> --from-finding` admits a seat's finding as a light item that starts without a ticket; `carry` and `park` record an open item's disposition on the item; `resume <item>` returns a parked item to its phase on your Yes on its Owner step card; `set <item> ticket=<id>` records an existing ticket once the tracker confirms it (the planner's below strict, yours under strict), and `set <item> spec=skipped --reason <why>` skips the spec for one item. | [Lead plan JSON](#lead-plan-json) |
-| `bin/wuwei plan set <item> docs=<page>\|new\|none --reason "<why>"` | Records the item's [docs obligation](concepts.md#docs-obligation) value; a page is read through the docs adapter first, and `none` needs a reason. Under markdown, `new` is refused: write the page with `bin/wuwei docs page <item>`. | [Docs](configuration.md#docs) |
 | `bin/wuwei pr` | Measures owned PRs, raises one, shows its reviewers, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
 | `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
@@ -71,7 +67,7 @@ Run `bin/wuwei plan template` in a workspace for a complete lead JSON skeleton. 
 | `sweep` | Source to measured or unmeasured status string. |
 | `cap` | Running build seat count; `0` derives it from the host and `budget.tokens_per_day`, a positive number is your override. |
 
-Each candidate needs a unique `id`, a confirmed `goal` or `unplanned`, `evidence`, `scope`, `overlap`, `track`, `flags`, `score`, and `evidence_lines`. `track` is `SLICE` for a small change with one pre-PR gate set, or `FULL` when a spec-done gate is needed. `flags` has exactly three booleans: `trust_surface`, `boundary_relevant`, and `agent_surface`. These affect owner routing and security gates. An optional `tier` (`light`, `standard` or `full`) raises the review tier `wuwei dispatch next` computes from the diff; a lower one is refused and recorded as a reason. For a docs-only diff the measurement wins: one reviewer, with `lead tier <t> overridden: docs-only` recorded. An optional `paths`, a list of repository-relative file paths, lets the CLI name the item's repository when it exists in exactly one. An optional `ticket` names the item's existing ticket, an id such as `ENG-12`, `PROJ-12` or `owner/repo#12`. An empty or null `ticket`, `tier` or `docs` counts as absent. Any other value that is not a ticket id refuses the proposal, naming the item, the value and the accepted form. `evidence_lines` has a nonempty one-line citation for every score component.
+Each candidate needs a unique `id`, a confirmed `goal` or `unplanned`, `evidence`, `scope`, `overlap`, `track`, `flags`, `score`, and `evidence_lines`. `track` is `SLICE` for a small change with one pre-PR gate set, or `FULL` when a spec-done gate is needed. `flags` has exactly three booleans: `trust_surface`, `boundary_relevant`, and `agent_surface`. These affect owner routing and security gates. An optional `tier` (`light`, `standard` or `full`) raises the review tier `wuwei dispatch next` computes from the diff; a lower one is refused and recorded as a reason. For a docs-only diff the measurement wins: one reviewer, with `lead tier <t> overridden: docs-only` recorded. An optional `paths`, a list of repository-relative file paths, lets the CLI name the item's repository when it exists in exactly one. An optional `ticket` names the item's existing ticket, an id such as `ENG-12`, `PROJ-12` or `owner/repo#12`. An empty or null `ticket` or `tier` counts as absent. Any other value that is not a ticket id refuses the proposal, naming the item, the value and the accepted form. `evidence_lines` has a nonempty one-line citation for every score component.
 
 `bin/wuwei rank template` prints a candidate list for the configured framework. Pass it to `bin/wuwei rank -` to inspect the order. Ties use goal priority, then candidate id.
 
@@ -103,7 +99,7 @@ Configure `codex.command` as an argv list and `codex.timeout_seconds` in `.wuwei
 
 ## Outward sends
 
-An MCP write to other people goes out only through a tool on `outward.allow`; any other is refused with the `config set outward.allow ... --add` line, whose Owner step card you answer in the session. A write to your own surfaces is local. WUWEI's own duties (review pings, tracker comments and tickets, docs pages, the day report, `pr act --reply`) go through the adapter ports after the canary check and the outward lint. See [Outward sends](configuration.md#outward-sends).
+An MCP write to other people goes out only through a tool on `outward.allow`; any other is refused with the `config set outward.allow ... --add` line, whose Owner step card you answer in the session. A write to your own surfaces is local. WUWEI's own duties (review pings, tracker comments and tickets, the day report, `pr act --reply`) go through the adapter ports after the canary check and the outward lint. See [Outward sends](configuration.md#outward-sends).
 
 `bin/wuwei metrics` keeps `voice_drafts` and the tells count for days recorded before #838.
 
@@ -370,7 +366,7 @@ Lines follow `owner.verbosity.report`. At `full`, or with `--full`, each line en
 
 Exit 0 prints the view, 1 means the target has no record, 2 means a record could not be read or there is no workspace.
 
-`bin/wuwei why <item> --json` prints the item's values as recorded at call time, for a seat to read when it starts and again before its verdict or handoff: `{item, day, docs: {value, reason, command}, ticket, spec, steps}`. `docs.value` is the recorded value, `missing`, or `n/a` when the item's tier needs none. With `n/a`, `command` is null. `ticket` is the item's ticket id or null. `spec` is the spec state a gate sees, or null when spec mode is off. `steps` are the lines `why <item>` prints. Strings are redacted as above. `--json` reads an item only: any other target exits 2.
+`bin/wuwei why <item> --json` prints the item's values as recorded at call time, for a seat to read when it starts and again before its verdict or handoff: `{item, day, ticket, spec, steps}`. `ticket` is the item's ticket id or null. `spec` is the spec state a gate sees, or null when spec mode is off. `steps` are the lines `why <item>` prints. Strings are redacted as above. `--json` reads an item only: any other target exits 2.
 
 ## Host terminal actions
 

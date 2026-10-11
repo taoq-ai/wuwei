@@ -466,20 +466,12 @@ def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
     assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, True).splitlines())
 
 
-@pytest.mark.parametrize('system,fields,expected', [
-    ('notion', {'gates': {'tier': 'standard'}}, 'docs'),
-    ('notion', {'gates': {'tier': 'standard'}, 'docs': {'value': 'new', 'reason': ''}}, 'verdicts'),
-    ('notion', {'gates': {'tier': 'light'}}, 'verdicts'),
-    ('none', {'gates': {'tier': 'standard'}}, 'verdicts'),
-])
-def test_docs_row(root, capsys, system, fields, expected):
-    approved(root, {'ITEM-1': ('gate', fields)})
+def test_item_at_the_gate_gets_verdicts(root, capsys):
+    # #841: no docs row, even under a former [docs] config.
+    approved(root, {'ITEM-1': ('gate', {'gates': {'tier': 'standard'}})})
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[docs]\nsystem = "{system}"\n')
-    found = coarse(root)
-    assert found['state'] == expected
-    if expected == 'docs':
-        assert found['command'].startswith('wuwei plan set ITEM-1 docs=')
+        stream.write('[docs]\nsystem = "notion"\n')
+    assert coarse(root)['state'] == 'verdicts'
 
 
 def test_item_row_shows_the_ticket(root, capsys):

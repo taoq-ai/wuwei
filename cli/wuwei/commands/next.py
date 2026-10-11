@@ -224,15 +224,8 @@ def step(root, ran=()):
             found.append(_row('build', f'{label} is in {phase}; this is its build loop step.',
                               f'wuwei build next {name}', item=name))
         elif phase in ('gate', 'delta'):
-            from wuwei import docs  # Local: only an item at the gate needs it.
-            if docs.unmet(config, items[name]):
-                found.append(_row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
-                                  'record it before the quality gate.',
-                                  docs.command(config, name).removeprefix('bin/'), item=name,
-                                  then='Choose the value it names, record it, then run wuwei next.'))
-            else:
-                found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
-                                  f'wuwei dispatch next {name}', item=name))
+            found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
+                              f'wuwei dispatch next {name}', item=name))
         elif phase == 'raised':
             pr = items[name].get('pr')
             if merges.get(pr):  # #816: one owner decision for this PR, on its Owner step card

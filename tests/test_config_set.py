@@ -272,9 +272,9 @@ def test_list_set_appends(workspace):
 
 def test_empty_list_set_writes_empty(workspace, capsys):
     # #604: '[]' empties a list instead of adding nothing to the effective (default) list.
-    assert config_set('docs.publish', '[]', Confirm()) == 0
-    assert '+publish = []' in capsys.readouterr().out
-    assert load_config(workspace)['docs']['publish'] == []
+    assert config_set('spec.skip_tiers', '[]', Confirm()) == 0
+    assert '+skip_tiers = []' in capsys.readouterr().out
+    assert load_config(workspace)['spec']['skip_tiers'] == []
 
 
 def test_list_set_replace(workspace):

@@ -74,7 +74,7 @@ def _proposal(data, goals_text, framework="wsjf"):
     for item in data['candidates']:
         if not isinstance(item, dict):
             raise ValueError(f'candidate must be an object; {PLAN_JSON}')
-        for key in ('ticket', 'tier', 'docs'):  # #640: empty means absent; in place, callers reuse item
+        for key in ('ticket', 'tier'):  # #640: empty means absent; in place, callers reuse item
             if key in item and isinstance(item[key], str) and not item[key].strip():
                 item.pop(key)  # a null ticket stays: it is the owner's none (#636)
             elif key != 'ticket' and key in item and item[key] is None:

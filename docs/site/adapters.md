@@ -68,9 +68,6 @@ the exit code.
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
 | review_bot.greptile | `GREPTILE_API_KEY` |
 | calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
-| docs.notion | `NOTION_TOKEN`, a Notion integration token with access to `docs.space` |
-| docs.confluence | `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN`, an Atlassian account email and API token |
-| docs.markdown | No credential; pages are files under `docs.root` in the item's worktree |
 | runtime.codex | `codex.command`, a nonempty command array in config.toml; credentials for the companion are managed by that tool |
 | runtime.claude | No WUWEI credential variable; authenticate the Claude CLI separately |
 | scanner.ziran | No WUWEI credential variable; install and configure ZIRAN separately |

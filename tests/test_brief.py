@@ -536,25 +536,20 @@ def test_builder_brief_carries_the_governing_document(day, monkeypatch, capsys):
     assert not (directory / 'briefs/b2.md').exists()
 
 
-def docs_brief(day, monkeypatch, role, system='notion', tier='standard', docs=None, name='d'):
-    with (day[0] / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[docs]\nsystem = "{system}"\n')
-    def update(data):
-        data['items']['X']['gates'] = {'tier': tier}
-        if docs:
-            data['items']['X']['docs'] = docs
-    state._write_state(update, day[0], reserved=False)
+def gate_brief(day, monkeypatch, role, name='d'):
+    """The brief header lines for item X tiered standard."""
+    state._write_state(lambda data: data['items']['X'].update(gates={'tier': 'standard'}), day[0], reserved=False)
     args = ('--gate', '--worktree', 'tree') if role != 'builder' else ()
     assert brief(monkeypatch, 'Review it.', role, 'X', name, *args) == 0
-    return [line for line in (day[1] / f'briefs/{name}.md').read_text().splitlines()
-            if line.startswith('Docs:')]
+    return (day[1] / f'briefs/{name}.md').read_text().splitlines()
 
 
-@pytest.mark.parametrize('tier,docs', [('standard', None), ('light', None),
-                                       ('standard', {'value': 'none', 'reason': 'internal refactor'})])
-def test_quality_brief_copies_no_docs_value(day, monkeypatch, tier, docs):
-    # #667: the value changes under the seat; the brief names why --json instead.
-    assert docs_brief(day, monkeypatch, 'quality', tier=tier, docs=docs) == []
+@pytest.mark.parametrize('role', ['builder', 'quality'])
+def test_brief_has_no_docs_line(day, monkeypatch, role):
+    # #841: the docs system is gone, even under a former [docs] config.
+    with (day[0] / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[docs]\nsystem = "notion"\n')
+    assert not any(line.startswith('Docs:') for line in gate_brief(day, monkeypatch, role))
 
 
 @pytest.mark.parametrize('role,count', [('builder', 1), ('quality', 1), ('arch', 1), ('steward', 0)])
@@ -563,7 +558,7 @@ def test_builder_and_gate_briefs_name_the_live_read(day, monkeypatch, role, coun
     if role == 'steward':
         writer.write('steward', 'X', 'l', 'body', root=day[0])
     else:
-        docs_brief(day, monkeypatch, role, name='l')
+        gate_brief(day, monkeypatch, role, name='l')
     lines = (day[1] / 'briefs/l.md').read_text().splitlines()
     assert sum(line.startswith('Live: run bin/wuwei why X --json') for line in lines) == count
 
@@ -585,7 +580,7 @@ def test_builder_and_gate_briefs_quote_the_approval(day, monkeypatch, role, coun
     if role == 'steward':
         writer.write('steward', 'X', 'l', 'body', root=day[0])
     else:
-        docs_brief(day, monkeypatch, role, name='l')
+        gate_brief(day, monkeypatch, role, name='l')
     assert brief_header(day[1] / 'briefs/l.md').count(APPROVED) == count
     if count and role != 'builder':
         assert brief(monkeypatch, 'Delta.', role, 'X', 'l2', '--gate', '--worktree', 'tree') == 0
@@ -593,7 +588,7 @@ def test_builder_and_gate_briefs_quote_the_approval(day, monkeypatch, role, coun
 
 
 def test_no_approval_line_without_the_record(day, monkeypatch):
-    docs_brief(day, monkeypatch, 'arch', name='l')
+    gate_brief(day, monkeypatch, 'arch', name='l')
     assert not any(line.startswith('Approved as:') for line in (day[1] / 'briefs/l.md').read_text().splitlines())
 
 
@@ -610,16 +605,6 @@ def test_item_added_with_a_note_has_it_in_every_gate_brief(day, monkeypatch):
     for role in ('arch', 'quality', 'security'):
         assert brief(monkeypatch, 'Review it.', role, 'Y', f'g-{role}', '--gate', '--worktree', 'tree') == 0
         assert APPROVED in brief_header(day[1] / f'briefs/g-{role}.md')
-
-
-def test_builder_brief_has_the_docs_rule(day, monkeypatch):
-    line, = docs_brief(day, monkeypatch, 'builder')
-    assert line.startswith('Docs: notion;') and 'bin/wuwei plan set X docs=' in line
-
-
-@pytest.mark.parametrize('role,system', [('arch', 'notion'), ('quality', 'none'), ('builder', 'none')])
-def test_no_docs_line(day, monkeypatch, role, system):
-    assert docs_brief(day, monkeypatch, role, system=system) == []
 
 
 @pytest.mark.parametrize('check,args,line', [
@@ -736,24 +721,15 @@ def test_adhoc_prompt_helpers(tmp_path):
     assert module.adhoc_seat(data, 'missing', 'P:a9') is None
 
 
-def test_issue_acceptance_docs_recorded_after_the_brief(day, monkeypatch, capsys):
-    # #667: a docs path recorded after the quality brief is read live, and the lint
-    # rejects a finding that calls it missing.
-    from test_verdict import docs_finding
-    from wuwei import verdict
+def test_issue_acceptance_ticket_recorded_after_the_brief(day, monkeypatch, capsys):
+    # #667: a ticket recorded after the quality brief is read live by why --json.
     root, directory = day[0], day[1]
-    assert docs_brief(day, monkeypatch, 'quality', name='q') == []
+    gate_brief(day, monkeypatch, 'quality', name='q')
     assert 'bin/wuwei why X --json' in (directory / 'briefs/q.md').read_text()
-    state._write_state(lambda data: (data['items']['X'].update(docs={'value': 'docs/x.md', 'reason': ''}),
-                                     data['seats'].update(q={'item': 'X', 'role': 'sentinel-quality',
-                                                             'status': 'stopped'})), root, reserved=False)
+    state._write_state(lambda data: data.update(tickets={'X': {'id': 'ENG-7', 'source': 'set'}}), root, reserved=False)
     capsys.readouterr()
     assert main(['why', 'X', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['docs']['value'] == 'docs/x.md'
-    path = directory / 'decisions/gate-q.md'
-    path.write_text(docs_finding('the docs value is missing'))
-    code, message = verdict.lint_file(path, role='sentinel-quality')
-    assert code == 1 and 'X records docs docs/x.md' in message
+    assert json.loads(capsys.readouterr().out)['ticket'] == 'ENG-7'
 
 
 NOT_FOUND = 'github.pr: could not run: gh exited 1 (acme/widget): gh: Not Found (HTTP 404)'

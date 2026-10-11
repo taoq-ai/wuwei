@@ -759,10 +759,11 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     assert [e['payload']['item'] for e in events(root) if e['kind'] == 'plan.set'] == ['A']
     assert main(['plan', 'set', 'UNKNOWN', 'ticket=ENG-4']) == 1
     assert main(['plan', 'set', 'A', 'owner=pat']) == 2
+    assert main(['plan', 'set', 'A', 'docs=new']) == 2  # #841: no docs field
     assert main(['plan', 'set', 'A', 'ticket=bad id']) == 2
     fake.results['created'] = registry.Result(1, reason='not found')
     assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
-    assert 'owner=pat is not a spec, docs, ticket or owner_merge value' in capsys.readouterr().err
+    assert 'owner=pat is not a spec, ticket or owner_merge value' in capsys.readouterr().err
 
 
 GITHUB = '[adapters]\ntracker = "github"\n'
@@ -977,11 +978,11 @@ def test_the_gate_records_no_day_value(root, monkeypatch):
 
 
 def test_empty_optional_fields_are_absent(root):
-    # #640: an empty ticket, tier or docs (or a null tier or docs) is absent, not a refused
-    # proposal; a null ticket is the owner's none (#636) and keeps its key.
-    plan.propose(two(A={'ticket': '', 'tier': None, 'docs': ''}, B={'ticket': '  ', 'tier': '  '}), root)
+    # #640: an empty ticket or tier (or a null tier) is absent, not a refused proposal; a null
+    # ticket is the owner's none (#636) and keeps its key.
+    plan.propose(two(A={'ticket': '', 'tier': None}, B={'ticket': '  ', 'tier': '  '}), root)
     saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
-    assert not any(key in row for row in saved for key in ('ticket', 'tier', 'docs'))
+    assert not any(key in row for row in saved for key in ('ticket', 'tier'))
     plan.approve(['A', 'B'], root, goals_confirmed=True)
     data = state.read_state(root)
     assert data.get('tickets', {}) == {}

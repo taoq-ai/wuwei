@@ -263,7 +263,6 @@ def check(root):
         results.append((counts['exit'], output.getvalue().strip()))
     except watch.ERRORS as exc:
         results.append((2, f'obligations unmeasured: {exc}'))
-    from wuwei import docs
-    results.extend([docs.close(root), retro(root), pr_actions.check(root, closing=True, rows=rows)])
+    results.extend([retro(root), pr_actions.check(root, closing=True, rows=rows)])
     return max(code for code, _ in results), '\n'.join(dict.fromkeys(
         message for code, message in results if code and message))

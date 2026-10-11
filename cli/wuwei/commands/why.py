@@ -25,7 +25,7 @@ def register(subparsers):
     parser.add_argument('target', nargs='+', help='an item, owner/repo#n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
     parser.add_argument('--json', action='store_true',
-                        help="print an item's live docs, ticket and spec values and its steps as JSON")
+                        help="print an item's live ticket and spec values and its steps as JSON")
     parser.set_defaults(func=run)
 
 
@@ -93,20 +93,17 @@ def proposed(day, name):
 
 
 def live(root, name, level):
-    """#667: the item's values as recorded now (docs, ticket, spec) and its steps."""
+    """#667: the item's values as recorded now (ticket, spec) and its steps."""
     from pathlib import Path
-    from wuwei import docs, specmode
+    from wuwei import specmode
     name, days = _days(root, name)
     day, data = days[-1]
     row = data['items'][name]
     config = workspace.load_config(root)
     markers = security.load(root)
     clean = lambda text: text if text is None else security.redact(redact(text), markers)
-    shown = docs.shown(config, row)
     spec = specmode.brief_line(config, name, row, Path(row['worktree']) if row.get('worktree') else None, True)
     return {'item': name, 'day': day.name,
-            'docs': {'value': clean(shown), 'reason': clean((row.get('docs') or {}).get('reason', '')),
-                     'command': None if shown == 'n/a' else docs.command(config, name)},
             'ticket': clean(((data.get('tickets') or {}).get(name) or {}).get('id')),
             'spec': clean(spec and spec.removeprefix('Spec: ')),
             'steps': render(item(root, name), level, root)}

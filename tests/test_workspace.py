@@ -231,8 +231,6 @@ def test_config_defaults_and_independence(tmp_path):
                     'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
                     'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
                     'project': '', 'board': '', 'auth': 'token'},
-        'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
-                 'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
                  'rate_limit_wait_seconds': 120}, 'profile': 'strict',
@@ -268,8 +266,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'redactor': 'builtin',
-                     'docs': 'none'},
+                     'transcripts': 'none', 'redactor': 'builtin'},
     }
     outward['allow'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['allow']
@@ -454,29 +451,14 @@ def test_outward_humanize_keys(tmp_path):
     assert workspace.load_config(tmp_path)['outward']['humanize'] is True
 
 
-def test_docs_config(tmp_path):
+def test_retired_docs_config_only_warns(tmp_path):
+    # #841: the docs system is gone; a former [docs] table and adapters.docs only warn.
     from wuwei import workspace
-    write_config(tmp_path, '')
-    config = workspace.load_config(tmp_path)
-    assert config['docs'] == {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '',
-                              'root': 'docs', 'publish': ['report', 'retro'], 'auto': [],
-                              'strict_close': True}
-    assert config['adapters']['docs'] == 'none'
-    write_config(tmp_path, '[docs]\nsystem = "wiki"\n')
-    with pytest.raises(workspace.ConfigError, match='docs.system') as error:
-        workspace.load_config(tmp_path)
-    assert 'notion' in str(error.value) and 'adapters.docs' not in str(error.value)
-    for text in ('required_tiers = ["huge"]', 'auto = ["dm"]'):
-        write_config(tmp_path, f'[docs]\n{text}\n')
-        with pytest.raises(workspace.ConfigError):
-            workspace.load_config(tmp_path)
-    write_config(tmp_path, '[adapters]\ndocs = "notion"\n')
+    write_config(tmp_path, '[adapters]\ndocs = "notion"\n[docs]\nsystem = "notion"\n')
     warnings = []
     config = workspace.load_config(tmp_path, warnings=warnings)
-    assert config['adapters']['docs'] == 'none' and 'unknown key adapters.docs' in warnings[0]
-    (tmp_path / '.wuwei/config.toml').write_text(
-        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
-    assert workspace.load_config(tmp_path)['docs']['system'] == 'none'
+    assert 'docs' not in config and 'docs' not in config['adapters']
+    assert any('adapters.docs' in text for text in warnings) and any(' docs' in text for text in warnings)
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):

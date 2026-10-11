@@ -1477,66 +1477,10 @@ def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
     assert outcome['roles'] == ['quality'] and [seat['action'] for seat in outcome['seats']] == ['launch']
 
 
-def docs_events(root, kind):
-    return [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
-            if row['kind'] == kind]
-
-
-@pytest.mark.parametrize('system,paths,expected', [
-    ('notion', [('docs/guide.md', 3, 1)], [{'item': 'A', 'tier': 'light'}]),
-    ('notion', [('cli/wuwei/guards/pr.py', 2, 0)], []),
-    ('none', [('docs/guide.md', 3, 1)], []),
-])
-def test_light_item_records_one_docs_exempt(root, monkeypatch, system, paths, expected):
-    from wuwei import dispatch
-    tiered(root, monkeypatch, paths, extra=f'[docs]\nsystem = "{system}"\n')
-    dispatch.next_step('A', root)
-    dispatch.next_step('A', root)
-    assert [{k: v for k, v in row.items() if k != 'prs_seen'}
-            for row in docs_events(root, 'docs.exempt')] == expected
-
-
-def docs_root(root, system='notion', tier='standard'):
-    (root / '.wuwei/config.toml').write_text(f'[docs]\nsystem = "{system}"\n')
-    standard(root, {**LIGHT, 'tier': 'light'} if tier == 'light' else
-             {'tier': tier, 'computed': tier, 'reasons': [], 'roles': ALL})
-
-
-DOC_FIX = QUALITY_FIX.replace('VAL: PASS', 'VAL: PASS DOC: FINDING')
-
-
-def test_quality_pass_refused_while_docs_value_missing(root):
-    from wuwei import dispatch, docs
-    docs_root(root)
-    with pytest.raises(dispatch.Refused, match='plan set A docs='):
-        record(root, 'quality', 'quality-1', QUALITY_PASS)
-    with pytest.raises(dispatch.Refused, match='DOC: FINDING'):
-        record(root, 'quality', 'quality-2', QUALITY_FIX.replace('VAL: PASS', 'DOC: PASS'))
-    assert state.read_state(root)['gate_verdicts'] == {}
-    assert record(root, 'quality', 'quality-3', DOC_FIX)['verdict'] == 'FIX'
-    record(root, 'arch', 'arch-1', PASS)
-
-
-def test_quality_fix_refused_when_it_calls_a_recorded_docs_value_missing(root):
-    # #667: the lint reads the docs value at receive time, not the brief's copy.
-    from wuwei import dispatch, docs
-    docs_root(root)
-    docs.assign('A', 'none', 'internal refactor', root)
-    with pytest.raises(dispatch.Refused, match='records docs none'):
-        record(root, 'quality', 'quality-1', DOC_FIX.replace('fails when empty', 'the docs value is missing; fails when empty'))
-    assert state.read_state(root)['gate_verdicts'] == {}
-
-
-def test_quality_pass_recorded_after_docs_value(root):
-    from wuwei import docs
-    docs_root(root)
-    docs.assign('A', 'none', 'internal refactor', root)
-    assert record(root, 'quality', 'quality-1', QUALITY_PASS)['verdict'] == 'PASS'
-
-
-@pytest.mark.parametrize('system,tier', [('notion', 'light'), ('none', 'standard')])
-def test_quality_pass_without_docs_obligation(root, system, tier):
-    docs_root(root, system, tier)
+def test_quality_pass_needs_no_docs_value(root):
+    # #841: the quality gate never blocks on a docs page, even under a former [docs] config.
+    (root / '.wuwei/config.toml').write_text('[docs]\nsystem = "notion"\n')
+    standard(root, {'tier': 'standard', 'computed': 'standard', 'reasons': [], 'roles': ALL})
     assert record(root, 'quality', 'quality-1', QUALITY_PASS)['verdict'] == 'PASS'
 
 

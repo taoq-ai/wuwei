@@ -942,58 +942,6 @@ def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['rows'][0]['fix'] == f'{launcher} init --upgrade'
 
 
-SPACE = 'https://www.notion.so/Docs-00000000111122223333444444444444'
-
-
-def docs_row(ws, text, read=Result(0, {'id': 'p', 'title': 'Docs home', 'link': SPACE, 'updated': 'u'})):
-    from types import SimpleNamespace as Namespace
-    config(ws.root, CONFIG + text)
-    load = registry.load
-    ws.mp.setattr(registry, 'load', lambda kind, cfg: Namespace(read=lambda ref, root=None: read)
-                  if kind == 'docs' else load(kind, cfg))
-    return row(doctor.diagnose(), 'docs')
-
-
-def test_docs_row(ws):
-    ws.mp.delenv('NOTION_TOKEN', raising=False)
-    found = docs_row(ws, '')
-    assert (found['status'], found['value'], found['section']) == ('ok', 'not used', 'gates')
-    found = docs_row(ws, '[docs]\nsystem = "notion"\n')
-    assert found['status'] == 'fail' and 'docs.space' in found['value'] + found['fix']
-    found = docs_row(ws, f'[docs]\nsystem = "notion"\nspace = "{SPACE}"\n')
-    assert found['status'] == 'fail' and 'NOTION_TOKEN' in found['value']
-    ws.mp.setenv('NOTION_TOKEN', 'opaque-example-credential')
-    found = docs_row(ws, f'[docs]\nsystem = "notion"\nspace = "{SPACE}"\n',
-                     Result(2, None, 'notion.read: could not run: HTTPError'))
-    assert found['status'] == 'fail' and 'HTTPError' in found['value']
-    found = docs_row(ws, f'[docs]\nsystem = "notion"\nspace = "{SPACE}"\n')
-    assert (found['status'], found['value']) == ('ok', 'notion: Docs home')
-
-
-def test_docs_row_markdown(ws):
-    found = docs_row(ws, '[docs]\nsystem = "markdown"\n')
-    assert found['status'] == 'fail' and 'docs.root' in found['fix']
-    (ws.root / 'repo/docs').mkdir()
-    found = docs_row(ws, '[docs]\nsystem = "markdown"\n')
-    assert found['status'] == 'warn' and 'docs.publish' in found['fix']
-    found = docs_row(ws, '[docs]\nsystem = "markdown"\npublish = []\n')
-    assert found['status'] == 'ok'
-
-
-def test_docs_publish_fix_runs_as_printed(ws, capsys):
-    # #604: the printed fix empties docs.publish, and the row is ok afterwards.
-    import shlex
-    from wuwei.__main__ import main
-    (ws.root / 'repo/docs').mkdir()
-    found = docs_row(ws, '[docs]\nsystem = "markdown"\n')
-    assert found['status'] == 'warn'
-    from fakes import owner
-    assert main(shlex.split(found['fix'])[1:]) == 1  # #831: it asks its Owner step card
-    owner.answer_card(ws.root, capsys.readouterr().err)
-    assert main(shlex.split(found['fix'])[1:]) == 0, capsys.readouterr()
-    assert row(doctor.diagnose(), 'docs')['status'] == 'ok'
-
-
 def test_tracker_row(ws):
     from fakes.tracker import Fake
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'

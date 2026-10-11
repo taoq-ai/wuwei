@@ -59,7 +59,6 @@ PARAMETERS = {
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
             'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
-    'docs': {'read': ('ref',), 'write': ('draft',)},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

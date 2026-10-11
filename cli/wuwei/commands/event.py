@@ -72,8 +72,6 @@ EVENT_PRODUCERS = {
     'config.newer_template': 'wuwei hook PreToolUse',
     **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
        for action in ('skipped', 'unsent', 'shared', 'ready', 'off')},
-    'docs.set': 'wuwei plan set or wuwei docs page',
-    'docs.written': 'wuwei docs', 'docs.exempt': 'wuwei dispatch next',
 }
 
 

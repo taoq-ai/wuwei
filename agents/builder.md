@@ -74,7 +74,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.3.0
+version: 1.4.0
 ---
 # Builder charter
 
@@ -106,5 +106,3 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 - `STATE: PASS|N.A.|FINDING` Interleave writers and replay requests around read-check-write or approval state; verify the compare-and-swap.
 - `CON: PASS|N.A.|FINDING` Pass a real serialized producer fixture through each consumer of a changed return field, type, export or tool registration.
 - `BUD: PASS|N.A.|FINDING` Give changed external calls and concurrent work a deadline and cancellation path; test a stalled dependency.
-
-When your brief has a `Docs:` line, record the item's docs value with the command it names before you stand down. Under markdown, write the page with `bin/wuwei docs page <item>` and commit it with the change.

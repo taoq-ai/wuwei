@@ -249,12 +249,6 @@ terminal; `spec=required` turns the check back on.
 Phases move by themselves: `planned`, `implement`, `gate`, `fix`, `delta`, `raised`,
 `merged`. You never move one by hand on this path.
 
-With a [docs system](concepts.md#docs-system) configured, an item tiered standard or full
-carries a [docs obligation](concepts.md#docs-obligation): before its quality gate passes the
-builder records `bin/wuwei plan set <item> docs=<page>|new|none --reason "<why>"`, or under
-markdown writes the file with `bin/wuwei docs page <item>`. `wuwei next` shows a `docs` row
-until it does, and `close` names any merged item whose docs were never written.
-
 To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
 the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
 `wuwei merge`, `merge check`, `pr act`, the PR guard and the overnight shepherd refuse that

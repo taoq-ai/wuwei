@@ -53,7 +53,7 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'outbound.commitment_patterns', 'outbound.disagreement_patterns',
            'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
            'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
-           'scanner.mcp.block')
+           'scanner.mcp.block', 'docs', 'adapters.docs')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -100,12 +100,6 @@ SCHEMA = {
                 "max_per_item_per_day": (int, 10, 1),
                 "project": (str, ""), "board": (str, ""),
                 "auth": (str, "token", ("token", "gh"))},
-    "docs": {"system": (str, "none"),
-             "required_tiers": [(str, None, ("light", "standard", "full")), ["standard", "full"]],
-             "space": (str, ""), "root": (str, "docs"),
-             "publish": [(str, None, ("report", "retro")), ["report", "retro"]],
-             "auto": [(str, None, ("page", "report", "retro")), []],
-             "strict_close": (bool, True)},
     "calendar": {"url": (str, "")},
     "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
@@ -606,7 +600,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 19  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 20  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.
@@ -694,7 +688,6 @@ def load_config(root=None, *, raw=None, warnings=None):
             if unknown:  # A typo usually explains the error after it, as before #353.
                 raise ConfigError(unknown[0]) from None
             raise
-        config['adapters']['docs'] = config['docs']['system']  # #419: the registry reads adapters.
         for pattern in config['deploy']['deny']:
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
@@ -733,11 +726,9 @@ def load_config(root=None, *, raw=None, warnings=None):
             try:
                 registry.validate(kind, name, for_config=True)
             except ValueError as exc:
-                key = ('docs', 'system') if kind == 'docs' else ('adapters', kind)
-                line = _key_line(raw, key)
+                line = _key_line(raw, ('adapters', kind))
                 location = f' at line {line}' if line is not None else ''
-                text = str(exc).replace('adapters.docs:', 'docs.system:')
-                raise ConfigError(f'{text}{location}') from exc
+                raise ConfigError(f'{exc}{location}') from exc
         _CONFIGS[path, raw] = (marshal.dumps(config), tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
             _cache(path.parent / 'generated', raw, config, unknown)

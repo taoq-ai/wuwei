@@ -45,11 +45,10 @@ def register(subparsers):
     actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
                        ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false')
+                                            'ticket=<id> or owner_merge=true|false')
     assign.add_argument('item', help='The item id')
-    assign.add_argument('assignment', help='spec=required|skipped, docs=<page>|new|none, '
-                                           'ticket=<id> or owner_merge=true|false')
-    assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
+    assign.add_argument('assignment', help='spec=required|skipped, ticket=<id> or owner_merge=true|false')
+    assign.add_argument('--reason', help='Why; required for spec=skipped')
     parser.set_defaults(func=run)
 
 
@@ -87,18 +86,15 @@ def run(args):
             key, _, value = args.assignment.partition('=')
             if key == 'spec':
                 print(plan.set_spec(args.item, args.assignment, args.reason))
-            elif key == 'docs' and value:
-                from wuwei import docs
-                print(docs.assign(args.item, value, args.reason))
             elif key == 'owner_merge':
                 print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
                 print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
-                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '
+                raise ValueError(f'plan set: {args.assignment} is not a spec, ticket or owner_merge value; run '
+                                 f'bin/wuwei plan set {args.item} spec=required|skipped, '
                                  'ticket=<id> or owner_merge=true|false. '
-                                 'Pass --reason "<why>" with spec=skipped or docs=none')
+                                 'Pass --reason "<why>" with spec=skipped')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             plan.dispose(args.item, outcome, args.reason)

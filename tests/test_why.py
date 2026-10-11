@@ -350,7 +350,7 @@ def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
                     'prompt: Review PR 16; traces: P:a1')
 
 
-def live_item(root, tier='standard', config='[docs]\nsystem = "notion"\n'):
+def live_item(root, tier='standard', config=''):
     """#667: item X at the gate with a speckit directory in its worktree."""
     (root / '.wuwei/config.toml').write_text(config)
     (root / 'tree/specs/001-x').mkdir(parents=True)
@@ -370,24 +370,20 @@ def live(capsys, *argv):
 def test_why_json_reads_the_record_at_call_time(root, capsys):
     live_item(root)
     out = live(capsys)
-    assert out['docs']['value'] == 'missing' and out['docs']['reason'] == ''
-    assert 'plan set X docs=' in out['docs']['command']
+    assert 'docs' not in out  # #841
     assert (out['item'], out['day'], out['ticket']) == ('X', DAY, None)
     assert out['spec'] == 'speckit artifacts: specs/001-x'
     assert out['steps'] == why(capsys, 'X')[1]
 
     def update(data):
-        data['items']['X']['docs'] = {'value': 'page-1', 'reason': 'updated'}
         data['tickets'] = {'X': {'id': 'acme/w#5'}}
     state._write_state(update, root, reserved=False)
-    out = live(capsys)
-    assert (out['docs']['value'], out['docs']['reason'], out['ticket']) == ('page-1', 'updated', 'acme/w#5')
+    assert live(capsys)['ticket'] == 'acme/w#5'
 
 
 def test_why_json_light_tier_and_no_spec_engine(root, capsys):
-    live_item(root, tier='light', config='[docs]\nsystem = "notion"\n[spec]\nengine = "none"\n')
-    out = live(capsys)
-    assert out['docs'] == {'value': 'n/a', 'reason': '', 'command': None} and out['spec'] is None
+    live_item(root, tier='light', config='[spec]\nengine = "none"\n')
+    assert live(capsys)['spec'] is None
 
 
 def test_why_json_reads_an_item_only(root, capsys):
@@ -398,10 +394,10 @@ def test_why_json_reads_an_item_only(root, capsys):
         assert (code, lines) == (2, []) and '--json reads an item' in err
 
     def update(data):
-        data['items']['X']['docs'] = {'value': 'none', 'reason': f'leaked {TOKEN}'}
+        data['tickets'] = {'X': {'id': f'leaked {TOKEN}'}}
     state._write_state(update, root, reserved=False)
     out = live(capsys)
-    assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['docs']['reason']
+    assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['ticket']
 
 
 def approve_as(root, text, item='fix-login', day=DAY):

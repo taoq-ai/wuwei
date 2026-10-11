@@ -85,7 +85,6 @@ Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](
 | chat | none, slack |
 | checks | local, none |
 | code_host | github, none |
-| docs | confluence, markdown, none, notion |
 | editor | local |
 | host | local, none |
 | integrity | none, ssh |

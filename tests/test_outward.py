@@ -574,8 +574,6 @@ def test_every_free_text_adapter_write_goes_through_the_port():
               ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint',
               # #422: a table of validated counts; telemetry send runs security.outbound itself.
               ('code_host', 'issue'): 'telemetry.validate and security.outbound in wuwei telemetry send'}
-    adapter_exempt = {('docs', 'write', 'markdown'):
-                      "a file in the item's pull request; docs.page runs outward.humanize_lint"}
     port = 'outward_operation.<locals>.decorate.<locals>.call'
     checked = 0
     for kind, operations in registry.PARAMETERS.items():
@@ -583,8 +581,6 @@ def test_every_free_text_adapter_write_goes_through_the_port():
             if not set(parameters) & (outward.TEXT_FIELDS | {'draft'}) or (kind, operation) in exempt:
                 continue
             for name in registry.known(kind):
-                if (kind, operation, name) in adapter_exempt:
-                    continue
                 module = registry.load(kind, {'adapters': {kind: name}})
                 function = getattr(module, operation)
                 assert function.__code__.co_qualname == port, (kind, name, operation)
@@ -593,8 +589,6 @@ def test_every_free_text_adapter_write_goes_through_the_port():
     assert 'humanize_lint' in inspect.getsource(shepherd.raise_pr)
     from wuwei.commands import telemetry
     assert 'security.outbound' in inspect.getsource(telemetry._send)
-    from wuwei import docs
-    assert 'humanize_lint' in inspect.getsource(docs.page)
 
 
 def test_owner_facing_templates_are_plain():

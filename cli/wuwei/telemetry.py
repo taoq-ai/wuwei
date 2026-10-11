@@ -43,7 +43,8 @@ ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 's
             'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
             'calendar': ('ics', 'none'), 'transcripts': ('none',),
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
-            'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
+            'redactor': ('builtin',),
+            'docs': ('confluence', 'markdown', 'none', 'notion')}  # weeks recorded before #841 removed the docs port
 INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat',
                    'cruise'))  # cruise: weeks stored before #814

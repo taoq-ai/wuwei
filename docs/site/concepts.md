@@ -115,16 +115,6 @@ The tool each non-trivial item is specified with before it is built: spec-kit (d
 `[spec] mode = "strict"` (default): source edits and the gates wait until the engine's steps are done.
 `advisory` warns once per item and day instead; `off` checks nothing.
 
-### Docs system
-
-Where the team's documentation lives: Notion, Confluence, Markdown files in the repository, or none.
-WUWEI writes an item's page there from its records, never from memory.
-
-### Docs obligation
-
-An item tiered standard or full must record what it did to the docs before its quality gate passes.
-The value is a page, `new`, or `none` with a reason; the day close checks it again.
-
 ### Ticket
 
 The tracker issue an item is built under: a Linear, Jira or GitHub id such as `ENG-12`.
@@ -189,7 +179,7 @@ A message to other people goes out through an MCP tool only when that exact tool
 
 A write whose every destination is yours is local, never an outward send: your Slack DM, your own canvas or page, a mail only to you. It passes without `outward.allow`, and the lint skips its third-person rules. A tool that acts only on your machine, such as the terminal, is local too. See [your own surfaces](configuration.md#your-own-surfaces).
 
-WUWEI's own duties go through its adapter ports, which you configure: review pings, tracker comments and tickets, docs pages, the day report and PR thread replies. Each passes the canary check and the outward lint, then goes out.
+WUWEI's own duties go through its adapter ports, which you configure: review pings, tracker comments and tickets, the day report and PR thread replies. Each passes the canary check and the outward lint, then goes out.
 
 ## Memory
 

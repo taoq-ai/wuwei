@@ -16,7 +16,6 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
-| `[docs]` | [Docs](#docs) |
 
 ## Workspace and repositories
 
@@ -239,20 +238,6 @@ remeasure without duplicating a session/chain decision. Commands and argument va
 never enter finding events or decisions. A session identity changed by secret redaction
 uses a stable digest to keep different sessions distinct.
 
-## Docs
-
-The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md#docs-obligation) per review tier. With `system = "none"` nothing here applies.
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `docs.system` | `"none"` | Where documentation lives: `notion`, `confluence`, `markdown` or `none`. Notion needs `NOTION_TOKEN` and Confluence needs `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN` in `.wuwei/env`. |
-| `docs.required_tiers` | `["standard", "full"]` | Review tiers whose items need a docs value before the quality gate passes and before the day closes. A light item records one `docs.exempt` event instead. |
-| `docs.space` | `""` | The Notion or Confluence page new pages go under, as a link. `bin/wuwei doctor` reads it. |
-| `docs.root` | `"docs"` | Under markdown, the directory in each repository that holds the pages. |
-| `docs.publish` | `["report", "retro"]` | Daily pages `wuwei report` and `wuwei retro` publish once per day under notion or confluence. No effect under markdown. |
-| `docs.auto` | `[]` | Kept for older workspaces. Every page kind is written through the docs port after the outward lint (#838). |
-| `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
-
 ## Boundaries and deployment
 
 | Key | Default | Meaning |
@@ -271,7 +256,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 Two commands change one value, each with a diff and its Owner step card, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
-- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set docs.publish '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outward.allow '["mcp__slack__slack_send_message"]' --add`); on a named-entry table such as `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
+- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set spec.skip_tiers '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outward.allow '["mcp__slack__slack_send_message"]' --add`); on a named-entry table such as `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
 - `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
 
 Run `wuwei config promote` after `init` and the `[[repos]]` entries (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout; without `--measure` it runs nothing there. It exits 0 when it applied or found nothing to change, 1 without your Yes, and 2 when it could not run.
@@ -313,7 +298,7 @@ On each sweep the steward compares the fast checks, CI check names and deploy si
 | `outbound.owner` | all empty | Your own identity per surface: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail`, `pages` (your own Slack canvas ids and Notion or Confluence page ids) and `code_host` (login). See [Your own surfaces](#your-own-surfaces). |
 | `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
 
-WUWEI's own outward duties go through its adapter ports, which you configure: a review ping, a tracker comment or ticket, a docs page, the day report and a PR thread reply. Each passes the canary check and the outward lint, and none needs `outward.allow`. A channel limit does not bypass the outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) has the defaults and examples.
+WUWEI's own outward duties go through its adapter ports, which you configure: a review ping, a tracker comment or ticket, the day report and a PR thread reply. Each passes the canary check and the outward lint, and none needs `outward.allow`. A channel limit does not bypass the outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) has the defaults and examples.
 
 ## Your own surfaces
 

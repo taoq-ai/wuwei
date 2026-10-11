@@ -367,8 +367,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
-                'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
-                'docs.exempt': 'silent',
+                'spec.warned': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

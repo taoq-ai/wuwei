@@ -147,10 +147,6 @@ def build(root=None):
     rounds = round_lines(watch.records(day / 'events.jsonl'))
     if rounds:
         lines += ['', '## Rounds', *rounds]
-    from wuwei import docs
-    documented = docs.report_lines(root, workspace.load_config(root), data)
-    if documented:
-        lines += ['', '## Docs', *documented]
     shadow = shadow_lines([day])
     if shadow:
         lines += ['', '## Shadow', *shadow]
