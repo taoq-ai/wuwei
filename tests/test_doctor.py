@@ -188,7 +188,7 @@ def test_install_rows(ws):
     ws.mp.setattr(integrity, 'fresh', lambda root: Result(2, reason=TRIAL))
     found = row(doctor.diagnose(), 'integrity')
     assert found['status'] == 'fail' and found['value'] == TRIAL
-    assert 'wuwei integrity reconfirm' in found['fix'] and 'reinstall' in found['fix']
+    assert 'wuwei doctor --fix --apply integrity-reconfirm' in found['fix'] and 'reinstall' in found['fix']
     assert 'apply' not in found
 
     (ws.plugin / 'MANIFEST.sha256.sig').unlink()
@@ -197,7 +197,7 @@ def test_install_rows(ws):
     assert row(rows, 'hooks')['value'].startswith('development checkout')
     assert row(rows, 'hooks')['status'] == 'ok'
     found = row(rows, 'integrity')
-    assert found['fix'] == W('integrity reconfirm') and found['apply'] == 'integrity-reconfirm'
+    assert found['fix'] == W('doctor --fix --apply integrity-reconfirm') and found['apply'] == 'integrity-reconfirm'
 
 
 def host_case(ws, change):
@@ -572,7 +572,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
 
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    assert 'wuwei integrity reconfirm' in out and f"fix: {W('init --upgrade')}" in out
+    assert 'wuwei doctor --fix --apply integrity-reconfirm' in out and f"fix: {W('init --upgrade')}" in out
     assert 'delete that line before using [[repos]] tables' in out
 
     config(ws.root, trial)
@@ -652,7 +652,7 @@ def test_pr_flow_section_only(ws, monkeypatch, capsys):
 # US2: --fix
 
 CHECKOUT = ('page: plugin integrity: development checkout requires host reconfirmation; '
-            'run wuwei integrity reconfirm')
+            'run wuwei doctor --fix --apply integrity-reconfirm')
 
 
 def fix(confirm):
@@ -691,7 +691,7 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
         return True
     assert fix(owner) == 0
     (digest, shown), = typed
-    assert '[integrity-reconfirm] wuwei integrity reconfirm' in shown and 'f' * 64 in shown
+    assert '[integrity-reconfirm] wuwei doctor --fix --apply integrity-reconfirm' in shown and 'f' * 64 in shown
     assert len(digest) == 12
     assert events(ws.root, 'doctor.fixed') == [{'fix': 'integrity-reconfirm', 'exit': 0}]
     out = capsys.readouterr().out
@@ -757,10 +757,10 @@ def test_fix_nothing_to_apply(ws, capsys):
 def two_fixes(ws, monkeypatch):
     """integrity-reconfirm and init-upgrade due, each with a fake preview and an apply that records its call."""
     applied = []
-    rows = [doctor._row('install', 'integrity', 'warn', 'old', 'wuwei integrity reconfirm', apply='integrity-reconfirm'),
+    rows = [doctor._row('install', 'integrity', 'warn', 'old', 'wuwei doctor --fix --apply integrity-reconfirm', apply='integrity-reconfirm'),
             doctor._row('workspace', 'template', 'warn', 'drift', 'wuwei init --upgrade', apply='init-upgrade')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
-    for name, command in (('integrity-reconfirm', 'wuwei integrity reconfirm'), ('init-upgrade', 'wuwei init --upgrade')):
+    for name, command in (('integrity-reconfirm', 'wuwei doctor --fix --apply integrity-reconfirm'), ('init-upgrade', 'wuwei init --upgrade')):
         monkeypatch.setitem(doctor.FIXES, name, (command, lambda root, name=name: (f'preview {name}\n', name),
                                                  lambda root, token: applied.append(token) or 0))
     return applied
@@ -779,7 +779,7 @@ def test_fix_widget_prints_the_owner_step_card(ws, monkeypatch, capsys):
     assert built['header'] == 'Owner step' and built['multiSelect'] is False
     assert built['question'].startswith('Owner step: bin/wuwei doctor --fix (')
     assert built['record'] == 'bin/wuwei doctor --fix'
-    assert '[integrity-reconfirm] wuwei integrity reconfirm' in built['options'][0]['description']
+    assert '[integrity-reconfirm] wuwei doctor --fix --apply integrity-reconfirm' in built['options'][0]['description']
     assert not asked and not applied and not events(ws.root, 'doctor.fixed')
     assert doctor.run(widget_args(widget=False)) == 1
     refusal = capsys.readouterr().err
@@ -852,10 +852,10 @@ def test_init_shadow_without_workspace(ws, tmp_path, monkeypatch):
 def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     launcher = str(ws.plugin / 'bin/wuwei')
     rows = [doctor._row('workspace', 'config', 'fail', 'x', 'wuwei init --upgrade'),
-            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm'),
+            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei doctor --fix --apply integrity-reconfirm'),
             doctor._row('install', 'b', 'fail', 'x', '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan')]
     assert [r['fix'] for r in rows] == [
-        f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm',
+        f'{launcher} init --upgrade', f'run {launcher} doctor --fix --apply integrity-reconfirm',
         '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan']
     assert f'{launcher} init --upgrade' in doctor.render(rows)
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)

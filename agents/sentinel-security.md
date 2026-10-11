@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.10.3
+version: 1.10.4
 ---
 # Common rules for every seat
 
@@ -31,7 +31,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
+2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ## Verdict format
@@ -67,7 +67,7 @@ Change: none
 ```
 
 ---
-version: 1.0.2
+version: 1.0.3
 ---
 # Common authoring rules
 
@@ -78,7 +78,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 1. Identify the audience, delivery medium and the repository's own style before writing. Use plain, factual language; no emoji or em dash. Verify every count, link target, status and technical claim at the current source.
 2. Before any outward post, pass the outward-text guard. A send through a tool not on `outward.allow` is refused; it names the line the owner adds. Record posted ids so obligations can be checked. A refused post is not a sent message.
 3. Before a commit or push, use the repository's configured author and committer identity. Do not fabricate an agent identity or rewrite published history. Use conventional commits when commits are part of the assigned work.
-4. For a rule change, follow the proposal rule in `_common.md`. `wuwei promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
+4. For a rule change, follow the proposal rule in `_common.md`. `wuwei retro --promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
 
 ## Writing for a person
 
@@ -106,7 +106,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.1.0
+version: 1.2.0
 ---
 # Security sentinel charter
 
@@ -120,3 +120,4 @@ Read `_common.md` for security gate rules. Write the briefed security verdict. T
 4. Check whether errors fail closed and whether traces, logs and memory redact secrets and personal data. Block trust-boundary findings under the common rule.
 5. Record the common verdict shape, probe or mutation evidence, residual risk and retro, as your brief's `Depth:` line shapes them. Name beyond-item remediation as ESCALATE or a proposal rather than silently widening scope.
 6. Independently check the builder's AUTH and ERR class results against the diff; cite the command used for each applicable class.
+7. Defect classes the gates caught on real days: a secret or token that reaches an unintended host, follows a redirect, or is echoed into a log, error message or output file. Untrusted files or text that can crash the tool, exhaust memory, write through a planted link outside the working area, or steer a model prompt.

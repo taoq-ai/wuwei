@@ -15,7 +15,6 @@ PARAMETERS = {
     'tts': {'speak': ('text', 'rate', 'out')},
     'calendar': {'events': ('since', 'until')},
     'transcripts': {'recent': ('since',)},
-    'redactor': {'redact': ('text',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': (), 'hand_over': ('target', 'argv', 'env')},
     'checks': {'run': ('path', 'command', 'timeout')},

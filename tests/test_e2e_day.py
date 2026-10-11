@@ -27,8 +27,8 @@ def test_scripted_day(day):
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
     action = day.next()
     tier = action.pop('tier')
-    assert [command.split()[:3] for command in action.pop('commands')] == [
-        ['wuwei', 'brief', role] for role in ('arch', 'quality', 'security')]
+    assert [command.split()[:4] for command in action.pop('commands')] == [
+        ['wuwei', 'seat', 'brief', role] for role in ('arch', 'quality', 'security')]
     assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)
@@ -59,7 +59,6 @@ def test_scripted_day(day):
     assert any(call[0] == 'request_reviewers' for call in day.host.calls)
     rows = json.loads(day.run('pr', 'state'))
     assert rows[0]['state'] == 'waiting'
-    day.run('pr', 'ping-check', day.ref)
     day.run('pr', 'ping', day.ref)
     assert day.data['channel_posts'][0]['status'] == 'posted'
     assert len(day.chat.calls) == 1
@@ -98,7 +97,8 @@ def test_scripted_day(day):
     assert sorted(row['payload']['step'] for row in events if row['kind'] == 'spec.step') == sorted([
         'specify', 'clarify', 'plan', 'tasks', 'analyze', 'checklist', 'implement'])
     assert 'seat stop unmatched' not in kinds
-    assert json.loads(day.run('metrics'))['fix_rounds_per_item'] == {'A': 1}
+    from wuwei import metrics
+    assert metrics.collect(day.root)['fix_rounds_per_item'] == {'A': 1}
     assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
     assert time.monotonic() - started < 20
 
@@ -209,13 +209,19 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
                    for row in day.events)
 
 
+def integrity_check(day):
+    """#848: the SessionStart check the integrity command ran."""
+    from wuwei import integrity
+    return integrity.check(day.root).exit
+
+
 def test_unconfirmed_plugin_change_warns_and_never_denies_pretooluse(day):
     # #839: integrity warns at session start; no tool call is refused for it.
-    day.run('integrity', 'check')
+    assert integrity_check(day) == 0
     for command in ('python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'):
         day.hook('PreToolUse', tool_name='Bash', tool_input={'command': command})
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
-    day.run('integrity', 'check', expected=1)
+    assert integrity_check(day) == 1
     day.hook('PreToolUse', tool_name='Read', tool_input={'file_path': str(day.repo / 'memory/demo.py')})
     events = day.directory / 'events.jsonl'
     assert not events.exists() or not any(row['kind'] == 'hook.refusal' for row in day.events)
@@ -253,9 +259,9 @@ def test_enforce_off_records_force_push_and_keeps_records_refused(day):
     assert 'posture:' not in denied['permissionDecisionReason']
     from wuwei import report
     assert report.shadow_lines([day.directory])[0].startswith('- edges: 1 ')
-    day.run('integrity', 'check')
+    assert integrity_check(day) == 0
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
-    day.run('integrity', 'check', expected=1)
+    assert integrity_check(day) == 1
     # #839: integrity warns at session start; a tool call is neither refused nor logged for it.
     count = len(day.events)
     assert day.hook('PreToolUse', tool_name='Read',

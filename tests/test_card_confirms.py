@@ -164,7 +164,7 @@ def test_a_failed_integrity_verdict_leaves_the_reconfirm_card_reachable(ws, monk
     (ws / '.wuwei/integrity').mkdir(exist_ok=True)
     (ws / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 1, 'reason': 'page: plugin integrity: dirty development checkout', 'plugin': None}))
-    reconfirm = 'bin/wuwei integrity reconfirm (abc)'
+    reconfirm = 'bin/wuwei doctor --fix --apply integrity-reconfirm (abc)'
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question(reconfirm)) == 0
     plugin, recorded = launchers(ws)
     for command in (f'{plugin} integrity reconfirm', f'{recorded} integrity reconfirm',

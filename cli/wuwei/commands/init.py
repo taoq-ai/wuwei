@@ -90,13 +90,58 @@ def run(args):
 # #838: the register comment init --upgrade wrote above config sections; removed on upgrade.
 GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
                  'bin/wuwei who walks it.')
+# Paths under .wuwei/ (files or directories) no code reads or writes; init --upgrade removes
+# them, never through a symlink and never under days/ (history).
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
-                 'memory/cruise.json', 'memory/forget.json',  # #814, #815, #833: init --upgrade removes them
-                 *(f'{name}.{suffix}' for name in ('watch', 'shepherd')  # #847
+                 'memory/cruise.json', 'memory/forget.json',  # #814, #815, #833
+                 'memory/voice.md', 'memory/digests', 'inbox', 'graph.json', 'ziran',  # #810, #833, #838, #840
+                 *(f'{name}.{suffix}' for name in ('watch', 'shepherd', 'listen')  # #810, #847
                    for suffix in ('lock', 'stdout.log', 'stderr.log')))
 RETIRED_UNITS = ('listen', 'watch', 'shepherd')  # #810, #847: user services no longer shipped
 # #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
+
+
+def _retired(destination, generated):
+    """(names to remove, (name, reason) left): each RETIRED_FILES path present and each stale
+    generated copy; a symlink, or a path that resolves outside .wuwei/, is left and named."""
+    remove, left = [], []
+    for name in (*RETIRED_FILES, *generated):
+        path = destination / name
+        if not (path.exists() or path.is_symlink()):
+            continue
+        if destination.is_symlink() or path.is_symlink():
+            left.append((name, 'a symlink'))
+        elif not path.resolve().is_relative_to(destination.resolve()):
+            left.append((name, 'resolves outside .wuwei'))
+        else:
+            remove.append(name)
+    return remove, left
+
+
+def _stale_generated(plugin, destination):
+    """#848: generated copies of a skill, agent or charter the plugin no longer ships."""
+    generated = destination / 'generated'
+    if generated.is_symlink() or not generated.is_dir() or security.load(destination.parent) is None:
+        return []
+    from wuwei.commands.agents import workspace_files
+    current = workspace_files(plugin, destination)
+    return sorted(name for name in (path.relative_to(generated).as_posix() for path in generated.rglob('*')
+                                    if path.is_file() or path.is_symlink()) if name not in current)
+
+
+def _remove(destination, name):
+    path = destination / name
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    for parent in path.parents:  # an emptied generated/<kind>/<name>/ goes with its last file
+        if parent == destination / 'generated' or not parent.is_relative_to(destination / 'generated'):
+            break
+        if any(parent.iterdir()):
+            break
+        parent.rmdir()
 
 
 def _remove_unit(path, name):
@@ -423,8 +468,6 @@ def upgrade(args):
         uncommented = ''.join(line for line in migrated.splitlines(keepends=True)
                               if line.rstrip('\r\n') != GRAPH_COMMENT)  # #838: the register is gone
         graph_comments, migrated = uncommented != migrated, uncommented
-        graph = destination / 'graph.json'
-        graph_stale = graph.is_file() and not graph.is_symlink()
         executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -440,13 +483,9 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
-        memory_dir = destination / 'memory'  # #815: never clean through a symlinked or outside memory dir
-        inside = (not destination.is_symlink() and not memory_dir.is_symlink()
-                  and memory_dir.resolve().is_relative_to(destination.resolve()))
-        stale = [name for name in RETIRED_FILES if inside and (destination / name).is_file()
-                 and not (destination / name).is_symlink()]  # #815: no longer read
+        stale, left = _retired(destination, ['generated/' + name for name in _stale_generated(plugin, destination)])
         for name in [] if args.dry_run else stale:
-            (destination / name).unlink()
+            _remove(destination, name)
         from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
         tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
                                   write=not args.dry_run)
@@ -455,8 +494,6 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
-            if graph_stale:
-                graph.unlink()
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             try:  # #735: the checkouts find the workspace from anywhere
@@ -467,6 +504,11 @@ def upgrade(args):
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
             if guide_changed:
                 guide_path, guide_changed = _guide(destination.parent, raw=text)
+            from wuwei import memory  # #848: the index the deleted index command wrote
+            try:
+                memory.write_index(destination.parent)
+            except (OSError, ValueError) as exc:
+                print(f'wuwei init: warning: memory index not written: {exc}; run bin/wuwei doctor for the fix', file=sys.stderr)
         if security_data is None:
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
@@ -485,12 +527,12 @@ def upgrade(args):
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if graph_comments:
             print(f'{prefix} config.toml: remove the graph comments')
-        if graph_stale:
-            print(f'{prefix} .wuwei/graph.json: remove (no longer read)')
         if pointer_changed:
             print(f'{prefix} executable pointer')
         for name in stale:
             print(f'{prefix} .wuwei/{name}: remove (no longer read)')
+        for name, reason in left:
+            print(f'left .wuwei/{name}: {reason}')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
@@ -516,7 +558,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not stale and not graph_comments and not graph_stale and text == raw
+                and not guide_changed and not stale and not graph_comments and text == raw
                 and not tickets and not units and not unhooked and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:

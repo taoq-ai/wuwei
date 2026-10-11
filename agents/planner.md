@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write, Edit, Agent
 ---
 
 ---
-version: 1.10.3
+version: 1.10.4
 ---
 # Common rules for every seat
 
@@ -31,11 +31,11 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
+2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ---
-version: 1.0.2
+version: 1.0.3
 ---
 # Common authoring rules
 
@@ -46,7 +46,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 1. Identify the audience, delivery medium and the repository's own style before writing. Use plain, factual language; no emoji or em dash. Verify every count, link target, status and technical claim at the current source.
 2. Before any outward post, pass the outward-text guard. A send through a tool not on `outward.allow` is refused; it names the line the owner adds. Record posted ids so obligations can be checked. A refused post is not a sent message.
 3. Before a commit or push, use the repository's configured author and committer identity. Do not fabricate an agent identity or rewrite published history. Use conventional commits when commits are part of the assigned work.
-4. For a rule change, follow the proposal rule in `_common.md`. `wuwei promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
+4. For a rule change, follow the proposal rule in `_common.md`. `wuwei retro --promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
 
 ## Writing for a person
 
@@ -74,7 +74,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.3.0
+version: 2.4.0
 ---
 # Planner charter
 
@@ -83,7 +83,7 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 ## What the planner decides
 
 1. The text of each brief: the item promise, evidence, track, flags, open decisions and required output; never a charter path or verdict path the CLI adds itself.
-2. Seat policy at the morning gate: the model and runtime for each role, with the owner's approved goals, queue and CAP. The gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; on `Change something` ask goals, queue, tickets, seat policy, CAP, envelope and carry-over separately and propose again. A different ticket or none goes back into the lead JSON as `ticket`.
+2. Seat policy at the morning gate: the model and runtime for each role, with the owner's approved goals, queue and CAP. The gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; on `Change something` ask goals, queue, tickets, seat policy, CAP, envelope and carry-over separately and propose again. A different ticket or none goes back into the lead JSON as `ticket`. A goals change the owner states goes into the lead JSON as the new goal blocks at the next gate; never edit `memory/goals.md`.
 3. Admission after the gate: an item the owner names joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. An item needs no ticket to start, build, pass its gates or raise its PR. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding` as a small item. When `wuwei next` lists a duty, write its content and run its record command.
 4. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec: `wuwei plan set <item> spec=skipped --reason <why>` asks the owner on its Owner step card.
 5. A command that refuses with an Owner step card: ask that card with AskUserQuestion as printed; on Yes run the same command again; on No leave it.

@@ -847,9 +847,8 @@ _GOALS = '.wuwei/memory/goals.md'
     ('Bash', f'echo x > {_CONFIG}', 'wuwei config set'),
     ('Write', _STATE, 'run wuwei next'), ('Bash', f'echo x >> {_STATE}', 'run wuwei next'),
     ('Write', _EVENTS, 'run wuwei next'), ('Bash', f'echo x >> {_EVENTS}', 'run wuwei next'),
-    ('Edit', _REPORT, 'use the wuwei CLI'), ('Bash', f'echo x >> {_REPORT}', 'use the wuwei CLI'),
     ('Edit', _GOALS, 'plan approve records the goals'), ('Bash', f'cp /dev/null {_GOALS}', 'plan approve records the goals'),
-    ('Write', '.wuwei/integrity/verdict.json', 'wuwei integrity reconfirm'),
+    ('Write', '.wuwei/integrity/verdict.json', 'wuwei doctor --fix --apply integrity-reconfirm'),
     ('Write', '.wuwei/charters/a.md', 'use the wuwei CLI'),
     ('Write', 'credentials', 'use the wuwei CLI'), ('Bash', 'credentials', 'use the wuwei CLI'),
 ])
@@ -1006,7 +1005,7 @@ def test_state_protection_unchanged(workspace):
     """#800: FR-002, the state-file and workspace-root checks stay."""
     from wuwei.guards.protect_state import check_bash
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
-    for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei status > .wuwei/config.toml'):
+    for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei next > .wuwei/config.toml'):
         assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
     assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W state recover')) == (
         2, UNPARSED)

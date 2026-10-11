@@ -20,7 +20,7 @@ REPAIR_READS = {'Read': 'file_path', 'Grep': 'path', 'Glob': 'path'}
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('hook', help='Run guards for a Claude Code hook')
+    parser = subparsers.add_parser('hook')  # no help: unlisted plumbing Claude Code runs
     parser.add_argument('event', choices=EVENTS)
     parser.set_defaults(func=run)
 

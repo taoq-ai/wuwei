@@ -73,7 +73,7 @@ def _ensure_clean(root, target):
     if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
         raise OSError('workspace integrity evidence unreadable; run bin/wuwei doctor, which tests the workspace history')
     if target.relative_to(root / '.wuwei').as_posix() in result.data:
-        raise ValueError('target has uncommitted changes in the workspace history; the owner commits or reverts them under .wuwei, then run bin/wuwei promote again')
+        raise ValueError('target has uncommitted changes in the workspace history; the owner commits or reverts them under .wuwei, then run bin/wuwei retro --promote again')
 
 
 def _changelog(root):

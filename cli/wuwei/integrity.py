@@ -211,7 +211,7 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
                 actual[name] = hashlib.sha256((plugin / relative).read_bytes()).hexdigest()
             unlinked()
             result = Result(1, reason='development checkout requires host reconfirmation; '
-                                      'run wuwei integrity reconfirm')
+                                      'run wuwei doctor --fix --apply integrity-reconfirm')
         if result.exit == 2:
             return result
         reasons = [result.reason] if result.exit else []
@@ -241,7 +241,7 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
     except (OSError, UnicodeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
     except ValueError as exc:
-        return Result(1, reason=f'page: plugin integrity: {exc}; reinstall the signed release, or run bin/wuwei integrity reconfirm')
+        return Result(1, reason=f'page: plugin integrity: {exc}; reinstall the signed release, or run bin/wuwei doctor --fix --apply integrity-reconfirm')
 
 
 def _path(root, name):
@@ -292,7 +292,7 @@ def check(root):
                                      'reason': 'plugin integrity measurement incomplete'})
         checkout = _checkout(root)
         result = (Result(1, reason='page: plugin integrity: dirty development checkout; restore a clean commit '
-                                 'and run wuwei integrity reconfirm')
+                                 'and run wuwei doctor --fix --apply integrity-reconfirm')
                   if checkout is not None and not checkout['clean'] else
                   measure(pinned=_path(root, 'pinned.pub'), checkout=checkout, root=root))
         confirmation = _path(root, 'confirmation.json')
@@ -314,7 +314,7 @@ def confirmed(other):
     """#362: the refusal when this workspace confirmed another plugin copy than the running one."""
     return (f'plugin integrity: this workspace confirmed the plugin at {other}, but this session runs '
             f'{PLUGIN}; start Claude Code with that copy (claude --plugin-dir {other}), or run bin/wuwei '
-            'integrity reconfirm to confirm this one')
+            'doctor --fix --apply integrity-reconfirm to confirm this one')
 
 
 def cached(root):
@@ -330,15 +330,15 @@ def cached(root):
                 and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN)):
             return Result(2, reason=confirmed(record['plugin']))
         if record['exit']:
-            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei integrity check, which measures it again')
+            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei doctor, which measures it again')
         if record.get('checkout') is not None:
             current = _checkout(root)
             if current != record['checkout'] or not current or not current['clean']:
                 return Result(2, reason='plugin integrity: checkout HEAD or tree changed; '
-                              'restore a clean commit and run wuwei integrity reconfirm')
+                              'restore a clean commit and run wuwei doctor --fix --apply integrity-reconfirm')
         return Result(0)
     except (OSError, ValueError, TypeError) as exc:
-        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check')
+        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei doctor')
 
 
 def fresh(root):
@@ -363,7 +363,7 @@ def fresh(root):
                 file = Path(directory) / name
                 if not name.endswith('.pyc') and file.lstat().st_mtime > since:
                     return Result(1, reason=f'page: plugin integrity: {file.relative_to(PLUGIN).as_posix()} '
-                                  'changed after the cached verdict; run wuwei integrity check')
+                                  'changed after the cached verdict; run wuwei doctor')
         return result
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
@@ -377,16 +377,16 @@ def reconfirm(root, *, confirm=None):
             return result
         if confirm is None:  # #831: the owner's answer on the Owner step card
             from wuwei import sessions
-            if reason := sessions.needs_owner(root, 'bin/wuwei integrity reconfirm',
+            if reason := sessions.needs_owner(root, 'bin/wuwei doctor --fix --apply integrity-reconfirm',
                                               f'Confirm plugin installation {result.data[:12]} on this host.',
                                               result.data[:12]):
                 return Result(1, reason=reason)
         elif not confirm(result.data):
-            return Result(1, reason='integrity re-confirmation declined; run bin/wuwei integrity reconfirm again')
+            return Result(1, reason='integrity re-confirmation declined; run bin/wuwei doctor --fix --apply integrity-reconfirm again')
         # Re-measure after the owner's answer to avoid confirming a changed tree.
         current = check(root)
         if current.exit == 2 or current.data != result.data:
-            return Result(2, reason='integrity changed during confirmation; run bin/wuwei integrity reconfirm again')
+            return Result(2, reason='integrity changed during confirmation; run bin/wuwei doctor --fix --apply integrity-reconfirm again')
         verdict = json.loads(_path(root, 'verdict.json').read_text())
         _record(root, 'confirmation.json', {'fingerprint': result.data,
                                           'checkout': verdict.get('checkout'), 'plugin': str(PLUGIN)})

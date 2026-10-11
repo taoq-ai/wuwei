@@ -45,8 +45,6 @@ def test_metrics_from_recorded_events(root, capsys):
     assert value['stuck_parks_per_item']['A'] == 1
     assert value['cost_per_item']['A'] == 0.5
     assert value['seat_decisions_owner_reversed'] == 0
-    assert main(['metrics']) == 0
-    assert json.loads(capsys.readouterr().out)['fix_rounds_per_item']['A'] == 3
 
 
 def test_unmeasured_seat_cost_remains_unmeasured(root):
@@ -62,12 +60,11 @@ def test_missing_source_is_unmeasured_and_corrupt_source_exits_two(root, capsys)
     from wuwei import metrics
 
     assert metrics.collect(root)['fix_rounds_per_item'] == 'unmeasured'
-    assert main(['metrics']) == 0
     directory = workspace.day_dir(root)
     directory.mkdir(parents=True)
     (directory / 'events.jsonl').write_text('{broken}\n')
-    assert main(['metrics']) == 2
-    assert 'events' in capsys.readouterr().err
+    with pytest.raises(ValueError, match='events'):
+        metrics.collect(root)
 
 
 def test_owner_routing_counts_once_and_separately_from_seat_decisions(root, monkeypatch):
@@ -300,20 +297,18 @@ def test_ask_metrics(root):
 
 
 def test_metrics_week_prints_computes_and_refuses(root, capsys, monkeypatch):
-    # #422: the weekly aggregate on demand; bare metrics is unchanged.
+    # #422, #848: the weekly aggregate on demand through report --week.
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+00:00')
     state.append_event('build.parked', {'item': 'A'}, root)
-    assert main(['metrics', '--week', '2026-W40']) == 0
+    assert main(['report', '--week', '2026-W40']) == 0
     found = json.loads(capsys.readouterr().out)
     assert (found['week'], found['final'], found['metrics']['stuck_parks']) == ('2026-W40', False, 1)
     assert json.loads((root / '.wuwei/metrics/2026-W40.json').read_text()) == found
     (root / '.wuwei/metrics/2026-W40.json').write_text(json.dumps({'week': '2026-W40', 'kept': True}))
-    assert main(['metrics', '--week']) == 0
+    assert main(['report', '--week']) == 0
     assert json.loads(capsys.readouterr().out) == {'week': '2026-W40', 'kept': True}
-    assert main(['metrics', '--week', 'bad']) == 2
+    assert main(['report', '--week', 'bad']) == 2
     assert 'invalid week' in capsys.readouterr().err
-    assert main(['metrics']) == 0
-    assert 'stuck_parks_per_item' in json.loads(capsys.readouterr().out)
 
 
 def test_seat_cost_from_seat_launched_rows(root):
@@ -354,9 +349,9 @@ def test_path_metrics_count_the_planner_walk(root):
     state._write_state(lambda data: data.update(planner_session_id='P'), root)
     record = lambda *args, **kwargs: traces._record(span(*args, **kwargs), root)
     state.append_event('next.action', {'state': 'lead', 'action': 'run', 'item': '', 'traces': 0, 'named': [
-        'wuwei brief lead day lead --body \'Propose today.\'',
+        'wuwei seat brief lead day lead --body \'Propose today.\'',
         'wuwei calibrate --answer "merge=<label>" --repo example/project']}, root)
-    record('P', 'Bash', {'command': '/opt/x/bin/wuwei brief lead day lead --body "other words"'})
+    record('P', 'Bash', {'command': '/opt/x/bin/wuwei seat brief lead day lead --body "other words"'})
     record('P', 'Bash', {'command': 'wuwei calibrate --answer "merge=Owner merges" --repo example/project'})
     record('P', 'Bash', {'command': 'wuwei next --json'})
     record('P', 'Bash', {'command': 'wuwei status --line'})
@@ -367,7 +362,7 @@ def test_path_metrics_count_the_planner_walk(root):
     record('P', 'Bash', {'command': 'git status'}, agent='builder')
     state.append_event('next.action', {'state': 'pr-flow', 'action': 'run', 'item': '', 'traces': 9,
                                        'named': ['wuwei doctor --section pr-flow']}, root)
-    record('P', 'Bash', {'command': 'wuwei brief lead day lead --body x'})
+    record('P', 'Bash', {'command': 'wuwei seat brief lead day lead --body x'})
     value = metrics.collect(root)
     found = metrics.path(metrics._events(workspace.day_dir(root)), metrics._traces(workspace.day_dir(root)), 'P')
     assert (value['planner_asks'], value['off_path']) == (1, 2), found
@@ -375,7 +370,7 @@ def test_path_metrics_count_the_planner_walk(root):
     events = metrics._events(workspace.day_dir(root))
     found = metrics.path(events, metrics._traces(workspace.day_dir(root)), 'P')
     assert found['off_path'][0] == 'wuwei goals'
-    assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named pr-flow
+    assert found['off_path'][1].startswith('wuwei seat brief lead day lead ')  # after next named pr-flow
     assert metrics.path(events, None, 'P')['off_path'] == metrics.UNMEASURED
     assert set(metrics.path(events, [], None).values()) == {metrics.UNMEASURED}
 

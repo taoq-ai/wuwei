@@ -43,7 +43,7 @@ ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 's
             'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
             'calendar': ('ics', 'none'), 'transcripts': ('none',),
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
-            'redactor': ('builtin',),
+            'redactor': ('builtin',),  # weeks recorded before #848 retired the redactor key
             'docs': ('confluence', 'markdown', 'none', 'notion')}  # weeks recorded before #841 removed the docs port
 INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat',
@@ -253,7 +253,7 @@ def load_week(root, week):
         return None
     found = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(found, dict) or found.get('week') != week:
-        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei metrics --week {week}')
+        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei report --week {week}')
     return found
 
 
@@ -305,9 +305,9 @@ def _leaf(value):
 def validate(found):
     """Raise ValueError(rule) unless the payload keeps to the 5.13 anonymisation rules."""
     if not isinstance(found, dict) or set(found) not in (KEYS, KEYS | {'token'}):
-        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if found['schema'] != SCHEMA or not isinstance(found['week'], str) or not WEEK.fullmatch(found['week']):
-        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if 'token' in found and not (isinstance(found['token'], str) and TOKEN.fullmatch(found['token'])):
         raise ValueError('token')
     versions, config = found['versions'], found['config']
@@ -323,20 +323,20 @@ def validate(found):
         raise ValueError('config')
     metrics = found['metrics']
     if not isinstance(metrics, dict) or not set(metrics) <= set(METRICS):
-        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
 
     def check(value, depth):
         if isinstance(value, dict) and depth < 2:
             for key, inner in value.items():
                 if key not in INNER:
-                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
                 check(inner, depth + 1)
         elif not _leaf(value):
-            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     for value in metrics.values():
         check(value, 0)
     if len(json.dumps(found, sort_keys=True).encode()) > MAX_PAYLOAD:
-        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     return found
 
 

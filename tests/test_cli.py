@@ -316,7 +316,7 @@ def test_dispatch_falls_back_to_discovery(plugin, candidate_exists):
 def test_cockpit_is_gone(capsys):
     # #808: the board, dashboard, phone signal command and brief packs are deleted.
     from wuwei.__main__ import main
-    assert main(['brief', 'pack']) == 2
+    assert main(['seat', 'brief', 'pack']) == 2
     assert 'expected ROLE ITEM NAME' in capsys.readouterr().err
     for argv in (['dashboard'], ['board'], ['signal', 'classify']):
         with pytest.raises(SystemExit) as exc:
@@ -354,3 +354,35 @@ def test_commands_the_derived_next_replaced_are_unknown(argv, capsys):
     with pytest.raises(SystemExit) as raised:
         main(argv)
     assert raised.value.code == 2
+
+
+LISTED = ("agents build close config dispatch doctor dora duty init merge next plan pr report "
+          "retro seat telemetry tracker why worktree").split()
+DELETED = ("brief note spec sweep promote metrics integrity verdict steward discover goals index "
+           "memory payload").split()
+
+
+def real_cli(*args):
+    return subprocess.run([sys.executable, "-S", "-m", "wuwei", *args], cwd=ROOT,
+                          env={**os.environ, "PYTHONPATH": str(ROOT / "cli")},
+                          capture_output=True, text=True)
+
+
+def test_help_lists_twenty_commands():
+    result = real_cli("--help")
+    assert result.returncode == 0, result.stderr
+    listed = [line.split()[0] for line in result.stdout.splitlines()
+              if line.startswith("    ") and not line.startswith("     ")]
+    assert listed == LISTED
+
+
+@pytest.mark.parametrize("name", DELETED)
+def test_deleted_command_is_unknown(name):
+    result = real_cli(name)
+    assert result.returncode == 2
+    assert "invalid choice" in result.stderr
+
+
+@pytest.mark.parametrize("args", [("hook", "--help"), ("status", "--help")])
+def test_plumbing_stays_registered(args):
+    assert real_cli(*args).returncode == 0

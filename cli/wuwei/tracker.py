@@ -184,7 +184,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         row = row or _candidate(root, data, subject)
         if not isinstance(row, dict) or not isinstance(row.get('scope'), str):
             return registry.Result(2, reason=f'tracker create: unknown item {subject}; use an id '
-                                             "from today's plan or proposal (bin/wuwei status lists them)")
+                                             "from today's plan or proposal (bin/wuwei next lists them)")
         title = ' '.join(row['scope'].split())
         lines = [f'Evidence: {row.get("evidence", "")}', f'Goal: {row.get("goal", "unplanned")}',
                  f'Track: {row.get("track", "")}']

@@ -18,7 +18,7 @@ SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
             'gates': 'Gates and adapters', 'pr-flow': 'PR flow', 'day': 'Day and sessions',
             'guards': 'Guards'}
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
-        'host': 'docs/site/daily.md#1-install-the-signed-release',
+        'host': 'docs/site/index.md#start-here',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
         'gates': 'docs/site/security.md#ziran-integration',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
@@ -120,15 +120,15 @@ def _install(root, config):
     reason = result.reason
     if result.exit == 0:
         rows.append(_row('install', 'integrity', 'ok', reason or 'clean'))
-    elif 'run wuwei integrity check' in reason or not ('page:' in reason or 'reconfirm' in reason):
+    elif re.search(r'run wuwei doctor(?! --fix)', reason) or not ('page:' in reason or 'reconfirm' in reason):
         rows.append(_row('install', 'integrity', 'fail' if result.exit == 1 else 'unmeasured', reason,
-                         'wuwei integrity check'))
+                         'wuwei doctor'))
     elif _checkout() and root is not None:
-        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei integrity reconfirm',
+        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei doctor --fix --apply integrity-reconfirm',
                          apply='integrity-reconfirm'))
     else:
         rows.append(_row('install', 'integrity', 'fail', reason,
-                         'review the files named, then wuwei integrity reconfirm; or ' + REINSTALL))
+                         'review the files named, then wuwei doctor --fix --apply integrity-reconfirm; or ' + REINSTALL))
     markers = plugin / integrity.MARKERS
     count = len(list(markers.iterdir())) if markers.is_dir() else 0
     notice = integrity.restart(config)
@@ -562,7 +562,7 @@ def _probe_fix(name, probes):
         return 'fix the integrity row first'
     if probes[name]['value'] == 'timeout':
         return 'the hook did not answer in time; rerun wuwei doctor when fewer seats run'
-    return 'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL
+    return 'the hook no longer behaves as shipped; ' + REINSTALL
 
 
 def _guards(root, probes):
@@ -649,7 +649,7 @@ def _upgrade(root, dry):
 def _reconfirm_preview(root):
     result = integrity.check(root)
     if not result.data:
-        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei integrity check to see the current verdict')
+        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei doctor to see the current verdict')
     return f'installation fingerprint {result.data}\n', result.data
 
 
@@ -664,7 +664,7 @@ def _reconfirm(root, token):
 # apply(root, token) -> exit). Decisions (guards.enforce, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
-    'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
+    'integrity-reconfirm': ('wuwei doctor --fix --apply integrity-reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
 }
 

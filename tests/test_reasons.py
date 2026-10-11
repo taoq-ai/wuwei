@@ -247,21 +247,6 @@ def test_before_plan_report(fresh, capsys):
         0, 'No report today: no day has started. Start one with /wuwei:wuwei-plan.\n')
 
 
-def test_before_plan_goals(fresh, capsys):
-    code, text = run(capsys, 'goals')
-    assert (code, text) == (0, 'No goals yet: run /wuwei:wuwei-plan and approve the proposed goals.\n')
-    (fresh / '.wuwei/memory/goals.md').write_text(
-        '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n'
-        '## G-2\noutcome: Learn\nmeasure: notes\ntarget: 3\ndate: 2026-11-30\npriority: 2\n')
-    code, text = run(capsys, 'goals')
-    assert code == 0 and text.splitlines() == [
-        'G-1 (priority 1): Ship; measure: shipped; target: 1 by 2026-10-30',
-        'G-2 (priority 2): Learn; measure: notes; target: 3 by 2026-11-30']
-    with pytest.raises(SystemExit) as exc:
-        main(['goals', '--help'])
-    assert exc.value.code == 0
-
-
 def test_before_plan_template(fresh, capsys):
     assert run(capsys, 'plan', 'template')[0] == 0
 

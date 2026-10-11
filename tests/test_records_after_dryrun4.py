@@ -87,7 +87,8 @@ def test_one_close_steward_review_per_day(steward_root, monkeypatch, capsys):
     assert [row['payload']['trigger'] for row in runs()] == ['close']
     assert len(calls) == 1
     capsys.readouterr()
-    assert main(['steward', 'run', '--trigger', 'close']) == 0
+    from wuwei import steward
+    assert steward.run(trigger='close') == 0
     brief_path = first.relative_to(root).as_posix()
     assert (capsys.readouterr().out
             == f'steward: close review already ran today (brief {brief_path})\n')

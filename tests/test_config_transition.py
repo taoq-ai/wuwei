@@ -642,4 +642,63 @@ def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
     (tmp_path / '.wuwei/graph.json').symlink_to(target)
     capsys.readouterr()
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
-    assert 'graph.json' not in capsys.readouterr().out and target.exists()
+    out = capsys.readouterr().out
+    assert 'left .wuwei/graph.json: a symlink' in out.splitlines() and target.exists()  # #848: named, kept
+    assert 'graph.json: remove' not in out
+
+
+# #848: what a 0.27.0 workspace left under .wuwei/ that nothing reads any more.
+OLD_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json',
+             'memory/targets.lock', 'memory/cruise.json', 'memory/forget.json', 'memory/voice.md',
+             'memory/digests/2026-W40.md', 'inbox/inbox.jsonl', 'inbox/sent.json', 'inbox/cursor.json',
+             'ziran/github/' + 'a' * 64 + '.json', 'generated/skills/wuwei-consolidate/SKILL.md',
+             *(f'{name}.{suffix}' for name in ('watch', 'shepherd', 'listen')
+               for suffix in ('lock', 'stdout.log', 'stderr.log')))
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkeypatch, capsys, dry_run):
+    import tomllib
+    from wuwei import workspace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    base = tmp_path / '.wuwei'
+    old = ((ROOT / 'tests/fixtures/workspace-0.27.0/config.toml').read_text()
+           .replace('[owner.verbosity]\n', '[owner.verbosity]\ndecisions = "full"\n', 1)
+           .replace('[adapters]\n', '[adapters]\nredactor = "builtin"\n', 1))
+    (base / 'config.toml').write_text(old)
+    for name in OLD_FILES:
+        (base / name).parent.mkdir(parents=True, exist_ok=True)
+        (base / name).write_text('{}')
+    outside = tmp_path / 'elsewhere.json'
+    outside.write_text('{}')
+    (base / 'graph.json').symlink_to(outside)
+    history = base / 'days/2026-10-01/state.snapshot.json'
+    history.parent.mkdir(parents=True)
+    history.write_text('{}')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=dry_run)) == 0
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    removed = sorted({name.split('/')[0] if name.split('/')[0] in ('inbox', 'ziran') else
+                      'memory/digests' if name.startswith('memory/digests/') else name for name in OLD_FILES})
+    for name in removed:
+        assert out.count(f'{prefix} .wuwei/{name}: remove (no longer read)') == 1, (name, out)
+    assert 'left .wuwei/graph.json: a symlink' in out
+    for key in ('owner.verbosity.decisions', 'adapters.redactor', 'retro.repo'):
+        assert f'{prefix} config.toml: remove {key} (no longer read)' in out, out
+    assert outside.exists() and history.exists() and (base / 'graph.json').is_symlink()
+    if dry_run:
+        assert (base / 'config.toml').read_text() == old
+        assert all((base / name).exists() for name in OLD_FILES)
+        return
+    assert not [name for name in OLD_FILES if (base / name).exists()]
+    assert not [name for name in ('inbox', 'ziran', 'memory/digests') if (base / name).exists()]
+    config = tomllib.loads((base / 'config.toml').read_text())
+    for key in workspace.RETIRED:
+        table = config
+        for part in key.split('.')[:-1]:
+            table = table.get(part, {})
+        assert key.split('.')[-1] not in table, key
+    assert (base / 'memory/index.md').is_file()

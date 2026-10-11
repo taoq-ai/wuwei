@@ -82,7 +82,8 @@ def test_runtime_dispatch_accepts_gate_names(workspace, monkeypatch, capsys, gat
 
 def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
     root, _ = workspace
-    assert main(['steward', 'run', '--trigger', 'close']) == 0
+    from wuwei import steward
+    assert steward.run(trigger='close') == 0
     job = json.loads(capsys.readouterr().out)['steward_launch']
     assert job['agent_type'] == 'wuwei:steward'
     assert_registered(root, job, capsys, monkeypatch)
@@ -97,7 +98,7 @@ def test_missing_brief_line_names_the_brief_command(workspace):
     code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'Do work'}})
     assert code == 1
-    assert 'bin/wuwei brief builder <item> <name>' in message
+    assert 'bin/wuwei seat brief builder <item> <name>' in message
     assert [seat['role'] for seat in state.read_state(root)['seats'].values()] == ['adhoc']
 
 

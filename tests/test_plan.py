@@ -326,9 +326,29 @@ def test_propose_refuses_ids_only_goals(empty):
     assert not (empty / '.wuwei/days/2026-09-28/plan.md').exists()
 
 
-def test_propose_refuses_goal_objects_once_goals_exist(root):
+def test_a_goals_change_goes_through_the_goals_block(root):
+    # #848: on the owner's word the lead writes the new blocks; the gate approves and commits them.
+    import subprocess
+    from wuwei import goals
+    assert registry.load('vcs', {'adapters': {'vcs': 'git'}}).workspace_init(root / '.wuwei').exit == 0
+    before = (root / '.wuwei/memory/goals.md').read_text()
+    text = plan.propose(lead(), root).read_text()
+    assert 'G-2 (provisional)' in text and 'Document the widget' in text
+    assert (root / '.wuwei/memory/goals.md').read_text() == before
+    plan.approve(['A'], root, goals_confirmed=True)
+    memory = (root / '.wuwei/memory/goals.md').read_text()
+    assert list(goals.parse(memory)) == ['G-1', 'G-2'] and 'Ship the widget' in memory
+    assert state.read_state(root)['goals'] == ['G-1', 'G-2']
+    log = subprocess.run(['git', '-C', str(root / '.wuwei'), 'status', '--porcelain', '--', 'memory/goals.md'],
+                         capture_output=True, text=True, check=True)
+    assert log.stdout == ''  # committed in the workspace history
+
+
+def test_goal_ids_alone_keep_the_recorded_goals(root):
+    plan.propose(proposal(), root)
+    assert not (root / '.wuwei/days/2026-09-28/goals.md').exists()
     with pytest.raises(ValueError, match='goals must cite identifiers'):
-        plan.propose(lead(), root)
+        plan.propose({**proposal(), 'goals': ['G-9']}, root)
 
 
 def test_repropose_on_confirmed_goals_removes_draft(empty):
@@ -1150,7 +1170,7 @@ def test_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
     assert main(['plan', 'add', '--from-finding', 'fix-pin-ruff-in-ci']) == 1
     assert 'wuwei next' in capsys.readouterr().err
-    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin ruff in CI']) == 0
     capsys.readouterr()
     with pytest.raises(state.StateError, match="not one of today's goals"):
         plan.add('fix-pin-ruff-in-ci', gated, goal='G-9', source='finding')

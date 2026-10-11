@@ -168,7 +168,7 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei seat brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
 | PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); WUWEI installs no Git hook (#789 part 23): `pr raise` and `pr act` check every pushed commit's identity, and `build next` holds the hand-off until the fast checks pass at HEAD |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
 | PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
@@ -447,10 +447,10 @@ answer (#831), and may edit any record afterwards; the planner records.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
-checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
+checks, `dispatch opinion`, the close steward review, calibration) runs in the background, and the
 planner acts on its completion notification. The planner's turn ends with the day in one
-line (`wuwei status --line`, which names the running seats by role; `wuwei status` and
-`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from `wuwei next` and `wuwei status --line`, never by
+line (`wuwei status --line`, which names the running seats by role; `wuwei next`
+gives each seat's item and start time), and the owner can speak at any time; the planner answers from `wuwei next` and `wuwei status --line`, never by
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
@@ -517,7 +517,7 @@ red checks at the cap, `owner_merge` and a merge the policy does not clear are t
   | | light | standard | full |
   |---|---|---|---|
   | Spec engine | none (#280) | the engine's steps | the engine's steps |
-  | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
+  | Builder class sweep | none | the classes `wuwei build classes <worktree>` lists from the changed files | every class |
   | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
   | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `outward`, a hook or a `trust_paths` entry, or the item is flagged `trust_surface` or `boundary_relevant` (#663) | always |
   | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
@@ -614,7 +614,7 @@ Otherwise the session is silent (owner, 2026-10-11, #789).
 Outside the dispatch path. Reads `events.jsonl`, verdicts, traces and CLI metrics: fix rounds
 per item, hand-backs per PR, time in phase, verdict-lint rejections, decisions reaching the
 user per day, build-loop iterations and stuck parks per item, and cost per item, role and day. Writes
-the retro. Charter and note changes it only proposes; `wuwei promote` lands them
+the retro. Charter and note changes it only proposes; `wuwei retro --promote` lands them
 (section 6.8). Never briefs a seat, never dispatches, never changes item state. A day on
 which the steward did not run is a finding in the next plan.
 
@@ -669,11 +669,11 @@ cannot be computed reports "unmeasured", never zero.
 
 Goals. `memory/goals.md` holds the owner's goals, one block each: id (`G-n`), outcome, measure,
 target, date, priority. While it has none, the lead proposes goals in its JSON, the morning
-gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
+gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei retro --promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
 Discovery, morning (intraday intake retired: owner, 2026-10-11, #843). The lead runs
-discovery at the morning plan with `wuwei discover`. Sources, each
+discovery at the morning plan; the lead brief carries the candidates and sources, and `wuwei plan propose` records the discovery. Sources, each
 through its adapter and each reporting "unmeasured" when absent: the tracker backlog, red
 checks on base branches, review-bot and scanner findings, review threads asking for
 follow-up work, regressions in the outcome metrics (5.6), and follow-ups recorded by the
@@ -738,7 +738,7 @@ Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An eve
 classifier cannot read is a `warn`, never `silent`.
 
 Amended (owner, 2026-10-10, #789): the `nudge` tier is renamed `warn` and the nudge list is deleted: no `wuwei
-nudges` command, no `nudges` count on the status line or in `status --json`, no doctor
+nudges` command, no `nudges` count on the status line or in `next --json`, no doctor
 `nudges` row, no `[nudges]` config table. Every event is still appended to the day's
 `events.jsonl`; `wuwei next` derives the next action, and the counts that read warnings
 (trace gaps, untraced subagents, phone answers, changed PRs) keep reading them there.
@@ -752,7 +752,7 @@ Surfaces, all reading the same classification:
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
   cut at whole names; #658), then pages (owner, 2026-10-10, #789)
-  and `observe` when `guards.enforce` is false. `wuwei status` prints the same groups one per line
+  and `observe` when `guards.enforce` is false. `wuwei next` is the board: it prints the same groups one per line
   with the detail: each running seat with role, item and start time, the next person reply due, the next meeting and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
@@ -806,7 +806,7 @@ section runs to the next heading of the same or a higher level. A spec-kit build
 for a governed item ends with a `## Governing document` block: the reference, the line
 range, the section text and the instruction to end the analyze report with a
 `## Governing` table, one row per `spec.md` assumption with the verdict `agrees`,
-`conflicts` or `not covered` and the cited `<path>:<line>`. `wuwei spec analysis` refuses
+`conflicts` or `not covered` and the cited `<path>:<line>`. `wuwei build analysis` refuses
 (exit 2, nothing written) a governed item's report without that table, or with fewer valid
 rows than assumptions, and a reference that is not a file in the worktree or names no
 heading in it. A gate brief's `Spec:` line names the reference and the range; the goal
@@ -943,7 +943,7 @@ directories and no final file (`final: true`, owner, 2026-10-11, #789). Budget: 
 seconds of wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
 previous file and records `telemetry.skipped` with the week and the reason, and the next
 run tries again. A telemetry failure never changes the sweep's exit and is never owed work.
-`wuwei metrics --week [<week>]` prints a week's file, computing it when absent; it is a
+`wuwei report --week [<week>]` prints a week's file, computing it when absent; it is a
 command, never a hook.
 
 Metrics, per week. A value that cannot be computed is `"unmeasured"`, never zero;
@@ -1227,7 +1227,7 @@ SessionStart leaves today out and says so in one line. The orientation block and
 
 No duplicate memory. The harness has its own memory (CLAUDE.md, auto-memory, rules
 files). WUWEI's records stay the source and nothing is read back from the harness. `wuwei
-memory export --claude`, run by `promote` when a proposal landed, writes the charters' rule
+retro --promote`, when a proposal landed, exports and writes the charters' rule
 lines as one block between markers it owns into the workspace's `CLAUDE.md` (or
 `[memory] export_to`), idempotent.
 
@@ -1239,23 +1239,23 @@ lines as one block between markers it owns into the workspace's `CLAUDE.md` (or
 |---|---|---|---|
 | Working | `days/<date>/state.json`, `events.jsonl` | on demand by the planner | CLI |
 | Episodic | `days/<date>/` | by summary line in the index | planner, steward |
-| Procedural | charters, `memory/CHANGELOG.md`, `memory/ledger.jsonl`, guards | charter as system prompt; changelog and ledger never | `wuwei promote`, from steward proposals |
+| Procedural | charters, `memory/CHANGELOG.md`, `memory/ledger.jsonl`, guards | charter as system prompt; changelog and ledger never | `wuwei retro --promote`, from steward proposals |
 | Semantic | `memory/spine.md` | in full | the owner |
 
 ### 6.3 Index and payload
 
-`wuwei index` writes `memory/index.md`: one line per past day. Session start loads the spine,
+`wuwei retro --promote` writes `memory/index.md`: one line per past day. Session start loads the spine,
 the index and today's state, and prints the payload size.
 
 ### 6.5 Routing
 
 A design choice goes to the spec only if someone will later ask why the system is shaped
 this way. A world fact goes to the spine, never only to a ticket. A lesson about
-how to work goes to a charter through a steward proposal and `wuwei promote`, never to a log.
+how to work goes to a charter through a steward proposal and `wuwei retro --promote`, never to a log.
 
 ### 6.6 Consolidation
 
-Daily: the steward folds the retro into charter proposals at close, `wuwei promote` lands
+Daily: the steward folds the retro into charter proposals at close, `wuwei retro --promote` lands
 them, and `wuwei close` verifies they landed.
 
 ### 6.7 Claude's own memory
@@ -1271,7 +1271,7 @@ rather than to Claude skills, so procedure keeps one home.
 - Propose, then promote. Seats and the steward never edit a charter override directly;
   they write a proposal to `days/<date>/proposals/` (target, action `add` or `patch`, the
   new text or delta, reason, evidence path).
-  `wuwei promote` is the single writer: it lints the proposal and lands it by atomic
+  `wuwei retro --promote` is the single writer: it lints the proposal and lands it by atomic
   rename, or rejects it with the reason.
 - Promote lint: the target is a local charter override in `.wuwei/charters/`, never a
   plugin charter or a user file; a rule body stays under its line cap; the evidence path
@@ -1320,7 +1320,7 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   `wuwei init`. SessionStart and every sweep re-hash the installed plugin and verify the
   signature (`ssh-keygen -Y verify`). A mismatch is a `page` at session start naming the
   reconfirm or reinstall step; no tool call is refused for it (#839).
-- Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
+- Workspace integrity. `.wuwei/` is a git repository; `wuwei retro --promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
   memory or goals that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
   a `page` for charter overrides.

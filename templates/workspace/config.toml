@@ -45,7 +45,7 @@ handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 # timezone = "Europe/Amsterdam" # IANA zone for quality hour bands; empty is this machine's zone.
 [owner.verbosity]
 default = "brief" # brief, standard or full: how much cards and the report say to you.
-# report = "" # Per surface: decisions or report. Empty uses default.
+# report = "" # The report alone; empty uses default.
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
@@ -61,7 +61,6 @@ budget_tokens = 6000 # SessionStart memory payload budget; today is left out fir
 export_to = "CLAUDE.md" # Workspace-relative file that receives the generated rules block.
 
 [retro]
-repo = "." # Repository used for retro evidence.
 charter_paths = [".wuwei/charters"]
 changelog = ".wuwei/memory/CHANGELOG.md"
 

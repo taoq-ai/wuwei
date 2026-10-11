@@ -68,7 +68,7 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
             return True
-        if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
+        if tail[:1] in (('integrity',), ('.git',), ('metrics',)):
             return True
         if tail == ('memory', 'goals.md'):
             return True
@@ -102,10 +102,10 @@ def _hint(path):
         return ("Day records are protected: the workflow's wuwei CLI commands write them; run wuwei next "
                 'for the step.')
     if tail == ('memory', 'goals.md'):
-        return ('goals.md is protected: plan approve records the goals the morning gate approved; '
-                "other edits are the owner's, outside agent tools.")
+        return ("goals.md is protected: a goals change goes through the plan's goals block: the lead "
+                'proposes the new blocks and plan approve records the goals the morning gate approved.')
     if tail[:1] == ('integrity',):
-        return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
+        return ('Integrity records are protected: run wuwei doctor --fix --apply integrity-reconfirm; it asks the owner '
                 'on its Owner step card.')
     return _STATE_HINT
 

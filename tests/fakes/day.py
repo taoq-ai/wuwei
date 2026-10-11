@@ -305,7 +305,7 @@ lead_login = "lead"
         return json.loads(self.run('dispatch', 'next', 'A'))
 
     def brief(self, role, name):
-        return self.run('brief', role, 'A', name, '--worktree', self.repo, '--file', '-',
+        return self.run('seat', 'brief', role, 'A', name, '--worktree', self.repo, '--file', '-',
                         stdin='Implement or review the demo value.').strip()
 
     def execute(self, action):

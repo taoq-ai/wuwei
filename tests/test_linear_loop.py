@@ -75,27 +75,13 @@ def test_discovery_tracker_candidates_and_none(tmp_path, monkeypatch):
     assert none.backlog('', root=tmp_path).reason == 'tracker adapter is none'
 
 
-def test_discover_command_lists_tracker_backlog(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    tracker = Fake({'backlog': registry.Result(0, [{'id': 'ABC-2', 'title': 'Candidate'}])})
-    monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
-    assert main(['discover']) == 0  # Other sources are explained, not unmeasured.
-    assert json.loads(capsys.readouterr().out)['candidates'] == [
-        {'id': 'ABC-2', 'title': 'Candidate', 'source': 'tracker'}]
-
-
-def test_discover_command_exits_unmeasured_when_tracker_fails(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
+def test_discover_marks_the_tracker_unmeasured_when_it_fails(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     tracker = Fake({'backlog': registry.Result(2, reason='LINEAR_API_KEY is missing')})
     monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
-    assert main(['discover']) == 2
-    assert json.loads(capsys.readouterr().out)['sources']['tracker'].startswith('unmeasured')
+    assert discovery.discover()['sources']['tracker'].startswith('unmeasured')
 
 
 def test_tracker_calls_record_order_and_failures(tmp_path, monkeypatch):
@@ -127,7 +113,6 @@ def test_no_tracker_lifecycle_is_unmeasured(tmp_path):
 
 def test_discover_lists_every_repository_and_narrows_with_repo(tmp_path, monkeypatch, capsys):
     # #601: candidates name their source repository; --repo narrows to one configured repository.
-    from wuwei.__main__ import main
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n' + ''.join(
         f'[[repos]]\nname = "{name}"\npath = "{name}"\ndefault_branch = "main"\n'
@@ -137,21 +122,17 @@ def test_discover_lists_every_repository_and_narrows_with_repo(tmp_path, monkeyp
                                                    {'id': 'acme/app-docs#2', 'title': 'B'},
                                                    {'id': 'ENG-3', 'title': 'C'}])})
     monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
-    assert main(['discover']) == 0
-    assert json.loads(capsys.readouterr().out)['candidates'] == [
+    assert discovery.discover()['candidates'] == [
         {'id': 'acme/app#1', 'title': 'A', 'source': 'tracker', 'repo': 'acme/app'},
         {'id': 'acme/app-docs#2', 'title': 'B', 'source': 'tracker', 'repo': 'acme/app-docs'},
         {'id': 'ENG-3', 'title': 'C', 'source': 'tracker'}]
-    assert main(['discover', '--repo', 'acme/app-docs']) == 0
-    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app-docs#2', 'ENG-3']
-    assert main(['discover', '--repo', 'acme/unknown']) == 2
-    err = capsys.readouterr().err
-    assert 'acme/unknown is not a configured repository' in err and 'acme/app, acme/app-docs' in err
+    assert [row['id'] for row in discovery.discover(repo='acme/app-docs')['candidates']] == ['acme/app-docs#2', 'ENG-3']
+    with pytest.raises(ValueError, match='acme/unknown is not a configured repository.*acme/app, acme/app-docs'):
+        discovery.discover(repo='acme/unknown')
 
 
 def test_discover_repo_counts_a_github_tracker_project(tmp_path, monkeypatch, capsys):
     # #601 review F3: a GitHub tracker.project outside [[repos]] is tagged and selectable.
-    from wuwei.__main__ import main
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
         '[adapters]\ntracker = "github"\n[tracker]\nproject = "acme/app-docs"\n'
@@ -160,7 +141,5 @@ def test_discover_repo_counts_a_github_tracker_project(tmp_path, monkeypatch, ca
     tracker = Fake({'backlog': registry.Result(0, [{'id': 'acme/app#1', 'title': 'A'},
                                                    {'id': 'acme/app-docs#2', 'title': 'B'}])})
     monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
-    assert main(['discover', '--repo', 'acme/app']) == 0
-    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app#1']
-    assert main(['discover', '--repo', 'acme/app-docs']) == 0
-    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app-docs#2']
+    assert [row['id'] for row in discovery.discover(repo='acme/app')['candidates']] == ['acme/app#1']
+    assert [row['id'] for row in discovery.discover(repo='acme/app-docs')['candidates']] == ['acme/app-docs#2']

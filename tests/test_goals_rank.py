@@ -385,10 +385,13 @@ def test_proposed_renders_lead_goals_on_template():
     assert list(parsed) == ['G-1', 'G-2'] and parsed['G-2']['outcome'] == 'Document the widget'
 
 
-def test_proposed_keeps_defined_goals():
+def test_proposed_blocks_replace_defined_goals_and_ids_keep_them():
+    # #848: a goals change on the owner's word goes through the plan's goals block.
     from wuwei import goals
 
-    assert goals.proposed(GOALS, LEAD_GOALS) == (GOALS, False)
+    text, replacement = goals.proposed(GOALS, LEAD_GOALS)
+    assert replacement and list(goals.parse(text)) == ['G-1', 'G-2'] and 'Ship the widget' in text
+    assert goals.proposed(GOALS, ['G-1']) == (GOALS, False)
 
 
 @pytest.mark.parametrize('change', [

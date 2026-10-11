@@ -82,7 +82,7 @@ def retro(root):
         if proposal_dir.is_symlink():
             raise ValueError(f'proposals directory must not be a symlink; {SYMLINK}')
         if proposal_dir.exists() and any(proposal_dir.glob('*.json')):
-            findings.append('OWED: retro proposals await wuwei promote')
+            findings.append('OWED: retro proposals await wuwei retro --promote')
         if proposal_dir.exists():
             landed = set()
             for proposal in proposal_dir.glob('*.landed'):

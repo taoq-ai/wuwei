@@ -135,15 +135,15 @@ def test_skills_ask_the_owner_step_card_a_command_prints():
     for name in ('wuwei-plan', 'wuwei-retro', 'wuwei-report'):
         skill = (ROOT / f"skills/{name}/SKILL.md").read_text(encoding="utf-8")
         assert ASK in skill and 'decision route' not in skill and 'wuwei decide' not in skill, name
-    assert 'Never show the owner a host-terminal command' in (ROOT / "skills/wuwei-plan/SKILL.md").read_text()
+        assert 'host-terminal' not in skill and 'host terminal' not in skill, name
 
 
 def test_a_seat_finding_has_its_route():
     """#646: seats record a small fix with note --fix; the planner adds it. #842: no ticket wall;
     a due tracker update comes back from wuwei next as a duty row."""
     texts = charter_text()
-    assert 'wuwei note --fix "<title>"' in texts["builder.md"]
-    assert 'wuwei note --fix "<title>"' in texts["lead.md"]
+    assert 'wuwei seat note --fix "<title>"' in texts["builder.md"]
+    assert 'wuwei seat note --fix "<title>"' in texts["lead.md"]
     assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
     assert "An item needs no ticket to start" in texts["planner.md"]
     assert "lists a duty, write its content and run its record command" in texts["planner.md"]  # #844

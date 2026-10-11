@@ -341,7 +341,7 @@ def test_tracker_move_runs_the_shared_move(ws, monkeypatch, capsys):
                         lambda *args: calls.append(args) or answer[0])
     assert main(['tracker', 'move', 'A', 'in_review']) == 0
     assert calls == [('A', 'in_review', root)] and capsys.readouterr().out == 'A: ticket in_review\n'
-    assert main(['tracker', 'done', 'A']) == 0
+    assert main(['tracker', 'move', 'A', 'done']) == 0
     assert calls[-1] == ('A', 'done', root) and capsys.readouterr().out == 'A: ticket done\n'
     assert main(['tracker', 'move', 'A', 'claim']) == 0
     assert calls[-1] == ('A', 'claim', root) and capsys.readouterr().out == 'A: ticket claim\n'

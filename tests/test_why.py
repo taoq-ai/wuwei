@@ -234,7 +234,7 @@ def test_added_item_names_who_added_it(root, capsys):
 
 
 @pytest.mark.parametrize('target,code,err', [
-    ('nope', 1, "wuwei why: no recorded item nope; run bin/wuwei status for today's items\n"),
+    ('nope', 1, "wuwei why: no recorded item nope; run bin/wuwei next for today's items\n"),
     ('acme/app#9', 1, 'wuwei why: no item links acme/app#9; run bin/wuwei pr state for the PRs owned today\n'),
     ('acme#x', 2, 'wuwei why: expected owner/repo#number; pass owner/repo#number\n'),
 ])
@@ -295,7 +295,7 @@ def test_older_refusal_record_says_not_recorded(root, capsys):
 
 
 def test_last_refusal_is_the_newest_across_days(root, capsys):
-    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal; nothing was refused today, so run bin/wuwei status for the day\n')
+    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal; nothing was refused today, so run bin/wuwei next for the day\n')
     refusal(root, NEW, '2026-10-01')
     assert why(capsys, 'last refusal')[1][1:] == REFUSAL
     refusal(root, {'reason': 'today'})

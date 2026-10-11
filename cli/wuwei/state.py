@@ -332,16 +332,6 @@ def _write_state(update, root=None, *, kind='state.write', payload=None, directo
         return data
 
 
-def running_by_goal(data):
-    """{goal: running builder seats}, goals sorted; an item without a goal is unplanned."""
-    from collections import Counter
-    counts = Counter(data['items'].get(seat.get('item'), {}).get('goal', 'unplanned')
-                     for seat in data.get('seats', {}).values()
-                     if isinstance(seat, dict) and seat.get('status') == 'running'
-                     and seat.get('role') == 'builder')
-    return dict(sorted(counts.items()))
-
-
 def check_running(build):
     """The build's fast-check marker while another live process runs it, else None.
     The current process is never "another": a check that raised in this process is over.
@@ -386,10 +376,6 @@ def in_flight(data):
 def in_flight_text(rows):
     return ', '.join(f'{role} {item} {at[11:16] if at else "start unrecorded"}'
                      for at, role, item in rows)
-
-
-def goal_split(counts):
-    return ', '.join(f'{goal} {count}' for goal, count in counts.items())
 
 
 def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):

@@ -136,7 +136,7 @@ def test_vocabularies_match_their_sources():
     assert telemetry.posture_label({'guards': {'enforce': False}}) == 'observe'
     assert {'guarded', 'observe'} <= set(telemetry.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
-    retired = {'docs', 'inbound'}  # weeks before #841 and #810
+    retired = {'docs', 'inbound', 'redactor'}  # weeks before #841, #810 and #848
     assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | retired
     assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS if port not in retired} == {
         port: names for port, names in telemetry.ADAPTERS.items() if port not in retired}
@@ -149,7 +149,7 @@ def test_validate_runs_without_the_wuwei_package(tmp_path):
               'try:\n    telemetry.validate({})\nexcept ValueError as exc:\n    print(exc)\n'
               'print("wuwei" in sys.modules)\n')
     result = subprocess.run([sys.executable, '-S', '-E', '-c', script], cwd=tmp_path, capture_output=True, text=True)
-    assert result.stdout.split('\n')[:2] == ['top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>', 'False'], result.stderr
+    assert result.stdout.split('\n')[:2] == ['top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>', 'False'], result.stderr
 
 
 def test_week_file_writes_final_weeks_and_keeps_marks(ws):
@@ -608,10 +608,10 @@ def test_report_steps_the_telemetry_week(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(merge, 'poll', lambda root: 0)
     calls = []
     monkeypatch.setattr(telemetry, 'step', lambda root, config: calls.append(root) or '2026-W40')
-    assert report_command.run(Namespace()) == 0
+    assert report_command.run(Namespace(week=None)) == 0
     assert calls == [tmp_path]
     def broken(root, config):
         raise OSError('disk full')
     monkeypatch.setattr(telemetry, 'step', broken)
-    assert report_command.run(Namespace()) == 0
+    assert report_command.run(Namespace(week=None)) == 0
     assert 'telemetry unmeasured: disk full' in capsys.readouterr().err

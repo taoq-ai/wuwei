@@ -698,7 +698,7 @@ def test_logged_gate_brief_becomes_launch_action(root):
     assert action['agent_type'] == 'wuwei:sentinel-arch'
     outcome = dispatch.next_step('A', root)
     tier = outcome.pop('tier')
-    assert [command.split()[2] for command in outcome.pop('commands')] == ['quality', 'security']
+    assert [command.split()[3] for command in outcome.pop('commands')] == ['quality', 'security']
     assert outcome == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update({'arch-1': {
@@ -823,7 +823,7 @@ def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
     import shlex
     tree = state.read_state(root)['items']['A']['worktree']
     action = {'action': 'gates', 'roles': ['goal'], 'seats': [], 'tier': record, 'commands': [
-        f'wuwei brief goal A goal-A --gate --worktree {shlex.quote(tree)} --body '
+        f'wuwei seat brief goal A goal-A --gate --worktree {shlex.quote(tree)} --body '
         + shlex.quote(dispatch.GATE_BODY.format(item='A'))]}
     assert dispatch.next_step('A', root) == action
     assert state.read_state(root)['items']['A']['gates'] == record
@@ -1712,7 +1712,7 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
     assert calls == ['G', 'B']
     start = value['entries'][2]
     import shlex
-    assert start['commands'] == ['wuwei worktree add P3', 'wuwei brief builder P3 builder-P3 --worktree '
+    assert start['commands'] == ['wuwei worktree add P3', 'wuwei seat brief builder P3 builder-P3 --worktree '
                                  'worktrees/P3 --body ' + shlex.quote("Implement P3 as today's plan records it.")]
     assert '<' not in json.dumps(value)
     assert 'CAP 3' in value['entries'][4]['reason']
@@ -1775,7 +1775,7 @@ def test_start_names_the_worktree_and_the_builder_brief(day_set):
         {'id': 'P3', 'scope': 'one value', 'evidence': 'recorded issue P3'}]}))
     (root / 'worktrees/P3').mkdir(parents=True)
     [start] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3']
-    assert start['commands'] == ['wuwei brief builder P3 builder-P3 --worktree worktrees/P3 --body '
+    assert start['commands'] == ['wuwei seat brief builder P3 builder-P3 --worktree worktrees/P3 --body '
                                  "'Implement P3: one value. Evidence: recorded issue P3.'"]
 
 
@@ -1794,7 +1794,7 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     starts = {row['item']: row['commands'] for row in dispatch.launch_set(root)['entries']
               if row['action'] in ('start', 'park')}
     assert starts['P3'][0] == 'wuwei worktree add P3 --repo acme/code'
-    assert starts['P3'][1].startswith('wuwei brief builder P3 ')
+    assert starts['P3'][1].startswith('wuwei seat brief builder P3 ')
     [park] = starts['P1']
     argv = shlex.split(park)
     assert argv[:5] == ['wuwei', 'plan', 'park', 'P1', '--reason'], park
@@ -1802,7 +1802,7 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     for name in ('P1', 'P3'):  # an existing worktree starts with the brief, whatever its repository
         (root / 'worktrees' / name).mkdir(parents=True)
     starts = [row['commands'] for row in dispatch.launch_set(root)['entries'] if row['action'] == 'start']
-    assert [[command.split()[1] for command in commands] for commands in starts] == [['brief'], ['brief']]
+    assert [[command.split()[2] for command in commands] for commands in starts] == [['brief'], ['brief']]
     assert main(argv[1:]) == 0, capsys.readouterr().err
     assert 'P1' not in approved(state.read_state(root))
 
@@ -1835,7 +1835,7 @@ def test_gates_name_each_brief_and_receive(root):
     from wuwei import dispatch
     tree = built(root)
     body = shlex.quote(dispatch.GATE_BODY.format(item='A'))
-    brief = lambda role: f'wuwei brief {role} A {role}-A --gate --worktree {shlex.quote(str(tree))} --body {body}'
+    brief = lambda role: f'wuwei seat brief {role} A {role}-A --gate --worktree {shlex.quote(str(tree))} --body {body}'
     assert dispatch.next_step('A', root)['commands'] == [brief(role) for role in dispatch.ROLES]
     logged_gate_brief(root, 'arch', 'arch-A', tree)
     state._write_state(lambda data: data['seats'].update({'arch-A': {
@@ -1959,7 +1959,7 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root, m
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise' and 'cli/example.py:12' in outcome['notes'][0]
     found = dispatch.resolve_offer(root, {'kind': 'raise', 'item': 'A', 'command': 'wuwei dispatch next A'})
-    assert found['commands'][0].startswith('wuwei brief shepherd A shepherd-A')
+    assert found['commands'][0].startswith('wuwei seat brief shepherd A shepherd-A')
     assert 'Review note: - P1 | cli/example.py:12' in found['commands'][0]
 
 
@@ -2215,7 +2215,7 @@ def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys
     found = both()
     assert found['seats'] == [] and len(found['commands']) == 1
     command = found['commands'][0]
-    assert command.startswith(f'wuwei brief shepherd A shepherd-A --worktree {tree} --body ')
+    assert command.startswith(f'wuwei seat brief shepherd A shepherd-A --worktree {tree} --body ')
     assert all(part in command for part in ('bin/wuwei pr raise', '--item A')) and 'gh pr create' not in command
     from wuwei.guards import edges
     assert edges.check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})[0] == 0
@@ -2394,7 +2394,7 @@ def test_owner_yes_opens_the_fix_round_and_regates_the_asking_gate(root, monkeyp
     import shlex
     tree = state.read_state(root)['items']['A'].get('worktree') or str(root)
     assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [], 'seats': [], 'commands': [
-        f'wuwei brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
+        f'wuwei seat brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
         '--body ' + shlex.quote(dispatch.SHEPHERD_BODY.format(item='A'))]}
     assert cards(root) == []
 

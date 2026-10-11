@@ -648,7 +648,7 @@ def raise_action(root, data, item, notes):
     action = {'action': 'raise', 'notes': notes, 'seats': []}
     if not path.is_file():
         body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
-        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+        action['commands'] = [f'wuwei seat brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
                               '--body ' + shlex.quote(body)]
     elif name not in data['seats']:
         action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
@@ -796,7 +796,7 @@ def _start(root, name, repos):
                 f'names no configured repository ({", ".join(names)}); the lead names repo for it '
                 'when it is proposed again')]
         add = [add[0] + ' --repo ' + shlex.quote(repo)]
-    return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+    return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
 def _seats(root, data, item, roles, round_name, commands, note='', stale=(), current=None):
@@ -835,7 +835,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
                 again = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, fresh))) + (
                     ' --round delta' if round_name == 'delta' else '')
                 if not logged:
-                    commands.append(f'wuwei brief {base(role)} {item} {fresh} --gate --worktree '
+                    commands.append(f'wuwei seat brief {base(role)} {item} {fresh} --gate --worktree '
                                     f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
                 elif fresh not in data['seats']:
                     actions.append({**brief.seat_action('sentinel-' + base(role), root / logged[-1]['path'],
@@ -855,7 +855,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
         if round_name == 'initial':
             logged = _first_briefs(rows, item, role)
             if not logged and worktree:
-                commands.append(f'wuwei brief {role} {item} {role}-{item} --gate --worktree '
+                commands.append(f'wuwei seat brief {role} {item} {role}-{item} --gate --worktree '
                                 f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
             if logged and data['seats'].get(logged[-1].get('name'), {}).get('status') == 'stopped':
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, logged[-1]['name']))))
@@ -1110,7 +1110,7 @@ def receive(item, role, name, round_name='initial', root=None):
         text = scanner.merge(text, findings)
         code, message = verdict.lint(text, class_sweep=True)
         if code:
-            raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
+            raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, then receive it again with bin/wuwei dispatch receive')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
     blocks = sorted(verdict.finding_blocks(text),  # #677: blocking findings first
                     key=lambda block: not re.search(verdict.BLOCKS_YES, block, re.I))

@@ -1,7 +1,7 @@
 <p align="center"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
-    <img src="docs/site/assets/hero-light.svg" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
+    <img src="docs/site/assets/hero-light.svg" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd follows until they merge, and you answer the odd card in the session while guards, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
 </picture></p>
 
 <h1 align="center">WUWEI 无为</h1>
@@ -12,107 +12,73 @@
 
 <p align="center"><a href="docs/site/index.md">Documentation</a> · <a href="docs/site/concepts.md">Concepts</a> · <a href="docs/site/configuration.md">Configuration</a> · <a href="LICENSE">Apache 2.0</a></p>
 
-WUWEI runs your coding agents the way a careful engineering team works. The day is planned
-and ranked, and you approve the plan each morning. Every change is reviewed by an agent that
-did not write it, merges follow your merge policy, and the day ends with a retro that
-proposes changes to the rules.
+## What WUWEI is
 
-## What WUWEI is and is not
+WUWEI is a Claude Code plugin. It runs a chartered team of agents across your repositories
+the way a careful engineering team works. You approve the plan each morning. An agent that
+did not write a change reviews it, merges follow your merge policy, and a retro at close
+proposes changes to the rules. Workspace memory lives under `.wuwei/`. The code host is
+GitHub through `gh`, and tracker and chat are optional adapters.
 
-WUWEI is a Claude Code plugin. It runs a chartered team of agents across your repositories, keeps workspace memory under `.wuwei/`, and works through `gh` for the code host, with tracker and chat as optional adapters.
+WUWEI is not a hosted service, a tracker, a chat system, or a replacement for your
+repository rules.
 
-WUWEI is not a hosted service, a tracker, a chat system, or a replacement for your repository rules.
+## The loop
 
-## What ships today
-
-- The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
-- Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
-- Review [tiers](docs/site/concepts.md#tier): one reviewer for a docs-only change, three gates for code or a [trust surface](docs/site/concepts.md#trust-surface) ([review tiers](docs/site/concepts.md#review-tiers)).
-- Calibration of each repository's checks and deploy signals ([calibration](docs/site/configuration.md#calibration)).
-- Setup in the session: `init --shadow`, then each repository and the calibration proposal on an Owner step card ([setup](docs/site/daily.md#2-configure)).
-- Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
-- Security posture: observe, guarded or strict per area, with floors no setting lowers ([security posture](docs/site/security.md#security-posture)).
-- The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
-- The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
-- The DORA four keys: `bin/wuwei dora` prints lead time, deployment frequency, change failure rate and time to restore, each with its source or the reason it has no reading yet ([DORA keys](docs/site/concepts.md#dora-keys)).
-
-## How it works
-
-You start the morning with `/wuwei:wuwei-plan`. The planner [seat](docs/site/concepts.md#seat) ranks
-the work against your goals, and one Ask card asks you to approve today's plan ([daily path](docs/site/daily.md)).
-
-Then you get on with your own work. A builder writes each change in its own worktree, tests
-first, and reviewers that did not write it check it. A [shepherd](docs/site/concepts.md#shepherd)
-follows each pull request to merge, and the status line shows you where the day stands.
-
-When a seat needs you, the question arrives as a decision with a recommendation, in the
-session or on your phone through Remote Control. You answer it, and the day goes on without you watching.
-
-In the evening you close the day. `/wuwei:wuwei-report` runs the retro, and the
-[steward](docs/site/concepts.md#steward) proposes rule changes that you promote or drop. All
-day the hooks make the safe path the default one, so you have nothing special to remember.
-
-## The basic workflow
-
-In words: setup, plan, build, review, shepherd to merge, then close with a retro that feeds tomorrow.
 ```mermaid
 flowchart LR
-    setup["Setup and calibration"] --> plan["Plan and the morning gate"] --> build["Build: a builder per item, tests first"]
-    build --> review["Review by tier: one gate or three"] --> merge["Shepherd to merge"] --> close["Close and retro"]
-    close -- "memory into tomorrow: promoted rules and carried items" --> plan
-    you(["you: approve the plan, answer a card"]) -.-> plan & review
-    hooks(["hooks check every action"]) -.-> build
+    plan["Plan and the morning gate"] --> build["Build: a builder per item, tests first"]
+    build --> review["Gates at the pinned head"] --> pr["PR, duties and merge policy"] --> close["Close and retro"]
+    close -- "promoted rules and carried items" --> plan
+    you(["you: answer a card"]) -.-> plan & pr
+    hooks(["hooks check the irreversible edges"]) -.-> build
 ```
-Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](docs/site/concepts.md#carry) items open the next plan, and the hooks warn or block by your posture ([concepts](docs/site/concepts.md)).
 
-## When something goes wrong
+`bin/wuwei next` derives the day from the plan, the event log, the worktrees, the verdict
+files, one cached PR list and the seat ledger. It returns every ready launch, every due duty
+and at most one decision for you. That decision is the morning gate, a spent round cap, a
+PARK or ESCALATE verdict, or a merge the policy leaves to you. Claude walks what `next` returns.
 
-- `bin/wuwei why last refusal` names the guard, the rule and the fix for the last refused call.
-- `bin/wuwei doctor --fix` checks the install, host, workspace and day, and applies the deterministic fixes after one confirmation.
-- `bin/wuwei next` prints the next step for the day.
-- The day's records are under `.wuwei/days/<date>/`: state, events and decisions ([recovery](docs/site/recovery.md)).
+A seat launches only from a brief logged at an unchanged head. Gates read the pinned head,
+fix rounds are bounded, and a spec comes before gates for any tier above light. `pr raise --item`
+runs only after every gate passes at head. The hooks refuse the irreversible edges by exact
+argv: a default-branch update, merge, approve, admin, force push, deploy and an outward send
+outside `outward.allow`. Outward steps are duties: `next` lists each one, `duty` records it,
+and `close` waits for them. A skipped duty is recorded and listed in the report.
 
-## What is inside
+You answer in the session, on a card. A command that needs you prints its Owner step card,
+and on your Yes the same command runs again. The morning gate is the other card. Nothing asks
+you to type anything outside the session.
 
-- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md) and [wuwei-retro](skills/wuwei-retro/SKILL.md).
-- Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four [sentinels](docs/site/concepts.md#sentinel): [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
-- Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes). PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note. SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
-- Adapters by port ([adapters and ports](docs/site/adapters.md)); the [documentation site](docs/site/index.md) covers the rest:
+## The 20 commands
 
-| Port | Shipped |
-|---|---|
-| calendar | ics, none |
-| chat | none, slack |
-| checks | local, none |
-| code_host | github, none |
-| editor | local |
-| host | local, none |
-| integrity | none, ssh |
-| redactor | builtin |
-| review_bot | greptile, none |
-| runtime | claude, codex, none |
-| scanner | none, ziran |
-| tracker | github, jira, linear, none |
-| transcripts | none |
-| tts | none, say |
-| vcs | git |
+| Command | What it does |
+| --- | --- |
+| `init` | Create a workspace; `--upgrade` updates one after a plugin upgrade |
+| `config` | `check`, `show`, `set`, `add-repo` and `promote` (the calibration proposal) |
+| `doctor` | Find install, host, workspace and guard problems; `--fix` applies the fixes |
+| `why` | Explain from records why an item or a refusal happened |
+| `next` | The board: every ready launch, due duty and the one decision for you |
+| `plan` | `propose`, `gate`, `approve`, `add`, `carry`, `park`, `resume` and the lead template |
+| `seat` | `brief`, `note --fix`, `start` and `stop` a seat |
+| `build` | `next` and `check` for the builder loop, `analysis` and `classes` |
+| `dispatch` | `next`, `receive`, `opinion` and `polish` for the gates |
+| `worktree` | `add` or `adopt` the item's worktree |
+| `pr` | `raise`, `claim`, `ping`, `state` and `act` on owned PRs |
+| `merge` | Check or merge an eligible PR under the merge policy |
+| `duty` | Record an outward duty `next` listed as done or skipped |
+| `tracker` | `create`, `log` and `move` the item's ticket |
+| `close` | Close the day once every item, duty and the steward review have landed |
+| `report` | The day report; `--week` prints a week's telemetry aggregate |
+| `retro` | Compile the steward retro; `--promote` lands its charter proposals |
+| `telemetry` | `preview`, `send` or `off` |
+| `dora` | The DORA four keys with their sources |
+| `agents` | `build` or `check` the generated role agents |
 
-Planned: Signal and WhatsApp as owner channels (design spec, section 15).
+`hook <event>` (for the Claude Code hooks) and `status --line` (the status line) are plumbing.
+The [operator reference](docs/site/reference.md) covers every flag.
 
-## Principles
-
-1. The CLI owns the path and the model walks it. `bin/wuwei next` returns the one next action: the exact command or Agent call, why, and what comes after. Skills and charters hold judgement, never a step list ([agent guide](docs/site/agent.md), [design spec](docs/specs/2026-09-24-wuwei-design.md) 5.2 and 5.3).
-2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
-3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each edge in design spec 9.2 at the moment of the call, and each edge has its own test. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
-4. Reversibility is a rule, not a score. A seat assumes a two-way choice and records it in its spec under the [mandate](docs/site/concepts.md#mandate). A one-way, scope, goal or trust-boundary question reaches you as one named decision from `wuwei next`, on one card ([owner decisions](docs/site/concepts.md#owner-decisions), design spec 5.8).
-5. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([outward sends](docs/site/concepts.md#outward-sends), design spec 5.2).
-6. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
-7. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
-8. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
-
-## Installation
-
-### Claude Code
+## Install
 
 You need Claude Code, Python 3.11 or newer, Git and `ssh-keygen`. Install the signed
 `wuwei.tar.gz` release asset. From the project directory that will own the workspace:
@@ -132,81 +98,79 @@ extracted plugin:
 /plugin install wuwei@wuwei
 ```
 
-The second command installs `wuwei` from the local `wuwei` marketplace. The plugin does not need a Python package install. Optional adapters need their own tools or credentials. See [integrity](docs/site/integrity.md) for signature verification and key pinning.
-To follow the development source instead, `/plugin marketplace add taoq-ai/wuwei` installs from this repository; see [development installs](#development-installs).
+The plugin needs no Python package install. Optional adapters need their own tools or
+credentials. See [integrity](docs/site/integrity.md) for signature verification and key pinning.
 
-### Codex
-
-Codex runs seats today as an optional runtime: set `adapters.runtime = "codex"` and `codex.command`, or let it repeat one gate of each standard and full item through `gates.second_opinion` ([configuration](docs/site/configuration.md)). A Codex plugin that runs the guards inside Codex sessions is planned; the [Codex spike](docs/specs/2026-09-30-codex-plugin-spike.md) lists what it needs.
-
-### Other harnesses (planned)
-
-More harnesses are tracked in [issue #441](https://github.com/taoq-ai/wuwei/issues/441). A harness is listed as supported only after a measured fixture day runs on it. Candidates include Cursor, Gemini CLI, GitHub Copilot CLI, OpenCode, Kimi Code, Kiro and Antigravity.
-
-## Quick start
-
-From the same project directory, create the workspace:
+Create the workspace:
 
 ```sh
 ../wuwei-plugin/bin/wuwei init --shadow
 ```
 
-Then open Claude Code in the project directory. The planner asks which repositories WUWEI works
-on and adds each with `wuwei config add-repo`, then runs `wuwei config promote`, which surveys
-the repositories and proposes their checks and deploy signals. Each shows the `config.toml`
-diff and asks its Owner step card; nothing is written before your Yes. A second
-`config promote` proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
+`--shadow` sets `guards.enforce = false` for your first week, so the guards log what they
+would refuse and let the call through. `init` ends by checking the installation: an intact
+signed release prints `plugin integrity: clean`. Then open Claude Code in the project
+directory. The planner adds each repository with `wuwei config add-repo` and runs
+`wuwei config promote`, which proposes each repository's checks and deploy signals. Each
+asks its Owner step card, and nothing is written before your Yes.
 
-`--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and the `## Shadow` section of the day report lists it. See [security posture](docs/site/concepts.md#security-posture).
+`bin/wuwei doctor` prints one row per check, with the fix for anything that is not ok.
+Run `/wuwei plan` to start the day ([daily path](docs/site/daily.md)). Use `bin/wuwei` or
+`python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named
+directory in the current working directory.
 
-Then check the install:
+Codex can run seats as an optional runtime: set `adapters.runtime = "codex"` and
+`codex.command` ([configuration](docs/site/configuration.md)). A Codex plugin that runs the
+guards inside Codex sessions is planned ([Codex spike](docs/specs/2026-09-30-codex-plugin-spike.md)).
+
+## Upgrade
+
+After a plugin upgrade, preview, then apply:
 
 ```sh
-../wuwei-plugin/bin/wuwei doctor
+bin/wuwei init --upgrade --dry-run
+bin/wuwei init --upgrade
 ```
 
-It prints one row per check, with the fix for anything that is not ok.
-`bin/wuwei doctor --fix` applies the deterministic fixes after one confirmation
-([doctor](docs/site/reference.md#doctor)).
+The upgrade removes every retired config key and every file under `.wuwei/` that no code
+reads any more, plus generated skills and agents the plugin no longer ships. It prints one
+`Upgraded ...: remove ... (no longer read)` line per removal, or `Would upgrade ...` under
+`--dry-run`. It never follows a symlink and never touches `days/`, which is history.
 
-`init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation. It creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
+### Development installs
 
-To change one value later, run `bin/wuwei config set owner.verbosity.default '"standard"'` or
-`bin/wuwei config add-repo --name acme/widget --path widget --branch main` in a host terminal;
-each shows a diff and applies it after its digest. See [configuration](docs/site/configuration.md) for every setting and default. To update an existing workspace after a plugin upgrade, run `bin/wuwei init --upgrade --dry-run` and then `bin/wuwei init --upgrade`.
+`/plugin marketplace add taoq-ai/wuwei` followed by `/plugin install wuwei@wuwei` uses the
+marketplace's `./` development source. A source checkout is also a development install.
+Use that checkout's `bin/wuwei` to run `init .`, then run
+`bin/wuwei doctor --fix --apply integrity-reconfirm` and answer its Owner step card after
+reviewing the checkout. Reconfirmation pins the content, HEAD commit and clean tree once per
+commit. After a pull moves HEAD, reconfirm the new clean commit. Prefer the signed release
+for normal installation.
 
-Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/site/concepts.md) for roles, guards and the day flow.
+## When something goes wrong
 
-Every Claude Code session in the workspace orients itself on start: what WUWEI is, where the day stands and the next step from `bin/wuwei next` ([what the session knows](docs/site/agent.md)).
+- `bin/wuwei why last refusal` names the guard, the rule and the fix for the last refused call.
+- `bin/wuwei doctor --fix` checks the install, host, workspace and day and applies the deterministic fixes.
+- `bin/wuwei next` prints where the day stands.
+- The day's records are under `.wuwei/days/<date>/` ([recovery](docs/site/recovery.md)).
+
+What the guards cover, and what they leave to the code host, is in
+[security](docs/site/security.md).
+
+## What is inside
+
+- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md) and [wuwei-retro](skills/wuwei-retro/SKILL.md).
+- Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four sentinels: [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
+- Hooks: PreToolUse checks a call before it runs. PostToolUse traces each call and lints gate verdicts. SubagentStop checks each seat's verdict and retro note. SessionStart prints the orientation, goals and memory, and warns on integrity.
+- Adapters by port ([adapters and ports](docs/site/adapters.md)).
 
 ## Limits
 
 - WUWEI needs Claude Code. Codex can run seats as an optional runtime.
 - One owner per workspace.
-- Hooks add about 40 to 100 ms to each tool call, depending on the machine
-  ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
-- It is early: so far only its author has used it day to day, and the
+- Hooks add about 40 to 100 ms to each tool call, depending on the machine.
+- It is early. So far only its author has used it day to day, and the
   [live rehearsal](docs/site/rehearsal.md) is the check before each release.
-- Start a new project with `init --shadow`: a first week in the observe posture, where the
-  guards record what they would refuse before they refuse it
-  ([security posture](docs/site/security.md#security-posture)).
-
-What the guards cover, and what they leave to the code host, is in
-[security](docs/site/security.md).
-
-## Development installs
-
-`/plugin marketplace add taoq-ai/wuwei` followed by `/plugin install wuwei@wuwei`
-uses the marketplace's `./` development source. A source checkout is also a
-development install. From the workspace, use that installed checkout's `bin/wuwei`
-to run `init .`, then run `bin/wuwei integrity reconfirm` in a host terminal and answer
-y after reviewing the checkout. Agent tools cannot reconfirm.
-
-The checkout must have a clean tree. Reconfirmation pins its content, HEAD commit
-and clean state once per commit. Repeated tool calls pass while HEAD and the tree
-remain unchanged. After a pull moves HEAD, reconfirm the new clean commit; an
-uncommitted edit blocks tools until the checkout is clean again. Missing VCS
-evidence fails closed. Prefer the signed release for normal installation.
 
 ## Development
 
@@ -224,43 +188,28 @@ access. To measure the live triggering rate, install Claude Code, set
 claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json skill-evals.json
 ```
 
-The runner exits 1 if any case scores below 0.9 (default 3 runs per case, so
-each case must pass every run), and 2 if authentication or a cost limit prevents
-a complete run. The `skill-evals` CI job runs on pushes to
-main when the key is configured. The repository owner must add
-`ANTHROPIC_API_KEY` as a GitHub Actions secret; until then the job prints a
-skip message.
+The runner exits 1 if any case scores below 0.9 (default 3 runs per case, so each case
+must pass every run). It exits 2 if authentication or a cost limit prevents a complete run.
+The `skill-evals` CI job runs on pushes to main when `ANTHROPIC_API_KEY` is set as a GitHub
+Actions secret; until then the job prints a skip message.
 
 See the [design](docs/specs/2026-09-24-wuwei-design.md) and [NOTICE](NOTICE). The
-[contributing guide](https://github.com/taoq-ai/wuwei/blob/main/CONTRIBUTING.md) covers
-how changes are made; report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+[contributing guide](https://github.com/taoq-ai/wuwei/blob/main/CONTRIBUTING.md) covers how
+changes are made. Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 
-WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
+WUWEI builds on the projects below. [NOTICE](NOTICE) has the licence of each.
 
-- [GitHub Spec Kit](https://github.com/github/spec-kit): the vendored `.specify/` files and
-  `speckit-*` skills behind this repository's workflow (MIT).
-- [Simple Icons](https://github.com/simple-icons/simple-icons): the tool glyphs in the hero
-  (CC0).
-- [superpowers](https://github.com/obra/superpowers): the shape of this README's sections
-  (MIT, structure only).
-- [OpenSpec](https://github.com/Fission-AI/OpenSpec): the `openspec` [spec engine](docs/site/concepts.md#spec-engine) option (MIT, run as an external tool).
-- [autoharness](https://github.com/tigerless-labs/autoharness): propose then promote, the
-  ledger and the adherence lifecycle (MIT, ideas only).
-- [ralph-starter](https://github.com/rubenmarcus/ralph-starter): the builder loop with
-  backpressure and stuck detection (MIT, ideas only).
-- [humanizer](docs/site/concepts.md#humanizer) ([source](https://github.com/blader/humanizer)): the writing checklist in the charters
-  (MIT, paraphrased).
-- [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing):
-  the source humanizer is based on.
-- [release-please](https://github.com/googleapis/release-please): release automation in CI
-  (Apache-2.0).
+- [GitHub Spec Kit](https://github.com/github/spec-kit): the vendored `.specify/` files and `speckit-*` skills (MIT).
+- [Simple Icons](https://github.com/simple-icons/simple-icons): the tool glyphs in the hero (CC0).
+- superpowers: the shape of this README's sections (MIT, structure only).
+- [OpenSpec](https://github.com/Fission-AI/OpenSpec): the `openspec` spec engine option (MIT, run as an external tool).
+- autoharness: propose then promote, the ledger and the adherence lifecycle (MIT, ideas only).
+- ralph-starter: the builder loop with backpressure and stuck detection (MIT, ideas only).
+- humanizer: the writing checklist in the charters (MIT, paraphrased), based on [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing).
+- [release-please](https://github.com/googleapis/release-please): release automation in CI (Apache-2.0).
 - [ZIRAN](https://github.com/taoq-ai/ziran): the role grant audit in CI (Apache-2.0).
-- [WSJF](https://framework.scaledagile.com/wsjf): Donald Reinertsen, as popularised by
-  SAFe; the `wsjf` ranking.
-- [RICE](https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/):
-  Sean McBride, Intercom; the `rice` ranking.
-- [One-way and two-way doors](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF):
-  Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
-- [Verifiably Safe Autonomous Decision-Making (vGOAL)](https://www.kuleuven.be/): KU Leuven; a table of safety properties, each with its own test, without the model checker.
+- WSJF and RICE: the two ranking frameworks.
+- One-way and two-way doors: the decision framework.
+- Verifiably Safe Autonomous Decision-Making (vGOAL), KU Leuven: a table of safety properties, each with its own test.

@@ -159,36 +159,22 @@ def test_file_exit_table(tmp_path, contents, code, reason):
     assert reason in message
 
 
-@pytest.mark.parametrize('contents,role,code', [(PASS, '', 0),
-                                             ('Verdict: FIX', '', 1),
-                                             (None, '', 2), (PASS, 'sentinel-quality', 1)])
-def test_cli(tmp_path, capsys, contents, role, code):
-    from wuwei.__main__ import main
-    path = tmp_path / 'verdict.md'
-    if contents is not None:
-        path.write_text(contents)
-    assert main(['verdict', 'lint', str(path), *(['--role', role] if role else [])]) == code
-    output = capsys.readouterr()
-    assert output.err if code else output.out
-
-
 @pytest.mark.parametrize('role,reason', [('sentinel-arch', 'class-sweep'),
                                        ('wuwei:sentinel-security', 'class-sweep'),
                                        ('plugin:wuwei:sentinel-quality', 'Simplicity:'),
                                        ('sentinel-goal', '')])
-def test_cli_role_requirements_match_write_guard(tmp_path, capsys, role, reason):
-    from wuwei.__main__ import main
+def test_role_requirements_match_write_guard(tmp_path, role, reason):
     from wuwei.guards.verdict import check_write
+    from wuwei.verdict import lint_file
     path = tmp_path / 'decisions/gate-item.md'
     path.parent.mkdir()
     path.write_text(PASS.replace('VAL: PASS\n', ''))
     payload = {'cwd': str(tmp_path), 'agent_type': role, 'tool_input': {'file_path': str(path)}}
-    assert main(['verdict', 'lint', str(path), '--role', role]) == int(bool(reason))
+    code, message = lint_file(path, role=role)
+    assert code == int(bool(reason)) and reason in message
     assert check_write(payload)[0] == int(bool(reason))
-    if reason:
-        assert reason in capsys.readouterr().err
     path.write_text(PASS + 'Simplicity: none\nDesign: none\n')
-    assert main(['verdict', 'lint', str(path), '--role', role]) == 0
+    assert lint_file(path, role=role)[0] == 0
     assert check_write(payload)[0] == 0
 
 
@@ -465,18 +451,18 @@ def test_daily_gate_scan_records_findings_and_unreadable_files(tmp_path, command
     assert {str(path) for path in directory.iterdir()} <= {r['payload']['file'] for r in records}
 
 
-@pytest.mark.parametrize('entry', ['cli', 'hook'])
+@pytest.mark.parametrize('entry', ['lint_file', 'hook'])
 @pytest.mark.parametrize('contents', ['Verdict: FIX', None])
 def test_lint_rejections_append_events(tmp_path, monkeypatch, entry, contents):
-    from wuwei.__main__ import main
     from wuwei.guards.verdict import check_write
+    from wuwei.verdict import lint_file
     from wuwei.workspace import day_dir
     path = tmp_path / 'decisions/gate-arch.md'
     path.parent.mkdir()
     if contents is not None:
         path.write_text(contents)
-    if entry == 'cli':
-        assert main(['verdict', 'lint', str(path)]) != 0
+    if entry == 'lint_file':
+        assert lint_file(path)[0] != 0
     else:
         assert check_write({'cwd': str(tmp_path), 'tool_input': {'file_path': str(path)}})[0] != 0
     event, = [json.loads(line) for line in (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()]

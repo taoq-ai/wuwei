@@ -220,7 +220,7 @@ def test_config_defaults_and_independence(tmp_path):
             'plugins_file': '~/.claude/plugins/installed_plugins.json'}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
-            'default': 'brief', 'decisions': '', 'report': ''}},
+            'default': 'brief', 'report': ''}},
         'repos': [], 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
@@ -247,7 +247,7 @@ def test_config_defaults_and_independence(tmp_path):
                          'author_windows_days': [90, 180], 'tie_commits': 2,
                      'source_exclude': ['specs/*', '*.lock', '*lock.json', '*.generated.*', 'generated/*'],
                      'authors': {}},
-        'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
+        'retro': {'charter_paths': ['.wuwei/charters'],
                   'changelog': '.wuwei/memory/CHANGELOG.md'},
         'calendar': {'url': ''},
         'brief': {'remote': 'origin',
@@ -261,7 +261,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'redactor': 'builtin'},
+                     'transcripts': 'none'},
     }
     outward['allow'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['allow']
@@ -397,12 +397,13 @@ def test_owner_verbosity(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
-    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'report': ''}
-    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndecisions = "brief"\n')
+    assert config['owner']['verbosity'] == {'default': 'brief', 'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\nreport = "brief"\n')
     config = workspace.load_config(tmp_path)
-    assert workspace.verbosity(config, 'decisions') == 'brief'
-    assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'decisions = "loud"'):
+    assert workspace.verbosity(config, 'report') == 'brief'
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\n')
+    assert workspace.verbosity(workspace.load_config(tmp_path), 'report') == 'full'
+    for text in ('default = "short"', 'report = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -1380,7 +1381,8 @@ def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch
     memory.symlink_to(outside)
     code, out = upgraded(ws, capsys)
     assert code == 0, out.err
-    assert (outside / 'cruise.json').exists() and 'cruise.json' not in out.out
+    assert (outside / 'cruise.json').exists() and 'cruise.json: remove' not in out.out
+    assert 'left .wuwei/memory/cruise.json: resolves outside .wuwei' in out.out.splitlines()  # #848: named
 
 
 @pytest.mark.parametrize('security', ['', '[security]\nposture = "strict"\n'])
@@ -1635,7 +1637,7 @@ def test_status_from_a_configured_checkout(tmp_path, clean_environment):
     (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
     (directory / 'events.jsonl').write_text('')
     index(ws, load_config(ws))
-    result = cli(repo, 'status', WUWEI_NOW='2026-09-28T12:00:00+02:00')
+    result = cli(repo, 'status', '--line', WUWEI_NOW='2026-09-28T12:00:00+02:00')
     assert result.returncode == 0, result.stderr  # config check would reach gh for the repo table
 
 

@@ -614,7 +614,7 @@ def test_next_and_report_run_merge_poll(case, monkeypatch, capsys):
     assert 'merge watch unmeasured: probe' in err
     monkeypatch.chdir(root)
     monkeypatch.setattr(report, 'write', lambda *a, **k: root / '.wuwei/config.toml')
-    assert report_command.run(Namespace()) == 0
+    assert report_command.run(Namespace(week=None)) == 0
     assert calls == [root, root]
 
 

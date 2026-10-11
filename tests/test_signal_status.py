@@ -109,7 +109,7 @@ def test_escalation_without_running_seat_is_warn():
                     {'seats': {}}) == ('warn', 'Decisions')
 
 
-def test_status_line_and_json_share_snapshot(tmp_path):
+def test_status_line_reads_the_day_and_writes_nothing(tmp_path):
     state_data = {'cap': 2, 'items': {'A': {'phase': 'implement'},
                                      'B': {'phase': 'spec'}, 'C': {'phase': 'merged'}},
                   'reply_obligations': [{'due': '2026-09-28T14:00:00+02:00'},
@@ -121,26 +121,16 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text('')
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
     line = cli(tmp_path, 'status', '--line')
-    structured = cli(tmp_path, 'status', '--json')
-    full = cli(tmp_path, 'status')
-    assert line.returncode == structured.returncode == full.returncode == 0
+    assert line.returncode == 0, line.stderr
     assert line.stdout.count('\n') == 1
     assert 'pages 1' in line.stdout and 'nudges' not in line.stdout
-    assert '2 building' in line.stdout
-    assert 'reply 2026-09-28T13:00:00+02:00' in full.stdout
-    assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
-    data = json.loads(structured.stdout)
-    # #562: the line skips these; status and --json keep them.
-    assert {'plugin', 'template', 'next_meeting', 'next_reply_due', 'seats'} <= data.keys()
-    assert 'sessions' not in data and 'plugin ' in full.stdout
-    assert data['pages'] == 1 and not {'nudges', 'nudges_mode'} & data.keys()
-    assert data['phases']['spec'] == 1 and data['cap'] == 2
-    assert data['next_reply_due'] == '2026-09-28T13:00:00+02:00'
+    assert '2 building' in line.stdout and 'reply' not in line.stdout
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
 
 
 def test_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
+    from wuwei.commands import status
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
@@ -156,47 +146,27 @@ def test_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsy
                 'started_at': '2026-09-28T09:25:00+02:00', 'pid': child.pid}}}})
         assert main(['status', '--line']) == 0
         line = capsys.readouterr().out
-        assert main(['status']) == 0
-        full = capsys.readouterr().out
-        assert main(['status', '--json']) == 0
-        running = json.loads(capsys.readouterr().out)['running']
+        running = status.snapshot(directory)['running']
     finally:
         child.kill()
         child.wait()
     assert 'seats 3/2 (reviewer, builder, builder)' in line and 'running' not in line
-    assert ('running reviewer D start unrecorded\nrunning builder A 09:10\nrunning builder B 09:20\n'
-            'running checks C 09:25\n') in full
-    assert running == [['', 'reviewer', 'D'],
-                       ['2026-09-28T09:10:00+02:00', 'builder', 'A'],
-                       ['2026-09-28T09:20:00+02:00', 'builder', 'B'],
-                       ['2026-09-28T09:25:00+02:00', 'checks', 'C']]
-    state_file = directory / 'state.json'
-    state_file.write_text(json.dumps({'cap': 2, 'gate_approved': True, 'items': {}}))
-    assert main(['status']) == 0
-    assert 'running' not in capsys.readouterr().out
+    assert running == [('', 'reviewer', 'D'),
+                       ('2026-09-28T09:10:00+02:00', 'builder', 'A'),
+                       ('2026-09-28T09:20:00+02:00', 'builder', 'B'),
+                       ('2026-09-28T09:25:00+02:00', 'checks', 'C')]
 
 
 def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
-    day(tmp_path, {'cap': 2, 'items': {'A': {'phase': 'delta'}, 'B': {'phase': 'merged'}}})
+    from wuwei.commands import status
+    directory = day(tmp_path, {'cap': 2, 'items': {'A': {'phase': 'delta'}, 'B': {'phase': 'merged'}}})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert main(['status', '--line']) == 0
     line = capsys.readouterr().out
     assert '1 in review' in line and '1 shipped' in line and 'building' not in line
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['phases'] == {'delta': 1, 'merged': 1}
-
-
-@pytest.mark.parametrize('recorded,shown', [({'acme/widget#7': [], 'acme/widget#8': ['alice']}, True),
-                                             ({'acme/widget#8': ['alice']}, False)])
-def test_status_line_names_a_solo_pr(tmp_path, monkeypatch, capsys, recorded, shown):
-    from wuwei.__main__ import main
-    day(tmp_path, {'cap': 1, 'items': {}, 'pr_reviewers': recorded})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['status']) == 0
-    assert ('reviewers: none (solo)' in capsys.readouterr().out) is shown
+    assert status.snapshot(directory)['phases'] == {'delta': 1, 'merged': 1}
 
 
 @pytest.mark.parametrize('name', ['state.json'])  # #844: the snapshot is never read for the day
@@ -214,9 +184,6 @@ def test_no_plan_yet_before_the_gate(tmp_path, state_data):
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
     assert result.stdout == 'WUWEI no plan yet | pages 0\n'
-    result = cli(tmp_path, 'status', '--json')
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)['gate_approved'] is False
 
 
 def test_approved_gate_has_no_plan_yet_prefix(tmp_path):
@@ -239,24 +206,6 @@ def test_budget_below_threshold_is_silent():
     assert classify({'kind': 'budget.usage', 'payload': {'fraction': .79}}, {}) == ('silent', 'Work')
 
 
-def test_next_due_uses_instant_across_offsets(tmp_path):
-    day(tmp_path, {'items': {}, 'cap': 1,
-                   'reply_obligations': [{'due': '2026-09-28T11:30:00+02:00'},
-                                         {'due': '2026-09-28T10:00:00+00:00'}]})
-    result = cli(tmp_path, 'status', '--json')
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)['next_reply_due'] == '2026-09-28T11:30:00+02:00'
-
-
-def test_reply_due_at_1500_appears_in_status_line(tmp_path):
-    day(tmp_path, {'items': {}, 'cap': 1,
-                   'reply_obligations': [{'person': 'Pat', 'due': '2026-09-28T15:00:00+02:00'}]})
-    result = cli(tmp_path, 'status')
-    assert result.returncode == 0, result.stderr
-    assert 'reply 2026-09-28T15:00:00+02:00' in result.stdout
-    assert 'meeting unmeasured' in result.stdout
-
-
 def test_status_line_ignores_a_damaged_cruise_file(tmp_path):
     # #814: cruise is gone; a stale memory/cruise.json is never read.
     day(tmp_path, {'items': {}, 'cap': 1})
@@ -265,40 +214,6 @@ def test_status_line_ignores_a_damaged_cruise_file(tmp_path):
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
     assert 'cruise' not in result.stdout
-
-
-def test_status_reads_next_meeting_from_configured_calendar(tmp_path, monkeypatch):
-    from wuwei import registry
-    from wuwei.commands.status import snapshot
-    directory = day(tmp_path, {'items': {}, 'cap': 1})
-    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ncalendar = "ics"\n')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+02:00')
-    class Calendar:
-        def events(self, since, until, root=None):
-            return registry.Result(0, [
-                {'start': '2026-09-28T17:00:00+02:00', 'summary': 'Later'},
-                {'start': '2026-09-28T14:00:00+02:00', 'summary': 'Soon'}])
-    monkeypatch.setattr(registry, 'load', lambda kind, config: Calendar())
-    assert snapshot(directory)['next_meeting'] == '2026-09-28T14:00:00+02:00'
-
-
-def test_status_calendar_failure_is_unmeasured(tmp_path, monkeypatch):
-    from wuwei import registry
-    from wuwei.commands.status import snapshot
-    directory = day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': 'security.finding'}])
-    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ncalendar = "ics"\n')
-    class Calendar:
-        def events(self, since, until, root=None):
-            return registry.Result(2, reason='calendar unavailable')
-    monkeypatch.setattr(registry, 'load', lambda kind, config: Calendar())
-    result = snapshot(directory)
-    assert result['next_meeting'] is None
-    assert result['pages'] == 1
-    monkeypatch.setenv('WUWEI_CALENDAR_URL', 'invalid-url')
-    line = cli(tmp_path, 'status')
-    assert line.returncode == 0, line.stderr
-    assert 'pages 1' in line.stdout
-    assert 'meeting unmeasured' in line.stdout
 
 
 @pytest.mark.parametrize('kind', ['state.set', 'state.transition', 'seat started', 'seat stopped',
@@ -400,29 +315,26 @@ def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof):
     payload = {'id': 'same', 'blocking': True, 'due': NOW}
     day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': page, 'payload': payload},
                                              {'kind': spoof, 'payload': {'id': 'same'}}])
-    result = cli(tmp_path, 'status', '--json')
+    result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)['pages'] == 1
+    assert 'pages 1' in result.stdout
 
 
 def test_status_counts_escalation_from_current_state(tmp_path):
     directory = day(tmp_path, {'items': {'A': {'phase': 'escalated', 'resume_phase': 'implement'}},
-                               'cap': 1, 'seats': {'builder': {'item': 'A', 'status': 'running'}}},
+                               'cap': 1, 'seats': {'builder': {'item': 'A', 'role': 'builder', 'status': 'running'}}},
                     [{'kind': 'watch: clock', 'payload': {}, 'ts': NOW}])
     (tmp_path / '.wuwei/config.toml').write_text('')
-    result = cli(tmp_path, 'status', '--json')
-    assert json.loads(result.stdout)['pages'] == 1
+    assert 'pages 1' in cli(tmp_path, 'status', '--line').stdout
     (directory / 'state.json').write_text(json.dumps({'items': {'A': {'phase': 'implement'}},
                                                        'cap': 1, 'seats': {}}))
-    result = cli(tmp_path, 'status', '--json')
-    assert json.loads(result.stdout)['pages'] == 0
+    assert 'pages 0' in cli(tmp_path, 'status', '--line').stdout
 
 
 def test_old_event_signal_expires_at_day_boundary(tmp_path):
     day(tmp_path, {'items': {}, 'cap': 1},
         [{'kind': 'budget.cap', 'ts': '2026-09-27T23:59:00+02:00'}])
-    result = cli(tmp_path, 'status', '--json')
-    assert json.loads(result.stdout)['pages'] == 0
+    assert 'pages 0' in cli(tmp_path, 'status', '--line').stdout
 
 
 def test_recursion_error_never_blanks_status(tmp_path, monkeypatch, capsys):
@@ -431,7 +343,7 @@ def test_recursion_error_never_blanks_status(tmp_path, monkeypatch, capsys):
     day(tmp_path, {'items': {}, 'cap': 1})
     monkeypatch.setattr(status.workspace, 'day_dir', lambda: tmp_path / '.wuwei/days/2026-09-28')
     monkeypatch.setattr(status, 'snapshot', lambda directory: (_ for _ in ()).throw(RecursionError()))
-    assert status.run(Namespace(line=True, json=False)) == 2
+    assert status.run(Namespace(line=True, width=status.WIDTH)) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
 
 
@@ -455,17 +367,6 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
 ROUTED = {'D-2': {'reversibility': 'unsure', 'recommendation': 'defer'}}
 
 
-def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    light = {'tier': 'light', 'computed': 'light', 'reasons': ['3 changed lines within light_max_lines 100'],
-             'roles': ['quality']}
-    day(tmp_path, {'cap': 1, 'items': {'A': {'phase': 'gate', 'gates': light}, 'B': {'phase': 'gate'}}})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['gates'] == {'A': light}
-
-
 def status_of(tmp_path, monkeypatch, events):
     from wuwei.commands import status
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
@@ -473,7 +374,7 @@ def status_of(tmp_path, monkeypatch, events):
     directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True}, events)
     (tmp_path / '.wuwei/config.toml').write_text('')
     data = status.snapshot(directory)
-    return data, status.full(data), status.attention(directory)
+    return data, status.line(data), status.attention(directory)
 
 
 CLOCK = {'kind': 'watch: clock', 'payload': {}, 'ts': NOW}  # a day before #847: a silent row
@@ -486,7 +387,6 @@ def test_restart_on_the_status_line(tmp_path, monkeypatch):
     text = 'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)'
     assert status.line({**data, 'restart': text}).startswith(
         'WUWEI restart Claude Code: hooks 0.11.0 still running | seats 0/1 | pages 0')
-    assert status.full({**data, 'restart': text}).startswith(f'WUWEI {text}\n')
 
 
 def test_scan_skips_silent_lines_undecoded(tmp_path, monkeypatch):
@@ -614,25 +514,24 @@ def test_status_line_shows_running_seats_per_goal(tmp_path):
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
     assert 'seats 3/3 (builder, builder, sentinel-arch)' in result.stdout
-    assert 'builders G-1 1, G-2 1' in cli(tmp_path, 'status').stdout  # no cap_bound: before #528
     (tmp_path / '.wuwei/days/2026-09-28/state.json').write_text(json.dumps(
         {'cap': 3, 'items': items, 'gate_approved': False}))
     assert 'seats' not in cli(tmp_path, 'status', '--line').stdout
 
 
-def test_status_json_names_plan_and_versions(tmp_path):
-    from wuwei import integrity
-    routes = {'D-7': {'reversibility': 'unsure'}}
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes})
+def test_status_snapshot_holds_what_the_line_renders(tmp_path, monkeypatch):
+    # #848: status is the line alone; the board is wuwei next.
+    from wuwei.commands import status
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    directory = day(tmp_path, {'cap': 1, 'items': {}})
     (tmp_path / '.wuwei/config.toml').write_text('template_version = "0.1.0"\n')
-    data = json.loads(cli(tmp_path, 'status', '--json').stdout)
-    assert (data['plan'], data['plugin'], data['template']) == (False, integrity.version(), '0.1.0')
-    assert not {'nudges', 'nudges_mode', 'decisions', 'loops'} & set(data)
-    assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
-            'next_meeting', 'seats', 'running', 'gates',
-            'trace_gaps', 'solo', 'enforce', 'restart'} <= set(data)
+    data = status.snapshot(directory)
+    assert set(data) == {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'running', 'plan',
+                         'enforce', 'restart'}
+    assert data['plan'] is False
     (directory / 'plan.md').write_text('# Plan\n')
-    assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
+    assert status.snapshot(directory)['plan'] is True
 
 
 ROLES = ('lead', 'arch', 'quality', 'security')
@@ -727,7 +626,7 @@ def test_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch
     data = sample_day(tmp_path, monkeypatch)
     assert status.line(data) == (
         'WUWEI 5 planned · 2 building · 2 in review · 3 shipped · seats 1/3 (builder) | pages 0')
-    for text in (status.line(data), status.full(data)):
+    for text in (status.line(data),):
         assert all(text[:match.start()].endswith('seats ') for match in re.finditer(r'\d+/\d+', text)), text
 
 
@@ -747,59 +646,10 @@ def test_status_line_width_flag(tmp_path):
     assert cli(tmp_path, 'status', '--line', '--width', 'x').returncode == 2
 
 
-def test_issue_acceptance_status_shows_each_running_seat(tmp_path, monkeypatch):
-    from wuwei.commands import status
-    data = four_seats(tmp_path, monkeypatch)
+def test_status_without_the_line_flag_is_refused(tmp_path):
+    day(tmp_path)
     result = cli(tmp_path, 'status')
-    assert result.returncode == 0, result.stderr
-    lines = result.stdout.splitlines()
-    assert lines[0] == 'WUWEI 1 building · seats 4/1 (lead, arch, quality, security)'
-    assert [row for row in lines if row.startswith('running ')] == [
-        'running lead ITEM-1 09:10', 'running arch ITEM-1 09:20', 'running quality ITEM-1 09:30',
-        'running security ITEM-1 09:40', 'running checks ITEM-1 09:45']
-    shown = status.full({**data, 'restart': STALE}).splitlines()
-    assert shown[0] == 'WUWEI ' + STALE
-    assert shown[1] == '1 building · seats 4/1 (lead, arch, quality, security)'
-
-
-def test_status_without_a_flag_fails_closed(tmp_path):
-    (day(tmp_path) / 'state.json').write_text('{broken')
-    result = cli(tmp_path, 'status')
-    assert (result.returncode, result.stdout) == (2, 'WUWEI ? unmeasured\n')
-
-
-def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
-    from wuwei.commands import status
-    data = {**four_seats(tmp_path, monkeypatch), 'cap_bound': 'budget', 'seats': {'G-1': 2},
-            'solo': True, 'trace_gaps': 2, 'pages': 1,
-            'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
-            'plugin': '0.16.0', 'template': '0.15.0', 'enforce': False}
-    shown = status.full(data).splitlines()
-    assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
-    assert shown[6:] == [
-        'pages 1 · observe · reviewers: none (solo) · traces: 2 gaps',
-        'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',
-        'plugin 0.16.0 · template 0.15.0']
-    assert status.full({**data, 'plugin': '', 'template': None})[-len('plugin unmeasured · template none'):] == (
-        'plugin unmeasured · template none')
-
-
-def test_status_names_a_repository_with_no_fast_checks(tmp_path, monkeypatch):
-    # #600: none configured is a state; full status says so per repository.
-    from wuwei import fast_checks
-    from wuwei.commands import status
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True})
-    (tmp_path / '.wuwei/config.toml').write_text(''.join(
-        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\nfast_checks = {checks}\n'
-        for name, checks in (('paper', '[]'), ('widget', '["make test"]'))))
-    data = status.snapshot(directory)
-    assert data['checks_none'] == ['acme/paper']
-    shown = status.full(data).splitlines()
-    assert f'acme/paper {fast_checks.NONE}' in shown
-    assert not any('acme/widget' in line for line in shown)
-    assert 'checks_none' not in status.snapshot(directory, line=True)
+    assert (result.returncode, result.stdout) == (2, '') and '--line' in result.stderr
 
 
 def at(minutes):
@@ -867,7 +717,7 @@ def test_counts_that_read_rows_sum_count(tmp_path, monkeypatch):
     untraced = {'kind': 'subagent.untraced', 'ts': at(1),
                 'payload': {'agent_type': 'Explore', 'agent_id': 'a1', 'reason': 'no seat'}}
     directory = scan_day(tmp_path, monkeypatch, [gap] * 3 + [untraced] * 3)
-    assert status.snapshot(directory)['trace_gaps'] == 3
+    assert sum(row['count'] for row in status.attention(directory) if row['source'] == 'traces.gap') == 3
     probes = {'state': {'result': 'ok', 'value': 'ok'}, 'planner': {'result': 'ok', 'value': 'ok'},
               'seats': {'result': 'ok', 'value': 'none stuck'}}
     rows = {row['name']: row['value'] for row in doctor._day(tmp_path, workspace.load_config(tmp_path), probes)}

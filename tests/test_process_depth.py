@@ -54,13 +54,13 @@ def test_sweep_classes_command(root, monkeypatch, capsys):
 
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
-    assert main(['sweep', 'classes', 'repo']) == 0
+    assert main(['build', 'classes', 'repo']) == 0
     assert capsys.readouterr().out == 'Depth: light; no class sweep\n'
     tiered(root, monkeypatch, [('cli/wuwei/guards/x.py', 3, 1)])
-    assert main(['sweep', 'classes', str(root / 'repo')]) == 0
+    assert main(['build', 'classes', str(root / 'repo')]) == 0
     assert capsys.readouterr().out == ('Depth: standard\nAUTH: cli/wuwei/guards/x.py\n'
                                        'ERR: cli/wuwei/guards/x.py\n')
-    assert main(['sweep', 'classes', 'elsewhere']) == 2
+    assert main(['build', 'classes', 'elsewhere']) == 2
     assert 'no item has the worktree' in capsys.readouterr().err
 
 
@@ -96,12 +96,12 @@ def test_builder_brief_names_its_depth(day, monkeypatch):
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b-light', '--worktree', 'tree') == 0
     [line] = depth_line(directory, 'b-light')
     assert line.startswith('Depth: light; skip: the class sweep')
-    assert f'wuwei sweep classes {root / "tree"}' in line and 'retro note' in line
+    assert f'wuwei build classes {root / "tree"}' in line and 'retro note' in line
     assert state.read_state(root)['items']['X']['depth'] == 'light'
     depth_day(day, ['cli/wuwei/report.py'], floor='standard')
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b-std', '--worktree', 'tree') == 0
     [line] = depth_line(directory, 'b-std')
-    assert line == (f'Depth: standard; before handoff run wuwei sweep classes {root / "tree"} '
+    assert line == (f'Depth: standard; before handoff run wuwei build classes {root / "tree"} '
                     'and report one CLASS line per class it lists')
     assert state.read_state(root)['items']['X']['depth'] == 'standard'
 
@@ -420,7 +420,7 @@ def test_charters_follow_the_depth_line():
     text = {name: (charters / f'{name}.md').read_text() for name in
             ('_common', 'builder', 'sentinel-quality', 'sentinel-arch', 'sentinel-security')}
     assert 'design 5.3' in text['_common'] and 'step zero: run' in text['_common']
-    assert 'wuwei sweep classes' in text['builder']
+    assert 'wuwei build classes' in text['builder']
     assert "brief's `Depth:` line says run" in text['sentinel-quality']
     assert all('Depth:' in text[name] for name in ('sentinel-arch', 'sentinel-security'))
     # The depth table replaces prose; it never adds a layer (pinned at the count before #567).

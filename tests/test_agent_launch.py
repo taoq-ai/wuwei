@@ -107,7 +107,7 @@ def test_missing_brief_names_the_brief_command(launch, monkeypatch, case):
         payload['tool_input']['prompt'] = f'WUWEI brief: ./.wuwei/days/{directory.name}/briefs/never.md'
     before = (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text())
     assert check(payload) == (2, f'brief .wuwei/days/{directory.name}/briefs/{name}.md does not exist; '
-                                 f'run bin/wuwei brief sentinel-arch <item> <name> first')
+                                 f'run bin/wuwei seat brief sentinel-arch <item> <name> first')
     assert (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()) == before
 
 
@@ -835,7 +835,7 @@ def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, description, item):
     named = item or "<item>"
     assert reason.startswith('unbriefed launch registered as adhoc seat adhoc-1 for '
                              + (item or "no item of today's plan")), reason
-    assert f'bin/wuwei brief sentinel-arch {named} <name>' in reason
+    assert f'bin/wuwei seat brief sentinel-arch {named} <name>' in reason
     seat = state.read_state(root)['seats']['adhoc-1']
     assert seat['role'] == 'adhoc' and seat['item'] == (item or 'adhoc-1')
     assert seat['label'] == 'sentinel-arch' and seat['type'] == 'wuwei:sentinel-arch'
@@ -852,7 +852,7 @@ def test_unbriefed_typed_launch_is_refused(day, monkeypatch, capsys):
     assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', UNBRIEFED_PROMPT]) == 0
     before = events(directory)
     code, reason = check(unbriefed(root))
-    assert code == 1 and 'bin/wuwei brief sentinel-arch X <name>' in reason
+    assert code == 1 and 'bin/wuwei seat brief sentinel-arch X <name>' in reason
     assert state.read_state(root)['seats'] == {} and events(directory) == before
 
 

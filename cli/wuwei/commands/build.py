@@ -16,8 +16,9 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, RACE
 
 def register(subparsers):
     parser = subparsers.add_parser('build', help='Select the next builder action')
-    parser.add_argument('operation', help='next, check, or legacy Codex item')
+    parser.add_argument('operation', help='next, check, analysis, classes, or legacy Codex item')
     parser.add_argument('arguments', nargs='*', metavar='item/brief/worktree')
+    parser.add_argument('--file', help="analysis: read the spec-kit analysis report from PATH instead of stdin")
     parser.set_defaults(func=run)
 
 
@@ -28,6 +29,11 @@ def parked_line(item, action):
 
 
 def run(args):
+    if args.operation in ('analysis', 'classes'):
+        if len(args.arguments) != 1:
+            print('build: usage: build analysis <item> [--file PATH] or build classes <worktree>; run bin/wuwei build analysis <item> with the report on stdin', file=sys.stderr)
+            return 2
+        return (run_analysis if args.operation == 'analysis' else classes)(args.arguments[0], args.file)
     try:
         if args.operation in ('next', 'check'):
             root = workspace.find_workspace()
@@ -226,7 +232,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         matches = [row['payload'] for row in events(root) if row['kind'] == 'brief written'
                    and row['payload'].get('item') == item and row['payload'].get('role') == 'builder']
         if not matches:
-            raise ValueError(f'no logged builder brief for {item}; write one with bin/wuwei brief, or pass the paths: bin/wuwei build next {item} <brief> <worktree>')
+            raise ValueError(f'no logged builder brief for {item}; write one with bin/wuwei seat brief, or pass the paths: bin/wuwei build next {item} <brief> <worktree>')
         brief = root / matches[-1]['path']
         worktree = matches[-1].get('worktree') or data['items'][item].get('worktree')
     if worktree is None:
@@ -269,7 +275,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
         raise ValueError('fix round needs measured feedback; run the gates first, then pass their findings to the fix round')
     data = state.read_state(root)
     if item not in data['items']:
-        raise ValueError(f'unknown item {item}; check the name with bin/wuwei status, or admit it with bin/wuwei plan add {item}')
+        raise ValueError(f'unknown item {item}; check the name with bin/wuwei next, or admit it with bin/wuwei plan add {item}')
     record = data.get('builds', {}).get(item)
     if record is None:
         next_action(item, root=root)
@@ -617,3 +623,76 @@ def run_loop(item, brief, worktree, *, root=None):
     except (OSError, ValueError, RuntimeError) as exc:
         print(f'build: {exc}', file=sys.stderr)
         return 2
+
+
+def run_analysis(item, file):
+    """#614: a Claude Code subagent cannot write analysis.md; this saves the seat's report."""
+    try:
+        print(write_analysis(item, Path(file).read_text(encoding='utf-8') if file else sys.stdin.read()))
+        return 0
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'wuwei build analysis: {exc}', file=sys.stderr)
+        return 2
+
+
+def write_analysis(item, text, root=None):
+    """Write text as analysis.md in the item's one spec-kit directory; the path relative to
+    its worktree."""
+    from wuwei import specmode
+    root = workspace.find_workspace(root)
+    items = state.read_state(root)['items']
+    # The step line formats {item} lowercased, like every spec step.
+    names = [item] if item in items else [name for name in items if name.lower() == item.lower()]
+    if len(names) != 1:
+        raise ValueError(f'unknown item {item}; use the item id from the brief (bin/wuwei next lists them)')
+    name, = names
+    worktree = items[name].get('worktree')
+    if not isinstance(worktree, str) or not worktree:
+        raise ValueError(f'no worktree recorded for {name}; the planner creates it with bin/wuwei worktree add {name}')
+    tree = (root / worktree).resolve()
+    location, reason = specmode._location(tree, 'speckit', name)
+    if location is None:
+        raise ValueError(f'no single spec directory: {reason}; run /speckit.specify first, or remove the extra directory')
+    directory = tree / location
+    if directory.is_symlink() or not directory.resolve().is_relative_to(tree):
+        raise ValueError(f'{location} is a symlink or leaves the worktree; replace it with the directory itself')
+    if not (directory / 'spec.md').is_file():
+        raise ValueError(f'{location} has no spec.md yet; run /speckit.specify first')
+    target = directory / 'analysis.md'
+    if target.is_symlink():
+        raise ValueError(f'{location}/analysis.md is a symlink; remove the link, then run this again')
+    if not text.strip():
+        raise ValueError('empty report; pass the /speckit.analyze report on stdin or with --file PATH')
+    found = specmode.governing(tree, items[name], location)  # #664
+    gap = found and specmode.governed(text, (directory / 'spec.md').read_text(encoding='utf-8'))
+    if gap:
+        reference, first, last, _ = found
+        raise ValueError(f'{name} is governed by {reference} (lines {first}-{last}) and {gap}; add one row '
+                         'per assumption: | <assumption> | agrees, conflicts or not covered | <path>:<line> |, '
+                         'then run this again')
+    workspace.atomic_write(target, text if text.endswith('\n') else text + '\n', mode=0o644)
+    return target.relative_to(tree).as_posix()
+
+
+def classes(worktree, _file=None):
+    """#567: the builder's class sweep: the classes whose files the item's diff touches."""
+    from wuwei import dispatch
+    try:
+        root = workspace.find_workspace()
+        tree = (root / worktree).resolve()
+        items = state.read_state(root)['items']
+        item = next((name for name, row in sorted(items.items()) if row.get('worktree')
+                     and (root / row['worktree']).resolve() == tree), None)
+        if item is None:
+            raise ValueError(f'no item has the worktree {worktree}; pass the --worktree of its builder brief')
+        record, found = dispatch.classes(root, workspace.load_config(root), items[item])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f'wuwei build classes: {exc}', file=sys.stderr)
+        return 2
+    if record.get('depth', record['tier']) == 'light':
+        print('Depth: light; no class sweep')
+        return 0
+    print(f"Depth: {record['tier']}")
+    for name, paths in found.items():
+        print(f"{name}: {', '.join(paths) or 'none changed'}")
+    return 0

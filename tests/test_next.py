@@ -146,7 +146,7 @@ def test_morning_path(root, capsys, monkeypatch):
         ran(root, command)  # done when its command ran, not when it was returned
     found = row(capsys)[1]
     seen_rows.append(found)
-    assert found['state'] == 'lead' and found['command'].startswith('wuwei brief lead day lead --body ')
+    assert found['state'] == 'lead' and found['command'].startswith('wuwei seat brief lead day lead --body ')
     assert '<' not in found['command']
     capsys.readouterr()
     assert main(shlex.split(found['command'])[1:]) == 0
@@ -508,7 +508,7 @@ def test_build_launches_return_the_build_loop_action(root, capsys, monkeypatch):
 
 
 @pytest.mark.parametrize('answer,action', [
-    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']}, 'gates'),
+    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei seat brief arch A arch-A']}, 'gates'),
     ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A'},
      'refused'),  # #844: an owner decision is the set's decision, never a launch
     ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
@@ -521,7 +521,7 @@ def test_gate_launches_resolve_through_dispatch_next(root, capsys, monkeypatch, 
     [entry] = row(capsys)[1]['launches']
     assert (entry['kind'], entry['action']) == ('gates', action)
     if action == 'gates':
-        assert 'wuwei brief arch A arch-A' in last_event(root)['payload']['named']
+        assert 'wuwei seat brief arch A arch-A' in last_event(root)['payload']['named']
     if action == 'refused':
         assert answer['reason'] in entry['reason']
     if action == 'polish':  # #723
@@ -634,7 +634,7 @@ def test_close_path(root, capsys):
     expect('retro', 'wuwei retro')
     (workspace.day_dir(root) / 'retro').mkdir()
     (workspace.day_dir(root) / 'retro/2026-09-30.md').write_text('# Retro\n')
-    expect('promote', 'wuwei promote')
+    expect('promote', 'wuwei retro --promote')
     expect('retro-applied', 'wuwei retro')
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('[outbound]\nowner_channel = "dm"\n[outbound.owner.slack]\nuser = "U1"\ndm = "D9"\n')
@@ -764,14 +764,14 @@ def test_finding_launch(root, capsys):
     approved(root, {})
     before = coarse(root)
     assert before['state'] != 'set'
-    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin ruff in CI']) == 0
     [launch] = coarse(root)['launches']
     assert (launch['kind'], launch['item'], launch['command']) == (
         'finding', 'fix-pin-ruff-in-ci', 'wuwei plan add fix-pin-ruff-in-ci --from-finding')
     assert 'Pin ruff in CI' in launch['why']
     day(root, items={'fix-pin-ruff-in-ci': {'phase': 'merged'}})
     assert coarse(root) == before
-    assert main(['note', '--fix', 'Pin black']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin black']) == 0
     assert coarse(root)['launches'][0]['item'] == 'fix-pin-black'
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)

@@ -487,7 +487,7 @@ def test_783_every_gate_passed_gives_the_shepherd_that_raises_with_wuwei(run):
     root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'PASS'})]})
     assert offers == [('raise', 'item-1')]
     command = dispatch.next_step('item-1', root)['commands'][0]
-    assert command.startswith('wuwei brief shepherd item-1 shepherd-item-1 ')
+    assert command.startswith('wuwei seat brief shepherd item-1 shepherd-item-1 ')
     assert 'pr raise' in command and '--item item-1' in command
 
 

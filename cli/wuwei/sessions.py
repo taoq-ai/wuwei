@@ -13,7 +13,7 @@ ROLES = ('adhoc', 'seat-host')
 
 
 def current():
-    """The calling session id that SessionStart exported, or None (host terminal)."""
+    """The calling session id that SessionStart exported, or None outside a session."""
     value = os.environ.get('WUWEI_SESSION_ID', '').strip()
     return value or None
 

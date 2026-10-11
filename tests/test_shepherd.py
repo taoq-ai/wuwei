@@ -615,8 +615,8 @@ def test_excluded_logins_leave_history_and_lead(case, excluded, expected):
     assert shepherd.select_reviewers(root, REF) == expected
 
 
-def test_reviewers_command_explains_the_selection(case, capsys):
-    from wuwei.__main__ import main
+def test_reviewer_selection_explains_itself(case):
+    from wuwei import merge, shepherd
     root, host, _, _, vcs = case
     host.results['files'] = Result(0, [{'path': 'src/app.py'}, {'path': 'src/util.py'}])
     host.results['pr'].data['changed_files'] = 2
@@ -629,23 +629,19 @@ def test_reviewers_command_explains_the_selection(case, capsys):
                 counts[name] = counts.get(name, 0) + commits
         return Result(0, [{'email': f'{name}@example.test', 'commits': n} for name, n in counts.items()])
     vcs.responses['authorship'] = authorship
-    assert main(['pr', 'reviewers', REF, '--explain']) == 0
-    lines = capsys.readouterr().out.splitlines()
+    lines = []
+    assert shepherd.select_reviewers(root, REF, explain=lines) == ['alice', 'bob', 'lead']
     assert lines == ['window: 90 days', 'alice 7: src/app.py 4, src/util.py 3 (selected)',
                      'bob 5: src/app.py 3, src/util.py 2 (selected)',
-                     'lead: shepherd.lead_login (selected)', 'unresolved: missing',
-                     'reviewers: alice bob lead']
-    assert main(['pr', 'reviewers', REF]) == 0
-    assert capsys.readouterr().out.splitlines() == ['reviewers: alice bob lead']
+                     'lead: shepherd.lead_login (selected)', 'unresolved: missing']
     configure(root, 'lead_login = "lead"', 'lead_login = "lead"\nreviewers_exclude = ["alice", "bob", "lead"]')
-    assert main(['pr', 'reviewers', REF]) == 0
-    assert capsys.readouterr().out.splitlines() == ['reviewers: none (solo)']
+    assert shepherd.select_reviewers(root, REF) == []
     configure(root, 'reviewers_exclude = ["alice", "bob", "lead"]', 'min_reviewers = 4')
-    assert main(['pr', 'reviewers', REF]) == 1
-    assert 'shepherd.min_reviewers' in capsys.readouterr().out
+    with pytest.raises(merge.Refused, match='shepherd.min_reviewers'):
+        shepherd.select_reviewers(root, REF)
     host.results['pr'] = Result(2, reason='offline')
-    assert main(['pr', 'reviewers', REF]) == 2
-    assert 'offline' in capsys.readouterr().out
+    with pytest.raises(shepherd.ERRORS, match='offline'):
+        shepherd.select_reviewers(root, REF)
 
 
 def test_unmapped_author_falls_back_to_code_host_login(case):

@@ -38,8 +38,9 @@ python3 scripts/headless_e2e.py --start --model haiku --local-login
 ```
 
 In start mode the run also fails on any off-path command: a planner Bash command the
-governing `wuwei next` action did not name (`wuwei next` and `wuwei status --line`
-themselves are exempt, and so is the fixture's own park of item A).
+governing `wuwei next` action did not name. `wuwei next`, `wuwei next --json`,
+`wuwei status --line` and `wuwei plan session` are exempt, and so is the fixture's
+own park of item A.
 
 The local option copies a file-based OAuth credential into a private temporary
 HOME when present. On macOS Claude can use its existing OS keychain. No user
@@ -69,9 +70,11 @@ The USD 3 limit applies to this Claude session, including its subagents.
 
 The fixture supplies a lead proposal and explicit owner approval. Claude invokes
 the real plan skill, records the proposal and approval, probes an unbriefed Agent
-refusal, then uses the real builder step loop and three real sentinel seats. It
-parks the unpublished item with `plan park A --reason fixture`, requests close before the
-retro to exercise a blocking Stop, then compiles the retro and closes cleanly.
+refusal, logs each brief with `seat brief`, then uses the real `build next` step loop
+and three real sentinel seats through `dispatch next` and `dispatch receive`. It parks
+the unpublished item with `plan park A --reason fixture`. It runs `close` before the
+retro, which refuses and names the steward launch, then runs `retro`,
+`close --check retro` and `close`.
 No remote PR, tracker or chat action occurs. PR creation, a fix round and merge
 remain covered by `tests/test_e2e_day.py` with recorded adapters, and live by the
 release rehearsal in `docs/site/rehearsal.md`.

@@ -1,6 +1,8 @@
-"""Recover a stuck seat: record its report from a file, or stop it as unmeasured (#473);
+"""Write a seat's brief, record a small fix a seat found (#646), recover a stuck seat (#473),
 record an ad-hoc seat's prompt before its launch (#676)."""
 
+from pathlib import Path
+import re
 import sys
 
 from wuwei import brief, sessions, state, workspace
@@ -8,8 +10,23 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('seat', help='Recover a stuck seat')
+    parser = subparsers.add_parser('seat', help='Brief, record, recover or stop a seat')
     actions = parser.add_subparsers(dest='action', required=True)
+    write = actions.add_parser('brief', help='Write and log a seat brief')
+    for name in ('role', 'item', 'name'):
+        write.add_argument(name, nargs='?')
+    write.add_argument('--worktree')
+    write.add_argument('--pr')
+    write.add_argument('--gate', action='store_true')
+    write.add_argument('--track')
+    body = write.add_mutually_exclusive_group()
+    body.add_argument('--body', help='brief body text')
+    body.add_argument('--file', help='read the brief body from PATH (- reads stdin)')
+    write.set_defaults(func=run_brief)
+    note = actions.add_parser('note', help='Record a small fix a seat found')
+    note.add_argument('--fix', metavar='TITLE',
+                      help='Record a small fix a seat found; wuwei next proposes it as an item')
+    note.set_defaults(func=run_fix)
     stop = actions.add_parser('stop', help='Record a stuck seat\'s report, or stop it as unmeasured')
     stop.add_argument('name')
     how = stop.add_mutually_exclusive_group(required=True)
@@ -20,6 +37,65 @@ def register(subparsers):
     start.add_argument('--role', required=True, help='what the ad-hoc seat does, such as reviewer')
     start.add_argument('--adhoc', required=True, metavar='PROMPT', help='the exact prompt the Agent launch will use')
     start.set_defaults(func=start_adhoc)
+
+
+def run_brief(args):
+    from wuwei import dispatch
+    try:
+        if not all((args.role, args.item, args.name)):
+            raise ValueError('expected ROLE ITEM NAME; run wuwei seat brief ROLE ITEM NAME --body TEXT')
+        if args.body is not None:
+            body = args.body
+        elif args.file == '-':
+            body = sys.stdin.read()
+        elif args.file is not None:
+            body = Path(args.file).read_text(encoding='utf-8')
+        else:
+            raise ValueError('brief body required: pass --body TEXT or --file PATH (--file - reads stdin)')
+        role = 'sentinel-' + args.role if args.role in dispatch.GATE_ROLES else args.role
+        path = brief.write(role, args.item, args.name, body,
+                           worktree=args.worktree, pr=args.pr, gate=args.gate, track=args.track)
+    except brief.Refused as exc:
+        print(f'REFUSED: {exc}', file=sys.stderr)
+        return 1
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
+        print(f'wuwei seat brief: {exc}', file=sys.stderr)
+        return 2
+    print(path)
+    return 0
+
+
+def run_fix(args):
+    """#646: today's seat_findings.<id>; plan add <id> --from-finding admits it as a small item."""
+    from wuwei.tracker import ABSOLUTE
+    if args.fix is None:
+        print('wuwei seat note: pass --fix "<title>"', file=sys.stderr)
+        return UNRUN
+    title = ' '.join(args.fix.split())
+    words = re.findall(r'[a-z0-9]+', title.lower())
+    reason = ('the title must be one line; pass --fix "<title>"' if not title or '\n' in args.fix
+              else 'the title must be at most 120 characters' if len(title) > 120
+              else 'the title must hold letters or digits' if not words
+              else 'the title must not hold an absolute path; name the file from the repository root'
+              if ABSOLUTE.search(title) else '')
+    if reason:
+        print(f'wuwei seat note: {reason}', file=sys.stderr)
+        return FINDINGS
+    ident = 'fix-' + '-'.join(words[:6])
+
+    def update(data):
+        if ident in data.get('seat_findings', {}) or ident in data['items']:
+            raise state.StateError(f'{ident} is already recorded; wuwei next proposes it')
+        data.setdefault('seat_findings', {})[ident] = {
+            'scope': title, 'evidence': 'seat finding', 'track': 'SLICE', 'at': workspace.now().isoformat()}
+    try:
+        state._write_state(update, workspace.find_workspace(), kind='finding.noted',
+                           payload={'id': ident, 'title': title})
+    except state.StateError as exc:
+        print(f'wuwei seat note: {exc}', file=sys.stderr)
+        return FINDINGS
+    print(ident)
+    return CLEAN
 
 
 def refuse(code, message):

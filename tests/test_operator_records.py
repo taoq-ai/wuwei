@@ -29,7 +29,7 @@ def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
                   'candidates': [candidate('DIVIDE-1')]}, root)
     plan.approve(['DIVIDE-1'], root, goals_confirmed=True)
     for args in (('lead', 'DISCOVERY', 'lead-1'), ('steward', 'day', 'steward-1')):
-        assert main(['brief', *args, '--body', 'body']) == 0
+        assert main(['seat', 'brief', *args, '--body', 'body']) == 0
     for phase in ('implement', 'gate', 'raised'):
         state.transition('DIVIDE-1', phase, root)
     state._write_state(lambda data: data['items']['DIVIDE-1'].update(pr='org/repo#1'),

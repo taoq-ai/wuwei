@@ -8,10 +8,29 @@ from wuwei import report, state, workspace
 
 
 def register(subparsers):
-    subparsers.add_parser('report', help='Show the owner report').set_defaults(func=run)
+    parser = subparsers.add_parser('report', help='Show the owner report')
+    parser.add_argument('--week', nargs='?', const='', default=None,
+                        help="a week's telemetry aggregate (YYYY-Www, the current week by default)")
+    parser.set_defaults(func=run)
+
+
+def week(value):
+    import json
+    from wuwei import telemetry
+    try:
+        root = workspace.find_workspace()
+        value = value or telemetry.current_week(root)
+        found = telemetry.load_week(root, value) or telemetry.week_file(root, workspace.load_config(root), value)
+        print(json.dumps(found, sort_keys=True))
+        return 0
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
+        print(f'wuwei report --week: {exc}', file=sys.stderr)
+        return 2
 
 
 def run(args):
+    if args.week is not None:
+        return week(args.week)
     root = workspace.guard_scope({'cwd': str(Path.cwd())})
     if root is None:
         return 0

@@ -574,9 +574,9 @@ URL_LINE = 'acme/widget main: fix in https://github.com/acme/widget/settings/bra
 
 def gh_api(output):
     import shlex
-    lines = [line for line in output.splitlines() if 'or run in your own terminal: ' in line]
+    lines = [line for line in output.splitlines() if 'or apply it with: ' in line]
     assert len(lines) <= 1, lines
-    return shlex.split(lines[0].split('or run in your own terminal: ', 1)[1]) if lines else None
+    return shlex.split(lines[0].split('or apply it with: ', 1)[1]) if lines else None
 
 
 @pytest.mark.parametrize('extra,expected,absent', [

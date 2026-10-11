@@ -1,12 +1,12 @@
-"""Read-only status snapshots for the owner surfaces."""
+"""The status line Claude Code runs on every refresh (plumbing: `wuwei next` is the board)."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import re
 import sys
 
 from wuwei import state, workspace
-from wuwei.exits import CLEAN, UNRUN, DAMAGED, ADAPTER_DATA
+from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
 
 
@@ -40,10 +40,8 @@ LINES = (r'(?:\{"kind": "' + _alternation(sorted(SKIP))
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('status', help='show day status')
-    output = parser.add_mutually_exclusive_group()
-    output.add_argument('--line', action='store_true')
-    output.add_argument('--json', action='store_true')
+    parser = subparsers.add_parser('status')  # no help: unlisted plumbing
+    parser.add_argument('--line', action='store_true', required=True)
     parser.add_argument('--width', type=int, default=WIDTH)
     parser.set_defaults(func=run)
 
@@ -115,87 +113,33 @@ def attention(directory, classified_state=None):
     return list(current.values())
 
 
-def snapshot(directory, line=False):
-    """The day's figures; line=True skips the fields status --line never renders (#562)."""
+def snapshot(directory):
+    """The day's figures the status line renders (#562)."""
     data = state.read_state(directory=directory)
     result = {'pages': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
               'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
-              'next_reply_due': None, 'next_meeting': None,
-              'seats': {} if line else state.running_by_goal(data), 'running': state.in_flight(data)}
-    result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
+              'running': state.in_flight(data)}
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
-    classified_state = {**data, 'now': workspace.now().isoformat()}
-    active = attention(directory, classified_state)
+    active = attention(directory, {**data, 'now': workspace.now().isoformat()})
     result['pages'] = sum(row['tier'] == 'page' for row in active)
-    result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
-    result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     result['plan'] = (directory / 'plan.md').is_file()
-    for key, field, destination in () if line else (('reply_obligations', 'due', 'next_reply_due'),
-                                                    ('meetings', 'start', 'next_meeting')):
-        rows = data.get(key, [])
-        if not isinstance(rows, list):
-            raise ValueError(f'{key}: expected list; {DAMAGED}')
-        dates = [row[field] for row in rows if isinstance(row, dict)
-                 and isinstance(row.get(field), str)]
-        if dates:
-            parsed = [(datetime.fromisoformat(value), value) for value in dates]
-            if any(instant.tzinfo is None for instant, _ in parsed):
-                raise ValueError(f'{key}: expected timezone-aware timestamps; {DAMAGED}')
-            result[destination] = min(parsed, key=lambda row: row[0])[1]
     result['enforce'] = config['guards']['enforce'] if config is not None else None
     from wuwei import integrity
     result['restart'] = integrity.restart(config) if config is not None else ''
-    if line:
-        return result
-    if config is not None:
-        result['checks_none'] = [repo['name'] for repo in config['repos'] if not repo['fast_checks']]  # #600
-    result['plugin'] = integrity.version()
-    result['template'] = config['template_version'] if config is not None else None
-    if config is not None and config['adapters']['calendar'] != 'none':
-        from wuwei import registry
-        root = directory.parents[2]
-        now = workspace.now()
-        result['next_meeting'] = None
-        try:
-            measured = registry.load('calendar', config).events(
-                now.isoformat(), (now + timedelta(days=7)).isoformat(), root=root)
-            if measured.exit == 0:
-                if not isinstance(measured.data, list):
-                    raise ValueError(f'calendar returned invalid events; {ADAPTER_DATA}')
-                upcoming = []
-                for event in measured.data:
-                    if not isinstance(event, dict) or not isinstance(event.get('start'), str):
-                        raise ValueError(f'calendar event missing start; {ADAPTER_DATA}')
-                    start = datetime.fromisoformat(event['start'])
-                    if start.tzinfo is None:
-                        raise ValueError(f'calendar event needs timezone; {ADAPTER_DATA}')
-                    if start >= now:
-                        upcoming.append((start, event['start']))
-                result['next_meeting'] = min(upcoming, default=(None, None))[1]
-        except (OSError, ValueError, KeyError, TypeError, UnicodeError):
-            pass
     return result
 
 
 def run(args):
     try:
-        data = snapshot(workspace.day_dir(), line=args.line and not args.json)
+        data = snapshot(workspace.day_dir())
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
-        if args.json:
-            print(json.dumps({'status': 'unmeasured'}))
-        else:
-            print('WUWEI ? unmeasured')
+        print('WUWEI ? unmeasured')
         print(f'wuwei status: {exc}', file=sys.stderr)
         return UNRUN
-    if args.json:
-        print(json.dumps(data))
-    elif args.line:
-        print(line(data, args.width))
-    else:
-        print(full(data))
+    print(line(data, args.width))
     return CLEAN
 
 
@@ -205,7 +149,7 @@ def _roles(data):
 
 
 def _groups(data, shown=None):
-    """[now, work, attention] token lists: the one source of the line and of status (#521)."""
+    """[now, work, attention] token lists of the line (#521)."""
     now = []
     if data.get('restart'):
         now = [data['restart'].split(' (plugin ', 1)[0]]
@@ -246,25 +190,3 @@ def line(data, width=WIDTH):
             break
         victim.pop()
     return _render(groups)
-
-
-def full(data):
-    """The line's groups one per line with the detail the line drops (#521)."""
-    now, work, attention = _groups(data)
-    if data.get('restart'):
-        now = [data['restart']]
-    if split := state.goal_split(data.get('seats', {})):
-        work.append(f'builders {split}')
-    running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]
-    if data.get('trace_gaps'):
-        attention.append(f'traces: {data.get("trace_gaps")} gaps')
-    if data.get('solo'):
-        from wuwei.obligations import SOLO
-        attention.insert(-1 if data.get('trace_gaps') else len(attention), SOLO)
-    calendar = [f'reply {data["next_reply_due"]}'] if data.get('next_reply_due') else []
-    calendar.append(f'meeting {data["next_meeting"] or "unmeasured"}')
-    versions = [f'plugin {data.get("plugin") or "unmeasured"}', f'template {data.get("template") or "none"}']
-    from wuwei.fast_checks import NONE
-    checks = [[f'{name} {NONE}'] for name in data.get('checks_none', [])]
-    return 'WUWEI ' + '\n'.join(' · '.join(group) for group in (
-        now, work, *running, attention, calendar, *checks, versions) if group)

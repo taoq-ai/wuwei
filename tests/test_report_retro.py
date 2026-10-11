@@ -235,8 +235,8 @@ def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
     lines = capsys.readouterr().out.splitlines()
     measured = json.loads(lines[lines.index('## Process metrics') + 1])
     assert {'asks_per_item', 'unnecessary_asks'} <= set(measured)
-    assert main(['metrics']) == 0
-    assert measured == json.loads(capsys.readouterr().out)
+    from wuwei import metrics
+    assert measured == json.loads(json.dumps(metrics.collect(root), sort_keys=True))
 
 
 def gates(monkeypatch, root, date, rows):

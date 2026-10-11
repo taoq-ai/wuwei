@@ -291,7 +291,7 @@ plan propose proposal.json and plan approve --items A --goals-confirmed.
 description "headless refusal probe", prompt "Deliberate test: no brief".
 This must be denied. The fixture authorizes this one negative probe; resolve it
 by logging the proper brief next, never bypassing the guard.
-3. Write brief builder A builder --worktree repo --body "Verify README.md
+3. Run seat brief builder A builder --worktree repo --body "Verify README.md
 exists and run the configured fast checks. This is a verification-only fixture;
 no tracked edits are needed. Do not commit. Report Blocked: none, Gap: none,
 Change: none on separate lines if verified. Keep the worktree clean."
@@ -301,7 +301,7 @@ builder's completion notification arrives, call build next A; run any returned
 check command through Bash in the background and end your turn; when it exits,
 call build next A until done; done moves A to gate. Never imitate Agent with Bash, synthesize a transcript, or run a hook
 in place of Agent.
-4. Run dispatch next A. For each of arch, quality, security write brief
+4. Run dispatch next A. For each of arch, quality, security run seat brief
 sentinel-ROLE A ROLE --gate --worktree repo --body TEXT, where TEXT describes this
 verification-only item, no remote CI and no tracked changes. Ask for a narrow
 review of README presence and measured fast checks, a verdict at the brief's
@@ -371,7 +371,7 @@ every phase. If a
 command refuses unexpectedly, report it and stop. Follow these steps:
 1. Register your planner session as the skill says. Run plan propose
 proposal.json and plan approve --items A --goals-confirmed.
-2. Run worktree add A. Write brief builder A builder --worktree <that worktree>
+2. Run worktree add A. Run seat brief builder A builder --worktree <that worktree>
 --body "Add REHEARSAL.md with the line status: draft and commit it on the item
 branch. Follow any fast check feedback exactly and commit again."
 3. Run the build next A step loop exactly as the skill says until done: pass each

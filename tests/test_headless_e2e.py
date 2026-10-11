@@ -176,7 +176,6 @@ def test_scratch_build_and_observer_preserve_hook_results(tmp_path, monkeypatch)
     assert (plugin / 'hooks/hooks.json').read_bytes() == (ROOT / 'hooks/hooks.json').read_bytes()
     assert (plugin / 'bin/wuwei').read_bytes() == (ROOT / 'bin/wuwei').read_bytes()
     cli = plugin / 'bin/wuwei'
-    assert adapter.run([cli, 'integrity', 'check'], cwd=root, env=env).returncode == 0
     payload = {'session_id': 'fixture', 'transcript_path': str(root / 'transcript.jsonl'),
                'cwd': str(root), 'hook_event_name': 'PreToolUse',
                'tool_name': 'Write', 'tool_input': {'file_path': str(root / '.wuwei/days' /
@@ -188,7 +187,7 @@ def test_scratch_build_and_observer_preserve_hook_results(tmp_path, monkeypatch)
     assert row['event'] == 'PreToolUse' and row['exit'] == 2 and row['tool'] == 'Write'
     for args in (['plan', 'propose', 'proposal.json'],
                  ['plan', 'approve', '--items', 'A', '--goals-confirmed'],
-                 ['brief', 'builder', 'A', 'builder', '--worktree', 'repo', '--file', '-']):
+                 ['seat', 'brief', 'builder', 'A', 'builder', '--worktree', 'repo', '--file', '-']):
         step = adapter.run([cli, *args], cwd=root, env=env, input='Verify README presence.')
         assert step.returncode == 0, step.stderr
     step = adapter.run([cli, 'build', 'next', 'A'], cwd=root, env=env)

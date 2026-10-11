@@ -152,7 +152,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
     assert any(row['kind'] == 'day.closed' for row in day.events)
     assert (day.directory / 'report.md').is_file()
     assert (day.directory / 'retro' / f'{day.directory.name}.md').is_file()
-    for command in (('doctor', '--section', 'pr-flow'), ('promote',)):
+    for command in (('doctor', '--section', 'pr-flow'), ('retro', '--promote')):
         assert command in day.calls, command
     value = metrics.collect(day.root)
     assert value['off_path'] == 0, metrics.path(metrics._events(day.directory),
@@ -248,7 +248,6 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     def after(day, action):
         if launched(action, 'pr') and 'ping' not in steps:
             steps.add('ping')
-            bash(day, f'wuwei pr ping-check {day.ref}')
             bash(day, f'wuwei pr ping {day.ref}')
             approve_at_head(day)
             steps.add(allowed(day, planner(tool_name='mcp__slack__post_message',

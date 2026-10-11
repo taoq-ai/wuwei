@@ -33,7 +33,7 @@ def day(tmp_path, monkeypatch):
 
 def brief(monkeypatch, body='body', *args):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(body))
-    return main(['brief', *args, '--file', '-'])
+    return main(['seat', 'brief', *args, '--file', '-'])
 
 
 def events(directory):
@@ -63,6 +63,24 @@ def test_lead_and_steward_briefs_create_no_item(day, monkeypatch):
     brief_module.write('steward', 'day', 'steward-1', 'body', root=day[0])
     assert (day[1] / 'briefs/lead-1.md').is_file() and (day[1] / 'briefs/steward-1.md').is_file()
     assert set(state.read_state(day[0])['items']) == {'X'}
+
+
+def test_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
+    # #848: the lead reads the candidates in its brief; an unreachable source stays named.
+    from wuwei import discovery
+    found = {'sources': {'tracker': [{'id': 'ISSUE-1'}], 'scanner': 'unmeasured: scanner down'},
+             'candidates': [{'id': 'ISSUE-1', 'source': 'tracker'}]}
+    monkeypatch.setattr(discovery, 'discover', lambda root=None: found)
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-2') == 0
+    text = (day[1] / 'briefs/lead-2.md').read_text()
+    assert 'Source scanner: unmeasured: scanner down' in text
+    assert 'Candidate: {"id": "ISSUE-1", "source": "tracker"}' in text
+
+    def broken(root=None):
+        raise ValueError('tracker adapter broken')
+    monkeypatch.setattr(discovery, 'discover', broken)
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-3') == 0
+    assert 'Candidates: unmeasured: tracker adapter broken' in (day[1] / 'briefs/lead-3.md').read_text()
 
 
 def test_declared_full_and_persisted(day, monkeypatch):
@@ -373,11 +391,11 @@ def test_probe_env_leaves_no_pycache(day, monkeypatch, tmp_path):  # #672 accept
 
 def test_brief_body_from_option_or_file(day, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'stdin', None)
-    assert main(['brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0
+    assert main(['seat', 'brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0
     assert 'inline body' in (day[1] / 'briefs/b1.md').read_text()
     source = tmp_path / 'body.txt'
     source.write_text('file body')
-    assert main(['brief', 'builder', 'X', 'b2', '--file', str(source)]) == 0
+    assert main(['seat', 'brief', 'builder', 'X', 'b2', '--file', str(source)]) == 0
     assert 'file body' in (day[1] / 'briefs/b2.md').read_text()
     assert brief(monkeypatch, 'stdin body', 'builder', 'X', 'b3') == 0
     assert 'stdin body' in (day[1] / 'briefs/b3.md').read_text()
@@ -388,12 +406,12 @@ def test_brief_without_body_option_never_reads_stdin(day, monkeypatch, capsys):
         raise AssertionError('stdin read')
     monkeypatch.setattr(sys, 'stdin', io.StringIO(''))
     monkeypatch.setattr(sys.stdin, 'read', blocked)
-    assert main(['brief', 'builder', 'X', 'b4']) == 2
+    assert main(['seat', 'brief', 'builder', 'X', 'b4']) == 2
     err = capsys.readouterr().err
     assert '--body' in err and '--file' in err
     assert not (day[1] / 'briefs/b4.md').exists()
     with pytest.raises(SystemExit) as exc:
-        main(['brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
+        main(['seat', 'brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
     assert exc.value.code == 2
 
 

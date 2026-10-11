@@ -35,7 +35,7 @@ MERGE_SCHEMA = {
 }
 
 LEVELS = ("brief", "standard", "full")
-SURFACES = ("decisions", "report")
+SURFACES = ("report",)
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
@@ -55,7 +55,8 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
            'scanner.mcp.block', 'docs', 'adapters.docs',
            'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
-           'watch', 'sessions', 'worktree')  # #847
+           'watch', 'sessions', 'worktree',  # #847
+           'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo')  # #848
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -128,8 +129,7 @@ SCHEMA = {
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
                  "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
-    "retro": {"repo": (str, "."),
-              "charter_paths": [(str, None), [".wuwei/charters"]],
+    "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
     "guards": {"enforce": (bool, True)},  # #837: false logs what a guard would refuse
@@ -176,8 +176,7 @@ SCHEMA = {
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
                  "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
-                 "calendar": (str, "none"), "transcripts": (str, "none"),
-                 "redactor": (str, "builtin")},
+                 "calendar": (str, "none"), "transcripts": (str, "none")},
 }
 
 
@@ -575,7 +574,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 24  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 25  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

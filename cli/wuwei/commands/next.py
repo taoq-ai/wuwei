@@ -65,7 +65,7 @@ THEN = {
              '{days}/lead.json again; then run wuwei next.'),
     'pr': ('Run it and do any action it prints; on exit 1 with an Owner step card, ask it with '
            'AskUserQuestion, then run it again on Yes. When it prints nothing the PR waits on people: '
-           'end the turn with wuwei status --line, the watch wakes you when it changes.'),
+           'end the turn with wuwei status --line; run wuwei next when the owner returns.'),
     'owner-step': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion, then run '
                    'it again on Yes. Then run wuwei next.'),
     'merge': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion. On Yes run it '
@@ -83,7 +83,8 @@ LEAD_BODY = ('Propose today. Answer with one JSON object: goals, seat_policy, en
              'derives. Each candidate has id, goal, evidence, scope, overlap, track, the three '
              'boolean flags, score and evidence_lines for each component of the configured '
              'framework. With more than one configured repository each candidate also has repo, the '
-             'configured repository name it changes. While memory/goals.md has no goals, write each proposed goal as a block '
+             'configured repository name it changes. While memory/goals.md has no goals, or when the owner changed '
+             'the goals, write each goal as a block '
              '(id, outcome, measure, target, date, priority), never an id alone. Check open '
              'status and overlap against the items of the day and other active work.')
 # No single quote in LEAD_BODY: step quotes it without shlex, which hook paths do not import.
@@ -187,7 +188,7 @@ def step(root, ran=()):
         if not (directory / 'lead.json').is_file() and (lead is None or lead['status'] == 'running'):
             if not (directory / 'briefs/lead.md').is_file():
                 return _row('lead', 'Brief the lead seat for discovery and the proposal.',
-                            f"wuwei brief lead day lead --body '{LEAD_BODY}'")
+                            f"wuwei seat brief lead day lead --body '{LEAD_BODY}'")
             if lead is None:
                 return _row('lead', 'Launch the lead seat on its brief.', 'wuwei next --json',
                             'launch', THEN['lead'].format(days=days),
@@ -264,7 +265,7 @@ def step(root, ran=()):
     if not (directory / 'retro' / f'{directory.name}.md').is_file():
         return _row('retro', 'Compile the steward retro.', 'wuwei retro')
     if ('promote', '') not in returned:
-        return _row('promote', 'Land the supported charter learnings.', 'wuwei promote')
+        return _row('promote', 'Land the supported charter learnings.', 'wuwei retro --promote')
     if ('retro-applied', '') not in returned:
         return _row('retro-applied', 'Record what promote applied in the retro.', 'wuwei retro')
     if not (directory / 'report.md').is_file():

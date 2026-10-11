@@ -43,13 +43,10 @@ def test_baseline_missing_and_populated(root):
                                   'owner_intervention': '90', 'lead_time': '48'}
 
 
-def test_blank_template_baseline_is_unmeasured(root, capsys):
-    from wuwei.__main__ import main
-
+def test_blank_template_baseline_is_unmeasured(root):
     template = Path(__file__).resolve().parents[1] / 'templates/workspace/memory/notes/baseline.md'
     (root / '.wuwei/memory/notes/baseline.md').write_bytes(template.read_bytes())
-    assert main(['metrics']) == 0
-    assert json.loads(capsys.readouterr().out)['baseline'] == {
+    assert metrics.collect(root)['baseline'] == {
         'escaped_defects': 'unmeasured', 'review_rework': 'unmeasured',
         'owner_intervention': 'unmeasured', 'lead_time': 'unmeasured'}
 
@@ -228,16 +225,13 @@ def test_malformed_ticket_data_still_fails_the_collect(root, monkeypatch):
         metrics.collect(root)
 
 
-def test_invalid_transcript_fails_closed_without_disclosing_text(root, capsys):
-    from wuwei.__main__ import main
-
+def test_invalid_transcript_fails_closed_without_disclosing_text(root):
     paths = root / 'transcripts'
     paths.mkdir()
     (paths / 'a.jsonl').write_text('{"message":"private sentinel text"\n')
-    assert main(['metrics']) == 2
-    captured = capsys.readouterr()
-    assert 'transcript' in captured.err
-    assert 'private sentinel text' not in captured.out + captured.err
+    with pytest.raises((OSError, UnicodeError, ValueError, TypeError, KeyError), match='transcript') as raised:
+        metrics.collect(root)
+    assert 'private sentinel text' not in str(raised.value)
     day = workspace.day_dir(root)
     assert not (day / 'events.jsonl').exists()
     assert not (day / 'state.json').exists()

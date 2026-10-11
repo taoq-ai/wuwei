@@ -2,23 +2,24 @@
 
 ## Current controls
 
-Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and worktrees. Outside that scope, every hook returns 0 before any guard reads or parses the call; a command that names a workspace path literally is in scope. Relevance is checked before parsing; malformed input blocks a relevant call with exit 2 and a reason. CLI state and events use dedicated writers, and the outward policy limits text-bearing adapter calls. With `adapters.scanner = "none"` trace and agent-surface checks report unmeasured, never clean.
+Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and their worktrees. Outside that scope, every hook returns 0 before any guard reads the call. A command that names a workspace path literally is in scope. Malformed input to a relevant call blocks it with exit 2 and a reason. CLI state and events have dedicated writers, and the outward policy limits text-bearing adapter calls.
+
+One switch sets how the guards act: `guards.enforce`. It is true by default. With it false, a guard logs `guard.would_refuse` and lets the call through. `init --shadow` starts a new workspace that way for a first week. The records and the irreversible edges below hold either way.
 
 ## ZIRAN integration
 
-The ZIRAN scanner adapter provides runtime trace analysis (S2) and agent-surface gates (S4). An item whose diff changes prompts, tool definitions, agent tool permissions or MCP config is flagged `agent_surface` and scanned at its security gate. WUWEI does not watch attached MCP servers for tool drift or poisoning; that check (S3) was retired in #789. Do not treat an unavailable scanner as a clean audit: with `adapters.scanner = "none"`, the default, trace and agent-surface checks report unmeasured. WUWEI declares no MCP server of its own.
+The ZIRAN scanner adapter provides runtime trace analysis (S2) and agent-surface gates (S4). An item whose diff changes prompts, tool definitions, agent tool permissions or MCP config is flagged `agent_surface`. Its security gate reads the scanner findings. Do not treat an unavailable scanner as a clean audit. With `adapters.scanner = "none"`, the default, trace and agent-surface checks report unmeasured, never clean. WUWEI does not watch attached MCP servers for tool drift, and it declares no MCP server of its own.
 
 ## S1: Reviewed role grants in CI
 
 Pull requests and pushes to main run `taoq-ai/ziran@v0.41.0` in audit mode with
 `ziran==0.41.0`, high severity and `agents/ziran-baseline.json`. ZIRAN reads the
 Claude Code agents directly. The recorded baseline is the reviewed proposal of
-tool grants and dangerous chains; no WUWEI converter or runtime dependency is
-needed. Existing grants pass, while widened tools/chains and new critical
-findings fail. For example, adding WebFetch to the builder fails with a finding
-naming the chain it creates. Both findings (exit 1) and an audit that could not
-run (exit 2) fail CI. The action uploads SARIF to code scanning when
-permissions allow; an upload failure does not change the audit result.
+tool grants and dangerous chains. Existing grants pass. Widened tools or chains and
+new critical findings fail. For example, adding WebFetch to the builder fails with a
+finding naming the chain it creates. Both findings (exit 1) and an audit that could
+not run (exit 2) fail CI. The action uploads SARIF to code scanning when permissions
+allow; an upload failure does not change the audit result.
 
 After a reviewed charter or allowlist change, use ZIRAN 0.41.0 in a disposable
 dev environment. From the plugin repository root, outside an initialized WUWEI
@@ -32,60 +33,45 @@ ziran audit agents/ --baseline agents/ziran-baseline.json --format json
 
 Review and commit the generated agents and baseline together with their source
 changes. Do not re-record an unreviewed widening just to make CI green. Default
-pytest checks baseline/allowlist consistency offline; real clean and widened
+pytest checks baseline and allowlist consistency offline. Real clean and widened
 audits run when ZIRAN is on PATH, including in the audit job. See the
 [agent maintenance instructions](https://github.com/taoq-ai/wuwei/blob/main/docs/charters.md)
 for installation and regeneration details.
 
-## Security posture
+## The irreversible edges
 
-`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `seats = "block"`. `bin/wuwei config check` prints the effective table and the key it comes from.
+The Bash guards match exact argv on the irreversible edges only:
 
-Under `observe` and `guarded` a guard is a warning or a card, never a wall, with one floor: records are written by the workflow and answered by you. A refusal that names the plain form the seat runs itself is coaching, not a wall. Under `strict`, refusals stay.
+- a merge (`gh pr merge` or a merge API write), an approval, `--admin` and branch protection writes;
+- a force push (`--force`, `-f`, `--mirror` or a `+` refspec) and a push to a default branch;
+- a deploy;
+- a `gh pr create` for a recorded item.
 
-| Area | What it covers | observe | guarded (default) | strict |
-| --- | --- | --- | --- | --- |
-| `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
-| `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
-| `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
-| `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
-| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`), and scratch directories (`protect_state.check_scratch`) | warn | warn | block |
+Each refusal names the way through. That is `bin/wuwei merge <pr>`, a new commit pushed with `git push origin HEAD:refs/heads/<branch>`, `bin/wuwei pr raise ... --item <item>`, or the deploy's Owner step card. On your Yes the same command runs again.
 
-Below `strict` a `block` is a card (deploy, release, publish, evidence) or a fix the seat runs; only `records` is a wall. Merges and approvals stay yours until merging is grantable (#524).
+The guards split a call with `shlex` at `;`, `&&`, `||`, `|`, parentheses and newlines. They unwrap leading assignments, `env` and `sh -c`, and skip here-doc bodies, so text written to a file is never a command. A call they cannot split is recorded as `unparsed` and runs. Scripts, interpreter code, aliases and names built at run time are not read. The code host's protected branches and the credential layout hold those.
 
-Floors no posture and no override lowers:
+Records are the one floor. State, events, config, verdicts and traces are written by the CLI, and a state write the guards can read stays refused. A top-level `cd`, `pushd` or `popd` that may leave the workspace is recorded. Run it in a subshell, `(cd <dir> && <command>)`, or use `git -C <dir>`.
 
-- In every posture: `security.outbound` (canary and honeytoken egress) on every outward send, and an MCP send to other people through a tool not on `outward.allow` is refused. `publish` stays yours, and a seat never adds a tool itself: `config set outward.allow` asks your Owner step card.
-- `records` always blocks, with canary and honeytoken egress, owner disposition markers and a seat launch naming a brief that does not exist, whose refusal ends `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions (`deploy`, `pr`, and an unlisted outward send) block, and below `strict` they ask you on a card, with no `owner-only action` line; under `strict` they keep it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only in every posture. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and a missing fast check or gate verdict warns under `observe` and refuses under `guarded`, naming the check the seat runs. A deploy refusal prints the Owner step card for that exact command; your Yes lets that command run ([owner-only actions](concepts.md#owner-only-actions)).
+## Outward sends
 
-Runtime trace chains (S2) page and ask you only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `init --shadow` writes `observe`.
+An MCP write to other people goes out only when that exact tool is on `outward.allow`. Any other write is refused, naming `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks your Owner step card. A tool whose name starts with a read verb (get, list, search, read, find, fetch, query, describe, view, lookup) is a read and passes.
 
-The Bash guards match exact argv on the irreversible edges only (#839): a merge (`gh pr merge` or a merge API write), an approval, `--admin` and branch protection writes, a force push (`--force`, `-f`, `--mirror` or a `+` refspec), a push to a default branch, a deploy and a `gh pr create` for a recorded item. Each refusal names the way through: `bin/wuwei merge <pr>`, a new commit pushed with `git push origin HEAD:refs/heads/<branch>`, `bin/wuwei pr raise ... --item <item>`, or the deploy's Owner step card. The guards split a call with `shlex` per command (at `;`, `&&`, `||`, `|`, parentheses and newlines), unwrap leading assignments, `env` and `sh -c`, and skip here-doc bodies, so text written to a file is never a command. A call they cannot split is recorded as `unparsed` and runs. Scripts, interpreter code, aliases and names built at run time are not read; the code host's protected branches and the credential layout hold them. A state file write the guards can read stays refused. A top-level `cd`, `pushd` or `popd` that may leave the workspace is recorded; run it in a subshell, `(cd <dir> && <command>)`, or use `git -C <dir>`.
-
-An MCP tool's lint channel comes from, in order: your alias for its server (`outward.servers`), the `outward.tool_patterns` rules (the built-in ones match the brand anywhere in the name), then a small tool vocabulary when exactly one channel fits (`conversations_*`, `chat_post*`, `add_message` and `add_reaction` are Slack; an `issue` word is the tracker; `draft`, `label`, `thread`, `spam`, `trash`, `forward`, `inbox` or `mail` is mail; `page`, `block` or `database` is docs; a `pull_request` with a `comment` is the code host; resolving, muting or triggering an issue, alert or incident, or an alert rule, is `other`). Words split on camelCase too, so `addCommentToJiraIssue` is the tracker. A local server acts only on your machine: the built-in `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator` and `computer-use` servers, the `Claude_Browser` preview tools, and a server you alias `local`. Its calls pass the outward guard in every posture (the canary and honeytoken check stays). A `run_in_terminal` command is judged by the Bash guards as the same command through Bash. A tool is a read when its name starts with get, list, search, read, find, fetch, query, describe, view or lookup, or when it has a read word (such as `history`, `replies`, `info` or `channels`) and no write verb. Reads pass. Any other MCP write goes out only when that exact tool is on `outward.allow`. A tool whose name is neither a read nor a write and that names no channel runs, and the lint logs that line. Otherwise it is refused in every posture, naming `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks your Owner step card. A call whose every destination is [your own surface](configuration.md#your-own-surfaces) is local: it passes the lint without the third-person rules and records a silent `outward.to_owner` event.
-
-The outward lint reads every string in a tool's input, nested lists and objects included, except ids (`id`, `*_id`), flags, numbers and structural keys (`status`, `type`, `object` and the metadata keys such as `owner` or `thread`). The destinations come from `channel`, `channel_id`, `recipient`, `recipients`, `to`, `issue_key`, `issue_id`, `page_id`, `database_id`, `canvas_id`, `repo` and `pull_number`, also in camelCase and inside a Notion `parent`. An unknown field is read, never a reason to refuse. A write with no text has nothing to lint, so the allowlist alone decides it. A `tool_input` that is not an object is refused with a reason that says so.
-
-Where to run each:
-
-- `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. `init --shadow` starts here; after `guards.shadow_days` days `bin/wuwei doctor` asks you to switch to `guarded`.
-- `guarded`: a real project. Records block; publishing asks on a card or names the fix; integrity blocks; seat launches and outward text warn, and each warning is an event in the day's log.
-- `strict`: a repository that deploys, or a workspace that holds shared credentials. Everything blocks.
-
-The posture changes only what the cooperative guards refuse. The hard boundaries below (host rules, the credential layout, owner-sent messages) hold in every posture. `config.toml` is a record, so a seat cannot lower its own posture.
+Your own surfaces are local. A call whose every destination is [your own surface](configuration.md) passes without the third-person rules and records a silent `outward.to_owner` event. Local servers act only on your machine: `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator`, `computer-use` and the `Claude_Browser` preview tools. Their calls pass the outward guard. A `run_in_terminal` command is judged by the Bash guards as the same command through Bash. The canary and honeytoken egress check runs on every outward send.
 
 ## Telemetry: what leaves
 
-Nothing leaves the machine unless `telemetry.share` is `"anonymous"` or `"attributed"`; empty (not asked yet) and `"off"` send nothing. Then only a final week's payload leaves: the schema, the ISO week, the plugin, Python and OS versions, the posture, profile, adapter names and the number of repositories, and the weekly counts. Every key and value is checked against a fixed vocabulary before it is sent, so no repository, item, ticket, pull request, person, handle, path, branch, command, reason text or time finer than the week can leave; a payload that breaks a rule is not sent. `bin/wuwei telemetry preview` prints exactly what each mode would send.
+Nothing leaves the machine unless `telemetry.share` is `"anonymous"` or `"attributed"`. Empty (not asked yet) and `"off"` send nothing. Then only a final week's payload leaves: the schema, the ISO week, the plugin, Python and OS versions, the guard mode, profile, adapter names, the number of repositories and the weekly counts. Every key and value is checked against a fixed vocabulary before it is sent. No repository, item, ticket, pull request, person, handle, path, branch, command, reason text or time finer than the week can leave. A payload that breaks a rule is not sent. `bin/wuwei telemetry preview` prints exactly what each mode would send.
 
-- Anonymous: the watch posts the payload over HTTPS with a random workspace id kept in `.wuwei/metrics/token`, the only identifier. No account and no secret are involved. The collector, like any web server, sees your IP address and does not store it.
-- Attributed: you run `bin/wuwei telemetry send` in a host terminal; it shows the issue, asks y/N, runs the canary and honeytoken check, and opens it from your gh account, so it shows your login. The token is never in it.
+- Anonymous: `wuwei report` posts the payload over HTTPS with a random workspace id kept in `.wuwei/metrics/token`, the only identifier. No account and no secret are involved. The collector, like any web server, sees your IP address and does not store it.
+- Attributed: `bin/wuwei telemetry send` asks your Owner step card, runs the canary and honeytoken check, and opens the issue from your gh account, so it shows your login. The token is never in it.
 
-`bin/wuwei telemetry off` stops sharing at once without a confirmation. The aggregate, `.wuwei/metrics/`, is a protected record only the CLI writes. Your own OpenTelemetry export (`[telemetry.otlp]`) goes only to the endpoint you set and never to the project.
+`bin/wuwei telemetry off` stops sharing at once. The aggregate, `.wuwei/metrics/`, is a protected record only the CLI writes. Your own OpenTelemetry export (`[telemetry.otlp]`) goes only to the endpoint you set.
 
 ## Threat model 9.1
 
-The guards address agent mistakes, corner cutting and prompt injections sent through normal tools. They are cooperative mistake prevention, not an isolation boundary: no hook, Claude Code or git, is a hard boundary against a process running as you. Such a process can edit local files, including state, events and approval records. Hard boundaries are code host server-side rules (protected refs, required checks, required reviews), publication credentials kept out of seat environments, and the exact `outward.allow` list you approve. For push, merge, deploy and PR approval the guards refuse what they recognise; push and merge are guaranteed by the host rules (protected refs, and a merge lands only through required checks and reviews), and approval and deploy by the credential layout. WUWEI must never bypass branch protection, approve its own pull requests or deploy without your answer. Codex seats can be isolated in a write sandbox limited to their worktree. More hardening for Claude seats is **planned**.
+The guards address agent mistakes, corner cutting and prompt injections sent through normal tools. They are cooperative mistake prevention, not an isolation boundary. No hook, Claude Code or git, is a hard boundary against a process running as you. Such a process can edit local files, including state, events and approval records.
 
-The signed manifest, workspace integrity checks, the prompt canary and the honeytoken are current controls. They make tampering evident (spec 7.1); they do not make it impossible, because a process running as you can still edit local files (9.1). See [integrity](integrity.md) for how they are checked and the [design spec](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md) for the full model.
+The hard boundaries are elsewhere. Code host rules (protected refs, required checks, required reviews) guarantee push and merge. Publication credentials kept out of seat environments guard approval and deploy. The exact `outward.allow` list you approve bounds outward sends. WUWEI must never bypass branch protection, approve its own pull requests or deploy without your answer. Codex seats can be isolated in a write sandbox limited to their worktree. More hardening for Claude seats is **planned**.
+
+The signed manifest, workspace integrity checks, the prompt canary and the honeytoken are current controls. They make tampering evident (spec 7.1). They do not make it impossible, because a process running as you can still edit local files (9.1). See [integrity](integrity.md) for how they are checked and the [design spec](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md) for the full model.
