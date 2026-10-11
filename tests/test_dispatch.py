@@ -3056,3 +3056,24 @@ def test_a_builder_blocked_none_goes_to_the_gates(root):
     from wuwei import dispatch
     builder_says(root, 'none')
     assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+def test_a_resumed_blocked_park_goes_to_the_gates(root, capsys, monkeypatch):
+    # #834 delta D1: a No on the Blocked card is undone by the owner's resume.
+    from wuwei import dispatch
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    builder_says(root, 'the schema change needs the owner')
+    owner_says(root, dispatch.next_step('A', root), 'No')
+    assert dispatch.next_step('A', root)['action'] == 'parked'
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
+    # #834 delta D2: a note missing Gap: is a retro.gap, and its Blocked: line still asks.
+    from wuwei import dispatch
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state.append_event('retro.gap', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
+        'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner')

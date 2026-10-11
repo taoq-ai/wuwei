@@ -450,7 +450,7 @@ def _blocked(root, data, item):
            if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'stopped'} - {None}
     found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])
              for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-             if row['kind'] == 'retro.captured' and row['payload'].get('agent_id') in ids]
+             if row['kind'] in ('retro.captured', 'retro.gap') and row['payload'].get('agent_id') in ids]
     return found[-1] if found and found[-1][0] and found[-1][0].casefold() != 'none' else None
 
 
@@ -479,7 +479,7 @@ def next_step(item, root=None):
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
     note = ''
-    if phase == 'gate' and (stopped := _blocked(root, data, item)):  # a builder's Blocked: line asks the owner
+    if phase == 'gate' and not _resumed(root, item) and (stopped := _blocked(root, data, item)):  # a builder's Blocked: line asks the owner
         import hashlib
         from wuwei import sessions
         line, agent = stopped
