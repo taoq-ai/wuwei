@@ -327,62 +327,12 @@ def test_shadow_refusal_is_explained(root, capsys):
     assert why(capsys, ident) == (0, SHADOWED, '')
 
 
-def test_posture_warning_names_area_level_and_posture(root, capsys):
-    # #331: a warning names the area, its level and the posture that produced it.
+def test_logged_refusal_from_before_the_upgrade_has_no_posture_line(root, capsys):
+    # #837: an event written before guards.enforce still carries area, level and posture; why
+    # shows its guard, rule and fix only.
     refusal(root, {**SHADOW, 'area': 'publish', 'level': 'warn', 'posture': 'observe'},
             kind='guard.would_refuse')
-    assert why(capsys, 'last refusal') == (0, [*SHADOWED, 'posture: publish = warn (observe)'], '')
-
-
-# #552: why names the register edge behind an outward hold.
-HOLD = '''[outward.servers]
-acme = "slack"
-[outward.modes]
-acme = "draft"
-[outbound]
-default_tier = "ask"
-work_channels = ["C01"]
-external_channels = ["C03"]
-'''
-
-
-def held(root, channel, tool='mcp__acme__send_message'):
-    from wuwei import drafts, graph, outward, workspace
-    (root / '.wuwei/config.toml').write_text(HOLD)
-    config = workspace.load_config(root)
-    graph.sync(root, config)
-    reasons = []
-    inputs = {'channel': channel, 'text': 'Thanks'}
-    assert outward.classify('Thanks', root, config, inputs, kind='slack', why=reasons, tool=tool)[1] == 'draft'
-    refused = drafts.hold(root, config, 'slack', 'tool', 'mcp', inputs, f'{outward.APPROVAL_REQUIRED}: {reasons[0]}',
-                          tool=tool)
-    return refused.split()[2].rstrip(':'), refused
-
-
-def test_why_draft_names_the_class_edge(root, capsys):
-    ident, refused = held(root, 'C03', tool='mcp__plain__send_message')
-    code, lines, _ = why(capsys, ident)
-    assert code == 0 and lines[0].startswith('held: ask by rule ') and 'outbound.external_channels' in lines[0]
-    assert lines[1:] == ['edge: channel:C03 class client (outbound.external_channels)']
-    refusal(root, {'reason': refused, 'refusals': [{'guard': 'outward', 'reason': refused}], 'target': 'mcp'})
-    lines = why(capsys, 'last refusal')[1]
-    assert lines[-1] == 'edge: channel:C03 class client (outbound.external_channels)'
-    assert lines[-2].startswith('fix: ')
-
-
-def test_why_draft_names_the_mode_edge(root, capsys):
-    ident, _ = held(root, 'C01')
-    assert 'edge: connector:acme mode draft (outward.modes)' in why(capsys, ident)[1]
-
-
-def test_why_draft_without_an_edge(root, capsys):
-    ident, _ = held(root, 'C77', tool='mcp__plain__send_message')
-    assert why(capsys, ident)[1][1:] == ['edge: not recorded']
-
-
-def test_why_unknown_draft_exits_one(root, capsys):
-    code, _, err = why(capsys, 'draft-' + '0' * 32)
-    assert code == 1 and 'bin/wuwei drafts' in err
+    assert why(capsys, 'last refusal') == (0, SHADOWED, '')
 
 
 def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
@@ -443,7 +393,7 @@ def test_why_json_light_tier_and_no_spec_engine(root, capsys):
 def test_why_json_reads_an_item_only(root, capsys):
     live_item(root)
     assert why(capsys, 'Y', '--json')[0] == 1
-    for target in (['last', 'refusal'], ['draft-' + '0' * 32]):
+    for target in (['last', 'refusal'], ['2026-09-28:1']):
         code, lines, err = why(capsys, *target, '--json')
         assert (code, lines) == (2, []) and '--json reads an item' in err
 

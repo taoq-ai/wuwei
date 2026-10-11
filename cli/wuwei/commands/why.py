@@ -12,7 +12,6 @@ from wuwei.redact import redact
 NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
-DRAFT = r'draft-[0-9a-f]{32}'
 GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
 
@@ -37,8 +36,7 @@ def level(root, full):
 def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
-    if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
-            EVENT_ID, DRAFT))):
+    if args.json and (target == 'last refusal' or re.fullmatch(EVENT_ID, target)):
         print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
         return UNRUN
     try:
@@ -47,8 +45,6 @@ def run(args):
             return CLEAN
         if target == 'last refusal' or re.fullmatch(EVENT_ID, target):
             steps = refusal(root, target)
-        elif re.fullmatch(DRAFT, target):  # #552
-            steps = [(line, None, []) for line in held(root, target)]
         elif target == 'adhoc':  # #676
             steps = adhoc(root)
         else:
@@ -228,39 +224,4 @@ def refusal(root, target):
         # Messages carry no structured rule or fix; the first "; " splits them (Assumption A3).
         rule, _, fix = entry['reason'].partition('; ')
         lines += [f'guard: {entry.get("guard") or NOT}', f'rule: {rule}', f'fix: {fix or NOT}']
-        draft = re.search(DRAFT, rule) if rule.startswith('outward:') else None
-        if draft:  # #552: the register edge behind the hold
-            try:
-                tool = _draft(root, draft[0]).get('tool')
-            except ValueError:  # a damaged queue still shows the refusal
-                tool = None
-            lines += edges(root, rule, tool)
-    if shadowed and payload.get('area'):  # #331
-        lines.append(f'posture: {payload["area"]} = {payload.get("level")} ({payload.get("posture")})')
     return [(text, f'{day.name}:{number}', []) for text in lines]
-
-
-def _draft(root, draft_id):
-    from wuwei import drafts
-    return drafts.read(state.read_state(root)).get(draft_id) or {}
-
-
-def edges(root, reason, tool=None):
-    """#552: the edge lines of the register edges a hold's reason names."""
-    from wuwei import graph
-    try:
-        register = graph.load(root)
-    except ValueError:
-        register = None
-    found = graph.cite(register, reason, tool) if register else []
-    return [f'edge: {graph.line(edge)}' for edge in found] or [f'edge: {NOT}']
-
-
-def held(root, draft_id):
-    """#552: the rule that held a draft and the register edge behind it."""
-    from wuwei import outward
-    row = _draft(root, draft_id)
-    if not row:
-        raise Missing(f'no draft {draft_id} today; run bin/wuwei drafts for the queued ids')
-    rule = row['tier_reason'].removeprefix(outward.APPROVAL_REQUIRED + ': ')
-    return [f'held: {rule}', *edges(root, rule, row.get('tool'))]

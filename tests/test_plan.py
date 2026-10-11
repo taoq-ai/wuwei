@@ -616,17 +616,6 @@ def events(root):
             (root / '.wuwei/days/2026-09-28/events.jsonl').read_text().splitlines()]
 
 
-def test_approve_refuses_every_candidate_without_a_ticket(root, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    plan.propose(two(), root)
-    tracked(root, '[security]\nposture = "strict"\n')  # #636: below strict Approve opens them
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['plan', 'approve', '--items', 'A', 'B', '--goals-confirmed']) == 1
-    err = capsys.readouterr().err
-    assert 'A has no ticket' in err and 'B has no ticket' in err
-    assert not state.read_state(root)['approved_items']
-
-
 def test_approve_records_candidate_and_tracker_tickets(root):
     data = two(A={'ticket': 'ENG-3'})
     plan.propose(data, root)
@@ -678,10 +667,10 @@ def test_plan_and_gate_card_show_each_ticket(root):
     assert 'Tickets' not in plan.gate_widget(root)['options'][0]['description']
 
 
-def opening(root, monkeypatch, posture, created=None, **extra):
+def opening(root, monkeypatch, enforce='true', created=None, **extra):
     """#636: A and B link existing tickets, C gets a new one; the fake tracker opens it."""
     from fakes.tracker import Fake, ported
-    tracked(root, f'[owner]\nname = "Pat Example"\n[security]\nposture = "{posture}"\n')
+    tracked(root, f'[owner]\nname = "Pat Example"\n[guards]\nenforce = {enforce}\n')
     plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}, **extra}), root)
     fake = Fake({'create': created or registry.Result(0, {'id': 'ENG-9',
                                                            'url': 'https://example.test/ENG-9'})})
@@ -692,7 +681,7 @@ def opening(root, monkeypatch, posture, created=None, **extra):
     return fake
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture):
     """#636 acceptance 1: two links and one new ticket, no terminal command."""
     from wuwei import tracker
@@ -704,7 +693,6 @@ def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture
                               'C': {'id': 'ENG-9', 'source': 'create'}}
     assert [call[0] for call in fake.calls] == ['create']
     assert fake.calls[0][1][0]['item'] == 'C'
-    assert [row['status'] for row in day.get('drafts', {}).values()] in ([], ['sent'])
     config = workspace.load_config(root)
     assert all(tracker.check(day, config, name)[0] == 'ticket' for name in 'ABC')
     with pytest.raises(state.StateError, match='already approved'):
@@ -712,21 +700,8 @@ def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture
     assert len(fake.calls) == 1
 
 
-def test_strict_approve_prints_the_commands(root, monkeypatch, capsys):
-    """#636 acceptance 2: under strict nothing is opened and the commands are printed."""
-    from wuwei.__main__ import main
-    fake = opening(root, monkeypatch, 'strict')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['plan', 'approve', '--items', 'A', 'B', 'C', '--goals-confirmed']) == 1
-    err = capsys.readouterr().err
-    assert 'bin/wuwei tracker create C' in err and 'host terminal' in err
-    assert fake.calls == []
-    day = state.read_state(root)
-    assert not day.get('drafts') and not day['approved_items']
-
-
 def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
-    fake = opening(root, monkeypatch, 'guarded', A={'ticket': None}, C={'ticket': 'ENG-3'})
+    fake = opening(root, monkeypatch, 'true', A={'ticket': None}, C={'ticket': 'ENG-3'})
     plan.approve(['A'], root, goals_confirmed=True)
     assert fake.calls == []
     assert state.read_state(root)['tickets'] == {'A': {'id': None, 'source': 'none'}}
@@ -735,8 +710,8 @@ def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
 
 
 def test_a_failed_open_refuses_the_approval(root, monkeypatch):
-    opening(root, monkeypatch, 'guarded', created=registry.Result(2, reason='linear: unreachable'))
-    with pytest.raises(state.StateError, match='C: drafts: adapter did not confirm send'):
+    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'))
+    with pytest.raises(state.StateError, match='C: linear: unreachable'):
         plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     assert not state.read_state(root)['approved_items']
 
@@ -744,38 +719,18 @@ def test_a_failed_open_refuses_the_approval(root, monkeypatch):
 
 def test_a_small_item_is_approved_without_its_ticket(root, monkeypatch):
     """#646: the gate opens a light item's ticket, and a failed open does not hold the gate."""
-    fake = opening(root, monkeypatch, 'guarded', C={'tier': 'light'})
+    fake = opening(root, monkeypatch, 'true', C={'tier': 'light'})
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     assert [call[0] for call in fake.calls] == ['create']
     assert state.read_state(root)['tickets']['C'] == {'id': 'ENG-9', 'source': 'create'}
 
 
 def test_a_failed_open_does_not_hold_a_small_item(root, monkeypatch):
-    opening(root, monkeypatch, 'guarded', created=registry.Result(2, reason='linear: unreachable'),
+    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'),
             C={'tier': 'light'})
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     day = state.read_state(root)
     assert 'C' in day['approved_items'] and 'C' not in day['tickets']
-
-
-def test_strict_approves_a_small_item_and_opens_nothing(root, monkeypatch):
-    fake = opening(root, monkeypatch, 'strict', C={'tier': 'light'})
-    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert fake.calls == [] and 'C' in state.read_state(root)['approved_items']
-
-def test_import_yesterday_carries_tickets(root):
-    yesterday = root / '.wuwei/days/2026-09-27'
-    yesterday.mkdir(parents=True)
-    (yesterday / 'state.json').write_text(json.dumps({
-        'items': {'OLD': {'phase': 'implement', 'status': 'running'}},
-        'tickets': {'OLD': {'id': 'ENG-1', 'source': 'create'}}}))
-    data = proposal()
-    data['candidates'][0]['ticket'] = 'ENG-2'
-    plan.propose(data, root)
-    tracked(root)
-    plan.approve(['A'], root, goals_confirmed=True, import_yesterday=True)
-    assert state.read_state(root)['tickets'] == {
-        'OLD': {'id': 'ENG-1', 'source': 'yesterday'}, 'A': {'id': 'ENG-2', 'source': 'candidate'}}
 
 
 def test_light_candidate_is_approved_without_a_ticket(root):

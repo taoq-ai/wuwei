@@ -19,7 +19,6 @@ DEFAULTS = {'project_file': '.mcp.json',
             'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}
 COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
-NOT_CHECKED = 'MCP registry: not checked (security.areas.mcp = "off")'
 NO_SCANNER = 'mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)'
 DECIDE = 'bin/wuwei mcp decide'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
@@ -192,7 +191,7 @@ def _read(root):
             or data.get('pending') is not None and (not isinstance(data['pending'], str)
                 or not re.fullmatch(r'\.wuwei/days/\d{4}-\d{2}-\d{2}/decisions/D-[1-9][0-9]*\.md', data['pending']))):
         raise ValueError(f'invalid registry status; {DAMAGED}')
-    # A v0.11.0 record has no posture fields: its pending decision keeps blocking.
+    # A v0.11.0 record has no severities field: its pending decision keeps blocking.
     data.setdefault('severities', list(SEVERITIES))
     if not isinstance(data['severities'], list) or any(s not in SEVERITIES for s in data['severities']):
         raise ValueError(f'invalid registry status; {DAMAGED}')
@@ -309,7 +308,7 @@ def _result(record):
 
 
 def _gate(record, block):
-    """The launch posture: a check that could not run always blocks; the rest per block."""
+    """A check that could not run always blocks; the rest per block."""
     if record['exit'] == 2 and not record['unmeasured'] or record['unmeasured'] and 'unmeasured' in block:
         return registry.Result(2, reason=record['reason'])
     if record['pending'] and set(record['severities']) & set(block):
@@ -318,30 +317,21 @@ def _gate(record, block):
 
 
 def cached(root):
-    """The launch gate under the mcp posture level (#331)."""
+    """The launch gate (#331, #837): scanner.mcp.block findings and a check that could not run
+    block while guards.enforce is on; with it off they pass with a note."""
     try:
         root = Path(root).resolve()
         config = workspace.load_config(root)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return _failure(exc)
-    name, levels = workspace.posture(config)
-    level = levels['mcp']
-    if level == 'off':
-        return registry.Result(0, reason=NOT_CHECKED)
     if config['adapters']['scanner'] == 'none':  # #424: no scanner is a choice, the gate is off.
         return registry.Result(0, reason=NO_SCANNER)
-    block = config['scanner']['mcp']['block']
-    if level == 'block':  # strict: the pre-#325 list
-        block = sorted({*block, 'critical', 'high', 'unmeasured'})
-    result = _cached(root, block)
+    result = _cached(root, config['scanner']['mcp']['block'])
     if not result.exit:
         return result
-    if level == 'warn' and name == 'observe':
-        return registry.Result(0, reason=f'{result.reason} (mcp: warn, security.areas.mcp)')
-    # Floor (#331): under guarded and strict, scanner.mcp.block findings and a check that
-    # could not run block whatever the mcp level is.
-    note = 'floor: scanner.mcp.block' if level == 'warn' else 'security.areas.mcp'
-    return registry.Result(result.exit, reason=f'{result.reason} (mcp: {level}, {note})')
+    if not config['guards']['enforce']:
+        return registry.Result(0, reason=f'{result.reason} (guards.enforce = false)')
+    return registry.Result(result.exit, reason=f'{result.reason} (scanner.mcp.block)')
 
 
 def _cached(root, block):
@@ -497,8 +487,6 @@ def check(root):
     try:
         root = Path(root).resolve()
         config = workspace.load_config(root)
-        if workspace.posture(config)[1]['mcp'] == 'off':
-            return registry.Result(0, reason=NOT_CHECKED)
         covered, plugins = [], set()
         if _read(root) is None and not discover(root, config, covered):
             return registry.Result(0, reason=COVERED if covered else '')

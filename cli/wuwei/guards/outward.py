@@ -1,4 +1,4 @@
-"""Enforce outbound approval tiers and outward lint before writes."""
+"""Outward sends: an exact tool allowlist, the owner's own surfaces and the lint (#838)."""
 
 import json
 import os
@@ -22,7 +22,7 @@ WRITES = frozenset((
     'leave', 'react', 'pin', 'star', 'edit', 'move', 'assign', 'merge', 'close', 'open',
     'submit', 'approve', 'comment', 'message', 'dm',
     'save', 'notify', 'draft', 'respond', 'push', 'fork', 'request', 'dismiss', 'mark',
-    'manage', 'run', 'mute', 'trigger'))
+    'manage', 'run', 'mute', 'trigger', 'share'))
 LEADING = ('get', 'list', 'search', 'read', 'find', 'fetch', 'query', 'describe', 'view', 'lookup')
 READS = frozenset(LEADING + (
     'history', 'replies', 'info', 'members', 'users', 'channels', 'conversations', 'threads',
@@ -57,7 +57,7 @@ VOCABULARY = (
     ('mail', r'(?:.*_)?(?:drafts?|labels?|threads?|spam|trash|forward|inbox|e?mails?)(?:_.*)?'),
     ('docs', r'(?:.*_)?(?:pages?|blocks?|databases?)(?:_.*)?'),
     ('other', OTHER))
-# #727: servers that act only on the owner's machine; never drafted, the command guards judge what runs.
+# #727: servers that act only on the owner's machine; the command guards judge what runs.
 LOCAL_SERVERS = ('terminal', 'Claude_Preview', 'Claude_Code_iOS_Simulator', 'computer-use')
 LOCAL = (rf"mcp__(?:{'|'.join(map(re.escape, LOCAL_SERVERS))})__.*"
          r'|mcp__Claude_Browser__preview_.*')
@@ -90,30 +90,65 @@ def resolve(tool, config):
     return found if len(found) == 1 else set()
 
 
-def check_tier(payload):
-    return _check(payload, outward.check_tier)
+# #838: the one refusal; config set asks its own Owner step card (#831).
+NOT_ALLOWED = ("outward: {tool} may send to other people and is not on outward.allow; {surface}the "
+               "owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it asks its "
+               "Owner step card), then run the call again")
+# #838 review: the narrow fix first, only for a canvas or page id; a channel, DM, user or
+# address is never offered as the owner's.
+PAGES = "outbound.owner.pages '[\"{id}\"]' --add"
+MAIL = "outbound.owner.mail '\"<your address>\"'"
+# Unknown by name and no channel: it runs; the lint guard logs this (B5 lead call, no new walls).
+UNKNOWN = ("outward: {tool} is neither a read nor a write by name, so it ran; if it sends to other "
+           "people, the owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it "
+           "asks its Owner step card)")
+
+
+def _page(value):
+    """The first canvas_id or page_id (a Notion parent's included) in a payload, else None."""
+    if isinstance(value, list):
+        return next(filter(None, map(_page, value)), None)
+    if not isinstance(value, dict):
+        return None
+    for key, item in value.items():
+        if outward._snake(key) in ('canvas_id', 'page_id') and isinstance(item, str):
+            return item
+    return next(filter(None, map(_page, value.values())), None)
+
+
+def refusal(tool, channel, inputs, config):
+    """NOT_ALLOWED; a canvas or page id (or a Slack F... destination) is offered first as the
+    owner's page, plain ids only; mail asks for the owner's address only while it is unset."""
+    found = _page(inputs)
+    if found is None and channel in ('slack', 'chat'):
+        found = next((target for target in outward._text(inputs)[1]
+                      if re.fullmatch(r'F[A-Z0-9]+', target)), None)
+    line = (PAGES.format(id=found if re.fullmatch(r'[A-Za-z0-9._-]+', found) else '<id>')
+            if found is not None else
+            MAIL if channel == 'mail' and not config['outbound']['owner']['mail'] else None)
+    surface = ('if it is your own surface, the owner adds it: bin/wuwei config set '
+               f'{line} (it asks its Owner step card); else ') if line else ''
+    return NOT_ALLOWED.format(tool=tool, surface=surface)
+
+
+def check_send(payload):
+    return _check(payload, send=True)
 
 
 def check_lint(payload):
-    return _check(payload, _lint)
+    return _check(payload, send=False)
 
 
-def _lint(inputs, root, config, channels):
-    # ponytail: runs even when check_tier refuses the same call, so a retried write records its
-    # tells twice; pass the tier result between guards if the metric needs exact counts.
-    result = outward.check_lint(inputs, root, config, channels)
-    return result if result[0] else outward.humanize_lint(inputs, root, config, channels)
-
-
-def _check(payload, policy):
+def _check(payload, send):
+    """#838: an MCP write is local (a #727 local tool, or every destination the owner's own
+    surface), allowed (exactly on outward.allow) or refused; the canary floor stays on every send."""
     try:
-        from wuwei import workspace
+        from wuwei import security, workspace
         raw = json.dumps(payload.get('tool_input', {}))
-        if (policy is outward.check_tier
-                and any(marker in raw for marker in ('WUWEI parked ', 'WUWEI carried '))):
+        if send and any(marker in raw for marker in outward.MARKERS):
             scope = workspace.guard_scope(payload)
             if scope is not None:
-                from wuwei import security, shell
+                from wuwei import shell
                 commands = []
                 if payload.get('tool_name') == 'Bash':
                     try:
@@ -124,9 +159,8 @@ def _check(payload, policy):
                 if not commands or not all(command.argv and Path(command.argv[0]).name == 'gh'
                                            for command in commands):
                     code, reason = security.outbound(payload.get('tool_input'), scope)
-                    return (code, reason) if code else (FINDINGS, 'owner disposition markers must be posted by the owner')
-        if payload.get('tool_name') == 'Bash' and policy is outward.check_tier:
-            from wuwei import security
+                    return (code, reason) if code else (FINDINGS, outward.OWNER_MARKERS)
+        if payload.get('tool_name') == 'Bash' and send:
             cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
             try:
                 root = workspace.find_workspace(cwd)
@@ -139,95 +173,57 @@ def _check(payload, policy):
             if workspace.guard_scope(payload) is None:
                 return CLEAN, ''
             return security.outbound(payload.get('tool_input'), root)
-        if payload.get('tool_name') in NATIVE_TOOLS:
+        tool = payload.get('tool_name')
+        if tool in NATIVE_TOOLS:
             if 'WUWEI_WORKSPACE' in os.environ:
                 workspace.find_workspace(payload.get('cwd'))
             return CLEAN, ''
-        tool = payload.get('tool_name')
+        if isinstance(tool, str) and (tool.strip() and not tool.startswith('mcp__')
+                                      or tool.startswith('mcp__') and tool_kind(tool) == 'read'):
+            return CLEAN, ''
         cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
         try:
-            policy_root = workspace.find_workspace(cwd)
+            workspace.find_workspace(cwd)
         except FileNotFoundError:
             if 'WUWEI_WORKSPACE' in os.environ:
                 raise ValueError(f'invalid WUWEI_WORKSPACE override; {DAMAGED}')
-            policy_root = workspace.worktree_workspace(cwd)
-        config = workspace.load_config(policy_root) if policy_root else None
-        channels = resolve(tool, config)
-        if not channels:
-            if isinstance(tool, str) and tool.startswith('mcp__'):
-                if tool_kind(tool) == 'read':
-                    return CLEAN, ''
-            elif isinstance(tool, str) and tool.strip():
-                return CLEAN, ''
         root = workspace.guard_scope(payload)
         if root is None:
             return CLEAN, ''
         if not isinstance(tool, str) or not tool.strip():
             return UNRUN, f'outward: tool name required; {PAYLOAD}'
-        if root != policy_root:
-            config = workspace.load_config(root)
-            channels = resolve(tool, config)
-        if channels == {'local'}:  # #727: never drafted or blocked by the outward rules.
-            from wuwei import security
-            return security.outbound(payload.get('tool_input'), root) if policy is outward.check_tier else (CLEAN, '')
-        if not channels:
-            return _unmatched(tool, root, config, policy)
-        if len(channels) != 1:
-            return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
+        if not re.fullmatch(r'mcp__[A-Za-z0-9_.-]+', tool):
+            return UNRUN, f'outward: invalid MCP tool name; {PAYLOAD}'
+        config = workspace.load_config(root)
+        channels = resolve(tool, config)
         inputs = payload.get('tool_input')
+        if channels == {'local'}:  # #727: the command guards judge what runs.
+            return security.outbound(inputs, root) if send else (CLEAN, '')
         if not isinstance(inputs, dict):
             return UNRUN, (f'outward: tool_input is not an object; got {type(inputs).__name__}; '
                            'pass the tool arguments as a JSON object')
+        outward._text(inputs)  # a payload the lint cannot read fails closed (#501)
+        if send:  # the canary floor first, on every MCP write
+            code, reason = security.outbound(inputs, root)
+            if code:
+                return code, reason
         if re.search(DM_TOOL, tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
-        channel = next(iter(channels))
-        if policy is outward.check_tier:  # #496: the connector mode is the first row of the table.
-            result = outward.check_tier(inputs, root, config, channels, tool=tool)
-        else:
-            result = policy(inputs, root, config, channels)
-        if result[0] == FINDINGS and result[1].startswith(outward.APPROVAL_REQUIRED):
-            from wuwei import drafts  # Only a held call pays for the queue (#346).
-            if drafts.spend(root, tool, channel, inputs):
-                return CLEAN, ''  # The owner approved this call once (#493).
-            return FINDINGS, drafts.hold(root, config, channel, 'tool', 'mcp', inputs, result[1], tool=tool)
-        return result
+        channel = next(iter(channels)) if len(channels) == 1 else 'other'
+        owner = outward.owner_only(inputs, config, channel)
+        if not owner and tool not in config['outward']['allow']:
+            if not channels and tool_kind(tool) == 'unknown':
+                return (CLEAN, '') if send else (FINDINGS, UNKNOWN.format(tool=tool))
+            return (FINDINGS, refusal(tool, channel, inputs, config)) if send else (CLEAN, '')
+        if send:
+            if owner:
+                outward.to_owner(inputs, root, config, channel)
+            return CLEAN, ''
+        result = outward.check_lint(inputs, root, config, {channel}, to_owner=owner)
+        return result if result[0] else outward.humanize_lint(inputs, root, config, {channel})
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'
+        return UNRUN, outward.UNREADABLE
 
 
-def _unmatched(tool, root, config, policy):
-    """#469: a tool nothing resolves, inside a workspace: reads pass, writes refuse, unknown
-    names follow the outward area level in check_lint only. #492: the way out is the draft
-    and the planner's learn command, never a config line."""
-    found = tool_kind(tool)
-    if found == 'read':  # Reached only when the scope's config differs from the cwd's.
-        return CLEAN, ''
-    if not re.fullmatch(r'mcp__[A-Za-z0-9_-]+', tool):
-        return UNRUN, f'outward: invalid MCP tool name; {PAYLOAD}'
-    server = tool[5:].rpartition('__')[0]
-    learn = (f', and the planner runs bin/wuwei outbound learn --tool {tool}'
-             if config['outbound']['learn'] != 'off' else '')
-    if found == 'write':
-        return UNRUN, (f'outward: connector {server} is not known for write tool {tool}; '
-                       f'write it as a draft for the owner to send{learn}')
-    if policy is outward.check_tier:
-        return CLEAN, ''
-    from wuwei import workspace
-    name, levels = workspace.posture(config)
-    unknown = f'outward: unknown MCP tool {tool} of connector {server}'
-    if levels['outward'] == 'block':
-        return UNRUN, f'{unknown}, not a read or a write by its name; write it as a draft for the owner to send{learn}'
-    if levels['outward'] == 'warn':
-        from wuwei import state, watch  # Only now: watch stays off every other hook path.
-        # ponytail: reads the day's events per call of an unknown tool; two racing first
-        # calls may both record. Keep a per-day set in state if that shows in latency.
-        if not any(row['kind'] == 'outward.unknown_tool' and row['payload'].get('tool') == tool
-                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-            state.append_event('outward.unknown_tool', {
-                'tool': tool, 'posture': name,
-                'reason': f'{unknown} passed under {name}; if it writes, write it as a draft for the owner to send{learn}'}, root)
-    return CLEAN, ''
-
-
-GUARDS = [Guard('PreToolUse', None, check_tier),
+GUARDS = [Guard('PreToolUse', None, check_send),
           Guard('PreToolUse', None, check_lint, profile_relaxable=True)]

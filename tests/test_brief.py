@@ -455,9 +455,9 @@ def test_builder_prompt_carries_the_mandate(day, monkeypatch):
         assert text not in prompt
 
 
-def test_the_mandate_is_the_same_in_every_posture(day, monkeypatch):
+def test_the_mandate_is_the_same_either_way(day, monkeypatch):
     default = mandate_prompt(day, monkeypatch)
-    for config in ('[security]\nposture = "strict"\n', '[security]\nposture = "observe"\n'):
+    for config in ('[guards]\nenforce = true\n', '[guards]\nenforce = false\n'):
         assert mandate_prompt(day, monkeypatch, config) == default
 
 
@@ -803,19 +803,14 @@ def test_counterpart_pr_line_is_unchanged(day, monkeypatch):
     assert 'Warning:' not in text
 
 
-@pytest.mark.parametrize('posture, reason, code', [
-    ('guarded', DENIED, 0), ('strict', DENIED, 2), ('strict', NOT_FOUND, 0)])
-def test_unreadable_counterpart_follows_the_posture(day, monkeypatch, capsys, posture, reason, code):
-    (day[0] / '.wuwei/config.toml').write_text(WIDGET + f'[security]\nposture = "{posture}"\n')
+@pytest.mark.parametrize('reason', [DENIED, NOT_FOUND])
+def test_unreadable_counterpart_is_a_warning(day, monkeypatch, capsys, reason):
+    # #740, #837: a counterpart reference is optional evidence; it never refuses the brief.
+    (day[0] / '.wuwei/config.toml').write_text(WIDGET)
     day[3].results['pr'] = registry.Result(2, None, reason)
-    assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'ps') == code
-    if code:
-        assert reason in capsys.readouterr().err
-        assert not (day[1] / 'briefs/ps.md').exists()
-        assert not any(e['kind'] == 'brief written' for e in events(day[1]))
-    else:
-        assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
-            day[1] / 'briefs/ps.md').read_text()
+    assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'ps') == 0
+    assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
+        day[1] / 'briefs/ps.md').read_text()
 
 
 def test_every_brief_names_the_doctor_and_the_install_rule(day, monkeypatch):

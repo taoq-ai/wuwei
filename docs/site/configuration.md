@@ -1,6 +1,6 @@
 # Configuration
 
-`bin/wuwei init .` creates `.wuwei/config.toml`. Change one value with `wuwei config set <key> <value>` and add a repository with `wuwei config add-repo` (see [calibration](#calibration)); each prints the diff and asks its Owner step card in the session, and writes only on your Yes. No host terminal is needed. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key, in every posture. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
+`bin/wuwei init .` creates `.wuwei/config.toml`. Change one value with `wuwei config set <key> <value>` and add a repository with `wuwei config add-repo` (see [calibration](#calibration)); each prints the diff and asks its Owner step card in the session, and writes only on your Yes. No host terminal is needed. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
 ## Sections
 
@@ -8,11 +8,11 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
-| `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
+| `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outbound]` | [Outward sends](#outward-sends) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -35,19 +35,15 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
 | `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`; a seat adds `--seat <role>`, which the retro shows. |
 | `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. |
-| `tracker.auto` | `["progress", "pr", "close"]` | Classes and kinds sent without a draft. Everything else waits in `wuwei drafts`; text naming a person or matching a sensitive pattern drafts whatever this says. A bug, triage or follow-up ticket in the workspace's own tracker follows `outbound.default_tier` instead, unless the tracker is external; under `ask` this list still decides it. |
+| `tracker.auto` | `["progress", "pr", "close"]` | Every class and kind goes out through the tracker port after the outward lint (#838). This list only picks the kind a folded comment is filed under. |
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
 | `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
 | `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |
 | `tracker.auth` | `"token"` | How `tracker.github` authenticates: `token` uses `GITHUB_TRACKER_TOKEN`; `gh` uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through `bin/wuwei`. See [GitHub tracker through your gh login](adapters.md#github-tracker-through-your-gh-login). |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
-| `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
-| `guards.shadow_days` | `7` | Days in the `observe` posture before `bin/wuwei doctor` asks you to switch to `guarded` or raise this number. |
-| `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and `init --shadow` set it. `config set security.posture '"observe"'` does not: observe is then the chosen posture, not a trial week. Empty means no such ask. |
+| `guards.enforce` | `true` | `true` blocks a guard refusal. `false` records it as `guard.would_refuse` and lets the call through; records, merges, approvals, admin merges, deploys and held outward sends still refuse. `init --shadow` writes `false`, and `init --upgrade` maps `security.posture = "observe"` or `guards.mode = "shadow"` to `false`. The outward lint and unknown tool names, another item's scratch directory and the seat capacity and ticket checks at launch are logged either way. `config check` and `doctor` print the setting. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `init --shadow` sets `observe` for `guards.shadow_days` days from `guards.shadow_since`, then `bin/wuwei doctor` asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
-| `security.areas.<area>` | `""` | Override one area of the posture with `off`, `warn` or `block`; empty takes the posture's level. Areas: `integrity`, `mcp`, `publish`, `records`, `outward`, `seats`; for example `security.areas.mcp` = `"off"` skips the MCP registry check. `records` below `block` is a config finding. |
-| `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`, and refuses under `security.posture = "strict"`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
+| `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
@@ -70,10 +66,10 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `checks.bootstrap` | `""` | One command `worktree add` runs in each new worktree through the checks runner (capped at `repos.check_timeout_seconds`), for example `python3 -m venv .venv && .venv/bin/python -m pip install -q -e .`. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
-| `owner.handles` | `[]` | Bare chat IDs and code host handles. See [People, channels and tools](#people-channels-and-tools). |
+| `owner.handles` | `[]` | Bare chat IDs and code host handles the outward lint treats as your name. |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
-| `owner.verbosity.decisions` | `""` | Level for a learning or MCP registry card. Empty uses `owner.verbosity.default`. |
+| `owner.verbosity.decisions` | `""` | Level for an MCP registry card. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -100,7 +96,7 @@ and lets the turn end.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `spec.engine` | `"speckit"` | The spec engine every non-trivial item is specified with before it is built: `speckit`, `superpowers`, `openspec`, or `none`, which checks nothing. |
-| `spec.mode` | `"strict"` | `strict` refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. Under `security.posture = "observe"`, `strict` runs as `advisory`. |
+| `spec.mode` | `"strict"` | `strict` refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. With `guards.enforce = false`, `strict` runs as `advisory`. |
 | `spec.skip_tiers` | `["light"]` | Lead tiers (`light`, `standard`, `full`) whose items need no spec. The skip holds only while the diff agrees: at the move to the gates, a computed tier outside this list needs the spec after all. |
 
 Steps per engine, each run by the builder with the engine's own command, read from the artifacts in the item's worktree (the item id lowercased):
@@ -158,7 +154,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. See [People, channels and tools](#people-channels-and-tools). |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
@@ -253,7 +249,7 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `docs.space` | `""` | The Notion or Confluence page new pages go under, as a link. `bin/wuwei doctor` reads it. |
 | `docs.root` | `"docs"` | Under markdown, the directory in each repository that holds the pages. |
 | `docs.publish` | `["report", "retro"]` | Daily pages `wuwei report` and `wuwei retro` publish once per day under notion or confluence. No effect under markdown. |
-| `docs.auto` | `[]` | Page kinds (`page`, `report`, `retro`) written at once; any other kind is stored as a draft for `bin/wuwei drafts approve <id>`. Sensitive text drafts anyway. |
+| `docs.auto` | `[]` | Kept for older workspaces. Every page kind is written through the docs port after the outward lint (#838). |
 | `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
 
 ## Boundaries and deployment
@@ -274,7 +270,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 Two commands change one value, each with a diff and its Owner step card, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
-- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set docs.publish '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outbound.work_channels '["C1"]' --add`); on a named-entry table such as `outbound.people` or `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
+- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set docs.publish '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outward.allow '["mcp__slack__slack_send_message"]' --add`); on a named-entry table such as `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
 - `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
 
 Run `wuwei config promote` after `init` and the `[[repos]]` entries (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout; without `--measure` it runs nothing there. It exits 0 when it applied or found nothing to change, 1 without your Yes, and 2 when it could not run.
@@ -292,7 +288,7 @@ The proposal is additive. A key absent from `config.toml` is added, and `deploy.
 
 Only fast commands go into `repos.fast_checks` through `config promote`. `ruff check .`, `black --check .`, `npm run lint`, `make lint` and `markdownlint .` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `wuwei config promote --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at `repos.check_timeout_seconds`, default 300), and may leave tool caches there. A measured run at 80 % of that limit or more proposes `check_timeout_seconds` at twice the limit. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The promote digest lists the rest as `CI only, not proposed as a fast check` lines with the measurement or "unmeasured".
 
-`fast_checks = []` means none configured: items build, `wuwei pr raise` adds `checks: none configured` to the PR body, and CI and the gates are the evidence; `wuwei status` and `wuwei doctor` say so, in every posture.
+`fast_checks = []` means none configured: items build, `wuwei pr raise` adds `checks: none configured` to the PR body, and CI and the gates are the evidence; `wuwei status` and `wuwei doctor` say so.
 
 Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the digest names its file, line and rule as a `Flagged` line without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
 
@@ -300,60 +296,36 @@ Repository text is data. A file with instruction-like text, such as a line telli
 
 On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` event per change per day. Run `wuwei config promote` again to approve the new state; `bin/wuwei doctor` names it.
 
-## Outward text and outbound tiers
+## Outward sends
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message; the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
+| `outward.allow` | `[]` | Exact MCP tool names that may send to other people. A write through any other MCP tool is refused with exit 1, whatever `guards.enforce` says. A tool whose name is neither a read nor a write and that names no channel runs, and the lint logs that line. The refusal names the line to add, `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks its Owner step card. The match is exact: no pattern, prefix or case folding. A local tool and a write to [your own surfaces](#your-own-surfaces) never need it. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
-| `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` or from `config set` replaces the defaults; `config set --add` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
-| `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail`, `other` or `local`), checked before the rules. A `local` server acts only on your machine and passes the outward guard. Built in: `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator`, `computer-use` and the `Claude_Browser` preview tools. The Bash guards judge a `run_in_terminal` command; `bin/wuwei outbound learn` proposes entries. Reads still pass. See [People, channels and tools](#people-channels-and-tools). |
-| `outward.modes` | `{}` | MCP server id to its write mode, the first rows of the [tier table](concepts.md#outbound-tiers): `send` (every write goes out after the lint), `draft` (`ask`, every write drafts) or `refuse` (`block`, refused with exit 1). Under `strict` a `send` mode still never reaches a client or public audience. Without one, the rest of the table decides. The learn card offers each mode. See [People, channels and tools](#people-channels-and-tools). |
-| `outward.classes` | `{}` | MCP server id to the audience class (`owner`, `team`, `company`, `client` or `public`) of a channel or person it has not learned. Without one, chat, Slack, mail and the code host are `company`; a tracker, docs or `other` write with no destination is `team`. See [People, channels and tools](#people-channels-and-tools). |
+| `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus the lint channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` or from `config set` replaces the defaults; `config set --add` adds to them. They decide no send. |
+| `outward.servers` | `{}` | MCP server id to its lint channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`) or `local`, checked before the rules. A `local` server acts only on your machine and passes the outward guard. Built in: `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator`, `computer-use` and the `Claude_Browser` preview tools. The Bash guards judge a `run_in_terminal` command. Reads still pass. |
 | `outward.max_length.slack` | Not set | Example positive maximum for one channel under `[outward.max_length]`. |
-| `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
+| `outward.humanize` | `true` | Lint outward text for AI tells before it is sent; `false` turns the lint off. |
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
 | `outward.humanize_strict` | `false` | `true` refuses a text with a tell; `false` warns and records `outward.ai_tells`. |
-| `outward.draft_ttl` | `3600` | Seconds an approved draft's tool call may repeat, once; at least 60. |
-| `outbound.tiers` | `[]` | Your tier rows, before the defaults; the first match wins. Each row has any of `tool` (regex on the tool name or the channel kind), `person` (id or `slack:<id>`), `channel` (id or class), `audience` (class) and `topic` (`sensitive`, `commitment`, `disagreement` or `thread`, a reply in a chat thread), and the `tier`: `send`, `ask` or `block`. An unknown key or a bad `tool` regex refuses the whole file in every posture. `bin/wuwei outbound tiers` prints the effective table. |
-| `outbound.work_channels` | `[]` | Team channel IDs (class `team`), eligible for routine auto-send. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.external_channels` | `[]` | Shared or client channels (class `client`); these override work channels. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.channel_classes` | `{}` | Channel ID to any audience class, over both lists, for example `C4 = "public"`. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.company_domains` | `[]` | Exact internal domain names. |
-| `outbound.code_host_orgs` | `[]` | Internal code host organizations. |
-| `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys, each with `email`, `org` and `class` (`owner`, `team`, `company`, `client` or `public`); `bin/wuwei outbound learn` proposes `slack:` entries for the day's reviewers with `class = "team"`. Without a `class`, an internal person is `team` and anyone else takes the connector's default class; `doctor` warns. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
-| `outbound.default_tier` | `"send"` | The umbrella: what no tier row narrows gets this (`send`, `ask` or `block`) for chat, code host, mail and other writes. It also covers bug, triage and follow-up tickets in the workspace's own tracker; other docs and tracker writes keep `docs.auto` and `tracker.auto`. With `send` the broad commitment, disagreement and company rows drop out of the defaults; narrow with `outbound.tiers` rows per tool, person, channel, audience or topic. |
-| `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. See [People, channels and tools](#people-channels-and-tools). |
+| `outbound.code_host_orgs` | `[]` | Internal code host organizations. A GitHub tracker outside them is external, so WUWEI creates no labels there. |
+| `outbound.owner` | all empty | Your own identity per surface: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail`, `pages` (your own Slack canvas ids and Notion or Confluence page ids) and `code_host` (login). See [Your own surfaces](#your-own-surfaces). |
 | `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
-| `outbound.sensitive_keywords` | Built-in sensitive topic words | Optional replacement list; see the template for the full list. |
-| `outbound.sensitive_patterns` | `['\\bmental\\s+health\\b']` | Optional replacement regex list. |
-| `outbound.commitment_patterns` | Built-in commitment regexes | Optional replacement list; see the template for exact regexes. |
-| `outbound.disagreement_patterns` | Built-in disagreement regexes | Optional replacement list; see the template for exact regexes. |
 
-Unknown destinations and direct messages to anyone but you draft by default. A channel allowlist is a ceiling; it does not bypass outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) contains the exact regex defaults and examples.
+WUWEI's own outward duties go through its adapter ports, which you configure: a review ping, a tracker comment or ticket, a docs page, the day report and a PR thread reply. Each passes the canary check and the outward lint, and none needs `outward.allow`. A channel limit does not bypass the outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) has the defaults and examples.
 
-## People, channels and tools
+## Your own surfaces
 
-What WUWEI learns about your workspace is relational. A person belongs to channels, and a channel has an audience class. A connector sends through a channel kind with a mode. A mail address maps to a code-host login and a chat mention, and a login reviews a repository. `.wuwei/graph.json` holds it as one register of nodes and typed edges, and the config keys above that hold these facts are views of it:
+A write whose every destination is yours is local, never an outward send. It passes without `outward.allow`, the lint skips its third-person rules, and it records an `outward.to_owner` event. The destinations are the values under `channel`, `channel_id`, `recipient`, `recipients`, `to`, `cc`, `bcc`, `page_id`, `database_id` and `canvas_id`, at any depth. So a Notion `parent.page_id` counts.
 
-| View key | Edges |
-| --- | --- |
-| `outbound.people` | `person:<key>` maps to its `address:`, is a member of its `org:` and has its `class`. |
-| `outbound.channel_classes`, `outbound.work_channels`, `outbound.external_channels` | `channel:<id>` has class `<class>`, `team` or `client`. |
-| `outbound.owner` | `person:owner` maps to your Slack user, DM channel, mail address and login. |
-| `owner.handles` | `person:owner` maps to each handle: a Slack user id as `person:slack:<id>`, any other as `login:<handle>`. |
-| `outward.servers`, `outward.modes`, `outward.classes` | `connector:<server>` sends through its channel kind, has its mode and its default class. |
-| `shepherd.authors` | `address:<email>` maps to its `login:` and its `person:slack:` mention. |
-| `repos.<n>.shepherd.reviewers` | `login:<login>` reviews `repo:<name>`. |
+| Surface | Your config | Matches |
+| --- | --- | --- |
+| Slack self-DM | `outbound.owner.slack.dm` and `outbound.owner.slack.user` | a message whose channel or recipient is one of them |
+| Slack canvas | `outbound.owner.pages` (canvas ids) | a canvas write whose `canvas_id` is yours |
+| Notion or Confluence page | `outbound.owner.pages` (page ids) | a page update by `page_id`, or a create whose `parent.page_id` is yours |
+| Mail to yourself | `outbound.owner.mail` | every recipient, cc, bcc and address in the text is yours |
 
-Each view edge names its config key. The register also keeps what no key can hold: the names an approved `bin/wuwei outbound learn` card gave a channel or a person, and that a thread's participants are members of its channel, each naming the card. The guards keep reading `config.toml`; the register decides nothing.
-
-`bin/wuwei config set`, every card answer that writes config and `bin/wuwei init --upgrade` write the register and `config.toml` together, the register first. Agent tools cannot write it (the records floor). A register that cannot be read or written never stops a write: the command prints one warning, `wuwei <command>: warning: .wuwei/graph.json not updated: <reason>; move .wuwei/graph.json aside and run bin/wuwei init --upgrade`, and writes `config.toml` as usual.
-
-`bin/wuwei who <name>` prints a node, its edges and the tier a routine message there gets, computed by the same function the outward guard calls. The name is a node id (`channel:C01`), a bare id (`C01`, `U01`), a people key (`slack:U01`), a learned name (`#eng`, `@ada`), a login or an MCP tool name, which names its connector. For a channel it lists the people known to be in it. `--json` prints a list of `{node, name, edges, tier, rule}` for the planner. It exits 1 when no node matches or the register is missing, and 2 when the register is damaged. `bin/wuwei why <draft id>` names the edge behind a held draft.
-
-A hand edit of a modeled key is drift: `bin/wuwei doctor` warns on its `register` row and names the key, and `bin/wuwei init --upgrade` takes the config value into the register. The upgrade also creates the register for a workspace that has none and adds a comment naming it above each modeled table.
+A call with no destination is never yours. Your code-host login is never local: others read a code-host comment.
 
 ## Goals and discovery
 
@@ -429,16 +401,15 @@ before the lead, and `bin/wuwei plan propose` checks again. The check exits 2 wh
 any server is unmeasured, else 1 while findings await an owner decision, else 0.
 High/critical findings open an owner decision. Medium/low findings remain visible.
 
-`scanner.mcp.block` is unset by default; the security posture decides: `observe` and
-`guarded` block no finding, `strict` blocks `["critical", "high", "unmeasured"]`. Set
-it to refuse agent and runtime launches and `plan propose` on top of that default: a
-pending finding with a listed severity (exit 1), or any unmeasured server when the list
-holds `"unmeasured"` (exit 2). Everything else is a warning in the event log. Under `observe` the list has
-no effect. The full v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check
-that could not run (invalid input, an interrupted check, a stale or missing record)
-refuses with exit 2 under `guarded` and `strict`. A workspace created before #351
-carries `block = ["critical"]` from the old template; `bin/wuwei config check` names it,
-and deleting the line takes the posture default.
+`scanner.mcp.block` is unset by default, so no finding blocks. Set it to refuse agent and
+runtime launches and `plan propose`: a pending finding with a listed severity (exit 1), or
+any unmeasured server when the list holds `"unmeasured"` (exit 2). Everything else is a
+warning in the event log. With `guards.enforce = false` the list has no effect. The full
+v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check that could not run
+(invalid input, an interrupted check, a stale or missing record) refuses with exit 2 while
+`guards.enforce` is on. A workspace created before #351 carries `block = ["critical"]` from
+the old template; `bin/wuwei config check` names it, and deleting the line takes the
+default.
 
 For a server that stays unmeasured, you may run
 `bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and answer

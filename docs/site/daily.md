@@ -268,13 +268,11 @@ With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan p
 per item and Approve opens or links them. An item still without one stops with a line naming
 its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. `wuwei next` and the loop DM show the
 ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
-Decisions and review results wait in `bin/wuwei drafts` until you send them.
 
-A draft is one card away from being sent. The refusal names the draft id and the rule that
-held it; the planner asks you its card (`bin/wuwei drafts show <id> --widget`) and records
-your answer with `bin/wuwei drafts approve <id>` or `drafts drop <id>`. Under strict you run
-that line in a host terminal. A draft from a connector goes out when the seat repeats its
-call, once.
+A message to other people through an MCP tool goes out only when that tool is on
+`outward.allow`. Otherwise the refusal names one line, `bin/wuwei config set outward.allow
+'["<tool>"]' --add`; the planner runs it, asks you its Owner step card, and the call passes
+on retry. A write to your own DM, canvas or page is never held.
 
 PR changes reach the planner without you. Every change on a raised or claimed PR that
 needs an action is one `pr.changed` event with a summary, for example
@@ -295,8 +293,7 @@ merge the policy does not clear or one you keep, an ESCALATE verdict, a parked i
 resume and a scope change a reviewer asks on a PR. The command that needs your answer
 prints its Owner step card; the planner asks it in the session and runs the command again on
 Yes. A [PARK](concepts.md#park) verdict parks the item without asking you; the report and
-`bin/wuwei why <item>` show its reason. `bin/wuwei drafts approve` or `drafts drop` answers a
-held draft.
+`bin/wuwei why <item>` show its reason.
 
 To answer from your phone, run the planner session with Claude Code Remote Control
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on

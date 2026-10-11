@@ -29,8 +29,6 @@ class Port:
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('''
-[outbound]
-default_tier = "ask"
 [owner]
 name = "Builder"
 handles = ["U12345", "builder"]
@@ -746,21 +744,6 @@ def test_uncleared_merge_keeps_owner_decision_due(case, monkeypatch, capsys):
     assert capsys.readouterr().out == f'{REF}: {card}\n'
 
 
-def test_review_request_outbound_tier_uses_fresh_gate(case):
-    from wuwei import outward
-    root, host, _, _, _ = case
-    config = workspace.load_config(root)
-    config['outbound']['work_channels'] = ['CREVIEW']
-    state._write_state(lambda data: data.update(pr_reviewers={REF: ['alice', 'bob', 'lead']}), root, reserved=False)
-    host.results['threads'].data['comments'] = [{'id': 1, 'author': 'review-bot', 'is_bot': True,
-        'body': 'Confidence Score: 5/5 /commit/' + SHA,
-        'created_at': '2026-09-29T10:00:00Z', 'updated_at': '2026-09-29T10:00:00Z'}]
-    text = 'PR #7 ready for review: <https://github.com/acme/widget/pull/7|#7> <@UALICE> <@UBOB> <@ULEAD>'
-    assert outward.classify(text, root, config, {'channel': 'CREVIEW', 'text': text}, kind='chat') == (0, 'send')
-    host.results['checks'].data[0]['conclusion'] = 'failure'
-    assert outward.classify(text, root, config, {'channel': 'CREVIEW', 'text': text}, kind='chat')[1] == 'draft'
-
-
 def test_reviewer_ladder_widens_for_sparse_history(case):
     from wuwei import shepherd
     root, host, _, _, vcs = case
@@ -918,7 +901,6 @@ def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     assert not any(name == 'label' for name, _, _ in host.calls)
 
 
-
 def test_raise_records_owner_merge_on_the_pr(case, monkeypatch):
     # #678: a flagged item's PR says who keeps the merge, in the body and as a label.
     from wuwei import shepherd
@@ -952,12 +934,12 @@ def test_raise_body_names_no_checks_once_and_only_when_none(case, monkeypatch):
 GATE_MISS = f'pre-PR gates not passed at current HEAD {SHA} for item ITEM-1: security; run the named gate for this HEAD'
 
 
-def gate_miss(case, monkeypatch, posture):
+def gate_miss(case, monkeypatch, enforce=True):
     root, host = solo_raise(case, monkeypatch)
     monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (1, GATE_MISS))
-    if posture:
+    if not enforce:
         with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write(f'\n[security]\nposture = "{posture}"\n')
+            stream.write('\n[guards]\nenforce = false\n')
     return root, host
 
 
@@ -971,21 +953,20 @@ def would_refuse(root):
             for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
 
 
-def test_raise_gate_miss_warns_under_observe(case, monkeypatch, capsys):
-    # #530: a missing gate verdict is a warning under observe; the PR is raised.
+def test_raise_gate_miss_warns_with_enforce_off(case, monkeypatch, capsys):
+    # #530, #837: a missing gate verdict is logged and warned with guards.enforce = false; the PR is raised.
     from wuwei import shepherd
-    root, host = gate_miss(case, monkeypatch, 'observe')
+    root, host = gate_miss(case, monkeypatch, False)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     assert len(created(host)) == 1 and 'warning: ' + GATE_MISS in capsys.readouterr().err
     [event] = would_refuse(root)
-    assert event['reason'] == GATE_MISS and event['level'] == 'warn'
+    assert event['reason'] == GATE_MISS and set(event) == {'guard', 'reason', 'exit', 'target', 'session', 'item'}
 
 
-@pytest.mark.parametrize('posture', [None, 'strict'])
-def test_raise_gate_miss_refuses_under_guarded_and_strict(case, monkeypatch, capsys, posture):
+def test_raise_gate_miss_refuses(case, monkeypatch, capsys):
     # #816: no card; the gate reason names the seat's step.
     from wuwei import shepherd
-    root, host = gate_miss(case, monkeypatch, posture)
+    root, host = gate_miss(case, monkeypatch)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert capsys.readouterr().out.strip() == GATE_MISS and not created(host)
     assert not list((root / '.wuwei/days').glob('*/decisions/D-*.md'))

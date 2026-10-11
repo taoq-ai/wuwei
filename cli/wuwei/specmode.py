@@ -188,12 +188,12 @@ def own(engine, tree, path):
 
 
 def mode(config):
-    """The effective mode: off, advisory or strict; strict runs as advisory under observe."""
+    """The effective mode: off, advisory or strict; strict runs as advisory while
+    guards.enforce = false."""
     spec = config['spec']
     if spec['engine'] == 'none' or spec['mode'] == 'off':
         return 'off'
-    from wuwei import workspace
-    if spec['mode'] == 'advisory' or workspace.posture(config)[0] == 'observe':
+    if spec['mode'] == 'advisory' or not config['guards']['enforce']:
         return 'advisory'
     return 'strict'
 

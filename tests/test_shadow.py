@@ -24,7 +24,7 @@ def refused(root, guard, target, day='2026-09-29'):
 
 def test_would_refuse_is_producer_only(root, capsys):
     assert main(['event', 'guard.would_refuse', '{}']) == 1
-    assert 'reserved; written by wuwei hook (shadow mode)' in capsys.readouterr().err
+    assert 'reserved; written by wuwei hook (guards.enforce = false)' in capsys.readouterr().err
 
 
 def test_shadow_lines_group_and_name_candidates(root):
@@ -70,37 +70,24 @@ def test_the_retired_commands_are_unknown(root, argv):
     assert exit_.value.code == 2
 
 
-OBSERVE = '[security]\nposture = "observe"\n'
+OFF = '[guards]\nenforce = false\n'
 
 
-@pytest.mark.parametrize('config,posture', [
-    ('', 'guarded'),
-    ('[security]\nposture = "strict"\n[guards]\nshadow_since = "2026-09-22"', 'strict'),
-    ('[guards]\nmode = "enforce"\nshadow_since = "2026-09-22"', 'guarded'),
-    (OBSERVE, 'observe'),
-    (OBSERVE + '[guards]\nshadow_since = "2026-09-23"', 'observe'),
-    (OBSERVE + '[guards]\nshadow_since = "2026-09-22"', 'observe'),
-    (OBSERVE + '[guards]\nshadow_days = 3\nshadow_since = "2026-09-25"', 'observe'),
-    # The deprecated #308 form is observe.
-    ('[guards]\nmode = "shadow"\nshadow_since = "2026-09-22"', 'observe'),
-])
-def test_status_shows_posture(root, config, posture):
+@pytest.mark.parametrize('config,enforce', [('', True), ('[guards]\nenforce = true\n', True), (OFF, False)])
+def test_status_shows_enforce(root, config, enforce):
     from wuwei.commands import status
     (root / '.wuwei/config.toml').write_text(config)
     state._write_state(lambda data: None, root, reserved=False)
     directory = workspace.day_dir(root)
     data = status.snapshot(directory)
-    assert data['posture'] == posture
-    for name in ('observe', 'strict'):
-        assert (f' · {name}' in status.line(data)) is (name == posture)
-    assert 'guarded' not in status.line(data)
+    assert data['enforce'] is enforce and 'posture' not in data
+    assert (' · observe' in status.line(data)) is not enforce
     assert not [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
 
 
-@pytest.mark.parametrize('config,on', [('', False), ('[guards]\nmode = "shadow"\n', True), (OBSERVE, True),
-                                       ('[security]\nposture = "strict"\n', False)])
-def test_session_start_says_observe_is_on(root, config, on):
+@pytest.mark.parametrize('config,on', [('', False), ('[guards]\nenforce = true\n', False), (OFF, True)])
+def test_session_start_says_guards_log_only(root, config, on):
     from wuwei.guards import lifecycle
     (root / '.wuwei/config.toml').write_text(config)
     message = lifecycle.session_start({'cwd': str(root)})[1]
-    assert ('Observe posture is on' in message and '## Shadow section' in message) is on
+    assert ('Guards log only' in message and '## Shadow section' in message) is on

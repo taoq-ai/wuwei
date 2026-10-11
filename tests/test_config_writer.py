@@ -101,18 +101,18 @@ def test_missing_table_and_parents():
 LAYOUTS = {
     'template': TEMPLATE + REPO,
     'subtable': '[outward]\nhumanize = true\n[outward.max_length]\nslack = 10\n',
-    'spaced': '[outward]\n[ outward.max_length ]\nslack = 10\n[ outbound ]\nwork_channels = []\n',
-    'quoted': '[owner."verbosity"]\ndefault = "brief"\n["outbound"]\ncompany_domains = []\n',
+    'spaced': '[outward]\n[ outward.max_length ]\nslack = 10\n[ outbound ]\ncode_host_orgs = []\n',
+    'quoted': '[owner."verbosity"]\ndefault = "brief"\n["outbound"]\ncode_host_orgs = []\n',
     'inline': 'owner = {name = "Pat"}\noutbound = {code_host_orgs = ["acme"]}\n',
     'array': '[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
              '[[outward.tool_patterns]]\npattern = "x"\nchannel = "slack"\n',
     'missing': '[watch]\nclock_seconds = 600\n',
-    'comments': '[owner] # who\nname = "Pat" # me\n[outbound] # out\nwork_channels = [] # ids\n',
-    'crlf': '[owner]\r\nname = "Pat"\r\n[outbound]\r\nwork_channels = []\r\n[watch]\r\nclock_seconds = 1\r\n',
+    'comments': '[owner] # who\nname = "Pat" # me\n[outbound] # out\ncode_host_orgs = [] # ids\n',
+    'crlf': '[owner]\r\nname = "Pat"\r\n[outbound]\r\ncode_host_orgs = []\r\n[watch]\r\nclock_seconds = 1\r\n',
     'no newline': '[owner]\nname = "Pat"\n[outbound]\ncode_host_orgs = []',
 }
-KINDS = [(('owner',), 'name', 'Lee'), (('outbound',), 'work_channels', ['C1', 'C2']),
-         (('outbound',), 'people', {'slack:U1': {'email': 'a@example.test'}})]
+KINDS = [(('owner',), 'name', 'Lee'), (('outbound',), 'code_host_orgs', ['C1', 'C2']),
+         (('shepherd',), 'authors', {'a@example.test': {'login': 'ada'}})]
 
 
 @pytest.mark.parametrize('layout', LAYOUTS)
@@ -152,9 +152,9 @@ def test_span_array_of_tables():
 
 
 def test_span_header_table_and_dotted_key():
-    raw = '[outbound.people]\n"slack:U1" = {email = "a@example.test"}\n[watch]\nclock_seconds = 1\n'
-    people = {'slack:U1': {'email': 'a@example.test'}, 'github:dev': {'org': 'acme'}}
-    placed(raw, ('outbound',), 'people', people, 1)
+    raw = '[shepherd.authors]\n"a@example.test" = {login = "ada"}\n[watch]\nclock_seconds = 1\n'
+    people = {'a@example.test': {'login': 'ada'}, 'b@example.test': {'login': 'bob'}}
+    placed(raw, ('shepherd',), 'authors', people, 1)
     raw = '[[repos]]\nname = "acme/widget"\nmerge.auto = false\n'
     assert 'merge.auto = true\n' in placed(raw, ('repos', 0, 'merge'), 'auto', True, 1)
 
@@ -174,17 +174,17 @@ def write(raw, key, value, mode='replace'):
 
 
 @pytest.mark.parametrize('key,value', [('outward.tool_patterns', PATTERNS), ('owner.name', 'Lee'),
-                                       ('outbound.people', {'slack:U1': {'email': 'a@example.test'}})])
+                                       ('shepherd.authors', {'a@example.test': {'login': 'ada'}})])
 def test_write_value_twice(key, value):
     once = write(TEMPLATE, key, value)
     assert once != TEMPLATE and write(once, key, value) == once
 
 
 def test_write_value_modes():
-    raw = TEMPLATE.replace('work_channels = []', 'work_channels = ["C1"]')
-    text = write(raw, 'outbound.work_channels', ['C1', 'C2'], 'append')
-    assert tomllib.loads(text)['outbound']['work_channels'] == ['C1', 'C2']
-    assert write(text, 'outbound.work_channels', ['C2'], 'append') == text
+    raw = TEMPLATE.replace('code_host_orgs = []', 'code_host_orgs = ["C1"]')
+    text = write(raw, 'outbound.code_host_orgs', ['C1', 'C2'], 'append')
+    assert tomllib.loads(text)['outbound']['code_host_orgs'] == ['C1', 'C2']
+    assert write(text, 'outbound.code_host_orgs', ['C2'], 'append') == text
     with pytest.raises(ValueError, match='replace'):
         write(raw, 'owner.name', 'Lee', 'append')
     with pytest.raises(ValueError, match='unknown mode'):
@@ -198,10 +198,10 @@ def test_write_value_modes():
     (('cap',), 'an integer', '0'),
     (('repos', 0, 'merge_deploys'), 'true or false', 'true'),
     (('outward', 'tool_patterns'), 'a list of tables', '[{pattern = "text", channel = "text"}]'),
-    (('outbound', 'people'), 'a table', '{name = {email = "text", org = "text"}}'),
+    (('shepherd', 'authors'), 'a table', '{name = {login = "text", mention = "text"}}'),
     (('boundary', 'api'), 'a string', '"text"'),
     (('owner', 'verbosity', 'default'), 'a string', '"brief"'),
-    (('outbound', 'work_channels'), 'a list of strings', '["text"]'),
+    (('outbound', 'code_host_orgs'), 'a list of strings', '["text"]'),
 ])
 def test_declared_and_describe(path, kind, example):
     assert configtext.describe(configtext.declared(path)) == (kind, example)
@@ -212,9 +212,9 @@ def test_declared_unknown():
 
 
 def test_two_tables():
-    raw = '[outbound]\nwork_channels = ["C1"]\n[outward]\nwork_channels = ["C1"]\n'
+    raw = '[outbound]\ncode_host_orgs = ["C1"]\n[outward]\ncode_host_orgs = ["C1"]\n'
     assert configtext.misplaced(raw) == [
-        'work_channels is set in [outbound] (line 2) and [outward] (line 4); '
+        'code_host_orgs is set in [outbound] (line 2) and [outward] (line 4); '
         '[outward] does not take it, remove line 4']
     raw = '[tracker]\nauto = []\n[[repos]]\nname = "acme/widget"\n[repos.merge]\nauto = false\n'
     assert configtext.misplaced(raw) == []
@@ -226,44 +226,3 @@ def test_line_separator_inside_a_string():
     check(raw, text, ('owner',), 'pronouns', 'they')
 
 
-@pytest.fixture
-def owned(tmp_path, monkeypatch):
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-08T12:00:00+00:00')
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[outbound]\nwork_channels = ["C01"]\n')
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
-
-
-def _set(key, value):
-    from argparse import Namespace
-    from wuwei.commands import config as config_command
-    return config_command.set_value(Namespace(key=key, value=value, replace=False),
-                           confirm=lambda *args, **kwargs: True)
-
-
-def test_a_config_write_writes_the_register(owned, capsys):
-    # #552: the one writer keeps the register and its views together.
-    from wuwei import graph, workspace
-    from wuwei.commands import config as config_command
-    assert _set('outbound.work_channels', '["C05"]') == 0
-    register = graph.load(owned)
-    assert {'from': 'channel:C05', 'type': 'class', 'to': 'team', 'view': 'outbound.work_channels'} in register['edges']
-    assert graph.drift(register, workspace.load_config(owned)) == []
-    assert config_command._edit('outbound learn', 'change', lambda *args, **kwargs: True,
-                                lambda root, raw: raw + 'external_channels = ["C06"]\n', owned,
-                                keys=['outbound.external_channels']) == 0
-    assert 'channel:C06' in graph.load(owned)['nodes']
-
-
-def test_a_damaged_register_never_stops_a_config_write(owned, capsys):
-    from wuwei import workspace
-    (owned / '.wuwei/graph.json').write_text('not json')
-    capsys.readouterr()
-    assert _set('outbound.work_channels', '["C05"]') == 0
-    err = capsys.readouterr().err
-    assert err.count('warning: .wuwei/graph.json not updated') == 1 and 'init --upgrade' in err
-    assert 'C05' in workspace.load_config(owned)['outbound']['work_channels']
-    assert (owned / '.wuwei/graph.json').read_text() == 'not json'

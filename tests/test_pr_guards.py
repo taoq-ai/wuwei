@@ -777,12 +777,19 @@ def item(case):
     return root, fake, decisions, tree
 
 
+def linked(root):
+    from wuwei import state
+    state._write_state(lambda data: data['items']['DIV-1'].update(pr='example/project#5'),
+                       root, reserved=False)
+
+
 @pytest.mark.parametrize('command', ['gh pr create -R example/project --head div-1 -r alice',
                                      'gh -R example/project pr create -H div-1 --base main -r alice',
                                      'cd worktrees/DIV-1 && gh pr create -r alice'])
 def test_create_from_the_workspace_root_names_a_recorded_branch(item, command):
     # #534: the planner raises the PR without leaving the workspace root.
     root, fake, _, tree = item
+    linked(root)  # #837: an unlinked item is refused first, naming pr raise
     assert guard().check(payload(root, command, cwd=root)) == (0, '')
     assert ('head', (str(tree),), root) in fake.calls
 
@@ -790,22 +797,12 @@ def test_create_from_the_workspace_root_names_a_recorded_branch(item, command):
 @pytest.mark.parametrize('command', ['gh pr create -R example/project --head div-1 -r alice',
                                      'gh -R example/project pr create -H div-1 --base main -r alice',
                                      'cd worktrees/DIV-1 && gh pr create -r alice'])
-def test_create_for_a_recorded_item_warns_naming_pr_raise(item, capsys, command):
-    # #783: a PR from gh pr create is not linked to its item; pr raise --item links it.
+def test_create_for_a_recorded_item_is_refused_naming_pr_raise(item, command):
+    # #783, #837: a PR from gh pr create is not linked to its item; pr raise --item links it.
     root = item[0]
-    capsys.readouterr()
-    assert guard().check(payload(root, command, cwd=root)) == (0, '')
-    err = capsys.readouterr().err
-    for part in ('warning: DIV-1 is a WUWEI item', 'bin/wuwei pr raise example/project', '--item DIV-1'):
-        assert part in err, err
-
-
-def test_create_for_a_recorded_item_is_refused_under_strict(item):
-    root = item[0]
-    with (root / '.wuwei/config.toml').open('a') as handle:
-        handle.write('[security]\nposture = "strict"\n')
-    code, reason = guard().check(payload(root, 'cd worktrees/DIV-1 && gh pr create -r alice', cwd=root))
-    assert code == 1 and reason.startswith('pr raise: DIV-1 is a WUWEI item') and '--item DIV-1' in reason
+    code, reason = guard().check(payload(root, command, cwd=root))
+    assert code == 1 and reason.startswith('pr raise: DIV-1 is a WUWEI item'), reason
+    assert 'bin/wuwei pr raise example/project' in reason and '--item DIV-1' in reason
 
 
 def test_create_without_an_unlinked_item_keeps_todays_result(item, capsys):
@@ -842,6 +839,7 @@ def test_cd_into_an_unrecorded_directory_keeps_todays_rule(item):
 
 def test_missing_gate_names_the_branch_and_the_check(item):
     root, _, decisions, tree = item
+    linked(root)
     (decisions / 'gate-DIV-1-security.md').unlink()
     code, reason = guard().check(payload(root, 'gh pr create -R example/project --head div-1 -r alice', cwd=root))
     assert code == 1 and reason.startswith('pr raise: head div-1') and 'security' in reason
@@ -850,7 +848,7 @@ def test_missing_gate_names_the_branch_and_the_check(item):
 
 @pytest.mark.parametrize('command', ['gh pr create --title t --body b --reviewer a; gh pr review 7 --approve',
                                      'gh pr create -r a > /dev/null; gh pr merge 7'])
-def test_chained_create_keeps_the_owner_only_refusal_under_observe(case, monkeypatch, capsys, command):
+def test_chained_create_keeps_the_owner_only_refusal_with_enforce_off(case, monkeypatch, capsys, command):
     # #530 review F1: a chained create is not a raise; the later owner verb must not ride it.
     import io
     import sys
@@ -860,7 +858,7 @@ def test_chained_create_keeps_the_owner_only_refusal_under_observe(case, monkeyp
     from wuwei.guards import Guard
     root = case[0]
     with (root / '.wuwei/config.toml').open('a') as handle:
-        handle.write('[security]\nposture = "observe"\n')
+        handle.write('[guards]\nenforce = false\n')
     data = payload(root, command)
     data.update(session_id='test', transcript_path='transcript.jsonl',
                 hook_event_name='PreToolUse', tool_use_id='test-tool')

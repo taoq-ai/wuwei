@@ -25,7 +25,7 @@ PROBES = {
     ('lifecycle', 'SessionStart', None, 'session_start'): ('Bash', {}, 2),
     ('lifecycle', 'Stop', None, 'stop'): ('Bash', {}, 'message'),
     ('lifecycle', 'SubagentStop', None, 'subagent_stop'): ('Bash', {}, 'message'),
-    ('outward', 'PreToolUse', None, 'check_tier'): ('mcp__slack__post_message', [], 2),
+    ('outward', 'PreToolUse', None, 'check_send'): ('mcp__slack__post_message', [], 2),
     ('outward', 'PreToolUse', None, 'check_lint'): ('mcp__slack__post_message', [], 2),
     ('pr', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'gh pr review --approve'}, 1),
     ('protect_state', 'PreToolUse', 'Bash', 'check_bash'):
@@ -40,7 +40,7 @@ PROBES = {
         ('Write', {'file_path': 'specs/001-a/spec.md'}, 2),
     ('spec', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 2),
     ('stop', 'Stop', None, 'check'): ('Bash', {}, 2),
-    ('traces', 'PostToolUse', None, 'check'): ('Bash', {}, 2),
+    ('traces', 'PostToolUse', None, 'check'): ('Bash', {}, 'event'),  # #837: never refuses
     ('verdict', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_write'):
         ('Write', {}, 2),
     ('verdict', 'SubagentStop', None, 'check_write'): ('Write', {}, 2),
@@ -130,9 +130,11 @@ def assert_probe(check, row, root, monkeypatch):
                'session_id': 'mutation', 'agent_id': 'mutation'}
     events = []
     if expected == 'event':
-        from wuwei import state
+        from wuwei import security, state
         payload['agent_type'] = 'wuwei:builder'
         monkeypatch.setattr(state, 'append_event', lambda *args, **kwargs: events.append(args))
+        if check.__module__.endswith('.traces'):  # the recorder warns with a traces.gap event
+            monkeypatch.setattr(security, 'load', lambda *a, **k: (_ for _ in ()).throw(OSError('load')))
     elif expected == 'message':
         payload['cwd'] = 'relative'
     elif check.__module__.endswith('.lifecycle') and tool == 'Bash':
@@ -144,7 +146,7 @@ def assert_probe(check, row, root, monkeypatch):
         payload['agent_type'] = 'wuwei:builder'
         # A seat the day's state does not hold: the check reports it cannot run.
         monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (root / 'day', 'b', 'builder'))
-    elif check.__module__.endswith(('.traces', '.spec')):
+    elif check.__module__.endswith('.spec'):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
     elif check.__name__ == 'check_mcp':
         (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
@@ -160,7 +162,7 @@ def assert_probe(check, row, root, monkeypatch):
         payload.update(agent_type='wuwei:builder', last_assistant_message='')
     result = check(payload)
     if expected == 'event':
-        assert events, 'seat stop must record an unmatched event'
+        assert events, 'the guard must record its event'
     elif expected == 'message':
         assert result[1], 'planner wake error must be reported'
     else:

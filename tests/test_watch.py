@@ -572,14 +572,13 @@ def test_fresh_day_before_the_plan_is_clean(case, capsys):
 
 
 def test_session_payload_carries_no_drafts(case):
-    from wuwei import drafts, memory
+    from wuwei import memory
     root, _, _, _ = case
     text = 'A private reply body'
     row = {'id': 'DR-1', 'status': 'pending', 'channel': 'chat', 'operation': 'post',
            'adapter': 'slack', 'destination': 'C2', 'text': text, 'created': workspace.now().isoformat(),
            'tier_reason': 'external', 'audience': 'external', 'inputs': {'channel': 'C2', 'text': text}}
     state._write_state(lambda data: data.update(drafts={'DR-1': row}), root, reserved=False)
-    assert drafts.read(state.read_state(root))
     content = memory.session_payload(root)[0]
     assert text not in content and '"inputs"' not in content and 'C2' not in content
 
@@ -857,15 +856,12 @@ def trace_sweep_case(case, *, mapped=True, code=1, session=None, agent_id=None):
     return session, directory
 
 
-@pytest.mark.parametrize('mapped', [True, False])
 @pytest.mark.parametrize('agent_id', [None, 'def456'])
-def test_trace_sweep_parks_and_pages(case, mapped, agent_id):
+def test_trace_sweep_parks_and_pages(case, agent_id):
+    # #352, #837: a seat's chain pages and parks; an unknown session is noted (test_traces_seats_only).
     from wuwei import signal
-    root = case[0]
+    root, mapped = case[0], True
     session, directory = trace_sweep_case(case, mapped=mapped, agent_id=agent_id)
-    if not mapped:  # #352: an unknown session prompts the owner only under strict.
-        with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write('\n[security]\nposture = "strict"\n')
     watch = watch_module()
     assert watch.sweep(root, watch_health=(0, '')) == 1
     item = state.read_state(root)['items']['work']

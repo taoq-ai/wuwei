@@ -566,7 +566,6 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             if current.get('approved_as'):  # #731: the owner's recorded approval settles the scope question
                 header.append(f"Approved as: {current['approved_as']}")
         header += rulings(body, directory, tree, data)
-        strict = workspace.posture(config)[0] == 'strict'
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):
                 if other != pr:
@@ -575,10 +574,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
                     except ValueError as exc:
                         # #740: a ticket is an issue, which the pulls endpoint 404s on (#606); a
-                        # reference is optional evidence, so it never refuses below strict.
-                        from wuwei import references
-                        if strict and not references.not_found(exc):
-                            raise
+                        # reference is optional evidence, so it never refuses.
                         header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
                                       'kept as a reference')
         text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci

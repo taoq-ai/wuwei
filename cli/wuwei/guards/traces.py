@@ -95,15 +95,6 @@ def _record(payload, root, findings=(), transcript_path=None):
     return 0, ''
 
 
-def _strict(root):
-    """The workspace posture is strict; an unreadable one counts as strict."""
-    from wuwei import workspace
-    try:
-        return workspace.posture(workspace.load_config(root))[0] == 'strict'
-    except Exception:
-        return True
-
-
 def check(payload):
     started = time.monotonic()
     import sys
@@ -117,7 +108,9 @@ def check(payload):
         if root is None:
             return 0, ''
     except (OSError, ValueError, TypeError, RuntimeError):
-        return 2, 'wuwei traces: cannot determine workspace scope; run bin/wuwei doctor, which names the workspace problem'
+        print('wuwei traces: cannot determine workspace scope; run bin/wuwei doctor, which names the '
+              'workspace problem', file=sys.stderr)
+        return 0, ''
     inspect = False
     try:
         try:
@@ -171,9 +164,7 @@ def check(payload):
     except BaseException as exc:
         print(f'wuwei traces: {type(exc).__name__}: could not log {kind}; run bin/wuwei doctor',
               file=sys.stderr)
-    # #601: below strict the reason and the event are the warning; strict refuses.
-    code = 2 if slow or inspect or security_data is not None else 0
-    return (code, reason) if code and _strict(root) else (0, '')
+    return 0, ''  # #601, #837: the reason and the event are the warning; recording never refuses
 
 
 def _mismatch(root):

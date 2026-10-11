@@ -124,9 +124,9 @@ def test_hook_denies_missing_brief(day, monkeypatch, capsys):
     assert json.loads(out.out)['hookSpecificOutput']['permissionDecision'] == 'deny'
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
-def test_hook_denies_never_written_brief_below_strict(launch, monkeypatch, capsys, posture):
-    # #725: below strict the records floor still denies a launch naming a missing brief.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_hook_denies_never_written_brief(launch, monkeypatch, capsys, enforce):
+    # #725: the records floor denies a launch naming a missing brief whatever guards.enforce says.
     import io
     import sys
     from wuwei.__main__ import main
@@ -135,7 +135,7 @@ def test_hook_denies_never_written_brief_below_strict(launch, monkeypatch, capsy
     root, directory, vcs, host = day
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'\n[security]\nposture = "{posture}"\n[security.areas]\nintegrity = "off"\n')
+        config.write(f'\n[guards]\nenforce = {enforce}\n')
     payload['tool_input']['prompt'] = f'WUWEI brief: .wuwei/days/{directory.name}/briefs/never.md'
     payload.update(session_id='example', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
     before = (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text())
@@ -144,7 +144,6 @@ def test_hook_denies_never_written_brief_below_strict(launch, monkeypatch, capsy
     out = json.loads(capsys.readouterr().out)['hookSpecificOutput']
     assert out['permissionDecision'] == 'deny'
     assert out['permissionDecisionReason'].startswith('brief .wuwei/days/')
-    assert 'posture: records = block (floor; no setting lowers it)' in out['permissionDecisionReason']
     seats, events = state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()
     assert seats == before[0] and 'seat launched' not in events[len(before[1]):]
 
@@ -588,7 +587,7 @@ def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
 
 
 def test_mcp_gate_is_its_own_guard_record(launch, monkeypatch):
-    # #331: the seats level never relaxes the MCP launch gate, which applies its own posture.
+    # The MCP launch gate is its own record; mcp.cached reads guards.enforce.
     from wuwei import mcp
     from wuwei.guards import agent_launch
     assert [(g.event, g.matcher, g.check.__name__) for g in agent_launch.GUARDS] == [
@@ -607,26 +606,24 @@ def test_mcp_gate_is_its_own_guard_record(launch, monkeypatch):
     assert agent_launch.check_mcp(other) == (0, '')
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_mcp_gate_off_without_scanner(launch, monkeypatch, posture):
-    # #424: adapters.scanner = "none" turns the registry gate off in every posture.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_mcp_gate_off_without_scanner(launch, monkeypatch, enforce):
+    # #424: adapters.scanner = "none" turns the registry gate off whatever guards.enforce says.
     from wuwei import mcp
     from wuwei.guards import agent_launch
     (root, _, _, _), payload = launch
     (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
     with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[security]\nposture = "{posture}"\n')
+        config.write(f'[guards]\nenforce = {enforce}\n')
     assert agent_launch.check_mcp(payload) == (0, mcp.NO_SCANNER)
 
 
-def test_hook_denies_launch_on_mcp_floor_while_seats_warn(day, monkeypatch, capsys):
+def test_hook_denies_launch_on_the_mcp_gate(day, monkeypatch, capsys):
     import io
     import sys
     from wuwei import mcp
     from wuwei.__main__ import main
     monkeypatch.setattr(mcp, 'cached', lambda root: registry.Result(1, reason='MCP registry findings: x'))
-    with (day[0] / '.wuwei/config.toml').open('a') as config:
-        config.write('\n[security.areas]\nintegrity = "off"\n')
     payload = {'cwd': str(day[0]), 'session_id': 'example', 'transcript_path': 'transcript.jsonl',
                'hook_event_name': 'PreToolUse', 'tool_name': 'Agent',
                'tool_input': {'prompt': 'launch without brief', 'description': 'build', 'subagent_type': 'builder'}}
@@ -697,23 +694,21 @@ def adhoc_launch(root, prompt=ADHOC_PROMPT, **inputs):
         'prompt': prompt, 'description': 'Fable review', **inputs}}
 
 
-def set_posture(root, posture, seats=None):
+def set_enforce(root, value):
     with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[security]\nposture = "{posture}"\n')
-        if seats:
-            config.write(f'[security.areas]\nseats = "{seats}"\n')
+        config.write(f'[guards]\nenforce = {str(value).lower()}\n')
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+@pytest.mark.parametrize('enforce', [False, True])
 @pytest.mark.parametrize('inputs,kind', [({'subagent_type': 'general-purpose'}, 'general-purpose'),
                                          ({}, 'general-purpose'), ({'subagent_type': ' '}, 'general-purpose'),
                                          ({'subagent_type': 'Explore'}, 'Explore')])
-def test_untyped_launch_registers_adhoc_seat(day, posture, inputs, kind):
-    # #676: an agent outside the WUWEI seat types is an auditable seat below strict.
+def test_untyped_launch_registers_adhoc_seat(day, enforce, inputs, kind):
+    # #676: an agent outside the WUWEI seat types is an auditable seat, never refused.
     from test_brief import events
     from wuwei import brief as module
     root, directory, _, _ = day
-    set_posture(root, posture)
+    set_enforce(root, enforce)
     state._write_state(lambda data: data.update(planner_session_id='P'), root, reserved=False)
     assert check(adhoc_launch(root, **inputs)) == (0, '')
     seat = state.read_state(root)['seats']['adhoc-1']
@@ -746,18 +741,8 @@ def test_untyped_launch_needs_a_prompt_in_a_day(day, prompt):
 def test_untyped_launch_before_the_day_creates_nothing(day):
     root, directory, _, _ = day
     drop_day(directory)
-    set_posture(root, 'strict')
     assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
     assert not (directory / 'state.json').exists()
-
-
-@pytest.mark.parametrize('seats', [None, 'block'])
-def test_strict_refuses_unrecorded_untyped_launch(day, seats):
-    root = day[0]
-    set_posture(root, 'guarded' if seats else 'strict', seats)
-    code, reason = check(adhoc_launch(root, subagent_type='general-purpose'))
-    assert code == 1 and 'bin/wuwei seat start --role <role> --adhoc' in reason
-    assert state.read_state(root)['seats'] == {}
 
 
 def adhoc_stop(root, transcript, agent_id='a1', agent_type='general-purpose'):
@@ -818,12 +803,11 @@ def test_untraced_stop_before_the_day_records_nothing(day):
 
 
 def test_seat_start_records_an_adhoc_reviewer(day, monkeypatch, capsys):
-    # #676: under strict the planner registers an ad-hoc reviewer, then launches it.
+    # #676: the planner registers an ad-hoc reviewer, then launches it.
     from test_brief import events
     from wuwei import brief as module
     from wuwei.__main__ import main
     root, directory, _, _ = day
-    set_posture(root, 'strict')
     assert main(['seat', 'start', '--role', 'bad role', '--adhoc', ADHOC_PROMPT]) == 2
     assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', '  ']) == 2
     capsys.readouterr()
@@ -836,7 +820,6 @@ def test_seat_start_records_an_adhoc_reviewer(day, monkeypatch, capsys):
         'prompt': 'Review PR 16 for data access'}
     assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
     assert state.read_state(root)['seats']['adhoc-1']['label'] == 'reviewer'
-    assert check(adhoc_launch(root, 'Another prompt', subagent_type='general-purpose'))[0] == 1
     (root / 'report.md').write_text('Done.\n')
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     assert main(['seat', 'stop', 'adhoc-1', '--verdict', str(root / 'report.md')]) == 1
@@ -856,7 +839,7 @@ def test_untyped_agent_is_traced_end_to_end(day, capsys):
     from wuwei.__main__ import main
     from wuwei.guards import agent_launch, traces
     root, directory, _, _ = day
-    set_posture(root, 'observe')
+    set_enforce(root, False)
     assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
     transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl')
     call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),
@@ -953,14 +936,14 @@ def unbriefed(root, description='Gate X', prompt=UNBRIEFED_PROMPT):
         'prompt': prompt, 'description': description, 'subagent_type': 'wuwei:sentinel-arch'}}
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
 @pytest.mark.parametrize('description,item', [('Gate X', 'X'), ('Gate', None), ('Gate X and Y', None)])
-def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, posture, description, item):
-    # #660: a WUWEI seat type launched with no marker is never silently unregistered.
+def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, description, item):
+    # #660: with guards.enforce = false a WUWEI seat type launched with no marker is never
+    # silently unregistered.
     from test_brief import events
     from wuwei import brief as module
     root, directory, _, _ = day
-    set_posture(root, posture)
+    set_enforce(root, False)
     state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root, reserved=False)
     code, reason = check(unbriefed(root, description))
     assert code == 1
@@ -976,11 +959,11 @@ def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, posture, descriptio
     assert last['kind'] == 'seat launched' and last['payload']['item'] == (item or 'adhoc-1')
 
 
-def test_strict_refuses_an_unbriefed_typed_launch(day, monkeypatch, capsys):
+def test_unbriefed_typed_launch_is_refused(day, monkeypatch, capsys):
+    # #837: a seat launch must match a logged brief; refused while guards.enforce is on.
     from test_brief import events
     from wuwei.__main__ import main
     root, directory, _, _ = day
-    set_posture(root, 'strict')
     assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', UNBRIEFED_PROMPT]) == 0
     before = events(directory)
     code, reason = check(unbriefed(root))
@@ -1001,6 +984,7 @@ def test_unbriefed_seat_stops_and_traces_as_adhoc(day):
     from test_brief import events
     from wuwei.guards import agent_launch, traces
     root, directory, _, _ = day
+    set_enforce(root, False)
     assert check(unbriefed(root))[0] == 1
     transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl', UNBRIEFED_PROMPT)
     call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),

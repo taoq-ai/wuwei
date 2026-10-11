@@ -7,7 +7,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
           'session.seen', 'session.rotated', 'item.claimed', 'worktree.adopted', 'worktree.created',
-          'draft.sending', 'draft.approved', 'draft.sent', 'draft.dropped', 'outward.ai_tells', 'outward.lint', 'outward.to_owner',
+          'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
@@ -15,7 +15,6 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'decision.decided',
           'decision.routed', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
-          'pr.reply.drafted',
           'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
           'gate.received', 'gate.tiered', 'gate.delta_head', 'discovery.requested', 'discovery.intake',
@@ -27,7 +26,6 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'outbound.proposed', 'outbound.learned', 'outbound.thread',
           'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
           'cap.derived')
 
@@ -43,10 +41,12 @@ def classify(event, state):
     if kind == 'state.transition' and payload.get('phase') == 'escalated':
         kind = 'item.escalated'
     lane = 'People' if kind.startswith('person.') else (
-        'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
+        'Decisions' if kind.startswith('decision.') or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
-    if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
-        return ('warn' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
+    if kind == 'guard.would_refuse':  # #837: logged, read by why and the report
+        return 'silent', lane
+    if kind == 'traces.unmatched':  # #352
+        return 'warn', lane
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
     if kind == 'mcp.checked':

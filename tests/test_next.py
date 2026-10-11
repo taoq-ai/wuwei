@@ -311,12 +311,13 @@ ROW = next_command._row('session', "Register this session as today's planner.",
                        'wuwei plan session <session id>')
 
 
-@pytest.mark.parametrize('posture,phrases', [
-    ('observe', ('Observe posture is on', "The day report's ## Shadow section")),
-    ('guarded', ('Posture guarded',)), ('strict', ('Posture strict',))])
-def test_orientation_block(monkeypatch, posture, phrases):
+@pytest.mark.parametrize('enforce,phrases', [
+    (False, ('Guards log only (guards.enforce = false)', "The day report's ## Shadow section",
+             'merges and approvals stay owner-only')),
+    (True, ('Guards enforce:', 'merges and approvals stay owner-only'))])
+def test_orientation_block(monkeypatch, enforce, phrases):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
-    text = next_command.orientation(ROW, posture, 'speckit strict', 'S')
+    text = next_command.orientation(ROW, enforce, 'speckit strict', 'S')
     assert text.startswith(next_command.HEADER) and len(text.splitlines()) < 30
     shown = next_command.text(ROW).replace('<session id>', 'S')
     for phrase in ('Next: ' + shown, next_command.LOOP, 'wuwei --help', '\nwuwei plan session S\n',
@@ -324,16 +325,16 @@ def test_orientation_block(monkeypatch, posture, phrases):
         assert phrase in text
     for phrase in ('SKILL.md', 'Do this now.', 'docs/site/agent.md', 'Start or resume'):
         assert phrase not in text
-    assert '<session id>' in next_command.orientation(ROW, posture)
+    assert '<session id>' in next_command.orientation(ROW, enforce)
 
 
 def test_orientation_by_state(monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
-    close = next_command.orientation(next_command._row('close', 'Close.', 'wuwei close'), 'guarded')
+    close = next_command.orientation(next_command._row('close', 'Close.', 'wuwei close'), True)
     assert next_command.LOOP in close and '\nwuwei close\n' in close and 'plan session' not in close
     stuck = next_command.orientation(next_command._row(
         'stuck', 'Seat builder-1 ended with no recorded result.',
-        'wuwei seat stop builder-1 --unmeasured "seat ended with no recorded result"'), 'guarded', None, 'S')
+        'wuwei seat stop builder-1 --unmeasured "seat ended with no recorded result"'), True, None, 'S')
     assert 'wuwei seat stop' in stuck and 'wuwei --help' in stuck
     for phrase in ('/wuwei:', 'plan session', 'SKILL.md'):
         assert phrase not in stuck
@@ -343,7 +344,7 @@ def test_orientation_by_state(monkeypatch):
                                        ('_common', False)])
 def test_orientation_seat_entry(monkeypatch, role, seat):
     monkeypatch.setenv('WUWEI_SEAT_ROLE', role)
-    text = next_command.orientation(ROW, 'guarded')
+    text = next_command.orientation(ROW, True)
     assert ('charters/shepherd.md' in text) is seat
     assert (next_command.LOOP in text) is not seat
 
@@ -461,8 +462,8 @@ def test_carried_item_is_skipped(root, capsys, kind):
 
 def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
-    assert 'Spec: speckit strict' in next_command.orientation(ROW, 'guarded', 'speckit strict').splitlines()
-    assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, 'guarded').splitlines())
+    assert 'Spec: speckit strict' in next_command.orientation(ROW, True, 'speckit strict').splitlines()
+    assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, True).splitlines())
 
 
 @pytest.mark.parametrize('system,fields,expected', [

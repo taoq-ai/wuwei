@@ -794,8 +794,8 @@ def records(workspace):
     return workspace
 
 
-def _posture(root, name):
-    (root / '.wuwei/config.toml').write_text(f'[security]\nposture = "{name}"\n')
+def _enforce(root, value):
+    (root / '.wuwei/config.toml').write_text(f'[guards]\nenforce = {value}\n')
 
 
 def _hook(cwd, tool, monkeypatch, capsys, **tool_input):
@@ -813,7 +813,7 @@ def _events(root):
             if json.loads(line)['kind'] in ('hook.refusal', 'guard.would_refuse')]
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 @pytest.mark.parametrize('where, command', [
     ('', 'grep posture .wuwei/config.toml'), ('', 'grep -n posture .wuwei/config.toml'),
     ('', f'cat {DAY_349}/decisions/D-1.md'), ('', 'python3 read_reports.py'),
@@ -827,14 +827,14 @@ def _events(root):
     ('.wuwei', 'for f in ziran/*/report.json; do cat $f 2>/dev/null; done'),
 ])
 def test_issue_349_reads_pass(records, posture, where, command, monkeypatch, capsys):
-    _posture(records, posture)
+    _enforce(records, posture)
     assert _hook(records / where, 'Bash', monkeypatch, capsys, command=command) == 0
     assert _events(records) == []
 
 
 @pytest.mark.parametrize('tool, field', [('Read', 'file_path'), ('Grep', 'path'), ('Glob', 'path')])
 def test_issue_349_read_tools_pass(records, tool, field, monkeypatch, capsys):
-    _posture(records, 'strict')
+    _enforce(records, 'true')
     extra = {'pattern': 'posture'} if tool != 'Read' else {}
     assert _hook(records, tool, monkeypatch, capsys, **{field: '.wuwei/config.toml'}, **extra) == 0
     assert _events(records) == []
@@ -875,10 +875,10 @@ def test_issue_349_write_reasons(records, tool, value, expected):
     assert '\n' not in reason
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch, capsys):
+@pytest.mark.parametrize('posture', ['false', 'true'])
+def test_issue_349_writes_refused_either_way(records, posture, monkeypatch, capsys):
     from wuwei.guards.protect_state import check_bash
-    _posture(records, posture)
+    _enforce(records, posture)
     for tool, value in [('Bash', f"sed -i 's/a/b/' {_CONFIG}"), ('Bash', f'echo x > {_CONFIG}'),
                         ('Edit', _CONFIG)]:
         before = len(_events(records))
@@ -894,18 +894,18 @@ def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch
 _READ_643 = "python3 -c \"import json,sys; print(json.load(open('.wuwei/state.json'))['day'])\""
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_issue_643_python_c_read_passes(records, posture, monkeypatch, capsys):
-    _posture(records, posture)
+    _enforce(records, posture)
     for command in (_READ_643, f"python3 -c 'import json; print(json.load(open(\"{_STATE}\")))'"):
         assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 0, command
     assert _events(records) == []
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_issue_643_write_snippet_names_token(records, posture, monkeypatch, capsys):
     from wuwei.guards.protect_state import check_bash
-    _posture(records, posture)
+    _enforce(records, posture)
     for command, token in [(f"python3 -c 'open(\"{_STATE}\", \"w\")'", '"w"'),
                            (f"python3 -c 'from pathlib import Path; Path(\"{_STATE}\").write_text(\"x\")'",
                             'write_text')]:
@@ -924,18 +924,18 @@ def test_issue_643_write_snippet_names_token(records, posture, monkeypatch, caps
 ])
 def test_issue_643_unusual_snippets_refused(records, command):
     from wuwei.guards.protect_state import check_bash
-    _posture(records, 'observe')
+    _enforce(records, 'false')
     assert check_bash(payload(records, 'Bash', command=command))[0] == 2, command
 
 
-@pytest.mark.parametrize('posture', ['observe', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 @pytest.mark.parametrize('command', [
     f'python3 -m json.tool /tmp/x.json {_CONFIG}', f'python3 -m json.tool /tmp/x.json {_STATE}',
     'python3 -m zipfile -e a.zip .wuwei', 'python3 -m tarfile -e a.tar .wuwei/days',
     f'python3 w.py {_CONFIG}', f'node w.js {_CONFIG}', f'python3 read_reports.py {_REPORT}',
 ])
 def test_issue_349_interpreter_operands_stay_refused(records, posture, command, monkeypatch, capsys):
-    _posture(records, posture)
+    _enforce(records, posture)
     assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
 
 
@@ -945,19 +945,6 @@ def test_telemetry_records_are_protected(workspace, target):
     from wuwei.guards.protect_state import check_file
     code, reason = check_file(payload(workspace, 'Write', file_path=target))
     assert code == 1 and reason
-
-
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
-    # #552: the register of people, channels and tools is written only by the CLI.
-    from wuwei.guards.protect_state import check_file
-    _posture(records, posture)
-    target = '.wuwei/graph.json'
-    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
-                        ('Bash', {'command': f'echo {{}} > {target}'})]:
-        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
-    code, reason = check_file(payload(records, 'Write', file_path=target))
-    assert code == 1 and 'bin/wuwei config set' in reason and 'init --upgrade' in reason and 'bin/wuwei who' in reason
 
 
 def _scratch_seat(root, monkeypatch):
@@ -984,21 +971,19 @@ def _scratch_hook(root, target, monkeypatch, capsys, agent='x'):
 
 
 @pytest.mark.parametrize('base', ['workspace', 'scratchpad'])
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_scratch_of_another_item_warns_below_strict(workspace, tmp_path, monkeypatch, capsys, posture, base):
+@pytest.mark.parametrize('posture', ['false', 'true'])
+def test_scratch_of_another_item_is_logged(workspace, tmp_path, monkeypatch, capsys, posture, base):
+    # #647, #837: another item's scratch directory is logged, never refused.
     _scratch_seat(workspace, monkeypatch)
-    _posture(workspace, posture)
+    _enforce(workspace, posture)
     scratch = (workspace / '.wuwei/scratch' if base == 'workspace' else tmp_path / 'scratchpad').resolve()
     code, captured = _scratch_hook(workspace, scratch / 'B/x.sh', monkeypatch, capsys)
     own = f'{scratch}/A/builder/'
-    if posture == 'strict':
-        assert code == 2
-        assert own in captured.err and 'posture: seats = block (set security.areas.seats)' in captured.err
-    else:
-        assert code == 0 and not captured.out
-        lines = captured.err.splitlines()
-        assert len(lines) == 1 and lines[0].startswith('warning: scratch:') and own in lines[0]
-    _posture(workspace, 'guarded')
+    assert (code, captured.out, captured.err) == (0, '', '')
+    [event] = [json.loads(line)['payload'] for path in workspace.glob('.wuwei/days/*/events.jsonl')
+               for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
+    assert event['reason'].startswith('scratch:') and own in event['reason']
+    _enforce(workspace, 'true')
     for target, agent in ((scratch / 'A/x.sh', 'x'), (scratch / 'B/x.sh', None),
                           (scratch / 'notes/x.sh', 'x'), (scratch / 'B/x.sh', 'missing')):
         code, captured = _scratch_hook(workspace, target, monkeypatch, capsys, agent)
@@ -1006,7 +991,7 @@ def test_scratch_of_another_item_warns_below_strict(workspace, tmp_path, monkeyp
 
 
 def test_scratch_scripts_run_but_climbing_out_is_refused(records, monkeypatch, capsys):
-    _posture(records, 'guarded')
+    _enforce(records, 'true')
     for command, expected in (('python3 .wuwei/scratch/A/builder/p.py', 0),
                               ('bash .wuwei/scratch/A/builder/m.sh', 0),
                               ('python3 .wuwei/scratch/../days/2026-09-28/state.json', 2)):
@@ -1029,7 +1014,7 @@ def test_state_protection_unchanged(workspace):
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
     for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei status > .wuwei/config.toml'):
         assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
-    assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W drafts approve x')) == (
+    assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W state recover')) == (
         2, UNPARSED)
     assert check_bash(payload(workspace, 'Bash', command='cd ..')) == (1, WORKSPACE_ROOT)
 

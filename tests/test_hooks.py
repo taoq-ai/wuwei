@@ -1189,18 +1189,8 @@ def test_seat_question_without_record_stops_freely(subprocess_plugin, tmp_path):
     assert result.returncode == 0 and 'decision' not in result.stdout, result.stderr
 
 
-def shadow_mode(plugin, mode='shadow'):
-    (plugin[0] / '.wuwei/config.toml').write_text(f'[guards]\nmode = "{mode}"\n')
-
-
-def set_posture(plugin, raw):
-    (plugin[0] / '.wuwei/config.toml').write_text(raw)
-
-
-def warns(plugin, name='fake', area='publish'):
-    """Give a stub guard module an area so the posture can relax it (#331)."""
-    import wuwei.guards
-    plugin[1].setitem(wuwei.guards.AREAS, name, area)
+def enforce(plugin, value=False):
+    (plugin[0] / '.wuwei/config.toml').write_text(f'[guards]\nenforce = {str(value).lower()}\n')
 
 
 def events_of(plugin, kind):
@@ -1218,9 +1208,8 @@ GUARDS = [Guard({event!r}, None, lambda payload: (1, {reason!r}))]
 
 
 @pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse', 'Stop'])
-def test_shadow_mode_records_and_allows(plugin, event):
-    shadow_mode(plugin)
-    warns(plugin)
+def test_enforce_off_records_and_allows(plugin, event):
+    enforce(plugin)
     install(plugin, refusing(event))
     payload = (json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
                if event == 'PreToolUse' else fixture(event))
@@ -1228,40 +1217,36 @@ def test_shadow_mode_records_and_allows(plugin, event):
     assert (result.returncode, result.stdout) == (0, ''), result.stderr
     recorded, = events_of(plugin, 'guard.would_refuse')
     assert recorded['guard'] == 'fake' and recorded['reason'] == 'guard reason'
-    assert (recorded['area'], recorded['level'], recorded['posture']) == ('publish', 'warn', 'observe')
+    assert not {'area', 'level', 'posture'} & set(recorded)
     assert recorded['session'] == payload['session_id'] and recorded['item'] is None
     if event == 'PreToolUse':
         assert recorded['target'] == 'npm test'
     assert events_of(plugin, 'hook.refusal') == []
 
 
-def test_shadow_mode_does_not_shadow_the_heartbeat(plugin):
-    shadow_mode(plugin)
-    warns(plugin)
+def test_enforce_off_does_not_log_the_heartbeat(plugin):
+    enforce(plugin)
     install(plugin, refusing('PreToolUse'))
     payload = {**fixture('PreToolUse'), 'session_id': 'wuwei-heartbeat'}
     assert_refusal(replay(plugin, 'PreToolUse', json.dumps(payload)), 'PreToolUse', 'guard reason')
     assert events_of(plugin, 'guard.would_refuse') == []
 
 
-def test_shadow_mode_enforces_when_it_cannot_record(plugin):
+def test_enforce_off_blocks_when_it_cannot_record(plugin):
     from wuwei import state
-    shadow_mode(plugin)
-    warns(plugin)
+    enforce(plugin)
     install(plugin, refusing('PreToolUse'))
     plugin[1].setattr(state, 'append_event', lambda *a, **k: (_ for _ in ()).throw(OSError('disk')))
     result = replay(plugin, 'PreToolUse', json.dumps(fixture('PreToolUse')))
     assert result.returncode == 2
     assert json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert 'could not record shadow refusal' in result.stderr
+    assert 'could not record a logged refusal' in result.stderr
 
 
-@pytest.mark.parametrize('raw', [None, '[guards]\nmode = "enforce"\n', '[security]\nposture = "strict"\n',
-                                 '[security]\nposture = "observe"\n'])
-def test_enforce_mode_refuses_as_before(plugin, raw):
-    # A guard module with no area (a stub) blocks with no posture line in every posture.
+@pytest.mark.parametrize('raw', [None, '[guards]\nenforce = true\n'])
+def test_enforce_on_refuses_as_before(plugin, raw):
     if raw:
-        set_posture(plugin, raw)
+        (plugin[0] / '.wuwei/config.toml').write_text(raw)
     install(plugin, refusing('PreToolUse'))
     assert_refusal(replay(plugin, 'PreToolUse', json.dumps(fixture('PreToolUse'))),
                    'PreToolUse', 'guard reason')
@@ -1272,21 +1257,19 @@ def test_enforce_mode_refuses_as_before(plugin, raw):
     ("sh -c 'git push --force origin main'", 'git push --force origin main'),
     ('echo $(', 'echo $('),
 ])
-def test_shadow_target_is_the_normalised_command(plugin, command, target):
-    shadow_mode(plugin)
-    warns(plugin)
+def test_logged_target_is_the_normalised_command(plugin, command, target):
+    enforce(plugin)
     install(plugin, refusing('PreToolUse'))
     payload = {**fixture('PreToolUse'), 'tool_name': 'Bash', 'tool_input': {'command': command}}
     assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
     assert events_of(plugin, 'guard.would_refuse')[0]['target'] == target
 
 
-def test_shadow_target_is_redacted(plugin):
+def test_logged_target_is_redacted(plugin):
     from wuwei import report, security, workspace
     security.initialize(plugin[0] / '.wuwei')
     canary = json.loads((plugin[0] / '.wuwei/security.json').read_text())['canary']
-    shadow_mode(plugin)
-    warns(plugin)
+    enforce(plugin)
     install(plugin, refusing('PreToolUse'))
     token = 'ghp_' + 'a' * 36
     for command in (f'echo {canary} https://x', f'git push --force https://x:{token}@github.com/o/r'):
@@ -1306,17 +1289,15 @@ def forget_guards():
         vars(wuwei.guards).pop(name.rsplit('.', 1)[-1], None)
 
 
-def test_posture_levels_at_the_hook(plugin):
+def test_floor_at_the_hook(plugin):
+    # #837: with guards.enforce = false the floor still blocks, with the reason alone.
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
-    set_posture(plugin, '[security]\nposture = "observe"\n')
-    # #530: below strict an owner-only refusal blocks with no owner-only line.
-    blocked = {'protect_state': '\nposture: records = block (floor; no setting lowers it)',
-               'deploy': '', 'pr': ''}
+    enforce(plugin)
     try:
-        for name, line in blocked.items():
+        for name in ('protect_state', 'deploy', 'pr'):
             forget_guards()
             install(plugin, refusing('PreToolUse', 'kept'), name)
-            assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', f'kept{line}')
+            assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
             assert events_of(plugin, 'guard.would_refuse') == []
             assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [{'guard': name, 'reason': 'kept', 'exit': 1}]
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
@@ -1326,44 +1307,16 @@ def test_posture_levels_at_the_hook(plugin):
             result = replay(plugin, 'PreToolUse', payload)
             assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
-        assert [(row['guard'], row['area'], row['level'], row['posture'])
-                for row in events_of(plugin, 'guard.would_refuse')] == [
-            ('commit_push', 'publish', 'warn', 'observe'), ('integrity', 'integrity', 'warn', 'observe')]
+        assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == [
+            'commit_push', 'integrity']
         forget_guards()
         install(plugin, refusing('PreToolUse', 'kept'), 'commit_push')
-        set_posture(plugin, '[security]\nposture = "strict"\n')
-        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
-                       'kept\nposture: publish = block (set security.areas.publish)')
-        set_posture(plugin, '[security]\nposture = "strict"\n[security.areas]\npublish = "off"\n')
-        result = replay(plugin, 'PreToolUse', payload)
-        assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+        enforce(plugin, True)
+        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
         assert len(events_of(plugin, 'guard.would_refuse')) == 2
     finally:
         forget_guards()
 
-
-def test_missing_reviewer_refusal_carries_no_posture_line(tmp_path):
-    from wuwei.commands import hook
-    from wuwei.guards import NO_REVIEWER, pr
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
-    assert hook.posture({}, [(pr.check, NO_REVIEWER, 1), (pr.check, 'other', 1)], tmp_path) == [
-        ('pr', NO_REVIEWER, '', 1),
-        ('pr', 'other', '', 1)]
-
-
-
-def test_held_draft_posture_line_names_the_card(tmp_path):
-    # #526: a held draft is one card away; canary egress of the same check is the records floor.
-    from wuwei.commands import hook
-    from wuwei.guards.outward import check_tier
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
-    floor = 'posture: records = block (floor; no setting lowers it)'
-    assert hook.posture({}, [(check_tier, 'outward: draft draft-1: why; the owner decides', 1),
-                             (check_tier, 'outward: security.canary', 1)], tmp_path) == [
-        ('outward', 'outward: draft draft-1: why; the owner decides', 'posture: outward = block; a draft is one card away', 1),
-        ('outward', 'outward: security.canary', floor, 1)]
 
 FORCE = 'force-push is refused; push a branch instead'
 
@@ -1419,8 +1372,7 @@ def test_refusal_rows_and_warnings_carry_the_exit(plugin, code):
     assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'guard reason')
     assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [
         {'guard': 'fake', 'reason': 'guard reason', 'exit': code}]
-    shadow_mode(plugin)
-    warns(plugin)
+    enforce(plugin)
     assert replay(plugin, 'PreToolUse', payload).returncode == 0
     recorded, = events_of(plugin, 'guard.would_refuse')
     assert recorded['exit'] == code
@@ -1448,8 +1400,7 @@ def test_event_count_per_hook_path(plugin):
     heartbeat = {**payload, 'session_id': 'wuwei-heartbeat'}
     assert replay(plugin, 'PreToolUse', json.dumps(heartbeat)).returncode == 2
     assert event_count(plugin) - before == 0
-    shadow_mode(plugin)
-    warns(plugin)
+    enforce(plugin)
     before = event_count(plugin)
     assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
     assert event_count(plugin) - before == 1
@@ -1463,10 +1414,9 @@ GUARDS = [Guard('PreToolUse', None, lambda payload: ({code}, {reason}))]
 '''
 
 
-def test_unknown_git_reason_levels_only_from_deploy(plugin):
-    # #470: another guard's text starting with UNKNOWN_GIT keeps its own area level.
+def test_unknown_git_reason_warns_only_from_deploy(plugin):
+    # #470: another guard's text starting with UNKNOWN_GIT keeps its own decision.
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
-    set_posture(plugin, '[security]\nposture = "guarded"\n')
     try:
         forget_guards()
         install(plugin, '''
@@ -1475,30 +1425,25 @@ from wuwei.shell import UNKNOWN_GIT
 GUARDS = [Guard('PreToolUse', None, lambda payload: (2, UNKNOWN_GIT + 'x; run y'))]
 ''', 'protect_state')
         assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
-                       'unknown git subcommand x; run y\n'
-                       'posture: records = block (floor; no setting lowers it)')
+                       'unknown git subcommand x; run y')
     finally:
         forget_guards()
 
 
-@pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
-def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
-    # #347: the two reasons are levelled by their text, not by the guard's area or floor.
+@pytest.mark.parametrize('value', [True, False])
+def test_unparsed_and_workspace_root_warn_by_reason(plugin, value):
+    # #347: the two reasons are decided by their text, not by the guard or the floor.
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
-    set_posture(plugin, f'[security]\nposture = "{name}"\n')
+    enforce(plugin, value)
     guards = plugin[0] / 'cli/wuwei/guards'
     try:
         forget_guards()
         install(plugin, returning('UNPARSED'), 'deploy')
         install(plugin, returning('UNPARSED'), 'pr')
         result = replay(plugin, 'PreToolUse', payload)
-        if name == 'strict':
-            assert_refusal(result, 'PreToolUse', UNPARSED)
-            assert events_of(plugin, 'guard.would_refuse') == []
-        else:
-            assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
-            assert [row['reason'] for row in events_of(plugin, 'guard.would_refuse')] == [UNPARSED]
+        assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+        assert [row['reason'] for row in events_of(plugin, 'guard.would_refuse')] == [UNPARSED]
         for module in ('deploy', 'pr'):
             (guards / f'{module}.py').unlink()
         forget_guards()
@@ -1508,39 +1453,9 @@ def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
         assert events_of(plugin, 'guard.would_refuse')[-1]['reason'] == WORKSPACE_ROOT
         forget_guards()
         install(plugin, refusing('PreToolUse', 'kept'), 'protect_state')
-        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
-                       'kept\nposture: records = block (floor; no setting lowers it)')
+        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
     finally:
         forget_guards()
-
-
-@pytest.mark.parametrize('channel,held', [('C1', False), ('C9', True), ('D01', False), ('C2', False)])
-def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
-    # #493, #346: a call classify sends imports neither the draft queue nor hashlib.
-    # #495: a send to the owner's own DM is such a call. #496: so is a call the table blocks (C2,
-    # through the owner's own block row: no default row blocks since 2026-10-04).
-    from fakes.integrity import seed
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n'
-        'external_channels = ["C2"]\n'
-        'tiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n'
-        '[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
-    seed(tmp_path)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
-    env['WUWEI_WORKSPACE'] = str(tmp_path)
-    payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(tmp_path),
-               'tool_name': 'mcp__slack__post_message',
-               'tool_input': {'channel': channel, 'text': 'I will ship it' if channel == 'C2' else 'Thanks'}}
-    out = tmp_path / 'modules.json'
-    result = subprocess.run([sys.executable, '-I', '-P', '-c', LAUNCHER_MODULES, str(ROOT / 'cli'), str(ROOT),
-                             str(out), 'hook', 'PreToolUse'],
-                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path, env=env)
-    assert result.returncode == (2 if held or channel == 'C2' else 0), result.stderr
-    assert channel != 'C2' or 'outward: block by rule 1 ' in result.stderr  # the owner's row comes first
-    modules = set(json.loads(out.read_text()))
-    assert ('wuwei.drafts' in modules) is held
-    assert held or 'hashlib' not in modules
 
 
 def test_terminal_as_bash(tmp_path):

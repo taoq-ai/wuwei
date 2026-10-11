@@ -29,19 +29,17 @@ def register(subparsers):
     parser.add_argument("path", nargs="?", default=".")
     parser.add_argument("--upgrade", action="store_true", help="upgrade an existing workspace")
     parser.add_argument("--dry-run", action="store_true", help="show the upgrade plan")
-    parser.add_argument("--posture", choices=tuple(workspace.POSTURES),
-                        help="security posture for a new workspace: observe, guarded or strict")
-    parser.add_argument("--shadow", action="store_true", help="same as --posture observe")
+    parser.add_argument("--shadow", action="store_true",
+                        help="a new workspace with guards.enforce = false: guards log what they would refuse")
     parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
                         help="decoy credentials path relative to .wuwei")
     parser.set_defaults(func=run)
 
 
 def run(args):
-    posture = 'observe' if getattr(args, 'shadow', False) else getattr(args, 'posture', None)
-    if posture and getattr(args, 'upgrade', False):
-        flag = '--shadow' if getattr(args, 'shadow', False) else '--posture'
-        raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
+    shadow = getattr(args, 'shadow', False)
+    if shadow and getattr(args, 'upgrade', False):
+        raise ValueError('--shadow applies to a new workspace; run bin/wuwei config set guards.enforce false')
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
         raise ValueError('--dry-run requires --upgrade; run bin/wuwei init --upgrade --dry-run')
     if getattr(args, 'upgrade', False):
@@ -68,16 +66,11 @@ def run(args):
         write_workspace(template.parents[1], Path(staging))
         executable = integrity.launcher(destination.parent)
         (Path(staging) / "executable").write_text(str(executable) + "\n")
-        if posture:
-            config = Path(staging) / 'config.toml'
-            text = config.read_text(encoding='utf-8').replace(
-                'posture = "guarded"', f'posture = "{posture}"', 1)
-            if posture == 'observe':
-                text = text.replace(
-                    'shadow_since = ""', f'shadow_since = "{workspace.now().date().isoformat()}"', 1)
-            config.write_text(text, encoding='utf-8')
         config = Path(staging) / 'config.toml'
-        config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
+        text = config.read_text(encoding='utf-8')
+        if shadow:
+            text = text.replace('enforce = true', 'enforce = false', 1)
+        config.write_text(_stamp(text), encoding='utf-8')
         integrity.initialize(Path(staging))
         settings_path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
@@ -94,6 +87,9 @@ def run(args):
     return _finish(destination.parent)
 
 
+# #838: the register comment init --upgrade wrote above config sections; removed on upgrade.
+GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
+                 'bin/wuwei who walks it.')
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
                  'memory/cruise.json', 'memory/forget.json')  # #814, #815, #833: init --upgrade removes them
 # #800: the guide block an older init wrote into the memory.export_to file.
@@ -221,31 +217,20 @@ def _today_tier(raw, before):
     return raw, lines
 
 
-def _retired_mode(raw):
-    """guards.mode = "shadow" becomes security.posture = "observe"; "enforce" is dropped (#355)."""
-    present = tomllib.loads(raw)
-    mode = present.get('guards', {}).get('mode')
-    if mode is None:
+def _enforce(raw, before):
+    """#837: security.posture = "observe" or guards.mode = "shadow" in the file as loaded
+    (before) becomes guards.enforce = false; an explicit guards.enforce stays the owner's."""
+    guards = before.get('guards', {})
+    if before.get('security', {}).get('posture') == 'observe':
+        was = 'security.posture = "observe"'
+    elif guards.get('mode') == 'shadow':
+        was = 'guards.mode = "shadow"'
+    else:
         return raw, []
-    sections = _sections(raw)
-    for label, lines in sections:
-        if label == 'guards':
-            lines[:] = [line for line in lines if not re.match(r'\s*mode\s*=', line)]
-        elif label == 'security' and mode == 'shadow':
-            for index, line in enumerate(lines):
-                if re.match(r'\s*posture\s*=', line):
-                    lines[index] = re.sub(r'=\s*("[^"\n]*"|\'[^\'\n]*\')', '= "observe"', line, count=1)
-                    break
-    result = ''.join(''.join(lines) for _, lines in sections)
-    expected = copy.deepcopy(present)
-    expected['guards'].pop('mode')
-    if mode == 'shadow':
-        expected.setdefault('security', {})['posture'] = 'observe'
-    if tomllib.loads(result) != expected:
-        raise ValueError('cannot safely retire guards.mode in this TOML layout; '
-                         'set security.posture = "observe" and delete guards.mode')
-    return result, ['guards.mode = "shadow" becomes security.posture = "observe"' if mode == 'shadow'
-                    else f'remove guards.mode = "{mode}" (the default)']
+    if 'enforce' in guards:
+        return raw, []
+    from wuwei.commands.config import write_value
+    return write_value(raw, 'guards.enforce', False), [f'guards.enforce = false (was {was})']
 
 
 def _unread_keys(raw, warnings):
@@ -403,21 +388,16 @@ def upgrade(args):
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(pruned, template)
-        migrated, retired = _retired_mode(migrated)
+        migrated, retired = _enforce(migrated, tomllib.loads(text))
         migrated, today = _today_tier(migrated, tomllib.loads(text))
         retired += today
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
-        from wuwei import graph  # #552: the register the modeled sections are views of
-        annotated = graph.annotate(migrated)
-        named, migrated = annotated.count(graph.COMMENT) - migrated.count(graph.COMMENT), annotated
-        try:
-            previous = graph.load(destination.parent)
-            register = graph.build(workspace.load_config(destination.parent, raw=migrated), previous)
-        except ValueError as exc:  # A13: the register decides nothing, so it never stops the upgrade.
-            graph.warn('init', exc)
-            previous = register = None
-        graph_changed = register != previous
+        uncommented = ''.join(line for line in migrated.splitlines(keepends=True)
+                              if line.rstrip('\r\n') != GRAPH_COMMENT)  # #838: the register is gone
+        graph_comments, migrated = uncommented != migrated, uncommented
+        graph = destination / 'graph.json'
+        graph_stale = graph.is_file() and not graph.is_symlink()
         executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -447,8 +427,8 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
-            if graph_changed:
-                graph.save(destination.parent, register)
+            if graph_stale:
+                graph.unlink()
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             try:  # #735: the checkouts find the workspace from anywhere
@@ -475,11 +455,10 @@ def upgrade(args):
             print(f'{prefix} config.toml: {line}')
         if stamp_changed:
             print(f'{prefix} config.toml: template_version {integrity.version()}')
-        if named:
-            print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
-        if graph_changed:
-            print(f"{prefix} .wuwei/{graph.NAME}: {len(register['nodes'])} nodes and "
-                  f"{len(register['edges'])} edges from config.toml")
+        if graph_comments:
+            print(f'{prefix} config.toml: remove the graph comments')
+        if graph_stale:
+            print(f'{prefix} .wuwei/graph.json: remove (no longer read)')
         if pointer_changed:
             print(f'{prefix} executable pointer')
         for name in stale:
@@ -509,7 +488,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not stale and not named and not graph_changed and text == raw
+                and not guide_changed and not stale and not graph_comments and not graph_stale and text == raw
                 and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:

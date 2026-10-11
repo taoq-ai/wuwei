@@ -9,7 +9,7 @@ import sys
 
 from wuwei import obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
-from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
+from wuwei.exits import DAMAGED, RACE
 
 
 def _verify(root, host, ref, record, config):
@@ -92,7 +92,7 @@ ACTIONS = {
                    {'worktree': 'item', 'steps': ['rebase', 'resolve', 'fast_checks', 'push']}),
     'ci_red': ('start a fix round', {'worktree': 'item', 'steps': ['fix_round']}),
     'changes_requested': ('triage review threads', {'routes': {
-        'fix_request': 'fix_round', 'question': 'outbound_tier_then_reply',
+        'fix_request': 'fix_round', 'question': 'reply',
         'disagreement': 'owner_decision', 'scope_change': 'owner_decision'}}),
     'review_stale': ('re-request review, then post in the review channel',
                      {'steps': ['request_reviewers', 'post_review_channel']}),
@@ -418,12 +418,10 @@ def _latest(measured, surface, target):
 
 
 def _thread(root, ref, item, tree, measured, reply=None):
-    from wuwei import drafts, outward, registry
     config = workspace.load_config(root)
     me = obligations._owner_login(config)
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
                                 obligations._ledger(state.read_state(root)).get(ref, {}))
-    pending = None
     for key in owed:
         surface, target = key.split(':', 1)
         if surface not in ('thread', 'review', 'comment'):
@@ -451,45 +449,9 @@ def _thread(root, ref, item, tree, measured, reply=None):
             return 1
         if not reply.strip():
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
-        context = {'ref': ref, 'thread': target} if thread else {'ref': ref}
-        channel_kind = 'code_host'
-        why = []
-        code, tier = outward.classify(reply, root, config, context, kind=channel_kind, why=why)
-        if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft', 'block'):
-            raise ValueError(f'invalid outward tier result; {ADAPTER_DATA}')
-        if tier == 'block':  # #496: refused with the row named; no draft.
-            print(outward.blocked(why[0]), file=sys.stderr)
-            return 1
-        if code == 0 and tier == 'send':
-            return obligations.reply(ref, surface,
-                thread['comments'][0]['id'] if thread else latest['id'], reply, root)
-        draft = {'surface': surface, 'thread': target, 'body': reply, 'source_id': latest['id']}
-        inputs = {'ref': ref, 'text': reply, 'thread': thread['comments'][0]['id'] if thread else None}
-        existing = next((key for key, row in drafts.read(state.read_state(root)).items()
-                         if row['status'] == 'pending' and row['channel'] == 'code_host'
-                         and row['inputs'] == inputs), None)
-        if existing is not None:
-            pending = pending or ({'action': 'draft_reply', 'pr': ref, **draft, 'draft': existing}, 1)
-            if code == 2:
-                pending = (pending[0], 2)
-            continue
-        humanized, reason = outward.humanize_lint(inputs, root, config, {channel_kind}, draft=True)
-        if humanized:
-            print(reason)
-            return humanized
-        draft_id = drafts.create(root, config, channel_kind, 'comment', config['adapters']['code_host'],
-                                 inputs, 'outward tier unmeasured; reply kept as a draft' if code == 2
-                                 else outward.APPROVAL_REQUIRED)
-        print(json.dumps({'action': 'draft_reply', 'pr': ref, **draft, 'draft': draft_id}))
-        if code == 2:
-            print('outward tier unmeasured; reply kept as a draft')
-        return 2 if code == 2 else 1
-    if pending is not None:
-        action, code = pending
-        print(json.dumps(action))
-        if code == 2:
-            print('outward tier unmeasured; reply kept as a draft')
-        return code
+        # #838: posted through the code-host port, which runs the canary check and the lint.
+        return obligations.reply(ref, surface,
+                                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)
     raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
 
 

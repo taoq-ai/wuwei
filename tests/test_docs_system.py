@@ -230,28 +230,6 @@ def notion_replay(monkeypatch, *answers):
     return replay(monkeypatch, *answers)
 
 
-def drafts_of(root):
-    return [row for row in state.read_state(root).get('drafts', {}).values() if row['channel'] == 'docs']
-
-
-def test_docs_page_queues_a_draft(day, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    recorded(day, monkeypatch)
-    calls = notion_replay(monkeypatch)
-    assert main(['docs', 'page', 'X']) == 0
-    row, = drafts_of(day)
-    assert f'bin/wuwei drafts show {row["id"]} --widget' in capsys.readouterr().out
-    draft = row['inputs']['draft']
-    assert draft['title'] == 'X: Add a dry-run flag' and draft['parent'] == SPACE and draft['ref'] == ''
-    for text in ('Add a dry-run flag to sync', 'Goal: Releases are safer', 'Two failed syncs',
-                 'Run `sync --dry-run` first.', '- Pull request: https://github.com/acme/widget/pull/7',
-                 '- Ticket: ABC-1'):
-        assert text in draft['body']
-    assert str(day) not in json.dumps(row)
-    assert item(day)['docs'] == {'value': 'new', 'reason': ''}
-    assert calls == [] and events(day, 'docs.written') == []
-
-
 def test_docs_page_auto_writes(day, monkeypatch, capsys):
     from wuwei.__main__ import main
     write_config(day, extra='auto = ["page"]\n')
@@ -262,19 +240,32 @@ def test_docs_page_auto_writes(day, monkeypatch, capsys):
     payload, = events(day, 'docs.written')
     payload.pop('prs_seen')
     assert payload == {'item': 'X', 'kind': 'page', 'adapter': 'notion',
-                       'page': NOTION['create']['url'], 'draft': None}
+                       'page': NOTION['create']['url']}
     assert item(day)['docs'] == {'value': NOTION['create']['url'], 'reason': ''}
-    assert drafts_of(day) == []
+
+
+def written(monkeypatch):
+    """#838: the pages the docs port writes, captured instead of sent."""
+    pages, real = [], registry.load
+
+    def load(kind, config):
+        if kind != 'docs':
+            return real(kind, config)
+        return SimpleNamespace(write=lambda draft, root=None: pages.append(draft) or Result(
+            0, {'link': f'https://docs.example.test/{len(pages)}'}))
+    monkeypatch.setattr(registry, 'load', load)
+    return pages
 
 
 def test_docs_page_appends_to_a_recorded_page(day, monkeypatch):
     from wuwei import docs
     recorded(day, monkeypatch)
+    pages = written(monkeypatch)
     state._write_state(lambda data: data['items']['X'].update(
         docs={'value': NOTION['create']['url'], 'reason': ''}), day, reserved=False)
     assert docs.page(day, 'X')[0] == 0
-    draft = drafts_of(day)[0]['inputs']['draft']
-    assert draft['ref'] == NOTION['create']['url'] and draft['body'].startswith('## 2026-10-03\n')
+    page, = pages
+    assert page['ref'] == NOTION['create']['url'] and page['body'].startswith('## 2026-10-03\n')
 
 
 def test_docs_page_refusals(day, monkeypatch, capsys):
@@ -285,7 +276,7 @@ def test_docs_page_refusals(day, monkeypatch, capsys):
     proposal.write_text(proposal.read_text().replace('Two failed syncs', 'See /var/log/sync for two failed syncs'))
     assert main(['docs', 'page', 'X']) == 1
     assert 'absolute path' in capsys.readouterr().err
-    assert drafts_of(day) == [] and 'docs' not in item(day)
+    assert 'docs' not in item(day)
     docs.assign('X', 'none', 'internal refactor', day)
     assert main(['docs', 'page', 'X']) == 1
     assert main(['docs', 'page', 'Y']) == 1
@@ -313,7 +304,7 @@ def test_markdown_page_is_a_file_in_the_worktree(day, monkeypatch):
     assert item(day)['docs'] == {'value': 'docs/X.md', 'reason': ''}
     payload, = events(day, 'docs.written')
     assert payload['page'] == 'docs/X.md' and payload['adapter'] == 'markdown'
-    assert drafts_of(day) == [] and str(tree) not in json.dumps(events(day, 'docs.written'))
+    assert str(tree) not in json.dumps(events(day, 'docs.written'))
     assert docs.page(day, 'X')[0] == 0
     assert page.read_text().startswith(first) and '\n## 2026-10-03\n### What changed' in page.read_text()
 
@@ -349,7 +340,7 @@ def merged(day, docs_value=None, tier='standard', name='X', written_before=False
     draft = {'kind': 'page', 'item': name}
     if written_before:
         state._write_state(lambda data: None, day, reserved=False, kind='docs.written',
-                           payload={'item': name, 'kind': 'page', 'adapter': 'notion', 'page': 'p', 'draft': None})
+                           payload={'item': name, 'kind': 'page', 'adapter': 'notion', 'page': 'p'})
     state.transition(name, 'merged', day)
     if written_after:
         docs.record(day, draft, 'notion', 'p')
@@ -381,14 +372,6 @@ def test_close_ignores_unmerged_items(day):
 def test_close_names_a_page_not_written_since_the_merge(day):
     merged(day, 'new', written_before=True)
     assert close_of(day) == (1, 'X: docs page new not written since the merge; bin/wuwei docs page X')
-
-
-def test_close_names_a_pending_draft(day):
-    merged(day, 'new')
-    state._write_state(lambda data: data.update(drafts={'draft-1': {
-        'id': 'draft-1', 'channel': 'docs', 'operation': 'write', 'status': 'pending', 'item': 'X',
-        'inputs': {'draft': {'kind': 'page', 'item': 'X'}}}}), day, reserved=False)
-    assert close_of(day) == (1, 'X: docs draft draft-1 pending; bin/wuwei drafts approve draft-1')
 
 
 @pytest.mark.parametrize('path,expected', [('docs/X.md', 0), ('docs/other.md', 1)])
@@ -458,18 +441,18 @@ def test_report_publishes_once(day, monkeypatch, capsys):
     monkeypatch.chdir(day)
     write_config(day, extra='publish = ["report"]\n')
     merged(day, 'none')
+    pages = written(monkeypatch)
     assert main(['report']) == 0
     out = capsys.readouterr().out
     assert '# WUWEI report 2026-10-03' in out
-    row, = drafts_of(day)
-    assert row['id'] in out
-    draft = row['inputs']['draft']
-    assert draft['title'] == 'Report 2026-10-03' and draft['kind'] == 'report' and draft['ref'] == ''
-    assert [line for line in draft['body'].splitlines() if line.startswith('## ')] == [
+    page, = pages
+    assert 'https://docs.example.test/1' in out
+    assert page['title'] == 'Report 2026-10-03' and page['kind'] == 'report' and page['ref'] == ''
+    assert [line for line in page['body'].splitlines() if line.startswith('## ')] == [
         '## Merged', '## Parked', '## Carry', '## Docs']
-    assert '- X: none (why)' in draft['body']
+    assert '- X: none (why)' in page['body']
     assert main(['report']) == 0
-    assert f'already {row["id"]}' in capsys.readouterr().out and len(drafts_of(day)) == 1
+    assert 'already https://docs.example.test/1' in capsys.readouterr().out and len(pages) == 1
 
 
 def test_report_without_publish_stores_nothing(day, monkeypatch, capsys):
@@ -477,7 +460,8 @@ def test_report_without_publish_stores_nothing(day, monkeypatch, capsys):
     quiet_metrics(monkeypatch)
     monkeypatch.chdir(day)
     write_config(day, extra='publish = []\n')
-    assert main(['report']) == 0 and drafts_of(day) == []
+    pages = written(monkeypatch)
+    assert main(['report']) == 0 and pages == []
 
 
 def test_publish_retro(day, monkeypatch, capsys):
@@ -488,10 +472,11 @@ def test_publish_retro(day, monkeypatch, capsys):
     path.parent.mkdir()
     path.write_text('# Steward retro 2026-10-03\n\n## Metrics\n{}\n\n## Applied\n'
                     '- `.wuwei/charters/builder.md`\n## Proposed\nnone\n')
+    pages = written(monkeypatch)
     assert main(['docs', 'publish', 'retro']) == 0
-    draft = drafts_of(day)[0]['inputs']['draft']
-    assert draft['title'] == 'Retro 2026-10-03'
-    assert draft['body'] == '## Applied\n- `charters/builder.md`\n\n## Proposed\nnone\n'
+    page, = pages
+    assert page['title'] == 'Retro 2026-10-03'
+    assert page['body'] == '## Applied\n- `charters/builder.md`\n\n## Proposed\nnone\n'
 
 
 def test_publish_under_markdown_and_without_a_report(day, capsys):
@@ -500,4 +485,4 @@ def test_publish_under_markdown_and_without_a_report(day, capsys):
     assert 'wuwei report' in capsys.readouterr().err
     write_config(day, 'markdown')
     assert main(['docs', 'publish', 'report']) == 0
-    assert 'no effect under markdown' in capsys.readouterr().out and drafts_of(day) == []
+    assert 'no effect under markdown' in capsys.readouterr().out

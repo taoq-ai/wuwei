@@ -158,15 +158,20 @@ def ask(day, widget, label):
     return bash(day, widget['record'].replace('<label>', label).removeprefix('bin/'))
 
 
-def held(day, payload, label):
-    """A held call: its card from the reason, answered with label, then the same call passes."""
-    reason = day.hook('PreToolUse', 2, **payload)
-    command = re.search(r'bin/(wuwei drafts show draft-[0-9a-f]{32})', reason)
-    assert command, reason
-    [widget] = json.loads(bash(day, command[1] + ' --widget'))
-    ask(day, widget, label)
+def allowed(day, payload):
+    """#838: an unlisted send: the planner runs the config set line the refusal names, the owner
+    answers its Owner step card, the line is written and the same call passes."""
+    from fakes.owner import answer_card
+    reason = json.loads(day.hook('PreToolUse', 2, **payload))['hookSpecificOutput']['permissionDecisionReason']
+    line = re.search(r"bin/(wuwei config set outward\.allow '[^']*' --add)", reason)
+    assert line, reason
+    argv = shlex.split(line[1])[1:]
+    code, _, err = call(day, argv)
+    assert code == 1 and 'Owner step: ' in err, err
+    answer_card(day.root, err, session='planner')
+    assert call(day, argv)[0] == 0
     day.hook('PreToolUse', 0, **payload)
-    return command[1].split()[-1]
+    return 'allowed'
 
 
 HEAD = {'protection': {'required_checks': [{'name': 'tests', 'app_id': 1}], 'approvals': 1, 'strict': True,
@@ -192,27 +197,24 @@ def approve_at_head(day):
 
 
 @pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
-def test_posture_day(tmp_path, monkeypatch, posture):
-    # #530 E, part 14: a whole day under each posture. The quality gate says ESCALATE and the
-    # owner answers dispatch next's Owner step card; no decision record is written. Under observe
-    # the owner answers the gate, that card and one client draft; under guarded every owner-only
-    # action asks on a card. #816: the repository's merge policy merges under both.
+@pytest.mark.parametrize('posture', [False, True])
+def test_enforce_day(tmp_path, monkeypatch, posture):
+    # #530 E, part 14, #837: a whole day with guards.enforce false and true. The quality gate says
+    # ESCALATE and the owner answers dispatch next's Owner step card; no decision record is
+    # written. Log-only, the owner answers the gate, that card and one unlisted send; enforced,
+    # every owner-only action asks on a card. #816: the repository's merge policy merges either way.
     from fakes.day import Day
     started, answered, steps = time.monotonic(), [], set()
-    autonomous = posture == 'observe'
+    autonomous = not posture
     day = prepare(Day(tmp_path / 'workspace', monkeypatch))
     day.quality = 'ESCALATE'
-    # Spec mode runs advisory under observe (design 5.10): no spec-first refusal to meet.
+    # Spec mode runs advisory with guards.enforce = false (design 5.10): no spec-first refusal.
     day.runtime.spec = not autonomous
     path = day.root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('fast_checks = ["demo-check"]\n',
                                              'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
                                              'merge = {auto = true, soak_minutes = 0}\n')
-                    + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n'
-                    + ('default_tier = "send"\nlearn = "auto"\n[security]\nposture = "observe"\n'
-                       if autonomous else
-                       'default_tier = "ask"\nlearn = "card"\n[security]\nposture = "guarded"\n')
+                    + f'[guards]\nenforce = {str(posture).lower()}\n'
                     + '[deploy]\nworkflows = ["deploy.yml"]\n')
 
     def card(day, action):
@@ -232,15 +234,9 @@ def test_posture_day(tmp_path, monkeypatch, posture):
             steps.add('ping')
             bash(day, f'wuwei pr ping-check {day.ref}')
             bash(day, f'wuwei pr ping {day.ref}')
-            if not any(row['status'] == 'posted' for row in day.data.get('channel_posts', [])):
-                pending = [key for key, row in day.data.get('drafts', {}).items() if row['status'] == 'pending']
-                [widget] = json.loads(bash(day, f'wuwei drafts show {pending[0]} --widget'))
-                ask(day, widget, 'Send now')
-                bash(day, f'wuwei pr ping {day.ref}')
             approve_at_head(day)
-            steps.add(held(day, planner(tool_name='mcp__slack__post_message',
-                                        tool_input={'channel': 'C0CLIENT', 'text': 'The fix ships today.'}),
-                           'Send now'))
+            steps.add(allowed(day, planner(tool_name='mcp__slack__post_message',
+                                           tool_input={'channel': 'C0CLIENT', 'text': 'The fix ships today.'})))
         if any(row[0] == 'merge' for row in day.host.calls) and 'merged' not in steps:
             steps.add('merged')
             day.host.results['pr'].data.update(state='closed', merged=True,
@@ -257,7 +253,7 @@ def test_posture_day(tmp_path, monkeypatch, posture):
 
     data, events = day.data, day.events
     kinds = [row['kind'] for row in events]
-    assert workspace.load_config(day.root)['security']['posture'] == posture
+    assert workspace.load_config(day.root)['guards']['enforce'] is posture
     assert data['items']['A']['phase'] == 'merged' and 'day.closed' in kinds
     assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002: no item writes a record
     assert [row['payload']['verdict'] for row in events if row['kind'] == 'gate.received'
@@ -269,16 +265,16 @@ def test_posture_day(tmp_path, monkeypatch, posture):
         if row['kind'] == 'hook.refusal':
             reason = row['payload']['reason']
             assert 'specify first' in reason or re.search(
-                r'bin/wuwei drafts show draft-|Owner step: ', reason), reason
+                r"config set outward\.allow '[^']*' --add|Owner step: ", reason), reason
     assert not any(row['kind'].startswith('grant.') for row in events)
     report = (day.directory / 'report.md').read_text()
     assert 'decision_routes' not in data and '## Taken under mandate' not in report
+    assert 'allowed' in steps and 'drafts' not in data
+    assert workspace.load_config(day.root)['outward']['allow'] == ['mcp__slack__post_message']
     if autonomous:
         assert sorted({state for state, *_ in answered}) == ['gate']
-        assert [row['destination'] for row in data['drafts'].values()] == ['C0CLIENT'], data['drafts']
         assert '## Grants' not in report
     else:
-        assert any(row['destination'] == 'C0CLIENT' for row in data['drafts'].values())
         assert {'merged', 'deployed'} <= steps
     assert time.monotonic() - started < 60
 

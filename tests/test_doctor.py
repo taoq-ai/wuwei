@@ -94,8 +94,6 @@ def ws(tmp_path, monkeypatch):
     (root / '.wuwei/config.toml').write_text(CONFIG)
     (root / '.wuwei/calibration.json').write_text(json.dumps({'acme/widget': {'date': TODAY}}))
     (root / '.wuwei/executable').write_text(f"{plugin / 'bin/wuwei'}\n")
-    from wuwei import graph
-    graph.sync(root, workspace.load_config(root))  # #552: a current workspace has its register
     seed(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
@@ -298,9 +296,9 @@ def test_workspace_rows_healthy(ws):
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'acme/widget path', 'acme/widget git',
         'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
-        'outbound classes', 'outbound tiers', 'register', 'calibration', 'drift',
-        'posture', 'telemetry']
-    assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
+        'calibration', 'drift',
+        'guards', 'telemetry']
+    assert row(rows, 'guards')['value'] == 'enforce (guards.enforce = true)'
     assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
@@ -457,23 +455,11 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     found = row(doctor.diagnose(), 'drift')
     assert found['status'] == 'warn' and 'apply' not in found and 'acme/widget' in found['value']
     assert found['fix'] == W('config promote')
-    observe = '[security]\nposture = "observe"\n[guards]\nshadow_since = "{}"\n[adapters]'
-    config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-30')))
-    found = row(doctor.diagnose(), 'posture')
-    assert (found['status'], found['value']) == ('ok', 'observe (from security.posture), 4 days left')
-    config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-25')))
-    found = row(doctor.diagnose(), 'posture')
-    assert found['status'] == 'warn' and 'apply' not in found and '8 days' in found['value']
-    assert found['value'].startswith('observe (from security.posture)')
-    assert found['fix'] == ('set security.posture = "guarded" in .wuwei/config.toml, '
-                            'or raise guards.shadow_days')
-    # guards.mode = "shadow" is the deprecated alias for observe (#308).
-    config(ws.root, CONFIG.replace('[adapters]', '[guards]\nmode = "shadow"\nshadow_since = "2026-09-25"\n'
-                                                 '[adapters]'))
-    found = row(doctor.diagnose(), 'posture')
-    assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
-    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n[adapters]'))
-    assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
+    # #837: one guards row, ok either way; the log-only text names the switch back.
+    config(ws.root, CONFIG.replace('[adapters]', '[guards]\nenforce = false\n[adapters]'))
+    found = row(doctor.diagnose(), 'guards')
+    assert found['status'] == 'ok' and found['value'].startswith('log only (guards.enforce = false)')
+    assert 'bin/wuwei config set guards.enforce true' in found['value']
 
 
 def test_workspace_telemetry_question_pending(ws):
@@ -487,16 +473,12 @@ def test_workspace_telemetry_question_pending(ws):
 
 
 def test_workspace_retired_shadow_mode(ws, monkeypatch):
-    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "guarded"\n[guards]\nmode = "shadow"\n'
+    config(ws.root, CONFIG.replace('[adapters]', '[guards]\nmode = "shadow"\n'
                                                  'shadow_since = "2026-09-30"\n[adapters]'))
-    found = row(doctor.diagnose(), 'posture')
-    assert (found['status'], found['value'], found['fix'], found['apply']) == (
-        'warn', 'observe (from guards.mode = "shadow", deprecated; run doctor --fix)',
-        W('init --upgrade'), 'init-upgrade')
     monkeypatch.setattr(init, 'upgrade', UPGRADE)
     found = row(doctor.diagnose(), 'template')
     assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
-    assert ('Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"'
+    assert ('Would upgrade config.toml: guards.enforce = false (was guards.mode = "shadow")'
             in found['detail'])
 
 
@@ -544,9 +526,9 @@ def test_gates_mcp_servers(ws):
     assert row(rows, 'mcp gate')['status'] == 'ok'
 
     record(ws.root, exit=1, pending=f'.wuwei/days/{TODAY}/decisions/D-1.md', severities=['critical'])
-    assert row(doctor.diagnose(), 'mcp gate')['status'] == 'ok'  # #351: guarded warns.
+    assert row(doctor.diagnose(), 'mcp gate')['status'] == 'ok'  # #351: no block list, no block.
     with (ws.root / '.wuwei/config.toml').open('a') as config:
-        config.write('[security]\nposture = "strict"\n')
+        config.write('[scanner.mcp]\nblock = ["critical"]\n')
     found = row(doctor.diagnose(), 'mcp gate')
     assert found['status'] == 'fail' and found['fix'] == W('mcp decide D-1 proceed in a host terminal')
     assert 'Outcome' not in found['fix']
@@ -558,8 +540,7 @@ def test_gates_mcp_servers(ws):
 
 def test_answered_cards_row(ws):
     """#661: a card the owner answered whose record command never ran shows on doctor."""
-    from test_answers import pending_draft
-    from wuwei import drafts, sessions
+    from wuwei import decision, sessions
 
     def asked(*topics, outcomes=None):
         def update(data):
@@ -583,14 +564,13 @@ def test_answered_cards_row(ws):
     assert asked('D-2', topic) == []
     record.unlink()
     assert asked('D-2', topic, outcomes={'D-2': {'option': 'B', 'decided_by': 'owner'}}) == []
-    draft_id = pending_draft(ws.root)
-    assert asked(draft_id, f'{draft_id}:send') == [draft_id]
+    asked('D-2', topic)
 
-    def broken(data):
-        raise ValueError('drafts: invalid queue')
-    ws.mp.setattr(drafts, 'read', broken)
+    def broken(data, ident):
+        raise ValueError('decisions: invalid outcomes')
+    ws.mp.setattr(decision, 'answered', broken)
     found = row(doctor.diagnose(), 'answered cards')
-    assert (found['status'], found['value']) == ('unmeasured', 'drafts: invalid queue')
+    assert (found['status'], found['value']) == ('unmeasured', 'decisions: invalid outcomes')
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
@@ -884,7 +864,7 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
 
 def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     rows = [doctor._row('gates', 'mcp docs', 'warn', 'unmeasured', 'wuwei mcp decide proceed-unmeasured docs'),
-            doctor._row('workspace', 'posture', 'warn', 'observe long', 'set security.posture = "guarded"'),
+            doctor._row('workspace', 'guards', 'warn', 'log only', 'set guards.enforce = true'),
             doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover'),
             doctor._row('gates', 'decision', 'fail', 'pending', 'wuwei mcp decide', apply='mcp-decide')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
@@ -893,7 +873,7 @@ def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert not asked and 'Nothing to apply' in out
     notes = out.split('Not applied:', 1)[1]
-    for text in ('wuwei mcp decide proceed-unmeasured docs', 'set security.posture = "guarded"',
+    for text in ('wuwei mcp decide proceed-unmeasured docs', 'set guards.enforce = true',
                  'wuwei state recover', 'wuwei mcp decide'):
         assert text in notes
     assert not events(ws.root, 'doctor.fixed')
@@ -1238,56 +1218,6 @@ def test_github_tracker_row_names_the_auth_fix(ws, auth, fix):
     found = row(doctor.diagnose(), 'tracker')
     assert found['status'] == 'fail' and 'HTTP 401' in found['value']
     assert re.sub(r'\S*/bin/wuwei', 'bin/wuwei', found['fix']) == fix
-
-
-@pytest.mark.parametrize('posture,words', [('strict', 'is ignored under strict'),
-                                           ('guarded', 'can send to a client or public audience')])
-def test_outbound_tier_rows(ws, posture, words):
-    # #496: people without a class and an owner send row for a client audience warn (information).
-    # Review F3: by audience, by a client channel id, by a client person, or with no party key.
-    config(ws.root, CONFIG + '\n[outbound]\nexternal_channels = ["C2"]\ntiers = [{ audience = "client", tier = "send" }, '
-           '{ channel = "C2", tier = "send" }, { person = "U03", tier = "send" }, { topic = "commitment", tier = "send" }, '
-           '{ audience = "team", tier = "send" }, { person = "U02", tier = "send" }, { channel = "C1", tier = "send" }]\n'
-           '\n[outbound.people]\n"slack:U01" = { email = "ada@example.com" }\n'
-           '"slack:U02" = { email = "bo@example.com", class = "team" }\n'
-           '"slack:U03" = { email = "cy@client.test", class = "client" }\n'
-           f'\n[security]\nposture = "{posture}"\n')
-    rows = doctor.diagnose()
-    classes, tiers = row(rows, 'outbound classes'), row(rows, 'outbound tiers')
-    assert (classes['status'], classes['value']) == ('warn', '1 people without a class')
-    assert classes['detail'] == ['slack:U01: team while internal by outbound.company_domains or '
-                                 'outbound.code_host_orgs, else the connector default class']
-    assert 'bin/wuwei outbound learn card' in classes['fix'] and '[outbound.people]' not in classes['fix']
-    assert tiers['status'] == 'warn' and tiers['detail'] == [f'rule {n} {words}' for n in (1, 2, 3, 4)]
-    assert tiers['fix'] == 'make the row ask, or remove it'
-
-
-def test_register_row(ws):
-    # #552: ok when the register matches config.toml; drift, a missing or damaged one is warn, never fail.
-    from wuwei import graph
-    found = row(doctor.diagnose(), 'register')
-    assert found['status'] == 'ok' and 'matches config.toml' in found['value'], found
-    config(ws.root, CONFIG + '\n[outbound]\nwork_channels = ["C09"]\n')
-    found = row(doctor.diagnose(), 'register')
-    assert found['status'] == 'warn' and found['detail'] == ['outbound.work_channels'], found
-    assert found['fix'] == W('init --upgrade') and found['apply'] == 'init-upgrade'
-    graph.sync(ws.root, workspace.load_config(ws.root))
-    assert row(doctor.diagnose(), 'register')['status'] == 'ok'
-    (ws.root / '.wuwei/graph.json').write_text('not json')
-    found = row(doctor.diagnose(), 'register')
-    assert found['status'] == 'warn' and 'damaged' in found['value'] and 'apply' not in found, found
-    (ws.root / '.wuwei/graph.json').unlink()
-    found = row(doctor.diagnose(), 'register')
-    assert found['status'] == 'warn' and found['apply'] == 'init-upgrade', found
-
-
-def test_template_row_leaves_the_register_to_its_row(ws):
-    def upgrade(args):
-        print('Would upgrade .wuwei/graph.json: 3 nodes and 2 edges from config.toml')
-        print('Would upgrade config.toml: name .wuwei/graph.json above 2 sections')
-        return 0
-    ws.mp.setattr(init, 'upgrade', upgrade)
-    assert row(doctor.diagnose(), 'template')['status'] == 'ok'
 
 
 def test_day_shepherd_row(ws):

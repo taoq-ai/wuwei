@@ -37,20 +37,17 @@ def caller(root, card=False):
 
 def gate_topics(root, session_id):
     """(topics and D-n records today's planner session asked through the gate, caller is that
-    planner); strict asks nothing, so a D-n card never confirms there (#357, #354) until part 18
-    deletes the D-n cards; an Owner step card counts under every posture (#831)."""
+    planner); an Owner step card counts too (#831)."""
     if not session_id:
         return frozenset(), False  # before any state read: a host terminal has no session
     data = state.read_state(root)
     if session_id != data.get('planner_session_id'):
         return frozenset(), False
-    if workspace.posture(workspace.load_config(root))[0] == 'strict':
-        return frozenset(), True
     return frozenset(data.get('sessions', {}).get(session_id, {}).get('gate_asked', ())), True
 
 
 def card_topic(card, answer):
-    """#529: the gate topic of the owner's answer to a card, hashed as #493 hashes drafts."""
+    """#529: the gate topic of the owner's answer to a card, hashed."""
     from hashlib import sha256
     text = answer.strip().removesuffix(' (Recommended)').strip()
     return f'{card}={sha256(text.encode()).hexdigest()}'

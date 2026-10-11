@@ -118,20 +118,6 @@ def test_warnings_clear_pr_action_and_mcp_finding(root):
     assert attention(day) == []
 
 
-def test_draft_warnings_clear_when_draft_is_decided(root):
-    from wuwei.commands.status import attention
-    day = workspace.day_dir(root)
-    for ident in ('d1', 'd2'):
-        state.append_event('draft.created', {'id': ident, 'channel': 'chat'}, root)
-    assert len(attention(day)) == 2
-    state.append_event('draft.sent', {'id': 'd1'}, root)
-    state.append_event('draft.dropped', {'id': 'd2'}, root)
-    assert attention(day) == []
-    state.append_event('draft.created', {'id': 'd3', 'channel': 'chat'}, root)
-    state.append_event('draft.failed', {'id': 'd3'}, root)
-    assert [row['source'] for row in attention(day)] == ['draft.failed']
-
-
 def test_merge_policy_warning_is_per_pr_and_clears_on_merge(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)
@@ -366,7 +352,6 @@ def test_future_clock_warns_unmeasured_watch(root, monkeypatch, capsys):
     assert snapshot(day)['watch'] == 'unmeasured'
     assert main(['status']) == 0
     assert 'watch unmeasured' in capsys.readouterr().out
-
 
 
 def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):

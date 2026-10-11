@@ -4,7 +4,6 @@ from itertools import chain
 import os
 from pathlib import Path
 import re
-import sys
 
 from wuwei.guards import Guard
 from wuwei.shell import WORKSPACE_ROOT, _cd_target, _cwd, _text
@@ -69,7 +68,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',), ('graph.json',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
             return True
@@ -112,9 +111,6 @@ def _hint(path):
     if tail == ('memory', 'goals.md'):
         return ('goals.md is protected: plan approve records the goals the morning gate approved; '
                 "other edits are the owner's, outside agent tools.")
-    if tail == ('graph.json',):
-        return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
-                'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')
     if tail[:1] == ('integrity',):
         return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
                 'on its Owner step card.')
@@ -176,7 +172,7 @@ def check_file(payload):
 
 
 def check_scratch(payload):
-    """#647: a seat's Write into another item's scratch directory: a warning below strict."""
+    """#647: a seat's Write into another item's scratch directory; the hook logs it (#837)."""
     try:
         if 'agent_id' not in payload:
             return 0, ''
@@ -199,12 +195,7 @@ def check_scratch(payload):
             return 0, ''
         reason = (f"scratch: {Path(*parts)} is in item {other}'s scratch directory; write item "
                   f"{seat['item']}'s temporary files in {base / seat['item'] / seat['role']}/")
-        level = workspace.posture(workspace.load_config(root))[1]['seats']
-        if level == 'block':
-            return 1, reason
-        if level == 'warn':
-            print(f'warning: {reason}', file=sys.stderr)
-        return 0, ''
+        return 1, reason
     except (ValueError, OSError, RuntimeError, KeyError) as exc:
         return 2, str(exc)
 

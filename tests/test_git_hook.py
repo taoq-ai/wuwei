@@ -70,13 +70,13 @@ def test_native_push_evidence_failures(workspace_case, monkeypatch, failure):
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == (2 if failure == 'ancestry' else 1)
 
 
-@pytest.mark.parametrize('posture,code', [('observe', 0), ('guarded', 0), ('strict', 1)])
-def test_native_push_missing_evidence_refuses_only_under_strict(workspace_case, monkeypatch, capsys,
-                                                                posture, code):
-    # #530: below strict the native hook warns on a missing fast check; protected refs still refuse.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_native_push_missing_evidence_warns(workspace_case, monkeypatch, capsys, enforce):
+    # #530: the native hook warns on a missing fast check; protected refs still refuse.
     root, _ = workspace_case
+    code = 0
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[security]\nposture = "{posture}"\n')
+        stream.write(f'[guards]\nenforce = {enforce}\n')
     set_fast_checks(root, {'example/project': {'unit': {'sha': OLD, 'exit': 0}}})
     updates = f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n'
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == code
@@ -86,15 +86,14 @@ def test_native_push_missing_evidence_refuses_only_under_strict(workspace_case, 
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 1
 
 
-@pytest.mark.parametrize('posture,code', [('observe', 0), ('guarded', 0), ('strict', 1)])
-def test_native_tag_push_is_refused_only_under_strict(workspace_case, monkeypatch, capsys, posture, code):
-    # #530, #816: a tag push is a release; below strict the deploy guard's Owner step card gates it.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_native_tag_push_passes_to_the_deploy_card(workspace_case, monkeypatch, capsys, enforce):
+    # #530, #816: a tag push is a release; the deploy guard's Owner step card gates it.
     root, _ = workspace_case
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[security]\nposture = "{posture}"\n')
+        stream.write(f'[guards]\nenforce = {enforce}\n')
     updates = f'refs/tags/v1 {OLD} refs/tags/v1 {"0"*40}\n'
-    assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == code
-    assert code == 0 or 'release' in capsys.readouterr().err
+    assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 0
 
 
 def test_native_push_reads_head_without_inventing_a_destination(workspace_case, monkeypatch):

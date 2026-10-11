@@ -336,9 +336,9 @@ def test_init_registers_and_reports_poisoning(tmp_path, monkeypatch, upgrade, ca
     assert file.parent == root.resolve() / '.wuwei/ziran/servers'
     assert json.loads(file.read_text()) == {'mcpServers': {'docs': {'command': 'fake'}}}
     assert 'MCP' in capsys.readouterr().err
-    assert core().cached(root).exit == 0  # #351: guarded warns.
+    assert core().cached(root).exit == 0  # #351: no block list, no block.
     config = root / '.wuwei/config.toml'
-    config.write_text(config.read_text().replace('posture = "guarded"', 'posture = "strict"'))
+    config.write_text(config.read_text().replace('# block = ["critical"]', 'block = ["critical"]'))
     assert core().cached(root).exit == 1
     assert list((root / '.wuwei/days').glob('*/decisions/D-*.md'))
 
@@ -373,28 +373,8 @@ def test_morning_check_before_launch(configured, monkeypatch, code):
 SEAT = {'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'no brief'}
 
 
-@pytest.mark.parametrize('severity', ['high', 'critical'])
-def test_strict_blocks_critical_and_high(configured, monkeypatch, severity):
-    # #351: strict refuses a high or critical finding until the owner decides.
-    from test_plan import proposal
-    from wuwei import plan, state
-    from wuwei.guards.agent_launch import check_mcp
-    goals(configured)
-    with (configured / '.wuwei/config.toml').open('a') as config:
-        config.write('[security]\nposture = "strict"\n')
-    fake_scanner(monkeypatch, 1, [metadata(severity)])
-    assert core().check(configured).exit == 1
-    result = core().cached(configured)
-    assert result.exit == 1 and '(mcp: block, security.areas.mcp)' in result.reason
-    assert check_mcp({'cwd': str(configured), 'tool_input': SEAT})[0] == 1
-    with pytest.raises(state.StateError, match='MCP'):
-        plan.propose(proposal(), configured)
-    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 0
-    assert core().cached(configured).exit == 0
-
-
-def test_guarded_critical_warns_with_summary(configured, monkeypatch, capsys):
-    # #351: under the default posture a critical finding warns; every surface names the command.
+def test_critical_warns_with_summary(configured, monkeypatch, capsys):
+    # #351: with no block list a critical finding warns; every surface names the command.
     from test_plan import proposal
     from wuwei import plan
     from wuwei.commands import status
@@ -431,7 +411,7 @@ def test_template_has_no_block_key():
     text = (Path(__file__).parents[1] / 'templates/workspace/config.toml').read_text()
     assert 'block' not in tomllib.loads(text)['scanner']['mcp']
     section = text.split('[scanner.mcp]')[1].split('\n[')[0]
-    assert all(word in section for word in ('observe', 'guarded', 'strict', 'block'))
+    assert all(word in section for word in ('guards.enforce', 'block'))
 
 
 def test_sticky_findings_owner_confirmation_and_rollover(configured, monkeypatch):
@@ -787,7 +767,7 @@ def no_ziran(root, tmp_path, monkeypatch):
 
 
 def strict(root):
-    """The pre-#325 posture: an unmeasured server refuses launches."""
+    """The pre-#325 block list: an unmeasured server refuses launches."""
     with (root / '.wuwei/config.toml').open('a') as config:
         config.write('[scanner.mcp]\nblock = ["high", "critical", "unmeasured"]\n')
 
@@ -942,27 +922,26 @@ def legacy(root, **fields):
                                 'reports': [], 'reason': 'MCP registry unmeasured: legacy', **fields}))
 
 
-@pytest.mark.parametrize('posture', [None, 'strict', 'observe'])
-@pytest.mark.parametrize('block,setup,check_exit,cached_exit,strict_exit', [
-    (None, 'unmeasured', 2, 0, 2),
-    ('["unmeasured"]', 'unmeasured', 2, 2, 2),
-    ('[]', 'critical', 1, 0, 1),
-    ('["high", "critical"]', 'high', 1, 1, 1),
-    ('[]', 'invalid', 2, 2, 2),
-    ('[]', 'stale', None, 2, 2),
-    ('[]', 'legacy', None, 2, 2),
-    (None, 'legacy-pending', None, 0, 1),
-    (None, 'critical', 1, 0, 1),
+@pytest.mark.parametrize('enforce', [None, 'false'])
+@pytest.mark.parametrize('block,setup,check_exit,cached_exit', [
+    (None, 'unmeasured', 2, 0),
+    ('["unmeasured"]', 'unmeasured', 2, 2),
+    ('[]', 'critical', 1, 0),
+    ('["high", "critical"]', 'high', 1, 1),
+    ('[]', 'invalid', 2, 2),
+    ('[]', 'stale', None, 2),
+    ('[]', 'legacy', None, 2),
+    (None, 'legacy-pending', None, 0),
+    (None, 'critical', 1, 0),
 ])
-def test_posture_block_table(configured, monkeypatch, posture, block, setup, check_exit, cached_exit,
-                             strict_exit):
-    # #331: guarded (the default) is #336's table, strict the pre-#325 list, observe never blocks.
+def test_enforce_block_table(configured, monkeypatch, enforce, block, setup, check_exit, cached_exit):
+    # #336's table with guards.enforce on (the default); with it off nothing blocks (#837).
     with (configured / '.wuwei/config.toml').open('a') as config:
-        if posture:
-            config.write(f'[security]\nposture = "{posture}"\n')
+        if enforce:
+            config.write(f'[guards]\nenforce = {enforce}\n')
         if block is not None:
             config.write(f'[scanner.mcp]\nblock = {block}\n')
-    cached_exit = {None: cached_exit, 'strict': strict_exit, 'observe': 0}[posture]
+    blocked, cached_exit = cached_exit, 0 if enforce else cached_exit
     if setup == 'unmeasured':
         fake_scanner(monkeypatch, 2)
     elif setup in ('critical', 'high'):
@@ -982,31 +961,9 @@ def test_posture_block_table(configured, monkeypatch, posture, block, setup, che
     result = core().cached(configured)
     assert result.exit == cached_exit
     if result.exit:
-        assert 'mcp: ' in result.reason
-        assert 'floor: scanner.mcp.block' in result.reason or 'security.areas.mcp' in result.reason
-
-
-OFF = 'MCP registry: not checked (security.areas.mcp = "off")'
-
-
-def test_mcp_off_is_not_checked(configured, monkeypatch):
-    from wuwei.commands import status
-    with (configured / '.wuwei/config.toml').open('a') as config:
-        config.write('[security.areas]\nmcp = "off"\n')
-    calls = fake_scanner(monkeypatch, 1, [metadata('critical')])
-    assert core().check(configured) == registry.Result(0, reason=OFF)
-    assert core().cached(configured) == registry.Result(0, reason=OFF)
-    assert calls == []
-    assert not (configured / '.wuwei/ziran/status.json').exists()
-    events = workspace.day_dir(configured) / 'events.jsonl'
-    assert not events.exists() or '"mcp.' not in events.read_text()
-    from test_plan import proposal
-    from wuwei import plan
-    goals(configured)
-    text = plan.propose(proposal(), configured).read_text()
-    assert any(line.startswith('- mcp:') and 'not checked' in line for line in text.splitlines())
-    assert not [row for row in status.attention(workspace.day_dir(configured))
-                if str(row.get('source', '')).startswith('mcp.')]
+        assert result.reason.endswith('(scanner.mcp.block)')
+    elif enforce and blocked:
+        assert result.reason.endswith('(guards.enforce = false)')
 
 
 def test_adapter_failed_run_restores_only_its_snapshot(source, monkeypatch):
@@ -1587,15 +1544,12 @@ def test_mcp_confirm_without_terminal_names_the_host_terminal(configured, monkey
     assert (result.exit, result.reason) == (2, integrity.HOST_TERMINAL)
 
 
-@pytest.mark.parametrize('posture', ['guarded', 'strict'])
-def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, capsys, posture):
+def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, capsys):
     from wuwei import integrity, plan
     from wuwei.__main__ import main
     from wuwei.guards.answers import record_gate
     monkeypatch.chdir(configured)
     block_critical(configured)
-    with (configured / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[security]\nposture = "{posture}"\n')
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     assert core().check(configured).exit == 1
     plan.session('planner-1', configured)
@@ -1611,12 +1565,8 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
     capsys.readouterr()
     code = main(['mcp', 'decide', 'D-1', 'proceed'])
     text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
-    if posture == 'strict':  # #834 review F2: a D-n card never confirms under strict (#357)
-        assert code == 2 and integrity.HOST_TERMINAL in capsys.readouterr().err
-        assert 'Outcome: pending' in text
-    else:
-        assert code == 0 and text.endswith('in the planner session.\n')
-        assert core().cached(configured).exit == 0
+    assert code == 0 and text.endswith('in the planner session.\n')
+    assert core().cached(configured).exit == 0
 
 
 def asked_mcp_card(configured, monkeypatch):
@@ -1668,18 +1618,18 @@ def test_mcp_decide_workspace_from_outside(configured, tmp_path_factory, monkeyp
     assert 'Outcome: proceed' in (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
 
 
-def no_scanner(source, monkeypatch, posture='guarded'):
+def no_scanner(source, monkeypatch, enforce='true'):
     """#424: the template default, adapters.scanner = "none", one approved server."""
     root = source.parent
-    (root / '.wuwei/config.toml').write_text(f'[adapters]\nscanner = "none"\n[security]\nposture = "{posture}"\n')
+    (root / '.wuwei/config.toml').write_text(f'[adapters]\nscanner = "none"\n[guards]\nenforce = {enforce}\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+02:00')
     approve(root, 'docs')
     return root
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_no_scanner_gate_is_off(source, monkeypatch, posture):
-    root = no_scanner(source, monkeypatch, posture)
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_no_scanner_gate_is_off(source, monkeypatch, enforce):
+    root = no_scanner(source, monkeypatch, enforce)
     assert core().cached(root) == registry.Result(0, reason=core().NO_SCANNER)
     assert core().launch(root).exit == 0
 
@@ -1726,14 +1676,14 @@ def test_propose_without_scanner_prints_line(source, monkeypatch, capsys, checke
     assert (core().NO_SCANNER in capsys.readouterr().err) is not checked_first
 
 
-@pytest.mark.parametrize('posture,code', [('guarded', 2), ('strict', 2), ('observe', 0)])
-def test_scanner_cannot_start_blocks_under_guarded(configured, tmp_path, monkeypatch, posture, code):
+@pytest.mark.parametrize('enforce,code', [('true', 2), ('false', 0)])
+def test_scanner_cannot_start_blocks_while_enforced(configured, tmp_path, monkeypatch, enforce, code):
     # #424: a configured scanner that cannot start is a check that could not run (#351).
     empty = tmp_path / 'empty-path'
     empty.mkdir()
     monkeypatch.setenv('PATH', str(empty))
     with (configured / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[security]\nposture = "{posture}"\n')
+        config.write(f'[guards]\nenforce = {enforce}\n')
     result = core().check(configured)
     assert result.exit == 2
     assert result.reason.startswith('MCP registry could not run: ziran watch-registry: unmeasured: FileNotFoundError')
@@ -1755,7 +1705,7 @@ def test_scanner_without_data_is_could_not_run(configured, monkeypatch):
     assert core().check(configured) == registry.Result(2, reason='MCP registry could not run: ' + reason)
     assert core().cached(configured).exit == 2
     assert (snapshots / 'docs.json').read_text() == 'baseline'
-    fake_scanner(monkeypatch, 2)  # data present: one server unmeasured, guarded warns
+    fake_scanner(monkeypatch, 2)  # data present: one server unmeasured, no block list warns
     assert core().check(configured).exit == 2
     assert core().unmeasured(configured) == ['docs']
     assert core().cached(configured).exit == 0

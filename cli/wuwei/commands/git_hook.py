@@ -11,8 +11,6 @@ from wuwei.exits import DAMAGED, PAYLOAD
 
 SKIPPED = ('wuwei: warning: git hooks skipped for {path}: {reason}; the Claude Code PreToolUse guard still '
            'checks git commit and git push; run bin/wuwei doctor for the fix')
-STRICT = ('{reason}; posture strict refuses a worktree without WUWEI git hooks; after the fix, '
-          'remove {path} with git worktree remove and run bin/wuwei worktree add again')
 
 
 def register(subparsers):
@@ -55,8 +53,6 @@ exec "$executable" git-hook ''' + event + ' "$@"\n')
     result = vcs.hooks_path(str(path), str(directory), mode, root=root)
     if result.exit == 1 or (result.exit == 0 and mode == 'skip'):
         reason = result.reason if result.exit else 'worktree.git_hooks = "skip"'
-        if result.exit and mode != 'skip' and config and workspace.posture(config)[0] == 'strict':
-            raise ValueError(STRICT.format(reason=reason, path=path))
         from wuwei import state
         print(SKIPPED.format(path=path, reason=reason), file=sys.stderr)
         state.append_event('worktree.hooks_skipped', {'worktree': Path(path).name, 'reason': reason}, root)
@@ -95,9 +91,7 @@ def run(args):
             result = guard.push_check(repo, actual, push, root, vcs)
             if not result[0]:
                 found = guard.fast_evidence(repo, push['head']['sha'], actual['path'], root)
-                if found[0] and workspace.posture(workspace.load_config(root))[0] == 'strict':
-                    result = found
-                elif found[0]:  # #530: below strict a missing check is a warning
+                if found[0]:  # #530: a missing check is a warning
                     print(f'wuwei pre-push warning: {found[1]}', file=sys.stderr)
             if not result[0]:
                 for older in ancestors:

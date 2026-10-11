@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 import importlib
-import io
 import json
 
 import pytest
@@ -50,8 +49,7 @@ def case(tmp_path, monkeypatch):
     measured(monkeypatch)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["U12345", "builder"]\n'
-                                                 '[adapters]\nchat = "slack"\n'
-                                                 '[outbound]\ndefault_tier = "ask"\n')  # #527: these tests hold drafts
+                                                 '[adapters]\nchat = "slack"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
     host = Fake()
@@ -248,11 +246,12 @@ def test_day_and_closed_pr(case, monkeypatch, mode, expected):
 
 
 def reply_command(monkeypatch, surface='review', id=1):
-    monkeypatch.setattr('sys.stdin', io.StringIO('Fixed in the current change.'))
+    """#838: wuwei reply is gone; pr act --reply posts through obligations.reply."""
+    from wuwei import obligations
     try:
-        return main(['reply', REF, '--surface', surface, '--id', str(id)])
-    except SystemExit as exc:
-        return exc.code
+        return obligations.reply(REF, surface, id, 'Fixed in the current change.')
+    except Exception:  # the CLI reports any error as exit 2
+        return 2
 
 
 def posting(host, failure=None):
@@ -459,16 +458,12 @@ def test_identity_must_be_unambiguous_config(case, handles):
     assert sweep_event(root)[-1]['unreadable'] == 1
 
 
-@pytest.mark.parametrize('command', ['sweep', 'reply'])
-def test_me_override_is_not_accepted(case, monkeypatch, command):
+def test_me_override_is_not_accepted(case, monkeypatch):
     _, host = case
     host.results['reviews'] = Result(0, [review(author=ME)])
     host.results['pr'].data['requested_reviewers'] = ['reviewer']
-    monkeypatch.setattr('sys.stdin', io.StringIO('Acknowledged'))
-    args = ['sweep', 'obligations'] if command == 'sweep' else [
-        'reply', REF, '--surface', 'review', '--id', '1']
     with pytest.raises(SystemExit) as exc:
-        main([*args, '--me', 'reviewer'])
+        main(['sweep', 'obligations', '--me', 'reviewer'])
     assert exc.value.code == 2
     assert not host.calls
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # No security material in these fixtures, so the outward guard has nothing to read.
 TEMPLATE = (ROOT / 'templates/workspace/config.toml').read_text().replace('required = true', 'required = false')
 TYPO = TEMPLATE.replace('block = ["critical"]\n', 'block = ["critical"]\nblok = ["high"]\n')
-STRICT = TYPO.replace('posture = "guarded"', 'posture = "strict"')
+OFF = TYPO.replace('enforce = true', 'enforce = false')
 
 
 def typo_line(text):
@@ -53,7 +53,7 @@ def replay(monkeypatch, capsys, root, session='test'):
 
 def test_unknown_key_warns_with_the_nearest_key(ws):
     found = []
-    # #345 leaves block unset in the template, so the guarded posture default applies.
+    # #345 leaves block unset in the template.
     assert workspace.load_config(ws, warnings=found)['scanner']['mcp']['block'] == []
     assert found == ['config.toml: ' + WARNING.format(typo_line(TYPO))]
     again = []
@@ -61,27 +61,22 @@ def test_unknown_key_warns_with_the_nearest_key(ws):
     assert again == found
 
 
-def test_strict_warns_about_the_unknown_key(ws):
-    write(ws, STRICT)
+def test_enforce_off_warns_about_the_unknown_key(ws):
+    write(ws, OFF)
     found = []
     workspace.load_config(ws, warnings=found)
-    assert found == ['config.toml: ' + WARNING.format(typo_line(STRICT))]
+    assert found == ['config.toml: ' + WARNING.format(typo_line(OFF))]
 
 
-def test_strict_without_a_near_key_says_remove_it(ws):
-    write(ws, 'nonsense = 1\n[security]\nposture = "strict"\n')
+def test_unknown_key_without_a_near_key_says_remove_it(ws):
+    write(ws, 'nonsense = 1\n[guards]\nenforce = true\n')
     found = []
     workspace.load_config(ws, warnings=found)
     assert 'unknown key nonsense at line 1; remove it or use a documented key' in found[0]
 
 
-@pytest.mark.parametrize('text', [
-    TYPO,
-    TYPO.replace('posture = "guarded"', 'posture = "observe"'),
-    TYPO.replace('[guards]\n', '[guards]\nmode = "shadow"\n'),
-    STRICT,
-], ids=['guarded', 'observe', 'shadow', 'strict'])
-def test_tool_calls_pass_in_every_posture(ws, monkeypatch, capsys, text):
+@pytest.mark.parametrize('text', [TYPO, OFF], ids=['enforce', 'log-only'])
+def test_tool_calls_pass_either_way(ws, monkeypatch, capsys, text):
     write(ws, text)
     code, out = replay(monkeypatch, capsys, ws)
     assert code == 0 and "deny" not in out, out
@@ -124,13 +119,13 @@ def test_config_check_reports_two_tables(ws, monkeypatch, capsys):
     real = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, cfg: code_host if kind == 'code_host' else real(kind, cfg))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    text = TEMPLATE.replace('[outward]\n', '[outward]\nwork_channels = ["C1"]\n')
+    text = TEMPLATE.replace('[outward]\n', '[outward]\ncode_host_orgs = ["acme"]\n')
     write(ws, text)
     lines = text.splitlines()
-    good, bad = lines.index('work_channels = []') + 1, lines.index('work_channels = ["C1"]') + 1
+    good, bad = lines.index('code_host_orgs = []') + 1, lines.index('code_host_orgs = ["acme"]') + 1
     assert config.run(SimpleNamespace()) == 1
     err = capsys.readouterr().err
-    assert (f'wuwei config check: work_channels is set in [outbound] (line {good}) and [outward] '
+    assert (f'wuwei config check: code_host_orgs is set in [outbound] (line {good}) and [outward] '
             f'(line {bad})') in err
 
 
@@ -196,7 +191,7 @@ def test_restart_text(tmp_path, installed):
         'restart Claude Code: hooks 0.10.0, 0.11.0 and 0.12.0 still running (plugin 0.13.0 installed)')
 
 
-NEWER = STRICT.replace('template_version = ""', 'template_version = "0.13.0"')
+NEWER = TYPO.replace('template_version = ""', 'template_version = "0.13.0"')
 
 
 def newer_events(root):
@@ -421,7 +416,7 @@ def test_upgrade_maps_the_today_merge_tier_to_merge_auto(tmp_path, monkeypatch, 
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
     path = tmp_path / '.wuwei/config.toml'
     repo = '[[repos]]\nname = "{0}"\npath = "/{0}"\ndefault_branch = "main"\n'
-    path.write_text(path.read_text().replace('posture = "guarded"', f'posture = "{posture}"')
+    path.write_text(path.read_text().replace('[security]\n', f'[security]\nposture = "{posture}"\n', 1)
                     + f'[merge]\ndefault_tier = "{tier}"\nowner_paths = []\n'
                     '[grants]\nstanding = []\n' + repo.format('a') + repo.format('b') + '[repos.merge]\nauto = false\n')
     capsys.readouterr()
@@ -432,7 +427,7 @@ def test_upgrade_maps_the_today_merge_tier_to_merge_auto(tmp_path, monkeypatch, 
     for key in ('merge.default_tier', 'grants'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     today = tier == 'today' and posture != 'strict'  # "today" never merged under strict
-    assert tomllib.loads(path.read_text())['security']['posture'] == posture
+    assert tomllib.loads(path.read_text())['security'] == {'required': True}  # #837: retired
     assert [repo.get('merge', {}).get('auto') for repo in config['repos']] == [True if today else None, False]
     assert ('Upgraded config.toml: repos.0.merge.auto = true (was merge.default_tier = "today")' in out) is today
     assert 'repos.1.merge.auto' not in out
@@ -478,3 +473,80 @@ def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch
     for key in ('owner.verbosity.digest', 'steward', 'autonomy', 'decisions'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+def test_upgrade_maps_observe_to_enforce_false(tmp_path, monkeypatch, capsys, dry_run):
+    # #837: an observe workspace stays log-only after the upgrade, and says so.
+    import re
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    text = re.sub(r'(?m)^enforce = .*\n', '', path.read_text(), count=1)
+    path.write_text(text.replace('[security]\n', '[security]\nposture = "observe"\n', 1))
+    before = path.read_text()
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=dry_run)) == 0
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    assert f'{prefix} config.toml: guards.enforce = false (was security.posture = "observe")' in out
+    assert f'{prefix} config.toml: remove security.posture (no longer read)' in out
+    if dry_run:
+        assert path.read_text() == before
+    else:
+        assert workspace.load_config(tmp_path)['guards'] == {'enforce': False}
+        assert 'posture' not in tomllib.loads(path.read_text())['security']
+
+
+GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
+                 'bin/wuwei who walks it.')
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+def test_upgrade_retires_the_outward_tiers_and_the_register(tmp_path, monkeypatch, capsys, dry_run):
+    # #838: the tier, class, learn and register keys, the graph comments and graph.json go.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    assert GRAPH_COMMENT not in clean and not (tmp_path / '.wuwei/graph.json').exists()
+    old = (clean.replace('[outbound]\n', f'{GRAPH_COMMENT}\n[outbound]\ndefault_tier = "ask"\nlearn = "off"\n'
+                         'work_channels = ["C1"]\ncompany_domains = ["example.test"]\n'
+                         'tiers = [{ audience = "team", tier = "send" }]\n', 1)
+           .replace('allow = []\n', 'allow = []\npatterns = []\ndraft_ttl = 60\n', 1)
+           + '[outbound.people]\n"slack:U1" = {class = "team"}\n[outward.modes]\nacme = "draft"\n'
+           '[outward.classes]\nacme = "team"\n')
+    path.write_text(old)
+    graph = tmp_path / '.wuwei/graph.json'
+    graph.write_text('{}')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=dry_run)) == 0
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    for key in ('outbound.default_tier', 'outbound.learn', 'outbound.work_channels',
+                'outbound.company_domains', 'outbound.tiers', 'outbound.people', 'outward.patterns',
+                'outward.draft_ttl', 'outward.modes', 'outward.classes'):
+        assert f'{prefix} config.toml: remove {key} (no longer read)' in out, out
+    assert f'{prefix} config.toml: remove the graph comments' in out
+    assert f'{prefix} .wuwei/graph.json: remove (no longer read)' in out
+    if dry_run:
+        assert path.read_text() == old and graph.exists()
+    else:
+        assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+        assert GRAPH_COMMENT not in path.read_text() and not graph.exists()
+
+
+def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    target = tmp_path / 'elsewhere.json'
+    target.write_text('{}')
+    (tmp_path / '.wuwei/graph.json').symlink_to(target)
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert 'graph.json' not in capsys.readouterr().out and target.exists()

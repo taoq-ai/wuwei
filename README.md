@@ -34,7 +34,6 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
 - The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
-- One register of people, channels and tools: `bin/wuwei who` reads it ([people, channels and tools](docs/site/configuration.md#people-channels-and-tools)).
 - The DORA four keys: `bin/wuwei dora` prints lead time, deployment frequency, change failure rate and time to restore, each with its source or the reason it has no reading yet ([DORA keys](docs/site/concepts.md#dora-keys)).
 
 ## How it works
@@ -107,7 +106,7 @@ Planned: Signal and WhatsApp as owner channels (design spec, section 15).
 2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
 3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each edge in design spec 9.2 at the moment of the call, and each edge has its own test. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
 4. Reversibility is a rule, not a score. A seat assumes a two-way choice and records it in its spec under the [mandate](docs/site/concepts.md#mandate). A one-way, scope, goal or trust-boundary question reaches you as one named decision from `wuwei next`, on one card ([owner decisions](docs/site/concepts.md#owner-decisions), design spec 5.8).
-5. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
+5. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([outward sends](docs/site/concepts.md#outward-sends), design spec 5.2).
 6. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
 7. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
 8. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).

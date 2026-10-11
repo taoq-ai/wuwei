@@ -70,7 +70,7 @@ def test_fresh_states_and_dispatch(case, condition, expected, action):
         assert row['dispatch']['worktree'] == 'item'
     if condition in ('changes', 'thread'):
         assert row['dispatch']['routes'] == {
-            'fix_request': 'fix_round', 'question': 'outbound_tier_then_reply',
+            'fix_request': 'fix_round', 'question': 'reply',
             'disagreement': 'owner_decision', 'scope_change': 'owner_decision'}
     if condition == 'approval':
         assert row['dispatch']['fallback'] == 'owner_decision'

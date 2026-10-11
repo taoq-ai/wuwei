@@ -53,12 +53,14 @@ satisfy a principle; Principle V wins a tie.
 
 Least privilege for agent tools. Guards refuse at the moment of action. Secrets, phone
 numbers and message bodies never land in traces, logs or memory unredacted. Autonomy (owner,
-2026-10-05, #530): under `observe` and `guarded` a guard is a warning or a card, never a
-wall, with one floor: records are written by the workflow and answered by the owner. A
-refusal that names the plain form the seat runs itself is coaching, not a wall. Under
-`strict`, refusals stay. A merge happens only through the merge policy, never by approval or
-override; a merge the policy does not clear is the owner's decision, and an owner-only action
-runs only on the owner's recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
+2026-10-05, #530; one switch, 2026-10-11, #837): a guard refusal names the plain form the
+seat runs itself or the card that asks the owner. With `guards.enforce = false` a guard logs
+what it would refuse and lets the call through, with one floor: records are written by the
+workflow and answered by the owner, and merge, approval, admin, deploy and outward sends to
+other people stay the owner's (an exact `outward.allow` list, 2026-10-11, #838). A merge
+happens only through the merge policy, never by approval or override; a merge the policy
+does not clear is the owner's decision, and an owner-only action runs only on the owner's
+recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
 
 ## Constraints
 
@@ -105,4 +107,4 @@ runs only on the owner's recorded Owner step answer (design spec 4.6, 4.7 and 9.
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11
+**Version**: 2.2.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11

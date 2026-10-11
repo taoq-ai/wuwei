@@ -351,8 +351,6 @@ def test_seat_stop_unmeasured_parks_builder(seat, monkeypatch, capsys):
 
 
 def test_seat_stop_refusals(seat, monkeypatch, capsys):
-    from fakes import owner
-    from wuwei import workspace
     root, report = stuck_builder(seat, monkeypatch)
     add_seat(root, 'done', 'sentinel-arch', status='stopped')
     before = (state.workspace.day_dir(root) / 'state.json').read_text()
@@ -360,27 +358,17 @@ def test_seat_stop_refusals(seat, monkeypatch, capsys):
     assert seat_stop(capsys, 'nobody', '--unmeasured', 'x')[0] == 1
     assert seat_stop(capsys, 'builder', '--unmeasured', ' ')[0] == 2
     assert seat_stop(capsys, 'builder', '--unmeasured', 'one\ntwo')[0] == 2
-    monkeypatch.setattr(workspace, 'posture', lambda config: ('guarded', {}))
     monkeypatch.setenv('WUWEI_SESSION_ID', 'some-seat')
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 1 and 'planner session' in out.err
-    monkeypatch.delenv('WUWEI_SESSION_ID')
-    monkeypatch.setattr(workspace, 'posture', lambda config: ('strict', {}))
-    # #831: under strict the owner's Yes on the Owner step card stops the seat; no terminal.
-    code, out = seat_stop(capsys, 'builder', '--unmeasured', 'x')
-    assert code == 1 and 'Owner step: bin/wuwei seat stop builder' in out.err and 'host terminal' not in out.err
-    owner.answer(root, 'bin/wuwei seat stop builder', reply='No', detail='Stop seat builder.')
-    assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 1
     assert (state.workspace.day_dir(root) / 'state.json').read_text() == before
-    owner.answer(root, 'bin/wuwei seat stop builder', detail='Stop seat builder.')
+    monkeypatch.delenv('WUWEI_SESSION_ID')
     assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 0
 
 
 def test_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):
-    from wuwei import workspace
     root, report = stuck_builder(seat, monkeypatch)
     state._write_state(lambda data: data.update(planner_session_id='planner-1'), root, reserved=False)
-    monkeypatch.setattr(workspace, 'posture', lambda config: ('guarded', {}))
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err

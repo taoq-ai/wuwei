@@ -72,15 +72,6 @@ def in_force(config):
     return config['adapters']['tracker'] != 'none' and config['tracker']['required']
 
 
-def pending(data, item):
-    """A pending tracker draft that would open the item's ticket, or None."""
-    return next((key for key, row in data.get('drafts', {}).items()
-                 if row.get('status') == 'pending' and row.get('channel') == 'tracker'
-                 and row.get('operation') == 'create'
-                 and row.get('inputs', {}).get('draft', {}).get('category') == 'items'
-                 and row['inputs']['draft'].get('item') == item), None)
-
-
 def check(data, config, item, row=None):
     """The 5.11 rule, pure: (off|ticket|skipped|later|missing, reason)."""
     if not in_force(config):
@@ -94,17 +85,7 @@ def check(data, config, item, row=None):
         return 'skipped', ''
     if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
         return 'later', ''
-    strict = workspace.posture(config)[0] == 'strict'
-    draft = pending(data, item)
-    if draft:
-        return 'missing', (f'{item} has no ticket: the owner runs bin/wuwei drafts approve {draft} '
-                           'in a host terminal' if strict else
-                           f'{item} has no ticket: draft {draft} opens it once the owner answers '
-                           f'Send on its card (bin/wuwei drafts show {draft} --widget)')
-    return 'missing', (f"{item} has no ticket: the owner runs bin/wuwei tracker create {item} (opens "
-                       f"one from the item's record) or bin/wuwei plan set {item} ticket=<id> in a "
-                       'host terminal' if strict else
-                       f"{item} has no ticket: the planner proposes one on the item's card (an "
+    return 'missing', (f"{item} has no ticket: the planner proposes one on the item's card (an "
                        "existing ticket or a new one from its record) and records the owner's answer")
 
 
@@ -120,18 +101,6 @@ def _candidate(root, data, item):
     return next((row for row in rows if row.get('id') == item),
                 data.get('discovery_candidates', {}).get(item)
                 or found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
-
-
-def _held(root, config, subject, draft_id):
-    """#644: a held ticket is the planner's card below strict, a host-terminal approve under strict."""
-    from wuwei import drafts, outward
-    rule = drafts.read(state.read_state(root))[draft_id]['tier_reason'].removeprefix(
-        outward.APPROVAL_REQUIRED + ': ')
-    if workspace.posture(config)[0] == 'strict':
-        return (f'{subject}: ticket held ({rule}): the owner runs bin/wuwei drafts approve '
-                f'{draft_id} in a host terminal')
-    return (f'{subject}: ticket held ({rule}): the planner asks it on its card '
-            f'(bin/wuwei drafts show {draft_id} --widget)')
 
 
 def create(root, subject, category='items', title=None, evidence=(), row=None, seat=None):
@@ -182,28 +151,19 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
              'category': category, **({'parent': parent} if parent else {})}
     key = _key(category, subject, title)
     entry = data.get('tracker_log', {}).get(key)
-    queued = next((row['id'] for row in data.get('drafts', {}).values()
-                   if row.get('channel') == 'tracker' and row.get('status') in ('pending', 'sent')
-                   and row.get('inputs', {}).get('draft') == draft), None)
     if entry and entry['outcome'] == 'written':
         return registry.Result(0, {'id': entry['ticket']}, f'{subject}: ticket {entry["ticket"]}')
     if entry and entry['outcome'] == 'refused':
         return registry.Result(1, reason=f'tracker create: refused: {entry["reason"]}; create the ticket by hand{by_hand}')
-    if queued:
-        return registry.Result(1, {'draft': queued}, _held(root, config, subject, queued))
     result = registry.load('tracker', config).create(draft, root=root)
     if result.exit == 0:
         record(draft, result.data, root=root, seat=seat)
         return registry.Result(0, result.data, f'{subject}: ticket {result.data["id"]} {result.data["url"]}')
     if result.exit == 1:
-        stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
-        outcome = ({'outcome': 'drafted', 'draft': stored[1]} if stored
-                   else {'outcome': 'refused', 'reason': result.reason or 'refused'})
+        outcome = {'outcome': 'refused', 'reason': result.reason or 'refused'}
         state._write_state(lambda fresh: fresh.setdefault('tracker_log', {}).update({key: outcome}),
                            root, reserved=False, kind='tracker.logged',
                            payload={'key': key, 'outcome': outcome['outcome']})
-        if stored:
-            return registry.Result(1, {'draft': stored[1]}, _held(root, config, subject, stored[1]))
         return registry.Result(1, reason=f'tracker create: refused: {outcome["reason"]}; create the ticket by hand{by_hand}')
     return result
 
@@ -337,9 +297,7 @@ def log(root):
                         exit=2)
                 print(f'tracker log: {result.reason}', file=sys.stderr)
                 return 2
-            stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
             outcome = ({'outcome': 'written'} if result.exit == 0 else
-                       {'outcome': 'drafted', 'draft': stored[1]} if stored else
                        {'outcome': 'refused', 'reason': result.reason or 'refused'})
             if outcome['outcome'] == 'refused':
                 code = 1
@@ -349,10 +307,10 @@ def log(root):
 
 
 def creates_labels(config):
-    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
-    below strict; init --upgrade from a host terminal creates on any tracker."""
+    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker;
+    init --upgrade from a host terminal creates on any tracker."""
     from wuwei import outward
-    return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
+    return not outward._external_tracker(config)
 
 
 def labels(root, config, create, port=None):

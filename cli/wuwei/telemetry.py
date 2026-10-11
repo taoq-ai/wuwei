@@ -34,7 +34,7 @@ TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
            'dependency-bump', 'design', 'boundary', 'refactor', 'merge', 'message', 'other')
 AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
-POSTURES = ('observe', 'guarded', 'strict')
+POSTURES = ('observe', 'guarded', 'strict')  # the vocabulary of stored weeks (#837)
 PROFILES = ('strict', 'standard')
 OS = ('darwin', 'linux', 'other')
 ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
@@ -62,6 +62,11 @@ class Skipped(Exception):
         super().__init__(reason)
         self.reason, self.week = reason, week_of(day)
 
+
+
+def posture_label(config):
+    """#837: the weekly record's config.posture label, kept for stored weeks."""
+    return 'guarded' if config['guards']['enforce'] else 'observe'
 
 def week_of(day):
     """The ISO week of a YYYY-MM-DD day name."""
@@ -211,7 +216,7 @@ def aggregate(root, config, week, days, start):
     return {'schema': SCHEMA, 'week': week,
             'versions': {'plugin': plugin, 'python': f'{sys.version_info[0]}.{sys.version_info[1]}',
                          'os': sys.platform if sys.platform in ('darwin', 'linux') else 'other'},
-            'config': {'posture': workspace.posture(config)[0], 'profile': config['profile'],
+            'config': {'posture': posture_label(config), 'profile': config['profile'],
                        'adapters': dict(config['adapters']), 'repositories': len(config['repos'])},
             'metrics': {key: found[key] for key in METRICS if key in found}}
 
@@ -377,7 +382,7 @@ def spans(root, config, mark):
     from wuwei import watch, workspace
     # ponytail: allowed calls live in traces.jsonl with their tool arguments and are not exported;
     # hook-call spans are the refusal and warning records only.
-    posture, today = workspace.posture(config)[0], workspace.day_dir(root).name
+    label, today = posture_label(config), workspace.day_dir(root).name
     mark = mark or {'day': today, 'offset': 0}
     result, new = [], dict(mark)
     for directory in reversed(watch.days(root)):
@@ -404,10 +409,10 @@ def spans(root, config, mark):
                     code = refusal.get('exit', 1)
                     span('wuwei.hook', f'{at}:{index}', stamp, stamp, event='PreToolUse', guard=refusal['guard'],
                          outcome='unmeasured' if code == 2 else 'refuse', reason_code=f"{refusal['guard']}.{code}",
-                         posture=posture)
+                         posture=label)
             elif kind == 'guard.would_refuse':
                 span('wuwei.hook', at, stamp, stamp, event=kind, guard=payload.get('guard'), outcome='warn',
-                     reason_code=f"{payload.get('guard')}.{payload.get('exit', 1)}", posture=payload.get('posture'),
+                     reason_code=f"{payload.get('guard')}.{payload.get('exit', 1)}", posture=label,
                      item=payload.get('item'))
             elif kind == 'seat launched':
                 launched[payload.get('name')] = stamp, payload.get('item')

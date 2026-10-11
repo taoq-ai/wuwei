@@ -160,7 +160,7 @@ def _main_broken(root, config, data, item, record, failures):
 
 
 def _admit(root, row, broken):
-    """#648: the fix item through plan add (the owner-item path, no ticket below strict)."""
+    """#648: the fix item through plan add (the owner-item path, no ticket)."""
     check, path, fix = broken
     if fix in state.read_state(root)['items']:
         return True

@@ -206,7 +206,7 @@ def test_a_review_comment_at_night_is_queued_never_answered(night):
     assert row['evidence'] == ['thread T17 by bob on src/app.py: Why this name?']
     assert not {'comment', 'request_reviewers', 'merge'} & {call[0] for call in host.calls}
     data = state.read_state(directory=root / '.wuwei/days' / DAY)
-    assert not data.get('drafts') and not data.get('pr_action_decisions') and not data.get('builds')
+    assert not data.get('pr_action_decisions') and not data.get('builds')
     assert not list((root / '.wuwei/days' / DAY / 'decisions').glob('D-*.md'))
     assert not vcs.calls
 
@@ -256,10 +256,10 @@ def stale(root):
 
 @pytest.mark.parametrize('code, text, outcome, exit', [
     (0, '', 'pinged', 0),
-    (1, 'outward: draft D1 held for the owner', 'queued', 1),
+    (1, 'outward: banned character; remove it and send again', 'queued', 1),
     (2, 'review post unmeasured: timeout', 'unmeasured', 2),
 ])
-def test_a_stale_review_is_pinged_under_the_tiers(night, monkeypatch, code, text, outcome, exit):
+def test_a_stale_review_is_pinged_after_the_lint(night, monkeypatch, code, text, outcome, exit):
     root, _, _, calls = night
     stale(root)
     def ping(root, ref):
@@ -364,37 +364,19 @@ def test_schedule_installs_the_shepherd_unit_in_a_host_terminal(host_terminal, c
     assert not path.exists() and ['systemctl', '--user', 'disable', '--now', path.name] in calls
 
 
-def posture(root, name):
+def enforce(root, value):
     with (root / '.wuwei/config.toml').open('a') as handle:
-        handle.write(f'\n[security]\nposture = "{name}"\n')
+        handle.write(f'\n[guards]\nenforce = {value}\n')
 
 
-@pytest.mark.parametrize('verb', ['schedule', 'unschedule'])
-@pytest.mark.parametrize('planned', [True, False])
-def test_under_strict_a_session_gets_the_owner_action(host_terminal, monkeypatch, capsys, verb, planned):
-    from wuwei.__main__ import main
-    root, calls = host_terminal
-    posture(root, 'strict')
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'S1')
-    if planned:
-        (workspace.day_dir(root) / 'plan.md').write_text('# Morning plan\n')
-    assert main(['shepherd', verb, '--yes'] if verb == 'schedule' else ['shepherd', verb]) == 1
-    action = json.loads(capsys.readouterr().out)
-    assert action['action'] == 'owner_terminal' and action['command'] == f'bin/wuwei shepherd {verb}'
-    assert action['why'] and action['then'] and 'widget' not in action
-    assert not calls and not workspace.watch_unit(root, 'linux', name='shepherd')[1].exists()
-    assert main(['shepherd', 'schedule', '--dry-run']) == 0
-    assert 'wuwei-shepherd-' in capsys.readouterr().out
-
-
-@pytest.mark.parametrize('name', ['observe', 'guarded'])
+@pytest.mark.parametrize('name', ['false', 'true'])
 @pytest.mark.parametrize('planned', [True, False])
 def test_in_a_session_the_card_answer_schedules(host_terminal, monkeypatch, capsys, name, planned):
-    """Review F3: no new refusal under observe and guarded; the card's record command installs."""
+    """Review F3: no refusal either way; the card's record command installs."""
     from wuwei import decision
     from wuwei.__main__ import main
     root, calls = host_terminal
-    posture(root, name)
+    enforce(root, name)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'S1')
     unit = workspace.watch_unit(root, 'linux', name='shepherd')[1]
     if planned:

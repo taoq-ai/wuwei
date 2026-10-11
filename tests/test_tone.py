@@ -2,14 +2,76 @@
 
 import ast
 import functools
-
-import pytest
+import re
 
 from test_plan import root  # noqa: F401 (fixture)
 from test_protect_state import payload, workspace  # noqa: F401 (fixture)
 from test_reasons import ROOT, _sources, _text, all_reasons
 from wuwei.__main__ import main
-from wuwei.commands.lint import AVERAGE, LONGEST, line, measure, sentences
+
+# #838: the measure the CI budget uses; the wuwei lint tone command is gone.
+AVERAGE, LONGEST = 20, 35
+# ponytail: a suffix heuristic with false hits ("comment", "decision"); compare rates over
+# time, and move to a word list if the rate misleads.
+NOMINAL = re.compile(r'\b(?=[a-z]{7})[a-z]*(?:tion|sion|ment|ance|ence|ness|ity)s?\b', re.I)
+_DROP = re.compile(r'\A---\n.*?\n---\n|```.*?```|<!--.*?-->', re.S)
+_ITEM = re.compile(r'\s*(?:[-*]|\d+\.)\s')
+
+
+def _blocks(text):
+    """The prose of one text as blocks; a sentence never crosses a block."""
+    text = _DROP.sub('\n', text)
+    text = re.sub(r'`[^`\n]*`', 'code', text)
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    blocks, current = [], []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#') or (set(stripped) <= set('|:- ') and '-' in stripped):
+            blocks.append(current)
+            current = []
+        elif stripped.startswith('|'):
+            blocks.append(current)
+            blocks.extend([cell] for cell in stripped.split('|'))
+            current = []
+        elif _ITEM.match(line):
+            blocks.append(current)
+            current = [line[_ITEM.match(line).end():]]
+        else:
+            current.append(line)
+    blocks.append(current)
+    return [' '.join(' '.join(block).split()) for block in blocks if block]
+
+
+def _lengths(block):
+    for piece in re.split(r'(?<=[.!?])\s+', block):
+        words = sum(1 for token in piece.split() if re.search(r'[\w{]', token))
+        if words:
+            yield words
+
+
+def sentences(text):
+    """The length in words of each sentence of one text. A semicolon is not a boundary."""
+    return [n for block in _blocks(text) for n in _lengths(block)]
+
+
+def measure(*texts):
+    lengths = [n for text in texts for n in sentences(text)]
+    words = sum(lengths)
+    return {'sentences': len(lengths), 'words': words,
+            'average': words / len(lengths) if lengths else 0.0,
+            'longest': max(lengths, default=0), 'over': sum(n > LONGEST for n in lengths),
+            'nominalisations': sum(len(NOMINAL.findall(block)) for text in texts for block in _blocks(text))}
+
+
+def at_rule(m):
+    return m['average'] < AVERAGE and m['over'] == 0
+
+
+def line(name, m):
+    rate = 100 * m['nominalisations'] / m['words'] if m['words'] else 0.0
+    return (f"{name}: average {m['average']:.1f} words, longest {m['longest']}, {m['over']} over {LONGEST}, "
+            f"{m['sentences']} sentences, {m['nominalisations']} nominalisations ({rate:.1f} per 100 words), "
+            f"{'at' if at_rule(m) else 'over'} the rule")
 
 # #522: per class, the sentences over 35 words it may keep and its nominalisations per 100
 # words (the after-pass rate rounded up to one decimal). docs keeps the 75 long sentences of
@@ -84,52 +146,6 @@ def test_a_long_charter_sentence_breaks_the_budget():
     texts = classes()
     texts['charters'].append(' '.join(['word'] * 40) + '.')
     assert [found.split(':')[0] for found in over_budget(texts)] == ['charters']
-
-
-def _line(path, average, longest, over, count, nominal, rate, verdict):
-    return (f'{path}: average {average} words, longest {longest}, {over} over 35, {count} sentences, '
-            f'{nominal} nominalisations ({rate} per 100 words), {verdict} the rule')
-
-
-@pytest.fixture
-def bare(tmp_path, monkeypatch):
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    monkeypatch.chdir(tmp_path)
-    return tmp_path
-
-
-def test_lint_tone_at_and_over_the_rule(bare, capsys):
-    good = bare / 'good.md'
-    good.write_text(' '.join(['word'] * 12) + '. ' + ' '.join(['word'] * 12) + '.\n')
-    assert main(['lint', 'tone', str(good)]) == 0
-    assert capsys.readouterr().out == _line(good, '12.0', 12, 0, 2, 0, '0.0', 'at') + '\n'
-    bad = bare / 'bad.md'
-    bad.write_text(' '.join(['word'] * 36) + '.\n')
-    assert main(['lint', 'tone', str(bad)]) == 1
-    out = capsys.readouterr().out
-    assert '1 over 35' in out and out.endswith('over the rule\n')
-
-
-def test_lint_tone_measures_a_directory_in_order(bare, capsys):
-    (bare / 'docs').mkdir()
-    (bare / 'docs/b.md').write_text('Two words.\n')
-    (bare / 'docs/a.md').write_text('Three words here.\n')
-    (bare / 'docs/c.txt').write_text('Not measured at all.\n')
-    assert main(['lint', 'tone', 'docs']) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert [line.split(':')[0] for line in lines] == ['docs/a.md', 'docs/b.md', 'total']
-    assert lines[2] == _line('total', '2.5', 3, 0, 2, 0, '0.0', 'at')
-
-
-def test_lint_tone_cannot_run(bare, capsys):
-    (bare / 'empty').mkdir()
-    for path in ('missing.md', 'empty'):
-        assert main(['lint', 'tone', path]) == 2
-        err = capsys.readouterr().err
-        assert path in err and 'pass a markdown file or a directory of them' in err
-    (bare / 'bad.md').write_bytes(b'\xff\xfe bad')
-    assert main(['lint', 'tone', 'bad.md']) == 2
-    assert 'pass a readable UTF-8 file' in capsys.readouterr().err
 
 
 def _at_rule(texts, owner_ok=True):

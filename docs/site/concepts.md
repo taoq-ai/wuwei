@@ -103,7 +103,7 @@ Owner commands such as `bin/wuwei config set` refuse to run anywhere else.
 ### Humanizer
 
 The writing checklist seats apply to text for a person, from the humanizer skill.
-A lint checks outward text for its mechanical tells before it is drafted or sent.
+A lint checks outward text for its mechanical tells before it is sent.
 
 ### Spec engine
 
@@ -183,29 +183,15 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. `wuwei doctor` lists answered cards whose record never ran. A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm` and `wuwei mcp decide`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. `wuwei doctor` lists answered cards whose record never ran. See [host terminal actions](reference.md#host-terminal-actions).
 
-## Drafts and cards
+## Outward sends
 
-A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as `ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels, connector default class company`. Its card, `bin/wuwei drafts show <id> --widget`, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. When a table row asked about one person or the destination channel, Always send to this person or Always ask for this channel takes the place of Drop. It sends this draft and adds the row with `bin/wuwei drafts approve <id> --always`. A draft from a configured adapter is sent by `wuwei drafts approve`. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within `outward.draft_ttl` seconds (default 3600).
+A message to other people goes out through an MCP tool only when that exact tool is on `outward.allow`. Any other write is refused, naming the one line to add, `bin/wuwei config set outward.allow '["<tool>"]' --add`. The planner runs it, it asks you its Owner step card, and the call passes on retry. A tool whose name is neither a read nor a write and that names no channel runs, and the lint logs that line. This holds with `guards.enforce` on or off.
 
-## Outbound tiers
+A write whose every destination is yours is local, never an outward send: your Slack DM, your own canvas or page, a mail only to you. It passes without `outward.allow`, and the lint skips its third-person rules. A tool that acts only on your machine, such as the terminal, is local too. See [your own surfaces](configuration.md#your-own-surfaces).
 
-Every outward message gets one of three tiers. `send` goes out after the lint. `ask` becomes a draft and its card, and you confirm or edit it. `block` is refused with the rule named, and there is no draft and no card.
-
-Who reads the message decides the tier. Each destination and each addressed person gets an audience class:
-
-- `owner`: you, by your identity in `outbound.owner`.
-- `team`: a channel in `outbound.work_channels`, or a person WUWEI knows is internal.
-- `company`: someone in the company WUWEI has not learned yet. A connector's unknown channels and people are `company` unless `outward.classes` says otherwise.
-- `client`: a channel in `outbound.external_channels`, a channel the connector marks as shared with another organisation, or a person or org outside yours.
-- `public`: anything you mark public in `outbound.channel_classes`.
-
-WUWEI walks one ordered table for each of them, and the first matching row wins. Your rows in `outbound.tiers` come first, after a row for each connector mode in `outward.modes`. The defaults follow: you `send`; public `ask`; a client commitment or disagreement `ask`; anything else to a client `ask`. Then sensitive, commitment and disagreement text `ask`; company `ask`; a thread among team people `send` (`{ audience = "team", topic = "thread", tier = "send" }`); a monitoring write `send`. No default row blocks: an external party always gets a card you can send from, and you add a `block` row when a client needs one. The strictest reader decides the call. What no row narrows gets your umbrella, `outbound.default_tier`. With `send`, the shipped default, the broad commitment, disagreement and company rows drop out. A review reply, a thread answer or a message to a colleague just goes, and only client, public and sensitive text still ask. Narrow it with your own rows. With `ask` (`bin/wuwei config set outbound.default_tier ask`) the older kind rules say why a draft is held: direct messages draft, and a routine reply in a team channel sends. Docs and tracker writes keep `docs.auto` and `tracker.auto` either way.
-
-A reply in a chat thread is read by the thread's participants, so each one is a reader. The hook cannot read a thread; the planner can. When a held reason says the participants are not learned, the planner reads the thread with the connector's replies tool and runs `bin/wuwei outbound learn --tool <tool> --thread <file>`, which records them for the day. A thread whose readers are all you or team sends by the thread row, a client participant follows the client rows, and an unknown one goes on the learn card. Until then a thread reply is one company reader: it asks under `ask` and goes under the shipped umbrella. Always send in this channel's threads on the draft card adds `{ channel = "C123", topic = "thread", tier = "send" }`.
-
-For example, a seat writes "I will ship it tomorrow". To a client channel it is held on a card that names the client row; with `{ audience = "client", topic = "commitment", tier = "block" }` in your rows it is refused instead. The same line to a team channel goes out under the shipped umbrella and asks you on a card under `ask`. A status line to your own DM just goes. To let a reviewer's mentions go out, answer Always send to this person on a draft card that held one; it adds `{ person = "U123", tier = "send" }`. `bin/wuwei outbound tiers` prints the table with each row tagged `default` or `owner`, and `bin/wuwei outbound explain <draft id>` shows the rows a draft passed and the one that held it. Under `strict`, a `send` row never reaches a client or the public. The learn card proposes a class for each new channel and person. Each entry has one option that approves it with the other class: a channel as client or team, a person as company or team.
+WUWEI's own duties go through its adapter ports, which you configure: review pings, tracker comments and tickets, docs pages, the day report and PR thread replies. Each passes the canary check and the outward lint, then goes out.
 
 ## Memory
 
@@ -229,23 +215,20 @@ candidate's `ticket` field, an item discovered from the tracker backlog,
 The lead proposes a ticket per item: an open one from the backlog, or a new one from the
 item's record. The plan shows it on a `Ticket:` line and the gate card lists it. Below
 strict, Approve opens the tickets the plan proposed and records the links, so no item waits
-on a terminal command; `plan add` drafts an owner-named item's ticket for its Send card.
+on a terminal command; `plan add` opens an owner-named item's ticket.
 Under strict the commands are printed for a host terminal. A seat never opens an item
 ticket: the planner does after your card answer.
 Builders and sentinels open a linked bug with
 `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <role>` instead
 of widening the item; the planner opens retro follow-ups with `--follow-up`. The finder files it.
-In the workspace's own tracker a bug, triage or follow-up ticket is internal. Under the send
-umbrella it is created with no draft, under `ask` it is held as a card for the planner, and
-`block` refuses it. A row `{ tool = "tracker", audience = "owner", tier = "ask" }` makes it a
-card under send too. An external tracker keeps the outward rules. Each creation is written
+It goes out through the tracker port after the outward lint. Each creation is written
 once per day and writes one `tracker.created` event naming the seat; the retro's Tickets
 seats filed section lists who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
 decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
-request and the close outcome. The watch sweep and `wuwei close` run it. Kinds in
-`tracker.auto` are sent; the rest wait as drafts. After `tracker.max_per_item_per_day`
+request and the close outcome. The watch sweep and `wuwei close` run it. Each goes out
+through the tracker port after the outward lint. After `tracker.max_per_item_per_day`
 comments the last one is a fold. `wuwei close` refuses while an item merged today has a
 ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
 
@@ -267,8 +250,8 @@ Exit 1 means action is required; exit 2 means a PR could not be measured and inc
 Dispatch instructions are data for the shepherd; this command does not execute them.
 
 Conflicts require rebase, resolution, fast checks and push. Red CI requires a fix round.
-Outstanding review requests and unanswered threads require triage: fixes, outward-tier
-replies, or owner decisions for disagreements and scope changes. Stale reviews require
+Outstanding review requests and unanswered threads require triage: fixes, replies
+through `pr act --reply`, or owner decisions for disagreements and scope changes. Stale reviews require
 requesting reviewers again and posting in the review channel. Approved PRs go through
 `wuwei merge` or a merge decision. Closed, unmerged PRs require an owner decision.
 Waiting within the review window and merged PRs have no action deadline.
@@ -385,9 +368,9 @@ can turn it off when it stops paying.
 
 ## Writing for you
 
-`owner.verbosity` sets how much cards and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
+`owner.verbosity` sets how much cards and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
 
-Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in `bin/wuwei drafts` and in the approval prompt, and the DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
+Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. The DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
 
 ## Owner decisions
 

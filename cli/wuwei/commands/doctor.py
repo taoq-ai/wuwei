@@ -285,7 +285,7 @@ def _workspace(root, config, error, found):
         rows.append(_row('workspace', 'config', 'fail', error, f'edit .wuwei/config.toml: {error}'))
     code, text = _capture(init.upgrade, Namespace(path=str(root), dry_run=True))
     lines = text.splitlines()
-    upgrades = [line for line in lines if line.startswith('Would upgrade') and 'graph.json' not in line]
+    upgrades = [line for line in lines if line.startswith('Would upgrade')]
     charters = [line for line in lines if line.startswith('Charter override needs review')]
     if code:
         rows.append(_row('workspace', 'template', 'unmeasured', f'init --upgrade --dry-run exit {code}',
@@ -373,55 +373,8 @@ def _workspace(root, config, error, found):
                     _row('workspace', f'{name} spec', 'unmeasured',
                          f"{config['scanner']['mcp']['plugins_file']} is unreadable",
                          f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
-    rows += _outbound(config)
-    rows.append(_register(root, config))
     rows += _calibration(root, config)
     return rows
-
-
-def _outbound(config):
-    """#496: people without a class and owner send rows for a client or public audience;
-    information, nothing refuses on them."""
-    from wuwei import outward
-    bare = [key for key, entry in config['outbound']['people'].items() if not entry['class']]
-    rows = [_row('workspace', 'outbound classes', 'warn', f'{len(bare)} people without a class',
-                 'nothing changes until you choose: the bin/wuwei outbound learn card asks the class of '
-                 'each person it adds',
-                 detail=[f'{key}: team while internal by outbound.company_domains or outbound.code_host_orgs, '
-                         'else the connector default class' for key in bare])
-            if bare else _row('workspace', 'outbound classes', 'ok', 'every person has a class')]
-    strict = workspace.posture(config)[0] == 'strict'
-    sends = [f'rule {number} is ignored under strict' if strict
-             else f'rule {number} can send to a client or public audience'
-             for number, (row, source, _) in enumerate(outward.table(config), 1)
-             if source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)]
-    rows.append(_row('workspace', 'outbound tiers', 'warn', f'{len(sends)} send rows for a client or public audience',
-                     'make the row ask, or remove it', detail=sends) if sends
-                else _row('workspace', 'outbound tiers', 'ok', 'no send row for a client or public audience'))
-    return rows
-
-
-def _register(root, config):
-    """#552: the register against its config views; warn at most, it decides nothing (A13)."""
-    from wuwei import graph
-    try:
-        register = graph.load(root)
-    except ValueError as exc:
-        return _row('workspace', 'register', 'warn', str(exc), f'{graph.FIX.replace("bin/wuwei", "wuwei")}')
-    if register is None:
-        return _row('workspace', 'register', 'warn', 'no .wuwei/graph.json', 'wuwei init --upgrade',
-                    apply='init-upgrade')
-    drifted = graph.drift(register, config)
-    if drifted:
-        return _row('workspace', 'register', 'warn', f'config.toml differs from graph.json in {len(drifted)} keys',
-                    'wuwei init --upgrade', apply='init-upgrade', detail=drifted)
-    return _row('workspace', 'register', 'ok',
-                f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
-
-
-SHADOW = ('Observe posture has run {days} days. To enforce, set '
-          'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
-          "The day report's ## Shadow section lists what would have been refused.")
 
 
 def _calibration(root, config):
@@ -442,20 +395,11 @@ def _calibration(root, config):
                     if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
         rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
-    guards, name = config['guards'], workspace.posture(config)[0]
-    shown = f'{name} (from {workspace.posture_source(config)})'
-    if guards['mode'] == 'shadow':
-        rows.append(_row('workspace', 'posture', 'warn', shown, 'wuwei init --upgrade', apply='init-upgrade'))
-    elif name != 'observe':
-        rows.append(_row('workspace', 'posture', 'ok', shown))
-    else:
-        from datetime import date
-        since = guards['shadow_since']
-        days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
-        left = guards['shadow_days'] - days
-        rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
-                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
-                         'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
+    rows.append(_row('workspace', 'guards', 'ok', 'enforce (guards.enforce = true)')
+                if config['guards']['enforce'] else
+                _row('workspace', 'guards', 'ok', "log only (guards.enforce = false); the day report's "
+                     '## Shadow section lists what would have been refused; to enforce, run '
+                     'bin/wuwei config set guards.enforce true'))
     telemetry = config['telemetry']
     rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet',
                      'bin/wuwei config set telemetry.share \'"anonymous"\' (or "attributed" or "off")') if telemetry['enabled'] and not telemetry['share']
@@ -627,7 +571,7 @@ def _day(root, config, probes):
     untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
-                     'launch agents from a session inside the workspace after the morning plan; under strict '
+                     'launch agents from a session inside the workspace after the morning plan; '
                      'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
     from wuwei import watch
     try:  # #599: the last SessionStart says whether Bash calls carry WUWEI_SESSION_ID.
@@ -690,15 +634,12 @@ def _tracker_labels(root, config):
 
 def _unrecorded(root):
     """#661: cards the owner answered whose record command never ran."""
-    from wuwei import decision, drafts, state
+    from wuwei import decision, state
     data = state.read_state(root)
     topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
-    queue = drafts.read(data)
-    found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-             and decision.answered(data, ident := topic.split('=')[0]) is None and not _owner_on_file(ident, root)}
-    found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
-              and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
-    return sorted(found)
+    return sorted({ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
+                   and decision.answered(data, ident := topic.split('=')[0]) is None
+                   and not _owner_on_file(ident, root)})
 
 
 def _owner_on_file(ident, root):
@@ -853,7 +794,7 @@ def _reports(root, token):
 
 
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (mcp decide, security.posture, state recover, the code host)
+# apply(root, token) -> exit). Decisions (mcp decide, guards.enforce, state recover, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),

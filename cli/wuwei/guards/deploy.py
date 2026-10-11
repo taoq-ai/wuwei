@@ -56,7 +56,7 @@ def environment(branch, config):
 
 def floor_named(text, config):
     """#530: the literal text names a publish target or an owner-only action, so an opaque call
-    keeps its refusal below strict."""
+    keeps its refusal."""
     # ponytail: literal words only; a branch built at run time is anchored by the pre-push hook
     # and protected refs (spec 4.5).
     text = re.sub(r'''["'\\]''', '', text)  # shell quoting must not hide a word

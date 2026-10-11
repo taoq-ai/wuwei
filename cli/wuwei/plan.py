@@ -264,7 +264,7 @@ def propose(data, root=None):
             row['ticket'] = tracker.full_id(config, row['ticket'])
     from wuwei import mcp
     measured = mcp.check(root)
-    gate = mcp.cached(root)  # The posture decides refusal; the sweep shows the measurement.
+    gate = mcp.cached(root)  # guards.enforce decides refusal; the sweep shows the measurement.
     if gate.exit:
         raise (state.StateError if gate.exit == 1 else OSError)(gate.reason)
     if measured.exit or measured.reason == mcp.NO_SCANNER:  # #351, #424: printed, not only filed.
@@ -425,16 +425,12 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         except OSError as exc:
             raise OSError(f'{exc}; the goals are not recorded and the day stays unapproved; '
                           'run bin/wuwei doctor, then plan approve again') from exc
-    if (tracker.in_force(config) and workspace.posture(config)[0] != 'strict'
-            and not current.get('gate_approved')):
-        from wuwei import drafts
+    if tracker.in_force(config) and not current.get('gate_approved'):
         for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
             status = tracker.check(current, config, name, candidates[name])[0]
             if proposed(candidates[name], found) is not None or status not in ('missing', 'later'):
                 continue
             result = tracker.create(root, name)
-            if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
-                result = drafts.approve(root, result.data['draft'], answered=True)
             if result.exit and status == 'missing':  # #646: a small item is approved without it
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
@@ -539,15 +535,13 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     chosen = proposed(candidate)
     status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
                                    config, item, candidate)
-    if status == 'missing' and owner_item and workspace.posture(config)[0] != 'strict':
-        # #636: draft the owner item's ticket for its Send card; a seat can reach plan add, so never send here.
+    if status == 'missing' and owner_item:
+        # #636, #838: the owner named the item, so its ticket opens through the tracker port.
         opened = tracker.create(root, item, row={'scope': candidate['title'], 'goal': goal,
                                                  'track': candidate['track'],
                                                  'evidence': 'named by the owner'})
         if opened.exit == 0:
             status = 'ticket'
-        elif isinstance(opened.data, dict):
-            reason = tracker.check(state.read_state(root), config, item, candidate)[1]
         else:
             reason = opened.reason
     if status == 'missing':

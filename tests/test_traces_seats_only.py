@@ -22,10 +22,10 @@ def rows(*session_ids):
 
 @pytest.fixture
 def day(tmp_path, monkeypatch):
-    def make(posture='guarded', extra='', findings=None):
+    def make(enforce='true', findings=None):
         (tmp_path / '.wuwei').mkdir(exist_ok=True)
         (tmp_path / '.wuwei/config.toml').write_text(
-            f'[adapters]\nscanner = "ziran"\n[security]\nposture = "{posture}"\n{extra}')
+            f'[adapters]\nscanner = "ziran"\n[guards]\nenforce = {enforce}\n')
         monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
         monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+00:00')
         state._write_state(lambda data: None, tmp_path, reserved=False)
@@ -65,49 +65,37 @@ def test_registered_roles():
     assert sessions.registered({}, 'P') is None
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_seeded_day_decisions_per_posture(day, posture):
-    root = day(posture)
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_seeded_day_decisions(day, enforce):
+    root = day(enforce)
     for _ in range(2):
         counts = sweep(root)
         assert counts['scanner'] == 'measured'
-        assert counts['scanner_owed'] == (4 if posture == 'strict' else 0)
+        assert counts['scanner_owed'] == 0
     noted, = events(root, 'traces.noted')
     assert noted['role'] == 'planner' and noted['session_digest'] == digest('P')
     assert noted['summary'] == 'traces: planner session, chain noted'
     assert all(row['session_id'] != 'P' for row in events(root, 'scanner.finding'))
     assert decisions(root) == []
-    if posture == 'strict':
-        assert {row['session_id'] for row in events(root, 'scanner.finding')} == {'U'}
-        assert not events(root, 'traces.unmatched')
-    else:
-        unmatched, = events(root, 'traces.unmatched')
-        assert unmatched['posture'] == posture and unmatched['session_digest'] == digest('U')
-        assert not events(root, 'scanner.finding')
-
-
-def test_shadow_mode_is_observe(day):
-    root = day('guarded', '[guards]\nmode = "shadow"\n', rows('U'))
-    sweep(root)
     unmatched, = events(root, 'traces.unmatched')
-    assert unmatched['posture'] == 'observe'
-    assert decisions(root) == []
+    assert unmatched == {'session_digest': digest('U'), 'chain': unmatched['chain']}
+    assert not events(root, 'scanner.finding')
 
 
 def test_planner_subagent_and_registered_roles(day):
-    root = day('strict', findings=rows('P:agent1', 'S', 'A'))
+    root = day(findings=rows('P:agent1', 'S', 'A'))
     state._write_state(lambda data: (
         sessions.record(data, 'S', hook='shepherd', cwd=str(root), role='shepherd'),
         sessions.record(data, 'A', hook='SessionStart', cwd=str(root))), root, reserved=False)
     sweep(root)
     assert sorted(row['role'] for row in events(root, 'traces.noted')) == ['planner', 'shepherd']
-    assert {row['session_id'] for row in events(root, 'scanner.finding')} == {'A'}
-    assert decisions(root) == []
+    assert [row['session_digest'] for row in events(root, 'traces.unmatched')] == [digest('A')]
+    assert not events(root, 'scanner.finding') and decisions(root) == []
 
 
 def test_adhoc_seat_keeps_its_launchers_session_rule(day):
     # #676: an adhoc seat is the audit record; tool-sequence decisions stay for item seats.
-    root = day('guarded', findings=rows('P:a1'))
+    root = day(findings=rows('P:a1'))
     state._write_state(lambda data: data['seats'].update({'adhoc-1': {
         'role': 'adhoc', 'item': 'adhoc-1', 'status': 'running', 'trace_sessions': ['P:a1']}}),
         root, reserved=False)
@@ -118,7 +106,7 @@ def test_adhoc_seat_keeps_its_launchers_session_rule(day):
 
 
 def test_seat_wins_over_registration(day):
-    root = day('observe', findings=rows('P'))
+    root = day('false', findings=rows('P'))
     state._write_state(lambda data: data.update(
         items={'work': {'phase': 'planned', 'status': 'queued'}},
         seats={'builder': {'item': 'work', 'role': 'builder', 'status': 'stopped',
@@ -132,7 +120,7 @@ def test_seat_wins_over_registration(day):
 
 
 def test_unreadable_events_are_unmeasured(day):
-    root = day('guarded', findings=rows('U'))
+    root = day(findings=rows('U'))
     path = workspace.day_dir(root) / 'events.jsonl'
     path.chmod(0o644)
     with path.open('a') as stream:
@@ -143,9 +131,7 @@ def test_unreadable_events_are_unmeasured(day):
 
 def test_event_tiers(capsys):
     assert signal.classify({'kind': 'traces.noted', 'payload': {}}, {})[0] == 'silent'
-    for posture, tier in [('observe', 'silent'), ('guarded', 'warn'), ('strict', 'warn')]:
-        event = {'kind': 'traces.unmatched', 'payload': {'posture': posture}}
-        assert signal.classify(event, {})[0] == tier
+    assert signal.classify({'kind': 'traces.unmatched', 'payload': {}}, {})[0] == 'warn'
     for kind in ('traces.noted', 'traces.unmatched'):
         assert main(['event', kind, '{}']) == 1
         assert 'wuwei sweep' in capsys.readouterr().err

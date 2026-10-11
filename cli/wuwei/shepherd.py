@@ -306,15 +306,13 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
-        posture, levels = workspace.posture(config)
-        if code == 1 and levels['publish'] != 'block':  # #530, #816: off passes, warn records and warns
-            if levels['publish'] == 'warn':
-                from wuwei import sessions
-                state.append_event('guard.would_refuse', {
-                    'guard': 'pr', 'area': 'publish', 'level': 'warn', 'posture': posture, 'reason': reason,
-                    'exit': 1, 'target': f'bin/wuwei pr raise {repo_name} --item {item}',
-                    'session': sessions.current() or '', 'item': item}, root)
-                print(f'warning: {reason}', file=sys.stderr)
+        if code == 1 and not config['guards']['enforce']:  # #837: logged and raised
+            from wuwei import sessions
+            state.append_event('guard.would_refuse', {
+                'guard': 'pr', 'reason': reason, 'exit': 1,
+                'target': f'bin/wuwei pr raise {repo_name} --item {item}',
+                'session': sessions.current() or '', 'item': item}, root)
+            print(f'warning: {reason}', file=sys.stderr)
             code = 0
         if code:
             print(reason)

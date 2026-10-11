@@ -42,7 +42,7 @@ def hook(cwd, command, monkeypatch, capsys):
     ('x=$(pwd); echo $x', 0, ()),
     ('python3 -m pytest -q && git status', 0, ()),
     ('git push $(cat remote) main', 2, ('commit/push guard', 'deploy')),
-    ('git status | python3', 0, ()),  # #530: guarded warns; strict refuses
+    ('git status | python3', 0, ()),  # #530: an unparsed read warns
     ('cd $(git rev-parse --show-toplevel) && ls', 0, ()),
 ])
 def test_seat_command_forms(workspace, where, command, code, words, monkeypatch, capsys):
@@ -85,24 +85,24 @@ def test_issue_330_read_only_forms_pass(workspace, command, monkeypatch, capsys)
     assert events(workspace, 'hook.refusal') == []
 
 
-@pytest.mark.parametrize('mode', ['enforce', 'shadow'])
+@pytest.mark.parametrize('mode', ['enforce', 'log'])
 @pytest.mark.parametrize('command, words', [
     ('for r in a b; do git -C $r push origin main; done', ('deploy',)),
     ('x=$(cat f); gh pr merge $x', ('deploy', 'PR guard')),
 ])
 def test_issue_330_effectful_forms_refuse(workspace, mode, command, words, monkeypatch, capsys):
-    if mode == 'shadow':
-        (workspace / '.wuwei/config.toml').write_text('[guards]\nmode = "shadow"\n')
+    if mode == 'log':
+        (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     code, output = hook(workspace, command, monkeypatch, capsys)
     assert code == 2 and output['permissionDecision'] == 'deny'
     reason = output['permissionDecisionReason']
-    if mode == 'shadow':
+    if mode == 'log':
         assert [e['payload']['guard'] for e in events(workspace, 'guard.would_refuse')] == ['commit_push']
         assert all(word in refused(workspace) for word in words) and 'commit/push guard' not in reason, reason
 
 
-def test_issue_330_shadow_records_commit_loop(workspace, monkeypatch, capsys):
-    (workspace / '.wuwei/config.toml').write_text('[guards]\nmode = "shadow"\n')
+def test_issue_330_log_only_records_commit_loop(workspace, monkeypatch, capsys):
+    (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     command = 'for r in a b; do git -C $r commit -m wip; done'
     assert hook(workspace, command, monkeypatch, capsys) == (0, {})
     assert [e['payload']['guard'] for e in events(workspace, 'guard.would_refuse')] == ['commit_push']

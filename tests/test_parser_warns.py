@@ -16,7 +16,7 @@ S3 = 'W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check'
 S4 = ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
       'print(open("config.toml").read())\'')
 S5 = 'mkdir -p ../scratch && cd ../scratch && ls'
-POSTURES = ('observe', 'guarded', 'strict')
+ENFORCE = ('false', 'true')
 STATE = '.wuwei/days/2026-10-03/state.json'
 
 
@@ -31,8 +31,8 @@ def workspace(tmp_path, monkeypatch):
     return root
 
 
-def configure(root, posture):
-    (root / '.wuwei/config.toml').write_text(f'[security]\nposture = "{posture}"\n')
+def configure(root, enforce):
+    (root / '.wuwei/config.toml').write_text(f'[guards]\nenforce = {enforce}\n')
 
 
 def hook(cwd, command, monkeypatch, capsys, event='PreToolUse', session='fixture'):
@@ -54,7 +54,7 @@ def events(root, kind):
             for line in path.read_text().splitlines() if json.loads(line)['kind'] == kind]
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('name, command', [('S1', S1), ('S2', S2), ('S3', S3), ('S4', S4), ('S5', S5)])
 def test_five_shapes(workspace, posture, name, command, monkeypatch, capsys):
     configure(workspace, posture)
@@ -66,16 +66,12 @@ def test_five_shapes(workspace, posture, name, command, monkeypatch, capsys):
         assert code == 0, out
         assert len(warned) == 1 and warned[0].startswith('workspace guard'), warned
         assert '(cd <dir> && <command>)' in warned[0]
-    elif posture == 'strict':
-        assert code == 2
-        assert out['permissionDecisionReason'] == shell.UNPARSED
-        assert warned == []
     else:
         assert code == 0, out
         assert len(warned) == 1 and warned[0].startswith('unparsed'), warned
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', [
     'for r in a b; do git -C $r push origin main; done',
     'x=$(git push origin main)',
@@ -91,7 +87,7 @@ def test_publish_forms_still_refuse(workspace, posture, command, monkeypatch, ca
     assert code == 2 and 'deploy' in [row['guard'] for row in recorded[-1]['refusals']], out
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', [
     f'echo x > {STATE}',
     f'for r in a; do echo x > {STATE}; done',
@@ -110,7 +106,7 @@ def test_state_writes_still_refuse(workspace, posture, command, monkeypatch, cap
     assert code == 2, out
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('probe', ['READ_LOOP', 'GIT_READ'])
 def test_heartbeat_read_loop_exits_zero(workspace, posture, probe, monkeypatch, capsys):
     from wuwei import heartbeat
@@ -125,7 +121,7 @@ OWNER_LOOP = (f'cd .wuwei; for f in days/{DAY}/decisions/D-*.md; do echo "### $f
               f'cat days/{DAY}/state.json')
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', [
     "git -C ../widget grep -n -E 'foo|bar' origin/main -- a.py b.py",
     'git -C ../widget blame -L 1,5 a.py',
@@ -145,33 +141,26 @@ def test_issue_470_owner_rows(workspace, posture, command, monkeypatch, capsys):
         assert warned == []
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 def test_issue_470_unknown_git(workspace, posture, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, 'git -C ../widget frobnicate', monkeypatch, capsys)
     warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
     prefix = 'unknown git subcommand frobnicate; if it publishes'
-    if posture == 'strict':
-        assert code == 2 and warned == []
-        assert out['permissionDecisionReason'].startswith(prefix), out
-    else:
-        assert code == 0, out
-        assert len(warned) == 1 and warned[0]['guard'] == 'deploy', warned
-        assert warned[0]['reason'].startswith(prefix)
+    assert code == 0, out
+    assert len(warned) == 1 and warned[0]['guard'] == 'deploy', warned
+    assert warned[0]['reason'].startswith(prefix)
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 def test_issue_470_commit_substitution(workspace, posture, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, 'x=$(git commit -m y)', monkeypatch, capsys)
     warned = [event['payload']['guard'] for event in events(workspace, 'guard.would_refuse')]
-    if posture == 'strict':
-        assert code == 2, out
-    else:  # #530: an opaque call that names no publish target warns below strict
-        assert (code, len(warned)) == (0, 1), out
+    assert (code, len(warned)) == (0, 1), out  # #530: an opaque call naming no publish target warns
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', [
     'git -C ../widget grep -O\'sh -c "git push origin main"\' a',
     "git -C ../widget grep --open-files-in-pager='gh pr merge 1' a",
@@ -192,7 +181,7 @@ SIXTH = ("gh run list -R o/r --workflow ci.yml --limit 6 --json status | python3
          "print(sys.stdin.read())'; R=widget; git -C $R log --oneline HEAD..origin/main | head -20")
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', [
     SIXTH,
     'R=widget; git -C $R log --oneline; gh run list -R o/r',
@@ -200,50 +189,42 @@ SIXTH = ("gh run list -R o/r --workflow ci.yml --limit 6 --json status | python3
 def test_issue_470_sixth_row(workspace, posture, command, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, command, monkeypatch, capsys)
-    if posture != 'strict' or command != SIXTH:  # strict blocks the unparsed python -c read
-        assert code == 0, out
+    assert code == 0, out
     assert 'nonliteral guarded' not in json.dumps(out)
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', ['for f in a b; do git push origin $f; done',
                                      'for f in a b; do git commit -m $f; done'])
 def test_opaque_loop_without_publish_target_warns(workspace, posture, command, monkeypatch, capsys):
-    # #530: below strict an opaque call naming no publish target runs with one warning.
+    # #530: an opaque call naming no publish target runs with one warning.
     configure(workspace, posture)
     code, out, _ = hook(workspace, command, monkeypatch, capsys)
     warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
-    if posture == 'strict':
-        assert code == 2 and warned == [], out
-    else:
-        assert code == 0 and len(warned) == 1 and warned[0]['reason'].startswith('opaque: '), (out, warned)
+    assert code == 0 and len(warned) == 1 and warned[0]['reason'].startswith('opaque: '), (out, warned)
 
 
 READ_LOOP = 'gh api repos/o/r/pulls/7/comments\ngh pr view 7 --json reviewRequests\n'
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command,named', [
     ('bash loop.sh', 'loop.sh'),
     ('gh pr view $(git rev-parse --abbrev-ref HEAD)', 'substitution'),
     ('''python3 -c "import subprocess; print(subprocess.run(['gh','pr','view','7']).stdout)"''', 'inline'),
 ])
-def test_opaque_read_warns_below_strict(workspace, posture, command, named, monkeypatch, capsys):
-    # #530 US1.1, US1.2: one guard.would_refuse naming what was opaque; strict refuses as today.
+def test_opaque_read_warns(workspace, posture, command, named, monkeypatch, capsys):
+    # #530 US1.1, US1.2: one guard.would_refuse naming what was opaque.
     configure(workspace, posture)
     (workspace / 'loop.sh').write_text(READ_LOOP)
     code, out, _ = hook(workspace, command, monkeypatch, capsys)
     warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
-    if posture == 'strict':
-        assert code == 2 and warned == [], out
-        return
     assert code == 0, out
     [event] = warned
     assert event['reason'].startswith('opaque: ') and named in event['reason'], event
-    assert (event['area'], event['level']) == ('publish', 'warn')
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('script,command', [
     ('git push origin main\n', 'bash loop.sh'),
     ('kubectl apply -f x\n', 'bash loop.sh'),
@@ -254,7 +235,7 @@ def test_opaque_read_warns_below_strict(workspace, posture, command, named, monk
     ('', '''python3 -c "import os; os.system('git push --force origin x')"'''),
 ])
 def test_opaque_publish_target_still_refuses(workspace, posture, script, command, monkeypatch, capsys):
-    # #530 US1.3: the literal text names a publish target, so every posture refuses it.
+    # #530 US1.3: the literal text names a publish target, so it is refused either way.
     configure(workspace, posture)
     (workspace / 'loop.sh').write_text(script)
     code, out, _ = hook(workspace, command, monkeypatch, capsys)
@@ -263,7 +244,7 @@ def test_opaque_publish_target_still_refuses(workspace, posture, script, command
                 if event['payload']['reason'].startswith('opaque')]
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 def test_issue_508_git_in_path(tmp_path, posture, monkeypatch, capsys):
     from pathlib import Path
     from fakes.integrity import seed
@@ -286,7 +267,7 @@ def test_issue_508_git_in_path(tmp_path, posture, monkeypatch, capsys):
     assert code == 2, out  # review F1: a glued redirect is still a mention
     for command in ('git push origin main', 'git</dev/null push origin main'):
         code, out, _ = hook(root, command, monkeypatch, capsys)
-        if posture == 'observe':  # #530: a publish warns under observe
+        if posture == 'false':  # #530: a publish is logged with guards.enforce = false
             assert code == 0 and events(root, 'guard.would_refuse'), command
         else:
             assert code == 2, (command, out)
@@ -296,7 +277,7 @@ BRIEF = ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
          "Raise the PR with gh pr create; then git push.\nEOF")
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 def test_prose_heredoc_passes(workspace, posture, monkeypatch, capsys):
     # #671: git and gh words in a brief written by a reader are text.
     configure(workspace, posture)
@@ -304,7 +285,7 @@ def test_prose_heredoc_passes(workspace, posture, monkeypatch, capsys):
     assert (code, events(workspace, 'guard.would_refuse')) == (0, []), out
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 @pytest.mark.parametrize('command', ['sh -c "gi""t push"', 'x=git; $x push'])
 def test_constructed_refusal_names_the_command(workspace, posture, command, monkeypatch, capsys):
     # #671: a built name is refused at the plain command's level, naming what it runs.
@@ -318,7 +299,7 @@ def test_constructed_refusal_names_the_command(workspace, posture, command, monk
     assert not any(reason.startswith('opaque:') for reason in warned), warned
 
 
-@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('posture', ENFORCE)
 def test_continued_admin_merge_is_named(workspace, posture, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, 'g\\\nh pr merge 5 --admin', monkeypatch, capsys)

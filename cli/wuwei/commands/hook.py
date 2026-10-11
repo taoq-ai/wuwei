@@ -117,11 +117,11 @@ def run(args):
     # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
     if args.event != 'SessionStart':
         refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
-    enforced, warned = [(module(check), message, '', code) for check, message, code in refusals], []
+    enforced, warned = [(module(check), message, code) for check, message, code in refusals], []
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = posture(payload, refusals, root, warned)
-    reasons = [f'{message}\n{line}' if line else message for _, message, line, _ in enforced]
+        enforced = enforce(payload, refusals, root, warned)
+    reasons = [message for _, message, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
         parts = sorted(context + reasons, key=lambda text: not text.startswith(HEADER))
@@ -142,9 +142,9 @@ def run(args):
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
-                      refusals=[(guard, message, code) for guard, message, _, code in enforced],
+                      refusals=enforced,
                       payload=payload)
-    if warned:  # #660: a launch refusal the posture lets through is shown to the session.
+    if warned:  # #660: a launch refusal the hook lets through is shown to the session.
         print(json.dumps({'hookSpecificOutput': {'hookEventName': args.event,
                                                  'additionalContext': '\n'.join(warned)}}))
     if args.event == 'Stop' and context:
@@ -271,20 +271,24 @@ def module(check):
     return check.__module__.rsplit('.', 1)[-1]
 
 
-def posture(payload, refusals, root, warned=None):
-    """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
-    guard.would_refuse and lets the call through, block enforces it with its posture line.
-    Returns (guard, reason, line, exit); the config is read only because a guard refused.
-    warned, when given, collects the launch refusals warn let through (#660)."""
+# Modules whose could-not-run on an opaque Bash call naming no publish target only warns (#530).
+PUBLISH = ('commit_push', 'deploy', 'pr', 'stop')
+
+
+def enforce(payload, refusals, root, warned=None):
+    """#837: per refusal, block when guards.enforce is on (unless the B5 lead call keeps it
+    logging) or the refusal is on the floor; else record guard.would_refuse and let the call
+    through. Returns (guard, reason, exit); an unreadable config blocks every refusal.
+    warned, when given, collects the launch refusals let through (#660)."""
     from wuwei import state, workspace
-    from wuwei.guards import MERGE, NO_REVIEWER, RAISE, RECORDS_FLOOR, level
+    from wuwei.guards import floor, logs
     try:
         if root is None:
             raise LookupError('no workspace; run bin/wuwei init')
         config = workspace.load_config(root)
-        name, levels = workspace.posture(config)
-    except BaseException:  # No workspace or an unreadable config enforces, as before #331.
-        return [(module(check), reason, '', code) for check, reason, code in refusals]
+        on = config['guards']['enforce']
+    except BaseException:
+        return [(module(check), reason, code) for check, reason, code in refusals]
     from wuwei.shell import UNKNOWN_GIT, UNPARSED, WORKSPACE_ROOT
     enforced, shown, seen, opaque = [], None, set(), None
 
@@ -297,54 +301,38 @@ def posture(payload, refusals, root, warned=None):
             what = shell.unreadable(command, cwd)
             if not what or deploy.floor_named(command + '\n' + (shell.script_text(command, cwd) or ''), config):
                 return ''
-            return f'opaque: {what}; the guards could not read it, so it ran with this warning (strict refuses it)'
+            return f'opaque: {what}; the guards could not read it, so it ran with this warning'
         except Exception:  # fail closed: the refusal stands
             return ''
     for check, reason, code in refusals:
-        guard, area, decided, line = level(check, levels)
-        if reason.startswith(RECORDS_FLOOR):  # #725: the floor blocks, not only labels
-            decided, line = 'block', 'posture: records = block (floor; no setting lowers it)'
-        elif line.endswith('(owner-only action; no setting lowers it)') and name != 'strict' \
-                and not reason.startswith(MERGE):
-            line = ''  # #530: below strict an owner-only refusal names its card or its fix
-        if guard == 'pr' and (reason == NO_REVIEWER or reason.startswith(RAISE)):
-            # #530: raising a PR is gated by evidence under the publish area, never owner-only.
-            decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'
-        if reason == NO_REVIEWER or reason.startswith('publish: '):
-            line = ''  # It names its own ways out (#816: the owner's Owner step card); still blocked.
-        if guard == 'outward' and reason.startswith('outward: draft '):
-            line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
-        # #347, #470: decided by the reason, not the area; only deploy says unknown git
+        guard = module(check)
+        blocks = floor(check, reason) or on and not logs(check, reason)
+        # #347, #470: decided by the reason; only deploy says unknown git
         if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
             if reason in seen:
                 continue
             seen.add(reason)
-            decided = 'block' if reason != WORKSPACE_ROOT and name == 'strict' else 'warn'
-            line = ''
-        elif (area == 'publish' and code == UNRUN and name != 'strict'
-              and payload.get('tool_name') == 'Bash'
+            blocks = False
+        elif (guard in PUBLISH and code == UNRUN and payload.get('tool_name') == 'Bash'
               and (opaque := opaque_reason() if opaque is None else opaque)):
             if opaque in seen or UNPARSED in seen:
                 continue
             seen.update((opaque, UNPARSED))
-            reason, decided, line = opaque, 'warn', ''
-        if decided == 'off':
-            continue
-        if decided == 'block':
-            enforced.append((guard, reason, line, code))
+            reason, blocks = opaque, False
+        if blocks:
+            enforced.append((guard, reason, code))
             continue
         try:
             if shown is None:
                 shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
-                'guard': guard, 'area': area, 'level': decided, 'posture': name,
-                'reason': reason, 'exit': code, 'target': shown, 'session': payload['session_id'],
-                'item': claimed(root, payload['session_id'])}, root)
+                'guard': guard, 'reason': reason, 'exit': code, 'target': shown,
+                'session': payload['session_id'], 'item': claimed(root, payload['session_id'])}, root)
             if warned is not None and guard == 'agent_launch':
-                warned.append(f'{reason}\n{line}' if line else reason)
+                warned.append(reason)
         except BaseException as exc:
-            print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
-            enforced.append((guard, reason, line, code))
+            print(f'wuwei hook: could not record a logged refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
+            enforced.append((guard, reason, code))
     return enforced
 
 

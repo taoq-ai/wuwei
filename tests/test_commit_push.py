@@ -850,12 +850,12 @@ def test_real_values_one_reason_through_hook(item_case, monkeypatch, capsys):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload_)))
     assert hook.run(SimpleNamespace(event='PreToolUse')) == 2
     err = capsys.readouterr().err.splitlines()
-    assert len(err) == 2 and 'HEAD:refs/heads/div-1' in err[0] and err[1].startswith('posture:')
+    assert len(err) == 1 and 'HEAD:refs/heads/div-1' in err[0]
     assert 'deploy: could not inspect' not in '\n'.join(err)
 
 
-def through_hook(root, tree, command, monkeypatch, capsys, posture='guarded'):
-    """The full PreToolUse hook in process at the item worktree under one posture."""
+def through_hook(root, tree, command, monkeypatch, capsys, enforce='true'):
+    """The full PreToolUse hook in process at the item worktree."""
     import io
     import json
     import sys
@@ -863,7 +863,7 @@ def through_hook(root, tree, command, monkeypatch, capsys, posture='guarded'):
     from wuwei.commands import hook
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     text = (root / '.wuwei/config.toml').read_text().replace('path = "repo"', 'path = "worktrees/DIV-1"')
-    text = text.split('[security]')[0] + f'[security]\nposture = "{posture}"\n'
+    text = text.split('[guards]')[0] + f'[guards]\nenforce = {enforce}\n'
     (root / '.wuwei/config.toml').write_text(text)
     payload_ = {'hook_event_name': 'PreToolUse', 'session_id': 'fixture', 'cwd': str(tree),
                 'transcript_path': str(root / 'transcript.jsonl'), 'tool_name': 'Bash',
@@ -873,14 +873,14 @@ def through_hook(root, tree, command, monkeypatch, capsys, posture='guarded'):
     return code, capsys.readouterr().err
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_local_merge_in_item_worktree_passes(item_case, monkeypatch, capsys, posture):
     # #530: a local merge publishes nothing; the push to a protected branch still refuses.
     root, fake, tree = item_case
     assert through_hook(root, tree, 'git merge main', monkeypatch, capsys, posture) == (0, '')
     fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/main'
     code, err = through_hook(root, tree, 'git push origin main', monkeypatch, capsys, posture)
-    if posture == 'observe':  # publish warns under observe; the native pre-push hook refuses it
+    if posture == 'false':  # logged with enforce off; the native pre-push hook refuses it
         assert code == 0 and 'default branch' in str(warned(root))
     else:
         assert code == 2 and 'default branch' in err
@@ -909,25 +909,11 @@ def test_fast_evidence_passes_with_no_fast_checks(item_case):
     repo = {'name': 'example/project', 'fast_checks': []}
     assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
 
-def with_posture(root, name):
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'[security]\nposture = "{name}"\n')
-
-
 MISSING = f'fast check "unit" has not passed for HEAD {SHA[:12]}; run bin/wuwei build check DIV-1'
 
 
-@pytest.mark.parametrize('posture', ['observe', 'strict'])
-def test_missing_evidence_outside_guarded(item_case, posture):
-    # #530: observe returns the reason for the hook to warn; strict refuses as today.
-    root, _, tree = item_case
-    set_fast_checks(root, {})
-    with_posture(root, posture)
-    assert guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1')) == (1, MISSING)
-
-
 def test_missing_evidence_refuses_under_guarded(item_case):
-    # #816: no card; the seat runs the named check, the hook levels it under the publish area.
+    # #816: no card; the seat runs the named check; the hook decides by guards.enforce.
     root, _, tree = item_case
     set_fast_checks(root, {})
     assert guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1')) == (1, MISSING)

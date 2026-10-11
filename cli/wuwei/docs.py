@@ -169,7 +169,7 @@ def check(text, again='the same command'):
                                f'then run {again}')
 
 
-def record(root, draft, adapter, page, draft_id=None):
+def record(root, draft, adapter, page):
     """One docs.written event; a page write also records a new page link as the value."""
     item = draft.get('item') or None
 
@@ -179,15 +179,13 @@ def record(root, draft, adapter, page, draft_id=None):
             row['docs'] = {'value': page, 'reason': ''}
     state._write_state(update, root, reserved=False, kind='docs.written',
                        payload={'item': item, 'kind': draft['kind'], 'adapter': adapter,
-                                'page': page, 'draft': draft_id})
+                                'page': page})
 
 
 def _outcome(root, result, draft, adapter):
     if result.exit == 0:
         record(root, draft, adapter, result.data['link'])
         return 0, f"docs: wrote {draft['kind']} page {result.data['link']}"
-    if result.exit == 1 and result.reason.startswith('outward: draft '):
-        return 0, result.reason
     return result.exit, result.reason
 
 
@@ -196,7 +194,7 @@ def _dated(body):
 
 
 def page(root, item):
-    """docs page <item>: write or draft the item's page from its records."""
+    """docs page <item>: write the item's page from its records."""
     from wuwei import outward, registry
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
@@ -261,13 +259,7 @@ def findings(root, config, data):
             continue
         if value == 'none':
             continue
-        pending = next((key for key, draft in sorted((data.get('drafts') or {}).items())
-                        if draft.get('channel') == 'docs' and draft.get('status') == 'pending'
-                        and draft.get('item') == name
-                        and draft['inputs']['draft'].get('kind') == 'page'), None)
-        if pending:
-            lines.append(f'{name}: docs draft {pending} pending; bin/wuwei drafts approve {pending}')
-        elif config['docs']['system'] == 'markdown':
+        if config['docs']['system'] == 'markdown':
             host = registry.load('code_host', config)
             paths = [entry['path'] for entry in brief.read(host.files, row['pr'], root=root)] \
                 if row.get('pr') else []
@@ -335,9 +327,7 @@ def publish(root, kind):
         return result.exit, result.reason
     day = workspace.day_dir(root)
     data = state.read_state(root)
-    earlier = [row['id'] for row in sorted((data.get('drafts') or {}).values(), key=lambda row: row['created'])
-               if row.get('channel') == 'docs' and row['inputs'].get('draft', {}).get('kind') == kind]
-    earlier += [event['payload']['page'] for event in _events(root)
+    earlier = [event['payload']['page'] for event in _events(root)
                 if event['kind'] == 'docs.written' and event['payload'].get('kind') == kind]
     if earlier:
         return 0, f'docs: {kind} page for {day.name} already {earlier[0]}'

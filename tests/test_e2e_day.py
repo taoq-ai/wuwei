@@ -247,10 +247,9 @@ def test_unconfirmed_plugin_change_denies_pretooluse(day):
              tool_input={'file_path': str(outside / 'note.md')})
 
 
-@pytest.mark.parametrize('setting', ['[guards]\nmode = "shadow"\nshadow_since = "2026-09-29"\n',
-                                     '[security]\nposture = "observe"\n'])
-def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
-    # #331: the deprecated shadow mode and the observe posture are one implementation.
+def test_enforce_off_records_force_push_and_keeps_records_refused(day):
+    # #837: guards.enforce = false logs what a guard would refuse; the records floor still blocks.
+    setting = '[guards]\nenforce = false\n'
     from adapters.vcs import git
     from wuwei import registry
     from wuwei.registry import Result
@@ -268,23 +267,22 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
     assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'commit_push'
     assert 'force' in event['payload']['reason'].lower()
     assert event['payload']['target'] == 'git push --force origin main'
-    assert {key: event['payload'][key] for key in ('area', 'level', 'posture')} == {
-        'area': 'publish', 'level': 'warn', 'posture': 'observe'}
+    assert not {'area', 'level', 'posture'} & set(event['payload'])
     output = day.hook('PreToolUse', expected=2, tool_name='Write', tool_input={
         'file_path': str(day.directory / 'state.json'), 'content': '{}'})
     denied = json.loads(output)['hookSpecificOutput']
     assert denied['permissionDecision'] == 'deny'
-    assert 'posture: records = block (floor; no setting lowers it)' in denied['permissionDecisionReason']
+    assert 'posture:' not in denied['permissionDecisionReason']
     from wuwei import report
     assert report.shadow_lines([day.directory])[0].startswith('- commit_push: 1 ')
     day.run('integrity', 'check')
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)
-    # Observe warns on integrity (#331): recorded, the read goes through.
+    # Integrity is logged with guards.enforce = false: recorded, the read goes through.
     assert day.hook('PreToolUse', tool_name='Read',
                     tool_input={'file_path': str(day.repo / 'memory/demo.py')}) == ''
     event = day.events[-1]
-    assert event['kind'] == 'guard.would_refuse' and event['payload']['area'] == 'integrity'
+    assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'integrity'
 
 
 def test_background_handback_day(tmp_path, monkeypatch):

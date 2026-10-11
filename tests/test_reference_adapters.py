@@ -95,14 +95,14 @@ def test_linear_failure_is_redacted(monkeypatch):
     assert 'private-linear-key' not in result.reason
 
 
-def test_public_linear_create_draft_reaches_policy_without_http(monkeypatch, tmp_path):
+def test_public_linear_create_lint_refusal_reaches_policy_without_http(monkeypatch, tmp_path):
     linear = importlib.import_module('adapters.tracker.linear')
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n[outbound]\ndefault_tier = "ask"\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n')
     calls = replay(monkeypatch)
     result = linear.create({'teamId': 'team-1', 'stateId': 'state-1',
                             'assigneeId': 'user-1', 'projectId': 'project-1',
-                            'title': 'New item'}, root=tmp_path)
+                            'title': 'Pat asked for this item'}, root=tmp_path)
     assert result.exit == 1
     assert calls == []
 
@@ -312,14 +312,14 @@ def test_greptile_truncated_findings_are_unmeasured(monkeypatch):
     assert greptile.open_findings('owner/repo#7').exit == 2
 
 
-def test_public_slack_post_returns_owner_draft_without_http(monkeypatch, tmp_path):
+def test_public_slack_post_returns_the_refused_text_without_http(monkeypatch, tmp_path):
     slack = importlib.import_module('adapters.chat.slack')
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n[outbound]\ndefault_tier = "ask"\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     calls = replay(monkeypatch)
-    result = slack.post('C123', 'Please review this.', None, root=tmp_path)
-    assert result.exit == 1 and result.data == 'Please review this.'
+    result = slack.post('C123', 'Pat asks you to review this.', None, root=tmp_path)
+    assert result.exit == 1 and result.data == 'Pat asks you to review this.'
     assert calls == []
 
 

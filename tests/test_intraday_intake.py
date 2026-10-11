@@ -296,18 +296,14 @@ def test_plan_add_unknown_item_without_goal_names_the_form(root):
     assert 'OWN-2' not in state.read_state(root)['items']
 
 
-def test_owner_named_item_needs_a_ticket_when_a_tracker_is_set(root):
+def test_owner_named_item_with_a_ticket_builds_next(root):
     (root / '.wuwei/config.toml').write_text(
-        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n'
-        '[security]\nposture = "strict"\n')
-    with pytest.raises(state.StateError, match='OWN-3 has no ticket'):
-        plan.add('OWN-3', root, goal='G-1')
-    assert not state.read_state(root).get('drafts')
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
     assert plan.add('OWN-3', root, goal='G-1', ticket='ENG-7')['action'] == 'build next'
     assert state.read_state(root)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
 
 
-GITHUB = '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "github"\n[security]\nposture = "strict"\n'
+GITHUB = '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "github"\n'
 REPO = '[[repos]]\nname = "{}"\npath = "{}"\ndefault_branch = "main"\n'
 
 
@@ -341,17 +337,17 @@ def test_owner_named_bare_ticket_without_a_repository_is_refused(root, monkeypat
         plan.add('OWN-4', root, goal='G-1', ticket='24')
     day = state.read_state(root)
     assert 'OWN-4' not in day['items'] and 'OWN-4' not in day.get('tickets', {})
-    assert 'OWN-4' not in day.get('intraday_proposals', {}) and not day.get('drafts')
+    assert 'OWN-4' not in day.get('intraday_proposals', {})
     assert 'OWN-4' not in (root / '.wuwei/days/2026-09-29/events.jsonl').read_text()
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.chdir(root)
     assert main(['plan', 'add', 'OWN-4', '--goal', 'G-1', '--ticket', '24']) == 2
 
 
-def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
-    """#636: below strict plan add drafts the owner item's ticket; its Send card opens it."""
+def test_owner_named_item_opens_its_ticket(root, monkeypatch):
+    """#636, #838: plan add opens the owner item's ticket through the tracker port."""
     from fakes.tracker import Fake, ported
-    from wuwei import drafts, registry
+    from wuwei import registry
     (root / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\n[discovery]\nautostart = "goal"\n'
         '[adapters]\ntracker = "linear"\n')
@@ -360,18 +356,10 @@ def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
                         else load(kind, config))
-    with pytest.raises(state.StateError) as refused:
-        plan.add('OWN-3', root, goal='G-1', title='Fix the export')
-    assert 'drafts show draft-' in str(refused.value) and 'host terminal' not in str(refused.value)
-    day = state.read_state(root)
-    (key, row), = day['drafts'].items()
-    assert row['status'] == 'pending' and row['inputs']['draft']['title'] == 'Fix the export'
-    assert row['inputs']['draft']['item'] == 'OWN-3'
-    assert fake.calls == [] and 'OWN-3' not in day['items']
-    assert drafts.approve(root, key, answered=True).exit == 0
     assert plan.add('OWN-3', root, goal='G-1', title='Fix the export')['action'] == 'build next'
-    day = state.read_state(root)
-    assert day['tickets']['OWN-3']['source'] == 'create' and len(day['drafts']) == 1
+    (_, (ticket,), _), = fake.calls
+    assert ticket['title'] == 'Fix the export' and ticket['item'] == 'OWN-3'
+    assert state.read_state(root)['tickets']['OWN-3']['source'] == 'create'
 
 
 def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():
@@ -434,7 +422,7 @@ def test_plan_add_from_a_seat_finding(root, monkeypatch, capsys):
         'goal': 'G-1', 'track': 'SLICE', 'tier': 'light', 'source': 'finding',
         'title': 'Pin ruff in CI', 'budget_size': 1}
     assert not any(row['flags'].values()) and 'fix-pin-ruff-in-ci' in day['approved_items']
-    assert fake.calls == [] and not day.get('drafts') and not day.get('tickets')
+    assert fake.calls == [] and not day.get('tickets')
     assert added_events(root)[-1]['source'] == 'finding'
     config = workspace.load_config(root)
     assert tracker.check(day, config, 'fix-pin-ruff-in-ci', row) == ('later', '')

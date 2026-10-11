@@ -31,11 +31,8 @@ LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is star
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
          'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
-# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, draft
-# closures and wake).
-SKIP = frozenset(SILENT) - {
-    'watch: clock', 'heartbeat: clock', 'draft.sending', 'draft.sent', 'draft.dropped',
-    'session: wake-seen'}
+# Silent kinds scan drops with no action; the rest of SILENT is read (clocks and wake).
+SKIP = frozenset(SILENT) - {'watch: clock', 'heartbeat: clock', 'session: wake-seen'}
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
@@ -99,9 +96,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
                     current.pop(('pr.action', payload.get('pr')), None)
                     continue
-                if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
-                        and isinstance(payload, dict):
-                    current.pop(('draft.created', payload.get('id')), None)
                 if (kind == 'pr.action' and isinstance(payload, dict)
                         and payload.get('state') in ('merged', 'closed')):
                     current.pop(('merge.policy_blocked', payload.get('pr')), None)
@@ -135,10 +129,6 @@ def scan(directory, classified_state=None):
                 key = (kind, '')
             elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
-            elif kind == 'draft.created' and isinstance(payload, dict):
-                key = (kind, payload.get('id', number))
-            elif kind == 'guard.would_refuse' and isinstance(payload, dict):
-                key = (kind, payload.get('guard'))
             elif tier == 'page':
                 key = (kind, number)
             else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it
@@ -152,9 +142,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.changed' and isinstance(payload, dict):
                     reason = payload.get('summary') or (
                         f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
-                if kind == 'guard.would_refuse' and isinstance(payload, dict):
-                    reason = (f'{payload.get("guard")}: {payload.get("reason")} '
-                              f'(warn: security.areas.{payload.get("area")})')
                 if kind == 'mcp.finding' and isinstance(payload, dict):
                     from wuwei import mcp  # #351: scanner text only if it is a name.
                     shown = [value if isinstance(value, str) and mcp.NAME.fullmatch(value) else 'unnamed'
@@ -234,7 +221,7 @@ def snapshot(directory, line=False):
             if any(instant.tzinfo is None for instant, _ in parsed):
                 raise ValueError(f'{key}: expected timezone-aware timestamps; {DAMAGED}')
             result[destination] = min(parsed, key=lambda row: row[0])[1]
-    result['posture'] = workspace.posture(config)[0] if config is not None else None
+    result['enforce'] = config['guards']['enforce'] if config is not None else None
     from wuwei import integrity
     result['restart'] = integrity.restart(config) if config is not None else ''
     if line:
@@ -343,8 +330,8 @@ def _groups(data, shown=None):
         work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
                     + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
     attention = [f'pages {data["pages"]}']
-    if data.get('posture') not in (None, 'guarded'):
-        attention.append(data['posture'])
+    if data.get('enforce') is False:
+        attention.append('observe')
     return [now, work, attention]
 
 

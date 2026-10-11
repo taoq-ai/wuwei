@@ -736,18 +736,19 @@ def collect(root=None, *, day=None):
     config = workspace.load_config(root)
     directory = workspace.day_dir(root) if day is None else Path(day)
     events, data = _events(directory), _state(directory)
-    from wuwei import drafts, outward
+    from wuwei import outward
     voice, ai_tells = defaultdict(list), {}
-    for row in drafts.read(data if data is not None else {}).values():
-        if row['status'] == 'sent':
+    # #838: nothing writes drafts now; the stored rows of past days still measure.
+    for row in ((data or {}).get('drafts') or {}).values():
+        if row.get('status') == 'sent':
             voice[row['audience']].append(row)
         if isinstance(row.get('style'), list):
             ai_tells[row['id']] = len(row['style'])
     for record in sorted((directory / 'decisions').glob('D-*.md')):
         if not record.is_symlink():
             ai_tells[record.stem] = len(outward.tells(record.read_text(encoding='utf-8')))
-    for index, row in enumerate(events or []):  # drafts count from their rows
-        if row['kind'] == 'outward.ai_tells' and row['payload'].get('draft') is False:
+    for index, row in enumerate(events or []):  # past drafts count from their rows
+        if row['kind'] == 'outward.ai_tells' and not row['payload'].get('draft'):
             ai_tells[f'outward-{index}'] = len(row['payload']['tells'])
     traces = _traces(directory)
     now = workspace.now()

@@ -85,8 +85,11 @@ def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
 
 
 def test_missing_brief_line_names_the_brief_command(workspace):
-    # #660: below strict a launch with no brief line registers as an adhoc seat and names the fix.
+    # #660, #837: with guards.enforce = false a launch with no brief line registers as an adhoc
+    # seat and names the fix.
     root, _ = workspace
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('\n[guards]\nenforce = false\n')
     code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'Do work'}})
     assert code == 1

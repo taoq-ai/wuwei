@@ -1595,13 +1595,13 @@ LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is mis
                  'bin/wuwei tracker move A in_review')
 
 
-def moves(root, monkeypatch, labels, posture='guarded', orgs='"acme"'):
+def moves(root, monkeypatch, labels, orgs='"acme"'):
     """#670: a GitHub tracker whose first move fails (no label) and the second succeeds."""
     from fakes.tracker import Fake
     from wuwei import registry
     (root / '.wuwei/config.toml').write_text(
         NO_SPEC + '[adapters]\ntracker = "github"\n[tracker]\nproject = "acme/app"\n'
-        f'[security]\nposture = "{posture}"\n[outbound]\ncode_host_orgs = [{orgs}]\n')
+        f'[outbound]\ncode_host_orgs = [{orgs}]\n')
     fake = Fake({'labels': labels})
     answers = [registry.Result(2, reason='github.transition: could not run: GitHub label for '
                                'that state not found'), registry.Result(0, {})]
@@ -1621,7 +1621,7 @@ def tracker_events(root):
 
 
 def test_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
-    """#670 acceptance 2: on the owner's tracker below strict the label is created, then moved."""
+    """#670 acceptance 2: on the owner's tracker the label is created, then moved."""
     from wuwei import dispatch, registry
     fake = moves(root, monkeypatch, registry.Result(0, {'created': ['In Review'], 'missing': []}))
     result = dispatch.tracker_call('A', 'in_review', root)
@@ -1631,11 +1631,9 @@ def test_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
     assert tracker_events(root)[-1]['exit'] == 0
 
 
-@pytest.mark.parametrize('posture,orgs', [('strict', '"acme"'), ('guarded', '')])
-def test_in_review_names_the_label_under_strict_or_external(root, monkeypatch, posture, orgs):
+def test_in_review_names_the_label_on_an_external_tracker(root, monkeypatch):
     from wuwei import dispatch, registry
-    fake = moves(root, monkeypatch, registry.Result(0, {'created': [], 'missing': ['In Review']}),
-                 posture, orgs)
+    fake = moves(root, monkeypatch, registry.Result(0, {'created': [], 'missing': ['In Review']}), '')
     result = dispatch.tracker_call('A', 'in_review', root)
     assert (result.exit, result.reason) == (1, LABEL_MISSING)
     assert [call[:2] for call in fake.calls] == [
@@ -2354,11 +2352,11 @@ ESCALATE = FIX.replace('Verdict: FIX', 'Verdict: ESCALATE') + 'Simplicity: none\
 PARKS = FIX.replace('Verdict: FIX', 'Verdict: PARK') + 'Simplicity: none\nDesign: none\n'
 
 
-def blocked(root, monkeypatch, quality=ESCALATE, strict=False):
+def blocked(root, monkeypatch, quality=ESCALATE, enforce=True):
     built(root)
-    if strict:
+    if not enforce:
         path = root / '.wuwei/config.toml'
-        path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
+        path.write_text(path.read_text() + '[guards]\nenforce = false\n')
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'security', 'security-1', PASS)
     record(root, 'quality', 'quality-1', quality)
@@ -2374,9 +2372,9 @@ def owner_says(root, found, reply='Yes'):
     owner._record(root, found['card'], reply, 'planner-session', None)
 
 
-@pytest.mark.parametrize('strict', [False, True])
-def test_escalate_asks_the_owner_step_card_of_dispatch_next(root, monkeypatch, capsys, strict):
-    blocked(root, monkeypatch, strict=strict)
+@pytest.mark.parametrize('enforce', [True, False])
+def test_escalate_asks_the_owner_step_card_of_dispatch_next(root, monkeypatch, capsys, enforce):
+    blocked(root, monkeypatch, enforce=enforce)
     code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
     assert code == 1 and found['reason'].startswith('gate quality ESCALATE: - P1 | cli/example.py:12')
     assert (found['action'], found['command']) == ('escalate', 'wuwei dispatch next A')
@@ -2499,6 +2497,8 @@ def test_running_unbriefed_seat_makes_its_item_busy(root):
     from wuwei import dispatch
     from wuwei.guards import agent_launch
 
+    path = root / '.wuwei/config.toml'  # #837: registered as adhoc with guards.enforce = false
+    path.write_text(path.read_text() + '[guards]\nenforce = false\n')
     payload = {'cwd': str(root), 'tool_name': 'Agent', 'tool_input': {
         'prompt': 'Review the gate', 'description': 'Gate A', 'subagent_type': 'wuwei:sentinel-arch'}}
     assert agent_launch.check(payload)[0] == 1

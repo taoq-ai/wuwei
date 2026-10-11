@@ -57,10 +57,9 @@ def merge(text, findings):
     return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit\n'
 
 
-def _trace_response(finding, root, posture):
+def _trace_response(finding, root):
     """Seats: page and park the affected items. A registered session: one silent traces.noted
-    per day. Unknown: one traces.unmatched per day, or under strict a page (#352). Returns True
-    when the finding paged."""
+    per day. Unknown: one traces.unmatched per day (#352). Returns True when the finding paged."""
     import hashlib
     from wuwei import brief, sessions, watch
 
@@ -71,12 +70,11 @@ def _trace_response(finding, root, posture):
     seat = any(session in seat.get('trace_sessions', []) for seat in brief.seats(data).values()
                if seat['role'] != 'adhoc')
     role = None if seat else sessions.registered(data, session)
-    if not seat and (role or posture != 'strict'):
+    if not seat:
         kind = 'traces.noted' if role else 'traces.unmatched'
         if not any(row['kind'] == kind and row['payload'].get('session_digest') == digest
                    for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-            extra = ({'role': role, 'summary': f'traces: {role} session, chain noted'} if role
-                     else {'posture': posture})
+            extra = {'role': role, 'summary': f'traces: {role} session, chain noted'} if role else {}
             state.append_event(kind, {'session_digest': digest, 'chain': finding['chain'], **extra}, root)
         return False
     state.append_event('scanner.finding', finding, root)
@@ -120,14 +118,14 @@ def trace_sweep(root, config):
         if type(result.exit) is not int or result.exit not in (0, 1):
             raise ValueError(result.reason or 'scanner unavailable; retry; if it repeats, run bin/wuwei doctor')
         markers = security.load(root)
-        posture, owed = workspace.posture(config)[0], 0
+        owed = 0
         for finding in result.data['findings']:
             safe = redact.redact(security.redact(finding, markers))
             # Match the recorder's identity when redaction changes an opaque session id.
             if safe['session_id'] != finding['session_id']:
                 import hashlib
                 safe['session_id'] = hashlib.sha256(finding['session_id'].encode()).hexdigest()
-            owed += _trace_response(safe, root, posture)
+            owed += _trace_response(safe, root)
         counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1

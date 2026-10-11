@@ -321,15 +321,11 @@ def test_emitted_kinds_have_intended_tiers():
     from wuwei.signal import classify
     emitted = emitted_kinds(sorted((ROOT / 'cli/wuwei').rglob('*.py')))
     emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
-    emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
-    emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
-    expected = {'draft.created': 'warn', 'draft.sending': 'silent', 'draft.approved': 'silent',
-                'worktree.hooks_skipped': 'warn',
-                'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'warn',
+    expected = {'worktree.hooks_skipped': 'warn',
                 'mcp.finding': 'warn', 'mcp.checked': 'warn', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
@@ -345,7 +341,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'traces.gap': 'warn', 'traces.slow': 'warn', 'hook.refusal': 'silent',
                 'guard.would_refuse': 'silent', 'config.newer_template': 'warn',
                 'hook.warning': 'warn',
-                'verdict.rejected': 'silent', 'decision.decided': 'silent', 'decision.routed': 'silent',
+                'verdict.rejected': 'silent',
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
@@ -370,10 +366,10 @@ def test_emitted_kinds_have_intended_tiers():
                 'calibration.drift': 'warn',
                 'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
                 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
-                'outward.unknown_tool': 'warn', 'outward.to_owner': 'silent',
+                'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
                 'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
-                'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
+                'docs.exempt': 'silent',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():
@@ -458,13 +454,6 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
     assert settings.read_text() == '{"theme":"dark"}'
     assert json.loads(result.stdout.splitlines()[1])['statusLine']['command'] == (
         shlex.quote(str(ROOT / 'bin/wuwei')) + ' status --line')
-
-
-@pytest.mark.parametrize('kind,tier', [('created', 'warn'), ('sending', 'silent'),
-                                      ('sent', 'silent'), ('dropped', 'silent'), ('failed', 'warn')])
-def test_draft_events_use_decisions_lane(kind, tier):
-    from wuwei.signal import classify
-    assert classify({'kind': 'draft.' + kind}, {}) == (tier, 'Decisions')
 
 
 ROUTED = {'D-2': {'reversibility': 'unsure', 'recommendation': 'defer'}}
@@ -694,7 +683,7 @@ def test_outward_to_owner_is_silent_and_reserved(capsys):
     from wuwei.__main__ import main
     assert classify({'kind': 'outward.to_owner', 'payload': {}}, {})[0] == 'silent'
     assert main(['event', 'outward.to_owner', '{}']) == 1
-    assert 'check_tier' in capsys.readouterr().err
+    assert 'wuwei.outward.to_owner' in capsys.readouterr().err
 
 
 TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'off')
@@ -738,7 +727,7 @@ def test_status_json_names_plan_and_versions(tmp_path):
     assert not {'nudges', 'nudges_mode', 'decisions', 'loops'} & set(data)
     assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
             'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'health',
-            'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
+            'trace_gaps', 'prs_changed', 'solo', 'enforce', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
     assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
 
@@ -783,7 +772,7 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
     data = four_seats(tmp_path, monkeypatch)
     assert status.line(data) == (
         'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0')
-    assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · observe')
+    assert status.line({**data, 'enforce': False}).endswith('| pages 0 · observe')
     assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0'
     for moved in ('watch', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
                   'unplanned', 'checks'):
@@ -882,7 +871,7 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
             'watch': 'dead', 'health': 'ok', 'sessions': 2,
             'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
-            'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
+            'plugin': '0.16.0', 'template': '0.15.0', 'enforce': False}
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [

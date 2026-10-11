@@ -28,7 +28,7 @@ def refuse(code, message):
 
 
 def start_adhoc(args):
-    """#676: record an ad-hoc seat's role and prompt digest, so a strict launch accepts it."""
+    """#676: record an ad-hoc seat's role and prompt digest, so its launch is labelled with it."""
     from wuwei.redact import redact
     root = workspace.find_workspace()
     brief.read_day(root)
@@ -57,10 +57,7 @@ def run(args):
     reason = args.unmeasured
     if reason is not None and (not reason.strip() or '\n' in reason):
         return refuse(UNRUN, 'pass a one-line reason to --unmeasured')
-    if workspace.posture(workspace.load_config(root))[0] == 'strict':  # #831: the owner's card answer
-        if owner := sessions.needs_owner(root, f'bin/wuwei seat stop {name}', f'Stop seat {name}.'):
-            return refuse(FINDINGS, owner)
-    elif sessions.current() not in (None, data.get('planner_session_id')):
+    if sessions.current() not in (None, data.get('planner_session_id')):
         return refuse(FINDINGS, 'seat stop runs from the planner session; run it there')
     if reason is not None:
         state.stop_seat(name, root, reason=reason.strip(), by='owner')
