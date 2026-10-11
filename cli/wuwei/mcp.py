@@ -649,7 +649,7 @@ def _proceed_unmeasured(root, record, servers, confirm):
     return registry.Result(0)
 
 
-def decide(root, identifier=None, option=None, *, servers=None, confirm=None, note=None):
+def decide(root, identifier=None, option=None, *, servers=None, confirm=None, note=None, card=None):
     """Record the owner's answer to the pending MCP decision: y/N at the host terminal, or
     the planner session's asked gate question (#354)."""
     try:
@@ -683,11 +683,11 @@ def decide(root, identifier=None, option=None, *, servers=None, confirm=None, no
             try:
                 where = (('at the host terminal' if confirm(digest) else '') if confirm else
                          decision.owner_confirm(root, identifier, digest,
-                                                f'{identifier}: record {option}.\n' + fields['Context']))
+                                                f'{identifier}: record {option}.\n' + fields['Context'], card, fields))
             except OSError as exc:
                 return registry.Result(2, reason=str(exc))
             if not where:
-                return registry.Result(1, reason=DECLINED)
+                return registry.Result(1, reason=DECLINED if card is None else decision.no_card(root, identifier, option))
             if path.read_text(encoding='utf-8') != text:
                 raise ValueError(f'decision changed during confirmation; {RACE}')
             workspace.atomic_write(path, decision.owner_record(text, option, where, note))

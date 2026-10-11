@@ -73,7 +73,10 @@ def text():
         '- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: '
         + ', '.join(f'`wuwei {entry}`' for entry in WIDGETS) + '. Record the answer with the '
         "widget's `record` command (for example `wuwei calibrate --answer`); when it runs in a host "
-        'terminal, show the owner that line. Without AskUserQuestion (a headless run), write the '
+        'terminal, show the owner that line. A decision record command that exits non-zero on the '
+        'confirmation: run the `record` command `wuwei decision show D-n --widget` prints (`wuwei '
+        'decide D-n "<label>" --card <hash>`) without asking the card again. Below strict, never show '
+        'the owner a host-terminal command for a card they answered. Without AskUserQuestion (a headless run), write the '
         'decision record and run `wuwei decision route D-n` so it reaches the DM, and keep working '
         'with assume-and-record where the mandate allows. A seat refusal that starts `publish:` and '
         'names `wuwei decision show D-n --widget` is a card: ask it and record the answer; on an '

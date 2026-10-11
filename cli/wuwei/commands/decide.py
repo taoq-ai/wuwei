@@ -13,7 +13,7 @@ def register(subparsers):
     parser.add_argument('option')
     parser.add_argument('--note', help='one line appended to the record Notes')
     parser.add_argument('--card', '--from-card', dest='card', metavar='HASH',
-                        help="the owner's answer hash on the card (#661; the CLI binds it with #599)")
+                        help="the owner's answer hash on the card (#661, #599): the widget record command carries it, so it never prompts")
     parser.set_defaults(func=run)
 
 
@@ -24,7 +24,7 @@ def run(args):
     root = workspace.find_workspace()
     waiting = mcp.pending(root)
     if waiting and Path(waiting).stem == args.id:
-        result = mcp.decide(root, args.id, args.option, note=args.note)
+        result = mcp.decide(root, args.id, args.option, note=args.note, card=args.card)
         if result.reason:
             print(result.reason, file=sys.stderr)
         return result.exit

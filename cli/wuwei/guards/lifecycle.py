@@ -31,10 +31,10 @@ def seen_row(payload, event):
     return {'session_id': session_id, 'hook': hook, 'cwd': payload.get('cwd')}
 
 
-def _seen(root, payload, event):
+def _seen(root, payload, event, **extra):
     """Record hook activity in the registry."""
     row = seen_row(payload, event)
-    return None if row is None else sessions.touch(root, **row)
+    return None if row is None else sessions.touch(root, **row, **extra)
 
 
 def session_start(payload):
@@ -58,9 +58,10 @@ def session_start(payload):
     lines.append(next_command.orientation(row, workspace.posture(config)[0], specmode.label(config), session))
     day = None
     try:
+        env_file = None
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
-            sessions.export(payload['session_id'])
-        day = _seen(root, payload, 'SessionStart')  # The registry write returns the day (#587).
+            env_file = sessions.export(payload['session_id'])
+        day = _seen(root, payload, 'SessionStart', env_file=env_file)  # The registry write returns the day (#587).
     except ERRORS as exc:
         code = 2
         lines.append(f'session registry unmeasured: {exc}')
