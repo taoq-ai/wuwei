@@ -229,11 +229,33 @@ def unresolved(root, rows, open_items=None, notes=None):
     return max(code, int(bool(findings))), '\n'.join(findings)
 
 
+def scanner_hold(root):
+    """#834: a critical tool sequence today holds the close until the owner answers Yes on the
+    Owner step card of close, one card per finding."""
+    import hashlib
+    from wuwei import sessions
+    for row in watch.records(workspace.day_dir(root) / 'events.jsonl'):
+        payload = row['payload']
+        if row['kind'] != 'scanner.finding' or payload.get('risk_level') != 'critical':
+            continue
+        token = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+        chain = ' -> '.join(map(str, payload.get('chain', [])))
+        if reason := sessions.needs_owner(root, 'bin/wuwei close', f'A critical tool sequence ran today: {chain}. '
+                                          'Yes closes the day with it investigated; No keeps the day open.',
+                                          token, 'The day stays open.'):
+            return 1, reason
+    return 0, ''
+
+
 def check(root):
     """Recheck all closing conditions, retaining findings even when another read fails."""
     from wuwei import pr_actions
     _, rows = pr_actions.evaluate(root)
     results = [pr_actions.check(root, rows=rows), unresolved(root, rows)]
+    try:
+        results.append(scanner_hold(root))
+    except watch.ERRORS as exc:
+        results.append((2, f'scanner findings unmeasured: {exc}'))
     output = io.StringIO()
     try:
         with redirect_stdout(output):

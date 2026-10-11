@@ -2,7 +2,8 @@
 
 The [daily path](daily.md) needs none of these commands. Each one here is recovery, not
 daily use: reach for it when evidence and state disagree, a seat is lost, or the
-installation changed.
+installation changed. Before a release, the [release rehearsal](rehearsal.md) drives a
+real day; its failures point back here.
 
 ## Troubleshooting
 

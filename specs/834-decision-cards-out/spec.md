@@ -52,7 +52,9 @@ and the `wuwei hook` refusal in `guards/protect_state.py`.
 | --- | --- | --- | --- | --- |
 | Morning gate | `next` `gate` row | `wuwei plan gate` (unchanged) | `plan approve` | change something |
 | Merge policy not cleared, owner_merge | `next` `merge` row (#816, #831) | `bin/wuwei merge <pr>` | merges | `plan park` (unchanged) |
-| PARK or ESCALATE verdict, rounds left | `next` `verdicts` row | `bin/wuwei dispatch next <item>` | opens the fix round | the CLI parks the item |
+| ESCALATE verdict, rounds left | `next` `verdicts` row | `bin/wuwei dispatch next <item>` | opens the fix round | the CLI parks the item |
+| A builder's `Blocked:` line at gate entry | `next` `verdicts` row | `bin/wuwei dispatch next <item>` | the gates run, the answer in their briefs | the CLI parks the item |
+| Critical scanner chain today | `next` `close` row | `bin/wuwei close` | the day closes | the day stays open |
 | Round cap spent | `next` `verdicts` row, once, when the CLI parks the item | `bin/wuwei plan resume <item>` | resumes the item after the design change in its spec | it stays parked |
 | Any other parked item (build limit, scanner chain, owner park) | the refusal or line that parked it names it | `bin/wuwei plan resume <item>` | resumes the item | it stays parked |
 | Scope change a reviewer asks on a PR | `next` `pr` row, `wuwei pr act` | `bin/wuwei pr act <pr>` | opens a fix round for it | the thread waits for the owner |
@@ -62,16 +64,20 @@ Still on decision records until their parts land: the learning cards of `outboun
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - A gate's PARK or ESCALATE reaches the owner on one card (Priority: P1)
+### User Story 1 - A gate's ESCALATE reaches the owner on one card; PARK parks in code (Priority: P1)
 
 **Why this priority**: the pass plan names it an owner decision. The old path routed it by
 class, and under observe and guarded took the recommendation without the owner.
 
-**Independent Test**: an item at the gate with a PARK verdict, rounds left.
+**Independent Test**: an item at the gate with an ESCALATE verdict, rounds left; another with a PARK verdict.
+
+Lead call (2026-10-11): a PARK verdict parks the item in code with its reason (`plan.disposed`,
+shown in the report and `why`) and no card; only ESCALATE asks. A later `plan resume` on the
+owner's Yes counts as Yes to the verdict that parked it and opens the fix round.
 
 **Acceptance Scenarios**:
 
-1. **Given** a PARK or ESCALATE verdict at the current head and rounds left, **When**
+1. **Given** an ESCALATE verdict at the current head and rounds left, **When**
    `wuwei dispatch next <item>` runs with no recorded answer, **Then** it exits 1. It prints
    the Owner step card for `bin/wuwei dispatch next <item>` with a token bound to the verdicts
    asked. It writes no decision record and changes no state.
@@ -163,8 +169,9 @@ class, and under observe and guarded took the recommendation without the owner.
 
 ### Functional Requirements
 
-- **FR-001**: `dispatch.next_step` MUST ask the owner on PARK or ESCALATE through
-  `sessions.owner_answer` for `bin/wuwei dispatch next <item>`:
+- **FR-001**: `dispatch.next_step` MUST park the item in code on a PARK verdict (no card) and
+  MUST ask the owner on ESCALATE through `sessions.owner_answer` for
+  `bin/wuwei dispatch next <item>`:
   - Yes opens the fix round;
   - No parks the item;
   - no answer returns `{'action': 'escalate', 'reason', 'command', 'card'}` (the action name
@@ -232,10 +239,9 @@ class, and under observe and guarded took the recommendation without the owner.
 
 Open questions answered with the recommendation (strict, non-interactive):
 
-1. PARK and ESCALATE wait for the owner in every posture. The pass plan names them owner
-   decisions, and the old observe and guarded path took the recommendation without the owner.
-   The item waits at its gate and blocks only itself. No parks it in code, so a declined card
-   never stalls.
+1. ESCALATE waits for the owner in every posture; a PARK verdict parks the item in code
+   (lead call). The waiting item blocks only itself. No parks it in code, so a declined card
+   never stalls, and a later `plan resume` opens the fix round.
 2. The round cap keeps parity. The CLI parks at the cap, as today, and the owner's choice is to
    resume after a design change. A resume without one parks again at the next dispatch, as
    the old `keep` answer did. No fix round runs past the cap.

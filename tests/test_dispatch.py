@@ -2982,3 +2982,77 @@ def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch
     damaged = dispatch.host(workspace_root, config, policy=PROCESS)
     assert damaged['cap'] == 4 and 'median' not in damaged['text'] and '; warning: ' in damaged['text']
 
+
+
+# #834 review: a resume after a verdict park opens the fix round; a builder's Blocked: line asks.
+
+
+def resume_yes(root, capsys):
+    from fakes import owner
+    from wuwei.__main__ import main
+    assert main(['plan', 'resume', 'A']) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+
+
+@pytest.mark.parametrize('verdict', ['PARK', 'ESCALATE'])
+def test_a_resumed_verdict_park_opens_the_fix_round(root, monkeypatch, capsys, verdict):
+    from wuwei import dispatch
+    blocked(root, monkeypatch, quality=PARKS if verdict == 'PARK' else ESCALATE)
+    found = dispatch.next_step('A', root)
+    if verdict == 'ESCALATE':
+        assert found['card']['options'][1]['description'] == 'The item parks.'
+        owner_says(root, found, 'No')
+        found = dispatch.next_step('A', root)
+    assert found['action'] == 'parked' and state.read_state(root)['items']['A']['phase'] == 'parked'
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root) == _fix_action(['quality'])
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+
+
+def test_a_new_park_after_the_resumed_round_parks_again(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    caps(root, 'max_rounds = 3\n')
+    blocked(root, monkeypatch, quality=PARKS)
+    dispatch.next_step('A', root)
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root)['action'] == 'fix'
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-2', PARKS.replace('abc1234', 'def5678'), 'delta', head='def5678' + '0' * 33)
+    assert dispatch.next_step('A', root)['action'] == 'parked'
+
+
+def builder_says(root, blocked_line):
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state.append_event('retro.captured', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
+        'Blocked': blocked_line, 'Gap': 'none', 'Change': 'none'}, 'missing': [], 'invalid': []}, root)
+
+
+def test_a_builder_blocked_line_asks_the_owner_before_the_gates(root, monkeypatch):
+    from wuwei import dispatch
+    builder_says(root, 'the schema change needs the owner')
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['command']) == ('escalate', 'wuwei dispatch next A')
+    assert found['reason'] == 'builder blocked: the schema change needs the owner'
+    assert found['card']['options'][1]['description'] == 'The item parks.'
+    owner_says(root, found)
+    built(root)
+    found = dispatch.next_step('A', root)
+    assert found['action'] == 'gates' and found['roles'] == ['arch', 'quality', 'security']
+    import shlex
+    assert all("the owner said Yes to the builder's Blocked: line: the schema change needs the owner"
+               in shlex.split(command)[-1] for command in found['commands'])
+
+
+def test_a_builder_blocked_line_no_parks(root):
+    from wuwei import dispatch
+    builder_says(root, 'the schema change needs the owner')
+    owner_says(root, dispatch.next_step('A', root), 'No')
+    found = dispatch.next_step('A', root)
+    assert found['action'] == 'parked' and found['reason'] == 'builder blocked: the schema change needs the owner'
+
+
+def test_a_builder_blocked_none_goes_to_the_gates(root):
+    from wuwei import dispatch
+    builder_says(root, 'none')
+    assert dispatch.next_step('A', root)['action'] == 'gates'

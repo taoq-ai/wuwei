@@ -187,7 +187,8 @@ Every Claude Code session in the workspace orients itself on start: what WUWEI i
 - One owner per workspace.
 - Hooks add about 40 to 100 ms to each tool call, depending on the machine
   ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
-- It is early: so far only its author has used it day to day.
+- It is early: so far only its author has used it day to day, and the
+  [live rehearsal](docs/site/rehearsal.md) is the check before each release.
 - Start a new project with `init --shadow`: a first week in the observe posture, where the
   guards record what they would refuse before they refuse it
   ([security posture](docs/site/security.md#security-posture)).

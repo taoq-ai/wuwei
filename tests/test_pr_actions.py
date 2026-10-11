@@ -177,6 +177,7 @@ def test_scope_change_asks_the_owner_step_card(case, capsys):
     err = capsys.readouterr().err
     assert f'Owner step: bin/wuwei pr act {REF} (' in err
     assert f'Reviewer asks a scope change on {REF} (T17): \\"{SCOPE}\\"' in err
+    assert 'The planner replies that the thread is deferred to you.' in err
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
     assert 'pr_action_decisions' not in state.read_state(root)
     assert main(['pr', 'act', REF]) == 1  # asked again until the owner answers

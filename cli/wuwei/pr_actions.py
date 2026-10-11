@@ -435,12 +435,12 @@ def _thread(root, ref, item, tree, measured, reply=None):
             command = f'bin/wuwei pr act {ref}'
             detail = (f'Reviewer asks a scope change on {ref} ({target}): {json.dumps(text[:200])}. '
                       'Yes makes it in a fix round; No leaves the thread for you.')
-            token = obligations._fingerprint(latest)[:12]
-            owner = sessions.owner_answer(root, command, detail, token)
+            token, no = obligations._fingerprint(latest)[:12], 'The planner replies that the thread is deferred to you.'
+            owner = sessions.owner_answer(root, command, detail, token, no)
             if owner == 'Yes':
                 return _fix(root, ref, item, tree, measured, feedback=text)
             if owner != 'No':
-                print(sessions.needs_owner(root, command, detail, token), file=sys.stderr)
+                print(sessions.needs_owner(root, command, detail, token, no), file=sys.stderr)
                 return 1
             answer = {'option': 'defer'}
         elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):

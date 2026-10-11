@@ -1611,9 +1611,12 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
     capsys.readouterr()
     code = main(['mcp', 'decide', 'D-1', 'proceed'])
     text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
-    # #831, part 14: the owner answers in the session under every posture; never a host terminal.
-    assert code == 0 and text.endswith('in the planner session.\n')
-    assert core().cached(configured).exit == 0
+    if posture == 'strict':  # #834 review F2: a D-n card never confirms under strict (#357)
+        assert code == 2 and integrity.HOST_TERMINAL in capsys.readouterr().err
+        assert 'Outcome: pending' in text
+    else:
+        assert code == 0 and text.endswith('in the planner session.\n')
+        assert core().cached(configured).exit == 0
 
 
 def asked_mcp_card(configured, monkeypatch):

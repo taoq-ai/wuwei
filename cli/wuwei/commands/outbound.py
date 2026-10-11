@@ -30,8 +30,9 @@ def register(subparsers):
     answer_parser = actions.add_parser('answer', help="record the owner's answer to a learning card (the card names it)")
     answer_parser.add_argument('id', help='the D-n of the learning card')
     answer_parser.add_argument('option', help='the label or option id the owner chose')
-    answer_parser.add_argument('--card', required=True, metavar='HASH',
-                               help="the card's hash, as its record command carries it")
+    answer_parser.add_argument('--card', metavar='HASH',
+                               help="the card's hash, as its record command carries it; under strict "
+                                    'the card does not confirm and the owner answers at the prompt')
     answer_parser.set_defaults(func=answer)
     actions.add_parser('tiers', help='print the effective outbound tier table').set_defaults(func=tiers)
     explain_parser = actions.add_parser('explain', help='print the rows a draft passed and the row that held it')
@@ -583,7 +584,7 @@ def owner_answer(root, identifier, label, card):
     digest = hashlib.sha256((identifier + '\n' + option + '\n' + text).encode()).hexdigest()
     where = decision.owner_confirm(root, identifier, digest, fields['Question'], card, fields)
     if not where:
-        return FINDINGS, decision.no_card(identifier)
+        return FINDINGS, decision.no_card(identifier) if card is not None else 'outbound answer: declined; nothing written; run it again to answer'
     if apply(root, learned, option, identifier):
         return FINDINGS, 'outbound answer: the learned connector was not written; run bin/wuwei config check, then answer again'
 

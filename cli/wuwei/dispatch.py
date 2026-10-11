@@ -425,8 +425,33 @@ def _asked(root, data, item, results, roles, round_name):
     detail = (f"Gate {role} says {results[role]['verdict']} on {item}: {_head(results[role])}. "
               'Yes opens a fix round; No parks the item.')
     command = 'bin/wuwei dispatch next ' + shlex.quote(item)
-    return (sessions.owner_answer(root, command, detail, token),
-            sessions.owner_card(command, detail, token))
+    return (sessions.owner_answer(root, command, detail, token, PARKS),
+            sessions.owner_card(command, detail, token, PARKS))
+
+
+PARKS = 'The item parks.'
+
+
+def _resumed(root, item):
+    """True when the owner resumed the item after its last park and no fix round has opened
+    since: the resume is the owner's Yes to the verdict that parked it."""
+    from wuwei import watch
+    last = {}
+    for number, row in enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl')):
+        if row['payload'].get('item') == item and row['kind'] in ('plan.resumed', 'plan.disposed', 'build.fix_opened'):
+            last[row['kind']] = number
+    return last.get('plan.resumed', -1) > max(last.get('plan.disposed', -1), last.get('build.fix_opened', -1))
+
+
+def _blocked(root, data, item):
+    """(the stopped builder's Blocked: line, its agent id) when the line is not none, else None."""
+    from wuwei import watch
+    ids = {seat.get('agent_id') for seat in brief.seats(data).values()
+           if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'stopped'} - {None}
+    found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])
+             for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+             if row['kind'] == 'retro.captured' and row['payload'].get('agent_id') in ids]
+    return found[-1] if found and found[-1][0] and found[-1][0].casefold() != 'none' else None
 
 
 def _head(result):
@@ -453,6 +478,21 @@ def next_step(item, root=None):
         if not any(seat['item'] == item and seat['role'] == 'builder'
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
+    note = ''
+    if phase == 'gate' and (stopped := _blocked(root, data, item)):  # a builder's Blocked: line asks the owner
+        import hashlib
+        from wuwei import sessions
+        line, agent = stopped
+        reason, command = f'builder blocked: {line}', 'bin/wuwei dispatch next ' + shlex.quote(item)
+        detail = f'The {item} builder stopped on: {line}. Yes sends it to its gates with your answer; No parks the item.'
+        token = hashlib.sha256(f'{agent}\n{line}'.encode()).hexdigest()[:12]
+        answer = sessions.owner_answer(root, command, detail, token, PARKS)
+        if answer == 'No':
+            return _parked(root, item, reason, ask=False)
+        if answer != 'Yes':
+            return {'action': 'escalate', 'reason': reason, 'command': 'wuwei dispatch next ' + shlex.quote(item),
+                    'card': sessions.owner_card(command, detail, token, PARKS)}
+        note = f"\nOwner decision: the owner said Yes to the builder's Blocked: line: {line}"
     config = workspace.load_config(root)
     if phase == 'gate' and not row['gates'] and all(
             _record(data, item, role, 'initial') is None for role in ROLES):
@@ -497,7 +537,7 @@ def next_step(item, root=None):
     if missing:
         commands = []
         action = {'action': 'gates', 'roles': missing,
-                  'seats': _seats(root, data, item, missing, round_name, commands)}
+                  'seats': _seats(root, data, item, missing, round_name, commands, note)}
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
@@ -524,9 +564,9 @@ def next_step(item, root=None):
             f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
             'that closes it is recorded in the spec'))
     parks = [role for role in asked if results[role]['verdict'] == 'PARK']
-    if parks:  # a PARK verdict parks in code
+    if parks and not _resumed(root, item):  # a PARK verdict parks in code; a resume is the owner's Yes
         return _parked(root, item, f"gate {parks[0]} PARK: {_head(results[parks[0]])}", ask=False)
-    if asked:  # ESCALATE: the owner decides on the Owner step card of dispatch next
+    if asked and not _resumed(root, item):  # ESCALATE: the owner decides on the Owner step card of dispatch next
         answer, card = _asked(root, data, item, results, asked, round_name)
         reason = f"gate {asked[0]} {results[asked[0]]['verdict']}: {_head(results[asked[0]])}"
         if answer == 'No':
@@ -673,7 +713,7 @@ def _start(root, name, repos):
     return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
-def _seats(root, data, item, roles, round_name, commands):
+def _seats(root, data, item, roles, round_name, commands, note=''):
     """Ready launch or continue actions for gate seats the planner has not started; the brief
     and receive commands still due go to commands."""
     worktree = data['items'][item].get('worktree')
@@ -693,7 +733,7 @@ def _seats(root, data, item, roles, round_name, commands):
             logged = _first_briefs(rows, item, role)
             if not logged and worktree:
                 commands.append(f'wuwei brief {role} {item} {role}-{item} --gate --worktree '
-                                f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item)))
+                                f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
             if logged and data['seats'].get(logged[-1].get('name'), {}).get('status') == 'stopped':
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, logged[-1]['name']))))
             if not logged or logged[-1].get('name') in data['seats']:

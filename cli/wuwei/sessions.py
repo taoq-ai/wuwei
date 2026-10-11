@@ -37,12 +37,15 @@ def caller(root, card=False):
 
 def gate_topics(root, session_id):
     """(topics and D-n records today's planner session asked through the gate, caller is that
-    planner); the owner answers in the session under every posture (#831)."""
+    planner); strict asks nothing, so a D-n card never confirms there (#357, #354) until part 18
+    deletes the D-n cards; an Owner step card counts under every posture (#831)."""
     if not session_id:
         return frozenset(), False  # before any state read: a host terminal has no session
     data = state.read_state(root)
     if session_id != data.get('planner_session_id'):
         return frozenset(), False
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        return frozenset(), True
     return frozenset(data.get('sessions', {}).get(session_id, {}).get('gate_asked', ())), True
 
 
@@ -56,11 +59,11 @@ def card_topic(card, answer):
 OWNER_STEP = 'Owner step'
 
 
-def owner_card(command, detail, token=''):
+def owner_card(command, detail, token='', no='Nothing changes.'):
     """#831: the Owner step card of one command; record is the command to run again on Yes."""
     return {'question': f'{OWNER_STEP}: {command}' + (f' ({token})' if token else ''), 'header': OWNER_STEP,
             'multiSelect': False, 'options': [{'label': 'Yes', 'description': detail},
-                                              {'label': 'No', 'description': 'Nothing changes.'}],
+                                              {'label': 'No', 'description': no}],
             'record': command}
 
 
@@ -71,10 +74,10 @@ def owner_topic(question, options, reply):
     return card_topic(OWNER_STEP, text if reply else question)
 
 
-def owner_answer(root, command, detail, token=''):
+def owner_answer(root, command, detail, token='', no='Nothing changes.'):
     """'Yes', 'No' or None: the owner's latest answer on this step's Owner step card today,
     recorded by the hook; any other reply, or none, is None."""
-    card = owner_card(command, detail, token)
+    card = owner_card(command, detail, token, no)
     asked, *replies = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes', 'No'))
     path = workspace.day_dir(root) / 'events.jsonl'
     answer = None
@@ -89,12 +92,12 @@ def owner_answer(root, command, detail, token=''):
     return answer
 
 
-def needs_owner(root, command, detail, token=''):
+def needs_owner(root, command, detail, token='', no='Nothing changes.'):
     """#831: None when the owner's latest answer on this step's card today (recorded by the
     hook) is Yes, else the refusal naming the card to ask."""
-    if owner_answer(root, command, detail, token) == 'Yes':
+    if owner_answer(root, command, detail, token, no) == 'Yes':
         return None
-    card = owner_card(command, detail, token)
+    card = owner_card(command, detail, token, no)
     return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
             f'then run the command again on Yes: {json.dumps(card)}')
 

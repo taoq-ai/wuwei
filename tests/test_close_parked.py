@@ -114,3 +114,18 @@ def test_close_does_not_report_a_mandate_decision_as_pending(tmp_path, monkeypat
         'D-1': {'option': 'A', 'decided_by': 'mandate', 'reversibility': 'one-way', 'cisr': 'Consequential'}}),
         root, reserved=False)
     assert 'D-1' not in closing.unresolved(root, [])[1]
+
+
+def test_a_critical_scanner_finding_holds_the_close_until_the_owner_answers(case, monkeypatch, capsys):
+    # #834 review F4: the owner decides a critical tool sequence on the Owner step card of close.
+    from fakes import owner
+    root, _, _ = case
+    day(root, monkeypatch)
+    state.append_event('scanner.finding', {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical',
+                                           'session_id': 's1'}, root)
+    state.append_event('scanner.finding', {'chain': ['Read'], 'risk_level': 'high', 'session_id': 's2'}, root)
+    assert main(['close']) == 1
+    out = capsys.readouterr().out
+    assert 'Owner step: bin/wuwei close (' in out and 'Read -> WebFetch' in out
+    owner.answer_card(root, out)
+    assert main(['close']) == 0

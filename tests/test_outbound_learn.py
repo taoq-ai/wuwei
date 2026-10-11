@@ -181,7 +181,12 @@ def test_card(root, capsys):
 
 
 def answer(root, monkeypatch, option):
-    """The planner asks the card in its session, then runs the card's record command."""
+    """The planner asks the card in its session, then runs the card's record command; under
+    strict the card does not confirm (#357, until part 18), so the owner answers at the prompt."""
+    from wuwei.__main__ import main
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+        return main(['outbound', 'answer', 'D-1', option]), option
     from wuwei import decision, plan
     from wuwei.__main__ import main
     from wuwei.guards.answers import record_gate
@@ -617,5 +622,21 @@ def test_answer_needs_the_asked_card(root, capsys):
     err = capsys.readouterr().err
     assert 'no card answer' in err and 'host terminal' not in err
     assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None
-    with pytest.raises(SystemExit):  # the card hash is required
-        main(['outbound', 'answer', 'D-1', 'approve'])
+
+
+def test_under_strict_an_asked_card_does_not_confirm(root, capsys, monkeypatch):
+    # #834 review F2: under strict a planner-asked D-n card never confirms outbound answer.
+    from wuwei import decision, plan
+    from wuwei.__main__ import main
+    from wuwei.guards.answers import record_gate
+    posture(root, 'strict')
+    card(root, capsys)
+    plan.session('P', root)
+    fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
+    assert record_gate({'cwd': str(root), 'session_id': 'P', 'tool_name': 'AskUserQuestion', 'tool_input': {
+        'questions': [{'question': f'D-1: {fields["Question"]}', 'header': 'D-1'}]}}) == (0, '')
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda *args, **kwargs: pytest.fail('prompted'))
+    capsys.readouterr()
+    assert main(['outbound', 'answer', 'D-1', 'approve', '--card', decision.card_hash('D-1', fields)]) == 1
+    assert 'no card answer' in capsys.readouterr().err
+    assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None
