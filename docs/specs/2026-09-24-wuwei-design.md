@@ -1210,7 +1210,7 @@ tracker hygiene, fold), one paragraph in daily.md (the ticket id in `wuwei next`
 rows) and reference rows for `tracker create`, `tracker log`, `tracker move` and `plan set`.
 ### 5.12 Documentation system (owner, 2026-10-03, #418) (retired: owner, 2026-10-11, #789)
 
-Retired with the docs obligation, the page writer, the day page publisher and the docs adapters (#841). What stays: the quality sentinel reviews a change to documented behaviour as code under the `DOC` class, and a docs-only diff gets one reviewer, the goal sentinel.
+Retired with the docs obligation, the page writer, the day page publisher and the docs adapters (#841). What stays: the arch sentinel reviews a change to documented behaviour as code under the `DOC` class, and a docs-only diff gets one reviewer, the goal sentinel.
 
 ### 5.14 Memory over time (owner, 2026-10-03, #443)
 

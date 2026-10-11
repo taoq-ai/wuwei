@@ -26,6 +26,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off',
+          'docs.set', 'docs.written', 'docs.exempt',  # days before #841
           'tracker.created', 'tracker.folded', 'tracker.logged', 'plan.set',
           'duty.due', 'duty.done', 'duty.skipped',  # #842: tracker.call carries the warning
           'cap.derived')
