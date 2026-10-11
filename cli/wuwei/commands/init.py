@@ -95,9 +95,9 @@ def run(args):
     return _finish(destination.parent)
 
 
-# #800: the guide block an older init wrote into the memory.export_to file.
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
                  'memory/cruise.json')  # #814, #815: init --upgrade removes them
+# #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
 
 
@@ -459,7 +459,9 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
-        stale = [name for name in RETIRED_FILES if (destination / name).is_file()
+        memory_dir = destination / 'memory'  # #815: never clean through a symlinked or outside memory dir
+        inside = not memory_dir.is_symlink() and memory_dir.resolve().is_relative_to(destination.resolve())
+        stale = [name for name in RETIRED_FILES if inside and (destination / name).is_file()
                  and not (destination / name).is_symlink()]  # #815: no longer read
         for name in [] if args.dry_run else stale:
             (destination / name).unlink()

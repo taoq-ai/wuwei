@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -1369,6 +1370,26 @@ def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
     assert not any((memory / name).exists() for name in names)
     for name in names:
         assert out.out.count(f'Upgraded .wuwei/memory/{name}: remove (no longer read)') == 1
+
+
+def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch, capsys):
+    # #815 review: a memory directory that is a symlink is never cleaned through.
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    ws = tmp_path / 'ws'
+    ws.mkdir()
+    assert init.run(SimpleNamespace(path=str(ws), upgrade=False, dry_run=False)) == 0
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'cruise.json').write_text('{}')
+    memory = ws / '.wuwei/memory'
+    if memory.exists():
+        shutil.rmtree(memory)
+    memory.symlink_to(outside)
+    code, out = upgraded(ws, capsys)
+    assert code == 0, out.err
+    assert (outside / 'cruise.json').exists() and 'cruise.json' not in out.out
 
 
 def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
