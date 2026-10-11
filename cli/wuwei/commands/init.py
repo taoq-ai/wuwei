@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
-from wuwei import env, security, workspace
+from wuwei import env, integrity, security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
@@ -79,7 +79,7 @@ def run(args):
         env.initialize(Path(staging))
         from wuwei.commands.agents import write_workspace
         write_workspace(template.parents[1], Path(staging))
-        executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
+        executable = integrity.launcher(destination.parent)
         (Path(staging) / "executable").write_text(str(executable) + "\n")
         if posture:
             config = Path(staging) / 'config.toml'
@@ -91,7 +91,6 @@ def run(args):
             config.write_text(text, encoding='utf-8')
         config = Path(staging) / 'config.toml'
         config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
-        from wuwei import integrity
         integrity.initialize(Path(staging))
         settings_path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
@@ -190,7 +189,6 @@ def _status_line(executable):
 
 def _finish(root):
     code = _register_mcp(root)
-    from wuwei import integrity
     print(integrity.check(root).reason or 'plugin integrity: clean')
     return code
 
@@ -236,7 +234,6 @@ def _sections(raw):
 
 def _stamp(text):
     """Raise the top-level template_version to this plugin's version; never lower it (#353)."""
-    from wuwei import integrity
     mine = integrity.version()
     current = tomllib.loads(text).get('template_version', '')
     if not integrity.release(mine) or (integrity.release(current) or ()) >= integrity.release(mine):
@@ -359,7 +356,7 @@ def upgrade(args):
         text = _without_empty_repos(raw)
         tomllib.loads(text)
         found = []
-        workspace.load_config(destination.parent, raw=text, warnings=found)
+        config = workspace.load_config(destination.parent, raw=text, warnings=found)
         for warning in found:
             print(f'wuwei init: warning: {warning}; run bin/wuwei doctor for the fix', file=sys.stderr)
         plugin = Path(__file__).resolve().parents[3]
@@ -378,7 +375,7 @@ def upgrade(args):
             graph.warn('init', exc)
             previous = register = None
         graph_changed = register != previous
-        executable = plugin / 'bin/wuwei'
+        executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
         for local in sorted((destination / 'charters').glob('*.md')):
@@ -422,7 +419,6 @@ def upgrade(args):
         for line in retired:
             print(f'{prefix} config.toml: {line}')
         if stamp_changed:
-            from wuwei import integrity
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if named:
             print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
@@ -466,7 +462,6 @@ def upgrade(args):
             return CLEAN
         _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
-        from wuwei import integrity
         if integrity.other_versions():  # #353: another version's hooks still run
             print(integrity.RESTART)
         return code
