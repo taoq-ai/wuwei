@@ -286,6 +286,83 @@ def _retired_mode(raw):
                     else f'remove guards.mode = "{mode}" (the default)']
 
 
+def _unread_keys(raw, warnings):
+    """Remove the keys load_config reported as unknown (#799). A likely typo (a "did you
+    mean" match) not in workspace.RETIRED is kept for the owner to fix; returns (text,
+    removed, kept)."""
+    present = tomllib.loads(raw)
+    paths, removed, kept = [], [], []
+    for warning in warnings:
+        match = re.match(r'config\.toml: unknown key (.+?)(?: at line \d+)?; (?:did you mean (.+)\?)?', warning)
+        retired = match and any(match.group(1) == key or match.group(1).startswith(key + '.')
+                                for key in workspace.RETIRED)
+        if match and match.group(2) and not retired:
+            kept.append((match.group(1), match.group(2)))
+        elif match:
+            removed.append(match.group(1))
+    if not removed:
+        return raw, [], kept
+    refusal = ValueError(f'cannot safely remove {", ".join(removed)} in this TOML layout; delete them '
+                         'from config.toml by hand, then run bin/wuwei init --upgrade again')
+    expected = copy.deepcopy(present)
+    for key in removed:
+        path, node = [], expected
+        try:
+            for part in key.split('.'):
+                path.append(int(part) if isinstance(node, list) else part)
+                parent, node = node, node[path[-1]]
+            parent.pop(path[-1])
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise refusal from None
+        paths.append(tuple(path))
+
+    def unread(path):
+        return any(path[:len(gone)] == gone for gone in paths)
+
+    counts, result = {}, []
+    for label, lines in _sections(raw):
+        if label.startswith('[['):
+            name = label[2:-2]
+            counts[name] = counts.get(name, -1) + 1
+            section = (*name.split('.'), counts[name])
+        else:
+            section = tuple(label.split('.')) if label else ()
+            name = next((name for name in counts if label.startswith(name + '.')), None)
+            if name:  # [repos.merge] after [[repos]] belongs to the latest entry
+                section = (*name.split('.'), counts[name], *label[len(name) + 1:].split('.'))
+        if section and unread(section):
+            tail = len(lines)  # comments and blank lines at the end belong to the next header
+            while tail > 1 and re.fullmatch(r'\s*(#.*)?\n?', lines[tail - 1]):
+                tail -= 1
+            result.extend(lines[tail:])
+            continue
+        index = 0
+        while index < len(lines):
+            match = re.match(r'^\s*([A-Za-z0-9_."\' -]+?)\s*=', lines[index])
+            if not match or index == 0 and section:
+                result.append(lines[index])
+                index += 1
+                continue
+            end = index + 1
+            while end < len(lines):
+                try:
+                    tomllib.loads(''.join(lines[index:end]))
+                    break
+                except tomllib.TOMLDecodeError:
+                    end += 1
+            key = tuple(part.strip().strip('"\'') for part in match.group(1).split('.'))
+            if not unread((*section, *key)):
+                result.extend(lines[index:end])
+            index = end
+    text = ''.join(result)
+    try:
+        if tomllib.loads(text) != expected:
+            raise refusal
+    except tomllib.TOMLDecodeError:
+        raise refusal from None
+    return text, removed, kept
+
+
 def _migrated_config(raw, template):
     present = tomllib.loads(raw)
     source = _sections(template)
@@ -359,9 +436,11 @@ def upgrade(args):
         config = workspace.load_config(destination.parent, raw=text, warnings=found)
         for warning in found:
             print(f'wuwei init: warning: {warning}; run bin/wuwei doctor for the fix', file=sys.stderr)
+        from wuwei import integrity  # #799: an older plugin never removes a newer plugin's keys
+        pruned, removed, kept = (text, [], []) if integrity.newer_template(config) else _unread_keys(text, found)
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
-        migrated, added = _migrated_config(text, template)
+        migrated, added = _migrated_config(pruned, template)
         migrated, retired = _retired_mode(migrated)
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
@@ -418,6 +497,10 @@ def upgrade(args):
             print(f'{prefix} private .wuwei/env and Git ignore rule')
         if text != raw:
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
+        for key in removed:
+            print(f'{prefix} config.toml: remove {key} (no longer read)')
+        for key, near in kept:
+            print(f'config.toml: kept {key}, maybe a typo of {near}; fix it by hand')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
         for line in retired:
@@ -464,7 +547,7 @@ def upgrade(args):
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
+        if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
                 and not guide_changed and not seeded and not named and not graph_changed and text == raw
                 and not tickets and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')

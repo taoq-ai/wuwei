@@ -289,7 +289,8 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
     granted (the owner's merge grant) skips only auto-merge eligibility and pacing."""
     try:
         root = workspace.find_workspace(root)
-        config = workspace.load_config(root)
+        found = []
+        config = workspace.load_config(root, warnings=found)
         ref = reference(ref, root, config, cwd, repo)
         repo_name = ref.split('#')[0]
         data = state.read_state(root)
@@ -299,6 +300,10 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                               f'clear it with bin/wuwei plan set {name} owner_merge=false')
         settings = next((r for r in config['repos'] if r['name'] == repo_name), None)
         require(settings is not None, 'merge policy requires a configured repository')
+        index = config['repos'].index(settings)  # #799: a typo here would loosen the policy unseen
+        typo = next((text for text in found if re.match(rf'config\.toml: unknown key (merge\.|repos\.{index}\.merge)', text)), None)
+        from wuwei import integrity  # a newer plugin's keys are unknown here, not typos
+        require(typo is None or integrity.newer_template(config), f'{typo}; the owner fixes it in a host terminal (bin/wuwei config check validates)')
         policy = settings['merge']
         require(granted or policy['auto'], 'merge.auto is off')
         require(settings['merge_deploys'] is False, 'explicit merge_deploys = false is required')

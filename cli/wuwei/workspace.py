@@ -53,6 +53,8 @@ AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound a
 TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
+# #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
+RETIRED = ()
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -745,8 +747,8 @@ def _decode_error():
 
 def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
-    return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
-    texts are appended to warnings when it is a list. In a hook or status line process, a
+    return fresh defaults. Unknown keys never refuse (#799); their texts are appended
+    to warnings when it is a list. In a hook or status line process, a
     parse of the file after its parsed copy missed rewrites the copy (#346); a hit writes
     nothing."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
@@ -860,10 +862,6 @@ def load_config(root=None, *, raw=None, warnings=None):
                 location = f' at line {line}' if line is not None else ''
                 text = str(exc).replace('adapters.docs:', 'docs.system:')
                 raise ConfigError(f'{text}{location}') from exc
-        if unknown and posture(config)[0] == 'strict':
-            from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
-            if not integrity.newer_template(config):
-                raise ConfigError(unknown[0])
         _CONFIGS[path, raw] = (marshal.dumps(config), tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
             _cache(path.parent / 'generated', raw, config, unknown)

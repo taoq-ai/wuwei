@@ -61,35 +61,35 @@ def test_unknown_key_warns_with_the_nearest_key(ws):
     assert again == found
 
 
-def test_strict_refuses_the_unknown_key(ws):
+def test_strict_warns_about_the_unknown_key(ws):
     write(ws, STRICT)
-    with pytest.raises(workspace.ConfigError) as caught:
-        workspace.load_config(ws)
-    assert str(caught.value) == 'config.toml: ' + WARNING.format(typo_line(STRICT)) + '; run bin/wuwei config check after the fix'
+    found = []
+    workspace.load_config(ws, warnings=found)
+    assert found == ['config.toml: ' + WARNING.format(typo_line(STRICT))]
 
 
 def test_strict_without_a_near_key_says_remove_it(ws):
     write(ws, 'nonsense = 1\n[security]\nposture = "strict"\n')
-    with pytest.raises(workspace.ConfigError) as caught:
-        workspace.load_config(ws)
-    assert 'unknown key nonsense at line 1; remove it or use a documented key' in str(caught.value)
+    found = []
+    workspace.load_config(ws, warnings=found)
+    assert 'unknown key nonsense at line 1; remove it or use a documented key' in found[0]
 
 
 @pytest.mark.parametrize('text', [
     TYPO,
     TYPO.replace('posture = "guarded"', 'posture = "observe"'),
     TYPO.replace('[guards]\n', '[guards]\nmode = "shadow"\n'),
-], ids=['guarded', 'observe', 'shadow'])
-def test_tool_calls_pass_below_strict(ws, monkeypatch, capsys, text):
+    STRICT,
+], ids=['guarded', 'observe', 'shadow', 'strict'])
+def test_tool_calls_pass_in_every_posture(ws, monkeypatch, capsys, text):
     write(ws, text)
     code, out = replay(monkeypatch, capsys, ws)
     assert code == 0 and "deny" not in out, out
 
 
-def test_strict_tool_call_is_refused(ws, monkeypatch, capsys):
-    write(ws, STRICT)
-    code, out = replay(monkeypatch, capsys, ws)
-    assert code == 2 and 'unknown key scanner.mcp.blok' in out
+def test_template_states_the_unknown_key_rule():
+    assert TEMPLATE.splitlines()[0] == ('# Defaults apply when settings are omitted. Unknown keys warn; '
+                                        'bin/wuwei init --upgrade removes the ones no longer read.')
 
 
 def test_template_version_is_a_documented_key(ws):
@@ -214,10 +214,10 @@ def test_old_hook_passes_and_records_once_per_session(ws, installed, monkeypatch
                                 {'plugin': '0.12.0', 'template': '0.13.0', 'session': 'two'}]
 
 
-def test_same_version_template_still_refuses_under_strict(ws, installed, monkeypatch, capsys):
+def test_same_version_template_records_no_event(ws, installed, monkeypatch, capsys):
     write(ws, NEWER.replace('"0.13.0"', '"0.12.0"'))
     code, out = replay(monkeypatch, capsys, ws)
-    assert code == 2 and 'unknown key scanner.mcp.blok' in out
+    assert code == 0 and 'deny' not in out, out
     assert newer_events(ws) == []
 
 
@@ -284,3 +284,75 @@ def test_release_notes_carry_the_restart_line():
     from wuwei import integrity
     workflow = (ROOT / '.github/workflows/release.yml').read_text()
     assert 'append_body: true' in workflow and integrity.RESTART in workflow
+
+
+def unread(tmp_path, raw):
+    from wuwei.commands.init import _unread_keys
+    found = []
+    workspace.load_config(tmp_path, raw=raw, warnings=found)
+    return _unread_keys(raw, found)
+
+
+REPO = 'name = "{0}"\npath = "/{0}"\ndefault_branch = "main"\n'
+
+
+@pytest.mark.parametrize('raw,expected,removed', [
+    ('cap = 1\nzzzz = [\n  1,\n  2,\n]\n[owner]\nname = "a"\n',
+     {'cap': 1, 'owner': {'name': 'a'}}, ['zzzz']),
+    ('cap = 1\nfoo.bar = 1\n', {'cap': 1}, ['foo']),
+    ('[qqq]\na = 1\n[qqq.sub]\nb = 2\n[owner]\nname = "a"\n', {'owner': {'name': 'a'}}, ['qqq']),
+    ('[[repos]]\n' + REPO.format('a') + '[[repos]]\n' + REPO.format('b') + 'zzz = 1\n',
+     {'repos': [{'name': 'a', 'path': '/a', 'default_branch': 'main'},
+                {'name': 'b', 'path': '/b', 'default_branch': 'main'}]}, ['repos.1.zzz']),
+    ('[[repos]]\n' + REPO.format('a') + '[repos.merge]\nauto = true\nzzzz = 1\n',
+     {'repos': [{'name': 'a', 'path': '/a', 'default_branch': 'main', 'merge': {'auto': True}}]},
+     ['repos.0.merge.zzzz']),
+    ('cap = 1\n', {'cap': 1}, []),
+], ids=['multi-line', 'dotted', 'table', 'second-repo', 'repo-subtable', 'none'])
+def test_unread_keys_are_removed(tmp_path, raw, expected, removed):
+    import tomllib
+    text, gone, kept = unread(tmp_path, raw)
+    assert tomllib.loads(text) == expected and gone == removed and kept == []
+
+
+def test_a_likely_typo_is_kept(tmp_path):
+    raw = '[host]\nseatz = 2\n'
+    assert unread(tmp_path, raw) == (raw, [], [('host.seatz', 'host.seats')])
+
+
+def test_a_retired_key_is_removed_despite_a_near_match(tmp_path, monkeypatch):
+    monkeypatch.setattr(workspace, 'RETIRED', ('host.seatz',))
+    assert unread(tmp_path, '[host]\nseatz = 2\n') == ('[host]\n', ['host.seatz'], [])
+
+
+def test_a_comment_above_the_next_kept_header_survives(tmp_path):
+    text, removed, kept = unread(tmp_path, '[qqq]\na = 1\n\n# Who owns this workspace.\n[owner]\nname = "a"\n')
+    assert text == '\n# Who owns this workspace.\n[owner]\nname = "a"\n' and removed == ['qqq']
+
+
+def test_a_removal_that_breaks_the_toml_refuses(tmp_path):
+    with pytest.raises(ValueError, match=r'zzzz.*by hand'):
+        unread(tmp_path, 'zzzz = """\n[owner]\n"""\n[owner]\nname = "a"\n')
+
+
+def test_unread_key_in_an_inline_table_refuses(tmp_path):
+    with pytest.raises(ValueError, match=r'owner\.mystery.*by hand'):
+        unread(tmp_path, 'owner = { name = "a", mystery = 1 }\n')
+
+
+def test_upgrade_keeps_keys_from_a_newer_template(tmp_path, monkeypatch, capsys):
+    import re
+    from wuwei import integrity
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    monkeypatch.setattr(integrity, 'version', lambda: '0.13.0')
+    path = tmp_path / '.wuwei/config.toml'
+    text = path.read_text()
+    for template, removes in (('0.13.0', True), ('0.14.0', False)):
+        path.write_text(re.sub(r'^template_version = .*$', f'template_version = "{template}"\nzzzz = 1',
+                               text, count=1, flags=re.M))
+        capsys.readouterr()
+        init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=True))
+        out = capsys.readouterr().out
+        assert ('Would upgrade config.toml: remove zzzz (no longer read)' in out) is removes, out

@@ -1,4 +1,4 @@
-# Defaults apply when settings are omitted. Unknown keys warn (strict posture: errors).
+# Defaults apply when settings are omitted. Unknown keys warn; bin/wuwei init --upgrade removes the ones no longer read.
 # Running build seats (CAP). 0 derives it at every sweep from free memory, cores and the
 # [budget] below; a positive number pins it. Integer counts must not be negative.
 cap = 0

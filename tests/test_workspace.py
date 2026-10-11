@@ -335,10 +335,8 @@ scanner = "none"
 @pytest.mark.parametrize('text,key,line', [
     ('cap = 1\nfoo.bar = 1', 'foo', 2),
     ('[owner]\nname="x"\n[host]\nextra.a = 1', 'host.extra', 4),
-    ('repos = [{name="a", path="/a", default_branch="main"},\n {pth="b"}]', 'repos.1.pth', 2),
     ('# capp is a typo\ncapp = 2\n', 'capp', 2),
     ('[owner]\nname = "a"\n[host]\nseatz = 2\n', 'host.seatz', 4),
-    ('[[repos]]\nname = "a"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 6),
     ('[adaptrs]\nruntime = "claude"\n', 'adaptrs', 1),
     ('[outward.max_lenght]\nchat = 2\n', 'outward.max_lenght', 1),
     ('owner.nmae = "a"\n', 'owner.nmae', 1),
@@ -347,7 +345,20 @@ scanner = "none"
 ])
 def test_unknown_key_line(tmp_path, text, key, line):
     from wuwei import workspace
-    # #353: unknown keys refuse only under strict; appending keeps the line numbers.
+    # #799: unknown keys warn in every posture; appending keeps the line numbers.
+    write_config(tmp_path, text.rstrip('\n') + '\n[security]\nposture = "strict"\n')
+    found = []
+    workspace.load_config(tmp_path, warnings=found)
+    assert f'config.toml: unknown key {key} at line {line};' in found[0]
+
+
+@pytest.mark.parametrize('text,key,line', [
+    ('repos = [{name="a", path="/a", default_branch="main"},\n {pth="b"}]', 'repos.1.pth', 2),
+    ('[[repos]]\nname = "a"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 6),
+])
+def test_unknown_key_explains_a_later_error(tmp_path, text, key, line):
+    from wuwei import workspace
+    # Entry 1 lacks its required fields; the typo explains why, as before #353.
     write_config(tmp_path, text.rstrip('\n') + '\n[security]\nposture = "strict"\n')
     with pytest.raises(workspace.ConfigError) as error:
         workspace.load_config(tmp_path)
@@ -358,10 +369,10 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     from wuwei import workspace
     write_config(tmp_path, 'typo = 1\n[security]\nposture = "strict"')
     monkeypatch.setattr(workspace, '_key_line', lambda raw, path: None)
-    with pytest.raises(workspace.ConfigError) as error:
-        workspace.load_config(tmp_path)
-    assert 'unknown key typo;' in str(error.value)
-    assert 'at line' not in str(error.value)
+    found = []
+    workspace.load_config(tmp_path, warnings=found)
+    assert 'unknown key typo;' in found[0]
+    assert 'at line' not in found[0]
 
 
 @pytest.mark.parametrize('text,key', [
@@ -420,7 +431,7 @@ def test_owner_verbosity(tmp_path):
             workspace.load_config(tmp_path)
     write_config(tmp_path, '[owner.verbosity]\nretro = "full"\n')
     found = []
-    workspace.load_config(tmp_path, warnings=found)  # #353: unknown keys warn below strict
+    workspace.load_config(tmp_path, warnings=found)  # #799: unknown keys warn in every posture
     assert found and 'unknown key owner.verbosity.retro' in found[0]
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
@@ -861,16 +872,35 @@ def test_upgrade_names_the_nudge_mode_it_applies(tmp_path, extra, shown):
         assert config_path.read_bytes() == before
 
 
-def test_upgrade_rejects_unknown_key_without_writes(tmp_path):
+def test_upgrade_removes_an_unread_key(tmp_path):
+    import tomllib
     directory = previous_workspace(tmp_path)
     config_path = directory / 'config.toml'
     config_path.write_text(config_path.read_text().replace('pronouns = "they/them"',
                                                       'pronouns = "they/them"\nmystery = 1')
                            + '[security]\nposture = "strict"\n')
     before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert result.returncode == 0, result.stderr
+    assert 'Would upgrade config.toml: remove owner.mystery (no longer read)' in result.stdout
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
     result = cli(tmp_path, 'init', '--upgrade')
-    assert result.returncode == 1
-    assert 'unknown key owner.mystery at line 8' in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert 'Upgraded config.toml: remove owner.mystery (no longer read)' in result.stdout
+    owner = tomllib.loads(config_path.read_text())['owner']
+    assert 'mystery' not in owner and (owner['name'], owner['pronouns']) == ('Pat', 'they/them')
+
+
+def test_upgrade_refuses_an_unread_key_in_an_inline_table(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text().replace(
+        '[owner]\nname = "Pat"\npronouns = "they/them"\n',
+        'owner = { name = "Pat", pronouns = "they/them", mystery = 1 }\n'))
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 2
+    assert 'owner.mystery' in result.stderr and 'by hand' in result.stderr
     assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
 
 
@@ -1304,6 +1334,8 @@ def test_upgrade_warns_about_unknown_keys(tmp_path):
     result = cli(tmp_path, 'init', '--upgrade')
     assert result.returncode == 0, result.stderr
     assert 'wuwei init: warning: config.toml: unknown key host.seatz at line 11; did you mean host.seats?' in result.stderr
+    assert 'config.toml: kept host.seatz, maybe a typo of host.seats; fix it by hand' in result.stdout
+    assert 'seatz = 3' in config_path.read_text()
 
 
 def trial(root, monkeypatch, mode='shadow'):

@@ -198,6 +198,31 @@ def test_merge_method_config(case):
         workspace.load_config(root)
 
 
+@pytest.mark.parametrize('change,key,near', [
+    (('auto = true', 'auto = true\nnever_auto_path = ["x"]'), 'repos.0.merge.never_auto_path',
+     'repos.0.merge.never_auto_paths'),
+    (('[owner]', '[merge]\ndefault_tir = "ask"\n[owner]'), 'merge.default_tir', 'merge.default_tier'),
+])
+def test_unknown_merge_key_refuses(case, change, key, near):
+    # #799: unknown keys only warn, so the merge edge fails closed on its own configuration.
+    config_change(case[0], *change)
+    result = check(case)
+    assert result.exit == 1 and key in result.reason and near in result.reason, result
+
+
+def test_unknown_merge_key_from_a_newer_template_merges(case, monkeypatch):
+    from wuwei import integrity  # #601/#645: a newer install wrote the key
+    monkeypatch.setattr(integrity, 'version', lambda: '0.12.0')
+    config_change(case[0], '[environments]', 'template_version = "0.13.0"\n[environments]')
+    config_change(case[0], 'auto = true', 'auto = true\nnever_auto_path = ["x"]')
+    assert check(case).exit == 0
+
+
+def test_unknown_key_elsewhere_does_not_refuse(case):
+    config_change(case[0], '[owner]', '[host]\nseatz = 2\n[owner]')
+    assert check(case).exit == 0
+
+
 def test_fixes_base_names_checks_red_at_base_and_green_at_head():
     fixes = policy().fixes_base
     def rows(**conclusions):
