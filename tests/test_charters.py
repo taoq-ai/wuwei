@@ -336,3 +336,13 @@ def test_a_seat_finding_has_its_route():
     assert "`light` starts without a ticket" in texts["lead.md"]
     assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
     assert "after it ships" in texts["planner.md"]
+
+
+def test_gate_copies_start_empty_and_match_the_tree():
+    # #734: a copy a gate checks is new and empty, and extras against the tree are listed.
+    anchors = ("in a new, empty directory under your brief's `Scratch:` directory",
+               "`git ls-tree -r --name-only <sha>`", "list each extra file in the verdict")
+    common = charter_text()["_common.md"]
+    assert all(common.count(anchor) == 1 for anchor in anchors)
+    for agent in (ROOT / "agents").glob("sentinel-*.md"):
+        assert all(anchor in agent.read_text(encoding="utf-8") for anchor in anchors), agent.name

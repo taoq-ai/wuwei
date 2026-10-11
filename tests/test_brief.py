@@ -661,6 +661,22 @@ def test_each_seat_gets_its_own_scratch_directory(day, monkeypatch, capsys):
     assert lines[0] != lines[1]
 
 
+def test_a_new_seat_moves_an_earlier_seats_scratch_aside(day, monkeypatch):
+    """#734: a new seat starts in an empty directory; an earlier seat's files are moved, not lost."""
+    old = day[0] / '.wuwei/scratch/X/builder'
+    old.mkdir(parents=True)
+    (old / 'stale.py').write_text('x = 1\n')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'fresh') == 0
+    assert old.is_dir() and not any(old.iterdir())
+    assert (day[0] / '.wuwei/scratch/X/builder.20260928T120000.000000/stale.py').is_file()
+    line = next(line for line in (day[1] / 'briefs/fresh.md').read_text().splitlines()
+                if line.startswith('Scratch: '))
+    assert 'move it aside with a timestamp suffix when it holds files you did not write' in line
+    (day[0] / '.wuwei/scratch/Y/builder').mkdir(parents=True)
+    assert brief(monkeypatch, 'body', 'builder', 'Y', 'empty') == 0
+    assert [p.name for p in (day[0] / '.wuwei/scratch/Y').iterdir()] == ['builder']
+
+
 def test_adhoc_prompt_helpers(tmp_path):
     # #676: an untyped subagent is matched to its seat by its launch prompt.
     from wuwei import brief as module
