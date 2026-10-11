@@ -746,6 +746,22 @@ def hook_call(monkeypatch, event, root, tool, inputs, **extra):
     return hook.run(SimpleNamespace(event=event, command='hook'))
 
 
+def launchers(root):
+    """The plugin's own bin/wuwei and the one .wuwei/executable names."""
+    from wuwei import integrity
+    (root / '.wuwei/executable').write_text('/opt/wuwei/bin/wuwei\n')
+    return str(integrity.PLUGIN / 'bin/wuwei'), '/opt/wuwei/bin/wuwei'
+
+
+def outside_launchers(root, action):
+    """#831 D1: forms the pass-throughs refuse: another program named wuwei, the module, a
+    relative bin/wuwei outside the plugin, a redirect to a protected file, an environment prefix."""
+    plugin = launchers(root)[0]
+    state_file = workspace.day_dir(root).relative_to(root) / 'state.json'
+    return (f'/tmp/evil/wuwei {action}', f'python3 -m wuwei {action}', f'bin/wuwei {action}',
+            f'{plugin} {action} > {state_file}', f'PYTHONPATH=/tmp/evil {plugin} {action}')
+
+
 def owner_question(command):
     return {'questions': [{key: value for key, value in sessions.owner_card(command, 'x').items() if key != 'record'}]}
 
@@ -757,9 +773,12 @@ def test_a_failed_integrity_verdict_leaves_the_reconfirm_card_reachable(ws, monk
         {'exit': 1, 'reason': 'page: plugin integrity: dirty development checkout', 'plugin': None}))
     reconfirm = 'bin/wuwei integrity reconfirm (abc)'
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question(reconfirm)) == 0
-    for command in ('bin/wuwei integrity reconfirm', 'bin/wuwei doctor --fix --apply integrity-reconfirm'):
+    plugin, recorded = launchers(ws)
+    for command in (f'{plugin} integrity reconfirm', f'{recorded} integrity reconfirm',
+                    f'{plugin} doctor --fix --apply integrity-reconfirm'):
         assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0, command
-    for command in ('ls', 'bin/wuwei integrity reconfirm; ls', 'bin/wuwei doctor --fix'):
+    for command in ('ls', f'{plugin} integrity reconfirm; ls', f'{plugin} doctor --fix',
+                    *outside_launchers(ws, 'integrity reconfirm')):
         assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 2, command
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question('bin/wuwei state recover')) == 2
 
@@ -770,9 +789,12 @@ def test_a_config_that_does_not_load_is_repaired_in_the_session(ws, monkeypatch,
     from fakes.integrity import seed
     seed(ws)
     (ws / '.wuwei/config.toml').write_text('cap = "five"\n[security]\nposture = "guarded"\n')
-    command = 'bin/wuwei config set cap 5'
+    plugin, recorded = launchers(ws)
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': 'ls'}) == 2
-    assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0
+    for command in (f'{plugin} config set cap 5', f'{recorded} config set cap 5'):
+        assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0, command
+    for command in outside_launchers(ws, 'config set cap 5'):  # #831 D1: only the launcher, no redirect
+        assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 2, command
     capsys.readouterr()
     assert main('config', 'set', 'cap', '5') == 1
     err = capsys.readouterr().err

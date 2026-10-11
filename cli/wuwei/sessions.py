@@ -99,10 +99,12 @@ def needs_owner(root, command, detail, token=''):
             f'then run the command again on Yes: {json.dumps(card)}')
 
 
-def owner_step_call(payload, *actions):
+def owner_step_call(payload, root, *actions):
     """#831: an AskUserQuestion of only Owner step cards for these actions (wuwei argv
-    prefixes), or a Bash call whose one command is one of them; the gates that refuse every
-    tool call let these through so the owner can still answer in the session."""
+    prefixes), or a Bash call whose one command is one of them run by the workspace launcher
+    (.wuwei/executable, or this plugin's bin/wuwei) with no redirect and no environment
+    prefix; the gates that refuse every tool call let these through so the owner can still
+    answer in the session."""
     tool, inputs = payload.get('tool_name'), payload.get('tool_input')
     if not isinstance(inputs, dict):
         return False
@@ -116,14 +118,18 @@ def owner_step_call(payload, *actions):
             for question in questions)
     if tool != 'Bash' or not isinstance(inputs.get('command'), str):
         return False
-    from wuwei.guards.protect_state import _wuwei_action
+    from wuwei import integrity
     from wuwei.shell import ParseError, normalize
     try:
         commands = normalize(inputs['command'])
     except ParseError:
         return False
-    return len(commands) == 1 and any(
-        (_wuwei_action(commands[0].argv) or [])[:len(action)] == list(action) for action in actions)
+    if len(commands) != 1 or commands[0].writes or commands[0].reads or commands[0].env or not commands[0].argv:
+        return False
+    program, *argv = commands[0].argv
+    plugin = (integrity.PLUGIN / 'bin/wuwei').resolve()
+    launcher = program == integrity.recorded(root) or (Path(payload.get('cwd', '.')) / program).resolve() == plugin
+    return launcher and any(argv[:len(action)] == list(action) for action in actions)
 
 
 def stale_seconds(root):

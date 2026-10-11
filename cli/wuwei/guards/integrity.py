@@ -12,7 +12,7 @@ def check(payload):
         result = integrity.cached(root)
         if result.exit:  # #831: the reconfirm card and its command stay reachable in the session
             from wuwei.sessions import owner_step_call
-            if owner_step_call(payload, ('integrity', 'reconfirm'),
+            if owner_step_call(payload, root, ('integrity', 'reconfirm'),
                                ('doctor', '--fix', '--apply', 'integrity-reconfirm')):
                 return 0, ''
         return result.exit, result.reason

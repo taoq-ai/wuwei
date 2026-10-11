@@ -635,8 +635,9 @@ def set_owner_merge(item, value, root=None):
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
     if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
-        from wuwei.watch import records  # #831: the answer is bound to this hold, the item's nth plan.set today
+        from wuwei.watch import records  # #831: the answer is bound to this hold, the item's nth hold today
         held = sum(row['kind'] == 'plan.set' and row['payload'].get('item') == item
+                   and row['payload'].get('owner_merge') is True
                    for row in records(workspace.day_dir(root) / 'events.jsonl'))
         _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}', f'hold {held}')
     linked = []

@@ -195,11 +195,21 @@ def config_failure(event, payload, reason):
     if event == 'Stop':
         print(reason, file=sys.stderr)
         return CLEAN
-    from wuwei.sessions import owner_step_call
-    if repair_read(payload) or owner_step_call(payload, ('config', 'set')):  # #831: repaired in the session
+    if repair_read(payload) or config_set(payload):  # #831: repaired in the session
         return CLEAN
     return refuse(event, reason, cwd=payload.get('cwd'),
                   record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)
+
+
+def config_set(payload):
+    """#831: config set by the workspace launcher, or its Owner step card."""
+    from wuwei import workspace
+    from wuwei.sessions import owner_step_call
+    try:
+        root = workspace.find_workspace(Path(payload['cwd']).resolve(), use_environment=False)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return owner_step_call(payload, root, ('config', 'set'))
 
 
 def repair_read(payload):

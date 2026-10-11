@@ -559,13 +559,14 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
     card = capsys.readouterr().err
     owner.answer_card(root, card)
+    state.append_event('plan.set', {'item': 'A', 'note': 'unrelated'}, root)  # #831 D1: no new answer
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 0
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': False, 'by': 'owner', 'at': at}
     # #831 F4: the answer is bound to the hold it released; a new hold needs a new answer.
     assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
     assert state.read_state(root)['items']['A']['owner_merge']['value'] is True
-    assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set'] == [
+    assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set' and 'owner_merge' in e['payload']] == [
         {'item': 'A', 'owner_merge': value, 'by': by, 'prs_seen': False}
         for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'), (True, 'owner'))]
     with pytest.raises(state.StateError, match='reserved; written by wuwei plan set'):
