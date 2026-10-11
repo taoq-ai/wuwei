@@ -243,7 +243,7 @@ hook probes, plus `hook PreToolUse` from a directory outside any workspace, whic
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
 When `.wuwei/executable` names another runnable install, `doctor` runs from that install
-with the same options, so every copy prints the same rows; that report adds an `invoked` row
+with the same options, so every copy prints the same rows. That report adds an `invoked` row
 naming the copy that was invoked and the copy that last measured plugin integrity (the
 SessionStart hook). It hands over only to an absolute `.../bin/wuwei` named by a pointer file
 that is not a symlink, the form `init` writes, and only through the `local` host adapter.
