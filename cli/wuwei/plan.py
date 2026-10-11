@@ -413,13 +413,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             and not current.get('gate_approved')):
         from wuwei import drafts
         for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
-            if (proposed(candidates[name], found) is not None
-                    or tracker.check(current, config, name, candidates[name])[0] != 'missing'):
+            status = tracker.check(current, config, name, candidates[name])[0]
+            if proposed(candidates[name], found) is not None or status not in ('missing', 'later'):
                 continue
             result = tracker.create(root, name)
             if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
                 result = drafts.approve(root, result.data['draft'])
-            if result.exit:
+            if result.exit and status == 'missing':  # #646: a small item is approved without it
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
         raise state.StateError('\n'.join(reasons))
@@ -486,6 +486,11 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         state.append_event('plan.added', {'item': item, 'source': 'replan',
                                           'flags': {item: day['items'][item]['flags']}}, root)
         return {'action': 'risk recorded', 'item': item}
+    if source == 'finding':  # #646: a seat's finding joins as a small item, its ticket later
+        finding = day.get('seat_findings', {}).get(item)
+        if finding is None:
+            raise state.StateError(f'{item} is not a seat finding; wuwei next lists the findings to add')
+        goal, title = goal or day['goals'][0], finding['scope']
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
     candidate = day.get('discovery_candidates', {}).get(item)
@@ -500,7 +505,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
                      'flags': {key: False for key in FLAGS},
                      'title': title or item, 'score': {size_key: 1 if size is None else size},
-                     **({'ticket': ticket} if ticket else {})}
+                     **({'ticket': ticket} if ticket else {}),
+                     **({'tier': 'light'} if source == 'finding' else {})}
     else:
         goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
         _proposal({'goals': day['goals'], 'cap': day['cap'],

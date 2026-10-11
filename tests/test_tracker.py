@@ -50,6 +50,23 @@ def test_check(settings, data, row, expected):
     assert tracker.check(data, settings, 'item-1', row) == expected
 
 
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_small_item_reads_later(posture):
+    """#646: an unticketed light item starts now; its ticket comes at the gate or after it ships."""
+    settings = config(posture=posture)
+    missing = tracker.check({}, settings, 'item-1')
+    assert missing[0] == 'missing'
+    assert tracker.check({}, settings, 'item-1', {'tier': 'light'}) == ('later', '')
+    assert tracker.check({}, settings, 'item-1', {'gates': {'tier': 'light'}}) == ('later', '')
+    assert tracker.check({}, settings, 'item-1',
+                         {'tier': 'light', 'gates': {'tier': 'standard'}}) == missing
+    assert tracker.check({}, settings, 'item-1', {'tier': 'standard'}) == missing
+    ticketed = {'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}}
+    assert tracker.check(ticketed, settings, 'item-1', {'tier': 'light'}) == ('ticket', '')
+    assert tracker.check({}, config(skip=['light'], posture=posture), 'item-1',
+                         {'tier': 'light'}) == ('skipped', '')
+
+
 def test_ticket():
     assert tracker.ticket({}, 'item-1') is None
     assert tracker.ticket({'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}},
@@ -242,6 +259,21 @@ def test_item_ticket_from_the_proposal(ws, capsys):
     assert main(['tracker', 'create', 'item-1']) == 0
     assert len(fake.calls) == 1
 
+
+
+def test_item_ticket_from_a_seat_finding(ws):
+    """#646: a finding item's ticket opens from the finding and the day item's goal."""
+    root, fake = ws
+    settings(root, 'auto = ["items"]')
+    state._write_state(lambda data: data.update(
+        items={'fix-pin-ruff-in-ci': {'phase': 'merged', 'goal': 'G-1', 'track': 'SLICE'}},
+        seat_findings={'fix-pin-ruff-in-ci': {'scope': 'Pin ruff in CI', 'evidence': 'seat finding',
+                                              'track': 'SLICE', 'at': '2026-09-29T12:00:00Z'}}),
+        root, reserved=False)
+    assert main(['tracker', 'create', 'fix-pin-ruff-in-ci']) == 0
+    (_, (draft,), _), = fake.calls
+    assert draft['title'] == 'Pin ruff in CI'
+    assert draft['description'] == 'Evidence: seat finding\nGoal: G-1\nTrack: SLICE'
 
 def test_create_without_adapter_cannot_run(ws, monkeypatch, capsys):
     root, _ = ws

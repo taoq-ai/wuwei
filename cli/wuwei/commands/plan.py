@@ -33,6 +33,8 @@ def register(subparsers):
     add.add_argument('--size', type=float, help="Its size in the framework's unit (default 1)")
     add.add_argument('--title', help='Short title for the record (default: the item id)')
     add.add_argument('--ticket', help='Existing tracker ticket id when a tracker is set')
+    add.add_argument('--from-finding', action='store_true',
+                     help="Admit a seat's finding (wuwei next lists them) as a small item; its ticket comes later")
     for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
                        ('park', 'Park an open item and record the decision')):
         command = actions.add_parser(verb, help=text)
@@ -79,7 +81,8 @@ def run(args):
                               *grants.gate_widgets(root, config), *cruise.gate_widgets(root, config)], indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
-                                      title=args.title, ticket=args.ticket)))
+                                      title=args.title, ticket=args.ticket,
+                                      source='finding' if args.from_finding else None)))
         elif args.action == 'set' and args.assignment is None and args.item.startswith('pace='):
             print(plan.set_pace(args.item.partition('=')[2]))
         elif args.action == 'set':
