@@ -100,12 +100,10 @@ override; an owner-only action runs only on the owner's recorded answer (design 
   the parent (recorded under Deferred in the feature's spec until it is filed), never
   silent scope; decisions, verdicts and the pull request link are recorded on the issue or
   its pull request.
-- Any item that adds or changes a guard or decision rule adds its invariant to the design
-  spec 9.2 table and to `tests/test_invariants.py`, or the review refuses it (#530).
 
 ## Governance
 
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.5.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-05
+**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11

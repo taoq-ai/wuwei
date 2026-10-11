@@ -1351,6 +1351,53 @@ def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
     assert check(case).exit == 1
 
 
+def test_merge_waits_on_gates_at_a_moved_head(case):
+    # Former 9.2 I3 (#524): WUWEI merges only at the head the gates checked.
+    root, host = case
+    for gate in ('arch', 'quality', 'security'):
+        (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(BASE))
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'pre-PR gates not passed at current HEAD' in result.reason, result
+    assert merged_calls(host) == []
+
+
+@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'pr guard', 'overnight shepherd'])
+def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
+    # Former 9.2 I37 (#678): the command paths and the daemon path read one hold.
+    from wuwei import plan, pr_actions, shepherd
+    from wuwei.__main__ import main
+    from wuwei.guards.pr import check as guard
+    from wuwei.watch import records
+    root, host = case
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    plan.set_owner_merge('item-7', 'true', root)
+    approved = [{'pr': REF, 'exit': 1, 'state': 'approved', 'parked': False, 'action': 'merge'}]
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, approved))
+    monkeypatch.chdir(root / 'repo')
+    if path == 'merge check':
+        result = policy().check(REF, root)
+        code, text = result.exit, result.reason or ''
+    elif path == 'wuwei merge':
+        code = main(['merge', '7'])
+        text = capsys.readouterr().out
+    elif path == 'pr act':
+        code = pr_actions.act(root, REF)
+        text = capsys.readouterr().out
+    elif path == 'pr guard':
+        code, text = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
+    else:
+        shepherd.overnight(root)
+        capsys.readouterr()
+        [event] = [row['payload'] for row in records(workspace.day_dir(root) / 'events.jsonl')
+                   if row['kind'] == 'shepherd.overnight']
+        code, text = (1 if event['outcome'] == 'queued' else 0), event['reason']
+    assert code == 1, (path, code, text)
+    assert 'owner merges: owner_merge set by owner on 2026-09-29' in text, (path, text)
+    assert merged_calls(host) == [], (path, text)
+
+
 def row(path, additions=10, deletions=0, previous=None):
     return {'path': path, 'previous_path': previous, 'additions': additions, 'deletions': deletions}
 
