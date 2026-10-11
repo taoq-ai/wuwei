@@ -369,15 +369,18 @@ def _git_edge(args, cwd, root, config):
 
 
 def _approved(fields, values, cwd):
-    """An APPROVE review event in a field or in the JSON --input body (review F6)."""
+    """An APPROVE review event in a field or in the JSON --input body (review F6); a body that
+    cannot be read (stdin, a missing file) counts as one, so the floor holds."""
     import json
     if any(field.upper() == 'EVENT=APPROVE' for field in fields):
         return True
     for name in values.get('--input', []):
         try:
+            if name in ('', '-'):
+                return True
             body = json.loads((cwd / name).read_text(encoding='utf-8'))
         except (OSError, ValueError):
-            continue
+            return True
         if isinstance(body, dict) and str(body.get('event', '')).upper() == 'APPROVE':
             return True
     return False

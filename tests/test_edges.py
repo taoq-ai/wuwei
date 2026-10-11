@@ -192,6 +192,11 @@ def test_hook_skipping_push_refused(root, command):
     assert code == 1 and reason.startswith('push to the default branch'), reason
 
 
+def test_readable_comment_review_body_passes(root):
+    (root / 'repo/comment.json').write_text('{"event": "COMMENT", "body": "ok"}')
+    assert check(root, 'gh api repos/o/r/pulls/7/reviews --input comment.json') == (0, '')
+
+
 # Review F6: every approval form.
 @pytest.mark.parametrize('command', ['gh pr review 7 --approve=true', 'gh pr review 7 -ab ok',
                                      'gh api repos/o/r/pulls/7/reviews --input review.json'])
@@ -411,6 +416,8 @@ def test_outward_send_refused_and_allowed(root):
     ('gh pr merge 7 --admin --body-file missing.md', 'repo', True),
     ('gh pr review 7 --approve --body-file missing.md', 'repo', True),
     ('gh api repos/o/r/pulls/7/merge -X PUT --input missing.json', 'repo', True),
+    ('gh api repos/o/r/pulls/7/reviews --input -', 'repo', True),
+    ('gh api repos/o/r/pulls/7/reviews --input missing.json', 'repo', True),
 ])
 def test_enforce_off(root, monkeypatch, capsys, command, where, blocks):
     code, logged = hook(root, monkeypatch, capsys, command, False, cwd=root / where)
