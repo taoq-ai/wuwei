@@ -211,7 +211,7 @@ def owner_only(context, config, kind, read=None):
     """#495: True when the owner alone is addressed: every destination and recipient is the
     owner's identity in outbound.owner for this kind. A nested draft wrapper never is. read is
     the caller's _text(context), when it has one (#626)."""
-    if not isinstance(context, dict) or 'draft' in context:
+    if not isinstance(context, dict) or 'draft' in context or _readers(context, kind):
         return False
     mine = _owner_ids(config, kind)
     texts, destinations = read or _text(context)
@@ -219,6 +219,28 @@ def owner_only(context, config, kind, read=None):
     if kind == 'mail':  # #501: any address in the payload (a Graph ccRecipients shape) is a reader.
         targets += [address for text in texts for address in re.findall(r'[^\s<>@]+@[^\s<>@]+', text)]
     return bool(mine and targets) and all(target.casefold() in mine for target in targets)
+
+
+# #838 review: keys that name readers outside DESTINATIONS; any of them means others read it.
+READERS = {'users', 'user_ids', 'emails', 'participants', 'members'}
+
+
+def _readers(value, kind):
+    """True when a payload names readers DESTINATIONS does not hold (at any depth), or is a
+    mail draft or reply-all, whose recipients the payload does not show."""
+    if isinstance(value, list):
+        return any(_readers(item, kind) for item in value)
+    if not isinstance(value, dict):
+        return False
+    for key, item in value.items():
+        name = _snake(key)
+        if name not in DESTINATIONS and (name in READERS or name.endswith(('_ids', '_emails'))):
+            return True
+        if kind == 'mail' and (name == 'draft_id' or name == 'reply_all' and item is True):
+            return True
+        if _readers(item, kind):
+            return True
+    return False
 
 
 def _owner_ids(config, kind):

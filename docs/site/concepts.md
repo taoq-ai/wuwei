@@ -187,7 +187,7 @@ Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm
 
 ## Outward sends
 
-A message to other people goes out through an MCP tool only when that exact tool is on `outward.allow`. Any other write is refused, naming the one line to add, `bin/wuwei config set outward.allow '["<tool>"]' --add`. The planner runs it, it asks you its Owner step card, and the call passes on retry. A tool whose name is neither a read nor a write is refused the same way; add it once if it is harmless. This holds with `guards.enforce` on or off.
+A message to other people goes out through an MCP tool only when that exact tool is on `outward.allow`. Any other write is refused, naming the one line to add, `bin/wuwei config set outward.allow '["<tool>"]' --add`. The planner runs it, it asks you its Owner step card, and the call passes on retry. A tool whose name is neither a read nor a write and that names no channel runs, and the lint logs that line. This holds with `guards.enforce` on or off.
 
 A write whose every destination is yours is local, never an outward send: your Slack DM, your own canvas or page, a mail only to you. It passes without `outward.allow`, and the lint skips its third-person rules. A tool that acts only on your machine, such as the terminal, is local too. See [your own surfaces](configuration.md#your-own-surfaces).
 

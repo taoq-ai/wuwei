@@ -62,7 +62,8 @@ For one PreToolUse call, in order:
 | a local tool (#727 class: `LOCAL_SERVERS`, `Claude_Browser` preview tools, a server the owner aliased `local` in `outward.servers`) | the canary check only |
 | a write to the owner's own surface (every destination is the owner's, below) | local: the canary check and the outward-text lint addressed to the owner; recorded as `outward.to_owner` |
 | a tool named exactly in `outward.allow` | the canary check and the outward-text lint |
-| anything else (a write, or a name that is neither read nor write) | refused (floor) with the line below |
+| a name that is neither read nor write and resolves to no channel (review, Assumption 3) | passes; the lint guard logs the line below |
+| anything else (a write, or an unknown name with a channel) | refused (floor) with the line below; for a Slack, docs or mail call the owner's surface line comes first |
 
 The refusal names the line and the card:
 
@@ -117,9 +118,9 @@ not resolve to the owner. It needs the tool on `outward.allow`.
 3. **Given** `outward.allow = ["mcp__slack__slack_send_message"]`, **When**
    `mcp__slack__slack_schedule_message` is called, **Then** it is refused. The match is exact:
    no pattern, no prefix, no case folding.
-4. **Given** an MCP tool whose name is neither a read nor a write (`mcp__x__resolve_library_id`),
-   **When** it is called, **Then** it is refused with the same line (fail closed). The owner
-   adds it once if it is harmless.
+4. **Given** an MCP tool whose name is neither a read nor a write and that resolves to no
+   channel (`mcp__x__resolve_library_id`), **When** it is called, **Then** it runs and the lint
+   guard logs `guard.would_refuse` naming the line (Assumption 3).
 5. **Given** a listed tool whose payload carries a canary or honeytoken, **When** it is called,
    **Then** it is refused by the canary floor, as today.
 6. **Given** the refusal, **When** the planner runs the named `config set ... --add`, **Then**
@@ -274,9 +275,11 @@ page, the day report and a PR thread reply are duties the code makes happen.
 2. **The outward-text lint stays** (design 4.3: owner name, pronouns, banned characters, length,
    AI tells). It is not tier machinery, and the issue does not list it. `outward.patterns` (the
    internal-state words for client audiences) has no audience left to apply to, so it retires.
-3. **Unknown tool names fail closed.** Today an MCP tool that is neither read nor write by name
-   warns under guarded. An exact allowlist cannot tell a send from a harmless call by an unknown
-   name, so it refuses with the line. One card adds it.
+3. **Unknown tool names run and log (review, B5 lead call: no new walls).** An MCP tool that is
+   neither a read nor a write by name and resolves to no channel (`mcp__Claude_Browser__computer`,
+   `mcp__claude-in-chrome__navigate`) passes, as under the old guarded default; the lint guard
+   logs `guard.would_refuse` naming the `outward.allow` line, with `guards.enforce` on or off. A
+   write, or an unknown name that resolves to a channel, is refused with the line.
 4. **Allowed and local sends are floor-checked in both enforce settings.** The send check is on
    the floor: with `guards.enforce = false` an unlisted send still refuses, as approve-tier
    sends did under observe.

@@ -174,7 +174,7 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
-| PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write or an unknown tool name), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
+| PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
 | PreToolUse | Write, Edit, MultiEdit or NotebookEdit in an item worktree, outside the spec engine's directories | under spec mode, a step of the configured engine before implementation is not done for the item (5.10) |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
@@ -387,10 +387,12 @@ The approval tiers, audience classes, drafts, learning cards and the register of
 were retired by #789 (owner, 2026-10-11, #838). Outward sending is one exact allowlist.
 
 - An MCP send to other people leaves only through a tool named exactly in `outward.allow`
-  (no pattern, prefix or case folding). Any other write, and any tool whose name is neither a
-  read nor a write, is refused on the floor, naming the one line the owner adds:
-  `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks its Owner step card in
-  the session (#831). Reads pass.
+  (no pattern, prefix or case folding). Any other write is refused on the floor, naming the
+  one line the owner adds: `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks
+  its Owner step card in the session (#831). For a Slack, docs or mail call the refusal first
+  names the owner's surface line (`outbound.owner.pages` or `outbound.owner.mail`). Reads
+  pass. A tool that is neither a read nor a write by name and names no channel runs; the lint
+  guard logs the line (B5 lead call: no new walls).
 - Local: a tool that acts only on the owner's machine (#727), and a call whose every
   destination is the owner's own surface, are never outward sends. The canary check and the
   outward lint still run; the lint skips its third-person rules for the owner's surfaces.

@@ -91,9 +91,28 @@ def resolve(tool, config):
 
 
 # #838: the one refusal; config set asks its own Owner step card (#831).
-NOT_ALLOWED = ("outward: {tool} may send to other people and is not on outward.allow; the owner "
-               "adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it asks its Owner "
-               "step card), then run the call again")
+NOT_ALLOWED = ("outward: {tool} may send to other people and is not on outward.allow; {surface}the "
+               "owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it asks its "
+               "Owner step card), then run the call again")
+# #838 review: the narrow fix first, when the call may be the owner's own surface.
+SURFACE = {'slack': "outbound.owner.pages '[\"{id}\"]' --add", 'docs': "outbound.owner.pages '[\"{id}\"]' --add",
+           'mail': "outbound.owner.mail '\"{id}\"'"}
+# Unknown by name and no channel: it runs; the lint guard logs this (B5 lead call, no new walls).
+UNKNOWN = ("outward: {tool} is neither a read nor a write by name, so it ran; if it sends to other "
+           "people, the owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it "
+           "asks its Owner step card)")
+
+
+def refusal(tool, channel, inputs):
+    """NOT_ALLOWED, naming the owner's surface line first for a Slack, docs or mail call; the id
+    is the call's first destination when it is plain, else <id>."""
+    surface = ''
+    if channel in SURFACE:
+        found = next(iter(outward._text(inputs)[1]), '')
+        plain = found if re.fullmatch(r'[A-Za-z0-9._@+-]+', found) else '<id>'
+        surface = ('if it is your own surface, the owner adds it: bin/wuwei config set '
+                   f"{SURFACE[channel].format(id=plain)} (it asks its Owner step card); else ")
+    return NOT_ALLOWED.format(tool=tool, surface=surface)
 
 
 def check_send(payload):
@@ -177,7 +196,9 @@ def _check(payload, send):
         channel = next(iter(channels)) if len(channels) == 1 else 'other'
         owner = outward.owner_only(inputs, config, channel)
         if not owner and tool not in config['outward']['allow']:
-            return (FINDINGS, NOT_ALLOWED.format(tool=tool)) if send else (CLEAN, '')
+            if not channels and tool_kind(tool) == 'unknown':
+                return (CLEAN, '') if send else (FINDINGS, UNKNOWN.format(tool=tool))
+            return (FINDINGS, refusal(tool, channel, inputs)) if send else (CLEAN, '')
         if send:
             if owner:
                 outward.to_owner(inputs, root, config, channel)

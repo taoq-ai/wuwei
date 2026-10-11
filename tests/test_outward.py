@@ -246,13 +246,13 @@ def test_missing_workspace_and_policy(tmp_path, monkeypatch):
     ('mcp__slack__edit_message', 1),
     ('mcp__slack__slack_add_list_record', 1),
     ('mcp__unknown__target_lookup', 0),
-    ('mcp__unknown__anything', 1),
+    ('mcp__unknown__anything', 0),  # #838 review: unknown names run and log
 ])
 def test_real_mcp_write_names(configured, tool, code):
     from wuwei.guards.outward import check_send as check
     # #838: every write and every unknown name is refused until it is on outward.allow.
     assert check(payload(configured[0], 'A technical claim.', tool=tool)) == (
-        (1, not_allowed(tool)) if code else (0, ''))
+        Refused(tool) if code else (0, ''))
 
 
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS', 'Read',
@@ -384,8 +384,8 @@ def test_unmatched_mcp_read_prefixes(configured, verb):
     ('mcp__slack__slack_send_message', 1),
     ('mcp__x__notify', 1),
     ('mcp__x__slack_read_thread', 0),
-    ('mcp__slack__slack_readwrite', 1),
-    ('mcp__x__readwrite', 1),
+    ('mcp__slack__slack_readwrite', 0),
+    ('mcp__x__readwrite', 0),
 ])
 def test_service_prefixed_mcp_reads(configured, tool, code):
     from wuwei.guards.outward import check_send as check
@@ -669,9 +669,9 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
     call = payload(root, 'A technical claim.', tool=tool, channel_id='C1')
     code = run_hook(monkeypatch, call)
     err = capsys.readouterr().err
-    if name in PROBES:
+    if name in PROBES or server:  # #838 review: an unknown name runs and logs
         assert code == 0
-    else:  # #838: a write or an unknown name is refused until it is on outward.allow
+    else:  # #838: a write is refused until it is on outward.allow
         assert code == 2 and not_allowed(tool) in err
 
 
@@ -723,8 +723,7 @@ def test_resolve_opaque(configured, monkeypatch, capsys):
     assert events_of(root, 'hook.refusal') == []
     for name in ('slack_send_message', 'conversations_add_message'):
         assert resolve(opaque(name), workspace.load_config(root)) == {'slack'}
-        assert check_send(payload(root, 'A technical claim.', tool=opaque(name))) == (
-            1, not_allowed(opaque(name)))
+        assert check_send(payload(root, 'A technical claim.', tool=opaque(name))) == Refused(opaque(name))
 
 
 def write_config(root, text):
@@ -806,7 +805,7 @@ def test_recorded_tools(configured, tool, outcome):
     from wuwei.guards.outward import check_lint, check_send
     call = payload(configured[0], 'A technical claim.', tool=tool)
     assert check_lint(call) == (0, '')
-    assert check_send(call) == ((0, '') if outcome == 'read' else (1, not_allowed(tool)))
+    assert check_send(call) == ((0, '') if outcome == 'read' else Refused(tool))
 
 
 # #495, #838: a message only the owner receives is local.
@@ -906,7 +905,7 @@ def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
     assert check_send(call) == (0, '')
     for extra in ({'cc': ['outsider@evil.test']}, {'bcc': 'outsider@evil.test'}):
         call['tool_input'] = {**mail, **extra}
-        assert check_send(call) == (1, not_allowed(opaque('send_mail'))), extra
+        assert check_send(call) == Refused(opaque('send_mail')), extra
 
 
 # #501: recorded connector tool_input shapes; MESSAGE marks where the message text sits.
@@ -942,7 +941,7 @@ def test_connector_writes_through_the_guard(configured):
     root = configured[0]
     tool = 'mcp__notion__append_block_children'
     notion = {**payload(root, tool=tool), 'tool_input': shaped(CORPUS[3][1], 'Your salary is set')}
-    assert check_send(notion) == (1, not_allowed(tool))
+    assert check_send(notion) == Refused(tool)
     write_config(root, f'\n[outward.servers]\n"{UUID}" = "tracker"\n')
     allow(root, opaque('addCommentToJiraIssue'))
     jira = {**payload(root, tool=opaque('addCommentToJiraIssue')),
@@ -969,7 +968,7 @@ def test_textless_write(configured):
     root, config = configured
     tool = opaque('resolve_issue')
     resolve = {**payload(root, tool=tool), 'tool_input': {'issue_id': 'PROJ-1', 'status': 'resolved'}}
-    assert check_send(resolve) == (1, not_allowed(tool))
+    assert check_send(resolve) == Refused(tool)
     allow(root, tool)
     assert check_send(resolve) == check_lint(resolve) == (0, '')
     assert outward.check_lint({'issue_id': 'PROJ-1'}, root, config, {'other'}) == (0, '')
@@ -1014,8 +1013,7 @@ def test_local_tools_pass(configured, posture, tool):
 def test_local_shapes_are_exact(configured):
     from wuwei.guards.outward import check_send, resolve
     root, config = configured
-    assert check_send(local_call(root, 'mcp__plugin_x_terminal__run_job')) == (
-        1, not_allowed('mcp__plugin_x_terminal__run_job'))
+    assert check_send(local_call(root, 'mcp__plugin_x_terminal__run_job')) == Refused('mcp__plugin_x_terminal__run_job')
     assert resolve('mcp__Claude_Browser__navigate', config) != {'local'}
     assert check_send(local_call(root, 'mcp__terminal__read_terminal')) == (0, '')
     assert resolve('mcp__terminal__read_terminal', config) == set()
@@ -1063,9 +1061,22 @@ SEND = 'mcp__slack__slack_send_message'
 
 
 def not_allowed(tool):
-    return (f'outward: {tool} may send to other people and is not on outward.allow; the owner '
-            f"adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it asks its Owner "
-            'step card), then run the call again')
+    """The allow line every unlisted-send refusal names."""
+    return f"bin/wuwei config set outward.allow '[\"{tool}\"]' --add"
+
+
+class Refused:
+    """Equals (1, reason) when reason is the unlisted-send refusal for tool."""
+    def __init__(self, tool):
+        self.tool = tool
+
+    def __eq__(self, other):
+        return (other[0] == 1 and other[1].startswith(
+            f'outward: {self.tool} may send to other people and is not on outward.allow; ')
+                and not_allowed(self.tool) in other[1] and 'Owner step card' in other[1])
+
+    def __repr__(self):
+        return f'Refused({self.tool!r})'
 
 
 def allow(root, *tools):
@@ -1078,7 +1089,7 @@ def test_unlisted_send_is_refused_with_its_line(configured, monkeypatch, capsys,
     root = configured[0]
     set_enforce(root, enforce)
     call = payload(root, 'Thanks', tool=SEND, channel='C1')
-    assert check_send(call) == (1, not_allowed(SEND))
+    assert check_send(call) == Refused(SEND)
     monkeypatch.chdir(root)
     assert run_hook(monkeypatch, call) == 2
     assert not_allowed(SEND) in capsys.readouterr().err
@@ -1090,9 +1101,9 @@ def test_listed_send_passes_exactly(configured):
     allow(root, SEND)
     call = payload(root, 'Thanks', tool=SEND, channel='C1')
     assert check_send(call) == check_lint(call) == (0, '')
-    for tool in ('mcp__slack__slack_schedule_message', 'mcp__Slack__slack_send_message',
-                 'mcp__x__resolve_library_id'):
-        assert check_send(payload(root, 'Thanks', tool=tool, channel='C1')) == (1, not_allowed(tool))
+    for tool in ('mcp__slack__slack_schedule_message', 'mcp__Slack__slack_send_message'):
+        assert check_send(payload(root, 'Thanks', tool=tool, channel='C1')) == Refused(tool)
+    assert check_send(payload(root, 'Thanks', tool='mcp__x__resolve_library_id', channel='C1')) == (0, '')
 
 
 def test_listed_send_keeps_the_lint_and_canary(configured):
@@ -1133,6 +1144,18 @@ def test_owner_surfaces_are_local(configured, tool, inputs):
 @pytest.mark.parametrize('tool,inputs', [
     ('mcp__gmail__send_email', {'to': 'pat@example.test', 'cc': ['x@other.test'], 'body': 'Hi'}),
     (SEND, {'channel': 'D01', 'recipient': 'C9', 'text': 'Hi'}),
+    # #838 review F2: a mail draft or reply-all, and any recipient-like key, is never owner-only.
+    ('mcp__gmail__send_email', {'to': 'pat@example.test', 'draftId': 'r1', 'body': 'Hi'}),
+    ('mcp__gmail__send_email', {'to': 'pat@example.test', 'draft_id': 'r1', 'body': 'Hi'}),
+    ('mcp__gmail__send_email', {'to': 'pat@example.test', 'replyAll': True, 'body': 'Hi'}),
+    ('mcp__gmail__send_email', {'to': 'pat@example.test', 'reply_all': True, 'body': 'Hi'}),
+    (SEND, {'channel': 'D01', 'users': ['U02'], 'text': 'Hi'}),
+    (SEND, {'channel': 'D01', 'userIds': ['U02'], 'text': 'Hi'}),
+    (SEND, {'channel': 'D01', 'emails': ['x@other.test'], 'text': 'Hi'}),
+    (SEND, {'channel': 'D01', 'participants': ['U02'], 'text': 'Hi'}),
+    (SEND, {'channel': 'D01', 'members': ['U02'], 'text': 'Hi'}),
+    (SEND, {'channel': 'D01', 'invite': {'attendee_emails': ['x@other.test']}, 'text': 'Hi'}),
+    ('mcp__notion__notion-update-page', {'page_id': 'abc', 'share': {'person_ids': ['p2']}, 'title': 'Hi'}),
     ('mcp__slack__slack_update_canvas', {'content': 'Notes'}),
     ('mcp__notion__notion-create-pages', {'title': 'Notes'}),
 ])
@@ -1143,7 +1166,7 @@ def test_not_only_the_owner_is_not_local(configured, tool, inputs):
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
     call = payload(root, tool=tool)
     call['tool_input'] = inputs
-    assert check_send(call) == (1, not_allowed(tool))
+    assert check_send(call) == Refused(tool)
     assert not owner_events(root)
 
 
@@ -1151,4 +1174,63 @@ def test_owner_unset_resolves_nothing(configured):
     from wuwei.guards.outward import check_send
     root = configured[0]
     assert workspace.load_config(root)['outbound']['owner']['pages'] == []
-    assert check_send(payload(root, 'Hi', tool=SEND, channel='D01')) == (1, not_allowed(SEND))
+    assert check_send(payload(root, 'Hi', tool=SEND, channel='D01')) == Refused(SEND)
+
+
+# #838 review F1: a tool that is neither a read nor a write by name, with no channel, runs and logs.
+@pytest.mark.parametrize('enforce', ['false', 'true'])
+@pytest.mark.parametrize('tool', ['mcp__Claude_Browser__computer', 'mcp__claude-in-chrome__navigate'])
+def test_unknown_tool_runs_and_logs(configured, monkeypatch, capsys, enforce, tool):
+    from wuwei.guards.outward import check_lint, check_send
+    root = configured[0]
+    set_enforce(root, enforce)
+    call = payload(root, tool=tool)
+    call['tool_input'] = {'url': 'https://example.test'}
+    assert check_send(call) == (0, '')
+    code, reason = check_lint(call)
+    assert code == 1 and not_allowed(tool) in reason and 'neither a read nor a write' in reason
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, call) == 0
+    [event] = events_of(root, 'guard.would_refuse')
+    assert event['payload']['guard'] == 'outward' and not_allowed(tool) in event['payload']['reason']
+
+
+# #838 review F3: an owner disposition marker never leaves through the guard or a port.
+def test_owner_marker_refused_without_a_canary(configured):
+    from wuwei import outward
+    from wuwei.guards.outward import check_send
+    root, config = configured
+    allow(root, SEND)
+    assert check_send(payload(root, 'WUWEI parked x', tool=SEND, channel='C1')) == (1, outward.OWNER_MARKERS)
+    assert outward.check_call({'text': 'WUWEI parked x', 'channel': 'C1'}, root, config, {'slack'}) == (
+        1, outward.OWNER_MARKERS)
+
+
+# #838 review F4: the refusal offers the owner's own surface first, with the id when it is plain.
+@pytest.mark.parametrize('tool,inputs,line', [
+    (SEND, {'channel': 'C1', 'text': 'Hi'}, "bin/wuwei config set outbound.owner.pages '[\"C1\"]' --add"),
+    ('mcp__notion__notion-update-page', {'page_id': 'abc', 'title': 'Hi'},
+     "bin/wuwei config set outbound.owner.pages '[\"abc\"]' --add"),
+    ('mcp__slack__slack_update_canvas', {'content': 'Hi'},
+     "bin/wuwei config set outbound.owner.pages '[\"<id>\"]' --add"),
+    (SEND, {'channel': "C1'; rm -rf x", 'text': 'Hi'},
+     "bin/wuwei config set outbound.owner.pages '[\"<id>\"]' --add"),
+    ('mcp__gmail__send_email', {'to': 'pat@example.test', 'body': 'Hi'},
+     "bin/wuwei config set outbound.owner.mail '\"pat@example.test\"'"),
+])
+def test_refusal_offers_the_owner_surface_first(configured, tool, inputs, line):
+    from wuwei.guards.outward import check_send
+    root = configured[0]
+    write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
+    call = payload(root, tool=tool)
+    call['tool_input'] = inputs
+    result = check_send(call)
+    assert result == Refused(tool) and line in result[1]
+    assert result[1].index(line) < result[1].index(not_allowed(tool))
+
+
+def test_refusal_on_another_channel_names_no_surface(configured):
+    from wuwei.guards.outward import check_send
+    tool = 'mcp__linear__save_issue'
+    result = check_send(payload(configured[0], 'Hi', tool=tool, channel='C1'))
+    assert result == Refused(tool) and 'outbound.owner' not in result[1]

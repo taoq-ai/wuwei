@@ -179,7 +179,9 @@ allow = []
 [outbound]
 code_host_orgs = []
 # Your own identity per surface; a write whose every destination is yours is local, never an
-# outward send: your Slack DM or user id, your mail, your own canvas and page ids.
+# outward send: your Slack DM or user id, your mail, your own canvas and page ids. A refused
+# Slack, docs or mail write names bin/wuwei config set outbound.owner.pages '["<id>"]' --add
+# first, for when the destination is your own; it asks your Owner step card.
 # owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login", pages = ["F123", "<notion page id>"]}
 # Where the planner posts the day report: "session" or "dm" (your own Slack DM).
 # owner_channel = "dm"
