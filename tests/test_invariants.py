@@ -75,7 +75,7 @@ def test_reason_corpus_has_no_wall(tmp_path, monkeypatch):
                'tool_input': {}}
     rows, walls = corpus(), []
     # #839 (part 17): the parser guards' reasons went with their code; the floor is the count measured after.
-    assert len(rows) >= 148
+    assert len(rows) >= 157
     stale = [row for row in OWNED + EXEMPT if not any(r[0] == row[0] and row[1] in r[3] for r in rows)]
     assert not stale, stale
     for enforce in ('true', 'false'):

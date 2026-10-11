@@ -402,6 +402,7 @@ def test_disposition_argv_only_blocks_text_writes(case, monkeypatch, capsys, com
     assert main(['hook', 'PreToolUse']) == expected
     if expected:
         reason = ('cannot inspect outbound stdin' if command.endswith('--body-file -')
+                  else 'merge policy' if 'pr merge' in command  # #839 F1: the edge decides first
                   else 'owner disposition')
         assert reason in refused(root)  # #362: the hook prints one reason and records all
 

@@ -49,6 +49,10 @@ GH_VALUED = ('-t', '--title', '--subject', '-b', '--body', '-F', '--body-file', 
              '--assignee', '-l', '--label', '-m', '--milestone', '-p', '--project', '-T',
              '--match-head-commit', '-A', '--author-email', '--recover', '-R', '--repo')
 PUSH_VALUED = ('--repo', '-o', '--push-option', '--receive-pack', '--exec')
+# Shell words that start a command list or group; the command after them runs (review F2;
+# time is a wrapper, with its -p).
+RESERVED = frozenset({'{', '}', '!', 'if', 'then', 'elif', 'else', 'do', 'while', 'until', 'coproc'})
+_ASSIGNMENT = re.compile(r'[A-Za-z_]\w*=')
 _SEPARATORS = set(';&|()<>\n')
 
 
@@ -127,7 +131,7 @@ def segments(text, cwd, depth=0):
             redirect = False
             continue
         if separator:
-            redirect = '<' in token or '>' in token
+            redirect = ('<' in token or '>' in token) and not token.endswith('(')  # <( and >( run
             if not redirect:
                 cwd = _segment(words, cwd, depth, found)
                 words = []
@@ -138,36 +142,64 @@ def segments(text, cwd, depth=0):
 
 def _segment(words, cwd, depth, found):
     """Unwrap one segment into found; returns the cwd for the next one."""
-    env, assignment = {}, re.compile(r'[A-Za-z_]\w*=')
+    env = {}
     while words:
-        if assignment.match(words[0]):
+        name = PurePosixPath(words[0]).name
+        if _ASSIGNMENT.match(words[0]):
             key, _, env[key] = words.pop(0).partition('=')
-        elif PurePosixPath(words[0]).name == 'env':
+        elif words[0] in RESERVED:  # review F2: { ! if then while do coproc and the rest
             words.pop(0)
-            while words and (words[0] in ('-i', '--ignore-environment', '--')
-                             or words[0].startswith(('--unset=', '-u')) or assignment.match(words[0])):
-                word = words.pop(0)
-                if word == '-u' and words:
-                    words.pop(0)
-                elif assignment.match(word):
-                    key, _, env[key] = word.partition('=')
-        elif PurePosixPath(words[0]).name in WRAPPERS:
+        elif name == 'env':
+            words = _env(words, env)
+        elif name in WRAPPERS:
             words = _unwrap(words)
         else:
             break
     if not words:
         return cwd
     if PurePosixPath(words[0]).name in SHELLS:
-        for index, word in enumerate(words[1:], 1):
-            if not word.startswith('-'):
+        index, script = 1, False
+        while index < len(words) and words[index][:1] in '-+' and len(words[index]) > 1:
+            word = words[index]
+            index += 1
+            if word == '--':
                 break
-            if not word.startswith('--') and 'c' in word and index + 1 < len(words):
-                found.extend(segments(words[index + 1], cwd, depth + 1))
-                return cwd
+            if word in ('-o', '+o'):  # review F4: an option name, never the script
+                index += 1
+            elif not word.startswith(('--', '+')) and 'c' in word:
+                script = True
+        if script and index < len(words):
+            found.extend(segments(words[index], cwd, depth + 1))
+            return cwd
     found.append((words, env, cwd))
     if words[0] == 'cd' and len(words) == 2 and '$' not in words[1] and words[1] != '-':
         cwd = (cwd / Path(words[1]).expanduser()).resolve()
     return cwd
+
+
+def _env(words, env):
+    """The words env runs after its options and assignments; -S splits its value as a script
+    (review F4). ValueError when an option's value is missing."""
+    words = words[1:]
+    while words and (words[0].startswith('-') or _ASSIGNMENT.match(words[0])):
+        word = words.pop(0)
+        if word == '--':
+            break
+        if _ASSIGNMENT.match(word):
+            key, _, env[key] = word.partition('=')
+            continue
+        key, separator, value = word.partition('=')
+        long = key if word.startswith('--') else None
+        if long in ('--chdir', '--unset', '--split-string') or word[:2] in ('-C', '-u', '-P', '-S') and not long:
+            if long and not separator or not long and len(word) == 2:
+                if not words:
+                    raise ValueError(f'env {word} has no value; run the command without env')
+                value = words.pop(0)
+            elif not long:
+                value = word[2:]
+            if long == '--split-string' or word[:2] == '-S' and not long:
+                words = shlex.split(value) + words
+    return words
 
 
 def _unwrap(words):
@@ -187,6 +219,8 @@ def _unwrap(words):
         if not rest or not re.fullmatch(r'\d+(?:\.\d+)?[smhd]?', rest[0]):
             raise ValueError('timeout names no duration; run the command without timeout')
         rest = rest[1:]
+        if rest[:1] == ['--']:
+            rest = rest[1:]
     return rest
 
 
@@ -323,13 +357,34 @@ def _git_edge(args, cwd, root, config):
         return 1, ('force-push is refused; commit the change on top and run '
                    f'git push origin HEAD:refs/heads/{_branch(cwd, root)[1]}')
     defaults = {repo['default_branch'] for repo in config['repos']}
+    # Review F3: skipping the native pre-push hook skips its default-branch refusal.
+    configs = [value for option, value in zip(args, args[1:]) if option == '-c']
+    configs += [word[2:] for word in args[:len(args) - len(rest)] if word.startswith('-c') and len(word) > 2]
+    if '--no-verify' in rest or any(value.lower().startswith('core.hookspath') for value in configs):
+        return _default(' or '.join(sorted(defaults)) or '<default>', cwd, root)
     # ponytail: a bare git push or HEAD follows the checked-out branch, unread here; the
     # protected base branch holds it (design 9.1).
     name = next((name for name in _pushed(rest) if name in defaults), None)
     return _default(name, cwd, root) if name else (0, '')
 
 
+def _approved(fields, values, cwd):
+    """An APPROVE review event in a field or in the JSON --input body (review F6)."""
+    import json
+    if any(field.upper() == 'EVENT=APPROVE' for field in fields):
+        return True
+    for name in values.get('--input', []):
+        try:
+            body = json.loads((cwd / name).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if isinstance(body, dict) and str(body.get('event', '')).upper() == 'APPROVE':
+            return True
+    return False
+
+
 def _api_edge(args, cwd, root, config):
+    """The edge an API write reaches, decided before the body scan (review F1)."""
     from urllib.parse import unquote, urlsplit
     from wuwei.security import gh_outbound
     words, values = _scan(args, GH_VALUED)
@@ -342,26 +397,25 @@ def _api_edge(args, cwd, root, config):
     fields = [value for key in ('-f', '-F', '--field', '--raw-field') for value in values.get(key, [])]
     method = (_last(values, '-X', '--method') or ('POST' if fields or '--input' in values else 'GET')).upper()
     writes = method not in ('GET', 'HEAD', 'OPTIONS')
-    code, reason = gh_outbound(args, cwd, root, api=True, text_write=writes)
-    if code or not writes:
-        return code, reason
-    match = re.fullmatch(r'repos/([^/]+/[^/]+)/(?:pulls/(\d+)/merge|merges)', endpoint, re.I)
-    if match:
-        return _merge(_pr(match[2], match[1]))
-    if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
-            or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
-        return 1, ("branch protection changes are refused; the protected base branch is the owner's; "
-                   'merge through bin/wuwei merge <owner/repo>#<pr>')
-    match = re.fullmatch(r'repos/([^/]+/[^/]+)/pulls/(\d+)/reviews(?:/.*)?', endpoint, re.I)
-    if match and 'event=APPROVE' in fields:
-        return _approve(_pr(match[2], match[1]))
-    match = re.fullmatch(r'repos/[^/]+/[^/]+/git/refs/heads/(.+)', endpoint, re.I)
-    if match and match[1] in {repo['default_branch'] for repo in config['repos']}:
-        return _default(match[1], cwd, root)
-    return 0, ''
+    if writes:
+        match = re.fullmatch(r'repos/([^/]+/[^/]+)/(?:pulls/(\d+)/merge|merges)', endpoint, re.I)
+        if match:
+            return _merge(_pr(match[2], match[1]))
+        if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
+                or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
+            return 1, ("branch protection changes are refused; the protected base branch is the owner's; "
+                       'merge through bin/wuwei merge <owner/repo>#<pr>')
+        match = re.fullmatch(r'repos/([^/]+/[^/]+)/pulls/(\d+)/reviews(?:/.*)?', endpoint, re.I)
+        if match and _approved(fields, values, cwd):
+            return _approve(_pr(match[2], match[1]))
+        match = re.fullmatch(r'repos/[^/]+/[^/]+/git/refs/heads/(.+)', endpoint, re.I)
+        if match and match[1] in {repo['default_branch'] for repo in config['repos']}:
+            return _default(match[1], cwd, root)
+    return gh_outbound(args, cwd, root, api=True, text_write=writes)
 
 
 def _gh_edge(argv, cwd, root, config):
+    """The pr edges first, then the body scan of a text write (review F1)."""
     from wuwei.security import gh_outbound
     repo, args = _gh(argv[1:])
     family, verb = (args + ['', ''])[:2]
@@ -370,18 +424,19 @@ def _gh_edge(argv, cwd, root, config):
     text_write = (family == 'pr' and verb in ('comment', 'create', 'edit', 'review', 'merge')
                   or family == 'issue' and verb in ('comment', 'create', 'edit')
                   or family == 'release' and verb in ('create', 'edit'))
-    code, reason = gh_outbound(argv, cwd, root, text_write=text_write)
-    if code or family != 'pr':
-        return code, reason
+    if family != 'pr':
+        return gh_outbound(argv, cwd, root, text_write=text_write)
     words, values = _scan(args[2:], GH_VALUED)
     operands = [word for word in words if not word.startswith('-')]
     pr = _pr(operands[0] if operands else None, repo)
     if verb == 'merge':
-        return _merge(pr, admin='--admin' in words)
-    if verb == 'review' and ('--approve' in words or '-a' in words):
+        return _merge(pr, admin=any(word == '--admin' or word.startswith('--admin=') for word in words))
+    if verb == 'review' and any(word == '--approve' or word.startswith('--approve=')
+                                or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', word) for word in words):
         return _approve(pr)
-    if verb != 'create':
-        return 0, ''
+    code, reason = gh_outbound(argv, cwd, root, text_write=text_write)
+    if code or verb != 'create':
+        return code, reason
     from wuwei import merge, state
     head = _last(values, '-H', '--head')
     linked = (_recorded(root, config, repo=repo, branch=head) if repo and head

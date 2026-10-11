@@ -136,10 +136,11 @@ hook.
 1. **Given** a Bash call naming `git` or `gh` that `shlex` cannot split (an unbalanced quote),
    **When** the hook runs with `guards.enforce` true or false, **Then** it passes and records one
    `guard.would_refuse` with the `UNPARSED` reason.
-2. **Given** `for r in a b; do git -C $r push origin main; done`,
-   `python3 -c "import subprocess; subprocess.run(['git','push','-f'])"`, `bash deploy.sh` or
-   `x=gh; $x pr merge 7`, **Then** no edge guard refuses it: a ceiling the code host and the
-   credential layout hold (design 9.1).
+2. **Given** `python3 -c "import subprocess; subprocess.run(['git','push','-f'])"`,
+   `bash deploy.sh` or `x=gh; $x pr merge 7`, **Then** no edge guard refuses it: a ceiling the
+   code host and the credential layout hold (design 9.1). Amended (review, #839): shell
+   reserved words and groups are stripped, so a literal edge inside a loop, an `if`, a `{ }`
+   group or a function body (`for r in a b; do git -C $r push origin main; done`) is refused.
 3. **Given** a call that `shell.normalize` cannot parse and that names a state file, **When** the
    state-file guard runs, **Then** it returns `UNPARSED` and the hook logs it; a parsed write to
    `state.json` is still refused (records floor).
@@ -296,8 +297,10 @@ hook.
    refuses a command because it could not parse it. A parsed write to a state file stays refused
    (records floor); an unparsed one is logged. The state files' mode 0444 and the CLI as their
    only writer remain the local checks until part 23.
-7. **Removed refusals with another home**: identity, default-branch push, fast checks before push
-   and `--no-verify` stay in the native Git hooks (`wuwei git-hook`, unchanged here); fast checks
+7. **Removed refusals with another home**: identity and fast checks before push stay in the
+   native Git hooks (`wuwei git-hook`, unchanged here). A push to a default branch is an edge
+   (B6 lead call), and so is a push that skips the native pre-push hook (`--no-verify` or a
+   `core.hooksPath` override), refused with the default-branch reason (review F3); fast checks
    before handoff live in `build.next_action` and `dispatch.next_step`; the reviewer rule and the
    gate check before raising live in `bin/wuwei pr raise --item`.
 8. **gh aliases, GraphQL and constructed names are not parsed.** They are ceilings the code

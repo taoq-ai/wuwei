@@ -19,6 +19,8 @@ _SCRATCH = r'[\\/]scratch[\\/](?![^\s\x27"]*\.\.)'
 _STATE_MENTION = (r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|'
                   rf'\.wuwei(?!{_SCRATCH})')
 _STATE_GLOB = rf'(?i)\.w(?!uwei{_SCRATCH})[\w*?\[]'
+_WRITE_CONSTRUCT = (r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
+                    r'\bsed\s+(?:--in-place\b|-[^\s]*i)')
 
 
 def _wuwei_action(argv):
@@ -305,7 +307,10 @@ def check_bash(payload):
             # #839: a call the parser cannot read is logged, never refused.
             if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
                 return 2, WORKSPACE_ROOT
-            if re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script):
+            # Review F7: or a write construct while cwd is a protected directory.
+            if (re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script)
+                    or root is not None and _protected_name(cwd, directories=True)
+                    and re.search(_WRITE_CONSTRUCT, re.sub(r'\d*>\s*/dev/null', '', script))):
                 return 2, UNPARSED
             return 0, ''
         directories = persistent = {cwd}

@@ -118,7 +118,6 @@ def test_unparsed_call_is_logged_once_and_runs(root, monkeypatch, capsys, enforc
 
 
 @pytest.mark.parametrize('command', [
-    'for r in a b; do git -C $r push --force origin main; done',
     'python3 -c "import subprocess; subprocess.run([\'git\', \'push\', \'-f\'])"',
     'bash deploy.sh', 'x=gh; $x pr merge 7', 'echo "$(gh pr merge 7)"',
 ])
@@ -160,6 +159,46 @@ def test_piped_xargs_merge_refused(root):
 @pytest.mark.parametrize('command', ['timeout gh pr merge 5', 'git log | xargs -n'])
 def test_unreadable_wrapper_is_unparsed(root, command):
     assert check(root, command) == (2, UNPARSED)
+
+
+# Review F2, F4, F5: shell grammar, env options and process substitution are seen through.
+@pytest.mark.parametrize('command', [
+    '{ gh pr merge 7; }', '! gh pr merge 7', 'if true; then gh pr merge 7; fi',
+    'while gh pr merge 7; do :; done', 'f() { gh pr merge 7; }; f', 'coproc gh pr merge 7',
+    "env -S 'gh pr merge 7'", "env --split-string='gh pr merge 7'", 'env --chdir=/tmp gh pr merge 7',
+    'env -C /tmp gh pr merge 7', 'env --unset X gh pr merge 7', 'env -u X gh pr merge 7',
+    'env -0 gh pr merge 7', 'env -v gh pr merge 7', 'env -P /usr/bin gh pr merge 7',
+    "bash -c -- 'gh pr merge 7'", "bash -o pipefail -c 'gh pr merge 7'", 'timeout 5 -- gh pr merge 7',
+    'cat <(gh pr merge 7)', 'diff x >(gh pr merge 7)',
+])
+def test_grammar_merge_refused(root, command):
+    code, reason = check(root, command)
+    assert code == 1 and reason.startswith('merge policy'), reason
+
+
+def test_loop_default_branch_push_refused(root):
+    # Review F2: a literal default-branch push in a loop is refused.
+    code, reason = check(root, 'for r in a b; do git -C $r push origin main; done')
+    assert code == 1 and reason.startswith('push to the default branch main'), reason
+
+
+# Review F3: skipping the native pre-push hook skips its default-branch refusal.
+@pytest.mark.parametrize('command', [
+    'git push --no-verify origin x', 'git -c core.hooksPath=/dev/null push origin x',
+    'git -c core.hookspath=x push origin x', 'git -ccore.hooksPath=x push origin x',
+])
+def test_hook_skipping_push_refused(root, command):
+    code, reason = check(root, command)
+    assert code == 1 and reason.startswith('push to the default branch'), reason
+
+
+# Review F6: every approval form.
+@pytest.mark.parametrize('command', ['gh pr review 7 --approve=true', 'gh pr review 7 -ab ok',
+                                     'gh api repos/o/r/pulls/7/reviews --input review.json'])
+def test_approval_forms_refused(root, command):
+    (root / 'repo/review.json').write_text('{"event": "APPROVE", "body": "ok"}')
+    code, reason = check(root, command)
+    assert code == 1 and reason.startswith('PR approval'), reason
 
 
 # Host merge: on the floor.
@@ -367,6 +406,11 @@ def test_outward_send_refused_and_allowed(root):
     ('gh pr merge 7 --admin', 'repo', True), ('gh api -X PUT repos/o/r/branches/main/protection', 'repo', True),
     ('terraform apply', 'repo', True), ('git push --force origin x', 'repo', False),
     ('git push origin main', 'repo', False), ('gh pr create -t t -b b', 'worktrees/DIV-1', False),
+    # Review F1: the edge decides before the body scan reads a body file it cannot find.
+    ('gh pr merge 7 --body-file missing.md', 'repo', True),
+    ('gh pr merge 7 --admin --body-file missing.md', 'repo', True),
+    ('gh pr review 7 --approve --body-file missing.md', 'repo', True),
+    ('gh api repos/o/r/pulls/7/merge -X PUT --input missing.json', 'repo', True),
 ])
 def test_enforce_off(root, monkeypatch, capsys, command, where, blocks):
     code, logged = hook(root, monkeypatch, capsys, command, False, cwd=root / where)

@@ -74,8 +74,8 @@ def test_file_guard(workspace, tool, path, code):
     ('bin/wuwei state show', 0), ('python3 -P -m wuwei state show', 0),
     ('python3 -c \'open("state.json", "w")\'', 2),
     ('node -e \'writeFileSync("events.jsonl", "")\'', 2),
-    ('tee "$FILE"', 0), ('cp source *.json', 1), ('xargs tee', 0),
-    ('echo data >', 0), ('echo "unterminated', 0),
+    ('tee "$FILE"', 2), ('cp source *.json', 1), ('xargs tee', 2),
+    ('echo data >', 2), ('echo "unterminated', 0),
     ('cp --unknown source destination', 0), ('cp -r inside backup', 0),
     ('', 0), (None, 2), (42, 2),
 ])
@@ -439,13 +439,18 @@ def test_f8_hardlink_scan_requires_known_root(workspace, monkeypatch, override, 
     'for f in *.json; do rm "$f"; done',
     'for f in *.json; do patch "$f" patchfile; done',
 ])
-def test_f9_dynamic_writes_are_not_read(workspace, outside, script):
-    # #839: a write the parser cannot read and that names no state file passes; the state
-    # files' mode 0444 and the CLI as their only writer hold it.
+def test_f9_dynamic_writes_are_logged(workspace, outside, script):
+    # #839: a write the parser cannot read from a protected directory is logged as UNPARSED.
     from wuwei.guards.protect_state import check_bash
+    from wuwei.shell import UNPARSED
     cwd = workspace.parent if outside else workspace / '.wuwei/days/2026-09-28'
-    expected = 0 if outside else (1 if script in ('cp source *.json', 'mv *.json backup') else 0)
-    assert check_bash(payload(cwd, 'Bash', command=script))[0] == expected
+    result = check_bash(payload(cwd, 'Bash', command=script))
+    if outside:
+        assert result == (0, '')
+    elif script in ('cp source *.json', 'mv *.json backup'):
+        assert result[0] == 1
+    else:
+        assert result == (2, UNPARSED)
 
 
 @pytest.mark.parametrize('script,expected', [

@@ -75,12 +75,12 @@ def test_issue_330_read_only_forms_pass(workspace, command, monkeypatch, capsys)
 
 @pytest.mark.parametrize('mode', ['enforce', 'log'])
 def test_issue_330_effectful_forms(workspace, mode, monkeypatch, capsys):
-    # #839: a merge is refused by its argv in both settings; a loop is a ceiling (design 9.1).
+    # #839: a merge is refused by its argv in both settings; a force push in a loop is read too.
     if mode == 'log':
         (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     code, output = hook(workspace, 'x=$(cat f); gh pr merge $x', monkeypatch, capsys)
     assert code == 2 and output['permissionDecisionReason'].startswith('merge policy')
-    for command in ('for r in a b; do git -C $r push --force origin main; done',
-                    'for r in a b; do git -C $r commit -m wip; done'):
-        assert hook(workspace, command, monkeypatch, capsys) == (0, {})
-    assert events(workspace, 'guard.would_refuse') == []
+    assert hook(workspace, 'for r in a b; do git -C $r commit -m wip; done', monkeypatch, capsys) == (0, {})
+    code, _ = hook(workspace, 'for r in a b; do git -C $r push --force origin x; done', monkeypatch, capsys)
+    assert code == (0 if mode == 'log' else 2)
+    assert len(events(workspace, 'guard.would_refuse')) == (1 if mode == 'log' else 0)
