@@ -389,8 +389,9 @@ were retired by #789 (owner, 2026-10-11, #838). Outward sending is one exact all
 - An MCP send to other people leaves only through a tool named exactly in `outward.allow`
   (no pattern, prefix or case folding). Any other write is refused on the floor, naming the
   one line the owner adds: `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks
-  its Owner step card in the session (#831). For a Slack, docs or mail call the refusal first
-  names the owner's surface line (`outbound.owner.pages` or `outbound.owner.mail`). Reads
+  its Owner step card in the session (#831). For a canvas or page id the refusal first names
+  `outbound.owner.pages`; for mail, `outbound.owner.mail` only while it is unset, never with an
+  address filled in. Reads
   pass. A tool that is neither a read nor a write by name and names no channel runs; the lint
   guard logs the line (B5 lead call: no new walls).
 - Local: a tool that acts only on the owner's machine (#727), and a call whose every

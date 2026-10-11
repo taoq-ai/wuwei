@@ -63,7 +63,7 @@ For one PreToolUse call, in order:
 | a write to the owner's own surface (every destination is the owner's, below) | local: the canary check and the outward-text lint addressed to the owner; recorded as `outward.to_owner` |
 | a tool named exactly in `outward.allow` | the canary check and the outward-text lint |
 | a name that is neither read nor write and resolves to no channel (review, Assumption 3) | passes; the lint guard logs the line below |
-| anything else (a write, or an unknown name with a channel) | refused (floor) with the line below; for a Slack, docs or mail call the owner's surface line comes first |
+| anything else (a write, or an unknown name with a channel) | refused (floor) with the line below; for a canvas or page id the `outbound.owner.pages` line comes first; for mail, the `outbound.owner.mail` line only while it is unset |
 
 The refusal names the line and the card:
 

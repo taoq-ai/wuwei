@@ -22,7 +22,7 @@ WRITES = frozenset((
     'leave', 'react', 'pin', 'star', 'edit', 'move', 'assign', 'merge', 'close', 'open',
     'submit', 'approve', 'comment', 'message', 'dm',
     'save', 'notify', 'draft', 'respond', 'push', 'fork', 'request', 'dismiss', 'mark',
-    'manage', 'run', 'mute', 'trigger'))
+    'manage', 'run', 'mute', 'trigger', 'share'))
 LEADING = ('get', 'list', 'search', 'read', 'find', 'fetch', 'query', 'describe', 'view', 'lookup')
 READS = frozenset(LEADING + (
     'history', 'replies', 'info', 'members', 'users', 'channels', 'conversations', 'threads',
@@ -94,24 +94,40 @@ def resolve(tool, config):
 NOT_ALLOWED = ("outward: {tool} may send to other people and is not on outward.allow; {surface}the "
                "owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it asks its "
                "Owner step card), then run the call again")
-# #838 review: the narrow fix first, when the call may be the owner's own surface.
-SURFACE = {'slack': "outbound.owner.pages '[\"{id}\"]' --add", 'docs': "outbound.owner.pages '[\"{id}\"]' --add",
-           'mail': "outbound.owner.mail '\"{id}\"'"}
+# #838 review: the narrow fix first, only for a canvas or page id; a channel, DM, user or
+# address is never offered as the owner's.
+PAGES = "outbound.owner.pages '[\"{id}\"]' --add"
+MAIL = "outbound.owner.mail '\"<your address>\"'"
 # Unknown by name and no channel: it runs; the lint guard logs this (B5 lead call, no new walls).
 UNKNOWN = ("outward: {tool} is neither a read nor a write by name, so it ran; if it sends to other "
            "people, the owner adds it: bin/wuwei config set outward.allow '[\"{tool}\"]' --add (it "
            "asks its Owner step card)")
 
 
-def refusal(tool, channel, inputs):
-    """NOT_ALLOWED, naming the owner's surface line first for a Slack, docs or mail call; the id
-    is the call's first destination when it is plain, else <id>."""
-    surface = ''
-    if channel in SURFACE:
-        found = next(iter(outward._text(inputs)[1]), '')
-        plain = found if re.fullmatch(r'[A-Za-z0-9._@+-]+', found) else '<id>'
-        surface = ('if it is your own surface, the owner adds it: bin/wuwei config set '
-                   f"{SURFACE[channel].format(id=plain)} (it asks its Owner step card); else ")
+def _page(value):
+    """The first canvas_id or page_id (a Notion parent's included) in a payload, else None."""
+    if isinstance(value, list):
+        return next(filter(None, map(_page, value)), None)
+    if not isinstance(value, dict):
+        return None
+    for key, item in value.items():
+        if outward._snake(key) in ('canvas_id', 'page_id') and isinstance(item, str):
+            return item
+    return next(filter(None, map(_page, value.values())), None)
+
+
+def refusal(tool, channel, inputs, config):
+    """NOT_ALLOWED; a canvas or page id (or a Slack F... destination) is offered first as the
+    owner's page, plain ids only; mail asks for the owner's address only while it is unset."""
+    found = _page(inputs)
+    if found is None and channel in ('slack', 'chat'):
+        found = next((target for target in outward._text(inputs)[1]
+                      if re.fullmatch(r'F[A-Z0-9]+', target)), None)
+    line = (PAGES.format(id=found if re.fullmatch(r'[A-Za-z0-9._-]+', found) else '<id>')
+            if found is not None else
+            MAIL if channel == 'mail' and not config['outbound']['owner']['mail'] else None)
+    surface = ('if it is your own surface, the owner adds it: bin/wuwei config set '
+               f'{line} (it asks its Owner step card); else ') if line else ''
     return NOT_ALLOWED.format(tool=tool, surface=surface)
 
 
@@ -198,7 +214,7 @@ def _check(payload, send):
         if not owner and tool not in config['outward']['allow']:
             if not channels and tool_kind(tool) == 'unknown':
                 return (CLEAN, '') if send else (FINDINGS, UNKNOWN.format(tool=tool))
-            return (FINDINGS, refusal(tool, channel, inputs)) if send else (CLEAN, '')
+            return (FINDINGS, refusal(tool, channel, inputs, config)) if send else (CLEAN, '')
         if send:
             if owner:
                 outward.to_owner(inputs, root, config, channel)
