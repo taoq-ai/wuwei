@@ -173,14 +173,14 @@ def test_payload_opens_with_active_constraints(tmp_path, monkeypatch, case):
     if case == 'full':
         assert 'Goals: G-1 Ship checkout v2 (target 3 by 2026-10-30)' in content
         assert 'Plan: .wuwei/days/2026-09-28/plan.md (approved: ITEM-1)' in content
-        assert 'Open decisions: D-1\n' in content
+        assert 'Open decisions' not in content  # part 14: no decision record is open
         assert f'Current briefs: ITEM-1 b1 {running}; ITEM-3 build c3.md\n' in content
         assert stopped not in content
     elif case == 'bad goals':
         assert 'Goals: unmeasured: goals line 1' in content
     else:
         assert 'Goals: none\n' in content and 'Plan: not approved\n' in content
-        assert 'Open decisions: none\n' in content and 'Current briefs: none\n' in content
+        assert 'Open decisions' not in content and 'Current briefs: none\n' in content
 
 
 def tiered(tmp_path, budget=None):

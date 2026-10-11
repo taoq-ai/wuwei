@@ -22,10 +22,9 @@ def register(subparsers):
 
 
 def parked_line(item, action):
-    """#661: a parked item names its card, never a host-terminal command."""
-    ident = Path(action['decision']).stem
-    return (f'build: parked {item}: {action["reason"]}; decision {ident}; ask the owner with '
-            f'bin/wuwei decision show {ident} --widget and run its record command, then resume the item')
+    """A parked build names the command that resumes it; that command asks the owner its card."""
+    return (f'build: parked {item}: {action["reason"]}; run wuwei plan resume {item} after revising '
+            'its brief; it asks the owner its Owner step card')
 
 
 def run(args):
@@ -46,8 +45,7 @@ def run(args):
                 return code
             action = next_action(item, *paths, root=root)
             row = state.read_state(root)['items'][item]
-            if action['action'] == 'done' and (row['phase'] in ('gate', 'delta') or (  # #732: or parked on a record
-                    row['phase'] in ('parked', 'escalated') and row.get('decision'))):
+            if action['action'] == 'done' and row['phase'] in ('gate', 'delta', 'parked', 'escalated'):
                 from wuwei import dispatch  # #666: past the build, answer what dispatch next decides
                 try:
                     action = dispatch.next_step(item, root)
@@ -243,7 +241,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         if record['status'] not in ('done', 'parked'):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
-            raise ValueError(f'{item} is parked; resume the parked item before starting a new build (answer its decision, then run bin/wuwei build next {item})')
+            raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
     from wuwei import tracker
     status, reason = tracker.check(data, config, item, data['items'][item])
     if status == 'missing':
@@ -541,31 +539,12 @@ def check(item, *, root=None):
 
 
 def _park(root, item, record, reason, expected):
-    from wuwei import decision
-    text = (
-        f'Question: Park build {item}?\nClass: park\nContext: Iteration {record["iteration"]}: {reason}.\n'
-        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-        '| defer | Defer and investigate | Respects the iteration limits and preserves budget. | '
-        'The item parks until the failure is investigated. |\n'
-        '| retry | Retry the build | Fails the iteration limit must. | The build keeps spending budget. |\n'
-        'Musts:\n| Criterion | defer | retry |\n| --- | --- | --- |\n'
-        '| Respect iteration limits | pass | fail |\n'
-        'Wants:\n| Criterion | Weight | defer | retry |\n| --- | --- | --- | --- |\n'
-        '| Preserve budget | 10 | 10 | 0 |\n'
-        'Recommendation: defer\nReasoning: Preserving the budget decided it; a new brief would flip it.\n'
-        'Confidence: high\nReversibility: two-way\n'
-        'Blast radius: own branch\nPre-mortem: Repeated failures consume the remaining budget.\n'
-        'Revisit: After investigating the failure and revising the brief.\n'
-        f'Decided-by: seat\nOutcome: parked {item}\n')
     def update(data):
         if data['builds'][item] != expected:
             raise ValueError(f'build changed before parking; {RACE}')
-        path = decision.write(text, root)
-        data.setdefault('decision_outcomes', {})[path.stem] = decision.seat_outcome(*decision.evaluate(text))
-        record.update(status='parked', action={'action': 'park', 'reason': reason,
-                                               'decision': str(path.relative_to(root))})
+        record.update(status='parked', action={'action': 'park', 'reason': reason})
         data['builds'][item] = record
-        data['items'][item].update(phase='parked', status='blocked')
+        data['items'][item].update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
     state._write_state(update, root, reserved=False, kind='build.parked',
                        payload={'item': item, 'iteration': record['iteration'], 'reason': reason})
 

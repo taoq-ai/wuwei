@@ -72,7 +72,7 @@ def test_stuck_after_three_same_failures(tmp_path, monkeypatch):
     assert code == 1
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 3
     assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
-    assert list((day / 'decisions').glob('*.md'))
+    assert not list((day / 'decisions').glob('D-*.md'))
 
 
 def test_environment_failure_parks_after_first_check_without_feedback(tmp_path, monkeypatch):
@@ -221,9 +221,7 @@ def test_build_reports_unknown_item(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize('maximum', [False, True])
-def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, capsys, maximum):
-    from wuwei import decision
-    from wuwei.__main__ import main
+def test_build_park_names_plan_resume_and_writes_no_record(tmp_path, monkeypatch, capsys, maximum):
     from wuwei.commands import build
     failure = lambda: registry.Result(1, {'test_ids': ['test_a'], 'error': 'failed'})
     repo, brief, day, _ = setup(tmp_path, monkeypatch, [failure(), failure(), failure()])
@@ -236,22 +234,15 @@ def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, capsys,
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
     err = capsys.readouterr().err
     assert ('maximum build iterations reached' if maximum else 'same fast-check failure repeated') in err
-    # #661: the parked line names the card, never a host-terminal command.
-    assert 'bin/wuwei decision show D-2 --widget' in err
-    assert 'host terminal' not in err and 'decisions/D-2.md' not in err
-    path = decisions / 'D-2.md'
-    assert path.exists()
-    monkeypatch.chdir(tmp_path)
-    assert main(['decision', 'lint', str(path)]) == 0
+    # Part 14: the parked line names plan resume, which asks the owner; never a host terminal.
+    assert 'run wuwei plan resume A after revising its brief' in err and 'host terminal' not in err
+    assert sorted(path.name for path in decisions.glob('D-*.md')) == ['D-1.md']
     assert (decisions / 'D-1.md').read_text() == 'preserve existing record'
-    fields, _ = decision.evaluate(path.read_text())
-    assert fields['Outcome'] == 'parked A'
-    assert decision.route(fields) == 'seat'
     data = state.read_state(tmp_path)
-    assert data['decision_outcomes']['D-2']['decided_by'] == 'seat'
+    assert 'decision_outcomes' not in data
     record = data['builds']['A']
-    assert record['status'] == 'parked'
-    assert tmp_path / record['action']['decision'] == path
+    assert record['status'] == 'parked' and 'decision' not in record['action']
+    assert data['items']['A']['disposition'] == {'kind': 'parked', 'reason': record['action']['reason']}
 
 
 def test_spec_gap_is_a_failing_check_that_parks_when_stuck(tmp_path, monkeypatch):

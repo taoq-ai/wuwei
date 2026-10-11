@@ -26,19 +26,14 @@ def register(subparsers):
                         help='time each test runner once through the checks port (runs repository commands)')
     parser.set_defaults(func=promote)
     parser = actions.add_parser('set', help='set one config value (owner, asks on a card)')
-    parser.add_argument('key', nargs='?',
-                        help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
-                             'optional with --from-card, which reads it from the answered option')
-    parser.add_argument('value', nargs='?', help='one TOML value, for example \'"standard"\' or false')
+    parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
+    parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--add', action='store_true',
                       help='add the items to the current list, or the entries to the current table, '
                            'instead of replacing it (#673)')
     mode.add_argument('--replace', action='store_true',
                       help='write the value as given; the default (#673)')
-    parser.add_argument('--from-card', dest='from_card', metavar='D-n',
-                        help='the decision card whose answer is this assignment (#529): your answer '
-                             'is the confirmation outside strict')
     parser.set_defaults(func=set_value)
     parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
     parser.add_argument('key', help='dotted key, for example outward.tool_patterns')
@@ -319,16 +314,6 @@ def _edit(label, what, confirm, change, root=None, keys=(), add=False, command=N
     return code
 
 
-def card_write(root, label, change, keys, card):
-    """#529: the owner's answer on a card is the confirmation, as for a learned connector
-    (outbound.apply); one config.set event naming the card after the write."""
-    from wuwei import state
-    code = _edit(label, 'change', lambda *args, **kwargs: True, change, root, keys=keys)
-    if code == CLEAN:
-        state.append_event('config.set', {'keys': keys, 'card': card}, root)
-    return code
-
-
 def _settle(raw, settings):
     """raw with the settings applied; a table set to a single value raises naming it."""
     from wuwei import calibrate
@@ -409,80 +394,8 @@ def merged(config, parts, value, add=False):
     return [(tuple(parts[:-1]), parts[-1], value)]
 
 
-def _choice(parts, value):
-    """#579: a bare word is the string it names when the key is a string with fixed choices
-    (prioritisation.framework = rice), since a decision title cannot carry a quote."""
-    node = configtext.declared(parts)
-    return ({'value': value} if isinstance(node, tuple) and node[0] is str and len(node) > 2
-            and value in node[2] else None)
-
-
-def assignment(title):
-    """#529: (key, value) for a decision option title `<dotted key> = <TOML value>`, else None."""
-    import tomllib
-
-    key, separator, value = title.partition(' = ')
-    try:
-        parts = _parts(key)
-        try:
-            parsed = tomllib.loads(f'value = {value}\n')
-        except tomllib.TOMLDecodeError:
-            parsed = _choice(parts, value)
-            if parsed is None:
-                raise
-    except (ValueError, tomllib.TOMLDecodeError):
-        return None
-    return (key, parsed['value']) if separator and list(parsed) == ['value'] else None
-
-
-def declared(found):
-    """#600: an assignment (key, value) whose key the config declares."""
-    return bool(found) and configtext.declared(_parts(found[0])) is not None
-
-
-def _from_card(args, root):
-    """#529: write the value the owner picked on the decision card, then record the card. #600:
-    the value is the option's Value row, else its title; KEY and VALUE, when given, must equal it,
-    and an answered option that sets nothing (Defer, Keep) records the answer only."""
-    from argparse import Namespace
-
-    from wuwei import decision, sessions, state
-    from wuwei.commands.decision import owner_outcome
-    card, given = args.from_card, args.key is not None
-    ask = (f'config set: {card} has no recorded answer' + (f' "{args.key} = {args.value}"' if given else '')
-           + f'; nothing written. Ask the card with bin/wuwei decision show {card} --widget and run the '
-           'record command for the picked option.')
-    try:
-        fields, _ = decision.evaluate(decision.today_path(card, root).read_text(encoding='utf-8'))
-        keys = decision.config_keys(fields)
-        wanted = assignment(f'{args.key} = {args.value}') if given else None
-    except (OSError, ValueError) as exc:
-        print(f'config set: {exc}; {ask}', file=sys.stderr)
-        return FINDINGS
-    picked = [row[0] for row in decision.options(fields) if sessions.card_answered(root, card, row[1])
-              and (not given or wanted and keys.get(row[0]) == wanted)]
-    option = picked[0] if len(picked) == 1 else None
-    answered = decision.answered(state.read_state(root), card)
-    if option is None or answered not in (None, option):
-        print(ask, file=sys.stderr)
-        return FINDINGS
-    code = CLEAN
-    if option in keys:  # the value the card showed, as shown: a list is replaced, never extended
-        key, value = keys[option]
-        code = card_write(root, 'config set', lambda _, raw: write_value(raw, key, value), [key], card)
-    else:
-        print('No config.toml changes')
-    if code or answered == option:
-        return code
-    code, message = owner_outcome(Namespace(id=card, option=option), root=root)
-    if code:
-        print(f'config set: {message}', file=sys.stderr)
-    return code
-
-
 def set_value(args, confirm=None):
-    """Owner action: set one config value on the owner's Owner step card answer (#831), or
-    (#529) from the owner's answer on a decision card outside strict."""
+    """Owner action: set one config value on the owner's Owner step card answer (#831)."""
     import tomllib
 
     def change(root, raw):
@@ -501,29 +414,7 @@ def set_value(args, confirm=None):
         add = getattr(args, 'add', False)  # only --add reads the current values
         return _settle(raw, merged(load_config(root, raw=raw) if add else None, parts, parsed['value'], add))
 
-    card = getattr(args, 'from_card', None)
-    given = [part for part in (args.key, args.value) if part is not None]
-    if len(given) == 1 or not given and not card:
-        print('config set: pass KEY VALUE, or --from-card D-n in the session to read them from the '
-              'answered card; nothing written', file=sys.stderr)
-        return UNRUN
-    command = shlex.join(['bin/wuwei', 'config', 'set', *given])
-    try:
-        root = workspace.find_workspace()
-        posture = workspace.posture(load_config(root))[0]
-    except (OSError, ValueError) as exc:
-        if not given:
-            print(f'config set: {exc}', file=sys.stderr)
-            return UNRUN
-        return _edit('config set', 'change', confirm, change, keys=[args.key],
-                     add=getattr(args, 'add', False), command=command)  # it reports the reason
-    if card and posture != 'strict':
-        return _from_card(args, root)
-    if card and not given:
-        print(f'config set: under strict a decision card is not a confirmation; nothing written. Run '
-              f'bin/wuwei config set <key> <value> (bin/wuwei decision show {card} lists the values); '
-              'it asks its own Owner step card.', file=sys.stderr)
-        return FINDINGS
+    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value])
     return _edit('config set', 'change', confirm, change, keys=[args.key], add=getattr(args, 'add', False),
                  command=command)
 

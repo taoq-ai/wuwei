@@ -26,7 +26,7 @@ It merges only through the merge policy and never approves a pull request.
 
 ### Steward
 
-The seat that watches the day for drift and loops, and compiles the retro at close.
+The seat that reviews the day at each sweep and at close, and compiles the retro.
 It proposes rule changes; you promote the ones you want.
 
 ### CAP
@@ -61,12 +61,13 @@ After it the pull request is raised, or the item comes to you.
 
 ### Park
 
-Stop work on an item for now, with a decision record that says why.
-Close accepts a parked item once that decision is recorded.
+Stop work on an item for now; the item records why.
+A PARK verdict, the round cap or your No on an ESCALATE card parks it, and only you resume it
+(`plan resume`, on its Owner step card).
 
 ### Carry
 
-Move an unfinished item to tomorrow's plan, with a decision record that says so.
+Move an unfinished item to tomorrow's plan; the item records it.
 The next morning gate offers it again as carry-over.
 
 ### Page
@@ -86,8 +87,8 @@ On a first day some sources are unmeasured until you set them up, for example `m
 
 ### Mandate
 
-The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
-Seats do not ask you what their mandate lets them decide.
+The block at the end of every seat brief: decide alone what the brief, the charter and the standards answer;
+record two-way choices under `Assumptions:`; name a one-way, scope, goal or trust-boundary question in the result.
 
 ### Trust surface
 
@@ -143,11 +144,6 @@ One comment that stands for the rest of a ticket's updates once its daily commen
 An item made from work begun outside WUWEI: `pr claim` on an open PR with no item creates it,
 and `worktree adopt` registers an existing worktree as its checkout.
 
-### Lens
-
-A one-line question every option of an engineering decision answers, such as SOLID or YAGNI.
-You can add your own in `[decisions.lenses]` or drop a default.
-
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).
@@ -187,7 +183,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Most ask their own Owner step card in the session: the command prints it, the planner asks it, and the command runs on your Yes. `wuwei doctor` lists answered cards whose record never ran. A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -302,21 +298,14 @@ and retro requirements still apply. The Stop hook blocks once per stop attempt a
 exits 0 on Claude Code's retry, so it never traps the session; `bin/wuwei close`
 still reports every finding.
 
-`bin/wuwei plan carry ITEM` and `bin/wuwei plan park ITEM [--reason TEXT]` write a
-valid two-way decision record with blast radius `own branch`, route it and print
-its ID, for example `D-1: carried ITEM`. Park also pauses an active item. Carried
-items come back with tomorrow's `plan approve --import-yesterday`. The recorded
-outcome must match the file. A parked phase alone does not count.
-A merged phase also needs fresh merge evidence from the linked PR.
-The build loop creates and records this decision automatically after repeated
-fast-check failures or exhausted iterations. Its `D-<n>.md` file passes
-`bin/wuwei decision lint` and does not overwrite earlier decisions.
+`bin/wuwei plan carry ITEM` and `bin/wuwei plan park ITEM [--reason TEXT]` record the
+disposition on the item with its reason and print `carried ITEM` or `parked ITEM`. Park also
+pauses an active item. Carried items come back with tomorrow's `plan approve
+--import-yesterday`. A parked phase without a disposition does not count. A merged phase
+also needs fresh merge evidence from the linked PR. The build loop parks an item the same way
+after repeated fast-check failures or exhausted iterations, and names `plan resume`.
 
 A linked PR's externally verified owner park or carry also accounts for its item.
-Editing an owner decision's Outcome does not prove an owner action. An owner
-decision answered with `bin/wuwei decide D-<n> OPTION` counts as
-resolved, and the command writes the chosen option into the record's `Outcome:`
-line.
 Pushed branch checks read remote-tracking refs in recorded item worktrees through
 the VCS port, without fetching. A parked item still needs a raised or claimed PR
 when its branch has been pushed.
@@ -384,7 +373,6 @@ prompt carries a `Depth:` line, so no seat decides it:
 | Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
 | Retro note | only when a line is not `none` | always | always |
 
-A Routine decision taken under mandate prints as one line in `decision show` at every tier.
 The default `repos.gates.floor` is `standard`, so light depth needs `floor = "light"`.
 
 With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate:
@@ -397,44 +385,24 @@ can turn it off when it stops paying.
 
 ## Writing for you
 
-`owner.verbosity` sets how much decisions, the digest, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
+`owner.verbosity` sets how much cards and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
 
 Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in `bin/wuwei drafts` and in the approval prompt, and the DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
 
-## Decision classes
+## Owner decisions
 
-A decision record gives every option a Title, a Rationale (why it scores as it does) and a
-Consequence (what changes, what it costs, what it closes). The recommendation gets a
-Reasoning line (what decided it and what would flip it). It also names a class. The
-engineering classes `design`, `boundary`, `refactor` and `dependency-bump` add one
-[lens](#lens) line per option: SOLID, twelve-factor, YAGNI and ponytail by default. Your
-question card shows the titles, the recommended one first, each with its rationale,
-consequence and lens lines, and ends the question with the reasoning. `wuwei decision
-template` prints a valid record.
+What reaches you comes from `wuwei next`, one decision at a time, on the Owner step card of the
+command that needs it: the morning gate, a merge the policy does not clear or one you keep, an
+ESCALATE verdict (Yes opens a fix round, No parks the item), a parked item to resume (the round
+cap, a build limit or a scanner chain parked it), and a scope change a reviewer asks on a PR. A
+PARK verdict parks the item without asking you; the report and `why` show its reason.
 
-Every seat prompt ends with a mandate block built from `autonomy.mode` and
-`deploy.deny`. It says what the seat decides alone, what it decides
-and records, and what comes to you. Under `autonomous` the seat assumes `approach`, records
-`retry`, `park`, `accept-residual` and `merge`, and sends every other class to you. Under
-`supervised` every class comes to you. It closes with "Nothing else is a question." Assume and
-record: a two-way
-open question inside the item is not asked. The seat takes its recommendation and records
-it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
-finding. A seat that stops on a question to you without a valid decision id is
-flagged by the SubagentStop guard (and by the Codex and headless paths). Then `dispatch
-next` refuses until the planner acknowledges the note.
-
-A confirmation from someone outside the loop never holds reversible work: the seat routes
-the record with `decision route D-n --external <item>` and continues. After
-`decisions.wait_hours` weekday hours without your answer, the sweep confirms the
-recommendation on a two-way door or parks the item on a one-way door, and records
-`decision.waited`.
-
-Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
-requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
-round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
-goal date has passed. It reports; the
-round cap (`gates.max_rounds`) is what stops the rounds.
+Every seat prompt ends with the [mandate](#mandate) block and the commands `deploy.deny` names.
+Assume and record: a two-way open question inside the item is not asked. The seat takes its
+recommendation and records it under `Assumptions:` in the spec or PR body, and gates review it
+as an `Assumption:` finding. A one-way, scope, goal or trust-boundary question is a sentinel's
+ESCALATE or a builder's `Blocked:` line. The round cap (`gates.max_rounds`) is what stops the
+rounds.
 
 ## DORA keys
 

@@ -203,12 +203,12 @@ executes each returned action unchanged:
    `continue` action with the FIX verdict files as feedback. The planner launches a fresh
    Agent with its `prompt`; Claude Code's Agent takes no `resume`. Then it runs the build
    loop again until `done`, which moves the item to `delta`.
-   A [PARK](concepts.md#park) or ESCALATE verdict returns `escalate` with `decision`, a
-   card `dispatch next` wrote once from the verdict, and `command`. Below strict the
-   planner runs `wuwei decision route D-n`; under strict you answer it from
-   `wuwei decision show D-n --widget`. Answered `fix`, the next `dispatch next` opens the
-   fix round; answered `park`, it parks the item on the card. `build next` prints the
-   same answer.
+   A [PARK](concepts.md#park) verdict parks the item with its reason and no card. An
+   ESCALATE verdict returns `escalate` with the Owner step card of `dispatch next <item>`
+   and exits 1; the planner asks it. On Yes the next `dispatch next` opens the fix round;
+   on No it parks the item. At the round cap it parks the item and names
+   `wuwei plan resume <item>`, which asks you its own card. `build next` prints the same
+   answer.
 5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that did not pass, and `seats` holds a
    `continue` action per seat with its `prompt`, `resume` (the seat's agent ID) and a
    `receive` call with `--round delta`. The planner launches it as a fresh Agent, which
@@ -217,8 +217,8 @@ executes each returned action unchanged:
    head, whether the planner continues the seat in its session or as a fresh Agent. After
    the delta verdicts it returns `raise` with review notes,
    the next fix round, or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
-   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. With no round left the item parks with its decision
-   record, and `escalate` names it in `decision` with the `command` that answers it. A
+   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. With no round left the item parks with its reason,
+   and `escalate` names `wuwei plan resume <item>` as its `command`. A
    light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
@@ -289,27 +289,21 @@ session, the Claude Code desktop PR monitor is the complement.
 
 ## 5. Owner decisions
 
-Some commands are yours alone and run in a host terminal, never through an agent:
-`bin/wuwei decide D-<n> <option>` for any decision, MCP registry findings included (`proceed`
-also re-runs the check), and `bin/wuwei drafts approve` or `drafts drop`. Under `observe` and
-`guarded` the planner asks you a decision in the session and records your answer with the
-same command. Under `strict`, and for credentials, you run it in a host terminal and answer y. `bin/wuwei next` and the report name each pending decision.
-
-`bin/wuwei decision show D-<n>` prints a decision at your `owner.verbosity` level: by default
-the question, each option with its score, and the recommendation with one reason.
-`bin/wuwei decision show D-<n> --full` prints every field.
+What reaches you comes from `bin/wuwei next`, one decision at a time: the morning gate, a
+merge the policy does not clear or one you keep, an ESCALATE verdict, a parked item to
+resume and a scope change a reviewer asks on a PR. The command that needs your answer
+prints its Owner step card; the planner asks it in the session and runs the command again on
+Yes. A [PARK](concepts.md#park) verdict parks the item without asking you; the report and
+`bin/wuwei why <item>` show its reason. `bin/wuwei drafts approve` or `drafts drop` answers a
+held draft.
 
 To answer from your phone, run the planner session with Claude Code Remote Control
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
-"Push when actions required" in `/config`. Each decision question then reaches the Claude
-mobile app and stays open until you answer. The planner records that answer with
-`bin/wuwei decide`, or you run it in a host terminal.
+"Push when actions required" in `/config`. Each question then reaches the Claude
+mobile app and stays open until you answer.
 
-Seats do not ask what their mandate lets them decide. You see two more things here. An item
-that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-event (a [page](concepts.md#page) when its goal date has passed). An external confirmation a seat routed with `--external`
-waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
-recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
+Seats do not ask what their mandate lets them decide: they record two-way choices under
+`Assumptions:` and name a one-way question in their result.
 
 ### How you answer
 
@@ -337,16 +331,15 @@ planner on a schedule.
   by `metrics.band_margin`, and proposes a planner charter line for you to promote or
   reject.
 - Rotation: set `sessions.rotate_after` (`turns`, `compactions` or a `clock` time; off by
-  default). At the first turn past the limit with no running seat and no unanswered owner
-  decision, the Stop hook tells the planner to end the session once. Start a fresh Claude
+  default). At the first turn past the limit with no running seat, the Stop hook tells the planner to end the session once. Start a fresh Claude
   Code session in the workspace and run
   `wuwei plan session "$WUWEI_SESSION_ID" --take-over` there. `bin/wuwei sessions` shows
   the old session as `rotated`, and the events record `session.rotated`. Nothing is lost:
   the day lives in `.wuwei/`, not in the transcript.
 - Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
   with the orientation block: what WUWEI is, the posture and the next step from
-  `bin/wuwei next`. `Active constraints:` follows with the day's goals, the approved plan,
-  open decisions and the briefs of running seats. The full day state is no longer pasted
+  `bin/wuwei next`. `Active constraints:` follows with the day's goals, the approved plan
+  and the briefs of running seats. The full day state is no longer pasted
   into the session; it is one command away, `bin/wuwei state get`.
 
 Set them with `bin/wuwei config set` in a host terminal, for example
@@ -358,10 +351,9 @@ after its [digest](concepts.md#digest) ([configuration](configuration.md)).
 ## 6. Close
 
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
-`wuwei report` (shipped, merged, pending decisions and [unmeasured](concepts.md#unmeasured) sources) and ends with
+`wuwei report` (shipped, merged, parked with its reason and [unmeasured](concepts.md#unmeasured) sources) and ends with
 `wuwei close`. Its `## Steward runs` section counts today's [steward](concepts.md#steward) runs by trigger and
-names the two settings that drive them, `steward.every_tool_calls` and
-`watch.sweep_seconds`. `close` refuses while an obligation is open and names it; the Stop hook
+names the setting that drives the sweep, `watch.sweep_seconds`. `close` refuses while an obligation is open and names it; the Stop hook
 holds the session until close is clean. For each open item close asks: carry it to
 tomorrow (recommended), park it, or keep working, and records the answer with
 `wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with

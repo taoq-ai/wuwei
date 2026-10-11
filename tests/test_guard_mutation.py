@@ -16,13 +16,8 @@ PROBES = {
     ('agent_launch', 'PreToolUse', 'Agent', 'check_mcp'):
         ('Agent', {'prompt': 'p', 'description': 'build', 'subagent_type': 'wuwei:builder'}, 2),
     ('commit_push', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'git push "'}, 2),
-    ('decision', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_write'):
-        ('Write', {}, 2),
-    ('decision', 'PreToolUse', 'AskUserQuestion', 'check_question'):
+    ('answers', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
         ('AskUserQuestion', {'questions': [{}]}, 2),
-    ('decision', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
-        ('AskUserQuestion', {'questions': [{}]}, 2),
-    ('decision', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 1),
     ('deploy', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'terraform apply'}, 1),
     ('integrity', 'PreToolUse', None, 'check'): ('Bash', {'command': 'echo hi'}, 2),
     ('integrity', 'SessionStart', None, 'session_start'): ('Bash', {}, 1),
@@ -54,7 +49,6 @@ PROBES = {
 
 SPECIAL_TESTS = {
     ('wuwei.merge', 'check'): 'test_disabling_merge_policy_makes_its_probe_red',
-    ('wuwei.decision', 'lint'): 'test_disabling_decision_lint_makes_its_probe_red',
     ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
     ('wuwei.commands.hook', 'reaches_workspace'): 'test_disabling_scope_gate_makes_outside_probe_red',
 }
@@ -92,10 +86,9 @@ def test_every_registered_guard_has_a_mutation_probe():
 
 
 def test_special_policies_have_mutation_probes():
-    from wuwei import decision, merge
+    from wuwei import merge
 
     required = {(merge.check.__module__, merge.check.__name__),
-                (decision.lint.__module__, decision.lint.__name__),
                 ('wuwei.guards.deploy', 'check'),
                 ('wuwei.commands.hook', 'reaches_workspace')}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
@@ -116,16 +109,6 @@ def test_disabling_merge_policy_makes_its_probe_red(tmp_path):
     with pytest.raises(AssertionError):
         assert_refused(lambda *args: merge.Result(0, {}, ''))
 
-
-def test_disabling_decision_lint_makes_its_probe_red():
-    from wuwei import decision
-
-    def assert_refused(lint):
-        assert lint('Question: bad')[0] == 1
-
-    assert_refused(decision.lint)
-    with pytest.raises(AssertionError):
-        assert_refused(lambda text: (0, ''))
 
 
 def test_disabling_scope_gate_makes_outside_probe_red(tmp_path, monkeypatch):

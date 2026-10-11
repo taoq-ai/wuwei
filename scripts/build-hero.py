@@ -52,16 +52,16 @@ FIX = ('login fix', .50, .70)          # amber dot, amber outline and the fix lo
 PRS = [('#142 rate limits', .64, .80), ('#143 docs page', .74, .86), ('#144 login fix', .78, .90)]
 PR_LINES = [('ping reviewer · CI green?', 'muted', .65, .78), ('merge at the gated head', 'atext', .80, .91)]
 DECISIONS = [  # (asked, answered, open text or None, closed text, asked on the phone)
-    (.30, .31, None, 'D-1 under mandate', False),
-    (.44, .45, None, 'D-2 under mandate', False),
-    (.52, .62, 'D-3 client wants Friday?', 'D-3 answered: Allow once', True),
+    (.30, .31, None, 'assumed in the spec', False),
+    (.44, .45, None, 'assumed in the spec', False),
+    (.52, .62, 'client wants Friday?', 'answered: Allow once', True),
 ]
 GATE = (.02, .12, .17)                 # gate card on, question becomes "Approved", card off
 PHONE = [(GATE[0], GATE[1], 'accent')] + [(a, b, 'warm') for a, b, _, _, phone in DECISIONS if phone]
 GUARD = (.36, .40)
 CLOSE = .92                            # report, retro, return arrow, steward, carried
 STILL_K = .55                          # 13:55, the reduced-motion frame
-LOOPS = ['a seat asks through a decision record', 'you answer from the phone, or the mandate answers']
+LOOPS = ['a one-way question reaches you on one card', 'you answer from the phone; seats assume the rest']
 DAY = "tomorrow's plan carries what was learned"
 INDICATORS = ['guards: every call checked, 1 caught', 'heartbeat',
               'lead: discovery when the queue runs low', 'steward: retro at close, you promote']

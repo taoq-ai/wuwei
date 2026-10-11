@@ -27,7 +27,7 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'escaped_by_tier', 'lead_time_merge_hours', 'lead_time_deploy_hours', 'deploys_per_week',
            'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
-GUARDS = ('agent_launch', 'commit_push', 'decision', 'deploy', 'integrity', 'lifecycle', 'outward', 'pr',
+GUARDS = ('agent_launch', 'answers', 'commit_push', 'deploy', 'integrity', 'lifecycle', 'outward', 'pr',
           'protect_state', 'spec', 'stop', 'traces', 'verdict')
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')

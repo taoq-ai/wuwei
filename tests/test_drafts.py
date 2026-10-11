@@ -220,9 +220,9 @@ def test_host_approve_without_a_card_answer_is_the_owner_y(root, port, monkeypat
 def test_session_approve_needs_the_owner_send_answer(root, port, monkeypatch, capsys, answer, flags):
     """#800: an agent session sends a draft only after the owner's Send answer on its card; with
     no terminal and no answer it is refused, with or without a session id in the environment."""
-    from test_decision import draft_question
+    from test_answers import draft_question
     from wuwei import plan
-    from wuwei.guards.decision import record_gate
+    from wuwei.guards.answers import record_gate
 
     def no_terminal(*args, **kwargs):
         raise OSError(integrity.HOST_TERMINAL)

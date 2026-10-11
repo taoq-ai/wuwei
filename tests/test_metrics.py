@@ -78,8 +78,10 @@ def test_owner_routing_counts_once_and_separately_from_seat_decisions(root, monk
     path = workspace.day_dir(root) / 'decisions/D-3.md'
     path.parent.mkdir(parents=True)
     path.write_text(VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    assert main(['decision', 'route', 'D-3']) == 0
-    assert main(['decision', 'route', 'D-3']) == 0
+    from wuwei import decision
+    fields = decision.evaluate(path.read_text())[0]
+    decision.route_owner('D-3', fields, root)
+    decision.route_owner('D-3', fields, root)
     value = metrics.collect(root)
     assert value['decisions_per_day'] == 1
     assert value['owner_decisions_per_day'] == 1

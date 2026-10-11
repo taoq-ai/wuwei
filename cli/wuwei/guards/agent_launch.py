@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from wuwei.guards import Guard, wuwei_role  # noqa: F401 (decision.py imports it from here)
+from wuwei.guards import Guard, wuwei_role
 from wuwei.exits import DAMAGED, PAYLOAD
 
 

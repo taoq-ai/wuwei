@@ -11,7 +11,7 @@ def section(text, heading):
     return text.split(heading + '\n')[1].split('\n\n')[0].rstrip('\n')
 
 
-def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, monkeypatch, capsys):
+def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
     root = tmp_path
     (root / '.wuwei/memory').mkdir(parents=True)
     (root / '.wuwei/memory/goals.md').write_text(
@@ -35,8 +35,6 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
     state._write_state(lambda data: data['items']['DIVIDE-1'].update(pr='org/repo#1'),
                        root, reserved=False)
     assert main(['state', 'transition', 'DIVIDE-1', 'merged']) == 0
-    (workspace.day_dir(root) / 'decisions').mkdir(exist_ok=True)
-    (workspace.day_dir(root) / 'decisions/D-1.md').write_text('Question: Ship now?\nOutcome: defer\n')
     for kind, payload in (
             ('build.started', {'item': 'DIVIDE-1'}), ('build.checked', {'item': 'DIVIDE-1'}),
             ('verdict.rejected', {'item': 'DIVIDE-1'}),
@@ -52,7 +50,6 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
     assert main(['report']) == 0
     report = capsys.readouterr().out
     assert section(report, '## Merged') == '- DIVIDE-1 (org/repo#1)'
-    assert '- D-1: defer' in section(report, '## Decisions answered')
     assert section(report, '## Open at close') == section(report, '## Carry') == 'none'
 
     assert main(['status', '--line']) == 0

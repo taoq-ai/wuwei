@@ -70,5 +70,4 @@ nav:
     - Charter overrides: charter-overrides.md
   - Operations:
     - Recovery: recovery.md
-    - Release rehearsal: rehearsal.md
     - Integrity: integrity.md

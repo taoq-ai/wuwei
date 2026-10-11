@@ -57,7 +57,7 @@ def write_index(root=None):
 
 
 def constraints(root, data):
-    """The day's goals, plan, open decisions and running briefs, restated at every SessionStart."""
+    """The day's goals, plan and running briefs, restated at every SessionStart."""
     goals = 'none'
     if data['goals']:
         from wuwei import goals as goal_file
@@ -71,16 +71,11 @@ def constraints(root, data):
     plan = (f'{(workspace.day_dir(root) / "plan.md").relative_to(root).as_posix()} '
             f'(approved: {", ".join(data["approved_items"]) or "none"})'
             if data['gate_approved'] else 'not approved')
-    routes = data.get('decision_routes', {})
-    if routes:
-        from wuwei.decision import answered
-    open_ids = sorted(ident for ident in routes if answered(data, ident) is None)
     briefs = [f'{seat.get("item")} {name} {seat.get("brief")}' for name, seat in data['seats'].items()
               if seat.get('status') == 'running' and seat.get('brief')]  # #676: adhoc has none
     briefs += [f'{item} build {build.get("brief")}' for item, build in data.get('builds', {}).items()
                if build.get('status') in ('running', 'check')]
     return (f'Active constraints:\nGoals: {goals}\nPlan: {plan}\n'
-            f'Open decisions: {", ".join(open_ids) or "none"}\n'
             f'Current briefs: {"; ".join(briefs) or "none"}\n')
 
 

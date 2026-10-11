@@ -374,7 +374,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                     .replace('[owner.verbosity]\n', '[owner.verbosity]\ndm = "full"\n', 1)
                     + '[pace]\ndefault = "fast"\n[listen]\npoll_seconds = 60\n[responder]\nenabled = true\n'
                     + '[control_plane]\nowner = "T1/U1"\n'
-                    + '[decisions.cruise]\nmargin = 0.3\n[decisions.cruise.levels]\napproach = 1\n' + repos
+                    + '[grants]\nstanding = []\n' + repos
                     + 'tests = "pytest"\n')  # repos.1.tests has a near key (repos.1.gates)
     clean += repos
     capsys.readouterr()
@@ -382,7 +382,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     out = capsys.readouterr().out
     for key in ('brief.lead_minutes', 'brief.style', 'pace', 'repos.1.tests', 'listen', 'responder',
                 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
-                'decisions.cruise'):
+                'grants'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 
@@ -456,3 +456,25 @@ def test_upgrade_removes_an_installed_listener_unit(tmp_path, monkeypatch, capsy
     else:
         assert 'Removed the listener service (no longer shipped)' in out
         assert not unit.exists() and calls
+
+
+def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):
+    # Part 14: autonomy, decisions, steward and the digest verbosity leave config.toml.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    for name in ('[autonomy]', '[decisions]', '[steward]', 'digest ='):
+        assert name not in clean
+    path.write_text(clean.replace('[owner.verbosity]\n', '[owner.verbosity]\ndigest = "full"\n', 1)
+                    + '[steward]\nevery_tool_calls = 250\nloop_window_hours = 4\nloop_threshold = 9\n'
+                    '[autonomy]\nmode = "supervised"\n'
+                    '[decisions]\nwait_hours = 24\n[decisions.lenses]\ncompany-rule = "Q?"\n')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    out = capsys.readouterr().out
+    for key in ('owner.verbosity.digest', 'steward', 'autonomy', 'decisions'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert tomllib.loads(path.read_text()) == tomllib.loads(clean)

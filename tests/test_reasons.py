@@ -183,9 +183,8 @@ def test_collector_finds_an_or_fallback_wall():
 
 def test_record_id_hint_matches_its_prefix(tmp_path):
     from wuwei.decision import today_path
-    for prefix, clarification in (('D', False), ('C', True)):
-        with pytest.raises(ValueError, match=f'such as {prefix}-1$'):
-            today_path('../x', tmp_path, clarification=clarification)
+    with pytest.raises(ValueError, match='such as D-1$'):
+        today_path('../x', tmp_path)
 
 
 def test_family_texts_name_a_next_step_without_a_pronoun():
@@ -255,12 +254,6 @@ def test_before_plan_report(fresh, capsys):
         0, 'No report today: no day has started. Start one with /wuwei:wuwei-plan.\n')
 
 
-def test_before_plan_decision_show(fresh, capsys):
-    code, text = run(capsys, 'decision', 'show', 'D-1')
-    assert (code, text) == (0, 'No D-1 today; bin/wuwei status --json lists open decisions.\n')
-    assert 'Errno' not in text and str(fresh) not in text
-
-
 def test_before_plan_goals(fresh, capsys):
     code, text = run(capsys, 'goals')
     assert (code, text) == (0, 'No goals yet: run /wuwei:wuwei-plan and approve the proposed goals.\n')
@@ -320,14 +313,9 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('decision.py', 'at the host terminal', 14),
-    ('decision.py', 'decide {identifier} {option} in a host terminal', 14),
-    ('commands/decision.py', 'Record an owner choice from the host terminal', 14),
-    ('commands/decision.py', 'decide <id> <option> in a host terminal and answer y', 14),
-    ('commands/doctor.py', 'under strict you run it in a host terminal', 14),
+    ('decision.py', 'at the host terminal', 18),
     ('drafts.py', 'host terminal', 16),
     ('commands/drafts.py', 'from the owner host terminal', 16),
-    ('commands/outbound.py', 'outward.servers in a host terminal', 16),
     ('tracker.py', 'drafts approve {draft} in a host terminal', 16),
     ('tracker.py', 'ticket=<id> in a host terminal', 16),
     ('tracker.py', 'drafts approve {draft_id} in a host terminal', 16),

@@ -63,8 +63,8 @@ pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 # timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
 [owner.verbosity]
-default = "brief" # brief, standard or full: how much decisions, the digest and the report say to you.
-# report = "" # Per surface: decisions, digest or report. Empty uses default.
+default = "brief" # brief, standard or full: how much cards and the report say to you.
+# report = "" # Per surface: decisions or report. Empty uses default.
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
@@ -211,7 +211,7 @@ code_host_orgs = []
 # learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
 # Your own identity per channel; a message only you receive is never a draft.
 # owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login"}
-# Where the planner posts the digest and day report: "session" or "dm" (your own Slack DM).
+# Where the planner posts the day report: "session" or "dm" (your own Slack DM).
 # owner_channel = "dm"
 # Team PRs also require a configured repos.name, a known internal author and
 # internal discussion participants, verified through the code_host port.
@@ -241,18 +241,6 @@ sweep_seconds = 7200
 [sessions]
 stale_seconds = 3600
 # rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
-
-[steward]
-every_tool_calls = 250
-loop_window_hours = 4
-loop_threshold = 9
-
-# Default autonomous: decision route takes a Routine, Consequential or scoring Exploratory record as recommended.
-# [autonomy]
-# mode = "supervised" # Every decision beyond a two-way one on its own branch or PR asks the owner.
-
-[decisions]
-wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
 
 [pr]
 poll_seconds = 120

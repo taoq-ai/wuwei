@@ -1,6 +1,6 @@
 # Configuration
 
-`bin/wuwei init .` creates `.wuwei/config.toml`. Change one value with `wuwei config set <key> <value>` and add a repository with `wuwei config add-repo` (see [calibration](#calibration)); each prints the diff and asks its Owner step card in the session, and writes only on your Yes. No host terminal is needed. Outside the strict posture a decision card can also carry the value: `config set <key> <value> --from-card D-n` writes the option you picked. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key, in every posture. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
+`bin/wuwei init .` creates `.wuwei/config.toml`. Change one value with `wuwei config set <key> <value>` and add a repository with `wuwei config add-repo` (see [calibration](#calibration)); each prints the diff and asks its Owner step card in the session, and writes only on your Yes. No host terminal is needed. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key, in every posture. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
 ## Sections
 
@@ -9,11 +9,10 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[decisions]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -73,9 +72,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. See [People, channels and tools](#people-channels-and-tools). |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
-| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. |
-| `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
-| `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
+| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
+| `owner.verbosity.decisions` | `""` | Level for a learning or MCP registry card. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -145,7 +143,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
 | `gates.second_opinion` | `"off"` | `"<runtime>:<model>"`, for example `"codex:gpt-6-astra"`, runs one gate of every STANDARD and FULL item a second time on that runtime and model. Its verdict is one more gate record named `<role>@<runtime>`; a blocking finding from either model blocks. `claude` and `none` are refused. |
 | `gates.second_opinion_role` | `"quality"` | The gate role the second opinion repeats: `arch`, `quality` or `security`. |
-| `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with a decision record naming the finding and what would unpark it. Minimum 1. The report's `## Rounds` section counts them. |
+| `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with the finding as its reason; `wuwei plan resume <item>` asks you to resume it. Minimum 1. The report's `## Rounds` section counts them. |
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `gates.polish` | `"offer"` | After a round-one pass with review notes: `never` raises the PR at once, `offer` lets the planner take one polish round (`dispatch polish <item>`) or decline it (`dispatch skip-polish <item>`), `always` opens it. The builder fixes only the notes and one gate (the one that wrote them, else quality) re-checks the delta. It counts as a fix round. |
 | `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. |
@@ -167,20 +165,8 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner pages through the heartbeat. |
-| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
-| `steward.every_tool_calls` | `250` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in `fix` or `delta`, a tool-call or sweep review waits for the round to end; the close review never waits. |
-| `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
-| `steward.loop_threshold` | `9` | Exchanges in the window above which an item writes one `negotiation.loop` event a day; a second fix round today raises it too. |
+| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 
-## Decisions
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
-| `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
-| `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
-
-These keys feed the mandate block in every seat prompt (design spec 5.2). Under `autonomous` the seat assumes `approach`, records `retry`, `park`, `accept-residual` and `merge`, and sends every other class to you; under `supervised` every class comes to you.
 
 ## Telemetry
 
@@ -318,7 +304,7 @@ On each sweep the steward compares the fast checks, CI check names and deploy si
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message (a warning under `autonomy.mode = "supervised"`); the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
+| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message; the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` or from `config set` replaces the defaults; `config set --add` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail`, `other` or `local`), checked before the rules. A `local` server acts only on your machine and passes the outward guard. Built in: `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator`, `computer-use` and the `Claude_Browser` preview tools. The Bash guards judge a `run_in_terminal` command; `bin/wuwei outbound learn` proposes entries. Reads still pass. See [People, channels and tools](#people-channels-and-tools). |
@@ -339,7 +325,7 @@ On each sweep the steward compares the fast checks, CI check names and deploy si
 | `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
 | `outbound.default_tier` | `"send"` | The umbrella: what no tier row narrows gets this (`send`, `ask` or `block`) for chat, code host, mail and other writes. It also covers bug, triage and follow-up tickets in the workspace's own tracker; other docs and tracker writes keep `docs.auto` and `tracker.auto`. With `send` the broad commitment, disagreement and company rows drop out of the defaults; narrow with `outbound.tiers` rows per tool, person, channel, audience or topic. |
 | `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the digest and day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
+| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
 | `outbound.sensitive_keywords` | Built-in sensitive topic words | Optional replacement list; see the template for the full list. |
 | `outbound.sensitive_patterns` | `['\\bmental\\s+health\\b']` | Optional replacement regex list. |
 | `outbound.commitment_patterns` | Built-in commitment regexes | Optional replacement list; see the template for exact regexes. |
@@ -468,8 +454,8 @@ followed by `Reports:` with each report path. The snippet is redacted, limited t
 plain characters and cut to 60. Since reads `first measurement`, or
 `changed since <day>` when the server has an accepted baseline.
 
-To answer it, run `bin/wuwei decide D-<n> proceed` (or `defer`), or
-`bin/wuwei mcp decide D-<n> proceed`, from a host terminal and answer y. Under
+To answer it, run `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a host terminal
+and answer y. Under
 `observe` and `guarded` the planner asks it in the session and records the answer with
 the same command. The command writes `Outcome:`, `Decided-by: owner` and a
 `Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line

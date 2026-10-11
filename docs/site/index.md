@@ -15,7 +15,6 @@ WUWEI 无为 (said woo-way) means "effortless action." It is a Claude Code plugi
 - [Integrity](integrity.md): the signed release, its manifest and host reconfirmation
 - [Configuration](configuration.md): every section and key of the workspace config
 - [Operator reference](reference.md): every CLI command, JSON, decisions, heartbeat, sessions and hook latency budget
-- [Release rehearsal](rehearsal.md): the live journey to run before a release
 
 ## Start here
 

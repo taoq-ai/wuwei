@@ -212,7 +212,6 @@ def _entries(day, data, kinds):
     """Today's comment entries (key, item, kind, text) for items with a ticket, in event order."""
     from datetime import date, timedelta
     from wuwei import decision, verdict, watch
-    from wuwei.commands.why import question
     items = [name for name in data['items'] if ticket(data, name)]
     named = decision.naming(day, items)
     after = (date.fromisoformat(day.name) + timedelta(days=1)).isoformat()
@@ -224,13 +223,15 @@ def _entries(day, data, kinds):
                 found.append((item, 'close', f'Merged in {data["items"][item].get("pr")}.'))
             else:
                 found.append((item, 'progress', f'Phase: {phase}.'))
-        if kind == 'decision.decided':
-            verb, _, subject = str(payload.get('item_disposition', '')).partition(' ')
-            if verb in ('carried', 'parked'):
-                found.append((subject, 'close', f'Carried to {after} ({payload.get("id")}).'
-                              if verb == 'carried' else f'Parked ({payload.get("id")}).'))
-            else:
-                text = question(day, payload.get('id'))
+        if kind == 'plan.disposed':
+            reason = payload.get('reason')
+            found.append((payload.get('item'), 'close', f'Carried to {after}.' if payload.get('outcome') == 'carried'
+                          else f'Parked: {reason}.' if reason else 'Parked.'))
+        elif kind == 'decision.decided':
+            path = day / 'decisions' / f'{payload.get("id")}.md'
+            if path.is_file():
+                text = (verdict.rows(verdict.active_text(path.read_text(encoding='utf-8')), 'Question')
+                        or ['not recorded'])[0].strip()
                 text += '' if text.endswith(('.', '?', '!')) else '.'
                 found.extend((item, 'decisions',
                               f'Decision {payload.get("id")}: {text} Outcome: {payload.get("option")}.')

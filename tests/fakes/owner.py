@@ -2,7 +2,7 @@
 
 import json
 
-from wuwei.guards.decision import record_gate
+from wuwei.guards.answers import record_gate
 
 
 def _record(root, card, reply, session, agent):

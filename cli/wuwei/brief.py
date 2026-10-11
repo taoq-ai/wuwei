@@ -116,33 +116,17 @@ def ci_block(refs, tree):
 
 
 def mandate(root):
-    """Design 5.2: what a seat decides alone, records, or sends to the owner."""
-    from wuwei import decision
+    """Design 5.2: what a seat decides alone, records, or names for the owner."""
     config = workspace.load_config(root)
-    assumed = config['autonomy']['mode'] == 'autonomous'
-    recorded = ['retry', 'park', 'accept-residual', 'merge'] if assumed else []
-    owner = [name for name in decision.CLASSES if name not in recorded and not (assumed and name == 'approach')]
-    record = []
-    if assumed:
-        record.append('two-way open questions inside the item: take your recommendation and record it '
-                      'under Assumptions: in the spec or PR body (what was assumed, why, what would '
-                      'overturn it).')
-    if recorded:
-        record.append(f'Decision records of class {", ".join(recorded)}: write the record and run '
-                      'wuwei decision route D-n.')
-    to_owner = ('Go to the owner, as a decision record you cite by id: one-way doors (when unsure, it '
-                'is one-way), messages to people, scope agreed with other people, deploys, '
-                "trust-boundary findings, anything outside the item's goals"
-                + (f', decision records of class {", ".join(owner)}.' if owner else '.'))
+    owner = ("Name a one-way, scope, goal or trust-boundary question in your result (a sentinel's "
+             "ESCALATE, a builder's Blocked: line); wuwei next asks the owner.")
     if config['deploy']['deny']:
-        to_owner += f' Commands the owner runs: {", ".join(config["deploy"]["deny"])}.'
-    to_owner += (' A confirmation from a person outside the loop is never a precondition: write the '
-                 'record, run wuwei decision route D-n --external <item> and continue reversible work.')
+        owner += f' Commands the owner runs: {", ".join(config["deploy"]["deny"])}.'
     return '\n'.join(['Mandate (design 5.2):',
                       'Decide alone: what the brief, your charter and the engineering standards '
                       'already answer.',
-                      'Decide and record: ' + (' '.join(record) or 'none.'),
-                      to_owner, 'Nothing else is a question.'])
+                      'Record two-way choices under Assumptions: in the spec or PR body (what was '
+                      'assumed, why, what would overturn it).', owner])
 
 
 def seat_action(role, brief_path, worktree, root):
@@ -416,7 +400,7 @@ def rulings(body, directory, tree, data):
         result.append(f'Ruling {key} [{label}] {text}')
     if missing:
         raise Refused(('ruling id(s) ' + ' '.join(missing) + ' resolve in no decisions, specs or gate_policy'
-                     + '; correct the ids, or record the decision first (bin/wuwei decision template)'))
+                     + "; correct the ids, or write the ruling into the item's spec first"))
     return result
 
 

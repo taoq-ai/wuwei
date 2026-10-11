@@ -466,7 +466,7 @@ def test_report_publishes_once(day, monkeypatch, capsys):
     draft = row['inputs']['draft']
     assert draft['title'] == 'Report 2026-10-03' and draft['kind'] == 'report' and draft['ref'] == ''
     assert [line for line in draft['body'].splitlines() if line.startswith('## ')] == [
-        '## Merged', '## Parked', '## Decisions answered', '## Carry', '## Docs']
+        '## Merged', '## Parked', '## Carry', '## Docs']
     assert '- X: none (why)' in draft['body']
     assert main(['report']) == 0
     assert f'already {row["id"]}' in capsys.readouterr().out and len(drafts_of(day)) == 1

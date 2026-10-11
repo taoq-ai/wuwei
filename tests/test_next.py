@@ -182,24 +182,6 @@ def test_morning_path(root, capsys, monkeypatch):
         no_skill(found)
 
 
-def test_cards_after_the_gate_come_once(root, capsys):
-    planned(root)
-    day(root, gate_approved=True, planner_session_id='S', decision_routes={'D-1': 'owner'})
-    (workspace.day_dir(root) / 'goals.md').write_text('# Goals\n')
-    from test_decision import VALID
-    (workspace.day_dir(root) / 'decisions').mkdir()
-    (workspace.day_dir(root) / 'decisions/D-1.md').write_text(VALID.replace('Decided-by: seat', 'Decided-by: owner'))
-    found = row(capsys)[1]
-    assert (found["state"], found["action"], found.get("item")) == ("decision", "card", "D-1"), found
-    passed = [json.loads(line)['payload'] for line in
-              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
-              if json.loads(line)['kind'] == 'next.action']
-    assert 'telemetry' not in {row['state'] for row in passed}
-    assert row(capsys)[1]['state'] == 'decision'  # unanswered: asked again
-    ran(root, found['widget'][0]['record'].replace('<label>', 'x'))
-    assert row(capsys)[1]['state'] == 'close'
-
-
 def test_next_records_only_with_day_state(root, capsys):
     calibrated(root)
     for name in ('state.json', 'state.snapshot.json'):
@@ -216,17 +198,10 @@ def test_path_events_are_reserved(root, capsys, kind, producer):
     assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
 
 
-def test_decision_row(root, capsys):
-    approved(root, {}, decision_routes={'D-1': 'owner'})
-    found = coarse(root)
-    assert (found['state'], found['command']) == ('decision', 'wuwei decision show D-1 --widget')
-    seen(root, 'decision')
-    assert coarse(root)['state'] == 'decision'  # once per D-n: the key is the record id
-    state.append_event('next.action', {'state': 'x', 'item': '', 'done': [['decision', 'D-1']]}, root)
-    assert coarse(root)['state'] != 'decision'
-    state._write_state(lambda data: data.update(
-        decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}}), root, reserved=False)
-    assert coarse(root)['state'] != 'decision'
+def test_no_decision_row(root, capsys):
+    # Part 14: an owner decision comes from the command that needs it; no record row asks one.
+    approved(root, {}, decision_routes={'D-1': {'reversibility': 'one-way'}})
+    assert coarse(root)['state'] == 'close'
 
 
 @pytest.mark.parametrize('phase,fields,expected,command', [
@@ -462,7 +437,7 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     approved(root, {f'ITEM-{n}': ('implement', {}) for n in (1, 2, 3)}, cap=3,
              builds={f'ITEM-{n}': build for n in (1, 2, 3)},
              seats={'b1': {'role': 'builder', 'item': 'ITEM-1', 'status': 'running', 'brief': 'briefs/b1.md'}},
-             decision_routes={'D-1': {}, 'D-2': {}})
+             )
     memory = root / '.wuwei/memory'
     (memory / 'notes').mkdir(parents=True)
     for name in ('spine.md', 'index.md', 'goals.md'):
@@ -471,21 +446,17 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     assert hook(monkeypatch, root) == 0
     text = context(capsys)
     assert len(text.encode('utf-8')) <= BUDGET
-    for phrase in ('Next: decision: ', 'Open decisions: D-1, D-2', 'Goals: ', 'Plan: ',
+    for phrase in ('Next: build: ', 'Goals: ', 'Plan: ',
                    'Full day state: wuwei state get'):
         assert phrase in text
     for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
         assert phrase not in text
-@pytest.mark.parametrize('decided_by', ['seat', 'owner'])
-def test_carried_item_is_skipped(root, capsys, decided_by):
-    approved(root, {'A': ('implement', {})}, decision_outcomes={'D-1': {
-        'decided_by': decided_by, 'item_disposition': 'carried A', 'option': 'carry'}})
+@pytest.mark.parametrize('kind', ['carried', 'parked'])
+def test_carried_item_is_skipped(root, capsys, kind):
+    approved(root, {'A': ('implement', {'disposition': {'kind': kind, 'reason': 'r'}})})
     found = coarse(root)
-    if decided_by == 'seat':
-        assert found['state'] == 'close' and 'carried' in found['why']
-        assert found['command'] != 'wuwei build next A'
-    else:
-        assert (found['state'], found['command']) == ('build', 'wuwei build next A')
+    assert found['state'] == 'close' and 'carried' in found['why']
+    assert found['command'] != 'wuwei build next A'
 
 
 def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
@@ -573,9 +544,12 @@ def test_build_rows_return_the_build_loop_action(root, capsys, monkeypatch):
 @pytest.mark.parametrize('answer,expected', [
     ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']},
      ('verdicts', 'gates', None)),
-    ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'decision': 'D-7',
-      'command': 'wuwei decision route D-7'},  # #732: the answer's command, never plan park
-     ('verdicts', 'run', 'wuwei decision route D-7')),
+    ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A',
+      'card': {'question': 'Owner step: bin/wuwei dispatch next A (abc)'}},  # part 14: the owner's card
+     ('verdicts', 'run', 'wuwei dispatch next A')),
+    ({'action': 'escalate', 'reason': 'round cap 2 reached: quality still blocks: - P1',
+      'command': 'wuwei plan resume A'},  # the round cap: once, when the CLI parks it
+     ('verdicts', 'run', 'wuwei plan resume A')),
     ({'action': 'raise', 'notes': ['n1']}, ('raise', 'run', None)),
     ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
       'skip': 'wuwei dispatch skip-polish A'}, ('polish', 'run', 'wuwei dispatch polish A')),
@@ -589,7 +563,7 @@ def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, 
     if expected[2]:
         assert found['command'] == expected[2]
     if answer['action'] == 'escalate':
-        assert 'D-7' in found['why']
+        assert answer['reason'] in found['why'] and found['then'] == next_command.THEN['owner-step']
     if answer['action'] == 'gates':
         assert found['then'] == next_command.THEN['set']
         assert 'wuwei brief arch A arch-A' in last_event(root)['payload']['named']
@@ -613,6 +587,18 @@ def test_shepherd_launch_then_card(root, capsys, monkeypatch):
     day(root, seats={'shepherd-A': {'status': 'stopped', 'role': 'shepherd', 'item': 'A'}})
     found = row(capsys)[1]
     assert (found['action'], found['command']) == ('card', 'wuwei why A')
+
+
+def test_a_parked_verdict_asks_the_day_again(root, capsys, monkeypatch):
+    # Part 14: a PARK verdict or the owner's No parks in code; next moves on to the day.
+    from wuwei import dispatch
+
+    def parked(item, root=None):
+        day(root, items={'A': {'phase': 'parked', 'status': 'blocked', 'resume_phase': 'gate'}})
+        return {'action': 'parked', 'reason': 'gate quality PARK: - P1', 'command': 'wuwei plan resume A'}
+    approved(root, {'A': ('gate', {})})
+    monkeypatch.setattr(dispatch, 'next_step', parked)
+    assert row(capsys)[1]['state'] == 'close'
 
 
 def test_fix_asks_the_day_again_and_refusal_exits_one(root, capsys, monkeypatch):
@@ -641,17 +627,10 @@ def test_dispatch_and_stuck_rows(root, capsys, monkeypatch):
 # #551: steward and close
 
 
-def test_steward_rows(root, capsys):
+def test_no_steward_row_after_tool_calls(root):
+    # Part 14: the steward runs at sweep and close only; no tool-call row.
     approved(root, {})
     state.append_event('steward.due', {'tool_calls': 200}, root)
-    found = coarse(root)
-    assert (found['command'], found['then']) == ('wuwei steward run --trigger tool-calls',
-                                                 next_command.THEN['background'])
-    brief_path = '.wuwei/days/2026-09-30/briefs/steward-abc.md'
-    state.append_event('steward.run', {'trigger': 'tool-calls', 'brief': brief_path, 'tool_calls': 200}, root)
-    found = coarse(root)
-    assert (found['state'], found['action'], found['brief']) == ('steward', 'launch', brief_path)
-    day(root, seats={'steward-abc': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
     assert coarse(root)['state'] == 'close'
 
 
@@ -659,42 +638,30 @@ def test_steward_launches_only_the_newest_brief_and_never_beside_a_running_one(r
     """#617: stale briefs are never launched and one steward runs at a time."""
     approved(root, {})
     briefs = '.wuwei/days/2026-09-30/briefs'
-    for name, count in (('steward-old', 50), ('steward-new', 100)):
-        state.append_event('steward.run', {'trigger': 'tool-calls', 'brief': f'{briefs}/{name}.md',
-                                           'tool_calls': count}, root)
+    for name in ('steward-old', 'steward-new'):
+        state.append_event('steward.run', {'trigger': 'sweep', 'brief': f'{briefs}/{name}.md'}, root)
     found = coarse(root)
     assert (found['state'], found['action'], found['brief']) == ('steward', 'launch', f'{briefs}/steward-new.md')
     day(root, seats={'steward-new': {'status': 'running', 'role': 'steward', 'item': 'day'}})
     assert coarse(root)['state'] != 'steward'  # the old brief is never offered
-    state.append_event('steward.due', {'tool_calls': 150}, root)
-    assert coarse(root)['state'] != 'steward'  # due waits while the steward runs
-    state.append_event('steward.run', {'trigger': 'tool-calls', 'brief': f'{briefs}/steward-next.md',
-                                       'tool_calls': 150}, root)
-    assert coarse(root)['state'] != 'steward'  # an unlaunched brief waits too
-    state.append_event('steward.due', {'tool_calls': 200}, root)
-    day(root, seats={'steward-new': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
-    found = coarse(root)
-    assert (found['state'], found['command']) == ('steward', 'wuwei steward run --trigger tool-calls')
-
+    state.append_event('steward.run', {'trigger': 'sweep', 'brief': f'{briefs}/steward-next.md'}, root)
+    assert coarse(root)['state'] != 'steward'  # an unlaunched brief waits while one runs
 
 
 def test_steward_rows_wait_for_the_fix_round(root):
-    """#624: no steward row while an item is in fix or delta; the due row comes back after."""
+    """#624: no steward launch while an item is in fix or delta."""
     approved(root, {'A': ('fix', {})}, seats={'b': {'status': 'running', 'role': 'builder', 'item': 'A'}})
     state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md', 'tool_calls': 0}, root)
     assert coarse(root)['state'] != 'steward'  # no launch row
-    state.append_event('steward.due', {'tool_calls': 250}, root)
-    assert coarse(root)['state'] != 'steward'  # no due row
     day(root, items={'A': {'phase': 'delta'}},
         seats={'g': {'status': 'running', 'role': 'gate', 'item': 'A'}})
     assert coarse(root)['state'] != 'steward'
-    day(root, items={'A': {'phase': 'merged'}},
-        seats={'steward-s': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
-    assert coarse(root)['command'] == 'wuwei steward run --trigger tool-calls'
+    day(root, items={'A': {'phase': 'merged'}})
+    assert (coarse(root)['state'], coarse(root)['brief']) == ('steward', 'b/steward-s.md')
+
 
 def test_close_path(root, capsys):
     approved(root, {'A': ('merged', {})}, decision_routes={'D-1': 'owner'})
-    state.append_event('next.action', {'state': 'x', 'item': '', 'done': [['decision', 'D-1']]}, root)
     states = []
 
     def expect(name, command, action='run'):
@@ -705,10 +672,7 @@ def test_close_path(root, capsys):
                                            'done': [[name, found.get('item', '')]]}, root)
     expect('close', 'wuwei close')
     day(root, close_requested=True)
-    expect('close', 'wuwei decision show D-1 --widget', 'card')
-    expect('close', 'wuwei decision show D-1 --widget', 'card')  # it holds the close: asked again
-    day(root, decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}})
-    expect('close', 'wuwei close')
+    expect('close', 'wuwei close')  # part 14: no decision record holds the close
     state.append_event('steward.run', {'trigger': 'close', 'brief': 'b/steward-c.md'}, root)
     day(root, seats={'steward-c': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
     expect('retro', 'wuwei retro')
@@ -766,20 +730,6 @@ def test_gate_imports_yesterday_when_it_left_unfinished_items(root, capsys):
     assert coarse(root)['command'] == 'wuwei plan gate'  # the lead proposed it again: no import
 
 
-def test_an_empty_close_card_does_not_hold_next(root, capsys):
-    approved(root, {'A': ('merged', {})}, decision_routes={'D-1': 'owner'}, close_requested=True)
-    seen(root, 'decision')
-    state.append_event('next.action', {'state': 'decision', 'item': 'D-1', 'action': 'pass'}, root)
-    code, found = row(capsys)
-    assert (code, found['state'], found['command']) == (0, 'close', 'wuwei close'), found
-
-
-def test_no_rehearse_row(root, capsys):
-    # #815: no rehearsal ledger; the owner card comes first.
-    approved(root, {}, decision_routes={'D-1': 'owner'})
-    assert coarse(root)['state'] == 'decision'
-
-
 @pytest.mark.parametrize('kind,producer', [('seat adhoc', 'wuwei seat start'),
                                            ('subagent.untraced', 'wuwei hook SubagentStop')])
 def test_adhoc_seat_events_are_reserved(root, capsys, kind, producer):
@@ -833,9 +783,9 @@ def test_a_lone_pr_comes_after_the_steward(root):
     approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
     found = coarse(root)
     assert (found['state'], found['command']) == ('pr', 'wuwei pr act example/project#7')
-    assert 'rows' not in found
-    state.append_event('steward.due', {'tool_calls': 200}, root)
-    assert coarse(root)['command'] == 'wuwei steward run --trigger tool-calls'
+    assert 'rows' not in found and 'Owner step card' in found['then']
+    state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md'}, root)
+    assert coarse(root)['state'] == 'steward'
 
 
 def test_json_rows_survive_resolution(root, capsys, monkeypatch):

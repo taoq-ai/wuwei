@@ -92,14 +92,11 @@ def test_discovery_intake_saves_candidates_and_applies_policy(root, monkeypatch)
     assert any(row['kind'] == 'plan.added' for row in events)
 
 
-def test_strict_full_appears_in_owner_decision_batch(root):
-    from wuwei import steward
+def test_strict_full_is_proposed_to_the_owner(root):
     (root / '.wuwei/config.toml').write_text('[discovery]\nautostart = "strict"\n')
     save_candidate(root, candidate(track='FULL'))
     assert plan.add('NEW', root)['action'] == 'owner'
-    queue = steward.decision_queue(root)
-    assert any(row['id'] == 'NEW' and row['recommendation'] == 'defer'
-               for row in queue)
+    assert state.read_state(root)['intraday_proposals']['NEW']['decision'] == 'owner'
 
 
 def test_incomplete_discovery_candidate_goes_to_owner(root, monkeypatch):
@@ -112,7 +109,6 @@ def test_incomplete_discovery_candidate_goes_to_owner(root, monkeypatch):
 
 
 def test_intake_skips_candidates_the_steward_cannot_lint(root, monkeypatch):
-    from wuwei import steward
     unsafe = 'org/repo#1:thread:PRRT_1'
     monkeypatch.setattr(discovery, 'discover', lambda path: {
         'sources': {'tracker': 'measured: 1'},
@@ -123,7 +119,6 @@ def test_intake_skips_candidates_the_steward_cannot_lint(root, monkeypatch):
               (root / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()]
     assert not any(row['kind'] == 'plan.proposed' and row['payload']['item'] == unsafe
                    for row in events)
-    assert [row['id'] for row in steward.decision_queue(root)] == ['PARTIAL']
 
 
 def test_intake_does_not_repeat_owner_proposals(root, monkeypatch):
@@ -271,7 +266,7 @@ def test_plan_add_records_the_owner_note_once(root, monkeypatch):
     items = state.read_state(root)['items']
     assert items['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
     assert 'approved_as' not in items['OWN-2'] and 'approved_as' not in items['NEW']
-    with pytest.raises(state.StateError, match='decision template'):
+    with pytest.raises(state.StateError, match='scope change'):
         plan.add('OWN-1', root, goal='G-1', note='more')
     assert state.read_state(root)['items']['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
     from wuwei.__main__ import main

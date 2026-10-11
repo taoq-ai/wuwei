@@ -7,45 +7,38 @@ import re
 import shlex
 import sys
 
-from wuwei import decision, obligations, registry, state, watch, workspace
+from wuwei import obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
 from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 
 def _verify(root, host, ref, record, config):
-    kind, identifier, comment_id = record['kind'], record['decision'], record['comment_id']
+    """The owner-authored marker comment WUWEI <kind> <ref> <day>; a marker posted before the
+    upgrade, with its D-n and record fingerprint after the ref, still verifies."""
+    kind, comment_id = record['kind'], record['comment_id']
     day = workspace.day_dir(root).name
     if (kind not in ('parked', 'carried') or record['day'] != day
             or type(comment_id) is not int or comment_id <= 0):
         raise ValueError(f'invalid PR disposition; {DAMAGED}')
-    text = decision.today_path(identifier, root).read_text(encoding='utf-8')
-    fields, _ = decision.evaluate(text)
-    data = state.read_state(root)
-    if (decision.route(fields) != 'owner' or fields['Decided-by'] != 'owner'
-            or identifier in data.get('decision_outcomes', {}) and not decision.answered(data, identifier)):
-        raise ValueError('disposition needs an owner-routed decision without a seat outcome; route it with bin/wuwei decision route D-n. Wait for the owner answer, then rerun bin/wuwei pr disposition')
-    if obligations._fingerprint(text) != record['decision_fingerprint']:
-        raise ValueError('disposition decision changed; verify again; the owner posts a fresh marker comment, then rerun bin/wuwei pr disposition with its --comment id')
     discussion = obligations._read(host.threads, ref, root=root)
     comments = obligations._records(discussion['comments'])
-    expected = f'WUWEI {kind} {ref} {identifier} {day} {record["decision_fingerprint"]}'
+    expected = f'WUWEI {kind} {ref} {day}'
+    legacy = re.compile(rf'WUWEI {kind} {re.escape(ref)} D-[1-9][0-9]* {day} [0-9a-f]{{64}}')
     owner = obligations._owner_login(config)
     if not any(row['id'] == comment_id and row['author'] == owner and not row['is_bot']
-               and row['body'].strip() == expected for row in comments):
+               and (row['body'].strip() == expected or legacy.fullmatch(row['body'].strip()))
+               for row in comments):
         raise ValueError(f'disposition needs a fresh owner-authored comment: {expected}; the owner posts it on the PR, then rerun bin/wuwei pr disposition with its --comment id')
     return kind
 
 
-def record_disposition(root, ref, kind, identifier, comment_id):
+def record_disposition(root, ref, kind, comment_id):
     ref = pull_request(ref)
     config = workspace.load_config(root)
     host, refs = watch.owned(root, config)
     if ref not in refs:
         raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
-    text = decision.today_path(identifier, root).read_text(encoding='utf-8')
-    record = {'kind': kind, 'decision': identifier, 'comment_id': comment_id,
-              'day': workspace.day_dir(root).name,
-              'decision_fingerprint': obligations._fingerprint(text)}
+    record = {'kind': kind, 'comment_id': comment_id, 'day': workspace.day_dir(root).name}
     _verify(root, host, ref, record, config)
     def update(data):
         data.setdefault('pr_dispositions', {})[ref] = record
@@ -438,44 +431,18 @@ def _thread(root, ref, item, tree, measured, reply=None):
         thread, latest = _latest(measured, surface, target)
         text, answer = latest['body'], {}
         if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
-            fingerprint = obligations._fingerprint(latest)
-            prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
-            if prior is None or prior.get('fingerprint') != fingerprint:
-                text = (
-                    f'Question: How should {ref} thread {target} change scope?\nClass: other\n'
-                    f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-                    '| change | Make the scope change | Fails the owner scope decision must. | '
-                    'The PR scope changes without owner review. |\n'
-                    '| defer | Defer to the owner | Passes every must and avoids unapproved scope. | '
-                    'The thread waits for the owner. |\nMusts:\n'
-                    '| Criterion | change | defer |\n| --- | --- | --- |\n'
-                    '| Owner scope decision | fail | pass |\nWants:\n'
-                    '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
-                    '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
-                    'Reasoning: Avoiding unapproved scope decided it; an owner approval would flip it.\n'
-                    'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
-                    'Pre-mortem: Scope changes without owner review.\n'
-                    'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n')
-                path = decision.write(text, root)
-                decision.route_owner(path.stem, decision.evaluate(text)[0], root)
-                relative = str(path.relative_to(root))
-                state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
-                                   .setdefault(ref, {}).update({key: {'path': relative,
-                                                                        'fingerprint': fingerprint}}),
-                                   root, reserved=False, kind='pr.action.decision',
-                                   payload={'pr': ref, 'surface': surface, 'target': target})
-                print(json.dumps({'action': 'owner_decision', 'decision': str(path.relative_to(root))}))
-                return 1
-            path = root / prior['path']
-            if not path.is_file():
-                raise ValueError('recorded scope decision is missing; restore the decision file named in the day state; bin/wuwei doctor shows what is missing')
-            option = decision.answered(state.read_state(root), path.stem)
-            if option is None:
-                pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
-                continue
-            if option == 'change':
+            from wuwei import sessions  # the owner decides a scope change on the card of pr act
+            command = f'bin/wuwei pr act {ref}'
+            detail = (f'Reviewer asks a scope change on {ref} ({target}): {json.dumps(text[:200])}. '
+                      'Yes makes it in a fix round; No leaves the thread for you.')
+            token = obligations._fingerprint(latest)[:12]
+            owner = sessions.owner_answer(root, command, detail, token)
+            if owner == 'Yes':
                 return _fix(root, ref, item, tree, measured, feedback=text)
-            answer = {'decision': prior['path'], 'option': option}
+            if owner != 'No':
+                print(sessions.needs_owner(root, command, detail, token), file=sys.stderr)
+                return 1
+            answer = {'option': 'defer'}
         elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):
             return _fix(root, ref, item, tree, measured, feedback=text)
         if reply is None:

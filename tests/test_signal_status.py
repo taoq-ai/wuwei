@@ -324,7 +324,6 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
-    emitted.add('decision.reversed')  # owner_outcome picks its kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
@@ -341,15 +340,12 @@ def test_emitted_kinds_have_intended_tiers():
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'warn',
                 'build.fix_opened': 'silent', 'polish.skipped': 'warn', 'pr.action.done': 'silent',
-                'pr.action.decision': 'silent',
                 'retro.gap': 'warn', 'seat stop unmatched': 'warn',
                 'seat adhoc': 'silent', 'subagent.untraced': 'warn',
                 'traces.gap': 'warn', 'traces.slow': 'warn', 'hook.refusal': 'silent',
                 'guard.would_refuse': 'silent', 'config.newer_template': 'warn',
                 'hook.warning': 'warn',
-                'verdict.rejected': 'silent', 'decision.rejected': 'warn',
-                    'decision.decided': 'silent',
-                    'decision.routed': 'silent', 'decision.digest': 'silent',
+                'verdict.rejected': 'silent', 'decision.decided': 'silent', 'decision.routed': 'silent',
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
@@ -362,26 +358,22 @@ def test_emitted_kinds_have_intended_tiers():
                 'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
                 'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
-                'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent', 'gate.card': 'silent', 'discovery.requested': 'silent',
+                'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent', 'finding.noted': 'silent',
                 'plan.proposed': 'warn', 'build.requested': 'warn',
                 'tracker.call': 'warn',
                 'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',
                 'tracker.logged': 'silent', 'plan.set': 'silent',
-                'discovery.unmeasured': 'warn', 'steward.notes': 'warn',
-                'steward.run': 'silent', 'steward.due': 'warn',
-                'steward.acknowledged': 'silent',
+                'discovery.unmeasured': 'warn', 'steward.run': 'silent',
+                'plan.disposed': 'silent', 'plan.resumed': 'silent',
                 'calibration.drift': 'warn',
                 'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
-                'negotiation.loop': 'warn',
-                'decision.waited': 'warn', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent', 'outward.lint': 'silent',
+                'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'outward.unknown_tool': 'warn', 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
                 'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
-                'config.set': 'silent',
-                'decision.reversed': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():
@@ -478,18 +470,6 @@ def test_draft_events_use_decisions_lane(kind, tier):
 ROUTED = {'D-2': {'reversibility': 'unsure', 'recommendation': 'defer'}}
 
 
-def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei.commands.status import attention
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ['D-2']})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    with pytest.raises(ValueError, match='invalid decision ledger'):
-        attention(directory)
-    assert main(['status', '--line']) == 2
-    assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
-
-
 def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
     light = {'tier': 'light', 'computed': 'light', 'reasons': ['3 changed lines within light_max_lines 100'],
@@ -581,29 +561,6 @@ def test_pr_changed_is_first_carries_the_summary_and_clears_at_wake_seen(tmp_pat
 def test_old_pr_changed_without_summary_names_the_fields(tmp_path, monkeypatch):
     _, _, rows = status_of(tmp_path, monkeypatch, [CLOCK, changed()])
     assert rows[0]['reason'] == 'example/project#7 changed: checks'
-
-
-def test_negotiation_loop_tiers():
-    from wuwei.signal import classify
-    loop = {'kind': 'negotiation.loop', 'payload': {'item': 'alpha', 'past_goal': False}}
-    assert classify(loop, {}) == ('warn', 'Work')
-    loop['payload']['past_goal'] = True
-    assert classify(loop, {}) == ('page', 'Work')
-    assert classify({'kind': 'decision.waited'}, {}) == ('warn', 'Decisions')
-
-
-def test_status_line_counts_loops(tmp_path, monkeypatch):
-    reason = 'alpha is going back and forth: 2 records'
-    loop = {'kind': 'negotiation.loop', 'ts': NOW,
-            'payload': {'item': 'alpha', 'past_goal': False, 'reason': reason}}
-    data, line, rows = status_of(tmp_path, monkeypatch, [loop])
-    assert data['loops'] == 1 and ' · loops 1' in line
-    assert [row['reason'] for row in rows if row['source'] == 'negotiation.loop'] == [reason]
-
-
-def test_status_line_without_loops(tmp_path, monkeypatch):
-    data, line, _ = status_of(tmp_path, monkeypatch, [])
-    assert data['loops'] == 0 and 'loops' not in line
 
 
 def test_restart_on_the_status_line(tmp_path, monkeypatch):
@@ -771,19 +728,17 @@ def test_status_line_shows_running_seats_per_goal(tmp_path):
     assert 'seats' not in cli(tmp_path, 'status', '--line').stdout
 
 
-def test_status_json_names_plan_decisions_and_versions(tmp_path):
+def test_status_json_names_plan_and_versions(tmp_path):
     from wuwei import integrity
-    routes = {'D-7': {'reversibility': 'unsure'}, 'D-8': {'reversibility': 'unsure'}}
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes, 'decision_outcomes': {
-        'D-8': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}})
+    routes = {'D-7': {'reversibility': 'unsure'}}
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes})
     (tmp_path / '.wuwei/config.toml').write_text('template_version = "0.1.0"\n')
     data = json.loads(cli(tmp_path, 'status', '--json').stdout)
-    assert (data['plan'], data['decisions'], data['plugin'], data['template']) == (
-        False, ['D-7'], integrity.version(), '0.1.0')
-    assert not {'nudges', 'nudges_mode'} & set(data)
+    assert (data['plan'], data['plugin'], data['template']) == (False, integrity.version(), '0.1.0')
+    assert not {'nudges', 'nudges_mode', 'decisions', 'loops'} & set(data)
     assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
             'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'health',
-            'loops', 'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
+            'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
     assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
 
@@ -845,8 +800,8 @@ def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
     assert (result.returncode, result.stdout) == (0, 'WUWEI no plan yet | pages 0\n')
     (directory / 'plan.md').write_text('# Plan\n')
     assert cli(tmp_path, 'status', '--line').stdout == 'WUWEI gate waiting | pages 0\n'
-    data = {**four_seats(tmp_path / 'b', monkeypatch), 'decisions': ['D-7', 'D-8']}
-    assert status.line(data).startswith('WUWEI decision D-7 waiting | 1 building')
+    data = four_seats(tmp_path / 'b', monkeypatch)
+    assert status.line(data).startswith('WUWEI 1 building')
     assert status.line({**data, 'restart': STALE}).startswith('WUWEI restart Claude Code')
     assert status.line({**data, 'gate_approved': False, 'plan': True}).startswith('WUWEI gate waiting |')
 
@@ -925,13 +880,13 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = {**four_seats(tmp_path, monkeypatch), 'cap_bound': 'budget', 'seats': {'G-1': 2},
             'watch': 'dead', 'health': 'ok', 'sessions': 2,
-            'loops': 1, 'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
+            'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
             'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [
-        'pages 1 · observe · loops 1 · prs 3 changed · reviewers: none (solo)'
+        'pages 1 · observe · prs 3 changed · reviewers: none (solo)'
         ' · traces: 2 gaps',
         'watch dead · health ok · sessions 2',
         'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',

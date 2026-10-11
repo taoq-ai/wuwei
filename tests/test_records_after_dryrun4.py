@@ -11,33 +11,9 @@ import pytest
 from wuwei import plan, registry, state, workspace
 from wuwei.__main__ import main
 from test_intraday_intake import candidate
-from test_signal_status import NOW, cli, day
+from test_signal_status import cli
 
 ROOT = Path(__file__).resolve().parents[1]
-DUE = {'kind': 'steward.due', 'payload': {'tool_calls': 51}}
-RUN = {'kind': 'steward.run', 'payload': {'trigger': 'tool-calls', 'brief': 'b', 'tool_calls': 51}}
-
-
-@pytest.mark.parametrize('events,count', [([DUE, RUN], 0), ([RUN, DUE], 1)])
-def test_steward_run_clears_earlier_due_warning(tmp_path, monkeypatch, events, count):
-    from wuwei.commands.status import attention
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True},
-                    [{**event, 'ts': NOW} for event in events])
-    (tmp_path / '.wuwei/config.toml').write_text('')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert [row['tier'] for row in attention(directory) if row['source'] == 'steward.due'] == ['warn'] * count
-
-
-def test_steward_ack_id_is_documented(tmp_path):
-    result = cli(tmp_path, 'steward', 'ack', '--help')
-    assert result.returncode == 0
-    text = ' '.join(result.stdout.split())
-    assert '-fix-3' in text and 'requires planner acknowledgement' in text and 'steward.due' in text
-    reference = (ROOT / 'docs/site/reference.md').read_text()
-    assert 'steward ack' in reference and '-fix-3' in reference
-
-
 def test_merged_item_reads_done(tmp_path, monkeypatch, capsys):
     root = tmp_path
     (root / '.wuwei/memory').mkdir(parents=True)

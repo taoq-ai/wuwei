@@ -725,7 +725,7 @@ def path(events, traces, planner):
 
 
 def fix_rounds(events):
-    """Fix rounds per item from the day's phase changes; steward.review reads only this (#617)."""
+    """Fix rounds per item from the day's phase changes (#617)."""
     return dict(Counter(item for row in events for item, phase in
                         row['payload'].get('phase_changes', {}).items() if phase == 'fix'))
 

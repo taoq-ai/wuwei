@@ -440,33 +440,30 @@ def section(prompt, start):
 
 
 def test_builder_prompt_carries_the_mandate(day, monkeypatch):
+    # Part 14: three fixed lines; no decision class, record or route.
     prompt = mandate_prompt(day, monkeypatch)
     assert prompt.splitlines()[0] == 'WUWEI brief: .wuwei/days/2026-09-28/briefs/mandate.md'
-    for text in ('Mandate (design 5.2):', 'Decide alone:', 'Decide and record:',
-                 'Go to the owner', 'Nothing else is a question.'):
-        assert text in prompt
-    record, owner = section(prompt, 'Decide and record:'), section(prompt, 'Go to the owner')
-    assert 'under Assumptions:' in record and 'retry, park, accept-residual, merge' in record
-    assert 'defer, scope-cut, re-plan, dependency-bump, design, boundary, refactor, message, other' in owner
-    assert '\u2014' not in prompt
+    lines = prompt[prompt.index('Mandate (design 5.2):'):].splitlines()[:4]
+    assert lines == [
+        'Mandate (design 5.2):',
+        'Decide alone: what the brief, your charter and the engineering standards already answer.',
+        'Record two-way choices under Assumptions: in the spec or PR body (what was assumed, why, '
+        'what would overturn it).',
+        "Name a one-way, scope, goal or trust-boundary question in your result (a sentinel's "
+        "ESCALATE, a builder's Blocked: line); wuwei next asks the owner."]
+    for text in ('decision record', 'decision route', 'D-n', 'decision class', '\u2014'):
+        assert text not in prompt
 
 
-def test_the_mandate_is_fixed_by_autonomy(day, monkeypatch):
-    # #814: the lists come from autonomy.mode only; a stale cruise table or file changes nothing.
-    text = mandate_prompt(day, monkeypatch, '[autonomy]\nmode = "supervised"\n')
-    assert 'Decide and record: none.' in text and 'decision records of class approach, retry' in text
-    default = section(mandate_prompt(day, monkeypatch), 'Go to the owner')
-    (day[0] / '.wuwei/memory').mkdir(parents=True, exist_ok=True)
-    (day[0] / '.wuwei/memory/cruise.json').write_text('{"levels": {"retry": 0}, "changed": {}}')
-    prompt = mandate_prompt(day, monkeypatch, '[decisions.cruise.levels]\napproach = 1\n')
-    assert section(prompt, 'Go to the owner') == default
-    assert 'under Assumptions:' in section(prompt, 'Decide and record:')
-    assert 'retry, park, accept-residual, merge' in section(prompt, 'Decide and record:')
+def test_the_mandate_is_the_same_in_every_posture(day, monkeypatch):
+    default = mandate_prompt(day, monkeypatch)
+    for config in ('[security]\nposture = "strict"\n', '[security]\nposture = "observe"\n'):
+        assert mandate_prompt(day, monkeypatch, config) == default
 
 
 def test_mandate_names_deploy_deny(day, monkeypatch):
     owner = section(mandate_prompt(day, monkeypatch, '[deploy]\ndeny = ["npm publish*"]\n'),
-                    'Go to the owner')
+                    'Name a one-way')
     assert 'npm publish*' in owner and 'Trust surface' not in owner
 
 

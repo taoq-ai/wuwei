@@ -1,4 +1,4 @@
-"""#352: tool-sequence decisions apply to item seats only."""
+"""#352: tool-sequence findings park item seats only; part 14: they page, with no record."""
 
 import hashlib
 import json
@@ -76,17 +76,13 @@ def test_seeded_day_decisions_per_posture(day, posture):
     assert noted['role'] == 'planner' and noted['session_digest'] == digest('P')
     assert noted['summary'] == 'traces: planner session, chain noted'
     assert all(row['session_id'] != 'P' for row in events(root, 'scanner.finding'))
+    assert decisions(root) == []
     if posture == 'strict':
-        ident, = decisions(root)
-        text = (workspace.day_dir(root) / 'decisions' / ident).read_text()
-        assert 'Context: Session has no item reservation and no registration.' in text
-        assert digest('U') in text
         assert {row['session_id'] for row in events(root, 'scanner.finding')} == {'U'}
         assert not events(root, 'traces.unmatched')
     else:
         unmatched, = events(root, 'traces.unmatched')
         assert unmatched['posture'] == posture and unmatched['session_digest'] == digest('U')
-        assert decisions(root) == []
         assert not events(root, 'scanner.finding')
 
 
@@ -105,8 +101,8 @@ def test_planner_subagent_and_registered_roles(day):
         sessions.record(data, 'A', hook='SessionStart', cwd=str(root))), root, reserved=False)
     sweep(root)
     assert sorted(row['role'] for row in events(root, 'traces.noted')) == ['planner', 'shepherd']
-    ident, = decisions(root)
-    assert digest('A') in (workspace.day_dir(root) / 'decisions' / ident).read_text()
+    assert {row['session_id'] for row in events(root, 'scanner.finding')} == {'A'}
+    assert decisions(root) == []
 
 
 def test_adhoc_seat_keeps_its_launchers_session_rule(day):
@@ -128,8 +124,9 @@ def test_seat_wins_over_registration(day):
         seats={'builder': {'item': 'work', 'role': 'builder', 'status': 'stopped',
                            'brief': 'x', 'trace_sessions': ['P']}}), root, reserved=False)
     assert sweep(root)['scanner_owed'] == 4
-    assert state.read_state(root)['items']['work']['phase'] == 'parked'
-    assert len(decisions(root)) == 2
+    item = state.read_state(root)['items']['work']
+    assert item['phase'] == 'parked' and item['disposition']['reason'].startswith('scanner chain Bash -> ')
+    assert decisions(root) == []
     assert len(events(root, 'scanner.finding')) == 4
     assert not events(root, 'traces.noted')
 

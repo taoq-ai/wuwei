@@ -38,11 +38,12 @@ def register(subparsers):
                      help="Admit a seat's finding (wuwei next lists them) as a small item; its ticket comes later")
     add.add_argument('--note', help="The owner's own words naming the item; recorded once and quoted in "
                                     'its briefs as Approved as:')
-    for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
-                       ('park', 'Park an open item and record the decision')):
+    for verb, text in (('carry', 'Carry an open item to tomorrow'), ('park', 'Park an open item')):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
-        command.add_argument('--reason', help='Why; written into the record on one line')
+        command.add_argument('--reason', help='Why; recorded on the item on one line')
+    actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
+                       ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
                                             'docs=<page>|new|none, ticket=<id> or owner_merge=true|false')
     assign.add_argument('item', help='The item id')
@@ -100,7 +101,10 @@ def run(args):
                                  'Pass --reason "<why>" with spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
-            print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')
+            plan.dispose(args.item, outcome, args.reason)
+            print(f'{outcome} {args.item}')
+        elif args.action == 'resume':
+            print(plan.resume(args.item))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
                          import_yesterday=args.import_yesterday, note=args.note)

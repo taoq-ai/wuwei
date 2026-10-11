@@ -12,6 +12,7 @@ import pytest
 
 from wuwei import metrics, workspace
 from wuwei.__main__ import main
+from wuwei.commands.next import THEN
 
 
 def prepare(day):
@@ -61,7 +62,8 @@ def launch(day, action):
         if not initial:  # #567: a light fix is re-read by the same seat, never a delta review
             light = day.data['items']['A']['gates']['tier'] == 'light'
             assert action['feedback'].startswith('Re-read:' if light else 'Delta review:'), action
-        day.runtime.verdict = 'FIX' if initial and action['agent_type'] == 'wuwei:sentinel-quality' else 'PASS'
+        quality = getattr(day, 'quality', 'FIX')  # part 14: ESCALATE asks the owner on dispatch next's card
+        day.runtime.verdict = quality if initial and action['agent_type'] == 'wuwei:sentinel-quality' else 'PASS'
     day.execute(action)
 
 
@@ -76,7 +78,11 @@ def walk(day, card, after=None, looks=1):
             return action
         assert kind != 'card' or action.get('widget'), action  # an owner-only card stops the day
         if kind in ('run', 'check'):
-            bash(day, action['command'])
+            out = bash(day, action['command'])
+            if action['then'] == THEN['owner-step'] and '"card"' in out:  # the owner answers the card
+                from fakes.owner import answer_card
+                answer_card(day.root, out, session='planner')
+                bash(day, action['command'])
         elif kind in ('launch', 'continue'):
             launch(day, action)
             if action['state'] == 'lead':  # its then: save the lead's JSON answer with Write
@@ -155,7 +161,7 @@ def ask(day, widget, label):
 def held(day, payload, label):
     """A held call: its card from the reason, answered with label, then the same call passes."""
     reason = day.hook('PreToolUse', 2, **payload)
-    command = re.search(r'bin/(wuwei (?:decision show D-\d+|drafts show draft-[0-9a-f]{32}))', reason)
+    command = re.search(r'bin/(wuwei drafts show draft-[0-9a-f]{32})', reason)
     assert command, reason
     [widget] = json.loads(bash(day, command[1] + ' --widget'))
     ask(day, widget, label)
@@ -186,17 +192,17 @@ def approve_at_head(day):
 
 
 @pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('choice', ['Autonomous', 'Supervised'])
-def test_posture_day(tmp_path, monkeypatch, choice):
-    # #530 E: a whole day under the autonomy choice, set in config (#832). Under autonomous the
-    # owner answers the gate and one client draft; under supervised every owner-only action asks
-    # on a card. #816: the repository's merge policy merges under both choices.
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_posture_day(tmp_path, monkeypatch, posture):
+    # #530 E, part 14: a whole day under each posture. The quality gate says ESCALATE and the
+    # owner answers dispatch next's Owner step card; no decision record is written. Under observe
+    # the owner answers the gate, that card and one client draft; under guarded every owner-only
+    # action asks on a card. #816: the repository's merge policy merges under both.
     from fakes.day import Day
-    from test_decision_classes import LEAD, record
-    from wuwei import workspace
-    started, answered, steps, routes = time.monotonic(), [], set(), {}
-    autonomous = choice == 'Autonomous'
+    started, answered, steps = time.monotonic(), [], set()
+    autonomous = posture == 'observe'
     day = prepare(Day(tmp_path / 'workspace', monkeypatch))
+    day.quality = 'ESCALATE'
     # Spec mode runs advisory under observe (design 5.10): no spec-first refusal to meet.
     day.runtime.spec = not autonomous
     path = day.root / '.wuwei/config.toml'
@@ -204,9 +210,9 @@ def test_posture_day(tmp_path, monkeypatch, choice):
                                              'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
                                              'merge = {auto = true, soak_minutes = 0}\n')
                     + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n'
-                    + ('default_tier = "send"\nlearn = "auto"\n[security]\nposture = "observe"\n[autonomy]\nmode = "autonomous"\n'
+                    + ('default_tier = "send"\nlearn = "auto"\n[security]\nposture = "observe"\n'
                        if autonomous else
-                       'default_tier = "ask"\nlearn = "card"\n[security]\nposture = "guarded"\n[autonomy]\nmode = "supervised"\n')
+                       'default_tier = "ask"\nlearn = "card"\n[security]\nposture = "guarded"\n')
                     + '[deploy]\nworkflows = ["deploy.yml"]\n')
 
     def card(day, action):
@@ -222,16 +228,6 @@ def test_posture_day(tmp_path, monkeypatch, choice):
                 'hook_event_name': 'PreToolUse', **fields}
 
     def after(day, action):
-        phase = day.data['items'].get('A', {}).get('phase')
-        if phase in ('fix', 'delta', 'raised') and 'records' not in steps:
-            steps.add('records')
-            decisions = day.directory / 'decisions'
-            for name, text in (('routine', record(cls='retry', door='unsure', radius='item A')),
-                               ('consequential', record(radius='outside')),
-                               ('exploratory', record(radius='item A', wants=LEAD))):
-                ident = f'D-{len(list(decisions.glob("D-*.md"))) + 1}'
-                (decisions / f'{ident}.md').write_text(text)
-                routes[name] = (ident, bash(day, f'wuwei decision route {ident}').splitlines()[0])
         if action['state'] == 'pr' and 'ping' not in steps:
             steps.add('ping')
             bash(day, f'wuwei pr ping-check {day.ref}')
@@ -261,34 +257,27 @@ def test_posture_day(tmp_path, monkeypatch, choice):
 
     data, events = day.data, day.events
     kinds = [row['kind'] for row in events]
-    assert workspace.load_config(day.root)['autonomy']['mode'] == choice.lower()
+    assert workspace.load_config(day.root)['security']['posture'] == posture
     assert data['items']['A']['phase'] == 'merged' and 'day.closed' in kinds
+    assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002: no item writes a record
+    assert [row['payload']['verdict'] for row in events if row['kind'] == 'gate.received'
+            and row['payload']['role'] == 'quality'][0] == 'ESCALATE'
+    fix = next(row['payload'] for row in events if row['kind'] == 'build.fix_opened')
+    assert fix['item'] == 'A' and any(row['kind'] == 'gate.asked' for row in events)
     assert [row[1] for row in day.host.calls if row[0] == 'merge'] == [(day.ref, day.head, 'squash')]
     for row in events:
         if row['kind'] == 'hook.refusal':
             reason = row['payload']['reason']
             assert 'specify first' in reason or re.search(
-                r'bin/wuwei (?:decision show D-|drafts show draft-)|Owner step: ', reason), reason
+                r'bin/wuwei drafts show draft-|Owner step: ', reason), reason
     assert not any(row['kind'].startswith('grant.') for row in events)
     report = (day.directory / 'report.md').read_text()
+    assert 'decision_routes' not in data and '## Taken under mandate' not in report
     if autonomous:
-        extra = [f"{ident}: {row['cisr']}" for ident, row in data.get('decision_routes', {}).items()]
-        assert not extra, extra
         assert sorted({state for state, *_ in answered}) == ['gate']
         assert [row['destination'] for row in data['drafts'].values()] == ['C0CLIENT'], data['drafts']
-        assert {name: verdict for name, (_, verdict) in routes.items()} == dict.fromkeys(
-            ('routine', 'consequential', 'exploratory'), 'mandate')
-        mandate = report[report.index('## Taken under mandate'):]
-        mandate = mandate[:mandate.index('\n## ', 3)]
-        lines = [line for line in mandate.splitlines() if line.startswith('- ')]
-        assert lines[0].startswith(f"- {routes['consequential'][0]}"), mandate
-        for ident, _ in routes.values():
-            line = next(line for line in lines if line.startswith(f'- {ident}'))
-            assert f'decisions/{ident}.md' in line and f'reverse: bin/wuwei decide {ident}' in line, line
         assert '## Grants' not in report
     else:
-        cisr = {row.get('cisr') for row in data['decision_routes'].values()}
-        assert {'Consequential', 'Exploratory'} <= cisr, data['decision_routes']
         assert any(row['destination'] == 'C0CLIENT' for row in data['drafts'].values())
         assert {'merged', 'deployed'} <= steps
     assert time.monotonic() - started < 60

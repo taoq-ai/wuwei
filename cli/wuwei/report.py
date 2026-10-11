@@ -3,28 +3,10 @@
 from collections import Counter
 from datetime import timedelta
 import json
-import re
 
 from wuwei import metrics, signal, state, watch, workspace
-from wuwei.exits import SYMLINK
 
 FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
-
-
-def decisions(day, data):
-    """Every recorded decision outcome, pending ones included, seat outcomes last."""
-    outcomes = {}
-    for path in sorted((day / 'decisions').glob('D-*.md')):
-        if path.is_symlink():
-            raise ValueError(f'decision record must not be a symlink; {SYMLINK}')
-        values = re.findall(r'^Outcome:\s*(\S[^\n]*)$', path.read_text(encoding='utf-8'), re.M)
-        if len(values) > 1:
-            raise ValueError(f'duplicate decision outcome: {path.name}')
-        if values:
-            outcomes[path.stem] = values[0]
-    outcomes.update({ident: record.get('outcome', 'unmeasured')
-                     for ident, record in data.get('decision_outcomes', {}).items()})
-    return outcomes
 
 
 def shadow_lines(directories):
@@ -52,28 +34,6 @@ def shadow_lines(directories):
                   for (guard, form), position in first.items()
                   if forms[guard][form] > FALSE_POSITIVE_AFTER and last_page < position]
     return [*lines, '', 'Candidates for a guard fix or a calibration proposal:', *(candidates or ['none'])]
-
-
-CISR = ('Routine', 'Consequential', 'Exploratory', 'Strategic')
-
-
-def mandate_lines(data):
-    """#530: decisions taken under the mandate, Consequential first, with the reversal command."""
-    taken = sorted(((ident, row) for ident, row in data.get('decision_outcomes', {}).items()
-                    if row.get('decided_by') == 'mandate'),
-                   key=lambda pair: (pair[1].get('cisr') != 'Consequential', pair[0]))
-    return [f"- {ident} ({row.get('cisr')}): {row.get('option')}, decisions/{ident}.md; "
-            f'reverse: bin/wuwei decide {ident} <option>' for ident, row in taken] or ['none']
-
-
-def class_lines(data):
-    """#530: decisions and owner cards per class, from the CLI-written outcomes and routes."""
-    outcomes, routes = data.get('decision_outcomes', {}), data.get('decision_routes', {})
-    kinds = {ident: outcomes.get(ident, {}).get('cisr') or routes.get(ident, {}).get('cisr')
-             for ident in outcomes.keys() | routes.keys()}
-    return [*(f'- {kind}: {sum(value == kind for value in kinds.values())} decisions, '
-              f'{sum(kinds[ident] == kind for ident in routes)} cards' for kind in CISR),
-            'Target: cards only for Strategic and for floors (publish, merge).']
 
 
 def round_lines(rows):
@@ -157,8 +117,7 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
-    lines += ['', '## Taken under mandate', *mandate_lines(data), '', '## Decisions by class',
-              *class_lines(data), '', '## Merged']
+    lines += ['', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
@@ -173,21 +132,9 @@ def build(root=None):
         lines.append('none')
     lines += ['', '## Parked']
     parked = [(name, item) for name, item in sorted(items.items()) if item['phase'] == 'parked']
-    for name, item in parked:
-        ident = item.get('decision')
-        record = day / 'decisions' / f'{ident}.md' if isinstance(ident, str) else None
-        if record is not None and record.is_symlink():
-            raise ValueError(f'parked decision must not be a symlink; {SYMLINK}')
-        reference = f'decisions/{ident}.md' if record is not None and record.is_file() else 'unmeasured'
-        lines.append(f'- {name}: decision {ident or "unmeasured"} ({reference})')
+    lines.extend(f"- {name}: {(item.get('disposition') or {}).get('reason') or item['phase']}"
+                 for name, item in parked)
     if not parked:
-        lines.append('none')
-    lines += ['', '## Decisions answered']
-    outcomes = {ident: outcome for ident, outcome in decisions(day, data).items()
-                if outcome.lower() != 'pending'}
-    path = ' (decisions/{}.md)' if level == 'full' else ''
-    lines.extend(f'- {ident}: {outcome}' + path.format(ident) for ident, outcome in sorted(outcomes.items()))
-    if not outcomes:
         lines.append('none')
     lines += ['', '## Carry']
     carry = [(name, item) for name, item in sorted(items.items()) if item['phase'] != 'merged']
@@ -215,8 +162,7 @@ def build(root=None):
     config = workspace.load_config(root)
     lines += ['', '## Steward runs', *([f'- {trigger}: {count}' for trigger, count in sorted(runs.items())]
                                        or ['none']),
-              f"Settings: steward.every_tool_calls = {config['steward']['every_tool_calls']}, "
-              f"watch.sweep_seconds = {config['watch']['sweep_seconds']}"]
+              f"Settings: watch.sweep_seconds = {config['watch']['sweep_seconds']}"]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

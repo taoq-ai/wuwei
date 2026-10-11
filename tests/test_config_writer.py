@@ -240,7 +240,7 @@ def owned(tmp_path, monkeypatch):
 def _set(key, value):
     from argparse import Namespace
     from wuwei.commands import config as config_command
-    return config_command.set_value(Namespace(key=key, value=value, replace=False, from_card=None),
+    return config_command.set_value(Namespace(key=key, value=value, replace=False),
                            confirm=lambda *args, **kwargs: True)
 
 
@@ -252,8 +252,9 @@ def test_a_config_write_writes_the_register(owned, capsys):
     register = graph.load(owned)
     assert {'from': 'channel:C05', 'type': 'class', 'to': 'team', 'view': 'outbound.work_channels'} in register['edges']
     assert graph.drift(register, workspace.load_config(owned)) == []
-    assert config_command.card_write(owned, 'config set', lambda root, raw: raw + 'external_channels = ["C06"]\n',
-                            ['outbound.external_channels'], 'D-1') == 0
+    assert config_command._edit('outbound learn', 'change', lambda *args, **kwargs: True,
+                                lambda root, raw: raw + 'external_channels = ["C06"]\n', owned,
+                                keys=['outbound.external_channels']) == 0
     assert 'channel:C06' in graph.load(owned)['nodes']
 
 

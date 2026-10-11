@@ -576,7 +576,7 @@ def _day(root, config, probes):
             _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
                  'wuwei plan session <session id> --take-over from the live session')]
     try:
-        found, health, beat, _ = status.scan(workspace.day_dir(root))
+        found, health, beat = status.scan(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover')]
     if health == 'alive':
@@ -641,17 +641,10 @@ def _day(root, config, probes):
     except watch.ERRORS as exc:
         rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
-        if ids := _legacy_traces(root):
-            rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
-                             'wuwei doctor --fix', apply='trace-decisions'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover'))
-    try:
         ids = _unrecorded(root)
         rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
                          f'{", ".join(ids)} answered on a card, not recorded' if ids else 'none',
-                         "the planner runs each card's record command (wuwei decision show <id> --widget "
-                         'names it); under strict you run it in a host terminal'))
+                         "the planner runs each card's record command (the card names it)"))
     except (OSError, ValueError) as exc:
         rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
@@ -693,22 +686,6 @@ def _tracker_labels(root, config):
         return _row('day', 'tracker labels', 'warn', 'missing: ' + ', '.join(
             f'"{name}"' for name in result.data['missing']), 'wuwei init --upgrade')
     return _row('day', 'tracker labels', 'ok', 'none missing')
-
-
-LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
-                'Context: Session has no matching item reservation.\n')
-SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
-
-
-def _legacy_traces(root):
-    """Today's pending, unanswered decisions the pre-#352 sweep wrote for a non-seat session."""
-    from wuwei import decision, state
-    data = state.read_state(root)
-    return [path.stem for path in sorted((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-            if not path.is_symlink()
-            and (text := path.read_text(encoding='utf-8')).startswith(LEGACY_TRACE)
-            and re.search(r'^Outcome: pending$', text, re.M)
-            and decision.answered(data, path.stem) is None]
 
 
 def _unrecorded(root):
@@ -861,35 +838,6 @@ def _reconfirm(root, token):
     return result.exit
 
 
-def _supersede_preview(root):
-    ids = _legacy_traces(root)
-    if not ids:
-        raise ValueError('nothing to supersede; run bin/wuwei doctor without --apply supersede')
-    return ''.join(f'{ident}: Outcome: superseded ({SUPERSEDED})\n' for ident in ids), ids
-
-
-def _supersede(root, token):
-    """Close each previewed record: the Outcome line for readers of the record, an owner outcome for close,
-    status and the steward queue."""
-    from wuwei import decision, state
-    if _legacy_traces(root) != token:
-        print('trace-decisions: changed since the preview; nothing applied')
-        return 1
-    for ident in token:
-        path = decision.today_path(ident, root)
-        text = path.read_text(encoding='utf-8')
-        fields, _ = decision.evaluate(text)
-        text = re.sub(r'^Outcome: pending$', 'Outcome: superseded', text, count=1, flags=re.M)
-        workspace.atomic_write(path, text + f'Notes: {SUPERSEDED}\n')
-        outcome = {'option': 'superseded', 'outcome': 'superseded', 'decided_by': 'owner',
-                   'reversibility': fields['Reversibility']}
-        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({ident: outcome}),
-                           root, reserved=False, kind='decision.decided',
-                           payload={'id': ident, 'option': 'superseded', 'decided_by': 'owner',
-                                    'reversibility': fields['Reversibility']})
-    return 0
-
-
 def _reports_preview(root):
     from wuwei import mcp
     plan = mcp.migrate(root)
@@ -911,7 +859,6 @@ FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
     'watch-install': _planned('wuwei watch install', _service('watch')),
-    'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
     'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }
 

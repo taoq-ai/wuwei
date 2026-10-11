@@ -405,79 +405,44 @@ def _record(data, item, role, round_name):
     return data['gate_verdicts'].get(f'{item}:{role}:{round_name}')
 
 
-CARD = (  # #732: the card a PARK or ESCALATE verdict asks for; no finding text is copied
-    'Question: Gate {role} says {verdict} on {item}: open a fix round or park it?\nClass: park\n'
-    'Context: {file} holds the {verdict} verdict and its findings.\n'
-    'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-    '| fix | Open a fix round | The verdict file names the finding and what closes it. | '
-    'The builder fixes the blocking findings and the gate checks them again. |\n'
-    '| park | Defer and park the item | Stops spending until the finding is reconsidered. | '
-    'The item pauses until the owner resumes it. |\n'
-    'Musts:\n| Criterion | fix | park |\n| --- | --- | --- |\n| Within the round cap | pass | pass |\n'
-    'Wants:\n| Criterion | Weight | fix | park |\n| --- | --- | --- | --- |\n'
-    '| Follows the gate verdict | 10 | {fix} | {park} |\n'
-    "Recommendation: {recommendation}\nReasoning: The gate's {verdict} verdict decided it; "
-    "the owner's answer on this card would flip it.\n"
-    'Confidence: medium\nReversibility: two-way\nBlast radius: own branch\n'
-    'Pre-mortem: A fix round that cannot close the finding spends a round; the round cap then parks the item.\n'
-    "Revisit: When the fix round's delta verdict is in, or when the owner resumes the item.\n"
-    'Decided-by: {by}\nOutcome: pending\n')
-
-
-def _waiting(ident, reason, owner=True):
-    """#732: every escalate names its record and the command that answers it."""
-    return {'action': 'escalate', 'reason': reason, 'decision': ident,
-            'command': f'wuwei decision show {ident} --widget' if owner else f'wuwei decision route {ident}'}
-
-
-def _parked(root, item, reason):
-    """#732: a blocked item with no round left parks with its record (plan.dispose)."""
+def _parked(root, item, reason, ask=True):
+    """Park the item in code (plan.park). At the round cap the owner decides on plan resume's
+    Owner step card (ask); a PARK verdict or the owner's No parks with no card."""
     from wuwei import plan
-    return _waiting(plan.dispose(item, 'parked', reason, root), reason)
+    plan.park(item, reason, root)
+    return {'action': 'escalate' if ask else 'parked', 'reason': reason,
+            'command': 'wuwei plan resume ' + shlex.quote(item)}
 
 
-def _card(root, config, data, item, role, round_name):
-    """#732: (id, recorded option or None, owner's) of the card a PARK or ESCALATE verdict asks
-    for; written once, its id kept on the verdict record; routed to the owner under strict."""
-    from wuwei import decision
-    key = f'{item}:{role}:{round_name}'
-    result = data['gate_verdicts'][key]
-    ident = result.get('decision')
-    strict = workspace.posture(config)[0] == 'strict'
-    if ident is None:
-        text = CARD.format(item=item, role=role, verdict=result['verdict'], file=result['file'],
-                           by='owner' if strict else 'seat',
-                           **({'recommendation': 'park', 'fix': 0, 'park': 10} if result['verdict'] == 'PARK'
-                              else {'recommendation': 'fix', 'fix': 10, 'park': 0}))
-        payload = {'item': item, 'role': role, 'round': round_name}
+def _asked(root, data, item, results, roles, round_name):
+    """The owner's answer ('Yes', 'No' or None) and the card for the ESCALATE verdicts asked."""
+    import hashlib
+    from wuwei import sessions
+    key = ':'.join(f"{item}:{round_name}:{role}:{results[role]['verdict']}:{results[role]['file']}"
+                   for role in roles)
+    token = hashlib.sha256(key.encode()).hexdigest()[:12]
+    role = roles[0]
+    detail = (f"Gate {role} says {results[role]['verdict']} on {item}: {_head(results[role])}. "
+              'Yes opens a fix round; No parks the item.')
+    command = 'bin/wuwei dispatch next ' + shlex.quote(item)
+    return (sessions.owner_answer(root, command, detail, token),
+            sessions.owner_card(command, detail, token))
 
-        def update(fresh):
-            if fresh['gate_verdicts'][key].get('decision'):
-                raise Refused(f'gate card changed during dispatch; {RACE}')
-            fresh['gate_verdicts'][key]['decision'] = payload['decision'] = decision.write(text, root).stem
-        state._write_state(update, root, reserved=False, kind='gate.card', payload=payload)
-        ident = payload['decision']
-    if strict and ident not in data.get('decision_routes', {}):  # idempotent; repairs a lost route
-        decision.route_owner(ident, decision.evaluate(
-            decision.today_path(ident, root).read_text(encoding='utf-8'))[0], root)
-    return (ident, (data.get('decision_outcomes', {}).get(ident) or {}).get('option'),
-            strict or ident in data.get('decision_routes', {}))
+
+def _head(result):
+    """The first finding of a verdict on one line."""
+    return ' '.join((result['findings'] or ['no finding'])[0].splitlines()[0].split())
 
 
 def next_step(item, root=None):
     """Return the next planner action without launching a seat."""
-    from wuwei import steward
     root = workspace.find_workspace(root)
-    steward.review(root)
     data = state.read_state(root)
     row = _item(data, item)
-    notes = steward.pending(data, item)
-    if notes:
-        raise Refused(f'steward note {notes[0]["id"]} requires planner acknowledgement: '
-                      f'{notes[0]["text"]}')
     phase = row['phase']
-    if phase in ('parked', 'escalated') and row.get('decision'):  # #732: waits on its record
-        return _waiting(row['decision'], f'{item} is {phase} on decision {row["decision"]}')
+    if phase in ('parked', 'escalated'):  # only the owner resumes it, on plan resume's card
+        return {'action': 'escalate', 'reason': (row.get('disposition') or {}).get('reason') or f'{item} is {phase}',
+                'command': 'wuwei plan resume ' + shlex.quote(item)}
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
@@ -558,17 +523,17 @@ def next_step(item, root=None):
             f'round cap {cap} reached: {blocking[0]} still blocks: '
             f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
             'that closes it is recorded in the spec'))
-    for role in asked:  # #732: the verdict's decision request is a card; its answer decides
-        ident, answer, owner = _card(root, config, data, item, role, round_name)
-        if answer is None:
-            head = (results[role]['findings'] or ['no finding'])[0]
-            return _waiting(ident, f'gate {role} {results[role]["verdict"]}: '
-                            f'{" ".join(head.splitlines()[0].split())}', owner)
-        if answer == 'park':
-            state._write_state(lambda fresh: fresh['items'][item].update(
-                phase='parked', status='blocked', decision=ident), root, reserved=False,
-                kind='gate.card', payload={'item': item, 'phase': 'parked', 'decision': ident})
-            return _waiting(ident, f'{item} is parked on decision {ident}')
+    parks = [role for role in asked if results[role]['verdict'] == 'PARK']
+    if parks:  # a PARK verdict parks in code
+        return _parked(root, item, f"gate {parks[0]} PARK: {_head(results[parks[0]])}", ask=False)
+    if asked:  # ESCALATE: the owner decides on the Owner step card of dispatch next
+        answer, card = _asked(root, data, item, results, asked, round_name)
+        reason = f"gate {asked[0]} {results[asked[0]]['verdict']}: {_head(results[asked[0]])}"
+        if answer == 'No':
+            return _parked(root, item, reason, ask=False)
+        if answer != 'Yes':
+            return {'action': 'escalate', 'reason': reason, 'command': 'wuwei dispatch next ' + shlex.quote(item),
+                    'card': card}
     from wuwei.commands import build
     build.open_fix(item, _fix_feedback(data, item, blocking, round_name), root=root)
     return _fix(item, blocking)

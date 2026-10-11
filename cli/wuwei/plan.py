@@ -492,8 +492,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     if not day['gate_approved']:
         raise state.StateError('morning gate has not been approved; run the morning gate first (/wuwei:wuwei-plan)')
     if item in day['items'] and _approval('', note):  # #731: the approval is recorded once, at admission
-        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; record the "
-                               "owner's new words as a scope decision: bin/wuwei decision template")
+        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; write the "
+                               "owner's new words into the item's spec as a scope change")
     if item in day['items']:  # #615: an item admitted without risk evidence records it once
         from wuwei.merge import risk_evidence
         if risk_evidence(root, item):
@@ -697,49 +697,55 @@ def set_ticket(item, ticket, root=None):
 
 
 def dispose(item, outcome, reason=None, root=None):
-    """plan carry|park: write and route a two-way record that carries or parks one item at
-    day close; return its D-n. Park pauses an active item, carry changes no phase."""
-    from wuwei import decision
+    """plan carry|park: record on the item that it carries or parks at day close, with one
+    plan.disposed event. Park pauses an active item; carry changes no phase."""
     root = workspace.find_workspace(root)
-    verb = {'carried': 'carry', 'parked': 'park'}[outcome]
-    reason = ' '.join((reason or '').split())  # one line, so a reason cannot start a field
+    reason = ' '.join((reason or '').split())  # one line, as plan set reasons
 
-    def known(data):
+    def update(data):
         if item not in data['items']:
             raise state.StateError((f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids"))
-        return data['items'][item]
-
-    current = known(state.read_state(root))
-    action = {'carry': 'Carry to tomorrow', 'park': 'Park the item'}[verb]
-    consequence = {'carry': "It joins tomorrow's plan and its phase does not change.",
-                   'park': 'It pauses until someone resumes it.'}[verb]
-    text = (
-        f'Question: {verb.title()} {item} at day close?\n'
-        f'Class: {"defer" if verb == "carry" else "park"}\n'
-        f'Context: {item} is {current["status"]}/{current["phase"]} at day close.'
-        f'{" Reason: " + reason if reason else ""}\n'
-        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-        f'| {verb} | {action} | Reversible and lets the day close. | {consequence} |\n'
-        '| keep | Do nothing, keep working | Reversible but the day cannot close. | The item stays open today. |\n'
-        f'Musts:\n| Criterion | {verb} | keep |\n| --- | --- | --- |\n'
-        '| Reversible | pass | pass |\n'
-        f'Wants:\n| Criterion | Weight | {verb} | keep |\n| --- | --- | --- | --- |\n'
-        '| Day can close | 10 | 10 | 0 |\n'
-        f'Recommendation: {verb}\nReasoning: Closing the day decided it; urgent work on the item would flip it.\n'
-        'Confidence: high\nReversibility: two-way\n'
-        'Blast radius: own branch\nPre-mortem: The item needed attention today and waits a day.\n'
-        "Revisit: At tomorrow's morning gate.\n"
-        f'Decided-by: seat\nOutcome: {outcome} {item}\n')
-    payload = {'item': item}
-
-    def update(data):
-        record = known(data)
-        path = decision.write(text, root)
-        outcome_record = decision.seat_outcome(*decision.evaluate(text))
-        data.setdefault('decision_outcomes', {})[path.stem] = outcome_record
+        record = data['items'][item]
+        record['disposition'] = {'kind': outcome, 'reason': reason}
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
-            record.update(phase='parked', status='blocked', decision=path.stem)
-        payload.update(id=path.stem, **outcome_record)
-    state._write_state(update, root, reserved=False, kind='decision.decided', payload=payload)
-    return payload['id']
+            record.update(phase='parked', status='blocked')
+    state._write_state(update, root, reserved=False, kind='plan.disposed',
+                       payload={'item': item, 'outcome': outcome, 'reason': reason})
+
+
+def park(item, reason, root=None):
+    """Park one item in code (the round cap, a PARK verdict, the owner's No)."""
+    dispose(item, 'parked', reason, root)
+
+
+def resume(item, root=None):
+    """plan resume <item>: only the owner's Yes on its Owner step card returns a parked or
+    escalated item to the phase it paused in, queued."""
+    import hashlib
+    import shlex
+    root = workspace.find_workspace(root)
+    data = state.read_state(root)
+    row = data['items'].get(item)
+    if row is None or row['phase'] not in ('parked', 'escalated') or row['status'] != 'blocked':
+        raise state.StateError(f'{item} is not parked; plan resume returns a parked item to its phase '
+                               "(bin/wuwei status lists today's items)")
+    why = (row.get('disposition') or {}).get('reason') or row['phase']
+    from wuwei.watch import records  # each resume takes a fresh Yes
+    resumed = sum(event['kind'] == 'plan.resumed' and event['payload'].get('item') == item
+                  for event in records(workspace.day_dir(root) / 'events.jsonl'))
+    token = hashlib.sha256(f'{why}\n{resumed}'.encode()).hexdigest()[:12]
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'resume', item]),
+                                      f'Resume {item}: {why}', token):
+        raise state.StateError(reason)
+
+    def update(fresh):
+        current = fresh['items'][item]
+        if current['phase'] != row['phase']:
+            raise state.StateError(f'{item} changed during plan resume; run bin/wuwei plan resume {item} again')
+        current.update(phase=current['resume_phase'], status='queued')
+        current.pop('disposition', None)
+        current.pop('decision', None)
+    state._write_state(update, root, reserved=False, kind='plan.resumed', payload={'item': item})
+    return f'{item}: resumed'
+

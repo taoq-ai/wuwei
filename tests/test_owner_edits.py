@@ -36,12 +36,10 @@ def history(base):
                           check=True, capture_output=True, text=True).stdout
 
 
-def gated(tmp_path, monkeypatch, posture='guarded', topics=('goals',)):
-    """A planner session that proposed provisional goals and asked the gate question."""
-    from test_decision import gate
+def gated(tmp_path, monkeypatch, posture='guarded'):
+    """A planner session that proposed provisional goals."""
     from test_plan import TEMPLATE, lead
     from wuwei import plan, workspace as ws
-    from wuwei.guards.decision import record_gate
 
     base = workspace(tmp_path)
     (base / 'config.toml').write_text(f'[security]\nposture = "{posture}"\n[outbound]\ndefault_tier = "ask"\n')  # #527: these tests hold a draft
@@ -51,8 +49,6 @@ def gated(tmp_path, monkeypatch, posture='guarded', topics=('goals',)):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
     plan.propose(lead(), tmp_path)
     plan.session('planner-1', tmp_path)
-    for topic in topics:
-        assert record_gate(gate(tmp_path, header=topic.title())) == (0, '')
     draft = ws.day_dir(tmp_path).relative_to(tmp_path) / 'goals.md'
     return base, draft.as_posix()
 
@@ -81,10 +77,10 @@ def test_approve_keeps_defined_goals(tmp_path, monkeypatch):
 
 def asked_draft(tmp_path, monkeypatch, posture='guarded', answer='Send now (Recommended)'):
     """The planner asked the owner a Draft card for a held tool call (#493)."""
-    from test_decision import draft_question
+    from test_answers import draft_question
     from test_drafts import held
-    from wuwei.guards.decision import record_gate
-    gated(tmp_path, monkeypatch, posture, topics=())
+    from wuwei.guards.answers import record_gate
+    gated(tmp_path, monkeypatch, posture)
     _, _, row = held(tmp_path)
     assert record_gate(draft_question(tmp_path, row['id'], answer=answer)) == (0, '')
     return row['id']
@@ -93,9 +89,9 @@ def asked_draft(tmp_path, monkeypatch, posture='guarded', answer='Send now (Reco
 def test_edited_approve_sends_only_the_owner_typed_text(tmp_path, monkeypatch):
     """--file outside strict skips the host prompt only for the text the owner typed into a
     Draft card citing the id (#493)."""
-    from test_decision import draft_question
+    from test_answers import draft_question
     from wuwei import drafts
-    from wuwei.guards.decision import record_gate
+    from wuwei.guards.answers import record_gate
 
     def no_terminal(*args, **kwargs):
         raise OSError('this is an owner action: run it in a host terminal')

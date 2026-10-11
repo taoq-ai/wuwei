@@ -346,7 +346,7 @@ def test_log_carry_is_a_close_entry(ws):
     seed_ticket(root)
     plan.dispose('item-1', 'carried', root=root)
     assert main(['tracker', 'log']) == 0
-    assert comments(fake) == [('ENG-1', '[2026-09-29 item-1] Carried to 2026-09-30 (D-1).', 'close')]
+    assert comments(fake) == [('ENG-1', '[2026-09-29 item-1] Carried to 2026-09-30.', 'close')]
 
 
 def test_log_filters(ws, monkeypatch):

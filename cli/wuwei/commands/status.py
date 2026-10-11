@@ -31,12 +31,11 @@ LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is star
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
          'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
-# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, draft and
-# decision closures, wake and steward).
+# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, draft
+# closures and wake).
 SKIP = frozenset(SILENT) - {
-    'watch: clock', 'heartbeat: clock',
-    'decision.decided', 'draft.sending', 'draft.sent', 'draft.dropped',
-    'session: wake-seen', 'steward.run'}
+    'watch: clock', 'heartbeat: clock', 'draft.sending', 'draft.sent', 'draft.dropped',
+    'session: wake-seen'}
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
@@ -59,11 +58,11 @@ def attention(directory, classified_state=None):
 
 
 def scan(directory, classified_state=None):
-    """Attention rows, watch state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
+    """Attention rows, watch state (alive, off, dead, unmeasured) and heartbeat health from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks, beat, loops = {}, {'watch': []}, None, 0
+    current, clocks, beat = {}, {'watch': []}, None
     path = directory / 'events.jsonl'
     if path.exists():
         # read_text's universal newlines without its second full-size copy of the day (#346).
@@ -88,7 +87,6 @@ def scan(directory, classified_state=None):
                 stamp = event.get('ts')
                 if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                     continue
-                loops += kind == 'negotiation.loop'
                 if kind == 'watch: clock':
                     clocks['watch'].append(stamp)
                 if kind == 'heartbeat: clock':
@@ -101,9 +99,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
                     current.pop(('pr.action', payload.get('pr')), None)
                     continue
-                if kind == 'decision.decided' and isinstance(payload, dict):
-                    current.pop(('decision.one_way', payload.get('id')), None)
-                    continue
                 if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
                         and isinstance(payload, dict):
                     current.pop(('draft.created', payload.get('id')), None)
@@ -112,8 +107,6 @@ def scan(directory, classified_state=None):
                     current.pop(('merge.policy_blocked', payload.get('pr')), None)
                 if kind == 'session: wake-seen':
                     current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
-                if kind == 'steward.run':
-                    current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
                 if kind in SILENT:
                     continue
             else:
@@ -142,7 +135,7 @@ def scan(directory, classified_state=None):
                 key = (kind, '')
             elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
-            elif kind in ('decision.one_way', 'draft.created') and isinstance(payload, dict):
+            elif kind == 'draft.created' and isinstance(payload, dict):
                 key = (kind, payload.get('id', number))
             elif kind == 'guard.would_refuse' and isinstance(payload, dict):
                 key = (kind, payload.get('guard'))
@@ -200,11 +193,8 @@ def scan(directory, classified_state=None):
                                   classified_state)
             current[('item.escalated', name)] = {'tier': tier, 'source': 'item.escalated',
                                                  'lane': lane, 'reason': name}
-    routes = classified_state.get('decision_routes', {})
-    if not isinstance(routes, dict):
-        raise ValueError(f'invalid decision ledger; {DAMAGED}')
     rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
-    return rows, health['watch'], beat_health, loops
+    return rows, health['watch'], beat_health
 
 
 def snapshot(directory, line=False):
@@ -225,17 +215,13 @@ def snapshot(directory, line=False):
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'], result['health'], result['loops'] = scan(
+    active, result['watch'], result['health'] = scan(
         directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     result['plan'] = (directory / 'plan.md').is_file()
-    result['decisions'] = []
-    if routes := data.get('decision_routes'):  # scan checked it is a dict
-        from wuwei.decision import answered
-        result['decisions'] = [name for name in routes if answered(data, name) is None]
     for key, field, destination in () if line else (('reply_obligations', 'due', 'next_reply_due'),
                                                     ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
@@ -346,8 +332,6 @@ def _groups(data, shown=None):
         now = [data['restart'].split(' (plugin ', 1)[0]]
     elif not data['gate_approved']:
         now = ['gate waiting' if data.get('plan') else 'no plan yet']
-    elif data.get('decisions'):
-        now = [f'decision {data["decisions"][0]} waiting']
     counts = dict.fromkeys(WORDS.values(), 0)
     for phase, count in data['phases'].items():
         word = WORDS.get(phase, phase)
@@ -393,8 +377,7 @@ def full(data):
     if split := state.goal_split(data.get('seats', {})):
         work.append(f'builders {split}')
     running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]
-    for shown, text in ((data.get('loops'), f'loops {data.get("loops")}'),
-                        (data.get('prs_changed'), f'prs {data.get("prs_changed")} changed'),
+    for shown, text in ((data.get('prs_changed'), f'prs {data.get("prs_changed")} changed'),
                         (data.get('trace_gaps'), f'traces: {data.get("trace_gaps")} gaps')):
         if shown:
             attention.append(text)

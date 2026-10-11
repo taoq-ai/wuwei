@@ -106,12 +106,11 @@ Planned: Signal and WhatsApp as owner channels (design spec, section 15).
 1. The CLI owns the path and the model walks it. `bin/wuwei next` returns the one next action: the exact command or Agent call, why, and what comes after. Skills and charters hold judgement, never a step list ([agent guide](docs/site/agent.md), [design spec](docs/specs/2026-09-24-wuwei-design.md) 5.2 and 5.3).
 2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
 3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each edge in design spec 9.2 at the moment of the call, and each edge has its own test. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
-4. Who decides follows from what is decided. Each record gets an MIT CISR class from how reversible it is, how far it reaches and how unclear it is. A Routine two-way decision is taken under the [mandate](docs/site/concepts.md#mandate); a Strategic or one-way one comes to you on a card ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
-5. Reversibility is a rule, not a score. A two-way door inside the item is assumed and recorded. A clear two-way decision beyond the item is taken under the mandate. A one-way, Strategic or tied one reaches you as one named decision from `wuwei next` ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
-6. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
-7. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
-8. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
-9. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
+4. Reversibility is a rule, not a score. A seat assumes a two-way choice and records it in its spec under the [mandate](docs/site/concepts.md#mandate). A one-way, scope, goal or trust-boundary question reaches you as one named decision from `wuwei next`, on one card ([owner decisions](docs/site/concepts.md#owner-decisions), design spec 5.8).
+5. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
+6. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
+7. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
+8. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
 
 ## Installation
 
@@ -188,8 +187,7 @@ Every Claude Code session in the workspace orients itself on start: what WUWEI i
 - One owner per workspace.
 - Hooks add about 40 to 100 ms to each tool call, depending on the machine
   ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
-- It is early: so far only its author has used it day to day, and the
-  [live rehearsal](docs/site/rehearsal.md) is the check before each release.
+- It is early: so far only its author has used it day to day.
 - Start a new project with `init --shadow`: a first week in the observe posture, where the
   guards record what they would refuse before they refuse it
   ([security posture](docs/site/security.md#security-posture)).
@@ -268,5 +266,4 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   Sean McBride, Intercom; the `rice` ranking.
 - [One-way and two-way doors](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF):
   Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
-- [MIT CISR decision framework](https://cisr.mit.edu/): Sebastian, Weill, Haskamp and vom Brocke, "A framework for determining when AI can make decisions"; the decision classes.
 - [Verifiably Safe Autonomous Decision-Making (vGOAL)](https://www.kuleuven.be/): KU Leuven; a table of safety properties, each with its own test, without the model checker.

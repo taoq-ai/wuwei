@@ -128,13 +128,16 @@ def test_no_charter_holds_its_own_verdict_format():
     texts = charter_text()
     assert "`CLASS: PASS|N.A.|FINDING <id>`" not in texts["_common.md"]
     assert not [name for name, body in texts.items() if "## Verdict format" in body]
-def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
-    # #599
-    RERUN = ('wuwei decision show D-n --widget', '`wuwei decide D-n "<label>" --card <hash>`',
-             'without asking the card again. Below strict, never show the owner a host-terminal command '
-             'for a card they answered')
-    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
-    assert all(part in skill for part in RERUN)
+def test_skills_ask_the_owner_step_card_a_command_prints():
+    # #599, part 14: an owner question comes from next; the command prints its card; no host terminal.
+    ASK = ('An owner question comes from `wuwei next`: a command that refuses with an Owner step card '
+           'prints it; ask it with AskUserQuestion as printed, then run the same command again on Yes')
+    for name in ('wuwei-plan', 'wuwei-retro', 'wuwei-report'):
+        skill = (ROOT / f"skills/{name}/SKILL.md").read_text(encoding="utf-8")
+        assert ASK in skill and 'decision route' not in skill and 'wuwei decide' not in skill, name
+    assert 'Never show the owner a host-terminal command' in (ROOT / "skills/wuwei-plan/SKILL.md").read_text()
+
+
 def test_a_seat_finding_has_its_route():
     """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
     texts = charter_text()

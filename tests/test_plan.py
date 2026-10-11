@@ -472,15 +472,12 @@ def test_one_pr_number_in_two_repositories_gives_two_ids(root, monkeypatch):
 
 def test_gate_widget_is_the_one_approval_question(root):
     # #365: the CLI prints the one gate question, its header and the approve command.
-    from wuwei.guards.decision import gate_question
-
     data = proposal()
     data['candidates'].append({**data['candidates'][0], 'id': 'B'})
     plan.propose(data, root)
     widget = plan.gate_widget(root)
     assert widget['question'] == ("Morning gate (days/2026-09-28/plan.md): "
                                   "Approve today's plan as proposed?")
-    assert gate_question(widget, root)
     assert widget['header'] == 'Plan'
     assert [row['label'] for row in widget['options']] == [
         'Approve', 'Change something']
@@ -1053,3 +1050,60 @@ def test_invalid_ticket_names_item_field_and_form(root):
     assert "A: invalid ticket 'not a ticket!'" in str(error.value)
     assert plan.TICKET in str(error.value) and 'owner/repo#12' in str(error.value)
     assert not (root / '.wuwei/days').exists()
+
+
+# Part 14: a disposition lives on the item; only the owner resumes a parked item.
+
+
+def parked_day(root, monkeypatch):
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    state._write_state(lambda data: data['items'].update(
+        A={'phase': 'planned', 'status': 'queued'}, B={'phase': 'planned', 'status': 'queued'}),
+        root, reserved=False)
+    state.transition('A', 'implement', root)
+
+
+def test_carry_and_park_record_a_disposition_and_no_record(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    parked_day(root, monkeypatch)
+    assert main(['plan', 'park', 'A', '--reason', 'waits on\nthe vendor']) == 0
+    assert main(['plan', 'carry', 'B']) == 0
+    assert capsys.readouterr().out == 'parked A\ncarried B\n'
+    items = state.read_state(root)['items']
+    assert items['A']['disposition'] == {'kind': 'parked', 'reason': 'waits on the vendor'}
+    assert (items['A']['phase'], items['A']['status'], items['A']['resume_phase']) == ('parked', 'blocked', 'implement')
+    assert (items['B']['phase'], items['B']['disposition']['kind']) == ('planned', 'carried')
+    disposed = [{key: row['payload'][key] for key in ('item', 'outcome', 'reason')}
+                for row in events(root) if row['kind'] == 'plan.disposed']
+    assert disposed == [{'item': 'A', 'outcome': 'parked', 'reason': 'waits on the vendor'},
+                        {'item': 'B', 'outcome': 'carried', 'reason': ''}]
+    assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+
+
+def test_plan_resume_waits_for_the_owner(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    parked_day(root, monkeypatch)
+    assert main(['plan', 'resume', 'A']) == 1
+    assert 'is not parked' in capsys.readouterr().err
+    plan.park('A', 'round cap 2 reached', root)
+    assert main(['plan', 'resume', 'A']) == 1
+    err = capsys.readouterr().err
+    assert 'Owner step: bin/wuwei plan resume A (' in err and 'Resume A: round cap 2 reached' in err
+    assert state.read_state(root)['items']['A']['phase'] == 'parked'
+    owner.answer_card(root, err, reply='No')
+    assert main(['plan', 'resume', 'A']) == 1
+    assert state.read_state(root)['items']['A']['phase'] == 'parked'
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['status'], 'disposition' in row) == ('implement', 'queued', False)
+    assert [r['payload']['item'] for r in events(root) if r['kind'] == 'plan.resumed'] == ['A']
+    plan.park('A', 'round cap 2 reached', root)  # the same reason again takes a fresh Yes
+    assert main(['plan', 'resume', 'A']) == 1
+
+
+def test_plan_events_are_reserved(root, capsys):
+    from wuwei.__main__ import main
+    for kind in ('plan.disposed', 'plan.resumed'):
+        assert main(['event', kind, '{}']) == 1

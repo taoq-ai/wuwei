@@ -217,7 +217,6 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['patterns'] == [] and outward['tool_patterns']
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
-    assert config.pop('autonomy') == {'mode': 'autonomous'}  # #530
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
@@ -225,7 +224,7 @@ def test_config_defaults_and_independence(tmp_path):
         'security': {'required': False, 'posture': 'guarded',
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
-            'default': 'brief', 'decisions': '', 'digest': '', 'report': ''}},
+            'default': 'brief', 'decisions': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
@@ -252,8 +251,6 @@ def test_config_defaults_and_independence(tmp_path):
                       'sweep_seconds': 7200, 'ping_url': ''},
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
-        'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
-        'decisions': {'wait_hours': 24, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
@@ -414,13 +411,12 @@ def test_owner_verbosity(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
-    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'digest': '',
-                                            'report': ''}
-    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndigest = "brief"\n')
+    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndecisions = "brief"\n')
     config = workspace.load_config(tmp_path)
-    assert workspace.verbosity(config, 'digest') == 'brief'
+    assert workspace.verbosity(config, 'decisions') == 'brief'
     assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'digest = "loud"'):
+    for text in ('default = "short"', 'decisions = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -1213,13 +1209,15 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_a_cruise_table_only_warns(tmp_path):
-    # #814: decisions.cruise is retired; a stale table loads with an unknown-key warning.
+def test_retired_decision_tables_only_warn(tmp_path):
+    # #814, part 14: decisions, autonomy and steward are retired; stale tables load with a warning.
     from wuwei.workspace import load_config
-    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[security]\nposture = "strict"\n')
+    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[autonomy]\nmode = "supervised"\n'
+                 '[steward]\nevery_tool_calls = 9\n[security]\nposture = "strict"\n')
     found = []
-    assert 'cruise' not in load_config(tmp_path, warnings=found)['decisions']
-    assert any('decisions.cruise' in line for line in found), found
+    config = load_config(tmp_path, warnings=found)
+    assert not {'decisions', 'autonomy', 'steward'} & set(config)
+    assert all(any(name in line for line in found) for name in ('decisions', 'autonomy', 'steward')), found
 
 
 def test_grant_keys_only_warn(tmp_path):
@@ -1231,19 +1229,6 @@ def test_grant_keys_only_warn(tmp_path):
     config = load_config(tmp_path, warnings=found)
     assert 'grants' not in config and 'default_tier' not in config['merge']
     assert any('merge.default_tier' in line for line in found) and any('grants' in line for line in found), found
-
-
-def test_decision_lenses_config(tmp_path):
-    from wuwei.workspace import ConfigError, load_config
-    write_config(tmp_path, '')
-    assert load_config(tmp_path)['decisions']['lenses'] == {}
-    write_config(tmp_path, '[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\nYAGNI = ""\n')
-    assert load_config(tmp_path)['decisions']['lenses'] == {
-        'company-rule': 'Does it follow our rule?', 'YAGNI': ''}
-    for name in ('"bad name"', '9x'):
-        write_config(tmp_path, f'[decisions.lenses]\n{name} = "Q?"\n')
-        with pytest.raises(ConfigError, match='decisions.lenses.' + name.strip('"')):
-            load_config(tmp_path)
 
 
 def test_second_opinion_config(tmp_path):
