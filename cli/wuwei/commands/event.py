@@ -80,7 +80,6 @@ EVENT_PRODUCERS = {
     'tracker.created': 'wuwei tracker create, wuwei drafts approve or wuwei plan approve',
     'tracker.skipped': 'wuwei plan approve or add', 'tracker.folded': 'wuwei tracker log',
     'tracker.logged': 'wuwei tracker log', 'plan.set': 'wuwei plan set or wuwei init --upgrade',
-    'brief.pack': 'wuwei brief pack', 'brief.answer': 'wuwei brief answer',
     'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',
     'steward.due': 'wuwei hook PostToolUse',
     'steward.acknowledged': 'wuwei steward ack',

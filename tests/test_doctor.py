@@ -555,7 +555,8 @@ def test_gates_rows(ws):
 
 
 def test_gates_without_scanner(ws):
-    # #424: CONFIG leaves adapters.scanner at "none": the gate is off and WUWEI's own servers are covered.
+    # #424: CONFIG leaves adapters.scanner at "none": the gate is off. #808: no own-server rows,
+    # even for a manifest that declares a server.
     from wuwei import mcp
     manifest = integrity.PLUGIN / '.claude-plugin/plugin.json'
     manifest.write_text(json.dumps({**json.loads(manifest.read_text()),
@@ -563,8 +564,8 @@ def test_gates_without_scanner(ws):
     record(ws.root, exit=2, unmeasured=[['docs', DIGEST]], reason='MCP registry unmeasured; docs: unmeasured')
     rows = doctor.diagnose()
     assert (row(rows, 'mcp gate')['status'], row(rows, 'mcp gate')['value']) == ('ok', mcp.NO_SCANNER)
-    assert row(rows, 'mcp cockpit') == {'section': 'gates', 'name': 'mcp cockpit', 'status': 'ok',
-                                        'value': 'covered by plugin integrity'}
+    assert not [r for r in rows if r['section'] == 'gates' and r['name'].startswith('mcp ')
+                and r['name'] != 'mcp gate']
     assert 'mcp docs' not in names(rows, 'gates')
 
 
@@ -1026,7 +1027,6 @@ def legacy_decisions(root):
 
 def test_trace_decisions_row_and_fix(ws, capsys):
     from wuwei import decision
-    from wuwei.commands.dashboard import cockpit_snapshot
     directory = legacy_decisions(ws.root)
     seat = (directory / 'D-4.md').read_text()
     found = row(doctor.diagnose(), 'trace decisions')
@@ -1043,7 +1043,6 @@ def test_trace_decisions_row_and_fix(ws, capsys):
         decision.evaluate(text)
         assert data['decision_outcomes'][ident]['decided_by'] == 'owner'
         assert decision.answered(data, ident) == 'superseded'
-    assert [d['id'] for d in cockpit_snapshot(workspace.day_dir(ws.root))['decisions']] == ['D-4']
     assert {'fix': 'trace-decisions', 'exit': 0} in events(ws.root, 'doctor.fixed')
     assert not [r for r in doctor.diagnose() if r['name'] == 'trace decisions']
     assert (directory / 'D-4.md').read_text() == seat

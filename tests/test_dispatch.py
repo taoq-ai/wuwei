@@ -1664,7 +1664,6 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     from fakes.tracker import Fake, ported
     from wuwei import registry
     from wuwei.__main__ import main
-    from wuwei.commands import board
 
     (root / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED + '[tracker]\nauto = ["items"]\n')
@@ -1684,8 +1683,6 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     capsys.readouterr()
     assert main(['dispatch', 'next', 'A']) == 0
     assert json.loads(capsys.readouterr().out)['action'] == 'gates'
-    row, = [line for line in board.read(root)[0].splitlines() if line.startswith('| A |')]
-    assert 'ENG-7' in row
 
 
 @pytest.fixture

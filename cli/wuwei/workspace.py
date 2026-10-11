@@ -54,7 +54,7 @@ TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
-RETIRED = ('nudges', 'owner.verbosity.nudges')
+RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -122,10 +122,7 @@ SCHEMA = {
              "auto": [(str, None, ("page", "report", "retro")), []],
              "strict_close": (bool, True)},
     "calendar": {"url": (str, "")},
-    "brief": {"lead_minutes": (int, 30, 1),
-              "style": {"length": (str, "standard", ("concise", "standard")),
-                        "speed": (int, 180, 120, 240)},
-              "remote": (str, "origin"),
+    "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
@@ -685,7 +682,7 @@ CONFIG_CACHE_VERSION = 17  # Bump when the parse, the schema, the defaults or th
 # #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
-# doctor, why and the board stay read-only.
+# doctor and why stay read-only.
 CONFIG_CACHE_WRITES = False
 
 

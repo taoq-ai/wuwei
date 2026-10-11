@@ -356,3 +356,20 @@ def test_upgrade_keeps_keys_from_a_newer_template(tmp_path, monkeypatch, capsys)
         init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=True))
         out = capsys.readouterr().out
         assert ('Would upgrade config.toml: remove zzzz (no longer read)' in out) is removes, out
+
+
+def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys):
+    # #789 batch 2: every key workspace.RETIRED names leaves config.toml on init --upgrade.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    path.write_text(clean.replace('[brief]\n', '[brief]\nlead_minutes = 30\nstyle.length = "concise"\n', 1))
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False))
+    out = capsys.readouterr().out
+    for key in ('brief.lead_minutes', 'brief.style'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert tomllib.loads(path.read_text()) == tomllib.loads(clean)

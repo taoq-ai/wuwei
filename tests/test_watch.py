@@ -900,7 +900,6 @@ def trace_sweep_case(case, *, mapped=True, code=1, session=None, agent_id=None):
 @pytest.mark.parametrize('agent_id', [None, 'def456'])
 def test_trace_sweep_parks_queues_and_pages(case, mapped, agent_id):
     from wuwei import decision, signal, steward
-    from wuwei.commands.dashboard import cockpit_snapshot
     root = case[0]
     session, directory = trace_sweep_case(case, mapped=mapped, agent_id=agent_id)
     if not mapped:  # #352: an unknown session prompts the owner only under strict.
@@ -923,7 +922,6 @@ def test_trace_sweep_parks_queues_and_pages(case, mapped, agent_id):
     assert decision.lint(path.read_text())[0] == 0
     if not mapped:
         assert 'Context: Session has no item reservation and no registration.' in path.read_text()
-    assert len(cockpit_snapshot(workspace.day_dir(root))['decisions']) == 1
     assert watch.sweep(root, watch_health=(0, '')) == 1
     assert len(steward.decision_queue(root)) == 1
     summary = events(root, 'watch: sweep')[-1]['payload']

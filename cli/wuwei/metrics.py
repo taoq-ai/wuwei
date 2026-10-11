@@ -848,8 +848,6 @@ def collect(root=None, *, day=None):
     event_metrics['gate_minutes'] = {row['item']: row['gate_minutes'] for row in rows} or UNMEASURED
     event_metrics['cycle_by_tier'] = cycle_by_tier(rows)
     event_metrics['by_pace'] = by_pace(root)
-    event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
-                                          if data is not None else UNMEASURED)
     event_metrics['voice_drafts'] = {
         audience: {'sent': len(rows),
                    'share_sent_unedited': sum(row['sent_unedited'] for row in rows) / len(rows),

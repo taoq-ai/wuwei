@@ -9,7 +9,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | Command | What it does | More |
 | --- | --- | --- |
 | `bin/wuwei agents` | Plumbing: builds or checks the generated role agents. | [Concepts](concepts.md#roles) |
-| `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks you; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
@@ -17,7 +16,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei consolidate` | Reviews memory, packs old days into tarballs, rebuilds digests and proposes forgetting; `consolidate --widget` asks each pending proposal. | [Configuration](configuration.md#host-build-and-memory) |
 | `bin/wuwei cruise` | `cruise budget` prints the error budget per decision class (level, answered, spent, allowance, burn, state); exit 1 when a class warns or is spent. `cruise calibration` prints the Brier score of stated confidence per class and per `Role:` (kind, name, scored, brier, state); exit 1 when a row is uncalibrated. `cruise shadow` prints each class running in shadow before a raise (class, level, started, scored, agreed, state); exit 0. | [Cruise answers](daily.md#cruise-answers) |
-| `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>] [--card <hash>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records your answer; `undo D-<n>` reverts a cruise answer inside its undo window. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
@@ -66,7 +64,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
 | `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. Records an ad-hoc seat before its Agent launch. | [Stuck seats](#stuck-seats) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
-| `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei spec` | Plumbing: `spec analysis <item>` saves the spec-kit analyze report as `analysis.md`. A Claude Code subagent cannot write that file itself. The report comes on stdin or with `--file PATH`. It goes to the one spec directory of the item worktree, which must hold `spec.md`. The command prints the path, and the builder commits the file. It exits 2 and writes nothing for an unknown item, no worktree, no or two spec directories, no `spec.md`, a symlink, an empty report, or a governed item's report without the `## Governing` table. | [Configuration](configuration.md#specification-mode) |
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
 | `bin/wuwei shepherd` | Sweeps owned PRs every 15 minutes while no planner is live. It checks approved PRs with `wuwei merge check`; the merge itself waits for the morning until #524. It sends due review pings under the outbound tiers and queues the rest, with evidence, at the top of the next morning plan. No model runs. `schedule [--dry-run]` and `unschedule` install or remove it as a user service; in a session `schedule` returns the Shepherd card and its answer runs `schedule --yes` (under strict, you run both in a host terminal). | [Doctor](#doctor) |
@@ -144,7 +141,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
 
-Approval and drop are owner actions on the host terminal. Approval shows the destination and final text and asks y/N before it sends. Agent tool hooks refuse both, including registered seats. The cockpit displays pending drafts and the approval command read-only; it accepts no POST actions. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
+Approval and drop are owner actions on the host terminal. Approval shows the destination and final text and asks y/N before it sends. Agent tool hooks refuse both, including registered seats. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
 
 Single-field replies edit as plain text. Multi-field tracker drafts edit as a JSON object of text fields such as `draft.title` and `draft.description`; field names and destination metadata cannot be changed through the editor. The stored record preserves original and final inputs and text. Events contain IDs and outcome metadata, not message bodies. Reply bodies remain in local day state for owner review.
 
@@ -425,7 +422,7 @@ For a draft, `why draft-<hex>` prints `held: <rule>` and one `edge: <from> <type
 
 For a decision, `why D-<n>` reads today's record and prints the options with their scores, the recommendation, the weights, the margin (the recommended score minus the best other score, over 10 times the sum of the weights), the class, the cruise level and who decided. The level prints for a cruise answer (`Decided-by: cruise <class>@L<n>`), and `not recorded` otherwise. An owner answer records `decided_by: owner` in its `decision.decided` or `decision.reversed` event.
 
-Lines follow `owner.verbosity.report`. At `full`, or with `--full`, each line ends with its event id and evidence paths. Every line is redacted as refusal targets are, so a credential in a record never reaches the output. The `wuwei_board` tool returns the same item chains in `./why.json`, or `{"unmeasured": <reason>}` when a record cannot be read.
+Lines follow `owner.verbosity.report`. At `full`, or with `--full`, each line ends with its event id and evidence paths. Every line is redacted as refusal targets are, so a credential in a record never reaches the output.
 
 Exit 0 prints the view, 1 means the target has no record, 2 means a record could not be read or there is no workspace.
 

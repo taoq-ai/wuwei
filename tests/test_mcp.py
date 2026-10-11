@@ -736,8 +736,8 @@ def own_workspace(tmp_path, monkeypatch, plugin, repo=None):
 
 @pytest.mark.parametrize('scanner', ['none', 'ziran'])
 def test_own_server_and_source_checkout_attach_no_discoverable_file(tmp_path, monkeypatch, scanner):
-    # The cockpit is declared in the signed plugin.json, so neither the install nor a
-    # managed checkout of the WUWEI source carries a project .mcp.json for S3 to measure.
+    # WUWEI's signed plugin.json declares no project .mcp.json, so neither the install nor a
+    # managed checkout carries one for S3 to measure.
     plugin = Path(__file__).resolve().parents[1]
     repo = tmp_path / 'repo'
     repo.mkdir()

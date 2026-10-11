@@ -481,7 +481,7 @@ def _setup(args, confirm):
     try:
         root = workspace.find_workspace()
     except FileNotFoundError:
-        init.run(SimpleNamespace(path='.', shadow=args.shadow, upgrade=False, dry_run=False, menu_bar=False,
+        init.run(SimpleNamespace(path='.', shadow=args.shadow, upgrade=False, dry_run=False,
                                  honeytoken_path=security.DEFAULT_HONEYTOKEN_PATH, status_line=False))
         root = workspace.find_workspace()
         print('To run owner commands from any directory, add to your shell profile:\n'

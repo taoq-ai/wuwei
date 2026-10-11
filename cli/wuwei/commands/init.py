@@ -32,7 +32,6 @@ def register(subparsers):
     parser.add_argument("--posture", choices=tuple(workspace.POSTURES),
                         help="security posture for a new workspace: observe, guarded or strict")
     parser.add_argument("--shadow", action="store_true", help="same as --posture observe")
-    parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
     parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
                         help="decoy credentials path relative to .wuwei")
     parser.set_defaults(func=run)
@@ -40,21 +39,9 @@ def register(subparsers):
 
 def run(args):
     posture = 'observe' if getattr(args, 'shadow', False) else getattr(args, 'posture', None)
-    if posture and (getattr(args, 'upgrade', False) or getattr(args, 'menu_bar', False)):
+    if posture and getattr(args, 'upgrade', False):
         flag = '--shadow' if getattr(args, 'shadow', False) else '--posture'
         raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
-    if getattr(args, 'menu_bar', False):
-        if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
-            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run; run bin/wuwei init --menu-bar on its own')
-        if sys.platform != 'darwin':
-            print('SwiftBar menu bar is macOS only')
-            return CLEAN
-        template = Path(__file__).resolve().parents[3] / 'templates/swiftbar/wuwei.1m.sh'
-        print(f'Copy {template} into your SwiftBar Plugins folder as wuwei.1m.sh.')
-        print('Add this line near the top of the copied script:')
-        print(f'export WUWEI_WORKSPACE={shlex.quote(str(Path(args.path).expanduser().resolve()))}')
-        print('Install SwiftBar first if it is absent. No menu bar plugin runs until installed.')
-        return CLEAN
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
         raise ValueError('--dry-run requires --upgrade; run bin/wuwei init --upgrade --dry-run')
     if getattr(args, 'upgrade', False):

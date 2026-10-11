@@ -263,7 +263,6 @@ STATE_PRODUCERS = {
     'pr_action_decisions': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
-    'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
     'steward_notes': 'wuwei steward run or wuwei hook SubagentStop',
     'steward_acks': 'wuwei steward ack',
     'negotiation_loops': 'wuwei steward run or wuwei dispatch next',

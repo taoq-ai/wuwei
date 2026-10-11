@@ -268,7 +268,7 @@ morning sweep lists the open PRs you authored in the configured repositories (by
 
 Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
 makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
-claim adopts it too. The board shows the item as `PR-12 (adopted)`. A PR opened after the
+claim adopts it too. A PR opened after the
 gate is claimed with `bin/wuwei pr claim owner/repo#12 --goal G-1`; with one configured
 repository a bare `12` works, and with one goal for the day `--goal` can go.
 
@@ -380,7 +380,7 @@ moves to `merged` with the flag still set, so the record shows which way it went
 
 With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
 per item and Approve opens or links them. An item still without one stops with a line naming
-its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. The board and the loop DM show the
+its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. `wuwei next` and the loop DM show the
 ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
 Decisions and review results wait in `bin/wuwei drafts` until you send them.
 
@@ -539,10 +539,5 @@ holds the session until close is clean. For each open item close asks: carry it 
 tomorrow (recommended), park it, or keep working, and records the answer with
 `wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with
 `bin/wuwei status --line`.
-
-Inside a session, ask Claude for the board, or call the plugin's `wuwei_board` tool. It
-shows items by phase with gate verdicts, owned PRs and what they wait on, pending decisions
-and pages as tables, and renders the cockpit inline where the host renders MCP
-Apps. It is read-only: answering a decision or approving a draft stays a CLI owner action.
 
 Anything not on this page is recovery, not daily use: see [recovery](recovery.md).

@@ -165,13 +165,9 @@ review_prs = []
 # url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.
 
 [brief]
-lead_minutes = 30 # Produce a meeting pack inside this window before an event with attendees.
 remote = "origin"
 prior_branch_pattern = "*{item}*" # Item is lowercased.
 full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)'
-[brief.style]
-length = "standard" # standard or concise.
-speed = 180 # Words per minute for say.
 
 # Registers map names to descriptions.
 [boundary]

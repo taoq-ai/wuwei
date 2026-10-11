@@ -174,7 +174,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
-MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
+MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
 ## Grants
 
@@ -260,8 +260,8 @@ In the workspace's own tracker a bug, triage or follow-up ticket is internal. Un
 umbrella it is created with no draft, under `ask` it is held as a card for the planner, and
 `block` refuses it. A row `{ tool = "tracker", audience = "owner", tier = "ask" }` makes it a
 card under send too. An external tracker keeps the outward rules. Each creation is written
-once per day and writes one `tracker.created` event naming the seat; the board's Tickets
-created table and the retro's Tickets seats filed section list who filed it.
+once per day and writes one `tracker.created` event naming the seat; the retro's Tickets
+seats filed section lists who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
 decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
@@ -534,9 +534,3 @@ the status line, a failed probe raises one page, a probe that turns from ok to f
 behaviour drift, and a healthy heartbeat pings an external dead-man monitor. See the
 [heartbeat reference](reference.md#heartbeat).
 
-## Cockpit and board
-
-`bin/wuwei dashboard` serves the read-only day board on loopback. The plugin's MCP server
-runs `bin/wuwei board` and offers the `wuwei_board` tool inside Claude Code; it is declared
-in the signed `plugin.json`, so integrity covers it. Answering a decision or approving a
-draft stays a host terminal action. See the [daily path](daily.md#6-close).

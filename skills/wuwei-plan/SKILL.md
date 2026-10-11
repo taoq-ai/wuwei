@@ -5,7 +5,7 @@ description: Propose the day with lead discovery and run the morning gate before
 
 # /wuwei plan
 
-Loop on `wuwei next`: run `wuwei next --json`, do the one action it returns, and run it again when the result or a completion notification arrives. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command. Never pass it through a shell variable or a command substitution, and never invoke Python without `-P`. Read `.wuwei/charters/planner.md` when present (the owner's preferences). When the `wuwei_board` tool is available, show the board once at the start of the day; nothing depends on it.
+Loop on `wuwei next`: run `wuwei next --json`, do the one action it returns, and run it again when the result or a completion notification arrives. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command. Never pass it through a shell variable or a command substitution, and never invoke Python without `-P`. Read `.wuwei/charters/planner.md` when present (what the owner prefers).
 
 Each action has a `why` and a `then`; do what `then` says.
 

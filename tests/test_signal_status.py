@@ -110,13 +110,6 @@ def test_escalation_without_running_seat_is_warn():
                     {'seats': {}}) == ('warn', 'Decisions')
 
 
-def test_signal_cli_reads_event_from_stdin(tmp_path):
-    day(tmp_path, {'items': {}, 'cap': 1})
-    result = cli(tmp_path, 'signal', 'classify', input=json.dumps({'kind': 'security.finding'}))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {'tier': 'page', 'lane': 'Work'}
-
-
 def test_status_line_and_json_share_snapshot(tmp_path):
     state_data = {'cap': 2, 'items': {'A': {'phase': 'implement'},
                                      'B': {'phase': 'spec'}, 'C': {'phase': 'merged'}},
@@ -334,7 +327,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
-                'brief.pack': 'silent', 'brief.answer': 'silent',
                 'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',

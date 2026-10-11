@@ -10,7 +10,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[budget]`, `[pace]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
-| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
+| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
@@ -35,7 +35,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one. Below strict the reason names the item's card, where the planner proposes the ticket; under strict it names `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>` for a host terminal. |
 | `tracker.skip_tiers` | `[]` | Gate tiers that need no ticket, for example `["light"]`. The recorded gate tier decides, else the lead's tier. |
 | `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
-| `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`; a seat adds `--seat <role>`, which the board and the retro show. |
+| `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`; a seat adds `--seat <role>`, which the retro shows. |
 | `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. |
 | `tracker.auto` | `["progress", "pr", "close"]` | Classes and kinds sent without a draft. Everything else waits in `wuwei drafts`; text naming a person or matching a sensitive pattern drafts whatever this says. A bug, triage or follow-up ticket in the workspace's own tracker follows `outbound.default_tier` instead, unless the tracker is external; under `ask` this list still decides it. |
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
@@ -75,7 +75,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. See [People, channels and tools](#people-channels-and-tools). |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
-| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. Seat briefs keep `brief.style.length`. |
+| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. |
 | `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
 | `owner.verbosity.dm` | `""` | Level for decisions sent to your owner DM. Empty uses the default. |
@@ -241,29 +241,18 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 | `adapters.vcs` | `"git"` | Version control: git. |
 | `adapters.host` | `"local"` | Host measurement: local or none. |
 | `adapters.checks` | `"local"` | Fast check execution: local or none. |
-| `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output for owner packs. `none` writes a text pack with an explicit no-audio note. |
+| `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output port. No command calls it since #789 part 5. |
 | `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
-| `adapters.transcripts` | `"none"` | Meeting transcript source. |
+| `adapters.transcripts` | `"none"` | Meeting transcript port. No command calls it since #789 part 5. |
 | `adapters.inbound` | `"none"` | Inbound message source: none or slack. |
 | `adapters.redactor` | `"builtin"` | Redacts inbound text before it is stored: built-in patterns for phone numbers, email addresses and secrets. |
 | `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
-| `brief.lead_minutes` | `30` | Meeting pack window before an event with attendees. |
-| `brief.style.length` | `"standard"` | `standard` or `concise` pack text. |
-| `brief.style.speed` | `180` | Speech rate in words per minute for `say`. |
 | `brief.remote` | `"origin"` | Git remote used for a brief. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
 | `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the decision at the `owner.verbosity.dm` level (at `brief`: the id, the question, each option with its score and the reason for the recommendation; at `standard` or `full`: more of the record, up to all of it, including context, blast radius and evidence paths) and the whole record on a `more D-n` reply; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
 | `control_plane.owner` | `""` | The pinned sender of commands from your owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
-
-Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
-inside the lead window for the next attendee meeting. The returned path contains the
-five fixed sections, a what-changed visual, a three-bullet card and a three-question
-drill. The sections come from the day's items, decision records and owned PRs, never
-from adapter or guard messages. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
-and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME --body TEXT` command
-continues to write seat briefs.
 
 When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`
 runs the scanner for the security sentinel's reviewed worktree, including delta reviews.
@@ -486,16 +475,13 @@ register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIR
 0.39.0 or newer. `none`, the default, turns the registry gate off: every MCP
 command and the launch gate exit 0, the first check of the day with attached servers
 prints `mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)`, and doctor shows
-the gate ok and WUWEI's own servers as covered by plugin integrity. Nothing checks
+the gate ok. Nothing checks
 attached servers for tool drift or poisoning then. A configured scanner that is
 missing or the wrong version is a check that could not run (exit 2) and blocks
 launches under `guarded` and `strict`. No attached servers is a clean empty registry.
-WUWEI declares its own read-only board server in the signed
-`.claude-plugin/plugin.json`; the integrity check covers it, so the registry does
-not scan it and `bin/wuwei mcp check` reports it as covered by plugin integrity.
+WUWEI declares no MCP server of its own.
 A `.mcp.json` added to the install, one in a workspace or repo, and any other
-plugin's servers, including one named like the cockpit, are discovered and
-checked like any other. Coverage goes by install directory, so another plugin
+plugin's servers are discovered and checked like any other. Coverage goes by install directory, so another plugin
 whose plugin.json links to WUWEI's is still checked.
 
 `scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
@@ -610,7 +596,7 @@ keeps running until you stop it by hand. Uninstall is an owner action: the Bash
 guard refuses `watch uninstall` from agent tools inside a workspace, so a seat
 cannot turn a dead-watch page into `watch off`; run it from your own terminal.
 
-`bin/wuwei status --line`, `bin/wuwei doctor`, the cockpit, session start and
+`bin/wuwei status --line`, `bin/wuwei doctor`, session start and
 sweeps all read watch health the same way, whatever the last sweep recorded:
 
 - Installed with `watch install`, and no clock line today or today's latest

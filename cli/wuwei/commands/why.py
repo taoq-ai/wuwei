@@ -80,7 +80,7 @@ def adhoc(root):
 def render(steps, level, root):
     """One line per step; at full, each line names its event id and evidence paths.
 
-    Record text is redacted as refusal targets are: a credential never reaches stdout or the board."""
+    Record text is redacted as refusal targets are: a credential never reaches stdout."""
     markers = security.load(root)
     return [security.redact(redact(text if level != 'full' else f'{text} (event {event or NOT}'
                                    + ''.join(f'; {path}' for path in paths) + ')'), markers)

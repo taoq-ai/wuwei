@@ -21,4 +21,4 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 ## What goes to the owner
 
 1. Only the cards `wuwei next` returns, and the report.
-2. While seats and background commands run, answer the owner from the board (`wuwei next`, `wuwei status --line`), never by resuming or interrupting a seat. Only an owner question waits.
+2. While seats and background commands run, answer the owner from `wuwei next` and `wuwei status --line`, never by resuming or interrupting a seat. Only an owner question waits.

@@ -7,7 +7,7 @@ WUWEI 无为 (said woo-way) means "effortless action." It is a Claude Code plugi
 
 - [Daily path](daily.md): one solo-owner path from install to close
 - [What the session knows](agent.md): the guide every session in the workspace is pointed at on start
-- [Concepts](concepts.md): roles, guards, memory, the day flow, review [tiers](concepts.md#tier), sessions, the listener, the heartbeat and the board
+- [Concepts](concepts.md): roles, guards, memory, the day flow, review [tiers](concepts.md#tier), sessions, the listener and the heartbeat
 - [Recovery](recovery.md): doctor first, troubleshooting for first-day failures, and low-level commands for when evidence and state disagree
 - [Adapters and ports](adapters.md): integrations and three-state results
 - [Charter overrides](charter-overrides.md): local rules and promote
