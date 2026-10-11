@@ -237,6 +237,17 @@ def test_model_work_is_queued_with_its_evidence(night, change, current, line):
     assert not state.read_state(directory=root / '.wuwei/days' / DAY).get('builds')
 
 
+def test_a_check_red_at_the_base_is_not_queued(night):
+    """#728: base_red waits like waiting; the sweep queues nothing for it."""
+    root, host, vcs, calls = night
+    host.results['checks'] = Result(0, [{'sha': 'a' * 40, 'name': 'tests', 'state': 'completed',
+                                         'conclusion': 'failure'}])
+    host.results[('checks', 'b' * 40)] = Result(0, [{'sha': 'b' * 40, 'name': 'tests',
+                                                     'state': 'completed', 'conclusion': 'failure'}])
+    assert shepherd.overnight(root) == 0
+    assert not events(root, 'shepherd.overnight')
+
+
 def stale(root):
     state._write_state(lambda data: data.setdefault('watch', {}).update(
         reviews={REF: {'head': 'a' * 40, 'since': DAY + 'T00:00:00+00:00'}}), root, reserved=False,

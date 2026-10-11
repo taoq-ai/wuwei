@@ -693,3 +693,100 @@ def test_state_rows_carry_draft(case):
     assert pr_actions.evaluate(root, [REF])[1][0]['draft'] is True
     host.results['pr'].data['draft'] = False
     assert pr_actions.evaluate(root, [REF])[1][0]['draft'] is False
+
+
+def check(name, conclusion, status='completed', sha='a' * 40):
+    return {'name': name, 'sha': sha, 'state': status, 'conclusion': conclusion}
+
+
+def test_fake_checks_answer_per_commit(case):
+    """#728: the fake has no checks at the base unless a test sets them."""
+    root, host, _ = case
+    host.results['checks'] = Result(0, [check('tests', 'failure')])
+    assert host.checks(REF, 'b' * 40).data == []
+    rows = [check('tests', 'failure', sha='b' * 40)]
+    host.results[('checks', 'b' * 40)] = Result(0, rows)
+    assert host.checks(REF, 'b' * 40).data == rows
+    assert host.checks(REF, 'a' * 40).data == [check('tests', 'failure')]
+    assert [c for c in host.calls if c[0] == 'checks'] == [
+        ('checks', (REF, 'b' * 40), None)] * 2 + [('checks', (REF, 'a' * 40), None)]
+
+
+def red_at_base(host, *rows):
+    host.results[('checks', 'b' * 40)] = Result(0, [check(*row, sha='b' * 40) for row in rows])
+
+
+def pr_row(capsys):
+    row, = json.loads(capsys.readouterr().out)
+    return row
+
+
+def test_check_red_at_base_too_is_base_red(case, capsys):
+    """#728: a check red at the base commit too is not the PR's; no fix round is asked."""
+    from wuwei import shepherd
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    host.results['checks'] = Result(0, [check('audit', 'failure')])
+    red_at_base(host, ('audit', 'failure'))
+    builds = state.read_state(root)['builds']['A']
+    assert main(['pr', 'state', REF]) == 0
+    row = pr_row(capsys)
+    assert (row['state'], row['reason'], row['action'], row['deadline'], row['exit']) == (
+        'base_red', f'base_red: audit fails at {"b" * 40} too', '', None, 0)
+    assert REF not in state.read_state(root)['watch']['actions']
+    assert main(['pr', 'act', REF]) == 0
+    assert capsys.readouterr().out == ''
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'raised' and data['builds']['A'] == builds
+    assert not shepherd.pending(root)
+
+
+def test_base_red_drops_the_ci_red_episode(case, capsys):
+    root, host, _, _ = linked(case)
+    host.results['checks'] = Result(0, [check('audit', 'failure')])
+    assert main(['pr', 'state', REF]) == 1
+    assert pr_row(capsys)['state'] == 'ci_red'
+    assert state.read_state(root)['watch']['actions'][REF]['state'] == 'ci_red'
+    red_at_base(host, ('audit', 'failure'))
+    assert main(['pr', 'state', REF]) == 0
+    assert pr_row(capsys)['state'] == 'base_red'
+    assert REF not in state.read_state(root)['watch']['actions']
+
+
+@pytest.mark.parametrize('head, base', [
+    ([('audit', 'failure')], [('audit', 'success')]),
+    ([('audit', 'failure')], []),
+    ([('audit', 'failure')], [('audit', None, 'in_progress')]),
+    ([('audit', 'failure'), ('lint', 'failure')], [('audit', 'failure'), ('lint', 'success')]),
+])
+def test_a_check_of_the_prs_own_stays_ci_red(case, capsys, head, base):
+    root, host, _, _ = linked(case)
+    host.results['checks'] = Result(0, [check(*row) for row in head])
+    red_at_base(host, *base)
+    assert main(['pr', 'state', REF]) == 1
+    row = pr_row(capsys)
+    assert (row['state'], row['action']) == ('ci_red', 'start a fix round') and 'reason' not in row
+
+
+def test_a_green_pr_does_not_read_the_base(case, capsys):
+    root, host, _, _ = linked(case)
+    main(['pr', 'state', REF])
+    assert pr_row(capsys)['state'] == 'waiting'
+    assert ('checks', (REF, 'b' * 40), None) not in host.calls
+
+
+@pytest.mark.parametrize('damage', ['timeout', 'other sha', 'error body', 'no base'])
+def test_unreadable_base_is_unmeasured(case, capsys, damage):
+    root, host, _, _ = linked(case)
+    host.results['checks'] = Result(0, [check('audit', 'failure')])
+    if damage == 'timeout':
+        host.results[('checks', 'b' * 40)] = Result(2, None, 'timeout')
+    elif damage == 'other sha':
+        host.results[('checks', 'b' * 40)] = Result(0, [check('audit', 'failure', sha='c' * 40)])
+    elif damage == 'error body':
+        host.results[('checks', 'b' * 40)] = Result(0, {'message': 'Not Found'})
+    else:
+        host.results['pr'].data['base_sha'] = None
+    assert main(['pr', 'state', REF]) == 2
+    row = pr_row(capsys)
+    assert row['exit'] == 2 and row['reason'].startswith('PR state unmeasured:')

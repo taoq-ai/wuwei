@@ -13,7 +13,17 @@ class Fake(Recorder):
         return self._call('commits', (ref,), root)
 
     def checks(self, ref, sha, root=None):
-        return self._call('checks', (ref, sha), root)
+        """#728: per commit; the PR's base has no checks unless a test sets ('checks', sha)."""
+        from copy import deepcopy
+        from wuwei.registry import Result
+        result = self._call('checks', (ref, sha), root)
+        pr = getattr(self.results.get('pr'), 'data', None)
+        pr = pr if isinstance(pr, dict) else {}
+        if ('checks', sha) in self.results:
+            return deepcopy(self.results[('checks', sha)])
+        if sha == pr.get('base_sha') != pr.get('head'):
+            return Result(0, [])
+        return result
 
     def reviews(self, ref, root=None):
         return self._call('reviews', (ref,), root)

@@ -202,12 +202,14 @@ The shepherd owns every PR the day raised or claimed until it is merged or the o
 it. Ownership is enforced by three mechanisms, none of which depends on the model remembering:
 
 - State from absolute state. `wuwei pr state` computes one current state per owned PR from the
-  code host, never from memory: `conflicted` (not mergeable against its base), `ci_red`,
+  code host, never from memory: `conflicted` (not mergeable against its base), `ci_red`, `base_red`,
   `changes_requested`, `threads_unanswered` (the reply obligations above), `review_stale`
   (awaiting review past `pr.review_window`), `approved`, `merged`. Each state names its
   required action and a deadline (`pr.action_minutes`, default 30):
   - `conflicted`: rebase in the item's worktree, resolve, run the fast checks, push;
   - `ci_red`: a fix round in the item's worktree;
+  - `base_red` (#728): every red check also fails at the PR's base commit, so no action: the
+    item waits and `pr state` prints `base_red: <check> fails at <base sha> too`;
   - `changes_requested` and `threads_unanswered`: triage each thread: a fix request becomes a
     fix round, a question gets a reply (auto-send tier for team PR threads, 4.9), a
     disagreement or scope change becomes a decision for the owner (5.8);
