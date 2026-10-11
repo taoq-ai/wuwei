@@ -998,3 +998,17 @@ def test_constructed_command_is_judged_as_plain(workspace_case, built, plain):
     # #671: a name built from quotes, eval, sh -c or a continuation is the command it runs.
     root, _ = workspace_case
     assert guard().check(payload(root, built)) == guard().check(payload(root, plain))
+
+
+def test_issue_730_appended_variable_push_is_refused_through_the_hook(workspace_case, monkeypatch, capsys):
+    import io
+    import json
+    import sys
+    from types import SimpleNamespace
+    from wuwei.commands.hook import run
+    root, _ = workspace_case
+    event = payload(root, 'x=gi; x+=t; $x push origin main')
+    event.update(session_id='example', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(event)))
+    assert run(SimpleNamespace(event='PreToolUse')) == 2
+    capsys.readouterr()

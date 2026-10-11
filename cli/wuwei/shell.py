@@ -66,6 +66,27 @@ _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
                     r'(?P<redirect>[0-9]*(?:<<-?|>>!?|>!|<>|>&|<&|>\||[<>])|&>>?)|'
                     r'(?P<operator>\&\&|\|\||[;&|()\n])')
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
+# #730: a whole word that is one plain variable (the _variable_read form).
+_VARIABLE = re.compile(r'"?\$\{?([A-Za-z_]\w*)\}?"?')
+# #730: builtins that can set a variable named by any word, and the . and source loaders.
+_WRITERS = re.compile(r'(?<![\w./-])(?:read|printf|mapfile|readarray|declare|typeset|local|export|readonly|'
+                      r'unset|getopts|eval|source|let|wait|\.)(?![\w./-])')
+
+
+def leading_variables(text):
+    """#730: {name: value} of a leading assignment statement (x=bin/wuwei; ...) whose values are
+    single literal words; a name written anywhere else as a bare word (x=, x+=, read x, getopts g
+    x, unset x) is left out, only its $x and ${x} reads may follow. The first statement always
+    runs, in the outer shell, before every later stage. Any variable-writing builtin word makes
+    every name opaque: its name operand can be built by expansion (read ${n%?})."""
+    text = re.sub(r'''['"\\]''', '', text)
+    if _WRITERS.search(text):
+        return {}
+    match = re.match(r'\s*((?:[A-Za-z_]\w*=[\w./][\w./:@+-]*[ \t]+)*[A-Za-z_]\w*=[\w./][\w./:@+-]*)'
+                     r'[ \t]*(?:;|&&|\n)', text)
+    pairs = dict(word.split('=', 1) for word in match[1].split()) if match else {}
+    return {key: value for key, value in pairs.items()
+            if len(re.findall(rf'(?<![\w$])(?<!\$\{{){key}(?!\w)', text)) == 1}
 PLUGIN_LAUNCHER = Path(__file__).resolve().parents[2] / 'bin/wuwei'  # resolved once, as registry.ADAPTERS
 _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
 
@@ -131,8 +152,12 @@ def mentions(raw, names, *, script=False) -> bool:
             and not re.match(r'-[CR]|--(?:repo|git-dir|work-tree)=', word)
             for index, word in enumerate(words)):
         return True
-    # An assignment prefix is not a command name; the word after it is.
-    return any(not _literal(word) for word in re.findall(
+    # An assignment prefix is not a command name; the word after it is. #730: a variable from
+    # the leading assignment statement is judged by its value.
+    variables = leading_variables(raw)
+    return any(not _literal(word) and not ((name := _VARIABLE.fullmatch(word)) and name[1] in variables
+                                           and not pattern.search(variables[name[1]]))
+               for word in re.findall(
         r'(?:^|[;&|(\n])\s*(?:[A-Za-z_]\w*=[^\s;&|()]*\s+)*([^\s;&|()]+)', unquoted)
         if not _ASSIGNMENT.match(word))
 
@@ -230,7 +255,8 @@ def normalize(command: str, *, protected=(), words=None) -> list[Command]:
     protected, texts = ('git', 'gh', *protected), []
     try:
         found = _parse(command, False, protected=protected,
-                       words=[] if words is None else words, texts=texts, scope_ids=count())
+                       words=[] if words is None else words, texts=texts, scope_ids=count(),
+                       variables=leading_variables(command))
         # #671: a reader's text is data only when no command of the call can run it,
         # and no write lands in git's own files (hooks, config).
         if texts and any(item.argv and PurePosixPath(item.argv[0]).name not in protected
@@ -298,7 +324,8 @@ def _read_word(script, position):
     return ''.join(raw), position
 
 
-def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, texts, scope=(), scope_ids):
+def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, texts, scope=(), scope_ids,
+           variables=None):
     if not isinstance(script, str) or '\0' in script:
         raise ParseError(f'command must be text without NUL; {DAMAGED}')
     tokens, raw_tokens, heredocs = [], [], []
@@ -400,7 +427,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, texts,
                         raw_argv.append(raw_tokens[position])
                     position += 1
                 current = _unwrap(argv, nested, raw_argv, env, protected,
-                                  words=words, texts=texts, scope=current_scope, scope_ids=scope_ids)
+                                  words=words, texts=texts, scope=current_scope, scope_ids=scope_ids,
+                                  variables=variables)
                 if writes or reads:
                     if not current:
                         current = [Command([], nested, dict(env or {}))]
@@ -438,7 +466,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, texts,
     return result
 
 
-def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'), *, words, texts, scope, scope_ids):
+def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'), *, words, texts, scope, scope_ids,
+            variables=None):
     env = dict(inherited_env or {})
     while argv:
         if _ASSIGNMENT.match(argv[0]):
@@ -452,7 +481,15 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             continue
         program = PurePosixPath(argv[0]).name or argv[0]
         if not _literal(raw_argv[0]):
-            raise ParseError('nonliteral command name is unsupported; write the command name literally instead of building it from a variable')
+            # #730: a variable from the leading assignment statement is its literal value.
+            name = _VARIABLE.fullmatch(raw_argv[0])
+            value = (variables or {}).get(name[1]) if name else None
+            if value is None or PurePosixPath(value).name in protected:
+                raise ParseError(f'nonliteral command name {raw_argv[0]} in stage {" ".join(raw_argv)} is unsupported; '
+                                 'assign it a literal path at the start of the command (x=bin/wuwei; $x ...), '
+                                 'or write the command name literally')
+            argv, raw_argv = [value, *argv[1:]], [value, *raw_argv[1:]]
+            program = PurePosixPath(value).name
         if program in _PATH_COMMANDS and not all(
                 _literal(raw, allow_globs=program not in ('cd', 'pushd', 'popd')) for raw in raw_argv):
             raise NonliteralPathError('nonliteral file or directory arguments are unsupported; write the literal path')
@@ -558,7 +595,8 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             if not argv:
                 return [Command(['echo'], True, env)]
             expanded = _unwrap(argv, subshell, raw_argv, env, protected,
-                               words=words, texts=texts, scope=scope, scope_ids=scope_ids)
+                               words=words, texts=texts, scope=scope, scope_ids=scope_ids,
+                               variables=variables)
             if any(item.writes or (item.argv and PurePosixPath(item.argv[0]).name in
                                   (*protected, *_PATH_COMMANDS)) for item in expanded):
                 raise ParseError('input-driven guarded arguments are unsupported; run the command directly with literal arguments instead of piping into xargs')
