@@ -373,7 +373,7 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout == 'WUWEI no plan yet | pages 0\n'
     assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision', 'copy', 'weakref',
-            'wuwei.sessions', 'shlex', 'wuwei.cruise'} & set(json.loads(out.read_text())) == set()
+            'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
 
 
 def test_integrity_import_leaves_registry_out():
@@ -1087,7 +1087,7 @@ def test_session_start_loads_only_what_it_prints(seeded_workspace, tmp_path):
     # no temp-file module in the ssh adapter and, with no decision routes, no decision ledger.
     loaded = [set(run_launcher(seeded_workspace, tmp_path, 'SessionStart', printed=True)) for _ in range(2)][1]
     assert loaded & {'shutil', 'tempfile', 'bz2', 'lzma', 'random', 'uuid', 'calendar',
-                     'wuwei.decision', 'wuwei.cruise', 'wuwei.novelty'} == set()
+                     'wuwei.decision', 'wuwei.novelty'} == set()
 
 
 COUNTING = (

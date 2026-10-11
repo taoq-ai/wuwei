@@ -353,18 +353,10 @@ DECIDED = ['D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed
 def test_decision_view_after_an_owner_answer(root, monkeypatch, capsys):
     answer(root, monkeypatch, 'B')
     ident = f'{DAY}:{len(events(root))}'
-    assert why(capsys, 'D-3') == (0, [*DECIDED, 'level: not recorded', 'decided: B by owner'], '')
+    assert why(capsys, 'D-3') == (0, [*DECIDED, 'decided: B by owner'], '')
     lines = why(capsys, 'D-3', '--full')[1]
     assert lines[0] == f'D-3: Which fix? (event not recorded; .wuwei/days/{DAY}/decisions/D-3.md)'
     assert lines[-1] == f'decided: B by owner (event {ident})'
-
-
-def test_decision_view_reads_class_and_cruise_level(root, capsys):
-    save(root, VALID.replace('Class: design', 'Class: retry'))
-    assert why(capsys, 'D-3')[1][-3:] == ['class: retry', 'level: not recorded', 'decided: not recorded']
-    state.append_event('decision.decided', {'id': 'D-3', 'option': 'A', 'decided_by': 'cruise retry@L2'},
-                       directory=day_of(root))
-    assert why(capsys, 'D-3')[1][-2:] == ['level: L2', 'decided: A by cruise retry@L2']
 
 
 def test_decision_view_without_a_record_exits_one(root, capsys):

@@ -147,7 +147,7 @@ def correct(ident, path, text, fields, root):
 
 
 def run(root, target, answer=None):
-    """wuwei undo: a D-n through #283's undo (decision undo is its alias), or a merge event."""
+    """wuwei undo: a D-n through decision undo, or a merge event."""
     from wuwei.decision import DECISION_ID
     if re.fullmatch(DECISION_ID, target):
         from types import SimpleNamespace

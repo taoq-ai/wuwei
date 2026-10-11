@@ -277,8 +277,6 @@ STATE_PRODUCERS = {
     'outbound_threads': 'wuwei outbound learn',
     'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide'
               ' or wuwei watch and wuwei pr state (a merged PR closes its merge card)',
-    'cruise_cards': 'wuwei plan propose',
-    'decision_shadows': 'wuwei decision route',
     'main_broken': 'wuwei build',
 }
 

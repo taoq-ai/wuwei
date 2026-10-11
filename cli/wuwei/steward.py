@@ -21,11 +21,6 @@ def pending(data, item=None):
 def review(root=None):
     """Record a third-round note once, without touching item state."""
     root = workspace.find_workspace(root)
-    from wuwei import budget_classes, calibration_scores
-    budget_classes.evaluate(root)  # #558: the error budget lowers, restores and warns
-    calibration_scores.evaluate(root)  # #559: store the uncalibrated classes and roles
-    from wuwei import cruise
-    cruise.review_shadows(root)  # #560: score the shadows against the live outcomes
     # #617: local events only; collect's code host and tracker reads never block a gate step.
     events = metrics._events(workspace.day_dir(root))
     if events is None:

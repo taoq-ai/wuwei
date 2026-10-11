@@ -748,27 +748,21 @@ def nested(dotted, value):
     return tree
 
 
-ON = '[decisions.cruise]\nenabled = true\n'
-LEVEL1 = ON + '[decisions.cruise.levels]\napproach = 1\n'
 REVIEWED = [
-    ('repos.merge.auto', True, True, ''), ('decisions.cruise.levels.approach', 2, True, LEVEL1),
-    ('decisions.cruise.levels.defer', 1, True, ON),
-    ('decisions.cruise.enabled', True, True, '[decisions.cruise]\nenabled = false\n'),
+    ('repos.merge.auto', True, True, ''),
     ('repos.gates.floor', 'light', True, ''),
     ('adapters.scanner', 'ziran', True, ''), ('calendar.url', 'https://x.test/c.ics', True, ''),
     ('watch.ping_url', 'https://x.test/p', True, ''), ('codex.command', ['node', 'x.mjs'], True, ''),
     ('owner.name', 'Pat', True, ''), ('repos.identity.email', 'pat@x.test', True, ''),
     ('shepherd.review_channel', 'C1', True, ''), ('guards.mode', 'shadow', True, ''),
     ('security.posture', 'observe', True, ''), ('security.areas.mcp', 'off', True, ''),
-    ('decisions.cruise.levels.approach', 1, False, ON), ('repos.gates.floor', 'full', False, ''),
+    ('repos.gates.floor', 'full', False, ''),
     ('repos.merge.auto', False, False, ''), ('repos.fast_checks', ['make test'], False, ''),
     ('deploy.deny', ['twine upload*'], False, ''),
     ('gates.second_opinion', 'codex:gpt-5', True, ''), ('gates.second_opinion', 'off', False, ''),
     ('telemetry.share', 'anonymous', True, ''), ('telemetry.otlp.endpoint', 'https://x.test', True, ''),
     ('autonomy.mode', 'autonomous', True, '[autonomy]\nmode = "supervised"\n'),
     ('autonomy.mode', 'supervised', False, ''),
-    ('decisions.cruise.margin', 0.1, True, ''), ('decisions.cruise.margin', 0.3, False, ''),
-    ('decisions.cruise.max_per_day', 40, True, ''), ('decisions.cruise.max_per_day', 5, False, ''),
 ]
 
 

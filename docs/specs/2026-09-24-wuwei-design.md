@@ -18,7 +18,7 @@ that engagement ships in this repository.
 
 - G1. One person runs a team of agents that plans, builds, reviews and shepherds work across
   several repositories, finds new work against the owner's goals throughout the day, and
-  asks the owner only for decisions cruise mode does not answer (5.8.1), work outside the
+  asks the owner only for decisions the mandate does not take (5.8), work outside the
   goals, and merges the merge policy does not clear (4.6).
 - G2. Guards enforce the rules at the moment of action. A rule that can be broken without a
   refusal is not a rule.
@@ -300,7 +300,7 @@ test runner allows arbitrary code, so it would add refusals without adding a gua
 WUWEI may merge a pull request when the policy clears it; otherwise the merge is a decision
 for the owner. The policy is one CLI function, `wuwei merge check <pr>`, used by the merge
 guard, the shepherd and the report; `wuwei merge <pr>` runs the check and merges in one step.
-In decision terms this policy is the `merge` class of cruise mode (5.8.1) at L2 or L3, with
+In decision terms this policy is the `merge` class (5.8.1), recorded under the mandate, with
 the conditions below unchanged.
 
 Eligibility, per repository in `config.toml` (default off):
@@ -481,13 +481,13 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 ```
 
 Briefs (amended 2026-10-01, #301). Every seat brief carries a mandate block generated from
-the item's class levels (5.8.1) and the owner's calibration interview answers: what the
-seat decides alone (what the brief, its charter and the engineering standards already
-answer), what it decides and records (two-way open questions inside the item, as
-assumptions, 5.3; records of classes running at L2 or L3, which cruise mode answers under
-5.8.1's conditions or routes to the owner), and what goes to the owner
-(one-way doors, the 5.8.1 ceilings, the interview's trust-surface areas and owner-run
-commands, records of classes at L0 or L1). It closes with: nothing else is a question. A
+`autonomy.mode` and the owner's calibration interview answers: what the seat decides alone
+(what the brief, its charter and the engineering standards already answer), what it
+decides and records (under `autonomous`: two-way open questions inside the item, as
+assumptions, 5.3, and records of class `retry`, `park`, `accept-residual` or `merge`; under
+`supervised`: none), and what goes to the owner (one-way doors, the interview's
+trust-surface areas and owner-run commands, records of every other class; under
+`supervised`, every class). It closes with: nothing else is a question. A
 seat does not ask what it may decide.
 
 Records (owner, 2026-10-03, #357). The records under `.wuwei/` are written by the workflow
@@ -533,10 +533,10 @@ the seats (#528); no day value adjusts either.
   open, fix rounds and deltas are arch-only.
 - Assume and record (amended 2026-10-01, #301). "When unsure, it is one-way" (5.8) still
   decides reversibility. An open question on a two-way door inside the item (the `approach`
-  class while it runs at L2 or L3, 5.8.1; below that, an `approach` record) is not asked:
+  class under `autonomy.mode = autonomous`; under supervised, an `approach` record) is not asked:
   the seat takes its recommendation, records it under `Assumptions:` in the item's spec or
   PR body (what was assumed, why, what would overturn it) and continues. Gates review
-  assumptions as findings. Only a one-way door, a 5.8.1 ceiling or trust-surface area, or a question outside the item (its agreed
+  assumptions as findings. Only a one-way door, a trust-surface area, or a question outside the item (its agreed
   scope, the queue, a person), becomes a decision record (5.8).
 - Negotiation budget (amended 2026-10-01, #301): one fix round plus one delta check per
   gate. Residual non-blocking findings become review notes in the PR body. A trust-boundary
@@ -643,12 +643,12 @@ the seats (#528); no day value adjusts either.
 
 ### 5.4 When the user is asked
 
-At the morning gate (goals, ranked queue, seat policy); for decisions cruise mode routes to
-the owner (5.8.1), one question per decision, recommended option first, pending decisions
+At the morning gate (goals, ranked queue, seat policy); for decisions the mandate does not
+take (5.8), one question per decision, recommended option first, pending decisions
 batched, pre-triaged by the steward; for work outside the goals or above the auto-start bar
 (5.7); for merges the merge policy does not clear. Never for what a seat's mandate lets it
 decide (5.2). Otherwise the session is silent, with a
-digest at most every two hours that lists the decisions cruise mode answered. Under
+digest at most every two hours that lists the two-way decisions taken. Under
 `autonomy.mode = autonomous` a decision the mandate covers (5.8, decision classes) is never a
 card (owner, 2026-10-05, #530).
 
@@ -755,14 +755,13 @@ Anything that does not start joins the next decision batch as a proposed item.
 
 ### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282 and #301; amended 2026-10-04, #475)
 
-Every decision that the owner or cruise mode answers is a record
+Every decision that the owner or the mandate answers is a record
 `days/<date>/decisions/D-<n>.md` in one shape (MADR with a Kepner-Tregoe evaluation); a
 two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
-- `Class:` one of the decision classes in 5.8.1
-- `Role:` optional, one line: the role (charter name) that wrote the record; its confidence is
-  scored per role (5.8.1, Calibration)
+- `Class:` one of the decision classes listed in 5.8.1
+- `Role:` optional, one line: the role (charter name) that wrote the record
 - `Options:` at least two, one of them doing nothing or deferring, as the table
   `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
   backtick, `$` or backslash), why the option scores as it does against the musts and wants,
@@ -784,19 +783,16 @@ two-way open question inside the item is an assumption instead (5.3):
 - `Reversibility: one-way|two-way`, `Blast radius:` who or what is affected if it is wrong
 - `Pre-mortem:` the most likely way the recommendation fails
 - `Revisit:` a date or trigger that reopens it
-- `Decided-by:` `owner` as written by the seat, or `cruise <class>@L<n>` written by the CLI
-  when cruise mode answers it; `Outcome:` once taken
+- `Decided-by:` `seat`, `owner` or `mandate`; `Outcome:` once taken
 
-Routing by class. The record's class level and the conditions in 5.8.1 decide whether the
-CLI answers it or the owner does; anything cruise mode does not answer goes to the owner.
 When unsure, it is one-way.
 
 Decision classes (owner, 2026-10-05, #530). `decision route` derives an MIT CISR class from
 two axes already in the record. Risk is low when the record is two-way and its blast radius
 starts with item, own branch, own PR or day; anything else is high. Ambiguity is low when
-Confidence is not low and the 5.8.1 margin is at least 0.2. Routine is low on both,
+Confidence is not low and the margin (5.8.1) is at least 0.2. Routine is low on both,
 Consequential is high risk with low ambiguity, Exploratory is low risk with high ambiguity and
-Strategic is high on both. The 5.8.1 classes `retry` (a fix round after FIX verdicts),
+Strategic is high on both. The classes below (5.8.1) `retry` (a fix round after FIX verdicts),
 `approach` (a builder's task round, a choice between seat procedures), `park` (a parked item's
 next step) and `accept-residual` are Routine by definition. `autonomy.mode` holds the owner's
 setup answer, default `autonomous`: a Routine, Consequential or Exploratory record whose
@@ -836,161 +832,48 @@ sentence of the reasoning. A seat question that is not a decision record is refu
 PreToolUse guard refuses `AskUserQuestion` and every control-plane escalation that does not
 cite a decision id whose record passes the lint, and SubagentStop flags a seat whose last
 message asks the owner a question without one (Codex and headless runs). The steward's
-metrics add: decisions per day by class and reversibility, share answered by cruise mode,
-cruise answers the owner later reversed (each one demotes its class, 5.8.1), owner asks per
-item, and unnecessary asks (an owner answer equal to the recommendation: the agreements
-5.8.1 promotes from).
+metrics add: decisions per day by class and reversibility, owner asks per item, and
+unnecessary asks (an owner answer equal to the recommendation).
 
-#### 5.8.1 Cruise mode (owner, 2026-10-01, #282)
-
-Graduated autonomy per decision class, earned from the ledger and never by imitating the
-owner. Each class runs at one level:
-
-- L0 ask: the owner chooses (5.4); the item waits.
-- L1 recommend: the recommendation is preselected in the next decision batch and the owner
-  confirms or changes it; the item waits.
-- L2 notify: the CLI takes the recommendation at once and tells the owner; the owner can undo
-  it with one reply until `undo_minutes` after the answer is taken (owner, 2026-10-10, #789).
-- L3 digest: the CLI takes the recommendation at once and lists it in the next digest.
+#### 5.8.1 Decision classes (owner, 2026-10-11, #814)
 
 Classes are a fixed list; a new class is an amendment to this section, not config.
 
-| Class | Decides | Default | Ceiling |
-|---|---|---|---|
-| `approach` | an implementation choice inside the item's agreed scope; an assumption, not a record, at L2 or L3 (5.3) | L2 | L3 |
-| `retry` | re-running a failing check | L2 | L3 |
-| `park` | parking an item, such as a stuck build loop (5.3) | L2 | L3 |
-| `accept-residual` | keeping a non-blocking residual finding as a review note (5.3) | L2 | L3 |
-| `defer` | moving an item or a follow-up to a later day | L0 | L3 |
-| `scope-cut` | dropping part of an item's agreed scope | L0 | L3 |
-| `re-plan` | changing the approved queue | L0 | L3 |
-| `dependency-bump` | changing a dependency manifest or lockfile | L0 | L3 |
-| `design` | an architecture, interface or data-shape choice that outlives the item (owner, 2026-10-04, #475) | L0 | L3 |
-| `boundary` | moving or changing a module, service or ownership boundary (owner, 2026-10-04, #475) | L0 | L3 |
-| `refactor` | restructuring code without changing behaviour (owner, 2026-10-04, #475) | L0 | L3 |
-| `merge` | merging a pull request (4.6) | L3 | L3 |
-| `message` | sending or replying to a person; the 4.9 tiers are unchanged; an external confirmation holds no reversible work (5.8.2) | L0 | L1 |
-| `other` | anything no class above covers | L0 | L1 |
+| Class | Decides |
+|---|---|
+| `approach` | an implementation choice inside the item's agreed scope; an assumption, not a record, under `autonomy.mode = autonomous` (5.3) |
+| `retry` | re-running a failing check |
+| `park` | parking an item, such as a stuck build loop (5.3) |
+| `accept-residual` | keeping a non-blocking residual finding as a review note (5.3) |
+| `defer` | moving an item or a follow-up to a later day |
+| `scope-cut` | dropping part of an item's agreed scope |
+| `re-plan` | changing the approved queue |
+| `dependency-bump` | changing a dependency manifest or lockfile |
+| `design` | an architecture, interface or data-shape choice that outlives the item (owner, 2026-10-04, #475) |
+| `boundary` | moving or changing a module, service or ownership boundary (owner, 2026-10-04, #475) |
+| `refactor` | restructuring code without changing behaviour (owner, 2026-10-04, #475) |
+| `merge` | merging a pull request (4.6) |
+| `message` | sending or replying to a person; the 4.9 tiers are unchanged; an external confirmation holds no reversible work (5.8.2) |
+| `other` | anything no class above covers |
 
-The L2 defaults are the two-way, inside-the-item decisions seats took on their own before
-cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
-(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
-(default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
-(default 2.0), `calibration_threshold` (default 0.15, above 0 and below 1),
-`calibration_min` (default 10), `shadow_days` (default 5), `shadow_min` (default 5), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
-level outside 0 to 3, or a level above the class's ceiling. The running level lives in
-`memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence after a passed shadow and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
-of the running level, the config level and the ceiling.
+The margin is the recommendation's weighted score minus the best other option's, passing its
+musts or not, over 10 times the sum of the weights.
 
-Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
-`Reversibility: two-way`; `Blast radius:` is `own branch`, `own PR` or `workspace`; the
-margin, the recommendation's weighted score minus the best other option's, passing its musts
-or not, over the maximum possible score (10 times the sum of the weights), is at least
-`margin`, computed with the owner's weights from the calibration interview where they exist; fewer than `max_per_day`
-records were answered this way today; and no ceiling applies. Otherwise, a thin margin or
-an unreadable field included, the record goes to the owner, at L0 when the class runs at L0
-and at L1 above it. The CLI writes `Decided-by: cruise <class>@L<n>` into the record, and
-the `decision.decided` event, written only by the CLI, names the same rule.
-
-Ceilings. Whatever the config says, these stay at L0 or L1: messages to people; scope
-agreed with other people; deploys (never made, 4.7) and merges to a repository whose base deploys (4.6); trust-boundary
-findings (a record whose context cites a security finding); anything one-way; anything
-outside the item's goals (an `unplanned` item, or a change to a goal). The Ceiling column
-carries the class ones; the rest are checked on every record. Under `autonomy.mode =
-autonomous` (5.8, decision classes) the ceilings bind a two-way record not written for the
-owner through its action's floor (merge policy 4.6, publish grants 4.7, outbound tiers 4.9),
-not the decision record (#530); one-way records and trust-boundary findings still go to the owner.
-
-Merge. The `merge` class answers only where `merge.auto = true` and the merge policy clears
-the merge; the policy's eligibility, preconditions, soak window, daily cap and breaker
-replace the other conditions above, unchanged; the ceilings still apply. Auto-merges do
-not count toward `max_per_day`. At L3 (the default, and the behaviour before cruise mode) an auto-merge
-appears in the digest; at L2 the owner is also told when the soak window opens (owner, 2026-10-10, #789); at L0 or L1
-every merge goes to the owner.
-
-Promotion and demotion. The steward proposes raising a class one level through propose and
-promote (6.8) after 10 agreements and no reversal in that class over 14 days, with its error
-budget unspent; an agreement is an owner answer equal to the recommendation, or a cruise
-answer whose undo window closed without an undo. `wuwei promote` lands a raise only when the
-owner approved it at the morning gate, and never above the ceiling. Once a week the steward
-re-asks the owner one cruise-answered record per class from the past seven days, with the
-answer hidden; a different choice counts as a reversal.
-
-Shadow promotion (owner, 2026-10-08, #560). Agreement alone said nothing about what the next
-level would do on live records, so a raise is shadowed first. When a class reaches its
-agreements, propose starts a shadow at the next level in `memory/cruise.json` instead of a
-card. While it runs, each record the mandate takes for that class also gets the answer the
-shadow level would have given (`decision_shadows`, written only by `wuwei decision route`);
-the live route never changes. The steward scores each shadow answer against the record's final
-outcome: an owner answer, or a cruise answer whose undo window closed. One disagreement ends
-the shadow, and the ledger names the record and both options. The shadow passes after
-`shadow_days` with at least `shadow_min` scored answers, all agreeing. Only a passed shadow
-gets the raise card, the card ends the shadow so it asks once, and `wuwei promote` lands a
-raise only from a card that carries a passed shadow. A raise to L1 changes no route, so its
-shadow passes at once. After an ended shadow the agreements count again from its end.
-`bin/wuwei cruise shadow` prints the shadows and the day report has a `## Cruise shadow`
-section.
-
-Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
-reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
-has a budget per `budget_window_days` window. Its events are reversals (an undo, a later
-owner answer that differs from a cruise answer, a weekly sample answered differently) and
-escaped defects (5.6) attributed to a cruise answer of the class; the allowance is
-`budget_share` times the cruise answers of the class in the window. The budget is spent
-when the events exceed the allowance and number at least two. The burn rate is the events
-of the last 48 hours against the window's allowance, scaled to the window
-(`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
-`cruise.burn` event a day (owner, 2026-10-10, #789) naming the events, whose action is `wuwei cruise budget`. The
-steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
-class runs one level lower, never below L0, through the promote writer, with a ledger line
-that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
-took away. When the window refills (the class is no longer spent) the CLI restores the held
-level through the same writer with a `budget refilled` ledger line. That restore is the one
-level raise without a morning-gate card, and it goes only back to the held level, never
-above it or the ceiling; any other level write, such as an approved raise, clears the hold.
-Thin-margin escalations still go to the owner and are flagged on the route, but no longer
-lower a class. A class with a spent budget, or with a budget event since its last level
-change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
-allowance, burn and state, and exits 1 when any class is not ok.
-
-Calibration (owner, 2026-10-08, #559). A record's stated Confidence is scored against what
-happened. The CLI stores `confidence` and `role` (from the optional `Role:` field) in the
-`decision.decided` payload of every record a seat, the mandate or a cruise rule takes. Over
-the `budget_window_days` window each taken record with a stored confidence and a closed undo
-window is scored: forecast high 0.9, medium 0.6, low 0.3; outcome 0 when an undo, a reversal,
-a weekly sample answered differently or an escaped defect names it, else 1. The Brier score
-(mean squared difference) is computed per class and per role. Fewer than `calibration_min`
-scored records is `too few`; above `calibration_threshold` is `uncalibrated`; else
-`calibrated`. The steward review stores the uncalibrated classes and roles in `cruise.json`
-under `calibration` through the promote writer, with one ledger line naming the broken
-records, only when the sets change. An uncalibrated class runs at most L1. A record whose
-`Role:` is stored uncalibrated routes with high ambiguity, so Routine becomes Exploratory and
-Consequential becomes Strategic (a card); this never refuses. A class gets a raise card only
-when its live state is `calibrated`. `too few` blocks promotion only. `wuwei cruise
-calibration` prints kind, name, scored, brier and state, and exits 1 when any row is
-uncalibrated. The day report and the retro carry a `## Calibration` section.
-
-Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
-running or configured level, so turning it back on restores them. The status line (5.9) then
-shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
-while it is on, followed by `· budget <classes> spent` while an error budget holds a class
-lower, `· uncalibrated <roles>` while a role is stored uncalibrated (#559), and
-`· shadow <classes>` while a class runs in shadow or waits for its raise card (#560).
+Routing is fixed in code (5.8, decision classes); no class level, budget, calibration or
+shadow exists.
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
-has touched. A decision or guarded action whose target is novel runs one level lower than
-its class level, never below L0 and never above the ceiling. A target is a repository
+has touched. A decision or guarded action whose target is novel asks the owner once. A target is a repository
 (`repo:<org>/<name>`), channel (`channel:<id>`), person (`person:<ns>:<id>`), connector
 tool (`tool:<server>/<name>`), dependency (`dependency:<ecosystem>/<name>`), environment
-(`env:<name>`) or workflow (`workflow:<name>`). Under `autonomy.mode = "autonomous"` with no
-cruise levels, one level lower means a card: `decision route` sends a record naming a novel
+(`env:<name>`) or workflow (`workflow:<name>`). Under `autonomy.mode = "autonomous"` that
+means a card: `decision route` sends a record naming a novel
 target to the owner (Routine included), an outward chat send to a novel channel holds as a
 draft, and a standing grant pattern does not apply to a novel repository. Under supervised
 routing does not change. A target is seen when config names it, or after the owner answered
 one card for it (a Keep owner-only grant answer leaves it novel; for a draft only an
 approval counts), or after an action on it was taken under mandate and not reversed within
-the undo window, whichever comes first; the mandate form arrives with the cruise levels.
+the undo window, whichever comes first.
 `init --upgrade` seeds the seen set from the CLI-written events and sent chat drafts of the
 last 30 days, so an upgraded workspace is not asked about what it already uses. The CLI
 keeps the first-seen date and the clearing in `memory/targets.json`, which no seat can
@@ -1000,13 +883,13 @@ write (the records floor). A novel target never creates a grant on its own.
 
 External confirmation. A confirmation from a person outside the loop (anyone but the owner
 and the seats: a client, a stakeholder) is never a precondition a seat may impose. The
-question becomes a `message` record (a draft the owner sends, 4.9; ceiling L1); the item
+question becomes a `message` record (a draft the owner sends, 4.9; always the owner's); the item
 carries `assumption: external` with the recommended reading, and reversible work on it
 continues. Time box: when `decisions.wait_hours` pass without an answer (default 24,
 counting weekday hours in `owner.timezone`, one working day), the watch sweep (4.2) confirms
 the item's `assumption: external` reading (the draft stays unsent with the owner, 4.9) only
-when that reading is two-way and no other 5.8.1 ceiling applies (scope agreed with other
-people, trust boundary, outside the goals); otherwise it parks the item with a decision
+when that reading is two-way and it touches no scope agreed with other people, no trust
+boundary and nothing outside the goals; otherwise it parks the item with a decision
 record; either way the CLI writes an event.
 
 Negotiation loops. At each steward run (5.5) the CLI counts, per item over the last
@@ -1030,11 +913,11 @@ an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blo
 security finding fired, a base branch went red after an auto-merge, an owner decision
 blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
 or the budget cap hit), `warn` (owner, 2026-10-10, #789) (recorded in the day's event log for `why` and the retro,
-never a list and never on the status line: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
+never a list and never on the status line: an owner decision not yet blocking, a negotiation
 loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
 at 80 percent, a person's ask nearing its reply window, a telemetry week ready to send
 (5.13)), `silent` (visible, never pushed:
-normal progress, L3 cruise answers, auto-merges that went well). Lanes: Work (items by phase),
+normal progress, auto-merges that went well). Lanes: Work (items by phase),
 Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
 classifier cannot read is a `warn`, never `silent`.
 
@@ -1279,7 +1162,7 @@ percentiles as in 5.6.
 | `stuck_parks` | `build.parked` records (5.3) |
 | `decisions` | decision ids routed or decided in the week |
 | `decisions_by_class` | per 5.8.1 class, from the record's `Class:`; unreadable counts as `other` |
-| `decided_by` | `decision.decided` per `owner`, `seat` and `cruise` (any `cruise <class>@L<n>`) |
+| `decided_by` | `decision.decided` per `owner` and `seat` |
 | `reversals` | `decision.reversed` records |
 | `owner_wait_hours` | p50 and p90 from `decision.routed` to `decision.decided`, for decisions decided in the week |
 | `owner_asks_per_item` | mean owner routes per item that had one (5.8) |
@@ -1305,7 +1188,7 @@ never anything else in the file (owner, 2026-10-11, #789). Anonymisation, checke
 
 - every key comes from this section; every key inside a metric is a guard module name,
   `config`, a phase, a tier, a 5.8.1 class, a posture area, `p50`, `p75`, `p90`, `p95`,
-  `max`, `merged`, `escaped`, `owner`, `seat` or `cruise`; every key inside `adapters` is
+  `max`, `merged`, `escaped`, `owner` or `seat`; every key inside `adapters` is
   a port name; an adapter name is one shipped under `adapters/<port>/`;
 - every value is a non-negative integer, a non-negative number rounded to two decimals,
   `"unmeasured"`, a version (`^\d+\.\d+(\.\d+)?$`), a week (`^\d{4}-W\d{2}$`), a token
@@ -1499,8 +1382,8 @@ that the owner approves, edits or drops; the writer records it as drafted and ne
 again. `auto` plays for the tracker the part that work channels play for chat: mechanical
 text derived from records. The 4.9 rules still come first: a text that names a person,
 matches a sensitive, commitment or disagreement pattern, or cannot be classified is a draft
-whatever `auto` says, so the `message` ceiling of cruise mode (5.8.1) holds; tracker writes
-are not decision records and cruise levels do not apply to them. A GitHub `project` or
+whatever `auto` says, so the message rule (one-way) holds; tracker writes are not decision
+records. A GitHub `project` or
 `board` whose owner is not in `outbound.code_host_orgs` is an external party, so every write
 to it is a draft whatever `auto` says; Linear and Jira tickets are internal to the
 configured workspace or site. Every tracker write, comments and creations, passes the
@@ -1784,7 +1667,7 @@ and notes rather than to Claude skills, so procedure keeps one home.
   `wuwei promote` is the single writer: it lints the proposal and lands it by atomic
   rename, or rejects it with the reason.
 - Promote lint: the target is WUWEI-authored (a local override in `.wuwei/charters/`, a
-  note, or one class's running level in `memory/cruise.json`, 5.8.1), never a plugin charter or a user file; a rule body
+  note), never a plugin charter or a user file; a rule body
   stays under its line cap; the evidence path exists; an `add` that duplicates an existing
   rule is rejected in favour of a `patch` of that rule; a lesson that contradicts an
   existing rule must rewrite that rule in the same proposal; a `fold` names a live survivor.

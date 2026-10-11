@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
+| `[autonomy]`, `[decisions]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -187,23 +187,9 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | --- | --- | --- |
 | `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
-| `decisions.cruise.enabled` | `true` | Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says `cruise off \| L<n>`. The running levels are kept. |
-| `decisions.cruise.margin` | `0.2` | Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it. |
-| `decisions.cruise.max_per_day` | `20` | Cruise answers a day; past it a record the mandate takes is a plain `mandate` answer. A profile may not raise it. |
-| `decisions.cruise.undo_minutes` | `60` | Minutes an L2 cruise answer can be undone, from the answer. |
-| `decisions.cruise.promote_agreements` | `10` | Agreeing answers of a class since its last level change that make `plan propose` ask you to raise it. |
-| `decisions.cruise.promote_days` | `14` | Days those agreements are counted over; one raise card per class in that window. |
-| `decisions.cruise.shadow_days` | `5` | Days a class runs in shadow at the next level before its raise card. |
-| `decisions.cruise.shadow_min` | `5` | Shadow answers that must be scored, all agreeing, before the shadow passes. |
-| `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
-| `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
-| `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a `cruise.burn` event naming the events. |
-| `decisions.cruise.calibration_threshold` | `0.15` | Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1. |
-| `decisions.cruise.calibration_min` | `10` | Scored records a class or role needs before it is judged; fewer is `too few`, which only blocks a raise card. |
-| `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
-These keys feed the mandate block in every seat prompt and cruise mode (design spec 5.8.1). The level a class runs at is the lowest of its running level in `.wuwei/memory/cruise.json` (the 5.8.1 default until a level moves), its configured level and its ceiling; `autonomy.mode = "supervised"` runs every class at L0. Only the CLI writes `cruise.json`, with a ledger line: your raise card, or the error budget (undos, reversals, weekly samples answered differently and escaped defects) spent or refilled. See [cruise answers](daily.md#cruise-answers).
+These keys feed the mandate block in every seat prompt (design spec 5.2). Under `autonomous` the seat assumes `approach`, records `retry`, `park`, `accept-residual` and `merge`, and sends every other class to you; under `supervised` every class comes to you.
 
 ## Telemetry
 
@@ -384,7 +370,7 @@ A profile carries a promoted calibration to another workspace of the same kind. 
 
 `bin/wuwei calibrate import <source>` reads a starter name, an `https` URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:
 
-- A profile that sets `repos.merge.auto = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on, lowers `decisions.cruise.margin`, raises `decisions.cruise.max_per_day`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
+- A profile that sets `repos.merge.auto = true`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
 - Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).
 - `--skip <key>` (a dotted config key or `charters.<role>`) leaves a change out; `--repo <name>` limits the `repos` part to one repository.
 

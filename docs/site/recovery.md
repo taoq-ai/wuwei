@@ -73,8 +73,8 @@ no admin)` and reads the rulesets as well.
 
 From 0.12.0 a `for` loop, `$(...)` or `git symbolic-ref` that only reads is not refused, and
 outside a workspace every hook allows. If a refusal remains, `bin/wuwei why last refusal`
-prints the guard, the rule, the command and the fix. Under `observe`,
-`bin/wuwei shadow report` lists what would have been refused.
+prints the guard, the rule, the command and the fix. Under `observe`, the day report's
+`## Shadow` section lists what would have been refused.
 
 ## state transition
 

@@ -73,7 +73,7 @@ def _protected_name(path, directories=False):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
             return True
-        if tail in (('memory', 'voice.md'), ('memory', 'goals.md'), ('memory', 'cruise.json')):
+        if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
         if tail and tail[0] == 'archive':
             return True

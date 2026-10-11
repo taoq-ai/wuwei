@@ -298,7 +298,7 @@ def held(root, draft_id):
 
 
 def decided(root, ident):
-    """Today's D-n: options and scores, weights, margin, class, level and who decided."""
+    """Today's D-n: options and scores, weights, margin, class and who decided."""
     path = decision.today_path(ident, root)
     if not path.is_file():
         raise Missing(f'no decision record {ident} today; run bin/wuwei status --json for open decisions')
@@ -319,10 +319,8 @@ def decided(root, ident):
                  if event['kind'] in ('decision.decided', 'decision.reversed')
                  and event['payload'].get('id') == ident), None)
     if last is None:
-        return steps + [(f'level: {NOT}', None, []), (f'decided: {NOT}', None, [])]
+        return steps + [(f'decided: {NOT}', None, [])]
     number, payload = last
     by = str(payload.get('decided_by') or NOT)
-    cruise = re.search(r'@L(\d)', by)
     at = f'{workspace.day_dir(root).name}:{number}'
-    return steps + [(f'level: L{cruise[1]}' if cruise else f'level: {NOT}', at if cruise else None, []),
-                    (f'decided: {payload.get("option")} by {by}', at, [])]
+    return steps + [(f'decided: {payload.get("option")} by {by}', at, [])]

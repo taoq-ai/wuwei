@@ -40,61 +40,6 @@ def owner_edit(root, name, text):
     return True
 
 
-def cruise_level(root, name, level, reason, evidence, hold=None):
-    """#283: the one writer of the running cruise levels, with a ledger line as evidence. #558: a
-    budget lowering passes hold, the level it took away; any other write clears the hold."""
-    from wuwei.decision import CLASSES, CRUISE, running
-    if name not in CLASSES or type(level) is not int or not 0 <= level <= CLASSES[name][1]:
-        raise ValueError(f'cruise level: {name} at L{level} is outside its class range; pass a known class and a level from 0 to its ceiling')
-    root = Path(root)
-    data = running(root)
-    previous = data['levels'].get(name, CLASSES[name][0])
-    data['levels'][name] = level
-    data['changed'][name] = workspace.now().isoformat()
-    budget = data.pop('budget', {})
-    budget.pop(name, None)
-    data.get('shadow', {}).pop(name, None)  # #560: a level write ends the class's shadow
-    if not data.get('shadow', True):
-        data.pop('shadow')
-    if hold is not None:
-        budget[name] = hold
-    if budget:
-        data['budget'] = budget
-    _cruise_write(root, data, 'raise' if level > previous else 'lower', reason, evidence)
-
-
-def calibration(root, classes, roles, reason):
-    """#559: the steward stores the uncalibrated classes and roles, with a ledger line."""
-    from wuwei.decision import CRUISE, running
-    root = Path(root)
-    data = running(root)
-    data.pop('calibration', None)
-    if classes or roles:
-        data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
-    _cruise_write(root, data, 'calibration', reason, CRUISE)
-
-
-def cruise_shadow(root, name, row, reason, evidence=None):
-    """#560: the one writer of a class's shadow row in cruise.json, with a ledger line."""
-    from wuwei.decision import CRUISE, running
-    root = Path(root)
-    data = running(root)
-    data.setdefault('shadow', {})[name] = row
-    _cruise_write(root, data, 'shadow', reason, evidence or CRUISE)
-
-
-def _cruise_write(root, data, action, reason, evidence):
-    from uuid import uuid4
-    from wuwei.decision import CRUISE
-    path = safe_path(root, CRUISE, label='cruise levels')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
-    # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
-    state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
-        'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
-        'action': action, 'status': 'landed', 'reason': reason, 'evidence': evidence})
-
-
 def safe_path(root, raw, *, label):
     """Resolve a workspace-relative path without following symlinked components."""
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute():

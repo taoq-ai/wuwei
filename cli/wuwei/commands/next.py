@@ -13,7 +13,7 @@ POSTURES = {
     'observe': ('Observe posture is on: guards record what they would refuse and let the call '
                 'through. Records (state, events, config, verdicts, decisions) still refuse; deploys, '
                 'releases and approve-tier messages ask on a card; merges and approvals stay '
-                'owner-only. bin/wuwei shadow report lists the would-be refusals.'),
+                "owner-only. The day report's ## Shadow section lists the would-be refusals."),
     'guarded': ('Posture guarded: records, publishing and plugin integrity block; deploys, releases '
                 'and approve-tier messages ask on a card; merges and approvals stay owner-only; seat '
                 'launches, outward text and MCP findings below the floor warn. A refusal names its '

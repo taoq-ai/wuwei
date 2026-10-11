@@ -189,7 +189,7 @@ could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`;
 then record what they would refuse and let the call through. Records still refuse. Deploys,
 releases and messages that wait for your approval ask you on a card, and merges and approvals
 stay yours. Read
-`bin/wuwei shadow report` or the `## Shadow` section of the day report. When `bin/wuwei doctor` asks
+the `## Shadow` section of the day report. When `bin/wuwei doctor` asks
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.md#security-posture).
 
@@ -422,43 +422,6 @@ that goes back and forth shows as `loops N` on the status line and a `negotiatio
 event (a [page](concepts.md#page) when its goal date has passed). An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
-
-### Cruise answers
-
-Under `autonomy.mode = "autonomous"` the CLI already takes clear records as recommended (the
-mandate). Cruise mode marks the ones whose class runs at L2 or L3: the record is two-way,
-inside its own branch, PR or the workspace, its margin reaches `decisions.cruise.margin` and
-fewer than `max_per_day` were answered today. Such a record reads `Decided-by: cruise
-defer@L2` (class and level). A thin margin on an L2 or L3 class that the mandate does not
-take still comes to you.
-
-At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei decision show D-3
---widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
-undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
-y. An undo puts the record back to you as `Outcome:
-pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
-decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
-two-way summary from the watch lists it, cruise answers first.
-
-Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Undos,
-reversals, a weekly sample you answer differently and an escaped defect on an item a cruise
-answer named spend the class's error budget: `budget_share` of its cruise answers over
-`budget_window_days`. One event never lowers a class. When the events exceed the allowance
-and number at least two, the CLI lowers the class one level, with a ledger line that
-names every event, and restores it when the window refills. A fast burn writes a `cruise.burn`
-event first: `defer burns its error budget at 7.0x: ...`.
-`bin/wuwei cruise budget` prints class, level, answered, spent, allowance, burn and state.
-`plan propose` asks you to raise a class after `promote_agreements` agreeing answers with
-its budget unspent, and once a week asks one recent cruise answer again without its
-recommendation; both cards come after the morning gate.
-
-The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
-when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
-budget holds a class lower. It adds `· uncalibrated builder` while a role's stated confidence
-is uncalibrated: its records come to you as cards until it recovers. `bin/wuwei cruise
-calibration` shows the Brier score per class and role, and the day report and the retro
-carry a `## Calibration` section naming the records that broke a forecast. A raise card
-also needs the class calibrated. Under `supervised` every class runs at L0.
 
 ### How you answer
 

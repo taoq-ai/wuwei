@@ -279,8 +279,8 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
     denied = json.loads(output)['hookSpecificOutput']
     assert denied['permissionDecision'] == 'deny'
     assert 'posture: records = block (floor; no setting lowers it)' in denied['permissionDecisionReason']
-    report = day.run('shadow', 'report')
-    assert 'commit_push: 1' in report
+    from wuwei import report
+    assert report.shadow_lines([day.directory])[0].startswith('- commit_push: 1 ')
     day.run('integrity', 'check')
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)

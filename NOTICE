@@ -100,13 +100,3 @@ Verifiably Safe Autonomous Decision-Making (vGOAL)
   Author: KU Leuven
   Used: a table of safety properties, each with its own test, without the model checker
   (design spec 9.2).
-
-Error budgets
-  Source: https://sre.google/sre-book/embracing-risk/
-  Author: Google, Site Reliability Engineering, "Embracing Risk"
-  Used: the error budget per decision class (design spec 5.8.1).
-
-Brier score
-  Source: https://doi.org/10.1175/1520-0493%281950%29078%3C0001%3AVOFEIT%3E2.0.CO%3B2
-  Author: Glenn W. Brier, Monthly Weather Review, 1950
-  Used: confidence calibration per decision class and role (design spec 5.8.1).

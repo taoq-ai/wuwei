@@ -261,11 +261,7 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
-        'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'margin': 0.2, 'max_per_day': 20, 'undo_minutes': 60,
-                                                      'promote_agreements': 10, 'promote_days': 14, 'shadow_days': 5, 'shadow_min': 5,
-                                                      'budget_share': 0.1, 'budget_window_days': 14, 'burn_warn': 2.0,
-                                                      'calibration_threshold': 0.15, 'calibration_min': 10,
-                                                      'levels': {}}, 'lenses': {}},
+        'decisions': {'wait_hours': 24, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
@@ -1225,17 +1221,13 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_decisions_config(tmp_path):
-    from wuwei.workspace import ConfigError, load_config
-    write_config(tmp_path, '[decisions.cruise.levels]\napproach = 1\n')
-    assert load_config(tmp_path)['decisions']['cruise']['levels'] == {'approach': 1}
-    for text, key in (('[decisions.cruise.levels]\nmerge = 4', 'decisions.cruise.levels.merge'),
-                      ('[decisions.cruise.levels]\nmessage = 2', 'decisions.cruise.levels.message'),
-                      ('[decisions.cruise.levels]\nunknown = 1', 'decisions.cruise.levels.unknown'),
-                      ('[decisions.cruise]\nmargin = 0', 'decisions.cruise.margin')):
-        write_config(tmp_path, text + '\n[security]\nposture = "strict"\n')
-        with pytest.raises(ConfigError, match=key):
-            load_config(tmp_path)
+def test_a_cruise_table_only_warns(tmp_path):
+    # #814: decisions.cruise is retired; a stale table loads with an unknown-key warning.
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[security]\nposture = "strict"\n')
+    found = []
+    assert 'cruise' not in load_config(tmp_path, warnings=found)['decisions']
+    assert any('decisions.cruise' in line for line in found), found
 
 
 def test_decision_lenses_config(tmp_path):

@@ -343,7 +343,7 @@ ROW = next_command._row('session', "Register this session as today's planner.",
 
 
 @pytest.mark.parametrize('posture,phrases', [
-    ('observe', ('Observe posture is on', 'bin/wuwei shadow report')),
+    ('observe', ('Observe posture is on', "The day report's ## Shadow section")),
     ('guarded', ('Posture guarded',)), ('strict', ('Posture strict',))])
 def test_orientation_block(monkeypatch, posture, phrases):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)

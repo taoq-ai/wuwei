@@ -76,7 +76,7 @@ def seed_week(root):
     write_day(root, '2026-09-22', [
         ('12:00', 'decision.decided', {'id': 'D-1', 'decided_by': 'owner'}),
         ('14:00', 'decision.decided', {'id': 'D-2', 'decided_by': 'owner'}),
-        ('14:10', 'decision.decided', {'id': 'D-3', 'decided_by': 'cruise approach@L2'}),
+        ('14:10', 'decision.decided', {'id': 'D-3', 'decided_by': 'mandate'}),
         ('14:20', 'decision.decided', {'id': 'D-4', 'decided_by': 'seat'}),
         ('14:30', 'decision.reversed', {'id': 'D-5', 'decided_by': 'owner'}),
         ('15:00', 'negotiation.loop', {'item': 'B'}),
@@ -94,7 +94,7 @@ EXPECTED = {
     'plan_to_merge_hours': {'p50': 33, 'p75': 33}, 'gate_rounds_per_item': {'p50': 2, 'max': 2},
     'fix_rounds_per_item': {'p50': 1, 'max': 1}, 'gate_tiers': {'standard': 1}, 'long_loops': 1,
     'stuck_parks': 1, 'decisions': 4, 'decisions_by_class': {'approach': 1, 'other': 3},
-    'decided_by': {'owner': 2, 'cruise': 1, 'seat': 1}, 'reversals': 1,
+    'decided_by': {'owner': 2, 'seat': 1}, 'reversals': 1,
     'owner_wait_hours': {'p50': 25, 'p90': 25.8}, 'owner_asks_per_item': 1, 'unnecessary_asks': 1,
     'owner_actions': 2, 'escaped_by_tier': {'standard': {'merged': 1, 'escaped': 0}},
     'lead_time_merge_hours': 33, 'lead_time_deploy_hours': 'unmeasured', 'deploys_per_week': 'unmeasured',
@@ -575,3 +575,11 @@ def test_week_stored_with_an_inbound_adapter_still_validates_previews_and_sends(
     assert main(['telemetry', 'preview']) == 0 and 'inbound' in capsys.readouterr().out
     answers.append(True)
     assert main(['telemetry', 'send']) == 0 and len(fake.calls) == 1
+
+
+def test_week_stored_with_a_cruise_count_still_validates_and_previews(ws, capsys):
+    # A week recorded before #814 counts cruise answers under decided_by; it stays valid.
+    final_week(ws, metrics={'days': 2, 'decided_by': {'owner': 2, 'cruise': 1, 'seat': 1}})
+    telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))
+    config(ws, '[telemetry]\nshare = "attributed"\n')
+    assert main(['telemetry', 'preview']) == 0 and '"cruise": 1' in capsys.readouterr().out

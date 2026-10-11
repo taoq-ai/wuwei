@@ -447,7 +447,7 @@ def _register(root, config):
 
 SHADOW = ('Observe posture has run {days} days. To enforce, set '
           'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
-          'bin/wuwei shadow report lists what would have been refused.')
+          "The day report's ## Shadow section lists what would have been refused.")
 
 
 def _calibration(root, config):

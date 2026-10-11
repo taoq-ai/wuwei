@@ -286,14 +286,14 @@ def test_an_external_route_is_corrected_first(ws, capsys):
 
 
 @pytest.fixture
-def cruised(ws, capsys):
-    """A park record taken as a cruise answer at L2 under the defaults, undo until 13:00."""
+def taken(ws, capsys):
+    """A park record taken under the mandate."""
     from wuwei import state, undo
     undo.record(ws, 'decision', 'rehearsal')
     path = save(ws, record(cls='park'))
     assert route(ws, capsys) == (0, 'mandate')
     (ws / '.wuwei' / undo.NAME).unlink()  # an empty ledger again, so the undo's own row shows
-    assert state.read_state(ws)['decision_outcomes']['D-3']['undo_until']
+    assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'mandate'
     return path
 
 
@@ -302,7 +302,7 @@ def undo_cli(*args):
     return main(['undo', *args])
 
 
-def test_wuwei_undo_reverts_a_cruise_answer_and_records_the_exercise(ws, cruised, capsys, monkeypatch):
+def test_wuwei_undo_reverts_a_mandate_answer_and_records_the_exercise(ws, taken, capsys, monkeypatch):
     from wuwei import sessions, state, undo
     monkeypatch.setattr(sessions, 'gate_topics',
                         lambda root, session: (frozenset({sessions.card_topic('D-3', 'Undo')}), True))
@@ -310,12 +310,12 @@ def test_wuwei_undo_reverts_a_cruise_answer_and_records_the_exercise(ws, cruised
     assert capsys.readouterr().out.strip() == 'owner: ask with wuwei decision show D-3 --widget'
     reversed_, = [e['payload'] for e in events(ws) if e['kind'] == 'decision.reversed']
     assert reversed_['undo'] is True and 'D-3' not in state.read_state(ws)['decision_outcomes']
-    text = cruised.read_text()
+    text = taken.read_text()
     assert 'Decided-by: owner' in text and 'Outcome: pending' in text
     assert undo.ledger(ws)['decision']['by'] == 'undo'
 
 
-def test_the_dm_undo_records_the_exercise_too(ws, cruised):
+def test_the_dm_undo_records_the_exercise_too(ws, taken):
     from types import SimpleNamespace
     from wuwei import undo
     from wuwei.commands.decision import undo as decision_undo
@@ -328,7 +328,7 @@ def nothing_written(root, before):
     assert len(events(root)) == before and undo.ledger(root) == {}
 
 
-def test_a_seat_closed_or_missing_window_writes_nothing(ws, cruised, capsys, monkeypatch):
+def test_a_seat_or_an_owner_route_writes_nothing(ws, taken, capsys, monkeypatch):
     def no_terminal(value, **kwargs):
         raise OSError('no terminal')
     monkeypatch.setattr('wuwei.integrity._host_confirm', no_terminal)
@@ -336,17 +336,10 @@ def test_a_seat_closed_or_missing_window_writes_nothing(ws, cruised, capsys, mon
     assert undo_cli('D-3') == 1
     assert capsys.readouterr().err.strip() == 'run wuwei undo D-3 in a host terminal and answer y'
     nothing_written(ws, before)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T13:00:00+00:00')
-    assert undo_cli('D-3') == 1 and 'undo window closed' in capsys.readouterr().err
-    save(ws, record(cls='retry', radius='item DIV-1'), name='D-4.md')
-    from wuwei import undo
-    real, undo.ledger = undo.ledger, lambda root: {'commit': {'at': 'x', 'by': 'rehearsal'}}
-    try:
-        route(ws, capsys, 'D-4')
-    finally:
-        undo.ledger = real
+    save(ws, record(cls='retry', door='one-way'), name='D-4.md')
+    assert route(ws, capsys, 'D-4') == (0, 'owner')
     before = len(events(ws))
-    assert undo_cli('D-4') == 1 and 'has no undo window' in capsys.readouterr().err
+    assert undo_cli('D-4') == 1 and 'was not taken under the mandate' in capsys.readouterr().err
     nothing_written(ws, before)
 
 
@@ -436,7 +429,6 @@ def test_rehearse_decision_on_a_scratch_workspace(ws, capsys, monkeypatch):
     data = state.read_state(ws)
     assert not data.get('decision_routes') and not data.get('decision_outcomes')
     assert not (workspace.day_dir(ws) / 'decisions').exists()
-    assert not (ws / '.wuwei/memory/cruise.json').exists()
 
 
 def test_rehearse_decision_restores_an_unset_workspace(ws, capsys):
@@ -519,7 +511,7 @@ def test_invariant_b_a_message_is_never_two_way(ws, capsys, door):
     assert 'Reversibility: one-way' in path.read_text()
 
 
-def test_invariant_c_undo_needs_a_card_a_dm_or_a_terminal(ws, cruised, capsys, monkeypatch):
+def test_invariant_c_undo_needs_a_card_a_dm_or_a_terminal(ws, taken, capsys, monkeypatch):
     # The event branch is pinned in test_wuwei_undo_of_a_merge_event_opens_the_revert_pr.
     from wuwei import workspace
 
