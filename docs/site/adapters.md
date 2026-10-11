@@ -23,7 +23,7 @@ The read-only VCS operation `pushed_branches(repo)` returns unique branch names 
 
 ## Credentials
 
-Store credentials in `.wuwei/env`, created empty by `wuwei init` and `wuwei init --upgrade`. Keep its permissions at `0600`. WUWEI adds `/env` to `.wuwei/.gitignore`. Never put credentials in tracked configuration. Edit the file yourself; the state guard refuses agent writes to it.
+Store credentials in `.wuwei/env`, created empty by `wuwei init` and `wuwei init --upgrade`. Keep its permissions at `0600`. WUWEI adds `/env` to `.wuwei/.gitignore`. Never put credentials in tracked configuration. Credentials come only from you, never through a session: the state guard refuses agent writes to it.
 
 Use one `KEY=value` assignment per line. Blank lines and whole-line `#` comments are allowed. Matching single or double quotes around a value are removed. Values have surrounding whitespace trimmed and are otherwise literal: no shell execution, variable expansion or inline comments. Existing process environment values take precedence, including empty values. Malformed files, symlinks, nonregular files and unsafe permissions stop execution with exit 2. The diagnostic never prints values.
 
