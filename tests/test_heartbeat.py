@@ -156,16 +156,6 @@ def test_missing_credential_fails_config(ws):
     assert heartbeat.measure(root)['config'] == {'result': 'failed', 'value': 'missing LINEAR_API_KEY'}
 
 
-def test_dead_listener_fails_clocks(ws):
-    root = ws[0]
-    state.append_event('listen: clock', {}, root)
-    row = heartbeat.measure(root)['clocks']
-    assert row['result'] == 'ok' and row['value'] == 'watch off, listen alive'
-    ws[3].setenv('WUWEI_NOW', '2026-09-28T13:00:00+00:00')
-    row = heartbeat.measure(root)['clocks']
-    assert row['result'] == 'failed' and 'listen dead' in row['value']
-
-
 def test_planner_probe(ws):
     from wuwei import plan
     root, _, _, monkeypatch = ws
@@ -483,7 +473,7 @@ def test_status_line_and_session_start_make_no_port_call(ws, capsys):
             return call
 
     previous = registry.load
-    network = ('code_host', 'tracker', 'calendar', 'chat', 'inbound', 'review_bot')
+    network = ('code_host', 'tracker', 'calendar', 'chat', 'review_bot')
     monkeypatch.setattr(registry, 'load', lambda kind, cfg: Hang() if kind in network else previous(kind, cfg))
     watch.save(root, {'status_line': 'cached line · as of 12:00'})
     started = time.monotonic()

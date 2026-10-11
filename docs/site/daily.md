@@ -383,9 +383,7 @@ timestamp, or a PR starting or stopping being owned does not wake the planner;
 The Stop hook message lists that summary first, and the status line
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
-put input into an idle session. The listener covers the gap: it sends the summary to your
-DM and, unless `shepherd.autostart = false`, starts a headless [shepherd](concepts.md#shepherd) seat for the
-mechanical PR actions ([remote](remote.md), section 5). For CI events in your own
+put input into an idle session. For CI events in your own
 session, the Claude Code desktop PR monitor is the complement.
 
 ## 5. Owner decisions
@@ -404,11 +402,7 @@ To answer from your phone, run the planner session with Claude Code Remote Contr
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
 mobile app and stays open until you answer. The planner records that answer with
-`bin/wuwei decide`, or you run it in a host terminal. To command the workspace and
-answer decisions from Slack as well, run `bin/wuwei setup slack` and see
-[remote operation](remote.md). A Slack DM answer to a two-way decision is your outcome at
-once. An answer to a one-way decision is evidence, and `status --line` counts it as
-`phone answers 1` until you record it with `bin/wuwei decide`.
+`bin/wuwei decide`, or you run it in a host terminal.
 
 A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one the workspace has
 never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
@@ -419,14 +413,13 @@ A record is two-way only when WUWEI can undo it and has tried that undo once her
 day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
 `wuwei next` returns after the gate. Until they ran, two-way records of that kind come to you as
 cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
-the card or reply `undo D-3` to the listener DM. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
+the card. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
 <event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
 `Undone today` and the one-way actions of the day under `Cannot be undone`.
 
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-event (a [page](concepts.md#page) when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
-your DM. An external confirmation a seat routed with `--external`
+event (a [page](concepts.md#page) when its goal date has passed). An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
 
@@ -442,7 +435,7 @@ take still comes to you.
 At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei decision show D-3
 --widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
 undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
-y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
+y. An undo puts the record back to you as `Outcome:
 pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
 decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
 two-way summary from the watch lists it, cruise answers first.
@@ -474,8 +467,7 @@ as a question card: tap an option, the recommended one first. The planner record
 with the command printed beside the card. When that command needs your confirmation in a
 host terminal, the planner shows you the line to run.
 
-Away from the session, the same question reaches your phone through Remote Control, or as a
-DM from the listener when the planner runs headless.
+Away from the session, the same question reaches your phone through Remote Control.
 
 Use the host terminal for what a hook sends there: today your commands listed at the top
 of this section, and under `strict` posture everything owner-only.

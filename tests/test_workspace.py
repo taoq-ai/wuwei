@@ -230,7 +230,7 @@ def test_config_defaults_and_independence(tmp_path):
         'security': {'required': False, 'posture': 'guarded',
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
-            'default': 'brief', 'decisions': '', 'digest': '', 'dm': '', 'report': ''}},
+            'default': 'brief', 'decisions': '', 'digest': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
@@ -244,7 +244,6 @@ def test_config_defaults_and_independence(tmp_path):
         'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
                  'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
-        'control_plane': {'content': 'summary', 'owner': ''},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
                  'rate_limit_wait_seconds': 120}, 'profile': 'strict',
             'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3,
@@ -261,7 +260,6 @@ def test_config_defaults_and_independence(tmp_path):
                       'sweep_seconds': 7200, 'ping_url': ''},
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
-        'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
         'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
         'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'margin': 0.2, 'max_per_day': 20, 'undo_minutes': 60,
                                                       'promote_agreements': 10, 'promote_days': 14, 'shadow_days': 5, 'shadow_min': 5,
@@ -272,7 +270,7 @@ def test_config_defaults_and_independence(tmp_path):
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,
-                         'author_windows_days': [90, 180], 'tie_commits': 2, 'autostart': True,
+                         'author_windows_days': [90, 180], 'tie_commits': 2,
                      'source_exclude': ['specs/*', '*.lock', '*lock.json', '*.generated.*', 'generated/*'],
                      'authors': {}},
         'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
@@ -289,7 +287,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'inbound': 'none', 'redactor': 'builtin',
+                     'transcripts': 'none', 'redactor': 'builtin',
                      'docs': 'none'},
     }
     outward['patterns'].append('changed')
@@ -429,12 +427,12 @@ def test_owner_verbosity(tmp_path):
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
     assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'digest': '',
-                                            'dm': '', 'report': ''}
-    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndm = "brief"\n')
+                                            'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndigest = "brief"\n')
     config = workspace.load_config(tmp_path)
-    assert workspace.verbosity(config, 'dm') == 'brief'
+    assert workspace.verbosity(config, 'digest') == 'brief'
     assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'dm = "loud"'):
+    for text in ('default = "short"', 'digest = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -1217,8 +1215,6 @@ def test_repository_gate_defaults_and_floor_choices(tmp_path):
     ('[adapters]\ntracker = "linear"\n', ['LINEAR_API_KEY']),
     ('[adapters]\nchat = "slack"\n', ['SLACK_BOT_TOKEN or SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL']),
     ('[adapters]\nruntime = "codex"\n', ['codex.command']),
-    ('[adapters]\ninbound = "slack"\n',
-     ['SLACK_BOT_TOKEN or SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'control_plane.owner']),
 ])
 def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expected):
     from wuwei.commands.config import missing
@@ -1227,14 +1223,6 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
         monkeypatch.delenv(name, raising=False)
     write_config(tmp_path, text)
     assert missing(load_config(tmp_path)) == expected
-
-
-def test_shepherd_autostart_defaults_on(tmp_path):
-    from wuwei.workspace import load_config
-    write_config(tmp_path, '')
-    assert load_config(tmp_path)['shepherd']['autostart'] is True
-    write_config(tmp_path, '[shepherd]\nautostart = false')
-    assert load_config(tmp_path)['shepherd']['autostart'] is False
 
 
 def test_decisions_config(tmp_path):

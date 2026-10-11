@@ -185,6 +185,25 @@ def test_slack_sent_replay(monkeypatch):
     assert 'HTTP 403: credential has no access' in slack.sent('C1', ['U0OWNER']).reason
 
 
+GOOD = {'user': 'U1', 'text': 'hi', 'ts': '1790769590.000100'}
+
+
+@pytest.mark.parametrize('responses,reason', [
+    ([rate_limited()], 'rate limited; retry after 30 s'),
+    ([{'ok': False, 'error': 'provider-secret'}], 'invalid history response'),
+    ([history_page(GOOD, next_cursor='n')] * 10, 'history exceeds ten pages'),
+])
+def test_slack_sent_fails_closed(monkeypatch, responses, reason):
+    slack = importlib.import_module('adapters.chat.slack')
+    monkeypatch.setenv('SLACK_BOT_TOKEN', 'private-slack-token')
+    calls = replay(monkeypatch, *responses)
+    result = slack.sent('C1', ['U1'])
+    assert result.exit == 2 and result.data is None
+    assert result.reason.startswith('slack.sent: could not run: ' + reason)
+    assert 'provider-secret' not in result.reason
+    assert len(calls) == len(responses)
+
+
 def test_greptile_replay(monkeypatch):
     greptile = importlib.import_module('adapters.review_bot.greptile')
     monkeypatch.setenv('GREPTILE_API_KEY', 'private-greptile-key')
@@ -378,121 +397,3 @@ def test_greptile_empty_findings_require_completed_current_review(monkeypatch):
             'reviewAnalysis': {'hasNewCommitsSinceReview': False}}})}]}}
     replay(monkeypatch, complete, empty)
     assert greptile.open_findings('owner/repo#7').data == []
-
-
-SLACK_NOW = 1790769600  # WUWEI_NOW below, in epoch seconds
-
-
-@pytest.fixture
-def slack_case(tmp_path, monkeypatch):
-    (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
-    (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
-    (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
-    (tmp_path / '.wuwei/config.toml').write_text(
-        '[owner]\nhandles = ["U0OWNER", "pat-gh"]\n[outbound]\nwork_channels = ["C1"]\n'
-        '[adapters]\ninbound = "slack"\n')
-    for name, value in (('WUWEI_WORKSPACE', str(tmp_path)), ('WUWEI_NOW', '2026-09-30T12:00:00+00:00'),
-                        ('HOME', str(tmp_path / 'home')), ('XDG_CONFIG_HOME', str(tmp_path / 'config')),
-                        ('SLACK_BOT_TOKEN', 'private-slack-token'), ('SLACK_OWNER_DM_CHANNEL', 'D1')):
-        monkeypatch.setenv(name, value)
-    monkeypatch.delenv('SLACK_USER_TOKEN', raising=False)
-    return tmp_path
-
-
-def query(call):
-    from urllib.parse import parse_qs, urlsplit
-    return {key: value[0] for key, value in parse_qs(urlsplit(call[0]).query).items()}
-
-
-def test_slack_inbound_two_mentions_once(slack_case, monkeypatch):
-    from wuwei import inbox, listen
-    calls = replay(monkeypatch, *RECORDINGS['slack_history'], *RECORDINGS['slack_history'])
-    assert listen.tick(slack_case) == 0
-    rows = inbox.read(slack_case)
-    assert [row['id'] for row in rows] == ['C1/1790769580.000200', 'C1/1790769590.000300']
-    assert '7946' not in rows[0]['text'] and rows[0]['text'].startswith('ping <@U0OWNER|pat>')
-    assert listen.tick(slack_case) == 0
-    assert inbox.read(slack_case) == rows
-    assert [query(call)['oldest'] for call in calls[2:]] == [str(SLACK_NOW - 300)] * 2
-
-
-def test_slack_inbound_quiet_week_moves_the_cursor(slack_case, monkeypatch):
-    from wuwei import listen
-    calls = replay(monkeypatch, *RECORDINGS['slack_history'], *[history_page()] * 4)
-    assert listen.tick(slack_case) == 0
-    week = SLACK_NOW + 7 * 86400
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-07T12:00:00+00:00')
-    assert listen.tick(slack_case) == 0
-    assert listen.cursor(slack_case)['cursors'] == {'slack': str(week)}
-    assert listen.tick(slack_case) == 0
-    assert [query(call)['oldest'] for call in calls[2:]] == [
-        str(SLACK_NOW - 300)] * 2 + [str(week - 300)] * 2
-
-
-def test_slack_inbound_events(slack_case, monkeypatch):
-    slack = importlib.import_module('adapters.inbound.slack')
-    calls = replay(monkeypatch, *RECORDINGS['slack_history'])
-    result = slack.poll('', root=slack_case)
-    assert result.exit == 0
-    assert result.data == [
-        {'id': 'C1/1790769580.000200', 'source': 'slack', 'channel': 'C1',
-         'thread': '1790769000.000100', 'sender': '/U2',
-         'text': 'ping <@U0OWNER|pat>, call +44 20 7946 0958', 'ts': '1790769580.000200'},
-        {'id': 'C1/1790769590.000300', 'source': 'slack', 'channel': 'C1', 'thread': '',
-         'sender': 'T1/U1', 'text': '<@U0OWNER> can you look at this', 'ts': '1790769590.000300'}]
-    assert [query(call)['channel'] for call in calls] == ['D1', 'C1']
-    for call in calls:
-        assert call[0].startswith('https://slack.com/api/conversations.history?')
-        assert query(call)['oldest'] == str(SLACK_NOW - 300) and query(call)['limit'] == '100'
-        assert call[1]['Authorization'] == 'Bearer private-slack-token'
-
-
-def test_slack_inbound_dm_only(slack_case, monkeypatch):
-    slack = importlib.import_module('adapters.inbound.slack')
-    (slack_case / '.wuwei/config.toml').write_text(
-        '[owner]\nhandles = ["pat-gh"]\n[adapters]\ninbound = "slack"\n')
-    calls = replay(monkeypatch, history_page(
-        {'user': 'U0OWNER', 'team': 'T1', 'text': 'approve D-3', 'ts': '1790769590.000100'},
-        {'bot_id': 'B1', 'subtype': 'bot_message', 'text': 'Draft D-3', 'ts': '1790769580.000100'}))
-    result = slack.poll('', root=slack_case)
-    assert [query(call)['channel'] for call in calls] == ['D1']
-    assert [(event['id'], event['sender']) for event in result.data] == [('D1/1790769590.000100', 'T1/U0OWNER')]
-
-
-GOOD = {'user': 'U1', 'text': '<@U0OWNER> hi', 'ts': '1790769590.000100'}
-
-
-@pytest.mark.parametrize('since,config,responses,reason', [
-    ('', None, [rate_limited()], 'rate limited; retry after 30 s'),
-    ('', None, [{'ok': False, 'error': 'provider-secret'}], 'invalid history response'),
-    ('', None, [history_page(), history_page({'text': 'x', 'ts': '1790769590.000100'})],
-     'invalid history message'),
-    ('', None, [history_page(), history_page({**GOOD, 'ts': '1'})], 'invalid history message'),
-    ('', None, [history_page(), history_page({**GOOD, 'team': 5})], 'invalid history message'),
-    ('abc', None, [], 'invalid cursor'),
-    ('', None, [history_page(GOOD, next_cursor='n')] * 10, 'history exceeds ten pages'),
-    ('', '[owner]\nhandles = ["pat-gh"]\n[outbound]\nexternal_channels = ["C2"]\n', [],
-     'owner.handles has no Slack user id'),
-])
-def test_slack_inbound_fails_closed(slack_case, monkeypatch, since, config, responses, reason):
-    slack = importlib.import_module('adapters.inbound.slack')
-    if config:
-        (slack_case / '.wuwei/config.toml').write_text(config + '[adapters]\ninbound = "slack"\n')
-    calls = replay(monkeypatch, *responses)
-    result = slack.poll(since, root=slack_case)
-    assert result.exit == 2 and result.data is None
-    assert result.reason.startswith('slack.poll: could not run: ' + reason)
-    assert 'provider-secret' not in result.reason
-    assert len(calls) == len(responses)
-
-
-@pytest.mark.parametrize('missing', [('SLACK_OWNER_DM_CHANNEL',), ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN')])
-def test_slack_inbound_missing_credentials_never_calls_network(slack_case, monkeypatch, missing):
-    slack = importlib.import_module('adapters.inbound.slack')
-    for name in missing:
-        monkeypatch.delenv(name, raising=False)
-    requests = replay(monkeypatch)
-    result = slack.poll('', root=slack_case)
-    assert result.exit == 2 and result.data is None
-    assert missing[0] in result.reason
-    assert requests == []

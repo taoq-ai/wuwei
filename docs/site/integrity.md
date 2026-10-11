@@ -51,7 +51,7 @@ State/event commands cannot manufacture integrity verdicts or confirmations.
 Write/Bash protection covers the integrity directory and workspace git metadata.
 These records are local tamper evidence, not proof of owner identity. As described
 in design 9.1, a same-uid process can alter the verifier, forge records, or create a
-terminal. A separate OS principal or external control plane is needed for a hard
+terminal. A separate OS principal or external supervisor is needed for a hard
 owner boundary. Cache freshness is bounded by sessions and sweeps.
 
 ## Deferred owner setup
@@ -69,4 +69,4 @@ owner boundary. Cache freshness is bounded by sessions and sweeps.
    host; changing the plugin pin alone does not replace workspace pins.
 
 No real signing key or secret is included in this issue. Strong host identity is
-left to the external control-plane work described in design 9.1.
+left to the external supervisor work described in design 9.1.

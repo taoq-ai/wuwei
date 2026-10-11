@@ -302,7 +302,7 @@ def test_retro_balanced_window_names_no_band(tmp_path, monkeypatch):
 
 
 def test_report_levels(tmp_path, monkeypatch):
-    from wuwei import remote, report
+    from wuwei import report
     root = tmp_path
     (root / '.wuwei/memory/notes').mkdir(parents=True)
     (root / '.wuwei/config.toml').write_text('')
@@ -331,14 +331,6 @@ def test_report_levels(tmp_path, monkeypatch):
     full = report.build(root)
     assert '## DORA (last 28 days)' in full.split('## Cycle time')[1] and '## Pace' not in full
     assert full == standard.replace('- D-2: Accepted\n', '- D-2: Accepted (decisions/D-2.md)\n')
-    (root / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n[adapters]\ncode_host = "none"\n')
-    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
-    sent = []
-    transport = SimpleNamespace(dm=lambda text, root=None: sent.append(text) or registry.Result(0, {}))
-    event = {'id': 'D1/1.1', 'channel': 'D1', 'sender': 'T1/U1', 'text': 'report'}
-    assert remote.handle(root, event, transport=transport) == 0
-    assert sent == ['Report 2026-09-29: merged 1, open 0, parked 0, decisions answered 1.']
 
 
 def test_report_shadow_section(tmp_path, monkeypatch):

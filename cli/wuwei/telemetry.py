@@ -40,11 +40,12 @@ OS = ('darwin', 'linux', 'other')
 ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
             'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
-            'calendar': ('ics', 'none'), 'transcripts': ('none',), 'inbound': ('none', 'slack'),
+            'calendar': ('ics', 'none'), 'transcripts': ('none',),
+            'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
             'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
 INNER = frozenset((*GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat', 'cruise'))
-OWNER_KINDS = ('remote.acknowledged', 'state.recovered', 'integrity_confirmation', 'mcp.decided',
+OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',
                'draft.sending', 'draft.dropped')
 PROBES = ('refused', 'allowed', 'state_write', 'read_loop')
 SPAN_EVENTS = ('decision.routed', 'decision.decided', 'decision.reversed', 'negotiation.loop', 'gate.received',
@@ -198,7 +199,7 @@ def aggregate(root, config, week, days, start):
                            for identifier, route in routes.items())
     found['owner_asks_per_item'] = sum(asks.values()) / len(asks) if asks else UNMEASURED
     found['unnecessary_asks'] = unnecessary
-    found['owner_actions'] = sum(row['kind'].startswith('remote.') or row['kind'] in OWNER_KINDS for _, row in rows)
+    found['owner_actions'] = sum(row['kind'] in OWNER_KINDS for _, row in rows)
     found['escaped_by_tier'] = day_metrics._escaped_by_tier(root)
     # #586: the code host is read once, when the week is final, never on the daily refresh
     year, number = map(int, week.split('-W'))
@@ -413,7 +414,7 @@ def spans(root, config, mark):
             elif kind == 'seat stopped' and payload.get('name') in launched:
                 start, item = launched.pop(payload['name'])
                 span('wuwei.seat', at, start, stamp, item=item)
-            elif kind in SPAN_EVENTS or kind.startswith('remote.'):
+            elif kind in SPAN_EVENTS:
                 events.append({'timeUnixNano': stamp, 'name': kind, 'attributes': _attributes(item=payload.get('item'))})
         if events:
             span('wuwei.day', 'day', events[0]['timeUnixNano'], events[-1]['timeUnixNano'])

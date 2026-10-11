@@ -199,7 +199,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -477,7 +477,7 @@ recommendation on a two-way door or parks the item on a one-way door, and record
 Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
 requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
 round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
-goal date has passed. The listener sends the summary to your DM. It reports; the
+goal date has passed. It reports; the
 round cap (`gates.max_rounds`) is what stops the rounds.
 
 ## Measured reversibility
@@ -510,16 +510,6 @@ with its role, last hook and claimed items; a session idle past `sessions.stale_
 stale and its claims lapse. One session is the planner, a second takes over with
 `plan session --take-over`, and `sessions.rotate_after` rotates the planner on a schedule.
 See [sessions](reference.md#sessions) and [long sessions](daily.md#long-sessions).
-
-## Listener
-
-`bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
-The responder wakes the planner and handles commands only from the pinned owner, with a
-second factor where a command needs one. While running it also probes raised and claimed
-PRs with conditional requests, sends each `pr.changed` summary to the DM and,
-unless `shepherd.autostart = false`, starts a headless shepherd seat that never merges. See
-[remote operation](remote.md) and
-[running the listener](configuration.md#running-the-listener).
 
 ## Heartbeat
 

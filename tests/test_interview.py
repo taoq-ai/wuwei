@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/fixtures/calibrate'
 TWO = ('[[repos]]\nname = "acme/one"\npath = "one"\ndefault_branch = "main"\n\n'
        '[[repos]]\nname = "acme/two"\npath = "two"\ndefault_branch = "main"\n\n')
-PLANE = '[control_plane]\ncontent = "summary" # summary or none\nowner = ""\n'
+PLANE = '[owner.verbosity]\ndefault = "brief" # brief, standard or full\n'
 
 
 def placed(raw, settings):
@@ -31,13 +31,13 @@ def test_settle_adds_absent_keys_after_their_repository():
 
 def test_settle_replaces_one_line_assignments_and_keeps_the_rest():
     raw = TWO + PLANE
-    text, edits = placed(raw, [(('control_plane',), 'content', 'none')])
-    assert edits == [] and 'content = "none"\n' in text and 'summary or none' not in text
+    text, edits = placed(raw, [(('owner', 'verbosity'), 'default', 'full')])
+    assert edits == [] and 'default = "full"\n' in text and 'brief, standard or full' not in text
     before, after = tomllib.loads(raw), tomllib.loads(text)
-    before['control_plane'].pop('content')
+    before['owner']['verbosity'].pop('default')
     from wuwei.commands.init import _preserves_values
-    assert _preserves_values(before, after) and after['control_plane']['content'] == 'none'
-    assert placed(raw, [(('control_plane',), 'content', 'summary')]) == (raw, [])
+    assert _preserves_values(before, after) and after['owner']['verbosity']['default'] == 'full'
+    assert placed(raw, [(('owner', 'verbosity'), 'default', 'brief')]) == (raw, [])
 
 
 @pytest.mark.parametrize('extra,key,value', [
@@ -90,7 +90,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
 
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['autonomy', 'deploys', 'merge', 'gates', 'quiet', 'interrupt', 'decisions',
-                                            'phone', 'hours', 'avoid', 'formality', 'signature', 'risk',
+                                            'hours', 'avoid', 'formality', 'signature', 'risk',
                                             'manual', 'verbosity', 'spec', 'telemetry', 'docs', 'tracker',
                                             'tickets', 'updates', 'chat', 'review_bot', 'reviewers',
                                             'cap', 'seats', 'allowlist']
@@ -322,18 +322,18 @@ def proposal(root, target, day=DAY):
     return json.loads(path.read_text()) if path.exists() else None
 
 
-ANSWERS = {'merge': {'acme/widget': 'Auto, 30 min soak'}, 'interrupt': 'Batch', 'phone': 'Nothing',
+ANSWERS = {'merge': {'acme/widget': 'Auto, 30 min soak'}, 'interrupt': 'Batch', 'verbosity': 'Brief',
            'avoid': 'kindly, Great question', 'formality': 'Plain', 'risk': 'Money and data'}
 
 
 def test_record_merges_answers_and_writes_proposals(root):
     module = interview()
     module.record(root, config(root), ANSWERS)
-    module.record(root, config(root), {'merge': {'acme/gadget': 'Owner merges'}, 'phone': 'Summary',
+    module.record(root, config(root), {'merge': {'acme/gadget': 'Owner merges'}, 'verbosity': 'Full',
                                       'decisions': 'Yes or no'})
     answers = json.loads((root / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak', 'acme/gadget': 'Owner merges'}
-    assert answers['phone'] == 'Summary' and answers['interrupt'] == 'Batch'
+    assert answers['verbosity'] == 'Full' and answers['interrupt'] == 'Batch'
     planner = proposal(root, 'planner')
     assert planner['action'] == 'add' and planner['target'] == '.wuwei/charters/planner.md'
     assert planner['text'] == (module.BLOCK + '- interrupt: Batch pending owner decisions into the two-hourly '
@@ -355,7 +355,7 @@ def test_record_merges_answers_and_writes_proposals(root):
     assert '- avoid: kindly, Great question -> .wuwei/memory/voice.md never: kindly, Great question' in lines
     assert module.settings(answers, config(root)) == [
         (('repos', 1, 'merge'), 'auto', False), (('repos', 0, 'merge'), 'auto', True),
-        (('repos', 0, 'merge'), 'soak_minutes', 30), (('control_plane',), 'content', 'summary')]
+        (('repos', 0, 'merge'), 'soak_minutes', 30), (('owner', 'verbosity'), 'default', 'full')]
     module.record(root, config(root), {'risk': 'Lead defaults', 'avoid': 'Defaults only'})
     assert proposal(root, 'lead') is None and proposal(root, 'voice') is None
 
@@ -363,12 +363,12 @@ def test_record_merges_answers_and_writes_proposals(root):
 def test_invalid_answers_write_nothing_and_load_rejects_forgeries(root):
     module = interview()
     with pytest.raises(ValueError):
-        module.record(root, config(root), {'phone': 'Everything'})
+        module.record(root, config(root), {'verbosity': 'Everything'})
     assert not (root / '.wuwei/days').exists()
     path = root / DAY / 'interview.json'
     path.parent.mkdir(parents=True)
     for forged in ({'nope': 'x'}, {'merge': {'acme/other': 'Owner merges'}}, {'merge': 'Owner merges'},
-                   {'phone': ['Nothing']}, {'phone': 'Everything'}, ['phone']):
+                   {'verbosity': ['Brief']}, {'verbosity': 'Everything'}, ['verbosity']):
         path.write_text(json.dumps(forged))
         with pytest.raises(ValueError):
             module.load(root, config(root))
@@ -383,7 +383,7 @@ def test_load_skips_the_retired_ids(root):
     # #530: an interview.json the old plugin wrote earlier today still loads after a mid-day upgrade.
     path = root / DAY / 'interview.json'
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({'posture': 'Observe', 'tier': 'Ask', 'learn': 'On', 'cap': '2'}))
+    path.write_text(json.dumps({'posture': 'Observe', 'tier': 'Ask', 'learn': 'On', 'phone': 'Nothing', 'cap': '2'}))
     assert interview().load(root, config(root)) == {'cap': '2'}
 
 
@@ -454,17 +454,17 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['1', '1', '2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '3', '4',
+    replies = ['1', '1', '2', 'often', '1', '2', '1', '2', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '3', '4',
                '1', '1', '1', 'C0123ABCD', '1', 'pat-dev', '1', '1', '2']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
-        'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
+        'acme/widget': 'Standard'} and answers['manual'] == 'Package publishing'
     assert answers['autonomy'] == 'Autonomous' and answers['allowlist'] == 'Not now'
     assert answers['deploys'] == {'acme/widget': 'Merges deploy'}  # #615: unmeasured lists it first
-    assert len(answers) == 27 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 26 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -472,7 +472,7 @@ def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     assert main('calibrate', '--interview', 'quiet') == 0
     again = json.loads((offline / DAY / 'interview.json').read_text())
     assert again['quiet'] == {'acme/widget': 'No quiet hours', 'acme/gadget': '22:00-07:00'}
-    assert again['phone'] == 'Summary'
+    assert again['manual'] == 'Package publishing'
 
 
 def test_interview_reasks_one_question_and_end_of_input_writes_nothing(offline, capsys, monkeypatch):
@@ -483,9 +483,9 @@ def test_interview_reasks_one_question_and_end_of_input_writes_nothing(offline, 
     assert main('calibrate', '--interview', 'merge') == 0
     assert json.loads((offline / DAY / 'interview.json').read_text()) == {
         'merge': {'acme/widget': 'Owner merges', 'acme/gadget': 'Auto, 2 hour soak'}}
-    terminal(monkeypatch, ['Nothing'])
-    assert main('calibrate', '--interview', 'phone') == 0
-    assert set(json.loads((offline / DAY / 'interview.json').read_text())) == {'merge', 'phone'}
+    terminal(monkeypatch, ['Brief'])
+    assert main('calibrate', '--interview', 'verbosity') == 0
+    assert set(json.loads((offline / DAY / 'interview.json').read_text())) == {'merge', 'verbosity'}
     assert main('calibrate', '--interview', 'nope') == 2
     assert 'use one of: autonomy, deploys, merge' in capsys.readouterr().err
 
@@ -497,12 +497,12 @@ def test_answers_from_the_widget_path(offline, capsys):
         'merge': {'acme/widget': 'Auto, 30 min soak'}, 'avoid': 'kindly'}
     for bad in ('merge=sometimes', 'merge', 'nope=1'):
         assert main('calibrate', '--answer', bad) == 2
-    assert main('calibrate', '--answer', 'phone=Nothing', '--repo', 'acme/other') == 2
+    assert main('calibrate', '--answer', 'verbosity=Brief', '--repo', 'acme/other') == 2
     assert json.loads((offline / DAY / 'interview.json').read_text())['avoid'] == 'kindly'
-    assert 'phone' not in json.loads((offline / DAY / 'interview.json').read_text())
+    assert 'verbosity' not in json.loads((offline / DAY / 'interview.json').read_text())
     capsys.readouterr()
     with pytest.raises(SystemExit, match='2'):
-        main('calibrate', '--questions', '--answer', 'phone=Nothing')
+        main('calibrate', '--questions', '--answer', 'verbosity=Brief')
 
 
 PROMOTE_KEYS = 'Next: run bin/wuwei config promote --keys ' + ' '.join(AUTONOMY_KEYS) + (
@@ -601,9 +601,9 @@ def test_questions_skip_recorded_answers(offline, capsys):
     assert questions(capsys) == every
     today = offline / DAY / 'interview.json'
     today.parent.mkdir(parents=True, exist_ok=True)
-    today.write_text(json.dumps({'merge': {'acme/widget': 'Owner merges'}, 'phone': 'Nothing'}))
+    today.write_text(json.dumps({'merge': {'acme/widget': 'Owner merges'}, 'verbosity': 'Brief'}))
     assert questions(capsys) == [pair for pair in every
-                                 if pair not in {('phone', None), ('merge', 'acme/widget')}]
+                                 if pair not in {('verbosity', None), ('merge', 'acme/widget')}]
     full = {row['id']: ({'acme/widget': row['choices'][0][0], 'acme/gadget': row['choices'][0][0]}
                         if row['scope'] == 'repo' else row['choices'][0][0]) for row in rows}
     today.unlink()
@@ -625,10 +625,10 @@ def test_questions_refuse_unreadable_answers(offline, capsys, kind):
     path = offline / '.wuwei/days/2026-09-30/interview.json'
     path.parent.mkdir(parents=True)
     if kind == 'symlink':
-        (offline / 'elsewhere.json').write_text('{"phone": "Nothing"}')
+        (offline / 'elsewhere.json').write_text('{"verbosity": "Brief"}')
         path.symlink_to(offline / 'elsewhere.json')
     else:
-        path.write_text('{nope' if kind == 'not json' else '["phone"]')
+        path.write_text('{nope' if kind == 'not json' else '["verbosity"]')
     assert main('calibrate', '--questions') == 2
     captured = capsys.readouterr()
     assert 'days/2026-09-30/interview.json' in captured.err and captured.out == ''
@@ -641,9 +641,9 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     from wuwei.registry import Result
 
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
-           'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
+           'default_branch = "main"\n\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['1', '2', '2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '3', '4', '4',
+    terminal(monkeypatch, ['1', '2', '2', '2', '2', '1', '1', '1', 'kindly', '1', '1', '2', '2', '3', '1', '3', '4', '4',
                            '1', '1', '4', '1', '1', '1', '1', '2'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
@@ -669,7 +669,6 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert repo['merge']['auto'] is True and repo['merge']['soak_minutes'] == 30
     assert repo['merge_deploys'] is False  # #615: the deploys answer is the explicit declaration
     assert repo['merge']['quiet_hours'] == ['20:00-08:00'] and repo['gates']['floor'] == 'full'
-    assert parsed['control_plane'] == {'content': 'none', 'owner': ''}
     assert parsed['owner']['verbosity'] == {'default': 'full'}
     assert parsed['security']['posture'] == 'observe'
     assert parsed['telemetry']['share'] == 'off'

@@ -67,7 +67,7 @@ def seed_week(root):
         ('12:00', 'seat launched', {'name': 's2', 'item': 'B'}),
         ('12:00', 'decision.routed', {'id': 'D-1', 'reversibility': 'two-way'}),
         ('12:00', 'decision.routed', {'id': 'D-2', 'reversibility': 'two-way', 'item': 'B'}),
-        ('12:30', 'remote.acknowledged', {}),
+        ('12:30', 'state.recovered', {}),
     ], traces=3, data={
         'items': {'A': {'phase': 'fix'}, 'B': {'phase': 'planned'}},
         'decision_routes': {'D-1': {'recommendation': 'Yes'}, 'D-2': {'recommendation': 'No'}},
@@ -135,8 +135,9 @@ def test_vocabularies_match_their_sources():
     assert telemetry.AREAS == workspace.AREAS and telemetry.POSTURES == tuple(workspace.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
     # #419: load_config mirrors docs.system into adapters.docs.
-    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs'}
-    assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS} == telemetry.ADAPTERS
+    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs', 'inbound'}  # inbound: weeks before #810
+    assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS if port != 'inbound'} == {
+        port: names for port, names in telemetry.ADAPTERS.items() if port != 'inbound'}
 
 
 def test_validate_runs_without_the_wuwei_package(tmp_path):
@@ -290,7 +291,7 @@ def seed_corpus(root):
         ('09:30', 'seat launched', {'name': CORPUS['handle'], 'item': item}),
         ('09:40', 'gate.received', {'item': item, 'role': CORPUS['handle'], 'verdict': reason}),
         ('09:50', 'decision.routed', {'id': 'D-1', 'item': item, 'ticket': CORPUS['ticket']}),
-        ('10:00', 'remote.started', {'from': CORPUS['handle'], 'text': CORPUS['time']}),
+        ('10:00', 'mcp.decided', {'from': CORPUS['handle'], 'text': CORPUS['time']}),
         ('11:00', 'state.write', {'phase_changes': {item: 'merged'}, 'repo': CORPUS['repository']}),
     ], traces=1, data={'items': {item: {'phase': 'merged', 'note': CORPUS['ticket']}}},
         decisions={'D-1': f"Question: Should {item} wait on {CORPUS['ticket']}?\nClass: approach\n"})
@@ -561,3 +562,16 @@ def test_otlp_posts_on_every_sweep_and_resends_failed_metrics(ws, service):
     service.posts = []
     telemetry.step(ws, cfg)
     assert service.posts == []
+
+
+def test_week_stored_with_an_inbound_adapter_still_validates_previews_and_sends(ws, host, capsys):
+    # A week recorded before #810 names adapters.inbound; it stays valid and shareable.
+    fake, answers = host
+    old = {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
+           'adapters': {'tracker': 'none', 'code_host': 'github', 'inbound': 'slack'}}
+    final_week(ws, config=old, **VERSIONS)
+    telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))
+    config(ws, '[telemetry]\nshare = "attributed"\n')
+    assert main(['telemetry', 'preview']) == 0 and 'inbound' in capsys.readouterr().out
+    answers.append(True)
+    assert main(['telemetry', 'send']) == 0 and len(fake.calls) == 1

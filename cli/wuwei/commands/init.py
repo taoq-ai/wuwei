@@ -508,6 +508,15 @@ def upgrade(args):
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
+        listener = workspace.watch_unit(destination.parent, name='listen')[1]  # #810: no longer shipped
+        listener = sys.platform in ('darwin', 'linux') and listener.exists() and listener
+        if listener and args.dry_run:
+            print('Would remove the listener service (no longer shipped)')
+        elif listener:
+            from wuwei import registry
+            from wuwei.commands.watch import _remove
+            _remove(listener, sys.platform, registry.watch_service(), 'listen')
+            print('Removed the listener service (no longer shipped)')
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,
@@ -534,7 +543,7 @@ def upgrade(args):
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
                 and not guide_changed and not seeded and not named and not graph_changed and text == raw
-                and not tickets and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
+                and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

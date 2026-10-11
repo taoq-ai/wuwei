@@ -82,34 +82,21 @@ def session_start(payload):
     except ERRORS as exc:
         code = 2
         lines.append(f'memory unmeasured: {exc}')
-    # One events read for both clocks (#562); a broken file goes to health, which reports it.
+    # One events read for the clock (#562); a broken file goes to health, which reports it.
     try:
         rows = watch._day_rows(workspace.day_dir(root) / 'events.jsonl')
-        clocks = {name: [row['ts'] for row in rows if row['kind'] == f'{name}: clock']
-                  for name in ('watch', 'listen')}
+        clock = [row['ts'] for row in rows if row['kind'] == 'watch: clock']
     except ERRORS:
-        clocks = {}
-    health_code, message = watch.health(root, clocks.get('watch'))
+        clock = None
+    health_code, message = watch.health(root, clock)
     code = max(code, health_code)
     if message:
-        lines.append(message)
-    listen_code, message = watch.health(root, clocks.get('listen'), name='listen')
-    if listen_code:
-        code = max(code, listen_code)
         lines.append(message)
     try:
         # #674: the registered planner reading the wake here has seen it; the Stop must not repeat it.
         notice = watch.wake(root, consume=bool(session) and session == (day or {}).get('planner_session_id'))
         if notice:
             lines.append(notice)
-        # Phone answers exist only for routed decisions: a day without routes skips the second
-        # decode of its events (#346); health above already refused a broken events file.
-        day = state.read_state(root) if day is None else day
-        if day.get('decision_routes', {}) != {}:
-            from wuwei.commands.status import attention
-            lines.extend(row['reason'] for row in attention(
-                workspace.day_dir(root), {**day, 'now': workspace.now().isoformat()})
-                if row['source'] == 'decision.answered')
         for directory in watch.days(root):
             if directory == workspace.day_dir(root):
                 continue

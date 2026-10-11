@@ -246,13 +246,6 @@ def _host(root, config):
         rows.append(_row('host', 'ziran', 'ok', 'on PATH (version checked by every call, minimum 0.39.0)'))
     else:
         rows.append(_row('host', 'ziran', 'fail', 'not on PATH', 'install ZIRAN 0.39.0 or newer'))
-    if shutil.which('claude'):
-        rows.append(_row('host', 'claude', 'ok', shutil.which('claude')))
-    elif adapters['inbound'] != 'none':
-        rows.append(_row('host', 'claude', 'fail', 'not on PATH',
-                         'install the Claude Code CLI (the listener starts headless sessions with it)'))
-    else:
-        rows.append(_row('host', 'claude', 'ok', 'not on PATH; only the listener needs it'))
     needed = adapters['runtime'] == 'codex' or config['gates']['second_opinion'].startswith('codex:')
     codex = shutil.which('codex')
     rows.append(_row('host', 'codex', 'fail', 'not on PATH', 'install the Codex CLI') if needed and not codex
@@ -272,7 +265,7 @@ def _host(root, config):
     manager = 'launchctl' if sys.platform == 'darwin' else 'systemctl'
     rows.append(_row('host', 'service manager', 'ok', manager) if shutil.which(manager) else
                 _row('host', 'service manager', 'fail', f'{manager} not on PATH',
-                     'the watch and listener need launchd (macOS) or systemd --user (Linux)'))
+                     'the watch needs launchd (macOS) or systemd --user (Linux)'))
     return rows
 
 
@@ -627,23 +620,18 @@ def _day(root, config, probes):
             _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
                  'wuwei plan session <session id> --take-over from the live session')]
     try:
-        found, watch_health, listen_health, beat, _ = status.scan(workspace.day_dir(root))
+        found, health, beat, _ = status.scan(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover in a host terminal')]
-    for name, health in (('watch', watch_health), ('listener', listen_health)):
-        command = 'watch' if name == 'watch' else 'listen'
-        if name == 'listener' and config['adapters']['inbound'] == 'none':
-            rows.append(_row('day', name, 'ok', 'not used'))
-        elif health == 'alive':
-            rows.append(_row('day', name, 'ok', 'alive'))
-        elif health == 'off':
-            rows.append(_row('day', name, 'warn', 'not installed', f'wuwei {command} install',
-                             apply=f'{command}-install'))
-        elif health == 'dead':
-            rows.append(_row('day', name, 'fail', 'dead', f'wuwei {command} uninstall, then wuwei {command} '
-                             f'install (read .wuwei/{command}.stderr.log first)'))
-        else:
-            rows.append(_row('day', name, 'unmeasured', 'unmeasured', f'wuwei {command} names the problem'))
+    if health == 'alive':
+        rows.append(_row('day', 'watch', 'ok', 'alive'))
+    elif health == 'off':
+        rows.append(_row('day', 'watch', 'warn', 'not installed', 'wuwei watch install', apply='watch-install'))
+    elif health == 'dead':
+        rows.append(_row('day', 'watch', 'fail', 'dead', 'wuwei watch uninstall, then wuwei watch '
+                         'install (read .wuwei/watch.stderr.log first)'))
+    else:
+        rows.append(_row('day', 'watch', 'unmeasured', 'unmeasured', 'wuwei watch names the problem'))
     try:  # #511: an ok row either way; scheduling is the owner's choice.
         from wuwei import shepherd
         last = shepherd.last_swept(root)
@@ -979,7 +967,6 @@ FIXES = {
         "profile the configured repositories; writes today's calibration.md and charter proposals; "
         'config.toml unchanged\n', None), _calibrate),
     'watch-install': _planned('wuwei watch install', _service('watch')),
-    'listen-install': _planned('wuwei listen install', _service('listen')),
     'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
     'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }

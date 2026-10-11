@@ -13,10 +13,9 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | vcs | git | git |
 | host | none, local | local |
 | checks | none, local | local |
-| inbound | none, slack | none |
 | redactor | builtin | builtin |
 
-The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.md). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement. Inbound text passes through the redactor port, which replaces phone numbers, email addresses and secrets, before it is stored in `.wuwei/inbox/inbox.jsonl`. The control plane is configured under `[control_plane]` (`content`, `owner`) and sends its replies through the chat adapter; see [Remote operation](remote.md).
+The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.md). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement.
 
 The read-only VCS operation `pushed_branches(repo)` returns unique branch names
 from all local remote-tracking refs, excluding remote HEAD aliases. Close compares
@@ -41,7 +40,7 @@ CLI commands, hooks and the watch service load this file before adapters run.
 The watch plist and systemd unit invoke the same CLI; credentials are not copied
 into service definitions. Restart the watch after changing credentials.
 Loaded values are redacted from output, events, traces and refusal messages, except
-`SLACK_OWNER_DM_CHANNEL`: a channel id is an identifier the listener must match in stored events.
+`SLACK_OWNER_DM_CHANNEL`: a channel id is an identifier that stored events keep.
 
 `wuwei config check` prints a credentials section for the effective configured
 adapters, including defaults. It names each requirement and reports `set`,
@@ -67,7 +66,6 @@ the exit code.
 | tracker.jira | `JIRA_SITE` (an `https://` origin, kept from seats but not redacted), `JIRA_EMAIL` and `JIRA_API_TOKEN`; `tracker.project` names the project key |
 | tracker.github | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only, or your gh login with `tracker.auth = "gh"` ([below](#github-tracker-through-your-gh-login)); `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
-| inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. Commands from your owner DM need `control_plane.owner`; `plan` and `ask` with a code need `WUWEI_TOTP_SECRET`. Optional `SLACK_API_BASE` as for chat.slack. |
 | review_bot.greptile | `GREPTILE_API_KEY` |
 | calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
 | docs.notion | `NOTION_TOKEN`, a Notion integration token with access to `docs.space` |

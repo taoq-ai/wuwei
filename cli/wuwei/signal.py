@@ -3,7 +3,7 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
+SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
           'session.seen', 'session.rotated', 'item.claimed', 'worktree.adopted', 'worktree.created',
@@ -13,21 +13,18 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
           'decision.decided', 'decision.closed',
-          'decision.routed', 'decision.digest', 'decision.replied', 'mcp.decided',
+          'decision.routed', 'decision.digest', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'pr.reply.drafted', 'pr.action.decision',
-          'watch: clock', 'listen: clock', 'heartbeat: clock', 'listen: wake', 'remote.pending', 'remote.started',
-          'decision.escalated', 'remote.resumed', 'remote.stopped', 'remote.ignored',
-          'remote.confirmed', 'watch: heartbeat', 'watch: observation', 'session: compact',
+          'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
           'gate.received', 'gate.tiered', 'gate.delta_head', 'gate.card', 'discovery.requested', 'discovery.intake',
           'plan.added', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
           'plan.added', 'finding.noted', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
-          'build.started', 'build.launched', 'build.checked', 'build.check_started', 'build.held', 'build.released', 'verdict.rejected',
-          'inbox.redacted', 'shepherd.dispatched', 'shepherd.overnight', 'shepherd.swept', 'pr.notified', 'negotiation.notified',
-          'decision.notified', 'cruise.carded', 'decision.shadow', 'undo.rehearsed', 'undo.done',
+          'build.held', 'build.released',
+          'shepherd.overnight', 'shepherd.swept', 'cruise.carded', 'decision.shadow', 'undo.rehearsed', 'undo.done',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
           'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
@@ -54,8 +51,6 @@ def classify(event, state):
         return ('page' if payload.get('past_goal') is True else 'warn'), lane
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
-    if kind == 'shepherd.finished':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'mcp.checked':
         return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'tracker.call':
@@ -71,7 +66,7 @@ def classify(event, state):
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
         return ('page' if blocking else 'warn'), lane
-    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap', 'remote.refused'):
+    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap'):
         return 'page', lane
     if kind == 'decision.one_way':
         return ('page' if payload.get('blocking') is True else 'warn'), lane

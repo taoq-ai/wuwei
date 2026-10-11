@@ -251,14 +251,14 @@ STATE_PRODUCERS = {
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer) '
+                          'or owner host wuwei doctor --fix '
                           'or wuwei watch and wuwei pr state (a merged PR closes its merge card)'),
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
     'author_logins': 'wuwei pr raise, ping or reviewers',
     'scanner_decisions': 'wuwei sweep',
-    'watch': 'wuwei watch or wuwei listen', 'pr_dispositions': 'wuwei pr disposition',
+    'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
     'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
     'pr_action_decisions': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
@@ -269,7 +269,7 @@ STATE_PRODUCERS = {
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
     'seat_findings': 'wuwei note --fix',
-    'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session, wuwei listen (remote sessions) or wuwei hook PostToolUse (gate questions)',
+    'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',

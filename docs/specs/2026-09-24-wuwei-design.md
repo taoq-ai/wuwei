@@ -39,8 +39,8 @@ that engagement ships in this repository.
 - Approving pull requests, or bypassing branch protection to merge. WUWEI never approves a
   review and never merges with admin override; a merge happens only when the repository's
   own rules already allow it (section 4.6).
-- A hosted service or database. A long-running process is out of scope for v1; M5 adds
-  exactly one, the listener (section 15). The optional telemetry collector (5.13) is the
+- A hosted service or database. A long-running process is out of scope for v1; M5 added
+  exactly one, the listener (section 15), (retired by #789, owner, 2026-10-10). The optional telemetry collector (5.13) is the
   project's, outside the plugin, and the plugin never needs it.
 - Multi-user team coordination (v1 is one person's workspace).
 - Replacing the tracker, chat tool or CI. Adapters talk to them; WUWEI does not own them.
@@ -158,7 +158,7 @@ WUWEI is built as ports and adapters (hexagonal).
   into exit 2 (section 9) before anything reaches the core.
 - Driving adapters: `hooks/hooks.json` with `wuwei hook <event>` (Claude Code lifecycle),
   the `wuwei` command line, `skills/` (typed entry points), and in M5 the listener and its
-  inbound and control-plane parsing. Each translates its input into one core call and its
+  inbound and control-plane parsing (retired by #789, owner, 2026-10-10). Each translates its input into one core call and its
   result into the caller's format. None holds a rule.
 - Tests: the core is tested against fake adapters and recorded fixtures, never against the
   real tools or the network; adapters get contract tests plus recorded-output tests.
@@ -327,7 +327,7 @@ Preconditions, all read fresh at the current head sha, never from cache or from
 - the review bot, when configured, reports no open blocking finding on this head;
 - the branch is up to date with its base, or the repository uses a merge queue;
 - a soak window has passed since the last approval or push (`merge.soak_minutes`, default
-  30), during which the owner can veto from the control plane.
+  30), during which the owner can veto from the control plane (retired by #789, owner, 2026-10-10).
 
 Mechanics: `gh pr merge --squash --match-head-commit <sha>` (or the repository's merge queue),
 so a push between the check and the merge makes it fail rather than merge unreviewed code.
@@ -1016,8 +1016,8 @@ continuations (gate or PR feedback, not the build loop's fast-check backpressure
 bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
 gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
 the CLI, naming the counts and the last two exchanges. It is a `warn` (owner, 2026-10-10, #789), and a page when the
-item is past the date of the goal it serves (5.7); the control plane sends the owner's DM
-the same summary within `control_plane.content` (15.4); the status line shows `loops N`.
+item is past the date of the goal it serves (5.7); the control plane sent the owner's DM
+the same summary within `control_plane.content` (15.4) (retired by #789, owner, 2026-10-10); the status line shows `loops N`.
 The signal reports; the negotiation budget (5.3) is what stops the rounds.
 
 ### 5.9 Cockpit, signals and briefings (owner, 2026-09-28) (cockpit, menu bar and briefings retired: owner, 2026-10-11, #789)
@@ -1059,7 +1059,7 @@ Surfaces, all reading the same classification:
   and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
-  default, messaging adapters in M5), plus approvals.
+  default, messaging adapters in M5 (retired by #789, owner, 2026-10-10)), plus approvals.
 
 Cockpit, menu bar and briefings: retired (owner, 2026-10-11, #789).
 
@@ -1229,7 +1229,7 @@ step to any hook:
   `Class:` field (5.8).
 - loops: `negotiation.loop` (5.8.2).
 - owner interactions: `decision.decided` with `decided_by` `owner`; DM commands, the
-  `remote.*` events written by `wuwei listen`; owner host actions, `remote.acknowledged`,
+  `remote.*` events written by `wuwei listen` (retired by #789, owner, 2026-10-10); owner host actions, `remote.acknowledged` (retired by #789, owner, 2026-10-10),
   `state.recovered`, `integrity_confirmation`, `mcp.decided`, `draft.sending` and
   `draft.dropped`.
 - configuration facts, read from `config.toml` when aggregating: `security.posture`,
@@ -1870,8 +1870,8 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha, method)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
-| inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
-| control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
+| inbound (M5) (retired by #789, owner, 2026-10-10) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
+| control_plane (M5) (retired by #789, owner, 2026-10-10) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
 | tts | `speak(text, voice, out)` | macOS `say` (default on macOS), none (no caller since #789 part 5) |
 | calendar | `events(since, until)` | private ICS feed URL through `urllib`, none |
@@ -1909,7 +1909,7 @@ the owner's user account, and they hold when no hook runs:
 - the owner sending messages that need approval: approve-tier text is delivered as a draft
   the owner sends (a chat draft, a pending review comment, or the text on
   the phone), never sent by WUWEI (4.9);
-- the out-of-process control plane (M5) for anything decided remotely.
+- the out-of-process control plane (M5) for anything decided remotely (retired by #789, owner, 2026-10-10).
 
 Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
 touch workspace state; this is a reason to route build seats there. Further hardening for
@@ -2045,7 +2045,9 @@ on it. The repository stays PRIVATE until the owner judges it stable enough to p
   MCP drift (section 7, S3).
 - Q3. Private until stable enough to become public (section 13).
 
-## 15. Post-v1 (M5): always-on responder and inbound messaging
+## 15. Post-v1 (M5): always-on responder and inbound messaging (retired by #789, owner, 2026-10-10)
+
+Retired: the listener, the inbox, the inbound port and the control plane were removed by #789; the text below is history.
 
 Decided 2026-09-24: designed now, built after v1, tracked under milestone M5.
 

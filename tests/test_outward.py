@@ -767,7 +767,8 @@ def test_emoji_presentation_selector(configured, base):
 
 
 def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatch):
-    from wuwei import outward, remote
+    from wuwei import outward
+    owner_line = 'Reply yes within 2 minutes to run it.'
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     (tmp_path / '.wuwei').mkdir()
     path = tmp_path / '.wuwei/config.toml'
@@ -777,12 +778,12 @@ def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatc
     assert outward.lint('Report ready.', 'chat', config, to_owner=True) == (0, '')
     path.write_text('[owner]\nname = "Dry Run Operator"\npronouns = "they/them"\n')
     config = workspace.load_config(tmp_path)
-    assert outward.lint(remote.CONFIRM, 'chat', config)[0] == 1
-    assert outward.lint(remote.CONFIRM, 'chat', config, to_owner=True) == (0, '')
+    assert outward.lint(owner_line, 'chat', config)[0] == 1
+    assert outward.lint(owner_line, 'chat', config, to_owner=True) == (0, '')
     assert outward.lint('They look done.', 'chat', config, to_owner=True) == (0, '')
     config['outward']['patterns'] = [r'\bwuwei\b']  # #533: the owner reads it; the list is for others
     assert outward.lint('wuwei is busy.', 'chat', config, to_owner=True) == (0, '')
-    inputs = {'text': remote.CONFIRM, 'channel': 'D1'}
+    inputs = {'text': owner_line, 'channel': 'D1'}
     assert outward.check_lint(inputs, tmp_path, config, {'chat'}, to_owner=True) == (0, '')
     assert outward.check_lint(inputs, tmp_path, config, {'chat'})[0] == 1
 
@@ -951,7 +952,7 @@ def test_owner_facing_templates_are_plain():
     from pathlib import Path
     from wuwei import outward
     cli = Path(__file__).resolve().parents[1] / 'cli/wuwei'
-    for name in ('control_plane.py', 'remote.py', 'listen.py', 'report.py', 'decision.py', 'retro.py',
+    for name in ('report.py', 'decision.py', 'retro.py',
                  'interview.py', 'watch.py', 'commands/decision.py', 'commands/status.py'):
         for node in ast.walk(ast.parse((cli / name).read_text(encoding='utf-8'))):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):

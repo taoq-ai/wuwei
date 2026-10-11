@@ -188,7 +188,7 @@ def test_outcome_findings_before_unmeasured():
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
     assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'calibrate',
-                                 'watch-install', 'listen-install', 'trace-decisions', 'mcp-reports'}
+                                 'watch-install', 'trace-decisions', 'mcp-reports'}
 
 
 # US1: the rows
@@ -250,7 +250,6 @@ def host_case(ws, change):
     (('config', '[adapters]\ncode_host = "none"\n' + REPO), 'gh', 'ok', None),
     (('identity', None), 'git identity', 'fail', None),
     (('config', '[adapters]\nscanner = "ziran"\n' + REPO), 'ziran', 'ok', None),
-    (('config', '[adapters]\ninbound = "slack"\n' + REPO), 'claude', 'fail', None),
     (('config', '[adapters]\nruntime = "codex"\n[codex]\ncommand = ["codex"]\n' + REPO), 'codex', 'fail',
      'install the Codex CLI'),
     (('memory', None), 'memory', 'fail', None),
@@ -274,10 +273,9 @@ def test_host_rows(ws, change, name, status, fix):
 
 def test_host_rows_healthy(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'claude', 'codex', 'memory',
+    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'codex', 'memory',
                                    'service manager']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'host'), rows
-    assert row(rows, 'claude')['value'].startswith('not on PATH')
     (ws.bin / 'ziran').unlink()
     config(ws.root, '[adapters]\nscanner = "ziran"\n' + REPO)
     assert row(doctor.diagnose(), 'ziran')['status'] == 'fail'
@@ -635,10 +633,9 @@ def test_answered_cards_row(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'shepherd', 'heartbeat', 'stuck seats',
                                   'traces', 'untraced subagents', 'session id', 'answered cards', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
-    assert row(rows, 'listener')['value'] == 'not used'
     assert row(rows, 'untraced subagents')['value'] == 'none today'
     # #676: a subagent stop that matched no seat is named, with the way to register one.
     state.append_event('subagent.untraced', {'agent_type': 'Explore', 'agent_id': 'a1', 'reason': 'no seat'},

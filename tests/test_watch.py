@@ -1378,20 +1378,100 @@ def test_poll_prs_reads_then_reconciles_and_marks_poll_at(case, monkeypatch):
     assert watch.saved(root)['poll_at'] == workspace.now().isoformat()
 
 
-def test_watch_skips_pr_poll_while_the_listener_lives(case, monkeypatch):
+def test_watch_polls_prs_even_with_a_listen_clock_line(case, monkeypatch):
+    # A listen clock written before the upgrade must not stop the watch's PR poll.
     root, _, _, _ = case
     watch = watch_module()
-    assert not watch.listening(root)
     state.append_event('listen: clock', {}, root)
-    assert watch.listening(root)
-    monkeypatch.setattr(watch, 'poll_prs', lambda root: pytest.fail('watch polled PRs'))
-    watch.tick(root)
-    advance(case, 1200)
-    assert not watch.listening(root)
     polled = []
     monkeypatch.setattr(watch, 'poll_prs', lambda root: polled.append(root) or 0)
     watch.tick(root)
     assert polled == [root]
+
+
+def test_wake_marker_keeps_summaries_while_unseen(case):
+    root, _, _, _ = case
+    watch = watch_module()
+    watch.mark_wake(root, prs=[REF], summaries=['PR a: x'], kind='pr.changed', payload={})
+    watch.mark_wake(root, prs=[REF], summaries=['PR a: y'], kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == ['PR a: x', 'PR a: y']
+    message = watch.wake(root)
+    assert message.split('\n')[:2] == ['PR a: x', 'PR a: y']
+    assert message.split('\n')[2] == f'planner wake ({watch.saved(root)["wake"]["at"]}): {REF}'
+    assert watch.wake(root, consume=True)
+    watch.mark_wake(root, prs=[REF], summaries=['PR a: z'], kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == ['PR a: z']
+    watch.mark_wake(root, prs=[REF], summaries=[f'PR a: {n}' for n in range(25)],
+                    kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == [f'PR a: {n}' for n in range(5, 25)]
+
+
+def test_summary_only_mark_is_not_already_covered(case):
+    root, _, _, _ = case
+    watch = watch_module()
+    watch.mark_wake(root, prs=[REF], kind='pr.changed', payload={})
+    assert watch.wake(root, consume=True)
+    watch.mark_wake(root, summaries=['PR a: shepherd done'], kind='pr.changed', payload={})
+    assert watch.wake(root).startswith('PR a: shepherd done\nplanner wake (')
+
+
+def test_pr_only_marker_is_unchanged(case):
+    root, _, _, _ = case
+    watch = watch_module()
+    watch.mark_wake(root, prs=[REF], kind='pr.changed', payload={})
+    assert watch.saved(root)['wake'] == {'at': workspace.now().isoformat(), 'prs': [REF]}
+    assert watch.wake(root) == f'planner wake ({workspace.now().isoformat()}): {REF}'
+
+
+def test_inbox_only_marker_from_before_the_upgrade_is_no_wake(case):
+    root, _, _, _ = case
+    watch = watch_module()
+    watch.save(root, {'wake': {'at': workspace.now().isoformat(), 'prs': [], 'inbox': 3}})
+    assert watch.wake(root) == ''
+
+
+def test_session_start_reads_the_day_once(case):
+    # #562: one state read and one events read of its own, beyond next.step's.
+    import sys
+    root, _, _, monkeypatch = case
+    watch, lifecycle = watch_module(), lifecycle_module()
+    state.append_event('watch: clock', {}, root)
+    counts = {}
+
+    def counting(module, name):
+        original = getattr(module, name)
+
+        def wrapper(*args, **kwargs):
+            caller = sys._getframe(1).f_code.co_name
+            counts[name, caller] = counts.get((name, caller), 0) + 1
+            return original(*args, **kwargs)
+        monkeypatch.setattr(module, name, wrapper)
+    before = lifecycle.session_start({'cwd': str(root)})
+    counting(state, 'read_state')
+    counting(watch, '_day_rows')
+    assert lifecycle.session_start({'cwd': str(root)}) == before
+    assert counts.get(('read_state', 'session_start')) == 1
+    assert counts.get(('_day_rows', 'session_start'), 0) + counts.get(('_day_rows', 'health'), 0) == 1
+
+
+def test_session_start_reports_a_broken_events_file(case):
+    root = case[0]
+    events = workspace.day_dir(root) / 'events.jsonl'
+    events.chmod(0o644)
+    events.write_bytes(b'\xff\n')
+    code, message = lifecycle_module().session_start({'cwd': str(root)})
+    assert code == 2 and 'watch health unmeasured' in message
+
+
+def test_session_start_reports_a_torn_events_line(case):
+    root = case[0]
+    state.append_event('note', {'detail': 'x'}, root)
+    events = workspace.day_dir(root) / 'events.jsonl'
+    events.chmod(0o644)
+    with events.open('a') as stream:
+        stream.write('{"kind": "torn')
+    code, message = lifecycle_module().session_start({'cwd': str(root)})
+    assert code == 2 and 'watch health unmeasured: incomplete event line' in message
 
 
 @pytest.mark.parametrize('value', ['NaN', 'Infinity', '-Infinity', '1e999', '-1e999'])
@@ -1419,7 +1499,6 @@ def test_health_decodes_an_unchanged_day_once(tmp_path, monkeypatch):
     monkeypatch.setattr(watch, '_SEEN', {})
     monkeypatch.setattr(watch, '_rows', lambda text, rows=watch._rows: decoded.append(text) or rows(text))
     assert watch.health(tmp_path) == (0, '')
-    assert watch.health(tmp_path, name='listen')[0] == 0
     assert len(decoded) == 1
     events.write_text(clock + 'torn')
     assert watch.health(tmp_path)[0] == 2 and watch.health(tmp_path)[0] == 2

@@ -311,7 +311,7 @@ def step(root, ran=()):
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
     # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
     from wuwei.commands.status import scan
-    _, watch, _, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
+    _, watch, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
     if (watch == 'dead' or beat == 'degraded') and ('doctor', '') not in returned:
         return _row('doctor', f'Watch {watch}, heartbeat {beat}; run the doctor and fix what it '
                     'names.', 'wuwei doctor')

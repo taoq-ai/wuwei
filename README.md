@@ -28,7 +28,6 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
 - Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
 - Review [tiers](docs/site/concepts.md#tier): one reviewer for a docs-only change, three gates for code or a [trust surface](docs/site/concepts.md#trust-surface) ([review tiers](docs/site/concepts.md#review-tiers)).
-- Remote operation from the phone through Remote Control and a Slack owner DM ([remote operation](docs/site/remote.md)).
 - Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
 - Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its [digest](docs/site/concepts.md#digest) ([setup](docs/site/daily.md#2-configure)).
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
@@ -49,7 +48,7 @@ first, and reviewers that did not write it check it. A [shepherd](docs/site/conc
 follows each pull request to merge, and the status line shows you where the day stands.
 
 When a seat needs you, the question arrives as a decision with a recommendation, in the
-session or as a DM on your phone. You answer it, and the day goes on without you watching.
+session or on your phone through Remote Control. You answer it, and the day goes on without you watching.
 
 In the evening you close the day. `/wuwei:wuwei-report` runs the retro, and the
 [steward](docs/site/concepts.md#steward) proposes rule changes that you promote or drop. All
@@ -92,7 +91,6 @@ Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](
 | docs | confluence, markdown, none, notion |
 | editor | local |
 | host | local, none |
-| inbound | none, slack |
 | integrity | none, ssh |
 | redactor | builtin |
 | review_bot | greptile, none |

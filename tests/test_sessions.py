@@ -70,17 +70,17 @@ def test_rows_derive_planner_idle_stale_and_items(root):
             'sessions': {'A': {'role': 'adhoc', 'started': '2026-09-30T09:00:00+00:00',
                                'last_seen': '2026-09-30T09:59:00+00:00', 'cwd': '/w',
                                'last_hook': 'Stop'},
-                         'B': {'role': 'remote', 'started': '2026-09-30T08:00:00+00:00',
+                         'B': {'role': 'shepherd', 'started': '2026-09-30T08:00:00+00:00',
                                'last_seen': '2026-09-30T08:00:00+00:00', 'cwd': '/w',
-                               'last_hook': 'remote start', 'thread': 'slack:D1/1'}}}
+                               'last_hook': 'shepherd start'}}}
     now = workspace.now()
     rows = sessions.rows(data, now, 3600)
     assert [row['session_id'] for row in rows] == ['B', 'A']
     b, a = rows
     assert (a['role'], a['age_seconds'], a['idle_seconds'], a['stale'], a['items']) == (
         'planner', 3600, 60, False, ['Y'])
-    assert (b['role'], b['idle_seconds'], b['stale'], b['items'], b['thread']) == (
-        'remote', 7200, True, ['W', 'X'], 'slack:D1/1')
+    assert (b['role'], b['idle_seconds'], b['stale'], b['items']) == (
+        'shepherd', 7200, True, ['W', 'X'])
     with pytest.raises(ValueError):
         sessions.rows({'claims': []}, now, 3600)
 
@@ -247,11 +247,11 @@ def test_wake_goes_to_the_new_planner(root, monkeypatch):
     assert lifecycle.stop({'cwd': str(root), 'session_id': 'B'}) == (1, 'wake')
 
 
-def test_remote_row_survives_stop_and_planner_role_is_refused(root, monkeypatch, capsys):
-    sessions.touch(root, 'R', hook='remote start', cwd=str(root), role='remote', thread='slack:D1/1')
+def test_shepherd_row_survives_stop_and_planner_role_is_refused(root, monkeypatch, capsys):
+    sessions.touch(root, 'R', hook='shepherd start', cwd=str(root), role='shepherd')
     assert hook(monkeypatch, 'Stop', 'R', root) == 0
     row = listed(capsys)['R']
-    assert (row['role'], row['thread'], row['last_hook']) == ('remote', 'slack:D1/1', 'Stop')
+    assert (row['role'], row['last_hook']) == ('shepherd', 'Stop')
     directory = workspace.day_dir(root)
     before = [(directory / name).read_text() for name in ('state.json', 'events.jsonl')]
     with pytest.raises(ValueError):
@@ -285,7 +285,7 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
 
 
 def test_rows_carry_stopped(root, monkeypatch, capsys):
-    sessions.touch(root, 'R', hook='remote start', cwd=str(root), role='remote', thread='slack:D1/1')
+    sessions.touch(root, 'R', hook='shepherd start', cwd=str(root), role='shepherd')
     sessions.touch(root, 'A', hook='SessionStart', cwd=str(root))
     state._write_state(lambda data: data['sessions']['R'].update(stopped=NOW), root, reserved=False)
     rows = listed(capsys)

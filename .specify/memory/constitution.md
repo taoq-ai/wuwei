@@ -64,8 +64,8 @@ override; an owner-only action runs only on the owner's recorded answer (design 
 
 - Writing style for everything the plugin authors (code comments, docs, charters, CLI
   output): no emojis, no em-dashes.
-- No hosted service or database in the plugin. The only long-running processes are the
-  watch (v1) and the listener (M5). The project's optional telemetry collector (design
+- No hosted service or database in the plugin. The only long-running process is the
+  watch (the M5 listener was retired by #789, owner, 2026-10-10). The project's optional telemetry collector (design
   5.13) runs outside the plugin, and the plugin works without it.
 - Telemetry adds no record and no step to a hook: its signals are fields on records the
   CLI already appends, and aggregation runs only in CLI commands.

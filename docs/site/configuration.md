@@ -9,8 +9,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
-| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
@@ -77,7 +77,6 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. |
 | `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
-| `owner.verbosity.dm` | `""` | Level for decisions sent to your owner DM. Empty uses the default. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -158,7 +157,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with a decision record naming the finding and what would unpark it. Minimum 1. The report's `## Rounds` section counts them. |
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `gates.polish` | `"offer"` | After a round-one pass with review notes: `never` raises the PR at once, `offer` lets the planner take one polish round (`dispatch polish <item>`) or decline it (`dispatch skip-polish <item>`), `always` opens it. The builder fixes only the notes and one gate (the one that wrote them, else quality) re-checks the delta. It counts as a fix round. |
-| `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. With the listener running, conditional probes every 30 s trigger a full read at once on a change. |
+| `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. |
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. A warning in the event log after this deadline, a page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
@@ -170,7 +169,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.autostart` | `true` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
 | `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. See [People, channels and tools](#people-channels-and-tools). |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
@@ -179,9 +177,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner pages through the heartbeat. |
 | `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
-| `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
-| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
-| `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `250` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in `fix` or `delta`, a tool-call or sweep review waits for the round to end; the close review never waits. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
 | `steward.loop_threshold` | `9` | Exchanges in the window above which an item writes one `negotiation.loop` event a day; a second fix round today raises it too. |
@@ -242,15 +237,12 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 | `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output port. No command calls it since #789 part 5. |
 | `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
 | `adapters.transcripts` | `"none"` | Meeting transcript port. No command calls it since #789 part 5. |
-| `adapters.inbound` | `"none"` | Inbound message source: none or slack. |
-| `adapters.redactor` | `"builtin"` | Redacts inbound text before it is stored: built-in patterns for phone numbers, email addresses and secrets. |
+| `adapters.redactor` | `"builtin"` | Redacts text before a profile export: built-in patterns for phone numbers, email addresses and secrets. |
 | `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
 | `brief.remote` | `"origin"` | Git remote used for a brief. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
-| `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the decision at the `owner.verbosity.dm` level (at `brief`: the id, the question, each option with its score and the reason for the recommendation; at `standard` or `full`: more of the record, up to all of it, including context, blast radius and evidence paths) and the whole record on a `more D-n` reply; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
-| `control_plane.owner` | `""` | The pinned sender of commands from your owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
 
 When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`
 runs the scanner for the security sentinel's reviewed worktree, including delta reviews.
@@ -366,7 +358,6 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `gates` (per repository) | `repos.gates.floor` |
 | `quiet` (per repository) | `repos.merge.quiet_hours` |
 | `interrupt`, `decisions`, `hours` | a line in `.wuwei/charters/planner.md`: when decisions interrupt you, how they are presented, your working hours and time zone |
-| `phone` | `control_plane.content` |
 | `avoid` | `- never:` phrases under `## shared` in `.wuwei/memory/voice.md`, which the outward lint enforces |
 | `formality`, `signature` | a line in `.wuwei/charters/shepherd.md` |
 | `risk` | a line in `.wuwei/charters/lead.md`: what else sets `trust_surface` |
@@ -393,7 +384,7 @@ A profile carries a promoted calibration to another workspace of the same kind. 
 
 `bin/wuwei calibrate import <source>` reads a starter name, an `https` URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:
 
-- A profile that sets `repos.merge.auto = true` or `shepherd.autostart = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on, lowers `decisions.cruise.margin`, raises `decisions.cruise.max_per_day`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
+- A profile that sets `repos.merge.auto = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on, lowers `decisions.cruise.margin`, raises `decisions.cruise.max_per_day`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
 - Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).
 - `--skip <key>` (a dotted config key or `charters.<role>`) leaves a change out; `--repo <name>` limits the `repos` part to one repository.
 
@@ -613,83 +604,6 @@ sweeps all read watch health the same way, whatever the last sweep recorded:
 read them. Routine progress such as plan approval, build starts and checks, and a call to any
 adapter set to `none` is silent.
 
-## Running the listener
-
-`bin/wuwei listen` polls the inbound source named by `adapters.inbound` every
-`listen.poll_seconds` and appends new events, redacted, to `.wuwei/inbox/inbox.jsonl`.
-Events are deduplicated by source and id, and the cursor per source is kept in
-`.wuwei/inbox/cursor.json`, so a restart loses nothing and stores nothing twice. When
-new events arrive the listener sets the planner wake, shown at session start as
-`inbox to line N`; with `responder.enabled = false` it stores events and wakes nobody.
-
-`bin/wuwei listen install [--dry-run]` and `bin/wuwei listen uninstall` work like the
-watch's: one launchd agent or systemd user unit per workspace, labelled
-`wuwei-listen-<hash>`. `bin/wuwei listen --once` runs one poll: exit 0 when it polled,
-with or without new events, and exit 2 when it could not run, with the reason printed. With
-`adapters.inbound = "none"`, `listen`, `listen --once` and `listen install` exit 2.
-Uninstall is an owner action, refused from agent tools inside a workspace.
-
-With `adapters.inbound = "slack"` the listener reads every message in
-`SLACK_OWNER_DM_CHANNEL`, and messages in `outbound.work_channels` and
-`outbound.external_channels` that mention a Slack user id from `owner.handles` (such as
-`U0123ABC`). It reads top-level messages only, so answer in the DM as a new message, not
-in a thread. Bot and app posts are skipped. The sender of each message is recorded as
-`<team id>/<user id>`. Each poll re-reads five minutes behind the
-previous successful poll, and the first poll starts five minutes back. A Slack rate limit fails that poll
-and the next poll retries. The reading token needs the `channels:history`,
-`groups:history` and `im:history` scopes and membership of the polled channels.
-
-### Commands from your owner DM
-
-Each new message in `SLACK_OWNER_DM_CHANNEL` is handled once, in order, by the
-listener: `plan`, `status`, `report`, `ask <question>`, `stop <session>` (a unique prefix
-of at least eight characters) and `stop all`. Decision replies use the control-plane
-forms: `approve D-n`, `option X on D-n` or `drop it`. `run <routine>` and
-`cloud <repo> <task>` answer "Not available in this version." with the command list, and
-anything else gets the command list. Messages in other channels are never commands.
-
-Only the sender pinned in `control_plane.owner` (`<team id>/<user id>`) can command.
-With no pin, every message fails and the listener log names the pin and the sender.
-A message from any other user is ignored: nothing is answered, and a `remote.ignored`
-event records the sender once a day. A message from the pinned user id with a different or
-missing team id is refused: the DM answers that the sender does not match the pinned
-identity, and a `remote.refused` event pages on the host. Editing the pin in config.toml
-on the host is the re-confirmation. `stop all` is still accepted from a changed identity.
-
-`plan` and `ask` need a second factor. Put a base32 TOTP secret in `.wuwei/env` as
-`WUWEI_TOTP_SECRET` (30 second codes, six digits, HMAC-SHA1, as authenticator apps use)
-and end the message with the current code, such as `plan today 123456`. The code must
-reach the listener within 2 minutes of the message and each code works once. Without a
-valid code the command is recorded as `remote.pending` and the DM asks for `confirm`:
-replying `confirm` within 2 minutes runs the latest pending `plan` or `ask`. Each
-accepted factor is recorded as `remote.confirmed`. `status`, `report`, `stop <session>`,
-`stop all` and decision replies need no second factor. A reply to a decision is recorded
-as `decision.replied` evidence; with no remote session waiting on it, confirm it on the host.
-
-`plan` and `ask` start one headless Claude Code session per command message
-(`claude -p --output-format json --permission-mode dontAsk --strict-mcp-config`, with the
-role's tools in `--allowedTools`, and no MCP server); a reply to one of its decisions
-resumes it with `--resume`. No session starts or resumes while free memory on the host
-is below `host.free_memory_mb`. The
-session is listed in `wuwei sessions` with role `remote`. A tool outside the role's
-tools is refused and arrives as a decision; granting it stays a host change.
-
-Messages to your owner DM are sent, not drafted: they pass the security check and the
-outward lint first, and a decision the lint refuses arrives as "D-n is waiting in the
-workspace." Every other DM still becomes a draft. With `responder.enabled = false` no
-command is handled; stored commands are handled once it is back on.
-
-The listener writes a `listen: clock` line every two minutes. Session start reports
-`listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
-when the listener is installed and wrote none today. A listener that is off or alive
-adds nothing to session start. `wuwei status` shows `listen dead`,
-`listen unmeasured` or `listen off` (`listen alive` while alive, and nothing without an inbound
-adapter), and `wuwei doctor` pages a dead listener as `listen: health`. A DM answer to a
-two-way decision is recorded as your outcome by the listener. A DM answer to a
-one-way or `unsure` decision shows at session start as "D-n answered
-from the phone", and the status line counts them as `phone answers N`, until you
-record the outcome.
-
 ## Private workspace environment
 
 `.wuwei/env` stores adapter credentials outside tracked configuration. Init and
@@ -704,9 +618,6 @@ shell characters is malformed (a pasted command, for example). It returns 1 for 
 malformed requirements and 2 when a check cannot run. An HTTP adapter the provider refuses
 reports `HTTP <status>` and a one-line hint (`HTTP 401` credential rejected, `HTTP 403` no
 access, `HTTP 404` not found or not visible to the credential), which doctor shows.
-With an inbound adapter it adds a `Control plane:` section: `control_plane.owner` is
-set, missing or invalid (the last two return 1; the pin is never printed), and
-`WUWEI_TOTP_SECRET` is set or missing, which is information only.
 See [adapter credentials](adapters.md#credentials) for every variable, syntax
 rules and authentication requirements. No new config.toml keys are needed.
 

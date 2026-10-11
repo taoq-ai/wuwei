@@ -1002,18 +1002,17 @@ def test_first_day_on_defaults_without_github_remote(project, host, terminal, mo
     assert main(['plan', 'propose', str(lead)]) == 0, capsys.readouterr()
 
 
-SLACK_NAMES = ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'WUWEI_TOTP_SECRET')
+SLACK_NAMES = ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')
+USER_STEP = 'bin/wuwei config set outbound.owner.slack.user'
 
 
 @pytest.fixture
 def slack(project, host, terminal, monkeypatch):
-    """An initialized workspace, a fake inbound port, and no Slack or TOTP values set."""
+    """An initialized workspace with no Slack values set; any service install is recorded."""
     import getpass
     import os
-    import time
-    from wuwei import env, registry, workspace
+    from wuwei import env
     from wuwei.commands import config as config_command, watch
-    from wuwei.registry import Result
 
     monkeypatch.setattr(os, 'environ', os.environ.copy())
     for name in SLACK_NAMES:
@@ -1021,29 +1020,15 @@ def slack(project, host, terminal, monkeypatch):
     (project / '.wuwei').mkdir()
     (project / '.wuwei/config.toml').write_text(TEMPLATE)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(project))
-    start = int(workspace.now().timestamp())
-    fake = SimpleNamespace(token='xoxb-' + 'test-1', services=[], checks=[], sleeps=[], polls=[Result(0, [
-        {'id': f'D0123ABC/{start + 5}.000100', 'source': 'slack', 'channel': 'D0123ABC', 'thread': '',
-         'sender': 'T0103ABC/U0123ABC', 'text': 'hello', 'ts': f'{start + 5}.000100'}])], start=start)
+    fake = SimpleNamespace(token='xoxb-' + 'test-1', services=[], checks=[])
 
     def secret(prompt=''):
         if fake.token is None:
             raise AssertionError('no token prompt expected')
         return fake.token
 
-    def poll(since, *, root=None):
-        if fake.polls is None:
-            raise AssertionError('no DM wait expected')
-        return fake.polls.pop(0) if fake.polls else Result(0, [])
-
-    real = registry.load
-    monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(poll=poll)
-                        if kind == 'inbound' else real(kind, config))
     monkeypatch.setattr(getpass, 'getpass', secret)
-    monkeypatch.setattr(time, 'sleep', fake.sleeps.append)
-    monkeypatch.setattr(watch, 'service', lambda args, name, loop: fake.services.append(
-        (args.listen_action, name)) or 0)
-    monkeypatch.setattr(watch, 'service_platform', lambda: 'darwin')
+    monkeypatch.setattr(watch, 'service', lambda args, name, loop: fake.services.append(name) or 0)
     monkeypatch.setattr(config_command, 'run', lambda args: fake.checks.append(args) or 0)
     terminal.replies['DM channel'] = 'D0123ABC'
     with env.session():
@@ -1059,8 +1044,7 @@ def env_text(project):
     return path.read_text() if path.exists() else None
 
 
-def test_setup_slack_connects_the_dm(project, slack, capsys):
-    import base64
+def test_setup_slack_connects_the_chat_adapter(project, slack, capsys):
     import re
 
     assert setup_slack(Confirm()) == 0, capsys.readouterr()
@@ -1068,15 +1052,11 @@ def test_setup_slack_connects_the_dm(project, slack, capsys):
     path = project / '.wuwei/env'
     assert path.stat().st_mode & 0o777 == 0o600
     values = dict(line.split('=', 1) for line in path.read_text().splitlines())
-    assert values['SLACK_BOT_TOKEN'] == slack.token and values['SLACK_OWNER_DM_CHANNEL'] == 'D0123ABC'
-    assert len(base64.b32decode(values['WUWEI_TOTP_SECRET'])) == 20
+    assert values == {'SLACK_BOT_TOKEN': slack.token, 'SLACK_OWNER_DM_CHANNEL': 'D0123ABC'}
     loaded = load_config(project)
-    assert (loaded['adapters']['chat'], loaded['adapters']['inbound']) == ('slack', 'slack')
-    assert loaded['control_plane']['owner'] == 'T0103ABC/U0123ABC'
-    assert 'T0103ABC/U0123ABC' in out
-    assert (f'otpauth://totp/WUWEI:owner?secret={values["WUWEI_TOTP_SECRET"]}&issuer=WUWEI'
-            '&algorithm=SHA1&digits=6&period=30') in out
-    assert slack.services == [('install', 'listen')] and len(slack.checks) == 1
+    assert loaded['adapters']['chat'] == 'slack' and 'control_plane' not in loaded
+    assert USER_STEP in out
+    assert slack.services == [] and len(slack.checks) == 1
     assert slack.token not in out + err
     assert not re.search(r'\bxox[a-z]-[A-Za-z0-9]', out + err.replace('xoxb-', ''))
 
@@ -1099,65 +1079,25 @@ def test_setup_slack_refuses_an_empty_or_bad_channel(project, slack, terminal, c
     assert env_text(project) is None and (project / '.wuwei/config.toml').read_text() == TEMPLATE
 
 
-def test_setup_slack_records_the_owner_user_not_the_app_dm(project, slack, capsys):
-    # #495: the pin names the owner's user id; the app DM is never the owner's own DM.
-    config = TEMPLATE.replace('owner = ""', 'owner = "T01/U01"')
-    (project / '.wuwei/config.toml').write_text(config)
-    slack.polls = None
-    assert setup_slack(Confirm()) == 0, capsys.readouterr()
-    owner = load_config(project)['outbound']['owner']['slack']
-    assert owner == {'user': 'U01', 'dm': ''}
-
-
-def test_setup_slack_declined_writes_no_pin(project, slack):
+def test_setup_slack_declined_writes_no_config(project, slack):
     assert setup_slack(Confirm(False)) == 1
-    assert (project / '.wuwei/config.toml').read_text() == TEMPLATE
-    assert 'WUWEI_TOTP_SECRET' not in env_text(project) and slack.services == []
+    assert (project / '.wuwei/config.toml').read_text() == TEMPLATE and slack.services == []
 
 
-def test_setup_slack_waits_then_gives_up(project, slack, capsys):
-    from wuwei.registry import Result
-
-    old = {'id': 'D0123ABC/1.000100', 'source': 'slack', 'channel': 'D0123ABC', 'thread': '',
-           'sender': 'T0103ABC/U0999ABC', 'text': 'old', 'ts': f'{slack.start - 60}.000100'}
-    slack.polls = [Result(0, [old])]
-    assert setup_slack(Confirm()) == 1
-    module = setup()
-    assert len(slack.sleeps) == module.WAIT_SECONDS // module.POLL_SECONDS
-    text = ''.join(capsys.readouterr())
-    assert 'Messages Tab' in text and 'im:history' in text
-    assert load_config(project)['control_plane']['owner'] == '' and slack.services == []
-
-
-def test_setup_slack_poll_failure_is_unrun(project, slack, capsys):
-    from wuwei.registry import Result
-
-    slack.polls = [Result(2, None, 'slack.poll: could not run: invalid_auth')]
-    assert setup_slack(Confirm()) == 2
-    text = ''.join(capsys.readouterr())
-    assert 'slack.poll: could not run: invalid_auth' in text and 'im:history' in text
-
-
-def test_setup_slack_second_run_keeps_and_restarts(project, slack, capsys):
-    from wuwei import workspace
-
-    (project / '.wuwei/env').write_text('SLACK_BOT_TOKEN=' + slack.token + '\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n'
-                                        'WUWEI_TOTP_SECRET=JBSWY3DPEHPK3PXP\n')
+def test_setup_slack_second_run_keeps_everything(project, slack, capsys):
+    (project / '.wuwei/env').write_text('SLACK_BOT_TOKEN=' + slack.token + '\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n')
     (project / '.wuwei/env').chmod(0o600)
-    config = TEMPLATE.replace('owner = ""', 'owner = "T0103ABC/U0123ABC"').replace(
-        '[adapters]\ntracker = "none"\nchat = "none"', '[adapters]\ninbound = "slack"\ntracker = "none"\nchat = "slack"'
-    ) + '\n[outbound.owner.slack]\nuser = "U0123ABC"\n'
+    config = TEMPLATE.replace('[adapters]\ntracker = "none"\nchat = "none"',
+                              '[adapters]\ntracker = "none"\nchat = "slack"'
+                              ) + '\n[outbound.owner.slack]\nuser = "U0123ABC"\n'
     (project / '.wuwei/config.toml').write_text(config)
-    unit = workspace.watch_unit(project, 'darwin', name='listen')[1]
-    unit.parent.mkdir(parents=True)
-    unit.write_text('')
     before = env_text(project)
-    slack.token, slack.polls = None, None
+    slack.token = None
     assert setup_slack(Confirm()) == 0, capsys.readouterr()
     out = capsys.readouterr().out
-    for name in ('SLACK_BOT_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'control_plane.owner', 'WUWEI_TOTP_SECRET'):
+    for name in ('SLACK_BOT_TOKEN', 'SLACK_OWNER_DM_CHANNEL'):
         assert f'{name}: already set, kept' in out, out
-    assert slack.services == [('uninstall', 'listen'), ('install', 'listen')]
+    assert USER_STEP not in out and slack.services == []
     assert (project / '.wuwei/config.toml').read_text() == config and env_text(project) == before
 
 

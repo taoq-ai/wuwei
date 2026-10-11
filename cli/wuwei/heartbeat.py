@@ -15,7 +15,7 @@ PROBES = (  # data: order is the page order; docs/site/reference.md lists every 
     ('state', 'state.lock taken within 1 s and day state read'),
     ('integrity', 'cached integrity verdict clean and no plugin file newer than it'),
     ('config', 'config.toml loads and selected adapters have their credentials'),
-    ('clocks', 'watch and listener clocks alive or off'),
+    ('clocks', 'watch clock alive or off'),
     ('status_line', 'status --line exits 0 within 200 ms wall'),
     ('read_loop', 'hook PreToolUse allows a for loop over echo and cat in .wuwei (exit 0)'),
     ('git_read', 'hook PreToolUse allows git grep (exit 0)'),
@@ -89,7 +89,7 @@ def _config(root):
 
 
 def _clocks(root):
-    stamps = {'watch': [], 'listen': []}
+    stamps = {'watch': []}
     for row in watch.records(workspace.day_dir(root) / 'events.jsonl'):
         name, _, rest = row['kind'].partition(': ')
         if rest == 'clock' and name in stamps:

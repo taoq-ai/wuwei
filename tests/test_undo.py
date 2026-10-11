@@ -513,14 +513,10 @@ def test_invariant_a_two_way_only_with_a_registered_rehearsed_undo(ws, capsys, k
 
 @pytest.mark.parametrize('door', ['two-way', 'unsure'])
 def test_invariant_b_a_message_is_never_two_way(ws, capsys, door):
-    from types import SimpleNamespace
-    from wuwei.commands.decision import owner_outcome
     rehearse_all(ws)
     path = save(ws, record(cls='message', door=door))
     assert route(ws, capsys)[1].splitlines()[0] == 'owner'
     assert 'Reversibility: one-way' in path.read_text()
-    code, message = owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the DM')
-    assert code == 1 and 'only a two-way decision is decided from the DM' in message
 
 
 def test_invariant_c_undo_needs_a_card_a_dm_or_a_terminal(ws, cruised, capsys, monkeypatch):

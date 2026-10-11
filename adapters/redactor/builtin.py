@@ -1,4 +1,4 @@
-"""Built-in redaction of inbound message text: phone numbers, emails and secrets."""
+"""Built-in redaction of text: phone numbers, emails and secrets."""
 
 import re
 

@@ -15,7 +15,6 @@ CALLS = [
     ('tts', 'speak', ('text', 'rate', 'out'), False),
     ('calendar', 'events', ('since', 'until'), True),
     ('transcripts', 'recent', ('since',), True),
-    ('inbound', 'poll', ('since',), True),
     ('redactor', 'redact', ('text',), True),
     ('integrity', 'sign', ('manifest', 'key'), False),
     ('integrity', 'verify', ('manifest', 'signature', 'key'), True),

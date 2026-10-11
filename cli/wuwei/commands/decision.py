@@ -177,8 +177,8 @@ def show(args):
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
-def owner_outcome(args, note=None, *, root=None, where=None):
-    """The one owner-outcome writer; where is given only by the DM listener for a two-way door."""
+def owner_outcome(args, note=None, *, root=None):
+    """The one owner-outcome writer."""
     root = workspace.find_workspace(root)
     path = today_path(args.id, root)
     if path.is_symlink() or path.parent.is_symlink():
@@ -200,12 +200,9 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     if previous is not None and previous.get('decided_by') not in ('seat', 'mandate'):
         return 1, 'decision: invalid prior outcome; run bin/wuwei doctor, then bin/wuwei why <id>'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
-    if where and fields['Reversibility'] != 'two-way':
-        return 1, (f'decision: only a two-way decision is decided from the DM; '
-                   f'run {workspace.owner_cli(root)} decide {args.id} {args.option} in a host terminal')
     card = getattr(args, 'card', None)
-    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.',
-                                   card, fields)
+    where = owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.',
+                          card, fields)
     if not where and card is not None:
         return 1, no_card(root, args.id, args.option)
     if not where:
@@ -263,7 +260,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
 
 def undo(args, *, root=None, where=None):
     """#283: revert a cruise answer inside its undo window, after the owner's Undo, and ask
-    the owner; where is given only by the DM listener."""
+    the owner; where is given by a caller that already holds the owner's confirmation."""
     from wuwei import cruise, sessions
     root = workspace.find_workspace(root)
     path = today_path(args.id, root)

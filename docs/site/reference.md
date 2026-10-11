@@ -37,7 +37,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.md) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
 | `bin/wuwei lint` | Plumbing: `lint tone <path>...` reports each file's average and longest sentence, its sentences over 35 words and its nominalisations. It exits 1 when a file is over the plain tone rule. | |
-| `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.md) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | `lint` checks workspace memory; `memory show <date>` prints a raw or archived day; `memory status` sizes every tier; `memory export --claude` writes the rules block into `memory.export_to`; `memory forget F-n apply` or `keep` is your answer to a forgetting proposal. | [Concepts](concepts.md#memory) |
@@ -53,7 +52,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei pr` | Measures owned PRs, raises one, shows its reviewers, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
 | `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
-| `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.md) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei report` | Shows your report. | [Day close](concepts.md#day-close) |
 | `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.md) |
@@ -121,7 +119,7 @@ In a `[[repos]]` entry, `[repos.merge]` sets `merge.auto` (default `false`). Aut
 
 `bin/wuwei steward ack <id>` acknowledges a steward steering note. The id has the form `<item>-fix-3` (a third fix round) or `<item>-question-<agent>` (a seat stopped on a question to you without a decision record, written by the SubagentStop guard) and is named, with the note text, by the refusal `steward note <id> requires planner acknowledgement: <text>` from `dispatch next`. A `steward.due` event is not a note and takes no ack: it clears when `steward run` records a run, and `wuwei next` holds it while a steward seat runs. `dispatch next` reads the fix rounds from the day's events only, so a failing tracker or code host read never blocks a gate step.
 
-Every steward review (on the sweep, at close and on each `dispatch next`) also counts, per item over the last `steward.loop_window_hours`, the decision and clarification records naming it on their `Question:` or `Context:` line, `gate.received` verdicts, repeated briefs for the same role and `build.fix_opened` fix requests. Above `steward.loop_threshold`, or on a second fix round today, it writes one `negotiation.loop` event per item per day with the counts and the last two exchanges: a warning, or a page when the item's goal date has passed. The listener sends its summary to your owner DM once and records `negotiation.notified`; the status line shows `loops N`. The signal reports; it never parks or blocks.
+Every steward review (on the sweep, at close and on each `dispatch next`) also counts, per item over the last `steward.loop_window_hours`, the decision and clarification records naming it on their `Question:` or `Context:` line, `gate.received` verdicts, repeated briefs for the same role and `build.fix_opened` fix requests. Above `steward.loop_threshold`, or on a second fix round today, it writes one `negotiation.loop` event per item per day with the counts and the last two exchanges: a warning, or a page when the item's goal date has passed. The status line shows `loops N`. The signal reports; it never parks or blocks.
 
 ## Codex companion protocol
 
@@ -197,7 +195,7 @@ A clock line proves the watch runs, not that the system behaves. On every watch 
 | `state` | `state.lock` is taken within 1 s and today's state reads | milliseconds waited, or the error |
 | `integrity` | the cached verdict is clean and no installed plugin file is newer than it | the integrity reason |
 | `config` | `config.toml` loads and every selected adapter has its credential variables (the offline part of `config check`) | the missing names |
-| `clocks` | the watch and listener clocks are alive or off | the dead or unmeasured message |
+| `clocks` | the watch clock is alive or off | the dead or unmeasured message |
 | `status_line` | `status --line` exits 0 within 200 ms wall | milliseconds |
 | `read_loop` | `hook PreToolUse` with Bash `for r in a b; do echo "### $r"; cat .wuwei/$r/report.json; done` exits 0 | `exit N`, plus the first stderr line when not ok |
 | `git_read` | `hook PreToolUse` with Bash `git grep -n probe` exits 0 | `exit N`, plus the first stderr line when not ok |
@@ -209,7 +207,7 @@ The hook probes run through the real `bin/wuwei hook PreToolUse` with session id
 
 Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clock` record, also kept under `watch.heartbeat` in day state, carries `health`, every probe's `result` and `value`, `drift`, `page` and `ping`. Health is `degraded` when any probe failed, else `unmeasured` when any probe is unmeasured, else `ok`.
 
-- `status` adds `health ok`, `health degraded` or `health unmeasured` after the watch and listen parts once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
+- `status` adds `health ok`, `health degraded` or `health unmeasured` after the watch part once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
 - `status` adds `traces: N gaps` after the health part when today has N `traces.gap` events: a tool span the trace recorder could not write records one `traces.gap` event with its `reason`, `span` (the tool name) and `session`, and the hook exit stays as before. Only the hook writes the kind. A recorder that did not finish in time (a `TimeoutError`, for example a busy `state.lock`) prints `did not finish in time after N ms` and records `traces.slow` with `elapsed_ms` instead; it exits 0 under `observe` and `guarded` and 2 under `strict`. The trace recorder redacts credential-shaped values only: the tool, its subcommand and the text before the first credential stay, and message bodies keep their command words and lose their text.
 - Each heartbeat saves the rendered status line under `watch.status_line`, ending `· as of HH:MM`. When `status --line` at the default width cannot compute its line within 100 ms, it prints that saved line instead; with none saved it waits, and a failed compute prints `WUWEI ? unmeasured`.
 - `status --line` and the SessionStart hook make no code-host, tracker or calendar call: the watch tick makes those calls and caches what they return. A slow `status_line` probe is interpreter start-up on a busy host, so doctor's fix for a probe over its time (`N ms over 200 ms`, or `timeout`) never says reinstall: when every other hook probe in the same run was also over 200 ms or timed out, it says the host is busy and names the fastest of them; when only `status --line` was slow, it points at the watch row, whose heartbeat writes the cached line; otherwise it asks for a rerun. Reinstall advice for changed files stays on the integrity row.
@@ -232,7 +230,7 @@ settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.a
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, traces gaps, untraced subagents, pre-#352 trace decisions, answered cards not recorded) and Guards (the heartbeat
+(state, planner, watch, shepherd, heartbeat, stuck seats, open pages, traces gaps, untraced subagents, pre-#352 trace decisions, answered cards not recorded) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -257,7 +255,7 @@ another version's marker is present.
 
 Each row is `ok`, `warn`, `fail`, `unmeasured` or `waiting` (a GitHub rate limit, with its reset) with its value; every row that is not ok
 prints `fix:` with the exact command or edit and `docs:` with the page. A row that does not
-apply (the listener with `adapters.inbound = "none"`) is ok with the reason. Exit 1 when any
+apply (`ziran` when `adapters.scanner` is not `ziran`) is ok with the reason. Exit 1 when any
 row is warn or fail, else 2 when any is unmeasured or waiting, else 0. Without `--fix` it writes nothing
 and makes no network call beyond the `gh` reads `config check` makes. `--json` prints
 `{"exit", "rows"}` with one object per row (`section`, `name`, `status`, `value`, and `fix`,
@@ -272,7 +270,6 @@ computed from `config.toml` alone; the planner runs it once at the start of the 
 | `init-upgrade` | `wuwei init --upgrade` | template drift, or `repos = []` above `[[repos]]` tables |
 | `calibrate` | `wuwei calibrate` | calibration drift was flagged today |
 | `watch-install` | `wuwei watch install` | the watch is not installed |
-| `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |
 | `trace-decisions` | `supersede pre-#352 tool-sequence decisions` | today has pending tool-sequence decisions the pre-#352 sweep wrote for a session with no item |
 | `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
 
@@ -298,7 +295,7 @@ comma-separated fix ids, with the same preview and digest; an unknown id exits 2
 
 Several Claude Code sessions can work in one workspace. Once today's `state.json` exists, the SessionStart, Stop and SubagentStop hooks record each session in the `sessions` registry of day state (role, start, last hook, working directory). No hook creates day state. SessionStart also exports `WUWEI_SESSION_ID` through Claude Code's `CLAUDE_ENV_FILE`, so CLI calls from that session know which session called them. A session with no hook activity for `sessions.stale_seconds` is stale. The registry and claims are written only by these hooks, `plan session`, `brief builder` and `worktree add`.
 
-- `bin/wuwei sessions` prints the registry as JSON: id, role (`planner`, `adhoc`, `seat-host` or `remote`), age, idle seconds, stale, last hook and claimed items. `planner`, `adhoc` and `remote` (a session the control plane started for a Slack command) are set today; nothing sets `seat-host` yet.
+- `bin/wuwei sessions` prints the registry as JSON: id, role (`planner`, `adhoc`, `seat-host` or `shepherd`), age, idle seconds, stale, last hook and claimed items. `planner` and `adhoc` are set today; nothing sets `seat-host` or `shepherd` yet.
 - `bin/wuwei plan session <id>` still names exactly one planner. A second session is refused with exit 2 naming the current planner; `bin/wuwei plan session <id> --take-over` hands the role over and records `previous` on the `plan.session` event. Wakes then go to the new planner. When the planner is stale, the heartbeat pages and the doctor `planner` row names the take-over command.
 - `bin/wuwei brief builder <item> ...` and `bin/wuwei worktree add <item>` claim the item for the calling session. The same commands from another session, or from a host terminal without `WUWEI_SESSION_ID`, exit 2 naming the claimant while it is live. Once the claimant is stale, the next session takes the claim. Gate, sentinel and other briefs are never refused by a claim.
 
@@ -444,8 +441,6 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei grants revoke <n>` | yes |
 | `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |
 | `bin/wuwei watch uninstall` | no |
-| `bin/wuwei listen uninstall` | no |
-| `bin/wuwei remote ack` | yes |
 | `bin/wuwei config promote` | yes |
 | `bin/wuwei config set <key> <value>` | yes |
 | `bin/wuwei config add-repo --name --path --branch` | yes |

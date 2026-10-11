@@ -1,16 +1,12 @@
 """Validate workspace configuration."""
 
 import os
-import re
 import sys
 
 from wuwei import configtext, env, outward, registry, workspace
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, SYMLINK
 from wuwei.workspace import ConfigError, load_config
-
-
-PIN_MISSING = 'control_plane.owner: missing (<team id>/<user id>; see remote operation section 3)'
 
 
 def register(subparsers):
@@ -118,16 +114,6 @@ def run(args):
         print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
             f'no effect under {name} (mcp: {levels["mcp"]}); remove the key' if ignored else
             f'blocks launches at these severities on top of the {name} default'))
-    if config['adapters']['inbound'] != 'none':
-        from wuwei.remote import PIN
-        pin = config['control_plane']['owner']
-        valid = bool(re.fullmatch(PIN, pin))
-        print('Control plane:\n  ' + ('control_plane.owner: set' if valid else
-              'control_plane.owner: invalid (expected <team id>/<user id>)' if pin else PIN_MISSING))
-        status = max(status, CLEAN if valid else FINDINGS)
-        # Reported, not a finding: without it a confirm reply is the second factor.
-        print('  WUWEI_TOTP_SECRET: ' + ('set' if os.environ.get('WUWEI_TOTP_SECRET') else
-                                        'missing (confirm replies are the only second factor)'))
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')
@@ -179,7 +165,6 @@ def requirements(config):
         ('tracker', 'jira'): [('JIRA_SITE',), ('JIRA_EMAIL',), ('JIRA_API_TOKEN',)],
         ('tracker', 'github'): [('GITHUB_TRACKER_TOKEN',)],
         ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
-        ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
         ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
         ('docs', 'notion'): [('NOTION_TOKEN',)],
@@ -200,17 +185,13 @@ def _shape(name):
 
 
 def missing(config):
-    """Offline findings of config check: credential variables, codex.command, owner pin."""
-    from wuwei.remote import PIN
+    """Offline findings of config check: credential variables and codex.command."""
     needed = requirements(config)
     names = [' or '.join(alternatives) for kind, name in config['adapters'].items()
              for alternatives in needed.get((kind, name), ())
              if not any(os.environ.get(key) for key in alternatives)]
     if config['adapters']['runtime'] == 'codex' and not config['codex']['command']:
         names.append('codex.command')
-    if (config['adapters']['inbound'] != 'none'
-            and not re.fullmatch(PIN, config['control_plane']['owner'])):
-        names.append('control_plane.owner')
     return names
 
 
