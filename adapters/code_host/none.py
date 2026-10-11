@@ -92,6 +92,10 @@ def open_prs(repo, root=None):
     return record_none('code_host', 'open_prs', root, measurement=True)
 
 
+def pulls(repo, root=None):
+    return record_none('code_host', 'pulls', root, measurement=True)
+
+
 def probe(ref, tags, root=None):
     return record_none('code_host', 'probe', root, measurement=True)
 

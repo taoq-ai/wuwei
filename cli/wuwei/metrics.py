@@ -556,7 +556,7 @@ def _events(day):
 
 
 def _state(day):
-    return state.read_state(directory=day) if (day / 'state.json').exists() else None
+    return state.read_state(directory=day) if state.day_started(day) else None
 
 
 def _traces(day):

@@ -112,23 +112,114 @@ SNAPSHOT = 'state.snapshot.json'
 
 
 def _load(text):
+    """An old day's or a snapshot's state text, validated (state recover)."""
     data = json.loads(text)
+    if isinstance(data, dict):
+        data.pop('log_size', None)
     json.dumps(data, allow_nan=False)
     return _validate(data)
 
 
-def read_state(root=None, *, directory=None):
-    """Read today's state; an absent file returns fresh defaults without writes."""
-    directory = workspace.day_dir(root) if directory is None else Path(directory)
-    path = directory / 'state.json'
+def _diff(old, new):
+    """#844: the patch one write made: whole top-level values, and for object values only the
+    changed entries (merge) and the removed ones (drop)."""
+    patch = {}
+    for key, value in new.items():
+        before = old.get(key, _MISSING)
+        if before == value:
+            continue
+        if isinstance(value, dict) and isinstance(before, dict):
+            changed = {entry: row for entry, row in value.items() if before.get(entry, _MISSING) != row}
+            dropped = [entry for entry in before if entry not in value]
+            if changed:
+                patch.setdefault('merge', {})[key] = changed
+            if dropped:
+                patch.setdefault('drop', {})[key] = dropped
+        else:
+            patch.setdefault('set', {})[key] = value
+    if removed := [key for key in old if key not in new]:
+        patch['del'] = removed
+    return patch
+
+
+_MISSING = object()
+
+
+def _apply(data, patch):
+    for key, value in patch.get('set', {}).items():
+        data[key] = value
+    for key, entries in patch.get('merge', {}).items():
+        if not isinstance(data.get(key), dict):
+            data[key] = {}
+        data[key].update(entries)
+    for key, entries in patch.get('drop', {}).items():
+        for entry in entries:
+            data.get(key, {}).pop(entry, None)
+    for key in patch.get('del', ()):
+        data.pop(key, None)
+
+
+def _fold(directory, cache=True):
+    """#844: (the day's records, whether the day started, whether they came from an old day's
+    state.json); cache False folds the log alone. The event log is the truth and
+    state.json its cache: the cache is read when it records the log size it reflects, and only
+    the log's tail past that size is folded onto it. A state.json without a log size (an old
+    day, written before #844) is read as the day's records; the next write's patch carries it
+    into the log."""
+    path, log = directory / 'state.json', directory / 'events.jsonl'
     try:
-        return _load(path.read_text(encoding='utf-8'))
+        raw = json.loads(path.read_text(encoding='utf-8')) if cache else None
     except FileNotFoundError:
-        if (directory / SNAPSHOT).exists():
-            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; run bin/wuwei state recover') from None
-        return workspace.copy_data(DAY_DEFAULTS)
+        raw = None
+    if raw is not None and not isinstance(raw, dict):
+        raise ValueError(f'expected object; {DAMAGED}')
+    size = log.stat().st_size if log.is_file() else 0
+    if isinstance(raw, dict) and 'log_size' not in raw:
+        return raw, True, True
+    offset = raw.pop('log_size') if isinstance(raw, dict) and isinstance(raw.get('log_size'), int) else -1
+    if offset > size:  # the log lost lines the cache holds: keep the records, never fewer
+        return raw, True, True
+    if offset >= 0:
+        data, started = raw, True
+    else:
+        data, offset, started = workspace.copy_data(DAY_DEFAULTS), 0, False
+    if offset < size:
+        with log.open('rb') as handle:
+            handle.seek(offset)
+            tail = handle.read(size - offset)
+        for line in tail.splitlines():
+            if b'"patch"' not in line:
+                continue
+            try:
+                patch = json.loads(line).get('patch')
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise ValueError(f'{log}: invalid event record; {DAMAGED}') from None
+            if isinstance(patch, dict):
+                _apply(data, patch)
+                started = True
+    return data, started, False
+
+
+def day_started(directory):
+    """#844: True once the day holds records (its log carries a patch, or an old day's
+    state.json exists); replaces every state.json existence check."""
+    directory = Path(directory)
+    if (directory / 'state.json').is_file():
+        return True
+    log = directory / 'events.jsonl'
+    return log.is_file() and b'"patch"' in log.read_bytes()
+
+
+def read_state(root=None, *, directory=None):
+    """Read today's records, folded from the event log (#844); a day without records returns
+    fresh defaults without writes."""
+    directory = workspace.day_dir(root) if directory is None else Path(directory)
+    try:
+        data = _fold(directory)[0]
+        json.dumps(data, allow_nan=False)
+        return _validate(data)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f'{path}: {exc}; run bin/wuwei state recover') from exc
+        raise ValueError(f'{directory / "state.json"}: {exc}; run bin/wuwei state recover') from exc
 
 
 def _event_payload(kind, payload):
@@ -152,12 +243,15 @@ def append_event(kind, payload=None, root=None, *, directory=None, timeout=30):
         _append_event(kind, payload, directory)
 
 
-def _append_event(kind, payload, directory, more=()):
+def _append_event(kind, payload, directory, more=(), patch=None):
     """Append validated event data, and any more (kind, payload) pairs in the same write,
-    while the caller holds state.lock."""
+    while the caller holds state.lock. patch (#844): the records a state write changed, carried
+    beside the first event's payload."""
     ts = workspace.now().isoformat()
-    _append_jsonl(directory / 'events.jsonl',
-                  *({'kind': k, 'payload': p, 'ts': ts} for k, p in ((kind, payload), *more)))
+    rows = [{'kind': k, 'payload': p, 'ts': ts} for k, p in ((kind, payload), *more)]
+    if patch is not None:
+        rows[0]['patch'] = patch
+    _append_jsonl(directory / 'events.jsonl', *rows)
 
 
 def append_jsonl(path, record):
@@ -209,8 +303,10 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
         lock_ex(lock, 'state.lock')
-        data = read_state(directory=directory)
-        previous = workspace.copy_data(data) if (directory / 'state.json').exists() else None
+        data, started, legacy = _fold(directory)
+        log = _fold(directory, cache=False)[0] if legacy else workspace.copy_data(data)
+        data = _validate(data)
+        previous = workspace.copy_data(data) if started else None
         before = workspace.copy_data(data) if reserved else None
         update(data)
         if reserved:
@@ -222,16 +318,20 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
                         != json.dumps(changed[key], sort_keys=True)):
                     raise _producer_error((key,))
         data = _validate(data, previous)
-        encoded = json.dumps(data, allow_nan=False) + '\n'
-        # One directory fsync, after both renames, makes both durable (#516).
-        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444, sync_dir=False)
-        workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
+        json.dumps(data, allow_nan=False)
         changes = {name: item['phase'] for name, item in data['items'].items()
                    if previous is not None and name in previous['items']
                    and item['phase'] != previous['items'][name]['phase']}
         seen = bool(data['raised_prs'] or data['claimed_prs'])
+        # #844: the event carries the patch first; state.json is the cache of the fold after it.
         _append_event(kind, {**payload, 'prs_seen': seen, **({'phase_changes': changes} if changes else {})},
-                      directory, [(name, {**extra, 'prs_seen': seen}) for name, extra in more])
+                      directory, [(name, {**extra, 'prs_seen': seen}) for name, extra in more],
+                      patch=_diff(log, data) or None)
+        size = (directory / 'events.jsonl').stat().st_size
+        encoded = json.dumps({**data, 'log_size': size}, allow_nan=False) + '\n'
+        # One directory fsync, after both renames, makes both durable (#516).
+        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444, sync_dir=False)
+        workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
         return data
 
 
@@ -519,7 +619,7 @@ def recover(root=None, *, confirm):
     def measure():
         try:
             read_state(directory=directory)
-            reason = None if path.exists() else 'state.json missing'
+            reason = None  # #844: a missing state.json is rebuilt from the log
         except ValueError as exc:
             reason = str(exc)
         if reason is None:

@@ -151,8 +151,8 @@ def test_atomic_replace_and_cleanup(workspace, monkeypatch):
     monkeypatch.setattr(state.os, 'replace', fail)
     with pytest.raises(OSError, match='replacement failed'):
         state.write_state(lambda data: data.update(cap=4))
-    assert state.read_state()['cap'] == 3
-    assert len(events(workspace)) == 2
+    assert state.read_state()['cap'] == 4  # #844: the event is the record; the cache follows the log
+    assert len(events(workspace)) == 3
     assert sorted(p.name for p in path.parent.iterdir()) == ['events.jsonl', 'state.json', 'state.lock',
                                                              'state.snapshot.json']
 
@@ -333,7 +333,7 @@ def test_event_io_failure_is_exit_two(workspace):
     result = cli('state', 'set', 'cap', '2')
     assert result.returncode == 2
     assert 'events.jsonl' in result.stderr
-    assert json.loads((day(workspace) / 'state.json').read_text())['cap'] == 2
+    assert not (day(workspace) / 'state.json').exists()  # #844: no record without its event
 
 
 def test_delete_recreate_cannot_bypass_lifecycle(workspace):
@@ -595,10 +595,17 @@ def corrupt(root, *, missing=False):
     return path
 
 
-@pytest.mark.parametrize('missing', [False, True])
-def test_recover_restores_last_written_state(workspace, missing):
+def test_a_missing_state_json_is_rebuilt_from_the_log(workspace):
     from wuwei import state
-    corrupt(workspace, missing=missing)
+    corrupt(workspace, missing=True)
+    assert state.read_state()['cap'] == 3  # #844: state.json is a cache of the log
+    with pytest.raises(state.StateError, match='nothing to recover'):
+        state.recover(confirm=lambda token: None)
+
+
+def test_recover_restores_last_written_state(workspace):
+    from wuwei import state
+    corrupt(workspace)
     tokens = []
     digest = state.recover(confirm=lambda token: tokens.append(token))
     assert tokens == [digest[:12]]
@@ -780,3 +787,56 @@ def test_stop_seat_records_when_it_stopped(workspace, monkeypatch):
     assert seat['status'] == 'stopped' and seat['stopped_at'] == '2026-09-28T12:05:00+00:00'
 
 
+
+
+# #844: the event log is the truth; state.json is its cache.
+
+def test_a_write_carries_its_patch_and_the_fold_equals_the_cache(workspace):
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={}, B={}), reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(note='x'), reserved=False)
+    state.append_event('next.action', {'state': 'x'})
+    assert events(workspace)[1]['patch'] == {'merge': {'items': {'A': {
+        **state.read_state()['items']['A']}}}}
+    cached = state.read_state()
+    path = day(workspace) / 'state.json'
+    path.chmod(0o644)
+    path.unlink()
+    assert state.read_state() == cached
+    assert state.day_started(day(workspace))
+
+
+def test_a_stale_cache_folds_the_log_tail(workspace):
+    from wuwei import state
+    state._write_state(lambda data: data.update(cap=2), reserved=False)
+    path = day(workspace) / 'state.json'
+    stale = path.read_text()
+    state._write_state(lambda data: data.update(cap=3), reserved=False)
+    path.chmod(0o644)
+    path.write_text(stale)  # a cache whose log size is behind the log
+    assert state.read_state()['cap'] == 3
+
+
+def test_an_old_day_without_patches_moves_into_the_log_on_its_next_write(workspace):
+    from wuwei import state
+    day(workspace).mkdir(parents=True)
+    (day(workspace) / 'state.json').write_text(json.dumps({'cap': 2, 'items': {'A': {}}}))
+    assert state.read_state()['cap'] == 2
+    state._write_state(lambda data: data.update(gate_approved=True), reserved=False)
+    path = day(workspace) / 'state.json'
+    path.chmod(0o644)
+    path.unlink()
+    data = state.read_state()
+    assert (data['cap'], data['gate_approved'], list(data['items'])) == (2, True, ['A'])
+
+
+def test_a_malformed_log_row_is_damaged(workspace):
+    from wuwei import state
+    state._write_state(lambda data: data.update(cap=2), reserved=False)
+    log = day(workspace) / 'events.jsonl'
+    log.chmod(0o644)
+    log.write_text(log.read_text() + '{"kind": "state.write", "payload": {"patch": \n')
+    (day(workspace) / 'state.json').chmod(0o644)
+    (day(workspace) / 'state.json').unlink()
+    with pytest.raises(ValueError, match='events.jsonl: invalid event record'):
+        state.read_state()

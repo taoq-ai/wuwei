@@ -73,7 +73,8 @@ def test_init_layout(tmp_path, explicit):
     assert not list(workspace.rglob('.gitkeep'))
     version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
     assert (workspace / 'config.toml').read_text() == (ROOT / 'templates/workspace/config.toml').read_text().replace(
-        'template_version = ""', f'template_version = "{version}"', 1)
+        'template_version = ""', f'template_version = "{version}"', 1).replace(
+        'on = []', 'on = ["shepherd", "summary"]', 1)  # #844: duties from the configured channels
 
 
 @pytest.mark.parametrize('flags,enforce', [(('--shadow',), False), ((), True)])
@@ -244,6 +245,7 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
+        'duties': {'on': []},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,

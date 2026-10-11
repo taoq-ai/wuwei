@@ -610,7 +610,7 @@ def flush(root):
         state.lock_ex(lock, 'state.lock')
         state.read_state(root)
         rows = records(directory / 'events.jsonl')
-        if (directory / 'state.json').exists() and not rows:
+        if state.day_started(directory) and not rows:
             raise ValueError(f'state has no event history; {DAMAGED}')
         state._append_event('session: compact', {'events_checked': len(rows)}, directory)
         for name in ('state.json', 'events.jsonl'):

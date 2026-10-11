@@ -54,7 +54,7 @@ def run(args):
                                       if line.startswith(f'{name} is still open')), 'open'))
         return code
     else:
-        if not (workspace.day_dir(root) / 'state.json').is_file():
+        if not state.day_started(workspace.day_dir(root)):
             print('Nothing to close today: no day has started. Start one with /wuwei:wuwei-plan.')
             return 0
         state._write_state(lambda data: data.update(close_requested=True), root, reserved=False,

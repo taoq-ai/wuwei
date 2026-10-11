@@ -224,7 +224,7 @@ def test_union_deduplicates_and_continues_after_error(case):
     assert event['prs'] == 2 and event['unreadable'] == 1
 
 
-@pytest.mark.parametrize('mode,expected', [('empty', 0), ('closed', 0), ('missing', 2), ('malformed', 2)])
+@pytest.mark.parametrize('mode,expected', [('empty', 0), ('closed', 0), ('malformed', 2)])  # #844: no missing state
 def test_day_and_closed_pr(case, monkeypatch, mode, expected):
     root, host = case
     if mode == 'empty':
@@ -510,7 +510,7 @@ def test_fresh_day_before_the_first_pr(case, monkeypatch, before):
     if before == 'snapshot_only':
         directory.mkdir()
         (directory / state.SNAPSHOT).write_text(json.dumps(state.DAY_DEFAULTS))
-    expected = 2 if before in ('note_only', 'snapshot_only') else 0
+    expected = 2 if before == 'note_only' else 0  # #844: a snapshot alone is no day
     assert sweep() == expected
     if not expected:
         event = sweep_event(root)[-1]

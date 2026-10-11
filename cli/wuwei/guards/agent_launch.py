@@ -75,10 +75,10 @@ def _named_item(data, inputs):
 def _unbriefed(payload, root, inputs, role):
     """#660: a WUWEI seat type launched with no marker: refused while guards.enforce is on
     (#837), else an adhoc seat labelled with its role and a warning naming the brief command."""
-    from wuwei import brief, workspace
+    from wuwei import brief, state, workspace
 
     item = '<item>'
-    if (workspace.day_dir(root) / 'state.json').exists():
+    if state.day_started(workspace.day_dir(root)):
         _, data = brief.read_day(root)
         if not workspace.load_config(root)['guards']['enforce']:
             return _adhoc(payload, role=role)
@@ -99,7 +99,7 @@ def _adhoc(payload, role=None):
     if not isinstance(inputs, dict):
         return 0, ''
     root = workspace.guard_scope(payload)
-    if root is None or not (workspace.day_dir(root) / 'state.json').exists():
+    if root is None or not state.day_started(workspace.day_dir(root)):
         return 0, ''
     prompt = inputs.get('prompt')
     if not isinstance(prompt, str) or not prompt.strip():
@@ -226,7 +226,7 @@ def _check(payload):
         else:
             from wuwei import dispatch  # lazy: hook path (#346), only for a brief reuse
             continuing = dispatch.delta_due(
-                data, logged['item'], logged['role'].removeprefix('sentinel-'), logged['name'])
+                data, logged['item'], logged['role'].removeprefix('sentinel-'), logged['name'], root)
         if role == 'builder' and resume and not continuing:
             raise brief.Refused('resume does not match the stopped builder; resume the builder named by bin/wuwei build next <item>')
         if not continuing and (logged['name'] in brief.seats(data) or any(
@@ -332,7 +332,7 @@ def _stop_adhoc(payload, root):
     from wuwei import brief, state, workspace
     from wuwei.redact import redact
 
-    if not (workspace.day_dir(root) / 'state.json').exists():
+    if not state.day_started(workspace.day_dir(root)):
         return 0, ''
     try:
         prompt = brief.first_prompt(payload['agent_transcript_path'])

@@ -149,7 +149,7 @@ def registered(data, session_id):
 def touch(root, session_id, *, hook, cwd, role=None, env_file=None):
     """Record hook activity; never creates today's state. env_file (SessionStart only, #599)
     says whether the session id reached later Bash calls."""
-    if not (workspace.day_dir(root) / 'state.json').exists():
+    if not state.day_started(workspace.day_dir(root)):
         return None
     payload = {'session_id': session_id, 'hook': hook}
     if env_file is not None:

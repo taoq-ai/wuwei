@@ -165,10 +165,9 @@ def unresolved(root, rows, open_items=None, notes=None):
         config = workspace.load_config(root)
         prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
         owned = data['raised_prs'] + data['claimed_prs']
-        if config['adapters']['tracker'] != 'none':  # #842: a due duty holds close; a skipped one does not
-            from wuwei import tracker
-            findings.extend(f'{item}: {duty} not recorded: bin/{command}' for item, duty, command in
-                            tracker.open_duties(watch.records(workspace.day_dir(root) / 'events.jsonl')))
+        from wuwei import derive  # #842, #844: a due duty holds close, also one carried from an unclosed day
+        findings.extend(f"{row['item']}: {row['duty']} not recorded: bin/{row['record']}"
+                        for row in derive.duties(root, config, data=data))
         for name in data['approved_items']:
             try:
                 item = data['items'][name]

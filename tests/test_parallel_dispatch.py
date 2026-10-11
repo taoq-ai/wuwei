@@ -140,7 +140,7 @@ def test_gate_seats_wait_when_host_seats_cannot_hold_them_together(day):
 
 def test_docs_skill_and_charter_name_the_parallel_start():
     skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    assert 'wuwei dispatch next --all' in (ROOT / 'cli/wuwei/commands/next.py').read_text()  # #551
+    assert 'wuwei dispatch next --all' in (ROOT / 'cli/wuwei/derive.py').read_text()  # #551, #844
     assert 'in one message' in skill and 'concurrently' in skill
     assert '### Seats per goal' in (ROOT / 'docs/site/concepts.md').read_text()
     row = next(line for line in (ROOT / 'docs/site/configuration.md').read_text().splitlines()

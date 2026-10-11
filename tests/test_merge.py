@@ -130,7 +130,9 @@ def delta_record(root, fixed, first='FIX'):
     records[f'item-7:{fixed}:delta'] = {
         'item': 'item-7', 'role': fixed, 'round': 'delta', 'verdict': 'PASS',
         'head': SHA, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
-    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    state._write_state(lambda data: (data.update(gate_verdicts=records),  # #844: the fix round BASE..SHA
+                                     data['items']['item-7'].update(fix_heads=[[BASE, SHA]])),
+                       root, reserved=False)
 
 
 @pytest.mark.parametrize('first', ['FIX', 'PASS'])  # #723: PASS is a polish re-check
@@ -1163,8 +1165,9 @@ def test_missing_risk_evidence_names_the_plan_add_that_records_it(case):
     path = workspace.day_dir(root) / 'events.jsonl'
     mode = path.stat().st_mode
     path.chmod(mode | 0o200)  # the log is read-only; only the test rewrites it
-    path.write_text(''.join(line + '\n' for line in path.read_text().splitlines()
-                            if json.loads(line)['kind'] != 'plan.approved'))
+    # #844: the records stay in the log; only the approval's flag evidence goes
+    path.write_text(''.join(line.replace('"kind": "plan.approved"', '"kind": "state.write"') + '\n'
+                            for line in path.read_text().splitlines()))
     path.chmod(mode)
     answer = check(case)
     assert answer.exit == 2 and 'run bin/wuwei plan add item-7 ' in answer.reason, answer
@@ -1541,7 +1544,8 @@ def test_pr_gate_accepts_quality_only_delta_after_fix(gates):
     records['9:quality:delta'] = {
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
-    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_verdicts=records, items={'9': {  # #844: the fix round
+        'fix_heads': [[BASE, new_head]]}}), root, reserved=False)
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
 
 
@@ -1587,7 +1591,8 @@ def test_pr_gate_accepts_nonblocking_delta_residual(gates):
     records['9:quality:delta'] = {
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
-    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_verdicts=records, items={'9': {  # #844: the fix round
+        'fix_heads': [[BASE, new_head]]}}), root, reserved=False)
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
 
 
@@ -1718,7 +1723,9 @@ def test_recorded_gates_after_more_than_one_fix_round(gates):
                '9:quality:round1': row('quality', 'initial', 'FIX', BASE, 'quality-1'),
                '9:quality:initial': row('quality', 'delta', 'FIX', 'd' * 40, 'quality-2'),
                '9:quality:delta': row('quality', 'delta', 'PASS', SHA)}
-    assert policy()._recorded_gates(root, SHA, records, '9') == (0, '')
+    rounds = {'9': {'fix_heads': [[BASE, 'd' * 40], ['d' * 40, SHA]]}}  # #844: the recorded fix rounds
+    assert policy()._recorded_gates(root, SHA, records, '9', rounds) == (0, '')
+    assert policy()._recorded_gates(root, SHA, records, '9')[0] == 1  # moved some other way (#669)
     moved = {f'9:{role}:{key}': row(role, 'delta', verdict, head, f'{role}-{key}')
              for role, head in (('arch', 'd' * 40), ('quality', 'e' * 40), ('security', 'f' * 40))
              for key, verdict, head in (('initial', 'FIX', head), ('delta', 'PASS', SHA))}
@@ -1747,9 +1754,10 @@ def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
     records['9:quality:delta'] = {
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
-    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    rounds = {'9': {'fix_heads': [[BASE, new_head]]}}  # #844: the polish round BASE..new_head
+    state._write_state(lambda data: data.update(gate_verdicts=records, items=rounds), root, reserved=False)
     fake.results['head'] = Result(0, {'sha': new_head})
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
-    code, reason = policy()._recorded_gates(root, 'd' * 40, records, '9')
-    assert code == 1 and 'quality' in reason and 'arch' not in reason and 'security' not in reason
+    code, reason = policy()._recorded_gates(root, 'd' * 40, records, '9', rounds)
+    assert code == 1 and all(role in reason for role in ('arch', 'quality', 'security'))  # #669
 

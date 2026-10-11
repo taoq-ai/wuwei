@@ -58,7 +58,7 @@ def run(args):
 
 def adhoc(root):
     """#676: today's adhoc seats, the agents launched outside the WUWEI seat types."""
-    path = workspace.day_dir(root) / 'state.json'
+    path = workspace.day_dir(root) / 'events.jsonl'
     steps = [(f"adhoc seat {name}: {seat.get('type', NOT)} as {seat.get('label', NOT)}, "
               f"launched by {seat.get('launcher', NOT)}, {seat['status']}; prompt: {seat.get('prompt', NOT)}; "
               f"traces: {', '.join(seat.get('trace_sessions', [])) or 'none yet'}",
@@ -142,7 +142,7 @@ def item(root, name):
                 add('queued', f'queued: carried over from an earlier day, goal {row.get("goal", NOT)}')
             if kind == 'plan.added' and payload.get('item') == name:
                 add('queued', f'queued: goal {row.get("goal", NOT)}, added by {payload.get("source", NOT)}',
-                    rel(day / 'state.json'))
+                    rel(day / 'events.jsonl'))
             if kind == 'worktree.created' and payload.get('item') == name:
                 add('worktree', f'worktree: branch {payload.get("branch", NOT)} from {payload.get("base", NOT)} '
                     f'at {str(payload.get("start", NOT))[:12]}')
@@ -150,10 +150,10 @@ def item(root, name):
                 seat = data.get('seats', {}).get(payload.get('name'), {})
                 if seat.get('planner_note'):  # #660: the planner's note around WUWEI's launch prompt
                     add('seat', f'seat {payload["name"]} ({seat.get("role")}): planner note: {seat["planner_note"]}',
-                        rel(day / 'state.json'))
+                        rel(day / 'events.jsonl'))
                 elif seat.get('role') == 'adhoc':
                     add('seat', f'seat {payload["name"]} ({seat.get("type")}, unbriefed): prompt: '
-                        f'{seat.get("prompt", NOT)}', rel(day / 'state.json'))
+                        f'{seat.get("prompt", NOT)}', rel(day / 'events.jsonl'))
             if kind == 'gate.tiered' and payload.get('item') == name:
                 reasons = payload.get('reasons') or []
                 add('tier', f'tier: {payload.get("tier", NOT)}' + (f' ({"; ".join(reasons)})' if reasons else ''))
@@ -181,7 +181,7 @@ def item(root, name):
     day, data = days[-1]
     row = data['items'][name]
     if row.get('approved_as'):  # #731: the owner's recorded approval, once, from the latest day
-        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'state.json')]))
+        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'events.jsonl')]))
     steps = [step for group in GROUPS for step in groups[group] or (
         [(f'{REQUIRED[group]}: {NOT}', None, [])]
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]
@@ -192,7 +192,7 @@ def item(root, name):
         now += (f', {reason}' if reason else '') + f'; waiting on: wuwei plan resume {name}'
     elif action:
         now += f', waiting on {action}'
-    return steps + [(now, None, [rel(day / 'state.json')])]
+    return steps + [(now, None, [rel(day / 'events.jsonl')])]
 
 
 def refusal(root, target):

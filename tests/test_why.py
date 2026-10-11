@@ -114,7 +114,7 @@ def full(root):
              f'{ids[2]}; {files["arch"]}', f'{ids[3]}; {files["quality"]}',
              f'{ids[4]}; {files["security"]}', *ids[5:9],
              f'{ids[9]}; ' + '; '.join(files.values()),
-             f'event not recorded; {rel}/state.json']
+             f'event not recorded; {rel}/events.jsonl']
     return [f'{line} ({tail})' for line, tail in zip(BRIEF, tails)]
 
 
@@ -208,7 +208,7 @@ def test_item_carried_from_an_earlier_day_reads_both_days(root, capsys):
         f'queued: goal g, score value 1 (event 2026-10-01:1; .wuwei/days/2026-10-01/proposal.json)',
         f'queued: carried over from an earlier day, goal g (event {DAY}:1)',
         'tier: light (event 2026-10-01:2)']
-    assert lines[-1] == f'now: planned (queued) (event not recorded; .wuwei/days/{DAY}/state.json)'
+    assert lines[-1] == f'now: planned (queued) (event not recorded; .wuwei/days/{DAY}/events.jsonl)'
 
 
 @pytest.mark.parametrize('row,now', [
@@ -230,7 +230,7 @@ def test_added_item_names_who_added_it(root, capsys):
     write_state(root, {'items': {'x': {'goal': 'g'}}})
     state.append_event('plan.added', {'item': 'x', 'source': 'owner'}, directory=day_of(root))
     assert why(capsys, 'x', '--full')[1][0] == (
-        f'queued: goal g, added by owner (event {DAY}:1; .wuwei/days/{DAY}/state.json)')
+        f'queued: goal g, added by owner (event {DAY}:1; .wuwei/days/{DAY}/events.jsonl)')
 
 
 @pytest.mark.parametrize('target,code,err', [
@@ -413,7 +413,7 @@ def test_item_chain_shows_the_recorded_approval(root, capsys):
     expected = [BRIEF[0], 'approved as: owner: "login only"', *BRIEF[1:]]
     assert why(capsys, 'fix-login') == (0, expected, '')
     code, lines, _ = why(capsys, 'fix-login', '--full')
-    assert lines[1] == f'approved as: owner: "login only" (event not recorded; .wuwei/days/{DAY}/state.json)'
+    assert lines[1] == f'approved as: owner: "login only" (event not recorded; .wuwei/days/{DAY}/events.jsonl)'
 
 
 def test_json_steps_carry_the_approval(root, capsys):

@@ -121,6 +121,8 @@ SCHEMA = {
                                   "clock": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
+    # #844: the outward duties next lists until recorded
+    "duties": {"on": [(str, None, ("ping", "shepherd", "tracker", "summary")), []]},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
                  "reviewers": [(str, None)], "reviewers_exclude": [(str, None)],
                  "review_gate_check": (str, "Review Gate"),

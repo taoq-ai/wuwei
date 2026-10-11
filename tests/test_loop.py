@@ -107,19 +107,22 @@ def record(name, role, kind, round_name):
             'findings': [FINDING.strip()] if blocks else []}
 
 
+def full(sha):
+    return sha + '0' * (40 - len(sha))
+
+
 def materialise(root, day):
-    """Write the world as the day files: plan.md, state.json (today's truth, the derived next's
-    cache), the builder briefs, the verdict files, the worktree directories, the cached PR
-    listing (prs.json) and the duty records (duty.recorded events). The doctor row already ran,
-    so health never takes the answer."""
+    """Write the world as the day files: plan.md, the records through the state writer (the
+    event log is the truth, state.json only its cache), the builder briefs, the verdict files,
+    the worktrees (a linked worktree's .git pointer and git's registry files), the cached PR
+    listing (prs.json) and the duty records (duty.done events)."""
     directory = workspace.day_dir(root)
     (directory / 'decisions').mkdir(parents=True, exist_ok=True)
     (directory / 'briefs').mkdir(exist_ok=True)
     plan = ['# Plan']
-    data = {**workspace.copy_data(state.DAY_DEFAULTS), 'gate_approved': True, 'cap': day['cap'],
-            'planner_session_id': 'S', 'builds': {}}
-    listing, events = [], [('next.action', {'state': 'x', 'action': 'run', 'item': '', 'named': [],
-                                            'traces': 0, 'done': [['doctor', '']]})]
+    data = {'gate_approved': True, 'cap': day['cap'], 'planner_session_id': 'S', 'builds': {},
+            'approved_items': [], 'items': {}, 'seats': {}, 'gate_verdicts': {}, 'raised_prs': []}
+    pulls, events = [], []
     for number, row in enumerate(day['items'], 1):
         name, current = row['name'], phase(row)
         plan.append(f"- {name}: {row['plan']}")
@@ -129,7 +132,12 @@ def materialise(root, day):
         if current == 'parked':
             entry.update(resume_phase='gate', disposition={'kind': 'parked', 'reason': 'parked by a verdict'})
         if row['worktree']:
-            (root / 'trees' / name).mkdir(parents=True, exist_ok=True)
+            tree, registry = root / 'trees' / name, root / 'project/.git/worktrees' / name
+            tree.mkdir(parents=True, exist_ok=True)
+            registry.mkdir(parents=True, exist_ok=True)
+            (tree / '.git').write_text(f'gitdir: {registry}\n')
+            (registry / 'HEAD').write_text(full(HEAD) + '\n')
+            (registry / 'commondir').write_text('../..\n')
             entry.update(worktree=f'trees/{name}', head=HEAD,
                          gates={'tier': row['tier'], 'roles': ROLES[row['tier']]})
         if row['builder']:
@@ -154,13 +162,15 @@ def materialise(root, day):
         if row['pr']:
             entry.update(pr=f'{REPO}#{100 + number}', owner_merge=row['owner_merge'])
             data['raised_prs'].append(entry['pr'])
-            listing.append({'ref': entry['pr'], 'item': name, 'state': row['pr'],
-                            'owner_merge': row['owner_merge']})
-        events += [('duty.recorded', {'item': name, 'duty': duty}) for duty, done in row['duties'].items() if done]
+            pulls.append({'ref': entry['pr'], 'state': 'merged' if row['pr'] == 'merged' else 'open',
+                          'checks': None if row['pr'] == 'merged' else row['pr'], 'head': full(HEAD),
+                          'labels': ['owner-merge'] if row['owner_merge'] else []})
+        events += [('duty.done', {'item': name, 'duty': duty}) for duty, done in row['duties'].items() if done]
         data['items'][name] = entry
     (directory / 'plan.md').write_text('\n'.join(plan) + '\n')
-    (directory / 'prs.json').write_text(json.dumps(listing))
-    (directory / 'state.json').write_text(json.dumps(data))
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': pulls}))
+    state._write_state(lambda fresh: fresh.update(workspace.copy_data(data)), root, reserved=False,
+                       kind='plan.approved', payload={'items': data['approved_items']})
     for kind, payload in events:
         state.append_event(kind, payload, root)
 
@@ -169,7 +179,7 @@ def configure(root, extra=''):
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text(
         f'[[repos]]\nname = "{REPO}"\npath = "project"\ndefault_branch = "main"\n'
-        '[spec]\nengine = "none"\n[gates]\npolish = "never"\n' + extra)
+        '[spec]\nengine = "none"\n[gates]\npolish = "never"\n[duties]\non = ["ping", "tracker"]\n' + extra)
 
 
 def environment(patch, root):
@@ -219,59 +229,17 @@ def oracle(day):
     return {'launches': launches, 'duties': duties, 'decisions': decisions}
 
 
-# --- today's next, read as offers ----------------------------------------------------------------
-
-def gate(root, name):
-    """Today's gate step for an item at gate or delta, as one offer; None asks the day again."""
-    try:
-        found = dispatch.next_step(name, root)
-    except dispatch.Refused:
-        return ('refused', name)
-    return {'gates': ('gates', name), 'raise': ('raise', name), 'polish': ('raise', name),
-            'escalate': ('owner', name)}.get(found['action'])
-
-
-def offer(data, row):
-    name = row.get('item', '')
-    if row['state'] == 'build':
-        return ('fix' if data['items'][name]['phase'] == 'fix' else 'build', name)
-    return {'merge': ('owner', name), 'pr': ('pr', name)}.get(row['state'], (row['state'], name))
-
+# --- next, read as offers ---------------------------------------------------------------------
 
 def answer(root):
-    """Today's next as a list of (kind, item) offers: the resolved row, looping like next.run on
-    a row that asks the day again. A dispatch row is the whole launch set (launch_set without the
-    host measure): every gate step, every build not running and the planned items within CAP.
-    Queue rows carry a command, not a launch, so they are not offers."""
-    for _ in range(8):
-        row = next_command.step(root)
-        data = state.read_state(root)
-        if row['state'] == 'verdicts':
-            found = gate(root, row['item'])
-            if found is None:
-                continue
-            return [found]
-        if row['state'] != 'dispatch':
-            return [offer(data, row)]
-        names = [name for name in next_command.approved(data)
-                 if data['items'][name]['phase'] not in next_command.TERMINAL]
-        busy = {name for _, _, name in state.in_flight(data)}
-        found = []
-        for name in (name for name in names if name not in busy):
-            if data['items'][name]['phase'] in ('gate', 'delta'):
-                found.append(gate(root, name))
-            elif data['items'][name]['phase'] in state.BUILD_PHASES:
-                found.append(offer(data, {'state': 'build', 'item': name}))
-        building = sum(data['items'][name]['phase'] in state.BUILD_PHASES for name in names)
-        planned = [name for name in names if data['items'][name]['phase'] == 'planned']
-        found += [('build', name) for name in planned[:max(0, data['cap'] - building)]]
-        return [entry for entry in found if entry]
-    raise AssertionError('the day did not settle on one action')
-
-
-def covered(launch, offers):
-    """A pr act row stands in for the PR's own fix or merge step (it delegates both)."""
-    return launch in offers or (launch[0] in ('merge', 'fix') and ('pr', launch[1]) in offers)
+    """next as a list of (kind, item) offers: every launch, every due duty and the one owner
+    decision of the set, or the day row."""
+    row = next_command.step(root)
+    if row['state'] != 'set':
+        return [(row['state'], row.get('item', ''))]
+    return ([(launch['kind'], launch['item']) for launch in row['launches']]
+            + [(duty['duty'], duty['item']) for duty in row['duties']]
+            + ([('owner', row['decision']['item'])] if row['decision'] else []))
 
 
 # --- 1. the property test ------------------------------------------------------------------------
@@ -322,27 +290,17 @@ def test_the_generator_covers_every_dimension(results):
     assert {row['owner_merge'] for row in rows if row['pr'] == 'green'} == {True, False}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#844: today's next answers one row: a second ready item waits in the queue without its "
-    'prompt, an owner decision on one item hides ready launches on others, and a PASS recorded '
-    'at an old head counts as passed, so the stale gate is never rerun'))
 def test_every_ready_launch_is_offered(results):
     found = broken(results, lambda day, expected, offers: all(
-        covered(launch, offers) for launch in expected['launches']))
+        launch in offers for launch in expected['launches']))
     assert not found, found[:3]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#844 outward duties: today next has no duty rows; a raised PR is never pinged and a merged '
-    'item never gets its tracker update from next'))
 def test_every_due_duty_is_offered(results):
     found = broken(results, lambda day, expected, offers: expected['duties'] <= set(offers))
     assert not found, found[:3]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#844: a PR red at the round cap comes back as a pr act row to run, not as the one owner '
-    'decision it is'))
 def test_nothing_ready_is_exactly_one_owner_decision(results):
     found = broken(results, lambda day, expected, offers: bool(
         expected['launches'] or expected['duties'] or not expected['decisions'])
@@ -369,9 +327,6 @@ def test_never_a_gate_before_the_builder_stops(results):
     assert not found, found[:3]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#844, #669: today next raises on the recorded verdicts; a PASS received before the builder '
-    'moved the head still counts, so the PR is raised without a pass at head'))
 def test_never_a_raise_without_a_pass_at_head(results):
     found = broken(results, lambda day, expected, offers: not any(
         kind == 'raise' and row['name'] == name and set(row['verdicts'].values()) != {'PASS'}
@@ -386,9 +341,6 @@ def test_never_a_merge_without_the_policy(results):
     assert not found, found[:3]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#844 outward duties: today next closes the day while a merged item has no tracker update '
-    'and a raised PR has no ping recorded'))
 def test_never_done_with_an_open_duty(results):
     found = broken(results, lambda day, expected, offers: not expected['duties'] or not any(
         kind in ENDINGS for kind, _ in offers))
@@ -397,9 +349,6 @@ def test_never_done_with_an_open_duty(results):
 
 # --- 3. state.json is a cache --------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#844: today state.json is the truth; without it next starts the day again at the session "
-    'row'))
 def test_deleting_state_json_between_two_calls_changes_no_answer(results):
     pairs = [deleted for *_, deleted in results if deleted is not None]
     assert len(pairs) == CASES // 3
@@ -438,7 +387,8 @@ def test_603_two_repositories_worktree_add_names_the_repository(run):
 def test_614_a_fix_round_is_a_fresh_agent_with_its_prompt(run):
     root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'FIX'})]})
     assert offers == [('fix', 'item-1')]
-    action = state.read_state(root)['builds']['item-1']['action']
+    action, = [launch for launch in next_command.resolve(next_command.step(root), root)['launches']
+               if launch['kind'] == 'fix']
     assert action['action'] == 'continue' and 'gate-quality-item-1.md' in action['prompt']
     assert 'fresh Agent' in next_command.THEN['continue']
 
@@ -467,8 +417,6 @@ def test_624_the_steward_waits_while_an_item_is_mid_round(run):
     assert next_command.step(root)['state'] == 'wait'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#637 (open): depends_on is not read; an item whose dependency has not shipped takes a seat'))
 def test_637_an_item_waiting_on_another_takes_no_seat(run):
     day = {'cap': 2, 'items': [item('item-1'), item('item-2')]}
     root, _ = run(day)
@@ -498,7 +446,7 @@ def test_666_a_pr_waiting_on_people_never_hides_runnable_work(run):
 def test_729_an_owner_merge_row_ends_when_the_pr_merges(run):
     root, offers = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', owner_merge=True,
                                                  duties={'ping': True})]})
-    assert offers == [('pr', 'item-1')]
+    assert offers == [('owner', 'item-1')]  # #844: owner_merge is the owner's decision at once
     state.append_event('merge.policy_blocked', {'pr': f'{REPO}#101', 'owner': True,
                                                 'reason': 'owner_merge'}, root)
     assert answer(root) == [('owner', 'item-1')]
@@ -547,9 +495,6 @@ def test_667_a_brief_points_at_the_live_record_and_copies_none_of_it():
     assert 'wuwei why item-1 --json' in line and 'copies none' in line
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#669, #844: next raises on a PASS recorded at an old head; the builder moved the head after '
-    'the gate and the gate is never rerun at the current head'))
 def test_669_a_pass_at_an_old_head_is_no_pass(run):
     _, offers = run({'cap': 1, 'items': [item('item-1', 'gating', tier='standard', verdicts={
         'arch': 'stale', 'quality': 'stale', 'security': 'stale'})]})
@@ -575,13 +520,10 @@ def test_728_a_check_red_on_the_base_too_is_not_the_prs(monkeypatch):
     assert pr_actions._base_red(Host(), f'{REPO}#1', measured, None) == f'base_red: test fails at {base} too'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    '#729, #844: next reads the phase from state.json; a PR merged on the host while the record '
-    'says raised is still offered as a pr act'))
 def test_729_a_pr_merged_on_the_host_is_merged(run):
     root, _ = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', duties={'ping': True})]})
     listing = workspace.day_dir(root) / 'prs.json'
-    listing.write_text(listing.read_text().replace('"green"', '"merged"'))
+    listing.write_text(listing.read_text().replace('"open"', '"merged"'))
     assert ('pr', 'item-1') not in answer(root)
 
 
@@ -599,3 +541,105 @@ def test_741_a_bare_ticket_number_is_stored_with_its_repository(run):
     config = workspace.load_config(root)
     assert tracker.full_id(config, '24') == f'{REPO}#24'
     assert tracker.full_id(config, f'{REPO}#24') == f'{REPO}#24'
+
+
+# --- lead calls (#844, batch 8) --------------------------------------------------------------------
+
+def fix_round(root, moved_by_fix):
+    """A standard item at its delta after one fix round from OLD: arch and security passed at OLD,
+    quality asked for the fix and passed its delta at HEAD. moved_by_fix: the recorded fix round
+    took the head from OLD to HEAD; else the head moved some other way."""
+    decisions = workspace.day_dir(root) / 'decisions'
+    for role, head in (('arch', OLD), ('quality', HEAD), ('security', OLD)):
+        (decisions / f'gate-{role}-item-1.md').write_text(
+            f'Head: {head}\nVerdict: PASS\nProbes: tested\nAUTH: PASS\nSimplicity: checked\n'
+            'Design: checked\nBlocked: none\nGap: none\nChange: none\n')
+
+    def update(data):
+        verdicts = data['gate_verdicts']
+        for role in ('arch', 'security'):
+            verdicts[f'item-1:{role}:initial'] = record('item-1', role, 'stale', 'initial')
+            verdicts.pop(f'item-1:{role}:delta')
+        verdicts['item-1:quality:initial'] = {**record('item-1', 'quality', 'FIX', 'initial'), 'head': OLD}
+        data['items']['item-1']['fix_heads'] = [[full(OLD), full(HEAD)]] if moved_by_fix else []
+    seat_state(root, update)
+
+
+@pytest.mark.parametrize('moved_by_fix', [True, False])
+def test_after_a_fix_round_only_the_gate_that_asked_rereads(run, moved_by_fix):
+    """Design 5.3 gate cost: the gates that passed keep their PASS for the head the fix round
+    produced; a head moved any other way makes their PASS stale (#669)."""
+    root, _ = run({'cap': 1, 'items': [item('item-1', 'gating', tier='standard', rounds=1, verdicts={
+        'arch': 'PASS', 'quality': 'PASS', 'security': 'PASS'})]})
+    fix_round(root, moved_by_fix)
+    assert answer(root) == [('raise' if moved_by_fix else 'gates', 'item-1')]
+
+
+@pytest.mark.parametrize('moved_by_fix', [True, False])
+def test_the_raise_check_takes_a_pass_carried_by_a_fix_round_only(run, moved_by_fix):
+    from wuwei import merge
+    root, _ = run({'cap': 1, 'items': [item('item-1', 'gating', tier='standard', rounds=1, verdicts={
+        'arch': 'PASS', 'quality': 'PASS', 'security': 'PASS'})]})
+    fix_round(root, moved_by_fix)
+    code, reason = merge.gate_check(root, root / 'trees/item-1', workspace.load_config(root),
+                                    sha=full(HEAD), item='item-1')
+    assert (code, reason) == (0, '') if moved_by_fix else (code == 1 and 'arch, security' in reason)
+
+
+def test_open_duties_carry_across_days(run):
+    """A day carried without close keeps its open duties in next and close."""
+    from wuwei import closing
+    root, _ = run({'cap': 1, 'items': [item('item-1', 'raised', pr='pending', duties={'ping': True})]})
+    prior = root / '.wuwei/days/2026-10-10'
+    old = f'{REPO}#99'
+    state._write_state(lambda data: data.update(
+        gate_approved=True, approved_items=['old-1'], raised_prs=[old],
+        items={'old-1': {'phase': 'raised', 'status': 'running', 'pr': old}}),
+        directory=prior, reserved=False, kind='plan.approved')
+    assert ('ping', 'old-1') in answer(root)
+    code, reason = closing.unresolved(root, [])
+    assert code == 1 and 'old-1: ping' in reason
+    state.append_event('duty.done', {'item': 'old-1', 'duty': 'ping'}, root)
+    assert ('ping', 'old-1') not in answer(root)
+    state.append_event('duty.done', {'item': 'old-1', 'duty': 'ping'}, directory=prior)
+    (prior / 'events.jsonl').chmod(0o644)
+    state.append_event('day.closed', {}, directory=prior)
+    assert ('ping', 'old-1') not in answer(root)
+
+
+def test_deleting_state_json_between_any_two_next_calls_changes_no_answer(tmp_path_factory):
+    """Every world: delete state.json between two next calls, and again after a write between
+    them; no answer changes."""
+    found = []
+    with pytest.MonkeyPatch.context() as patch:
+        for case, day in enumerate(WORLDS):
+            root = tmp_path_factory.mktemp(f'any{case}')
+            environment(patch, root)
+            configure(root)
+            materialise(root, day)
+            cache = workspace.day_dir(root) / 'state.json'
+            first = answer(root)
+            cache.unlink()
+            second = answer(root)
+            seat_state(root, lambda data: data['seats'].update({'note': {
+                'item': 'day', 'role': 'steward', 'status': 'stopped'}}))
+            third = answer(root)
+            cache.unlink()
+            if (first, third) != (second, answer(root)):
+                found.append((day, first, second, third))
+    assert not found, found[:3]
+
+
+def test_a_park_at_the_round_cap_is_the_owners_plan_resume_decision(run):
+    """The round cap parks in code; the owner decides on plan resume's Owner step card until
+    they answer, and a No leaves it parked."""
+    from fakes import owner
+    from wuwei import plan
+    root, _ = run({'cap': 1, 'items': [item('item-1', 'gating', rounds=CAP_ROUNDS, verdicts={'quality': 'FIX'})]})
+    reason = 'round cap 2 reached: quality still blocks'
+    plan.park('item-1', reason, root)
+    found = next_command.step(root)
+    assert found['decision']['command'] == 'wuwei plan resume item-1' and answer(root) == [('owner', 'item-1')]
+    owner.answer(root, 'bin/wuwei plan resume item-1', plan.resume_token(root, 'item-1'), 'No',
+                 detail=f'Resume item-1: {reason}')
+    assert answer(root) != [('owner', 'item-1')]

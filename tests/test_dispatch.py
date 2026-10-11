@@ -1762,7 +1762,7 @@ def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
     monkeypatch.setattr(dispatch, 'next_step', refuse)
     assert main(['dispatch', 'next', '--all']) == 1
     entries = json.loads(capsys.readouterr().out)['entries']
-    assert entries[0] == {'item': 'G', 'goal': 'G-1', 'action': 'refused',
+    assert entries[0] == {'kind': 'gates', 'item': 'G', 'goal': 'G-1', 'action': 'refused',
                           'reason': 'builder must stand down before gates'}
     assert len(entries) == 6
 
@@ -1958,9 +1958,9 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root, m
     record(root, 'goal', 'goal-1', note, 'delta', agent_id='agent-goal-1', head='1234abc' + '0' * 33)
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise' and 'cli/example.py:12' in outcome['notes'][0]
-    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
-    assert found['command'].startswith('wuwei brief shepherd A shepherd-A')
-    assert 'Review note: - P1 | cli/example.py:12' in found['command']
+    found = dispatch.resolve_offer(root, {'kind': 'raise', 'item': 'A', 'command': 'wuwei dispatch next A'})
+    assert found['commands'][0].startswith('wuwei brief shepherd A shepherd-A')
+    assert 'Review note: - P1 | cli/example.py:12' in found['commands'][0]
 
 
 def _fix_action(roles):
@@ -3096,3 +3096,28 @@ def test_create_runs_again_only_while_the_item_has_no_ticket(root, monkeypatch):
     state._write_state(lambda data: data.update(tickets={}), root, reserved=False)
     dispatch.tracker_call('A', 'create', root)
     assert [kind for kind, _ in duty_events(root)][1] == 'duty.due'
+
+
+def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
+    # #844, #669: a PASS received at an older head is no pass; its seat re-reads at the current
+    # head and the new receipt replaces the stale one.
+    from wuwei import dispatch
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n', agent_id='agent-q')
+    assert dispatch.next_step('A', root)['action'] == 'raise'
+    current = 'def5678' + '0' * 33
+    tree = root / 'tree'
+    tree.mkdir()
+    (tree / '.git').mkdir()
+    (tree / '.git/HEAD').write_text(current + '\n')
+    state._write_state(lambda data: data['items']['A'].update(worktree='tree'), root, reserved=False)
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['roles']) == ('gates', ['quality'])
+    [seat] = found['seats']
+    assert (seat['action'], seat['resume']) == ('continue', 'agent-q')
+    assert seat['feedback'].startswith('Re-read:') and current in seat['feedback']
+    path = workspace.day_dir(root) / 'decisions/gate-quality-1.md'
+    path.write_text(path.read_text().replace('abc1234', 'def5678'))
+    assert dispatch.next_step('A', root)['commands'] == ['wuwei dispatch receive A quality quality-1']
+    dispatch.receive('A', 'quality', 'quality-1', root=root)
+    assert dispatch.next_step('A', root)['action'] == 'raise'

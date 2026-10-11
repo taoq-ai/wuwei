@@ -168,7 +168,7 @@ def identifier(value):
 
 def read_day(root):
     directory = workspace.day_dir(root)
-    if not (directory / 'state.json').is_file():
+    if not state.day_started(directory):
         raise ValueError('no state.json for this day; run the morning plan (/wuwei:wuwei-plan) first')
     return directory, state.read_state(root)
 

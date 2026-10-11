@@ -108,7 +108,7 @@ def test_gate_phase_refused(day, monkeypatch, phase):
     ('dirty', 1, 'dirty'), ('live', 1, 'builder'), ('missing-pid', 1, 'builder'),
     ('status-error', 2, 'unavailable'), ('head-error', 2, 'unavailable'),
     ('pr-error', 2, 'unavailable'), ('missing-tree', 2, 'worktree'),
-    ('unknown-item', 2, 'item'), ('missing-state', 2, 'state'),
+    ('unknown-item', 2, 'item'),  # #844: a missing state.json is no case: it is a cache
 ])
 def test_gate_fail_closed(day, monkeypatch, capsys, case, code, hint):
     root, directory, vcs, host = day
@@ -132,8 +132,6 @@ def test_gate_fail_closed(day, monkeypatch, capsys, case, code, hint):
         data['items'] = {}
         (directory / 'state.json').chmod(0o600)
         (directory / 'state.json').write_text(json.dumps(data))
-    if case == 'missing-state':
-        (directory / 'state.json').unlink()
     assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', *opts) == code
     assert hint in capsys.readouterr().err
     assert not (directory / 'briefs/gate.md').exists()

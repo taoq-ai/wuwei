@@ -67,6 +67,20 @@ def launch(day, action):
     day.execute(action)
 
 
+def owner_step(day, command):
+    """Run a command; when it prints an Owner step card the owner answers Yes and it runs again."""
+    out = bash(day, command)
+    if 'Owner step' in out or '"card"' in out:
+        from fakes.owner import answer_card
+        answer_card(day.root, out, session='planner')
+        out = bash(day, command)
+    return out
+
+
+def launched(action, kind):
+    return any(entry['kind'] == kind for entry in action.get('launches', ()))
+
+
 def walk(day, card, after=None, looks=1):
     """Walk wuwei next until done: card(day, action) answers a card row, after(day, action)
     runs after each action; each turn ends with a Stop. Returns the last action."""
@@ -89,12 +103,18 @@ def walk(day, card, after=None, looks=1):
                 (day.directory / 'lead.json').write_text(json.dumps(day.proposal(['A'])))
         elif kind == 'card':
             card(day, action)
-        elif kind in ('set', 'gates'):
-            for entry in action.get('entries', [action]):
+        elif kind == 'set':  # #844: every launch and duty, then the one decision
+            for entry in action['launches']:
+                if entry['action'] in ('run', 'check', 'polish') and entry.get('command'):
+                    owner_step(day, entry['command'])
                 for command in entry.get('commands', []):
                     bash(day, command)
                 for seat in entry.get('seats', []) + ([entry] if entry.get('agent_type') else []):
                     launch(day, seat)
+            for duty in action['duties']:
+                bash(day, duty['record'].replace('<link>', 'https://chat.example/p1'))
+            if action['decision']:
+                owner_step(day, action['decision']['command'])
         else:
             assert kind == 'wait', action
         if after:
@@ -125,7 +145,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
             asks.append(widget)
 
     def after(day, action):
-        if action['state'] == 'pr' and not merged:
+        if launched(action, 'pr') and not merged:
             # The code host merges; the watch records it with pr state.
             day.host.results['pr'].data.update(state='closed', merged=True,
                                                merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
@@ -230,7 +250,7 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
                 'hook_event_name': 'PreToolUse', **fields}
 
     def after(day, action):
-        if action['state'] == 'pr' and 'ping' not in steps:
+        if launched(action, 'pr') and 'ping' not in steps:
             steps.add('ping')
             bash(day, f'wuwei pr ping-check {day.ref}')
             bash(day, f'wuwei pr ping {day.ref}')
@@ -330,7 +350,7 @@ def test_multi_repository_dispatch_runs(day):
 
     def after(day, action):
         if action['action'] == 'set':
-            started.extend(command for entry in action['entries'] for command in entry.get('commands', []))
+            started.extend(command for entry in action['launches'] for command in entry.get('commands', []))
             if started:
                 raise Reached
     with pytest.raises(Reached):

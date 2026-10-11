@@ -77,6 +77,20 @@ def test_red_ci_opens_fix_round(case, capsys):
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
 
 
+def test_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
+    # #844: at the cap red checks open no round; the item parks in code and the owner decides on
+    # plan resume's Owner step card, never a refusal with no owner path.
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    host.results['checks'] = Result(0, [{'name': 'tests', 'sha': 'a' * 40,
+        'state': 'completed', 'conclusion': 'failure', 'url': 'https://example.test/check'}])
+    assert main(['pr', 'act', REF]) == 1
+    assert 'bin/wuwei plan resume A' in capsys.readouterr().out
+    item = state.read_state(root)['items']['A']
+    assert item['phase'] == 'parked' and item['disposition']['reason'].startswith('round cap 2 reached')
+
+
 def test_unanswered_thread_needs_composed_reply(case, capsys):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,

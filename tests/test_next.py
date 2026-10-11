@@ -205,20 +205,19 @@ def test_no_decision_row(root, capsys):
 
 
 @pytest.mark.parametrize('phase,fields,expected,command', [
-    ('planned', {}, 'dispatch', 'wuwei dispatch next --all'),
+    ('planned', {}, 'build', 'wuwei dispatch next --all'),
     ('implement', {}, 'build', 'wuwei build next ITEM-1'),
-    ('fix', {}, 'build', 'wuwei build next ITEM-1'),
-    ('gate', {}, 'verdicts', 'wuwei dispatch next ITEM-1'),
-    ('delta', {}, 'verdicts', 'wuwei dispatch next ITEM-1'),
+    ('fix', {}, 'fix', 'wuwei build next ITEM-1'),
+    ('gate', {}, 'gates', 'wuwei dispatch next ITEM-1'),
+    ('delta', {}, 'gates', 'wuwei dispatch next ITEM-1'),
     ('raised', {'pr': 'example/project#7'}, 'pr', 'wuwei pr act example/project#7'),
 ])
 def test_item_rows(root, capsys, phase, fields, expected, command):
+    # #844: after the gate next returns the set: every launch with the command that resolves it
     approved(root, {'ITEM-1': (phase, fields)})
     found = coarse(root)
-    assert (found['state'], found['command']) == (expected, command)
-    if expected == 'dispatch':
-        assert '1 planned item(s) can start, 0 of CAP 1 building' in found['why']
-        assert found['action'] == 'set'
+    assert (found['state'], found['action']) == ('set', 'set')
+    assert [(launch['kind'], launch['command']) for launch in found['launches']] == [(expected, command)]
 
 
 def seated(root):
@@ -234,7 +233,7 @@ def test_cap_waits_on_running_seat(root, capsys):
     approved(root, {'ITEM-1': ('implement', {}), 'ITEM-2': ('planned', {})}, cap=2)
     seated(root)
     found = coarse(root)
-    assert (found['state'], found['command']) == ('dispatch', 'wuwei dispatch next --all')
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('build', 'ITEM-2')]
 
 
 def running_day(root, pid):
@@ -261,31 +260,26 @@ def test_running_names_seats_and_checks_with_start_times(root, capsys):
     assert (found['state'], found['command']) == ('wait', 'wuwei status --line')
     assert 'Running: builder A 09:10, builder B 09:20, checks C 09:25' in found['why']
     found = coarse(root)
-    assert (found['state'], found['command']) == ('build', 'wuwei build next C')
+    assert [(launch['kind'], launch['command']) for launch in found['launches']] == [
+        ('build', 'wuwei build next C')]
 
 
-def test_first_approved_item_wins_and_missing_is_skipped(root, capsys):
+def test_every_approved_item_is_offered_in_plan_order_and_missing_is_skipped(root, capsys):
     approved(root, {'ITEM-2': ('gate', {}), 'ITEM-1': ('implement', {})})
     day(root, approved_items=['ITEM-0', 'ITEM-2', 'ITEM-1'])
-    assert coarse(root)['command'] == 'wuwei dispatch next ITEM-2'
+    assert [launch['command'] for launch in coarse(root)['launches']] == [
+        'wuwei dispatch next ITEM-2', 'wuwei build next ITEM-1']
 
 
 def test_end_of_day_rows(root, capsys, monkeypatch):
+    # #844: no doctor row; doctor stays a command
     approved(root, {})
     assert coarse(root)['command'] == 'wuwei close'
     approved(root, {'ITEM-1': ('merged', {}), 'ITEM-2': ('parked', {'resume_phase': 'implement'}),
                     'ITEM-3': ('escalated', {'resume_phase': 'implement'})})
     found = coarse(root)
     assert (found['state'], found['command']) == ('close', 'wuwei close')
-    state.append_event('watch: clock', {}, root)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00+00:00')
-    found = coarse(root)
-    assert (found['state'], found['command']) == ('doctor', 'wuwei doctor')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:01:00+00:00')
     state.append_event('heartbeat: clock', {'health': 'degraded', 'page': 'x'}, root)
-    assert coarse(root)['state'] == 'doctor'
-    state.append_event('heartbeat: clock', {'health': 'ok', 'page': ''}, root)
-    seen(root, 'doctor')  # the doctor row comes once a day
     assert coarse(root)['state'] == 'close'
 
 
@@ -447,7 +441,7 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     assert hook(monkeypatch, root) == 0
     text = context(capsys)
     assert len(text.encode('utf-8')) <= BUDGET
-    for phrase in ('Next: build: ', 'Goals: ', 'Plan: ',
+    for phrase in ('Next: set: ', 'build ITEM-2: wuwei build next ITEM-2', 'Goals: ', 'Plan: ',
                    'Full day state: wuwei state get'):
         assert phrase in text
     for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
@@ -471,13 +465,13 @@ def test_item_at_the_gate_gets_verdicts(root, capsys):
     approved(root, {'ITEM-1': ('gate', {'gates': {'tier': 'standard'}})})
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('[docs]\nsystem = "notion"\n')
-    assert coarse(root)['state'] == 'verdicts'
+    assert [launch['kind'] for launch in coarse(root)['launches']] == ['gates']
 
 
 def test_item_row_shows_the_ticket(root, capsys):
     approved(root, {'ITEM-1': ('implement', {})}, tickets={'ITEM-1': {'id': 'ENG-1', 'source': 'set'}})
-    found = coarse(root)
-    assert 'ITEM-1 (ENG-1)' in found['why'] and found['command'] == 'wuwei build next ITEM-1'
+    [launch] = coarse(root)['launches']
+    assert 'ITEM-1 (ENG-1)' in launch['why'] and launch['command'] == 'wuwei build next ITEM-1'
 
 
 def test_seats_at_cap_name_the_waiting_item_and_the_first_seat(root, capsys):
@@ -485,13 +479,13 @@ def test_seats_at_cap_name_the_waiting_item_and_the_first_seat(root, capsys):
              'ITEM-4': ('planned', {})}
     approved(root, items, cap=3)
     found = coarse(root)
-    assert found['state'] == 'build'
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [
+        ('build', 'ITEM-1'), ('build', 'ITEM-2'), ('build', 'ITEM-3')]
     day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
                      for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
                                             ('b-2', 'ITEM-2', '2026-09-29T10:00:00+00:00'))})
     found = coarse(root)
-    assert (found['state'], found['command']) == ('dispatch', 'wuwei dispatch next --all')
-    assert '1 planned item(s) can start, 2 of CAP 3 building' in found['why']
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('build', 'ITEM-3')]
     approved(root, items, cap=2)
     day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
                      for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
@@ -504,82 +498,57 @@ def test_seats_at_cap_name_the_waiting_item_and_the_first_seat(root, capsys):
 # #551 US1.2: next returns the delegate's own action
 
 
-def test_build_rows_return_the_build_loop_action(root, capsys, monkeypatch):
+def test_build_launches_return_the_build_loop_action(root, capsys, monkeypatch):
     from wuwei.commands import build
     approved(root, {'A': ('implement', {})})
     launch = {'action': 'launch', 'prompt': 'WUWEI brief: x', 'agent_type': 'wuwei:builder', 'brief': 'b'}
     monkeypatch.setattr(build, 'next_action', lambda item, root=None: launch)
     code, found = row(capsys)
-    assert code == 0 and found == {'state': 'build', 'item': 'A', **launch,
-                                   'why': coarse(root)['why'], 'then': next_command.THEN['agent']}
-    check = {'action': 'check', 'command': 'wuwei build check A'}
-    monkeypatch.setattr(build, 'next_action', lambda item, root=None: check)
-    found = row(capsys)[1]
-    assert (found['command'], found['then']) == ('wuwei build check A', next_command.THEN['background'])
+    assert code == 0 and (found['state'], found['then']) == ('set', next_command.THEN['set'])
+    assert found['launches'] == [{'kind': 'build', 'item': 'A', 'goal': 'unplanned', **launch}]
     # #614: a continue is a fresh Agent with the returned prompt; resume only where offered
-    resume = {**launch, 'action': 'continue', 'resume': 'agent-1', 'feedback': 'f'}
-    monkeypatch.setattr(build, 'next_action', lambda item, root=None: resume)
-    found = row(capsys)[1]
-    assert found['then'] == next_command.THEN['continue']
-    assert 'fresh Agent' in found['then'] and 'resume' in found['then']
-    assert 'fresh Agent' in next_command.THEN['set']
-    # done moves the item on: the day is asked again in the same call
-    answers = iter([{'action': 'done'}])
-
-    def done(item, root=None):
-        day(root, items={'A': {'phase': 'merged'}})
-        return next(answers)
-    monkeypatch.setattr(build, 'next_action', done)
-    found = row(capsys)[1]
-    assert found['state'] == 'close'
+    assert 'fresh Agent' in next_command.THEN['set'] and 'resume' in next_command.THEN['set']
+    # #844: the build loop's done never reaches the planner; the launch names it and next asks again
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None: {'action': 'done'})
+    code, found = row(capsys)
+    [entry] = found['launches']
+    assert code == 1 and entry['action'] == 'refused' and 'run wuwei next again' in entry['reason']
 
 
-@pytest.mark.parametrize('answer,expected', [
-    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']},
-     ('verdicts', 'gates', None)),
-    ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A',
-      'card': {'question': 'Owner step: bin/wuwei dispatch next A (abc)'}},  # part 14: the owner's card
-     ('verdicts', 'run', 'wuwei dispatch next A')),
-    ({'action': 'escalate', 'reason': 'round cap 2 reached: quality still blocks: - P1',
-      'command': 'wuwei plan resume A'},  # the round cap: once, when the CLI parks it
-     ('verdicts', 'run', 'wuwei plan resume A')),
-    ({'action': 'raise', 'notes': ['n1']}, ('raise', 'run', None)),
+@pytest.mark.parametrize('answer,action', [
+    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']}, 'gates'),
+    ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A'},
+     'refused'),  # #844: an owner decision is the set's decision, never a launch
     ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
-      'skip': 'wuwei dispatch skip-polish A'}, ('polish', 'run', 'wuwei dispatch polish A')),
+      'skip': 'wuwei dispatch skip-polish A'}, 'polish'),
 ])
-def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, expected):
+def test_gate_launches_resolve_through_dispatch_next(root, capsys, monkeypatch, answer, action):
     from wuwei import dispatch
     approved(root, {'A': ('gate', {'worktree': str(root)})})
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: answer)
-    found = row(capsys)[1]
-    assert (found['state'], found['action']) == expected[:2]
-    if expected[2]:
-        assert found['command'] == expected[2]
-    if answer['action'] == 'escalate':
-        assert answer['reason'] in found['why'] and found['then'] == next_command.THEN['owner-step']
-    if answer['action'] == 'gates':
-        assert found['then'] == next_command.THEN['set']
+    [entry] = row(capsys)[1]['launches']
+    assert (entry['kind'], entry['action']) == ('gates', action)
+    if action == 'gates':
         assert 'wuwei brief arch A arch-A' in last_event(root)['payload']['named']
-    if answer['action'] == 'raise':
-        assert found['command'].startswith(f'wuwei brief shepherd A shepherd-A --worktree {root} --body ')
-        assert 'Review note: n1' in found['command']
-    if answer['action'] == 'polish':  # #723
-        assert 'wuwei dispatch skip-polish A' in found['then']
+    if action == 'refused':
+        assert answer['reason'] in entry['reason']
+    if action == 'polish':  # #723
+        assert (entry['command'], entry['skip']) == ('wuwei dispatch polish A', 'wuwei dispatch skip-polish A')
 
 
-def test_shepherd_launch_then_card(root, capsys, monkeypatch):
+def test_shepherd_launch_then_its_reason(root, capsys, monkeypatch):
     from wuwei import brief, dispatch
     approved(root, {'A': ('gate', {'worktree': str(root)})})
-    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'raise', 'notes': []})
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: dispatch.raise_action(
+        root, state.read_state(root), item, []))
     path = workspace.day_dir(root) / 'briefs/shepherd-A.md'
     path.parent.mkdir()
     path.write_text('brief\n')
-    found = row(capsys)[1]
-    expected = brief.seat_action('shepherd', path, str(root), root)
-    assert found['action'] == 'launch' and {key: found[key] for key in expected} == expected
+    [entry] = row(capsys)[1]['launches']
+    assert entry['action'] == 'raise' and entry['seats'] == [brief.seat_action('shepherd', path, str(root), root)]
     day(root, seats={'shepherd-A': {'status': 'stopped', 'role': 'shepherd', 'item': 'A'}})
-    found = row(capsys)[1]
-    assert (found['action'], found['command']) == ('card', 'wuwei why A')
+    [entry] = row(capsys)[1]['launches']
+    assert 'shepherd-A is stopped and the PR is not raised' in entry['reason']
 
 
 def test_a_parked_verdict_asks_the_day_again(root, capsys, monkeypatch):
@@ -591,10 +560,11 @@ def test_a_parked_verdict_asks_the_day_again(root, capsys, monkeypatch):
         return {'action': 'parked', 'reason': 'gate quality PARK: - P1', 'command': 'wuwei plan resume A'}
     approved(root, {'A': ('gate', {})})
     monkeypatch.setattr(dispatch, 'next_step', parked)
+    assert row(capsys)[1]['launches'][0]['action'] == 'refused'
     assert row(capsys)[1]['state'] == 'close'
 
 
-def test_fix_asks_the_day_again_and_refusal_exits_one(root, capsys, monkeypatch):
+def test_a_refused_launch_names_its_reason_and_exits_one(root, capsys, monkeypatch):
     from wuwei import dispatch
 
     def refuse(item, root=None):
@@ -602,19 +572,20 @@ def test_fix_asks_the_day_again_and_refusal_exits_one(root, capsys, monkeypatch)
     approved(root, {'A': ('gate', {})})
     monkeypatch.setattr(dispatch, 'next_step', refuse)
     code, found = row(capsys)
-    assert (code, found['state'], found['why']) == (1, 'verdicts', 'builder must stand down before gates')
+    [entry] = found['launches']
+    assert (code, entry['action'], entry['reason']) == (1, 'refused', 'builder must stand down before gates')
 
 
-def test_dispatch_and_stuck_rows(root, capsys, monkeypatch):
+def test_dispatch_and_stuck_launches(root, capsys, monkeypatch):
     from wuwei import dispatch
     approved(root, {'A': ('planned', {})})
     value = {'action': 'set', 'entries': [{'item': 'A', 'action': 'start', 'commands': ['wuwei worktree add A']}]}
     monkeypatch.setattr(dispatch, 'launch_set', lambda root=None: value)
     found = row(capsys)[1]
-    assert (found['state'], found['action'], found['entries']) == ('dispatch', 'set', value['entries'])
+    assert (found['state'], found['launches']) == ('set', value['entries'])
     assert last_event(root)['payload']['named'] == ['wuwei worktree add A']
     day(root, seats={'b': {'status': 'unmeasured', 'role': 'builder', 'item': 'A'}})
-    assert coarse(root)['command'] == 'wuwei seat stop b --unmeasured "seat ended with no recorded result"'
+    assert coarse(root)['launches'][0]['command'] == 'wuwei seat stop b --unmeasured "seat ended with no recorded result"'
 
 
 # #551: steward and close
@@ -746,21 +717,23 @@ def waiting_pr_day(root):
     approved(root, {'P': ('raised', {'pr': 'example/project#7'}), 'A': ('fix', {}), 'B': ('delta', {})}, cap=2)
 
 
-def test_issue_acceptance_runnable_rounds_before_a_waiting_pr(root):
+def test_issue_acceptance_runnable_rounds_beside_a_pr(root):
     waiting_pr_day(root)
     for _ in range(3):  # the state is read fresh each call, and the answer stays put
         found = coarse(root)
-        assert (found['state'], found['item'], found['command']) == QUEUE[0]
+        assert [(launch['kind'], launch['item']) for launch in found['launches']] == [
+            ('pr', 'P'), ('fix', 'A'), ('gates', 'B')]
         assert [(r['state'], r['item'], r['command']) for r in found['rows']] == QUEUE
 
 
-def test_text_mode_names_the_queue(root, capsys):
+def test_text_mode_names_every_launch(root, capsys):
     waiting_pr_day(root)
-    assert 'Queue: build A, verdicts B, pr P' in next_command.text(coarse(root))
+    text = next_command.text(coarse(root))
+    assert 'fix A: wuwei build next A' in text and 'gates B: wuwei dispatch next B' in text
 
 
 @pytest.mark.parametrize('later,row', [(None, 'merge'), ('intent', 'pr'), ('wait', 'pr')])
-def test_an_owner_merge_block_is_one_owner_row(root, later, row):
+def test_an_owner_merge_block_is_one_owner_decision(root, later, row):
     # #816: the merge policy does not clear the PR; the owner decides on its Owner step card.
     approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
     state.append_event('merge.policy_blocked', {'pr': 'example/project#7', 'exit': 1, 'owner': True,
@@ -771,17 +744,20 @@ def test_an_owner_merge_block_is_one_owner_row(root, later, row):
         state.append_event('merge.policy_blocked', {'pr': 'example/project#7', 'exit': 1, 'owner': False,
                                                     'reason': 'merge policy: waits: quiet hours'}, root)
     found = coarse(root)
-    assert (found['state'], found['item']) == (row, 'P'), found
     if row == 'merge':
-        assert found['command'] == 'wuwei merge example/project#7'
-        assert 'wuwei plan park P --reason "the owner keeps the merge of example/project#7"' in found['then']
+        assert found['launches'] == [] and found['decision']['command'] == 'wuwei merge example/project#7'
+        assert 'wuwei plan park P --reason "the owner keeps the merge of example/project#7"' in found['decision']['then']
+    else:
+        assert found['decision'] is None
+        assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('pr', 'P')]
 
 
-def test_a_lone_pr_comes_after_the_steward(root):
+def test_a_pr_waiting_on_people_comes_after_the_steward(root):
     approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
     found = coarse(root)
-    assert (found['state'], found['command']) == ('pr', 'wuwei pr act example/project#7')
-    assert 'rows' not in found and 'Owner step card' in found['then']
+    assert (found['state'], found['command']) == ('wait', 'wuwei status --line') and 'P' in found['why']
     state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md'}, root)
     assert coarse(root)['state'] == 'steward'
 
@@ -792,24 +768,23 @@ def test_json_rows_survive_resolution(root, capsys, monkeypatch):
     launch = {'action': 'launch', 'prompt': 'WUWEI brief: x', 'agent_type': 'wuwei:builder', 'brief': 'b'}
     monkeypatch.setattr(build, 'next_action', lambda item, root=None: launch)
     found = row(capsys)[1]
-    assert (found['state'], found['action']) == ('build', 'launch')
-    assert found['rows'] == coarse(root)['rows']
+    assert found['state'] == 'set' and found['rows'] == coarse(root)['rows']
 
 
-def test_finding_row(root, capsys):
-    """#646: a seat's finding is proposed once as a small item, after a stuck seat."""
+def test_finding_launch(root, capsys):
+    """#646: a seat's finding is proposed once as a small item."""
     approved(root, {})
     before = coarse(root)
-    assert before['state'] != 'finding'
+    assert before['state'] != 'set'
     assert main(['note', '--fix', 'Pin ruff in CI']) == 0
-    found = coarse(root)
-    assert (found['state'], found['item'], found['command']) == (
+    [launch] = coarse(root)['launches']
+    assert (launch['kind'], launch['item'], launch['command']) == (
         'finding', 'fix-pin-ruff-in-ci', 'wuwei plan add fix-pin-ruff-in-ci --from-finding')
-    assert 'Pin ruff in CI' in found['why']
+    assert 'Pin ruff in CI' in launch['why']
     day(root, items={'fix-pin-ruff-in-ci': {'phase': 'merged'}})
     assert coarse(root) == before
     assert main(['note', '--fix', 'Pin black']) == 0
-    assert coarse(root)['item'] == 'fix-pin-black'
+    assert coarse(root)['launches'][0]['item'] == 'fix-pin-black'
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)
     assert coarse(root) == before
@@ -822,8 +797,8 @@ def due(root, item, action, then=None):
         state.append_event(then, {**payload, **({'pr': None} if then == 'duty.done' else {'error': 'x'})}, root)
 
 
-def test_an_open_tracker_duty_is_a_row_beside_the_launches(root):
-    """#842: a due tracker update is a runnable row, also for a merged item, and holds close."""
+def test_an_open_tracker_duty_is_listed_beside_the_launches(root):
+    """#842: a due tracker update is a duty, also for a merged item, and holds close."""
     (root / '.wuwei/config.toml').write_text(
         '[adapters]\ntracker = "linear"\n[[repos]]\nname = "example/project"\npath = "project"\n'
         'default_branch = "main"\n')
@@ -835,12 +810,12 @@ def test_an_open_tracker_duty_is_a_row_beside_the_launches(root):
     due(root, 'A', 'claim', 'duty.done')
     due(root, 'M', 'in_review', 'duty.skipped')
     found = coarse(root)
-    assert [(r['state'], r['item'], r['command']) for r in found['rows']] == [
-        ('build', 'A', 'wuwei build next A'), ('duty', 'M', 'wuwei tracker move M done')]
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('fix', 'A')]
+    duty = [('tracker.done', 'M', 'wuwei tracker move M done')]
+    assert [(row['duty'], row['item'], row['record']) for row in found['duties']] == duty
     day(root, items={'M': {'phase': 'merged', 'pr': 'example/project#7'}}, approved_items=['M'])
     found = coarse(root)
-    assert (found['state'], found['item'], found['command']) == ('duty', 'M', 'wuwei tracker move M done')
-    assert 'M (ENG-7)' in found['why'] and found['then'] == next_command.THEN['run']
+    assert found['launches'] == [] and [(row['duty'], row['item'], row['record']) for row in found['duties']] == duty
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('tracker = "linear"', 'tracker = "none"'))
     assert coarse(root)['state'] == 'close'

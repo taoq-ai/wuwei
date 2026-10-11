@@ -199,7 +199,7 @@ def test_status_line_names_a_solo_pr(tmp_path, monkeypatch, capsys, recorded, sh
     assert ('reviewers: none (solo)' in capsys.readouterr().out) is shown
 
 
-@pytest.mark.parametrize('name', ['state.json', 'state.snapshot.json'])
+@pytest.mark.parametrize('name', ['state.json'])  # #844: the snapshot is never read for the day
 def test_unreadable_state_fails_closed(tmp_path, name):
     directory = day(tmp_path)
     (directory / name).write_text('{broken')

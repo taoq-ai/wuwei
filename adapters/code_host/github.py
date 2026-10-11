@@ -26,6 +26,13 @@ _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
 
 _ETAG = r'(?:W/)?"[\x21\x23-\x7e]*"'
 
+# #844: one listing call per repository for the derived next
+_PULLS = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(first:100,'
+          'orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state isDraft headRefOid mergeable '
+          'author{login} labels(first:20){nodes{name}} '
+          'commits(last:1){nodes{commit{statusCheckRollup{state}}}} '
+          'latestReviews(last:20){nodes{author{login} submittedAt}} '
+          'comments(last:20){nodes{author{login} createdAt}}}}}}')
 _MERGED = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,'
            'first:50,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt '
            'author{__typename login ...on Bot{databaseId}}}}}}')
@@ -74,7 +81,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
         case ['api', 'user']:
             allowed = payload is None and json_output
         case ['api', 'graphql', '--input', '-']:
-            allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT, _MERGED)
+            allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT, _MERGED, _PULLS)
         case ['api', endpoint, *options]:
             if re.fullmatch(r'search/commits\?q=author-email%3A[A-Za-z0-9._%+-]+'
                             r'%20repo%3A[A-Za-z0-9._%-]+&per_page=1', endpoint):
@@ -344,6 +351,30 @@ def merged_prs(repo, root=None):
              'created_at': _field(v, 'createdAt', str), 'merged_at': _field(v, 'mergedAt', str),
              **_author(_field(v, 'author', dict, nullable=True))}
             for v in _list(value['data']['repository']['pullRequests']['nodes'])]
+
+
+@_operation
+def pulls(repo, root=None):
+    """#844: every recent PR of the repository in one call: state (open, merged, closed), head,
+    draft, the checks rollup (pending, red, green), labels, mergeable and the latest review or
+    comment time by someone other than the author."""
+    owner, name = _repo(repo).split('/')
+    value = _run(['api', 'graphql', '--input', '-'], {'query': _PULLS, 'variables': {'o': owner, 'r': name}})
+    rollup = {'SUCCESS': 'green', 'FAILURE': 'red', 'ERROR': 'red'}
+    rows = []
+    for v in _list(value['data']['repository']['pullRequests']['nodes']):
+        author = _login(v.get('author'))
+        commits = _list(v['commits']['nodes'])
+        checks = ((commits[0]['commit'] or {}).get('statusCheckRollup') or {}).get('state') if commits else None
+        times = [node.get('submittedAt') or node.get('createdAt') for key in ('latestReviews', 'comments')
+                 for node in _list(v[key]['nodes']) if _login(node.get('author')) not in (None, author)]
+        rows.append({'number': _field(v, 'number', int), 'state': _field(v, 'state', str).lower(),
+                     'head': _sha(v['headRefOid']), 'draft': _field(v, 'isDraft', bool),
+                     'checks': rollup.get(checks, 'pending'),
+                     'mergeable': str(v.get('mergeable') or '').lower(),
+                     'labels': [_field(label, 'name', str) for label in _list(v['labels']['nodes'])],
+                     'activity_at': max(filter(None, times), default=None)})
+    return rows
 
 
 @_operation

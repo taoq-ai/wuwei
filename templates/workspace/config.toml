@@ -169,6 +169,12 @@ sweep_seconds = 7200
 stale_seconds = 3600
 # rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
 
+[duties]
+# Outward duties wuwei next lists until each is recorded: ping (post the review request once a PR
+# is raised), shepherd (answer new review threads), tracker (update the ticket or page once merged),
+# summary (post the day summary once the report is written).
+on = []
+
 [pr]
 poll_seconds = 120
 action_minutes = 30

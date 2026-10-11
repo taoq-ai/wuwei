@@ -70,7 +70,7 @@ def run(args):
         text = config.read_text(encoding='utf-8')
         if shadow:
             text = text.replace('enforce = true', 'enforce = false', 1)
-        config.write_text(_stamp(text), encoding='utf-8')
+        config.write_text(_stamp(_duties(text)[0]), encoding='utf-8')
         integrity.initialize(Path(staging))
         settings_path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
@@ -301,6 +301,21 @@ def _unread_keys(raw, warnings):
     return text, removed, kept
 
 
+def _duties(text):
+    """#844: a [duties] table still at the template's on = [] turns on the duties whose
+    channel the workspace configures; (text, the list or None when unchanged)."""
+    if not re.search(r'^\[duties\]\n(?:#[^\n]*\n)*on = \[\]\n', text, re.M):
+        return text, None
+    config = tomllib.loads(text)
+    adapters, shepherd = config.get('adapters', {}), config.get('shepherd', {})
+    on = [name for name, configured in (
+        ('ping', bool(shepherd.get('review_channel'))), ('shepherd', adapters.get('code_host', 'none') != 'none'),
+        ('tracker', adapters.get('tracker', 'none') != 'none'), ('summary', True)) if configured]
+    value = '[' + ', '.join(f'"{name}"' for name in on) + ']'
+    return re.sub(r'^(\[duties\]\n(?:#[^\n]*\n)*)on = \[\]\n', rf'\g<1>on = {value}\n', text, count=1,
+                  flags=re.M), value
+
+
 def _migrated_config(raw, template):
     present = tomllib.loads(raw)
     source = _sections(template)
@@ -379,6 +394,7 @@ def upgrade(args):
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(pruned, template)
+        migrated, duties = _duties(migrated) if 'duties' in added else (migrated, None)
         migrated, retired = _enforce(migrated, tomllib.loads(text))
         migrated, today = _today_tier(migrated, tomllib.loads(text))
         retired += today
@@ -444,6 +460,8 @@ def upgrade(args):
             print(f'{prefix} config.toml: add {key}')
         for line in retired:
             print(f'{prefix} config.toml: {line}')
+        if duties:
+            print(f'{prefix} config.toml: duties.on = {duties}')
         if stamp_changed:
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if graph_comments:

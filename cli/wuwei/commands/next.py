@@ -24,8 +24,9 @@ ENFORCE = {
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
 EXECUTABLE = ('wuwei is the absolute path in .wuwei/executable: read it once and use it as the '
               'first word of a plain command, never through a variable')
-LOOP = ('Loop: run wuwei next --json, do the one action it returns, and run it again when the '
-        'result or a completion notification arrives.')
+LOOP = ('Loop: run wuwei next --json, do every launch and every duty it returns, ask its one '
+        'decision when there is one, and run it again when the result or a completion '
+        'notification arrives.')
 THEN = {
     'run': 'Run the command, then run wuwei next.',
     'background': 'Run the command through Bash in the background; run wuwei next when it exits.',
@@ -35,10 +36,11 @@ THEN = {
     'continue': ('Launch a fresh Agent in the background with the prompt unchanged and agent_type '
                  'as subagent_type (pass resume only to an Agent tool that takes it), then run wuwei '
                  'next; its completion notification brings this item back.'),
-    'set': ('Do every entry now: run each command in order, pass every launch and continue to '
-            'Agent in the background in one message (a continue is a fresh Agent with its prompt; '
-            'resume only to an Agent tool that takes it), run each run entry through Bash in the '
-            'background; then run wuwei next.'),
+    'set': ('Do every launch and every duty now: run each command in order, pass every launch and '
+            'continue to Agent in the background in one message (a continue is a fresh Agent with '
+            'its prompt; resume only to an Agent tool that takes it), run each run entry through '
+            'Bash in the background, write each duty and run its record command, and ask the '
+            "decision's card with AskUserQuestion when there is one; then run wuwei next."),
     'card': ('Ask the widget list with AskUserQuestion, record each answer with its record '
              'command, then run wuwei next.'),
     'owner': ('Show the owner the why and the command in one line; run wuwei next when they say '
@@ -104,14 +106,14 @@ def approved(data):
 
 def _seen(directory):
     """(done (state, key) pairs, steward runs, day closed, the PRs whose latest
-    merge event is an owner block, the duty rows) from one read of today's events; only lines
+    merge event is an owner block) from one read of today's events; only lines
     naming a kind next needs are parsed (#346 budget). A row is done when its command ran (the
     done pairs run() records) or it passed with nothing to ask."""
-    done, passed, returns, runs, closed, merges, duties = set(), set(), {}, [], False, {}, []
+    done, passed, returns, runs, closed, merges = set(), set(), {}, [], False, {}
     path = directory / 'events.jsonl'
     for text in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
         if not ('"next.action"' in text or '"steward.run"' in text or '"day.closed"' in text
-                or '"merge.' in text or '"duty.' in text):
+                or '"merge.' in text):
             continue
         row = json.loads(text)
         kind, payload = row.get('kind'), row.get('payload')
@@ -128,14 +130,12 @@ def _seen(directory):
             runs.append(payload)
         elif kind == 'day.closed':
             closed = True
-        elif kind.startswith('duty.'):
-            duties.append(row)
         elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816
             merges[payload.get('pr')] = payload.get('reason') if payload.get('owner') is True else None
     # ponytail: a row returned three times counts as done, so a refused or failed command (no
     # PostToolUse span) never holds the day; evidence from PostToolUseFailure would lift it.
     done |= passed | {key for key, count in returns.items() if count >= 3}
-    return done, runs, closed, merges, duties
+    return done, runs, closed, merges
 
 
 def _carry(root, directory):
@@ -143,7 +143,7 @@ def _carry(root, directory):
     approve --import-yesterday imports them all and refuses an overlap."""
     prior = sorted(path.name for path in (root / '.wuwei/days').glob('????-??-??')
                    if path.is_dir() and path.name < directory.name)
-    if not prior or not (root / '.wuwei/days' / prior[-1] / 'state.json').is_file():
+    if not prior or not state.day_started(root / '.wuwei/days' / prior[-1]):
         return False
     items = state.read_state(directory=root / '.wuwei/days' / prior[-1])['items']
     left = {name for name, item in items.items() if item['phase'] != 'merged' and item['status'] != 'done'}
@@ -173,7 +173,7 @@ def step(root, ran=()):
         session = os.environ.get('WUWEI_SESSION_ID', '').strip() or '<session id>'
         return _row('session', "Register this session as today's planner.",
                     f'wuwei plan session {session}')
-    returned, runs, closed, merges, duties = _seen(directory)
+    returned, runs, closed, merges = _seen(directory)
     returned |= set(ran)
     if not (directory / 'plan.md').is_file():
         if ('pr-flow', '') not in returned:
@@ -196,66 +196,37 @@ def step(root, ran=()):
                     'your answer.', 'wuwei plan gate' + (' --import-yesterday' if _carry(root, directory) else ''),
                     'card', THEN['gate'].format(days=days))
     seats = brief.seats(data)
-    if stuck := brief.stuck(data):
-        return _row('stuck', f'Seat {stuck[0]} ended with no recorded result.',
-                    f'wuwei seat stop {stuck[0]} --unmeasured "seat ended with no recorded result"')
-    for ident, finding in data.get('seat_findings', {}).items():  # #646: proposed once
-        if ident not in data['items'] and ('finding', ident) not in returned:
-            return _row('finding', f"A seat found a small fix: {finding['scope']}. Add it as a small "
-                        'item.',
-                        f'wuwei plan add {ident} --from-finding', item=ident)
+    from wuwei import derive
+    launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
+                 'command': f'wuwei seat stop {name} --unmeasured "seat ended with no recorded result"'}
+                for name in brief.stuck(data)]
+    launches += [{'kind': 'finding', 'item': ident, 'command': f'wuwei plan add {ident} --from-finding',
+                  'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
+                 for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once
+                 if ident not in data['items'] and ('finding', ident) not in returned]
+    found = derive.offers(data, root, config, merges)
+    launches += found['launches']
+    due = derive.duties(root, config, directory, data)
+    decision = found['decision']
+    if decision:
+        pr = decision['command'].split()[-1]
+        decision['then'] = (THEN['merge'].format(item=decision['item'], pr=pr)
+                            if decision['command'].startswith('wuwei merge ') else THEN['owner-step'])
+    if launches or due or decision or found['parks']:
+        parts = [f'{len(launches)} launch(es)' if launches else '', f'{len(due)} due duty(ies)' if due else '',
+                 'one owner decision' if decision else '']
+        return {'state': 'set', 'action': 'set', 'launches': launches, 'duties': due,
+                'decision': decision, 'parks': found['parks'], 'rows': found['rows'],
+                'why': 'Ready now: ' + ', '.join(filter(None, parts)) + '.' if any(parts) else
+                'A verdict parks an item in code.', 'then': THEN['set']}
     rows = state.in_flight(data)
-    running = {item for _, _, item in rows}
     items = data['items']
     names = approved(data)
-    # #648: a held item waits on its fix item and takes no seat
     building = sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name) for name in names)
-    queued = sum(items[name]['phase'] == 'planned' for name in names)
-    waiting = held = None
-    found, prs = [], []  # #666: runnable rows first; a PR waits on people, so it comes last
-    for name in names:
-        phase = items[name]['phase']
-        if phase in TERMINAL or name in running:
-            continue
-        # Inline, not wuwei.tracker: next runs on hook paths.
-        ticket = data.get('tickets', {}).get(name, {}).get('id')
-        label = f'{name} ({ticket})' if ticket else name
-        if phase in state.BUILD_PHASES and (fix := state.held(data, name)):
-            held = held or (label, fix)
-        elif phase in state.BUILD_PHASES:
-            found.append(_row('build', f'{label} is in {phase}; this is its build loop step.',
-                              f'wuwei build next {name}', item=name))
-        elif phase in ('gate', 'delta'):
-            found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
-                              f'wuwei dispatch next {name}', item=name))
-        elif phase == 'raised':
-            pr = items[name].get('pr')
-            if merges.get(pr):  # #816: one owner decision for this PR, on its Owner step card
-                found.append(_row('merge', f'{label}: the merge policy does not clear PR {pr}; you decide '
-                                  'on its Owner step card.', f'wuwei merge {pr}', item=name,
-                                  then=THEN['merge'].format(item=name, pr=pr)))
-            else:
-                prs.append(_row('pr', f'{label} has PR {pr} open; act on its review state.',
-                                f'wuwei pr act {pr}', item=name, then=THEN['pr']))
-        elif phase == 'planned' and building < data['cap']:
-            if not any(row['state'] == 'dispatch' for row in found):
-                found.append(_row('dispatch', f'{min(queued, data["cap"] - building)} planned item(s) can '
-                                  f'start, {building} of CAP {data["cap"]} building; this is the launch set.',
-                                  'wuwei dispatch next --all', 'set'))
-        elif phase == 'planned' and waiting is None:
-            waiting = label
-    if duties and config['adapters']['tracker'] != 'none':  # #842: also for terminal items
-        from wuwei import tracker
-        for name, duty, command in tracker.open_duties(duties):
-            ticket = data.get('tickets', {}).get(name, {}).get('id')
-            label = f'{name} ({ticket})' if ticket else name
-            found.append(_row('duty', f'{label}: the {duty} update is due and not recorded.',
-                              command, item=name))
-    queue = [{'state': row['state'], 'item': row.get('item', ''), 'command': row['command']}
-             for row in found + prs]
-    queue = {'rows': queue} if len(queue) > 1 else {}
-    if found:
-        return {**found[0], **queue}
+    waiting = next((name for name in names if items[name]['phase'] == 'planned'), None)
+    held = next(((name, fix) for name in names if items[name]['phase'] in state.BUILD_PHASES
+                 and (fix := state.held(data, name))), None)
+    prs = [row for row in found['rows'] if row['state'] == 'pr']
     # #617: one steward at a time, on the newest brief; #624: and not while an item is mid fix round.
     if not state.mid_round(data) and not any(
             seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
@@ -263,8 +234,6 @@ def step(root, ran=()):
         if stem and stem not in seats:
             return _row('steward', 'Launch the steward seat on its brief.', 'wuwei next --json',
                         'launch', THEN['agent'], brief=runs[-1]['brief'])
-    if prs:
-        return {**prs[0], **queue}
     builders = sorted((seat.get('started_at') or '', name) for name, seat in seats.items()
                       if seat['status'] == 'running' and seat['role'] == 'builder')
     text = state.in_flight_text(rows)
@@ -279,12 +248,9 @@ def step(root, ran=()):
     if held:
         return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
-    # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
-    from wuwei.commands.status import scan
-    _, watch, beat = scan(directory, {**data, 'now': workspace.now().isoformat()})
-    if (watch == 'dead' or beat == 'degraded') and ('doctor', '') not in returned:
-        return _row('doctor', f'Watch {watch}, heartbeat {beat}; run the doctor and fix what it '
-                    'names.', 'wuwei doctor')
+    if prs:  # #666: a PR waiting on people is a wait, never a row to run
+        return _row('wait', f"{', '.join(row['item'] for row in prs)}: the PR waits on people; the "
+                    'listing shows when it changes.', 'wuwei status --line', 'wait', rows=found['rows'])
     if not data.get('close_requested'):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])
@@ -307,7 +273,17 @@ def step(root, ran=()):
 
 
 def text(row):
-    """The action for a person: one paragraph, then the command on its own line."""
+    """The action for a person: one paragraph, then the command on its own line; a set names
+    each launch, duty and the decision on its own line."""
+    if row['state'] == 'set':
+        lines = [f"set: {row['why']} {row['then']}"]
+        lines += [f"{launch['kind']} {launch['item']}: {launch.get('command') or launch.get('action')}"
+                  for launch in row['launches']]
+        lines += [f"duty {duty['duty']} {duty['item']}: {duty['prompt']} Record: {duty['record']}"
+                  for duty in row['duties']]
+        if row['decision']:
+            lines.append(f"owner {row['decision']['item']}: {row['decision']['why']} {row['decision']['command']}")
+        return '\n'.join(lines)
     command = row.get('command')
     if row['action'] in ('launch', 'continue') and row.get('agent_type'):
         command = f"Agent {row['agent_type']}"
@@ -332,60 +308,27 @@ def _widget(argv):
 
 
 def resolve(row, root):
-    """The delegate's own action for a delegated row, or None when the day must be asked again
-    (an empty widget list, a build done or park, a gate fix). Called by the next command only."""
+    """The row with its prompts: each launch of a set resolved through its resolver (the launch
+    set, within CAP and the free host seats), a seat launch row through its brief, a card row
+    with its widget list. Called by the next command only; it never loops."""
     import shlex
-    name, item = row['state'], row.get('item')
-    keep = {'state': name, **({'item': item} if item else {})}
+    if row['state'] == 'set':
+        from wuwei import dispatch
+        value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        runs = [launch for launch in row['launches']  # PR, merge, seat stop and finding steps run as is
+                if not launch['command'].startswith(('wuwei build next ', 'wuwei dispatch next '))]
+        launches = [{**launch, 'action': 'run'} for launch in runs] + value['entries']
+        return {**row, 'launches': launches, **({'capacity': value['capacity']} if value.get('capacity') else {})}
+    name = row['state']
+    keep = {'state': name, **({'item': row['item']} if row.get('item') else {})}
     if row['action'] == 'launch':
         action = brief.seat_action('lead' if name == 'lead' else 'steward', root / row['brief'],
                                    root, root)
         return {**keep, **action, 'why': row['why'], 'then': row['then']}
     if row['action'] == 'card' and row['command'].startswith('wuwei '):
         widget = _widget(shlex.split(row['command'])[1:])
-        return {**row, 'widget': widget} if widget else None
-    if name == 'build':
-        from wuwei.commands import build
-        action = build.next_action(item, root=root)
-        if action['action'] in ('done', 'park'):
-            return None
-        then = THEN[{'check': 'background', 'continue': 'continue'}.get(action['action'], 'agent')]
-        return {**keep, **action, 'why': row['why'], 'then': then}
-    if name == 'verdicts':
-        from wuwei import dispatch
-        action = dispatch.next_step(item, root)
-        if action['action'] in ('fix', 'parked'):  # a PARK verdict or the owner's No parked it
-            return None
-        if action['action'] == 'escalate':  # the owner decides on the command's Owner step card
-            return _row(name, f"{item}: {action['reason']}", action['command'], item=item,
-                        then=THEN['owner-step'])
-        if action['action'] == 'raise':
-            return _shepherd(root, item, action['notes'], row['why'])
-        if action['action'] == 'polish':  # #723
-            return _row('polish', f"{item}: every gate passed with {len(action['notes'])} review "
-                        'note(s); one polish round fixes them before the PR.', action['command'],
-                        item=item, then=f"Run the command, or run {action['skip']} instead when the "
-                        'notes are not small fixes inside the item; then run wuwei next.')
-        return {**keep, **action, 'why': row['why'], 'then': THEN['set']}
-    if name == 'dispatch':
-        from wuwei import dispatch
-        return {**keep, **dispatch.launch_set(root), 'why': row['why'], 'then': THEN['set']}
+        return {**row, 'widget': widget}
     return row
-
-
-def _shepherd(root, item, notes, why):
-    """The shepherd raises the PR: dispatch's brief command, its launch, or a card when it
-    stopped without one (#783: one raise action for dispatch, build and next)."""
-    from wuwei import dispatch
-    action = dispatch.raise_action(root, state.read_state(root), item, notes)
-    if action.get('commands'):
-        return _row('raise', f'{why} Every gate passed; brief the shepherd to raise the PR.',
-                    action['commands'][0], item=item)
-    if action['seats']:
-        return {'state': 'raise', 'item': item, **action['seats'][0],
-                'why': f'{why} Launch the shepherd to raise the PR.', 'then': THEN['agent']}
-    return _row('raise', f'shepherd-{item} stopped without raising the PR.', f'wuwei why {item}',
-                'card', THEN['owner'], item=item)
 
 
 def named(action):
@@ -393,6 +336,10 @@ def named(action):
     found = [action['command']] if action.get('command') else []
     found += [widget['record'] for widget in action.get('widget', []) if widget.get('record')]
     found += action.get('commands', [])
+    found += [duty['record'] for duty in action.get('duties', [])]
+    found += [action['decision']['command']] if action.get('decision') else []
+    for entry in action.get('launches', []):
+        found += named({**entry, 'then': ''})
     for entry in action.get('entries', []) + action.get('seats', []):
         found += [entry[key] for key in ('command', 'receive') if entry.get(key)]
         found += entry.get('commands', [])
@@ -404,7 +351,7 @@ def named(action):
 def _record(root, action, commands, ran=()):
     """Append the reserved next.action event; nothing without today's state (#551)."""
     directory = workspace.day_dir(root)
-    if not (directory / 'state.json').is_file():
+    if not state.day_started(directory):
         return
     traces = directory / 'traces.jsonl'
     count = len(traces.read_bytes().splitlines()) if traces.is_file() else 0
@@ -472,27 +419,32 @@ def run(args):
         except FileNotFoundError:
             root = None
         ran = _ran(root) if root is not None else []
+        if root is not None and state.day_started(workspace.day_dir(root)):
+            from wuwei import derive
+            config = workspace.load_config(root)
+            if derive.stale(root, config, state.read_state(root)):
+                failed = derive.refresh(root, config)  # a failed refresh keeps the old listing
+                if failed:
+                    print(f'wuwei next: PR listing not refreshed ({failed}); the last listing stays; run '
+                          'bin/wuwei doctor, which tests the code host adapter', file=sys.stderr)
         row = step(root, map(tuple, ran))
         if root is not None:
             from wuwei import dispatch
             from wuwei.commands.build import PortExit
+            if row['state'] == 'set' and row['parks']:  # PARK parks in code, recorded once
+                for item in row['parks']:
+                    dispatch.next_step(item, root)
+                row = step(root, map(tuple, ran))
             try:
-                for _ in range(8):
-                    action = resolve(row, root)
-                    if action is not None:
-                        break
-                    _record(root, {**row, 'action': 'pass'}, [])
-                    row = step(root, map(tuple, ran))
-                else:
-                    raise ValueError('the day did not settle on one action; run wuwei status')
+                action = resolve(row, root)
             except (dispatch.Refused, brief.Refused) as exc:
                 action, code = {**row, 'why': str(exc)}, FINDINGS
             except PortExit as exc:
                 if exc.code != 1:
                     raise ValueError(str(exc)) from exc
                 action, code = {**row, 'why': str(exc)}, FINDINGS
-            if 'rows' in row:  # resolve builds new dicts; the queue rides on the action
-                action = {**action, 'rows': row['rows']}
+            if any(launch.get('action') == 'refused' for launch in action.get('launches', ())):
+                code = FINDINGS  # each refused launch names its reason; the rest still run
             if args.json:  # a person's look-up never moves the day
                 _record(root, action, named(action), ran)
             row = action

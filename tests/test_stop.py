@@ -519,9 +519,9 @@ def test_missing_state_cannot_erase_recorded_planner(case):
     root, _, _ = case
     own(root)
     assert main(['plan', 'session', 'planner']) == 0
-    (workspace.day_dir(root) / 'state.json').unlink()
-    code, reason = module('guards/stop').check(payload(root))
-    assert code == 2 and 'state missing' in reason
+    before = module('guards/stop').check(payload(root))
+    (workspace.day_dir(root) / 'state.json').unlink()  # #844: a cache; the log keeps the planner
+    assert module('guards/stop').check(payload(root)) == before
 
 
 def test_poll_does_not_read_prior_day_when_snapshot_already_saved(case):

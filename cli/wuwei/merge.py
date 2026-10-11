@@ -832,7 +832,10 @@ def _recorded_gates(root, sha, records, item, items=None):
                                 for block in verdict.finding_blocks(active))
             if row['blocks'] is not actual_blocks:
                 raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
-            if not sha.lower().startswith(row['head'].lower()) and (role in rechecked or not rechecked):
+            # #844, design 5.3: a PASS counts at HEAD, or at the head a recorded fix round made
+            # from it; a head moved any other way is stale (#669)
+            from wuwei import derive
+            if not derive.at_head((items or {}).get(candidate, {}), row['head'], sha):
                 complete = False
                 missing.append(role)
         if complete:

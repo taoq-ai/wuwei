@@ -267,11 +267,11 @@ def test_next_names_stuck_seat(seat):
     state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
                                                 planner_session_id='S'), root, reserved=False)
     state.append_event('next.action', {'state': 'x', 'done': [['calibrate', '']]}, root)  # #551: done
-    assert next_command.step(root)['state'] == 'build'
+    assert [launch['kind'] for launch in next_command.step(root)['launches']] == ['build']
     stuck_day(root)
-    row = next_command.step(root)
-    assert row['state'] == 'stuck'
-    assert row['command'] == 'wuwei seat stop stuck --unmeasured "seat ended with no recorded result"'
+    launch = next_command.step(root)['launches'][0]
+    assert launch['kind'] == 'stop'
+    assert launch['command'] == 'wuwei seat stop stuck --unmeasured "seat ended with no recorded result"'
 
 
 def test_heartbeat_seats_probe(seat):

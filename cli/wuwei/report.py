@@ -96,7 +96,7 @@ def dora_section(root, config, days=metrics.DORA_WINDOW):
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
-    if not (day / 'state.json').is_file():
+    if not state.day_started(day):
         raise ValueError('day state missing; report cannot infer open work; start the day with /wuwei:wuwei-plan')
     data = state.read_state(root)
     measured = metrics.collect(root)
