@@ -990,7 +990,9 @@ def test_strict_refuses_an_unbriefed_typed_launch(day, monkeypatch, capsys):
 
 def test_launch_refusals_say_the_seat_is_not_registered(launch, monkeypatch):
     (root, directory, _, _), payload = launch
-    payload['tool_input']['prompt'] = 'WUWEI brief: ' + str((directory / 'briefs/other.md').relative_to(root))
+    other = directory / 'briefs/other.md'
+    other.write_text('unlogged')  # #725 refuses a missing file first; this one exists but is not logged.
+    payload['tool_input']['prompt'] = 'WUWEI brief: ' + str(other.relative_to(root))
     code, reason = check(payload)
     assert code == 1 and reason.startswith('seat not registered: no brief logged'), reason
 

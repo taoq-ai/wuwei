@@ -1661,7 +1661,9 @@ def i59(case, rules):
 def i47(case, rules):
     """#660: a typed Agent launch inside a day is never silently unregistered: below strict it
     registers a seat or the session is shown its reason; under strict a launch with no brief
-    marker is refused naming wuwei brief."""
+    marker is refused naming wuwei brief. A prompt naming a brief file that does not exist is
+    refused at every posture with the brief command and registers nothing (#725, which merged
+    first and supersedes the warn-only expectation this case had before the rebase)."""
     def compute(posture):
         from wuwei import brief, state, workspace
         from wuwei.commands import hook
@@ -1689,14 +1691,15 @@ def i47(case, rules):
         return found
     found = rules.memo(('unbriefed launch', case[0]), lambda: compute(case[0]))
     (bare_enforced, bare_warned, bare_seated) = found['no marker']
-    (unlogged_enforced, unlogged_warned, unlogged_seated) = found['unlogged']
+    (unlogged_enforced, _, unlogged_seated) = found['unlogged']
+    if (len(unlogged_enforced) != 1 or 'does not exist' not in unlogged_enforced[0]
+            or 'wuwei brief' not in unlogged_enforced[0] or unlogged_seated):
+        return f'a launch naming a missing brief gave {found}'
     if case[0] != 'strict':
-        if (bare_enforced or not bare_seated or not any('wuwei brief' in text for text in bare_warned)
-                or unlogged_enforced or not any('seat not registered' in text for text in unlogged_warned)):
+        if bare_enforced or not bare_seated or not any('wuwei brief' in text for text in bare_warned):
             return f'a typed launch below strict gave {found}'
         return None
-    if (len(bare_enforced) != 1 or 'wuwei brief' not in bare_enforced[0] or bare_seated
-            or len(unlogged_enforced) != 1 or unlogged_seated):
+    if len(bare_enforced) != 1 or 'wuwei brief' not in bare_enforced[0] or bare_seated:
         return f'a typed launch under strict gave {found}'
     return None
 
