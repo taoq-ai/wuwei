@@ -26,14 +26,13 @@ try:
     if not isinstance(data, dict):
         raise ValueError("status must be an object")
     pages = data["pages"]
-    nudges = data["nudges"]
-    if any(type(value) is not int or value < 0 for value in (pages, nudges)):
-        raise ValueError("counts must be nonnegative integers")
+    if type(pages) is not int or pages < 0:
+        raise ValueError("pages must be a nonnegative integer")
 except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
     print("● | color=gray\n---\nUnknown")
     print(f"wuwei SwiftBar: invalid status: {exc}", file=sys.stderr)
     sys.exit(2)
 
-color = "red" if pages else "orange" if nudges else "green"
-print(f"● | color={color}\n---\nPages: {pages}\nNudges: {nudges}")
+color = "red" if pages else "green"
+print(f"● | color={color}\n---\nPages: {pages}")
 ' "$wuwei_bin"

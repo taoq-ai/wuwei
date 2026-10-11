@@ -452,9 +452,13 @@ def _register(root, config):
                 f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
 
 
+SHADOW = ('Observe posture has run {days} days. To enforce, set '
+          'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
+          'bin/wuwei shadow report lists what would have been refused.')
+
+
 def _calibration(root, config):
     from wuwei import calibrate, interview, profiles, watch
-    from wuwei.commands.status import SHADOW_NUDGE
     rows = []
     try:
         approved = calibrate.approved(root)
@@ -495,7 +499,7 @@ def _calibration(root, config):
         days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
         left = guards['shadow_days'] - days
         rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
-                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW_NUDGE.format(days=days),
+                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
     if name == 'strict':  # #478: the guard ignores standing grants under strict.
         rows += [_row('workspace', f'grant {index}', 'warn',
@@ -672,16 +676,16 @@ def _day(root, config, probes):
     rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],
                      'wuwei seat stop <name> --verdict <file>, or wuwei seat stop <name> --unmeasured "<reason>"'))
     for page in found:
-        if page['tier'] == 'page':
+        if page['tier'] == 'page':  # wuwei next acts on health pages only
+            fix = ('wuwei next' if page['source'] in ('heartbeat', 'watch: health', 'listen: health') else
+                   f"wuwei why {page['reason']}" if page['source'] == 'item.escalated' else
+                   f"read the {page['source']} event in today's .wuwei/days/<date>/events.jsonl, "
+                   'act on it, then run wuwei doctor')
             rows.append(_row('day', page['source'] + (' page' if page['source'] == 'heartbeat' else ''), 'fail',
-                             str(page['reason']), 'wuwei nudges'))
-    mode, shown = status.surfaced(workspace.day_dir(root), found, config=config)  # #742
-    nudges = sum(page['tier'] == 'nudge' for page in shown)
-    rows.append(_row('day', 'nudges', 'ok',
-                     f'{nudges} shown, nudges.mode {mode} (wuwei nudges --all lists every open cause)'))
+                             str(page['reason']), fix))
     gaps = sum(page.get('count', 1) for page in found if page['source'] == 'traces.gap')
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
-                     'read the traces.gap reasons in wuwei nudges --all, then run wuwei doctor'))
+                     "read the traces.gap events in today's .wuwei/days/<date>/events.jsonl, then run wuwei doctor"))
     untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',

@@ -144,7 +144,7 @@ def test_guard_areas_table():
     assert guards.level(stub('decision', 'check_write'), GUARDED)[:3] == ('decision', 'records', 'block')
 
 
-@pytest.mark.parametrize('posture,tier', [('guarded', 'nudge'), ('strict', 'nudge'),
+@pytest.mark.parametrize('posture,tier', [('guarded', 'warn'), ('strict', 'warn'),
                                           ('observe', 'silent'), (None, 'silent')])
 def test_would_refuse_tier(posture, tier):
     from wuwei.signal import classify
@@ -152,7 +152,7 @@ def test_would_refuse_tier(posture, tier):
     assert classify({'kind': 'guard.would_refuse', 'payload': payload}, {})[0] == tier
 
 
-def test_warnings_outside_observe_nudge_once_per_guard(tmp_path, monkeypatch):
+def test_warnings_outside_observe_warn_once_per_guard(tmp_path, monkeypatch):
     from wuwei import state
     from wuwei.commands import status
     (tmp_path / '.wuwei').mkdir()
@@ -166,7 +166,7 @@ def test_warnings_outside_observe_nudge_once_per_guard(tmp_path, monkeypatch):
             'guard': guard, 'area': area, 'level': 'warn', 'posture': 'guarded', 'reason': 'r',
             'target': 't', 'session': 's', 'item': None}, tmp_path)
     rows = [row for row in status.attention(directory) if row['source'] == 'guard.would_refuse']
-    assert [row['tier'] for row in rows] == ['nudge', 'nudge']
+    assert [row['tier'] for row in rows] == ['warn', 'warn']
     assert {row['reason'] for row in rows} == {'outward: r (warn: security.areas.outward)',
                                                'agent_launch: r (warn: security.areas.seats)'}
 

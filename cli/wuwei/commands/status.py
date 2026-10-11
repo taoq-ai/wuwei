@@ -1,6 +1,6 @@
 """Read-only status snapshots for the owner surfaces."""
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import json
 import re
 import sys
@@ -25,9 +25,6 @@ def _alternation(words):
     return '(?:' + '|'.join(parts) + ')' + ('?' if '' in words else '')
 
 
-SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
-                'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
-                'bin/wuwei shadow report lists what would have been refused.')
 WIDTH = 100  # status --line columns unless --width says otherwise (#521)
 LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is start-up and printing
 # #641: what the line calls each phase, in this order; CAP is shown on seats only.
@@ -57,11 +54,11 @@ def register(subparsers):
 
 
 def attention(directory, classified_state=None):
-    """Current page and nudge causes from the day's event stream."""
+    """Current page and warning causes from the day's event stream."""
     return scan(directory, classified_state)[0]
 
 
-def scan(directory, classified_state=None, *, config=None):
+def scan(directory, classified_state=None):
     """Attention rows, watch and listen state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
@@ -134,13 +131,13 @@ def scan(directory, classified_state=None, *, config=None):
                 kind, payload, stamp = 'unreadable event', {}, None
             if kind == 'watch: sweep' and isinstance(payload, dict):
                 current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
-                fields = (('reply_owed', 'reply', 'nudge'),
-                          ('visibility_owed', 'visibility', 'nudge'),
-                          ('stale_owed', 'stale', 'nudge'),
+                fields = (('reply_owed', 'reply', 'warn'),
+                          ('visibility_owed', 'visibility', 'warn'),
+                          ('stale_owed', 'stale', 'warn'),
                           ('watch_dead', 'watch', 'page'),
                           ('scanner_owed', 'scanner', 'page'),
                           ('integrity_owed', 'integrity', 'page'),
-                          ('unreadable', 'unmeasured', 'nudge'))
+                          ('unreadable', 'unmeasured', 'warn'))
                 # Absent counts are 0 (the obligations sweep has fewer), but owed must be covered.
                 counts = [payload.get(field, 0) for field, _, _ in fields]
                 if all(type(count) is int and count >= 0 for count in counts) and not (
@@ -197,7 +194,7 @@ def scan(directory, classified_state=None, *, config=None):
             from wuwei import watch
             code, message = watch.health(directory.parents[2], stamps, name=name)
         if code:
-            current[(f'{name}: health',)] = {'tier': 'page' if code == 1 else 'nudge',
+            current[(f'{name}: health',)] = {'tier': 'page' if code == 1 else 'warn',
                                              'source': f'{name}: health', 'lane': 'Work', 'reason': message}
         health[name] = {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if stamps else 'off')
     beat_health = None
@@ -219,94 +216,13 @@ def scan(directory, classified_state=None, *, config=None):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')
     for identifier in routes:
         from wuwei.decision import answered  # Here: decision and outward cost a quiet day's line.
-        if answered(classified_state, identifier) is None:
-            source, reason = 'decision.pending', f'{identifier} pending owner decision'
-            if option := replied.get(identifier):
-                source, reason = 'decision.answered', (
-                    f'{identifier} answered from the phone: option {option}, '
-                    f'confirm with {workspace.owner_cli(directory.parents[2])} decide {identifier} {option}')
-            current[('decision.pending', identifier)] = {
-                'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
-    for identifier, row in classified_state.get('decision_outcomes', {}).items():
-        if isinstance(row, dict) and row.get('undo_until'):  # #283: an open undo window
-            from wuwei import cruise
-            if cruise.window(row, datetime.fromisoformat(classified_state['now'])):
-                current[('decision.cruise', identifier)] = {
-                    'tier': 'nudge', 'source': 'decision.cruise', 'lane': 'Decisions',
-                    'reason': f'{identifier} taken as {row["option"]} by {row["rule"]}, '
-                              f'undo until {cruise.clock(row["undo_until"])}'}
-    planner = classified_state.get('planner_session_id')
-    if planner and planner in classified_state.get('sessions', {}):
-        from wuwei import sessions  # Here and in snapshot: only a day with sessions pays for it.
-        for row in sessions.rows(classified_state, datetime.fromisoformat(classified_state['now']),
-                                 sessions.stale_seconds(directory.parents[2])):
-            if row['role'] == 'planner' and row['stale']:
-                current[('session.planner_stale',)] = {
-                    'tier': 'nudge', 'source': 'session.planner_stale', 'lane': 'Work',
-                    'reason': f'planner session {planner} stale: no hook activity for '
-                              f'{row["idle_seconds"]}s; take over from the live session with: '
-                              'wuwei plan session <session id> --take-over'}
-    if config is None and (directory.parents[1] / 'config.toml').is_file():
-        config = workspace.load_config(directory.parents[2])
-    if config is not None:
-        guards = config['guards']
-        if workspace.posture(config)[0] == 'observe' and guards['shadow_since']:
-            days = (today - date.fromisoformat(guards['shadow_since'])).days
-            if days >= guards['shadow_days']:
-                current[('guards.shadow',)] = {'tier': 'nudge', 'source': 'guards.shadow', 'lane': 'Work',
-                                               'reason': SHADOW_NUDGE.format(days=days)}
-    rows = sorted(current.values(), key=lambda row: (row['source'] != 'decision.cruise', row['source'] != 'pr.changed'))
+        if answered(classified_state, identifier) is None and (option := replied.get(identifier)):
+            current[('decision.answered', identifier)] = {
+                'tier': 'warn', 'source': 'decision.answered', 'lane': 'Decisions',
+                'reason': f'{identifier} answered from the phone: option {option}, '
+                          f'confirm with {workspace.owner_cli(directory.parents[2])} decide {identifier} {option}'}
+    rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
     return rows, health['watch'], health['listen'], beat_health, loops
-
-
-def _tidy(rows, now, limits=None):
-    """#786: drop nudges quiet for nudges.ttl_hours, keep the newest nudges.max_open, the
-    nudges.dropped row included. Pages, and rows without ts, never age out."""
-    limits = limits or {key: rule[1] for key, rule in workspace.SCHEMA['nudges'].items()}
-    ttl, cap = limits['ttl_hours'], limits['max_open']
-
-    def seen(row):
-        return datetime.fromisoformat(row['ts']).astimezone() if row.get('ts') else now
-
-    nudges = [row for row in rows if row['tier'] == 'nudge']
-    fresh = [row for row in nudges if now - seen(row) <= timedelta(hours=ttl)]
-    expired = len(nudges) - len(fresh)
-    if not expired and len(fresh) <= cap:
-        return rows
-    kept = {id(row) for row in sorted(fresh, key=seen, reverse=True)[:cap - 1]}
-    dropped = len(fresh) - len(kept)
-    return [row for row in rows if row['tier'] != 'nudge' or id(row) in kept] + [{
-        'tier': 'nudge', 'source': 'nudges.dropped', 'lane': 'Work',
-        'reason': f'{expired} expired after nudges.ttl_hours = {ttl}, {dropped} dropped over nudges.max_open = {cap}',
-        'expired': expired, 'dropped': dropped}]
-
-
-def surfaced(directory, rows, data=None, config=None):
-    """(mode, rows) the surfaces show under nudges.mode (#742): pages always; off drops every
-    nudge; next keeps an unrecorded phone answer and adds a ready fix round and a pending close;
-    all, or a day without config.toml, shows every row."""
-    if config is None and (directory.parents[1] / 'config.toml').is_file():
-        config = workspace.load_config(directory.parents[2])
-    mode = 'all' if config is None else workspace.nudge_mode(config)
-    # #786: the surfaces see the tidied list; scan keeps every row for health counts and --all.
-    rows = _tidy(rows, workspace.now(), config['nudges'] if config is not None else None)
-    if mode == 'all':
-        return mode, rows
-    shown = [row for row in rows if row['tier'] != 'nudge'
-             or (mode == 'next' and row['source'] == 'decision.answered')]
-    if mode == 'next':
-        data = state.read_state(directory=directory) if data is None else data
-        busy = {item for _, _, item in state.in_flight(data)}
-        for name, item in data['items'].items():
-            if item['phase'] == 'fix' and name not in busy:
-                shown.append({'tier': 'nudge', 'source': 'round.ready', 'lane': 'Work',
-                              'reason': f'{name} fix round is ready: run wuwei build next {name}'})
-        phases = [data['items'][name]['phase'] for name in data['approved_items'] if name in data['items']]
-        if (data['gate_approved'] and phases and not busy and not data.get('close_requested')
-                and 'merged' in phases and all(phase in ('merged', 'parked', 'escalated') for phase in phases)):
-            shown.append({'tier': 'nudge', 'source': 'close.ready', 'lane': 'Work',
-                          'reason': f'{phases.count("merged")} merged and nothing left to build: run wuwei close'})
-    return mode, shown
 
 
 def snapshot(directory, line=False):
@@ -317,7 +233,7 @@ def snapshot(directory, line=False):
         from wuwei import sessions
         live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
             data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
-    result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
+    result = {'pages': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
               'pace': data.get('pace'),
               'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
@@ -329,11 +245,9 @@ def snapshot(directory, line=False):
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'], result['listen'], result['health'], result['loops'] = scan(
-        directory, classified_state, config=config)
+        directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
-    result['nudges_mode'], shown = surfaced(directory, active, data, config)
-    result['nudges'] = sum(row['tier'] == 'nudge' for row in shown)
     result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
@@ -468,8 +382,7 @@ def _groups(data, shown=None):
         names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])
         work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
                     + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
-    attention = [f'pages {data["pages"]}'] + (
-        [] if data.get('nudges_mode') == 'off' else [f'nudges {data["nudges"]}'])  # #742
+    attention = [f'pages {data["pages"]}']
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
     if data.get('pace') not in (None, 'steady'):  # #579

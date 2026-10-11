@@ -216,7 +216,7 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   - `review_stale`: re-request review, then post in the review channel;
   - `approved`: `wuwei merge` when the policy clears it (4.6), otherwise a merge decision;
   - `merged`: done.
-  An overdue action is a `nudge`, then a `page` at twice the deadline (5.9).
+  An overdue action is a `warn` (owner, 2026-10-10, #789), then a `page` at twice the deadline (5.9).
 - Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
   120; head, CI, mergeability, reviews, comments, threads) and, on a change with a part that
   needs a planner action (`watch.ACTIONS`: merged, closed, new commits, conflicts, new
@@ -874,8 +874,8 @@ owner. Each class runs at one level:
 - L0 ask: the owner chooses (5.4); the item waits.
 - L1 recommend: the recommendation is preselected in the next decision batch and the owner
   confirms or changes it; the item waits.
-- L2 notify: the CLI takes the recommendation at once and sends a nudge; the owner can undo
-  it with one reply until `undo_minutes` after the nudge reaches them.
+- L2 notify: the CLI takes the recommendation at once and tells the owner; the owner can undo
+  it with one reply until `undo_minutes` after the answer is taken (owner, 2026-10-10, #789).
 - L3 digest: the CLI takes the recommendation at once and lists it in the next digest.
 
 Classes are a fixed list; a new class is an amendment to this section, not config.
@@ -931,7 +931,7 @@ Merge. The `merge` class answers only where `merge.auto = true` and the merge po
 the merge; the policy's eligibility, preconditions, soak window, daily cap and breaker
 replace the other conditions above, unchanged; the ceilings still apply. Auto-merges do
 not count toward `max_per_day`. At L3 (the default, and the behaviour before cruise mode) an auto-merge
-appears in the digest; at L2 a nudge also goes out when the soak window opens; at L0 or L1
+appears in the digest; at L2 the owner is also told when the soak window opens (owner, 2026-10-10, #789); at L0 or L1
 every merge goes to the owner.
 
 Promotion and demotion. The steward proposes raising a class one level through propose and
@@ -966,7 +966,7 @@ escaped defects (5.6) attributed to a cruise answer of the class; the allowance 
 when the events exceed the allowance and number at least two. The burn rate is the events
 of the last 48 hours against the window's allowance, scaled to the window
 (`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
-`cruise.burn` nudge a day naming the events, whose action is `wuwei cruise budget`. The
+`cruise.burn` event a day (owner, 2026-10-10, #789) naming the events, whose action is `wuwei cruise budget`. The
 steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
 class runs one level lower, never below L0, through the promote writer, with a ledger line
 that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
@@ -1040,7 +1040,7 @@ item, gate verdicts on it, re-dispatches of a role already dispatched on it, and
 continuations (gate or PR feedback, not the build loop's fast-check backpressure, which 5.3
 bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
 gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
-the CLI, naming the counts and the last two exchanges. It is a nudge, and a page when the
+the CLI, naming the counts and the last two exchanges. It is a `warn` (owner, 2026-10-10, #789), and a page when the
 item is past the date of the goal it serves (5.7); the control plane sends the owner's DM
 the same summary within `control_plane.content` (15.4); the status line shows `loops N`.
 The signal reports; the negotiation budget (5.3) is what stops the rounds.
@@ -1054,14 +1054,20 @@ Signals. Every event is classified once by `wuwei signal classify` into a delive
 an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
 security finding fired, a base branch went red after an auto-merge, an owner decision
 blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
-or the budget cap hit), `nudge` (shown at the next glance, batched to the phone at most every
-two hours: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
+or the budget cap hit), `warn` (owner, 2026-10-10, #789) (recorded in the day's event log for `why` and the retro,
+never a list and never on the status line: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
 loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
 at 80 percent, a person's ask nearing its reply window, a telemetry week ready to send
 (5.13)), `silent` (visible, never pushed:
 normal progress, L3 cruise answers, auto-merges that went well). Lanes: Work (items by phase),
 Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
-classifier cannot read is a `nudge`, never `silent`.
+classifier cannot read is a `warn`, never `silent`.
+
+Amended (owner, 2026-10-10, #789): the `nudge` tier is renamed `warn` and the nudge list is deleted: no `wuwei
+nudges` command, no `nudges` count on the status line or in `status --json`, no doctor
+`nudges` row, no `[nudges]` config table. Every event is still appended to the day's
+`events.jsonl`; `wuwei next` derives the next action, and the counts that read warnings
+(trace gaps, untraced subagents, phone answers, changed PRs) keep reading them there.
 
 Surfaces, all reading the same classification:
 
@@ -1071,7 +1077,7 @@ Surfaces, all reading the same classification:
   `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
-  cut at whole names; #658), then pages, nudges
+  cut at whole names; #658), then pages (owner, 2026-10-10, #789)
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
   sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
@@ -1083,8 +1089,8 @@ Surfaces, all reading the same classification:
   otherwise.
 - Menu bar (optional adapter). `wuwei status --json` feeds a SwiftBar plugin script shipped
   in `templates/`: a green, amber or red mark visible when the app is in the background,
-  with the pages and nudges in its menu. macOS only; absent when SwiftBar is not installed.
-- Phone. Pages at once and nudge digests through the control plane (Remote Control push by
+  with the pages in its menu (owner, 2026-10-10, #789). macOS only; absent when SwiftBar is not installed.
+- Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
   default, messaging adapters in M5), plus the briefing pack and approvals.
 
 Briefings. A routine produces a pack before each calendar event that has attendees (lead
@@ -1386,7 +1392,7 @@ A payload that breaks a rule is not sent; the run records `telemetry.unsent` wit
   week for the next run, the four newest weeks at most; nothing waits or blocks. A 409
   answer counts as sent: the collector already has the week. A sent week records
   `telemetry.shared` (week and mode) and `shared` in its file.
-- `attributed`: the sweep records `telemetry.ready` once per final week (a nudge, 5.9).
+- `attributed`: the sweep records `telemetry.ready` once per final week (a `warn` (owner, 2026-10-10, #789), 5.9).
   The owner runs `bin/wuwei telemetry send`, an owner action on the host refused from agent
   tools like `config set`, which prints the exact issue, asks yes or no (#414) and opens it
   on `repository` with the code host adapter's `issue` (`gh issue create`). The issue comes
@@ -1428,7 +1434,7 @@ stays the source of truth and what the aggregation reads.
 week (the latest by default) and names the mode in force. `wuwei telemetry off` sets
 `share = "off"` without a confirmation, since it only narrows what leaves, and records
 `telemetry.off`; turning sharing on is the owner's (the interview or `config set`). Every
-`telemetry.*` event is written only by the CLI; `telemetry.ready` is a nudge and the rest
+`telemetry.*` event is written only by the CLI; `telemetry.ready` is a `warn` (owner, 2026-10-10, #789) and the rest
 are silent.
 
 Interview. One workspace question after the posture: "Share weekly usage counts with the
@@ -1905,7 +1911,7 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   until the owner reinstalls or re-confirms on the host.
 - Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
-  memory, goals or voice that is uncommitted or committed without that trailer: a `nudge`,
+  memory, goals or voice that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
   a `page` for charter overrides and the voice.
 - Prompt canary. `wuwei init` generates a random canary token per workspace, embedded in
   every charter and skill the seats load. The canary appearing in outbound text, a PR or
@@ -2284,6 +2290,6 @@ The listener routes messages from people, not only work.
 - Outbound tiers (4.9) govern what the responder may send; where 15.3 and 15.4 are stricter
   for a channel, the stricter rule wins, and every direct message, including an
   acknowledgement, is a draft for one-tap approval.
-- Reply obligations: each needs-you ask is owed until answered. It starts as a `nudge` and
+- Reply obligations: each needs-you ask is owed until answered. It starts as a `warn` (owner, 2026-10-10, #789) and
   becomes a `page` as its reply window closes. The Stop guard refuses day close while a reply
   is owed to a person.

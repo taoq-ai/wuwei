@@ -635,7 +635,7 @@ def test_answered_cards_row(ws):
 def test_day_rows(ws):
     rows = doctor.diagnose()
     assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'nudges', 'traces', 'untraced subagents', 'session id', 'answered cards', 'tracker']
+                                  'traces', 'untraced subagents', 'session id', 'answered cards', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
     assert row(rows, 'untraced subagents')['value'] == 'none today'
@@ -671,8 +671,11 @@ def test_day_rows(ws):
     rows = doctor.diagnose()
     assert row(rows, 'heartbeat')['status'] == 'fail'
     page = row(rows, 'heartbeat page')
-    assert page['status'] == 'fail' and page['fix'] == W('nudges')
-    assert row(rows, 'nudges')['status'] == 'ok'
+    assert page['status'] == 'fail' and page['fix'] == W('next')
+    state.append_event('security.finding', {'reason': 'secret in diff'}, ws.root)
+    found = row(doctor.diagnose(), 'security.finding')
+    assert found['status'] == 'fail' and 'wuwei next' not in found['fix']
+    assert 'security.finding' in found['fix'] and 'events.jsonl' in found['fix']
 
 
 def test_day_session_id_row(ws):

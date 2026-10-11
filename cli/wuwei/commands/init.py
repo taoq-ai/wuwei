@@ -538,9 +538,6 @@ def upgrade(args):
             count = len(interview.unanswered(destination.parent, [repo['name'] for repo in loaded['repos']]))
             if count:
                 print(f'setup: {count} questions unanswered: {interview.HOW}')
-            if 'mode' not in tomllib.loads(migrated).get('nudges', {}):  # #742: the default, not written
-                print(f'nudges.mode unset, so nudges follow autonomy.mode: {workspace.nudge_mode(loaded)}; '
-                      'set nudges.mode = "next" or "all" in config.toml to see more')
         except (OSError, ValueError) as exc:
             print(f'setup: unanswered questions unmeasured: {exc}')
         for name, local_version, base_version in conflicts:

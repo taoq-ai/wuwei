@@ -31,19 +31,17 @@ def render(tmp_path, fixture, code=0, path=None, delay=None):
                           **({'PATH': str(path)} if path is not None else {})})
 
 
-@pytest.mark.parametrize(('fixture', 'color', 'pages', 'nudges'), [
-    ('page.json', 'red', 1, 2),
-    ('nudge.json', 'orange', 0, 1),
-    ('clean.json', 'green', 0, 0),
+@pytest.mark.parametrize(('fixture', 'color', 'pages'), [
+    ('page.json', 'red', 1),
+    ('clean.json', 'green', 0),
 ])
-def test_measured_status_renders_counts(tmp_path, fixture, color, pages, nudges):
+def test_measured_status_renders_counts(tmp_path, fixture, color, pages):
     result = render(tmp_path, fixture)
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
     assert lines[0].startswith('● | color=' + color)
     assert lines[1] == '---'
-    assert f'Pages: {pages}' in lines
-    assert f'Nudges: {nudges}' in lines
+    assert lines[2:] == [f'Pages: {pages}']
 
 
 def test_unmeasured_never_green(tmp_path):

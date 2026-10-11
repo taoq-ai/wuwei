@@ -554,7 +554,7 @@ def mark_wake(root, *, prs=(), inbox=0, summaries=(), kind, payload):
                 refs.update(pending['prs'])
                 count = max(count, pending.get('inbox', 0))
                 lines = pending.get('summaries', []) + lines
-        # ponytail: last 20 summaries while unseen; a day-long idle planner reads the rest in nudges.
+        # ponytail: last 20 summaries while unseen; a day-long idle planner reads the rest in events.jsonl.
         value['wake'] = {'at': at.isoformat(), 'prs': sorted(refs),
                          **({'inbox': count} if count else {}),
                          **({'summaries': lines[-20:]} if lines else {})}

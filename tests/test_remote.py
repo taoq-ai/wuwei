@@ -882,10 +882,9 @@ def test_a_second_answer_resumes_no_session(ws):
 
 
 def refused_pages(capsys):
-    from wuwei.__main__ import main
+    from wuwei.commands.status import attention
     capsys.readouterr()
-    assert main(['nudges', '--json']) == 0
-    return [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'remote.refused']
+    return [row for row in attention(workspace.day_dir()) if row['source'] == 'remote.refused']
 
 
 def test_refused_page_clears_when_the_pin_is_edited(ws, capsys):

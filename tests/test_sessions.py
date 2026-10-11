@@ -22,7 +22,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
+    (tmp_path / '.wuwei/config.toml').write_text('')
     state._write_state(lambda data: None, tmp_path, reserved=False)
     return tmp_path
 
@@ -247,26 +247,6 @@ def test_wake_goes_to_the_new_planner(root, monkeypatch):
     assert lifecycle.stop({'cwd': str(root), 'session_id': 'B'}) == (1, 'wake')
 
 
-def nudges(capsys, source=None):
-    capsys.readouterr()
-    assert main(['nudges', '--json']) == 0
-    rows = json.loads(capsys.readouterr().out)
-    return [row for row in rows if source is None or row['source'] == source]
-
-
-def test_stale_planner_nudge_names_take_over(root, monkeypatch, capsys):
-    state._write_state(lambda data: data.update(planner_session_id='A'), root, reserved=False)
-    assert nudges(capsys, 'session.planner_stale') == []
-    assert main(['plan', 'session', 'A']) == 0
-    assert nudges(capsys, 'session.planner_stale') == []
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T11:00:00+00:00')
-    row, = nudges(capsys, 'session.planner_stale')
-    assert row['tier'] == 'nudge'
-    assert 'A' in row['reason'] and 'wuwei plan session <session id> --take-over' in row['reason']
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['nudges'] >= 1
-
-
 def test_remote_row_survives_stop_and_planner_role_is_refused(root, monkeypatch, capsys):
     sessions.touch(root, 'R', hook='remote start', cwd=str(root), role='remote', thread='slack:D1/1')
     assert hook(monkeypatch, 'Stop', 'R', root) == 0
@@ -280,12 +260,13 @@ def test_remote_row_survives_stop_and_planner_role_is_refused(root, monkeypatch,
 
 
 def test_registry_events_are_silent(root, monkeypatch, capsys):
-    before = nudges(capsys)
+    from wuwei.commands.status import attention
+    before = attention(workspace.day_dir(root))
     hook(monkeypatch, 'SessionStart', 'A', root)
     hook(monkeypatch, 'Stop', 'A', root)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
     sessions.claim_item(root, 'X')
-    assert nudges(capsys) == before
+    assert attention(workspace.day_dir(root)) == before
 
 
 def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):

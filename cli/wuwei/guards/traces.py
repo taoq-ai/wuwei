@@ -6,7 +6,7 @@ from wuwei.guards import Guard
 from wuwei.exits import PAYLOAD
 
 # A warm call takes 5 to 20 ms; one that has already run a second is under load.
-# ponytail: sustained load above it defers the advisory steward nudge until a call fits.
+# ponytail: sustained load above it defers the advisory steward.due event until a call fits.
 BUDGET_MS = 1000
 
 

@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[nudges]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
+| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -44,10 +44,10 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.auth` | `"token"` | How `tracker.github` authenticates: `token` uses `GITHUB_TRACKER_TOKEN`; `gh` uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through `bin/wuwei`. See [GitHub tracker through your gh login](adapters.md#github-tracker-through-your-gh-login). |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
-| `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
-| `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and `setup --shadow` set it. The Autonomous answer does not: observe is then the chosen posture, not a trial week. Empty means no nudge. |
+| `guards.shadow_days` | `7` | Days in the `observe` posture before `bin/wuwei doctor` asks you to switch to `guarded` or raise this number. |
+| `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and `setup --shadow` set it. The Autonomous answer does not: observe is then the chosen posture, not a trial week. Empty means no such ask. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then one nudge asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
+| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then `bin/wuwei doctor` asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
 | `security.areas.<area>` | `""` | Override one area of the posture with `off`, `warn` or `block`; empty takes the posture's level. Areas: `integrity`, `mcp`, `publish`, `records`, `outward`, `seats`; for example `security.areas.mcp` = `"off"` skips the MCP registry check. `records` below `block` is a config finding. |
 | `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`, and refuses under `security.posture = "strict"`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
@@ -78,7 +78,6 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. Seat briefs keep `brief.style.length`. |
 | `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
-| `owner.verbosity.nudges` | `""` | Level for PR change messages in your owner DM; `full` adds the changed fields. Empty uses the default. |
 | `owner.verbosity.dm` | `""` | Level for decisions sent to your owner DM. Empty uses the default. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
@@ -162,7 +161,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `gates.polish` | `"offer"` | After a round-one pass with review notes: `never` raises the PR at once, `offer` lets the planner take one polish round (`dispatch polish <item>`) or decline it (`dispatch skip-polish <item>`), `always` opens it. The builder fixes only the notes and one gate (the one that wrote them, else quality) re-checks the delta. It counts as a fix round. |
 | `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. With the listener running, conditional probes every 30 s trigger a full read at once on a change. |
-| `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
+| `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. A warning in the event log after this deadline, a page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
 | `shepherd.reviewers` | `[]` | Code host logins to request instead of the history ranking and the lead. No `min_reviewers` check; the PR author is dropped. |
@@ -180,23 +179,20 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
-| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner is nudged. |
+| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner pages through the heartbeat. |
 | `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `250` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in `fix` or `delta`, a tool-call or sweep review waits for the round to end; the close review never waits. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
-| `steward.loop_threshold` | `9` | Exchanges in the window above which an item raises one `negotiation.loop` nudge a day; a second fix round today raises it too. |
+| `steward.loop_threshold` | `9` | Exchanges in the window above which an item writes one `negotiation.loop` event a day; a second fix round today raises it too. |
 
 ## Decisions
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
-| `nudges.mode` | `""` | What the status line, `bin/wuwei nudges`, the board and `bin/wuwei doctor` show of the nudges. Empty follows `autonomy.mode`: `off` when autonomous, `next` when supervised; a day without `config.toml` shows `all`. `off`: pages only, and the status line drops its `nudges N` token. `next`: pages, a phone answer not yet recorded, a fix round with nothing running (`wuwei build next <item>`) and a day ready to close (`wuwei close`). `all`: every open cause. Pages show in every mode, and events are written as before; `bin/wuwei nudges --all` lists every open cause whatever the mode. `bin/wuwei init --upgrade` names the mode it applies when the key is absent. |
-| `nudges.ttl_hours` | `24` | A nudge with no new event for this many hours leaves the list; it is counted as `expired` on the `nudges.dropped` row. Pages never expire. |
-| `nudges.max_open` | `20` | At most this many open nudges, the `nudges.dropped` row included: the oldest go and are counted as `dropped` on that row, which also counts the `expired` ones. Pages are never dropped or counted. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says `cruise off \| L<n>`. The running levels are kept. |
 | `decisions.cruise.margin` | `0.2` | Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it. |
@@ -208,7 +204,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `decisions.cruise.shadow_min` | `5` | Shadow answers that must be scored, all agreeing, before the shadow passes. |
 | `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
 | `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
-| `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
+| `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a `cruise.burn` event naming the events. |
 | `decisions.cruise.calibration_threshold` | `0.15` | Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1. |
 | `decisions.cruise.calibration_min` | `10` | Scored records a class or role needs before it is judged; fewer is `too few`, which only blocks a raise card. |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
@@ -369,7 +365,7 @@ Repository text is data. A file with instruction-like text, such as a line telli
 
 `bin/wuwei config promote` is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks y/N, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both. `bin/wuwei config promote --keys <key> ...` applies only those keys of today's answers, also over a value already set, with no repository survey and no `calibration.json`; `calibrate --answer` prints it with the keys of its answer. The charter blocks land through `bin/wuwei promote`.
 
-On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` nudge per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
+On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` event per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
 
 ## Owner interview
 
@@ -377,7 +373,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 
 | Question | Maps to |
 | --- | --- |
-| `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. While `nudges.mode` is empty it follows the answer: `off` for `Autonomous`, `next` for `Supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
+| `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
 | `deploys` (per repository) | `repos.merge_deploys`: `Merges deploy` sets `true`, `Merges do not deploy` sets `false`. The first choice is the recommended one: `Merges do not deploy` only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets `Merges deploy` first |
 | `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
 | `gates` (per repository) | `repos.gates.floor` |
@@ -443,7 +439,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
 | `outbound.default_tier` | `"send"` | The umbrella: what no tier row narrows gets this (`send`, `ask` or `block`) for chat, code host, mail and other writes. It also covers bug, triage and follow-up tickets in the workspace's own tracker; other docs and tracker writes keep `docs.auto` and `tracker.auto`. With `send` the broad commitment, disagreement and company rows drop out of the defaults; narrow with `outbound.tiers` rows per tool, person, channel, audience or topic. |
 | `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). Setup proposes `mail`, `code_host` and `slack.user` from what it measures; `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the digest, nudges and day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
+| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the digest and day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
 | `outbound.sensitive_keywords` | Built-in sensitive topic words | Optional replacement list; see the template for the full list. |
 | `outbound.sensitive_patterns` | `['\\bmental\\s+health\\b']` | Optional replacement regex list. |
 | `outbound.commitment_patterns` | Built-in commitment regexes | Optional replacement list; see the template for exact regexes. |
@@ -557,7 +553,7 @@ High/critical findings open an owner decision. Medium/low findings remain visibl
 `guarded` block no finding, `strict` blocks `["critical", "high", "unmeasured"]`. Set
 it to refuse agent and runtime launches and `plan propose` on top of that default: a
 pending finding with a listed severity (exit 1), or any unmeasured server when the list
-holds `"unmeasured"` (exit 2). Everything else is a nudge. Under `observe` the list has
+holds `"unmeasured"` (exit 2). Everything else is a warning in the event log. Under `observe` the list has
 no effect. The full v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check
 that could not run (invalid input, an interrupted check, a stale or missing record)
 refuses with exit 2 under `guarded` and `strict`. A workspace created before #351
@@ -614,7 +610,7 @@ keeps running until you stop it by hand. Uninstall is an owner action: the Bash
 guard refuses `watch uninstall` from agent tools inside a workspace, so a seat
 cannot turn a dead-watch page into `watch off`; run it from your own terminal.
 
-`bin/wuwei status --line`, `bin/wuwei nudges`, the cockpit, session start and
+`bin/wuwei status --line`, `bin/wuwei doctor`, the cockpit, session start and
 sweeps all read watch health the same way, whatever the last sweep recorded:
 
 - Installed with `watch install`, and no clock line today or today's latest
@@ -622,23 +618,16 @@ sweeps all read watch health the same way, whatever the last sweep recorded:
   This catches a watch that died overnight. It clears at the next clock line, or
   after `watch uninstall` when no clock line was written today.
 - Not installed, and no clock line today: `watch off`, neither a page nor a
-  nudge.
+  warning.
 - Not installed, and today's clock went stale (a watch run by hand died):
   `watch dead`, one page.
 
-`watch unmeasured` means watch health cannot be read; it is one nudge.
+`watch unmeasured` means watch health cannot be read; it is one warning in the event log.
 
-Run `bin/wuwei nudges` to list current nudges and pages, one line per cause with the
-command to run next. Repeats of one cause (the same kind on the same PR, item or reason) are
-one entry with its count and the age of its newest event, for example
-`(50 times, last 2 h ago)`. `bin/wuwei nudges --json`
-lists every entry with its source, and its entry count matches the page and nudge counts
-in `bin/wuwei status --line`.
-Routine progress such as plan approval, build starts and checks, and a call to any
-adapter set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
-the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
-A nudge also leaves the list after `nudges.ttl_hours` with no new event, and the list keeps
-the newest `nudges.max_open`; one `nudges.dropped` line counts what expired or was dropped.
+`bin/wuwei doctor` lists each open page with its fix (`wuwei next` for a health page,
+`wuwei why <item>` for an escalation), and the status line counts them. Warnings stay in the day's `events.jsonl`, where `bin/wuwei why` and the retro
+read them. Routine progress such as plan approval, build starts and checks, and a call to any
+adapter set to `none` is silent.
 
 ## Running the listener
 
@@ -711,9 +700,9 @@ The listener writes a `listen: clock` line every two minutes. Session start repo
 when the listener is installed and wrote none today. A listener that is off or alive
 adds nothing to session start. `wuwei status` shows `listen dead`,
 `listen unmeasured` or `listen off` (`listen alive` while alive, and nothing without an inbound
-adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
+adapter), and `wuwei doctor` pages a dead listener as `listen: health`. A DM answer to a
 two-way decision is recorded as your outcome by the listener. A DM answer to a
-one-way or `unsure` decision shows in `wuwei nudges` and session start as "D-n answered
+one-way or `unsure` decision shows at session start as "D-n answered
 from the phone", and the status line counts them as `phone answers N`, until you
 record the outcome.
 

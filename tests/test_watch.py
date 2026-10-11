@@ -606,9 +606,8 @@ def test_fresh_day_before_the_plan_is_clean(case, capsys):
     sweeps = events(root, 'watch: sweep')
     assert len(sweeps) == 2
     assert all(row['payload']['unreadable'] == 0 and row['payload']['owed'] == 0 for row in sweeps)
-    capsys.readouterr()
-    assert main(['nudges', '--json']) == 0
-    assert json.loads(capsys.readouterr().out) == []
+    from wuwei.commands.status import attention
+    assert attention(workspace.day_dir(root)) == []
 
 
 def test_session_payload_carries_no_drafts(case):

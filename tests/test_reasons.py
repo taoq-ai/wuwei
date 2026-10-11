@@ -23,7 +23,7 @@ OWNER = re.compile(r'\bthe owner\b', re.I)
 # Caught and replaced before anyone reads it (research.md KEEP row).
 KEEP = {('workspace.py', 'time component required')}
 # Person-facing scope (spec Assumptions): whole modules, or named top-level functions.
-PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py', 'commands/nudges.py')
+PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py')
 PERSON_PARTS = {'commands/next.py': {'step'},
                 'control_plane.py': {'HELP', 'render', 'escalate', 'notify'}}
 
@@ -258,7 +258,7 @@ def test_before_plan_report(fresh, capsys):
 
 def test_before_plan_decision_show(fresh, capsys):
     code, text = run(capsys, 'decision', 'show', 'D-1')
-    assert (code, text) == (0, 'No D-1 today; bin/wuwei nudges --all lists open decisions.\n')
+    assert (code, text) == (0, 'No D-1 today; bin/wuwei status --json lists open decisions.\n')
     assert 'Errno' not in text and str(fresh) not in text
 
 

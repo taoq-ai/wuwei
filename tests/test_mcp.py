@@ -559,8 +559,8 @@ def test_empty_registry_does_not_create_day_or_mutate_on_upgrade(tmp_path):
 
 
 @pytest.mark.parametrize('kind,payload,tier', [('mcp.finding', {'severity': 'high'}, 'page'),
-    ('mcp.finding', {'severity': 'medium'}, 'nudge'), ('mcp.checked', {'exit': 0}, 'silent'),
-    ('mcp.checked', {'exit': 2}, 'nudge'), ('mcp.decided', {}, 'silent')])
+    ('mcp.finding', {'severity': 'medium'}, 'warn'), ('mcp.checked', {'exit': 0}, 'silent'),
+    ('mcp.checked', {'exit': 2}, 'warn'), ('mcp.decided', {}, 'silent')])
 def test_mcp_signal_tiers(kind, payload, tier):
     from wuwei.signal import classify
     assert classify({'kind': kind, 'payload': payload}, {})[0] == tier
@@ -818,7 +818,7 @@ def test_issue_acceptance_inline_plugin_server_registered_expanded_and_drift(tmp
     assert core().check(root).exit == 1
     assert list((root / '.wuwei/ziran/snapshots').glob('*/docs.json')) == [snapshot]
     assert list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-    assert core().cached(root).exit == 0  # A high finding is a nudge under the default block.
+    assert core().cached(root).exit == 0  # A high finding is a warning under the default block.
     assert 'UNTRUSTED CHANGE' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 

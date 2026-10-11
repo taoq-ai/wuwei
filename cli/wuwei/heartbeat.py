@@ -117,7 +117,7 @@ def _memory(root):
     from wuwei.guards.agent_launch import free_memory
     config = workspace.load_config(root)
     if config['adapters']['host'] == 'none':
-        return 'unmeasured', 'host adapter none'  # the none adapter would append a nudge per call
+        return 'unmeasured', 'host adapter none'  # the none adapter would append a warning per call
     mib = free_memory(config, root) // 2**20
     return ('ok' if mib >= config['host']['free_memory_mb'] else 'failed'), f'{mib} MiB'
 

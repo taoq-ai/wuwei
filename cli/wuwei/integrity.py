@@ -437,7 +437,7 @@ def workspace_check(root):
         lines = []
         for path in result.data:
             severity = 'page' if path.startswith(('charters/', 'voice/')) or path in (
-                'memory/voice.md', 'voice') else 'nudge'
+                'memory/voice.md', 'voice') else 'warn'
             lines.append(f'{severity}: workspace integrity: {path} uncommitted or without Promoted-by: wuwei')
         return Result(int(bool(lines)), reason='\n'.join(lines))
     except (OSError, ValueError, TypeError) as exc:

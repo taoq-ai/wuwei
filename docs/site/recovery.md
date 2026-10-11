@@ -26,7 +26,7 @@ files. Doctor's `in_use` row counts the markers.
 `bin/wuwei mcp check` reports each server on its own. A project server you never approved is
 `not attached (unapproved)` and is never started; an `unpinned launcher` is not run; an
 unreachable or slow server is unmeasured by name. Under `guarded` only a critical finding or
-a check that could not run blocks, and an unmeasured server is a nudge. Accept one with
+a check that could not run blocks, and an unmeasured server is a warning in the event log. Accept one with
 `bin/wuwei mcp decide proceed-unmeasured <server>`, or give a slow one more time with
 `scanner.mcp.timeout_seconds` ([MCP registry checks](configuration.md#mcp-registry-checks-s3)).
 

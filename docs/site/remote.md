@@ -222,7 +222,7 @@ logs a `listen remote.unmatched` line with its id and is never a command.
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or when
 the listener is installed and wrote none today. The same rule drives the status line:
-`wuwei status` shows `listen dead` (and `bin/wuwei nudges` a page), `listen unmeasured`
+`wuwei status` shows `listen dead` (and `bin/wuwei doctor` a page), `listen unmeasured`
 when the clock cannot be read, `listen off` when the listener has not run today, and
 `listen alive` while it is alive.
 
@@ -267,7 +267,7 @@ One exchange per command (you, then the DM):
 
 ```text
 status
-1 building · seats 1/1 (builder) | pages 0 · nudges 1
+1 building · seats 1/1 (builder) | pages 0
 
 report
 Report 2026-09-30: merged 1, open 0, parked 0, decisions answered 2.
@@ -382,7 +382,7 @@ Not recorded: D-3 already has option B from this DM. Record the outcome on the h
 ```
 
 Record a one-way outcome in a host terminal with `bin/wuwei decide D-3 B`.
-Until then `bin/wuwei nudges` and session start show
+Until then session start shows
 `D-3 answered from the phone: option B, confirm with wuwei decide D-3 B`,
 `wuwei status` and the DM `status` reply count it as `phone answers 1`, and the report
 lists it as pending. Drafts are the same:
