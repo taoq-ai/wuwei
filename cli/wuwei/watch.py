@@ -4,7 +4,7 @@ from datetime import timedelta
 import json
 import re
 
-from wuwei import brief, discovery, obligations, registry, state, workspace
+from wuwei import brief, obligations, registry, state, workspace
 from wuwei.references import pull_request
 from wuwei.exits import DAMAGED
 
@@ -204,15 +204,6 @@ def sweep(root=None, *, watch_health=None):
     _, activity_counts = activity(root)
     counts['stale_owed'] = len(activity_counts['stale'])
     counts['unreadable'] += activity_counts['unreadable']
-    found = {'sources': {}, 'candidates': []}
-    try:
-        found = discovery.discover(root)
-        counts.update({f'discovery.{key}': value for key, value in found['sources'].items()})
-        counts['discovery_candidates'] = len(found['candidates'])
-        counts['unreadable'] += int(any(value.startswith('unmeasured') for value in found['sources'].values()))
-    except ERRORS as exc:
-        counts['discovery'] = f'unmeasured: {exc}'
-        counts['unreadable'] += 1
     from wuwei import scanner
     scan = scanner.trace_sweep(root, config)
     counts['scanner'] = scan['scanner']
@@ -223,14 +214,6 @@ def sweep(root=None, *, watch_health=None):
     counts['owed'] = sum(counts[key] for key in (
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
-    from wuwei import dispatch
-    try:
-        dispatch.discovery('sweep', root, found)
-    except ERRORS as exc:
-        counts['unreadable'] += 1
-        counts['owed'] += 1
-        counts['exit'] = 2
-        print(f'watch discovery intake unmeasured: {exc}', flush=True)
     from wuwei import steward
     try:
         prior = saved(root).get('steward_at')
@@ -531,26 +514,7 @@ def tick(root):
         code, _ = activity(root)
         result = max(result, code)
         save(root, {'activity_at': now.isoformat()})
-    return max(result, pending_discovery(root))
-
-
-def pending_discovery(root):
-    """Run a seat-free discovery request recorded by a hook; a failure is recorded once."""
-    try:
-        rows = [row for row in records(workspace.day_dir(root) / 'events.jsonl')
-                if row['kind'] in ('discovery.requested', 'discovery.intake', 'discovery.unmeasured')]
-    except ERRORS as exc:
-        print(f'watch discovery unmeasured: {exc}', flush=True)
-        return 2
-    if not rows or rows[-1]['kind'] != 'discovery.requested' or rows[-1]['payload'].get('trigger') != 'seat-free':
-        return 0
-    try:
-        discovery.intake(root, trigger='seat-free')
-        return 0
-    except (*ERRORS, RuntimeError) as exc:
-        state.append_event('discovery.unmeasured', {'reason': str(exc)}, root)
-        print(f'watch discovery unmeasured: {exc}', flush=True)
-        return 2
+    return result
 
 
 def serve(root, name, tick, delay, *, once=False, sleep=None, blind=lambda: False):

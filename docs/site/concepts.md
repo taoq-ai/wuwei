@@ -108,11 +108,11 @@ A lint checks outward text for its mechanical tells before it is sent.
 ### Spec engine
 
 The tool each non-trivial item is specified with before it is built: spec-kit (default), superpowers or OpenSpec.
-`[spec] engine` picks it; the hooks keep its steps in order in the item's worktree.
+`[spec] engine` picks it; the build loop and `wuwei dispatch next` keep the gates until its steps are done.
 
 ### Strict mode
 
-`[spec] mode = "strict"` (default): source edits and the gates wait until the engine's steps are done.
+`[spec] mode = "strict"` (default): the gates wait until the engine's steps are done.
 `advisory` warns once per item and day instead; `off` checks nothing.
 
 ### Ticket

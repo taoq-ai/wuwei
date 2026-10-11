@@ -8,7 +8,7 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('dispatch', help='Decide planner gate and discovery work')
+    parser = subparsers.add_parser('dispatch', help='Decide planner gate work')
     actions = parser.add_subparsers(dest='action', required=True)
     step = actions.add_parser('next')
     step.add_argument('item', nargs='?')
@@ -21,8 +21,6 @@ def register(subparsers):
     actions.add_parser('opinion').add_argument('item')
     actions.add_parser('polish').add_argument('item')  # #723
     actions.add_parser('skip-polish').add_argument('item')
-    discovery = actions.add_parser('discovery')
-    discovery.add_argument('trigger', choices=('sweep', 'seat-free'))
     parser.set_defaults(func=run)
 
 
@@ -45,10 +43,8 @@ def run(args):
             value = dispatch.polish(args.item)
         elif args.action == 'skip-polish':
             value = dispatch.skip_polish(args.item)
-        elif args.action == 'receive':
-            value = dispatch.receive(args.item, args.role, args.name, args.round)
         else:
-            value = dispatch.discovery(args.trigger)
+            value = dispatch.receive(args.item, args.role, args.name, args.round)
         print(json.dumps(value))
         return FINDINGS if value.get('action') == 'escalate' else CLEAN
     except dispatch.Refused as exc:

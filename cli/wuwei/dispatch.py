@@ -1124,22 +1124,3 @@ def _seat_usage(seat, policy):
         measured['duration'] = (datetime.fromisoformat(seat['stopped_at'])
                                 - datetime.fromisoformat(seat['started_at'])).total_seconds()
     return build.normalize_usage(measured, policy.get('model'))
-
-
-def discovery(trigger, root=None, found=None):
-    """Emit a discovery wake; ranking and starts belong to discovery policy."""
-    if trigger not in ('sweep', 'seat-free'):
-        raise Refused('unknown discovery trigger; run bin/wuwei dispatch discovery sweep or bin/wuwei dispatch discovery seat-free')
-    root = workspace.find_workspace() if root is None else Path(root)
-    data = state.read_state(root)
-    config = workspace.load_config(root)
-    queued = sum(row['status'] == 'queued' and row['phase'] == 'planned'
-                 for row in data['items'].values())
-    needed = trigger == 'sweep' or queued < config['discovery']['min_queue']
-    if needed:
-        state.append_event('discovery.requested', {'trigger': trigger, 'queued': queued}, root)
-    if trigger == 'sweep':
-        # A seat-free request runs on the watch's next tick, off the hook path.
-        from wuwei import discovery as discovery_module
-        discovery_module.intake(root, trigger=trigger, found=found)
-    return {'action': 'discover' if needed else 'none'}

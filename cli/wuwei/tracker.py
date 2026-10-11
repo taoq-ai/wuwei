@@ -102,8 +102,7 @@ def _candidate(root, data, item):
             if path.is_file() and not path.is_symlink() else [])
     found = data.get('seat_findings', {}).get(item)  # #646: a seat's finding added as an item
     return next((row for row in rows if row.get('id') == item),
-                data.get('discovery_candidates', {}).get(item)
-                or found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
+                found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
 
 
 def create(root, subject, category='items', title=None, evidence=(), row=None, seat=None):

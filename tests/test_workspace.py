@@ -224,7 +224,6 @@ def test_config_defaults_and_independence(tmp_path):
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
-        'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
                     'create': ['bugs', 'triage', 'follow-ups'],
                     'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],

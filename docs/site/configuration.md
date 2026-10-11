@@ -8,7 +8,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -23,9 +23,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | --- | --- | --- |
 | `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host and `budget.tokens_per_day`. Claude subagent seats take `host.seats`, or one per core, and free memory is not read; when a seat runtime launches its own process, CAP is the median of today's last five readings of the running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`; a positive number is your override, still bounded by the budget. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
-| `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
-| `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
-| `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items come to you. |
+| `prioritisation.framework` | `"wsjf"` | Ranking formula `wuwei plan propose` orders the queue by: `wsjf` or `rice`. |
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
@@ -91,7 +89,7 @@ and lets the turn end.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `spec.engine` | `"speckit"` | The spec engine every non-trivial item is specified with before it is built: `speckit`, `superpowers`, `openspec`, or `none`, which checks nothing. |
-| `spec.mode` | `"strict"` | `strict` refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. With `guards.enforce = false`, `strict` runs as `advisory`. |
+| `spec.mode` | `"strict"` | `strict` keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. With `guards.enforce = false`, `strict` runs as `advisory`. |
 | `spec.skip_tiers` | `["light"]` | Lead tiers (`light`, `standard`, `full`) whose items need no spec. The skip holds only while the diff agrees: at the move to the gates, a computed tier outside this list needs the spec after all. |
 
 Steps per engine, each run by the builder with the engine's own command, read from the artifacts in the item's worktree (the item id lowercased):
@@ -311,9 +309,7 @@ A call with no destination is never yours. Your code-host login is never local: 
 
 ## Goals and discovery
 
-While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
-
-After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
+While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei plan propose` reads the lead's candidates, each with a goal or `unplanned` mark, a `score` object and one `evidence_lines` entry per score component, and orders them by the framework. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one. Discovery runs at the morning plan; after the gate, an item joins with `bin/wuwei plan add <item> --goal G-n`.
 
 ## Running the watch
 

@@ -368,7 +368,7 @@ def test_path_metrics_count_the_planner_walk(root):
     record('P', 'Bash', {'command': 'wuwei next --json'})
     record('P', 'Bash', {'command': 'wuwei status --line'})
     record('P', 'Bash', {'command': 'wuwei plan session P'})
-    record('P', 'Bash', {'command': 'wuwei rank lead.json'})
+    record('P', 'Bash', {'command': 'wuwei goals'})
     record('P', 'AskUserQuestion', {'questions': []})
     record('X', 'Bash', {'command': 'git status'})
     record('P', 'Bash', {'command': 'git status'}, agent='builder')
@@ -380,7 +380,7 @@ def test_path_metrics_count_the_planner_walk(root):
     assert (value['planner_turns'], value['planner_asks'], value['off_path']) == (2, 1, 2), found
     events = metrics._events(workspace.day_dir(root))
     found = metrics.path(events, metrics._traces(workspace.day_dir(root)), 'P')
-    assert found['off_path'][0] == 'wuwei rank lead.json'
+    assert found['off_path'][0] == 'wuwei goals'
     assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named pr-flow
     assert metrics.path(events, None, 'P')['off_path'] == metrics.UNMEASURED
     assert set(metrics.path(events, [], None).values()) == {metrics.UNMEASURED}

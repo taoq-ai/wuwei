@@ -226,12 +226,11 @@ def test_now_names_what_the_item_waits_on(root, capsys, row, now):
     assert why(capsys, 'x')[1][-1] == now
 
 
-def test_intraday_item_takes_its_score_from_discovery(root, capsys):
-    write_state(root, {'items': {'x': {'goal': 'g'}},
-                       'discovery_candidates': {'x': {'score': {'value': 3}}}})
-    state.append_event('plan.added', {'item': 'x'}, directory=day_of(root))
+def test_added_item_names_who_added_it(root, capsys):
+    write_state(root, {'items': {'x': {'goal': 'g'}}})
+    state.append_event('plan.added', {'item': 'x', 'source': 'owner'}, directory=day_of(root))
     assert why(capsys, 'x', '--full')[1][0] == (
-        f'queued: goal g, score value 3 (event {DAY}:1; .wuwei/days/{DAY}/state.json)')
+        f'queued: goal g, added by owner (event {DAY}:1; .wuwei/days/{DAY}/state.json)')
 
 
 @pytest.mark.parametrize('target,code,err', [

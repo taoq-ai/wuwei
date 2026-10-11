@@ -54,7 +54,7 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
            'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
            'scanner.mcp.block', 'docs', 'adapters.docs',
-           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto')
+           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -87,8 +87,6 @@ SCHEMA = {
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
-    "discovery": {"min_queue": (int, 2, 1),
-                  "autostart": (str, "strict", ("off", "strict", "goal"))},
     "tracker": {"backlog_filter": (str, ""),
                 "states": {"in_review": (str, "In Review"), "done": (str, "Done")},
                 "create": [(str, None, ("bugs", "triage", "follow-ups")),
@@ -597,7 +595,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 21  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 22  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

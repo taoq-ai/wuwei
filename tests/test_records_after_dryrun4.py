@@ -10,7 +10,7 @@ import pytest
 
 from wuwei import plan, registry, state, workspace
 from wuwei.__main__ import main
-from test_intraday_intake import candidate
+from test_plan import candidate
 from test_signal_status import cli
 
 ROOT = Path(__file__).resolve().parents[1]

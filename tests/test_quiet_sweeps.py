@@ -65,7 +65,6 @@ def test_sweep_with_none_scanner_and_no_live_watch_is_finding(root, monkeypatch)
     day = workspace.day_dir(root)
     (day / 'traces.jsonl').write_text('{}\n')
     monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
-    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
     monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: 0)
     assert watch.sweep(root, watch_health=(0, '')) == 0
     row = json.loads((day / 'events.jsonl').read_text().splitlines()[-1])
@@ -77,7 +76,6 @@ def test_repeated_sweep_does_not_launch_duplicate_steward(root, monkeypatch):
     from fakes.integrity import measured
     measured(monkeypatch)
     monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
-    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
     calls = []
     monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: calls.append(1) or 0)
     state.append_event('watch: clock', {}, root)
@@ -232,7 +230,6 @@ def test_first_tick_sweep_sees_its_clock(root, monkeypatch):
     monkeypatch.setattr(watch, 'poll', lambda _root: 0)
     monkeypatch.setattr('wuwei.merge.poll', lambda _root: 0)
     monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
-    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
     monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: 0)
     watch.tick(root)
     row = next(row for row in (json.loads(line) for line in
@@ -248,7 +245,6 @@ def test_next_sweep_reports_stale_watch_clock(root, monkeypatch):
     state.append_event('watch: clock', {}, root)
     monkeypatch.setenv('WUWEI_NOW', (workspace.now() + timedelta(seconds=31)).isoformat())
     monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
-    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
     monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: 0)
     assert watch.sweep(root) == 1
     row = json.loads((workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()[-1])
@@ -355,7 +351,6 @@ def test_sweep_steward_waits_for_the_fix_round(root, monkeypatch):
     from test_next import day
     measured(monkeypatch)
     monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
-    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
     calls = []
     monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: calls.append(kwargs) or 0)
     state.append_event('watch: clock', {}, root)

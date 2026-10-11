@@ -26,10 +26,6 @@ template_version = "" # Plugin version that last wrote this file; init and init 
 [prioritisation]
 framework = "wsjf" # wsjf or rice
 
-[discovery]
-min_queue = 2
-autostart = "strict" # off: next morning; strict: ranked goal SLICE; goal: goal SLICE under CAP
-
 [tracker]
 backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
 # create = ["bugs", "triage", "follow-ups"] # Ticket classes seats may open besides items.
@@ -197,7 +193,7 @@ source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated
 [spec]
 # The spec engine each non-trivial item is specified with before it is built: speckit, superpowers, openspec or none.
 engine = "speckit"
-# strict: the hooks refuse source edits and the gates until the engine's steps are done. advisory: warn once per item and day. off: no check.
+# strict: the gates wait until the engine's steps are done. advisory: warn once per item and day. off: no check.
 mode = "strict"
 # Lead tiers whose items need no spec. The owner overrides one item with wuwei plan set <item> spec=required or spec=skipped --reason <why>.
 skip_tiers = ["light"]

@@ -30,8 +30,6 @@ PROBES = {
         ('Write', {}, 2),
     ('protect_state', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_scratch'):
         ('Write', {}, 2),
-    ('spec', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_edit'):
-        ('Write', {'file_path': 'src/app.py'}, 2),
     ('spec', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_record'):
         ('Write', {'file_path': 'specs/001-a/spec.md'}, 2),
     ('spec', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 2),

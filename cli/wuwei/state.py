@@ -257,8 +257,6 @@ STATE_PRODUCERS = {
     'pr_action_done': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
-    'discovery_candidates': 'wuwei dispatch discovery',
-    'intraday_proposals': 'wuwei plan add',
     'seat_findings': 'wuwei note --fix',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',

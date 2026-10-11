@@ -176,7 +176,6 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
-| PreToolUse | Write, Edit, MultiEdit or NotebookEdit in an item worktree, outside the spec engine's directories | under spec mode, a step of the configured engine before implementation is not done for the item (5.10) |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
@@ -658,8 +657,8 @@ target, date, priority. While it has none, the lead proposes goals in its JSON, 
 gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
-Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
-a build seat frees up with the queue below `discovery.min_queue` (default 2). Sources, each
+Discovery, morning (intraday intake retired: owner, 2026-10-11, #843). The lead runs
+discovery at the morning plan with `wuwei discover`. Sources, each
 through its adapter and each reporting "unmeasured" when absent: the tracker backlog, red
 checks on base branches, review-bot and scanner findings, review threads asking for
 follow-up work, regressions in the outcome metrics (5.6), and follow-ups recorded by the
@@ -679,20 +678,12 @@ Prioritisation, `prioritisation.framework` in config:
 
 Either way, ties are broken by goal priority, and every component cites evidence in one
 line; the plan lint refuses a candidate with a missing component or citation for the
-configured framework. `wuwei rank` computes the order; no seat orders the queue by hand. The
+configured framework. `wuwei plan propose` computes the order; no seat orders the queue by hand. The
 steward calibrates: predicted size or effort against actual cycle time per item, and a
 persistent bias becomes a charter proposal.
 
-Intraday starts, `discovery.autostart` in config. In every mode, an item carrying a risk
-flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to the owner.
-
-- `off`: nothing found after the morning gate starts without the owner; every candidate
-  joins the next decision batch.
-- `strict` (default): a candidate starts when it serves a confirmed goal, is on the SLICE
-  track, and ranks above the cut line of the approved queue.
-- `goal`: a candidate starts when it serves a confirmed goal and is on the SLICE track.
-
-Anything that does not start joins the next decision batch as a proposed item.
+After the morning gate, work joins only when the owner names it (`wuwei plan add <item>
+--goal G-n`) or a seat's finding is added (`wuwei plan add <id> --from-finding`).
 
 ### 5.8 Owner decisions (owner, 2026-10-11, #789 part 14; replaces the decision framework of 2026-09-28)
 
@@ -758,7 +749,7 @@ Cockpit, menu bar and briefings: retired (owner, 2026-10-11, #789).
 ### 5.10 Specification mode (owner, 2026-10-03, #411)
 
 Every item that is not trivial is specified with one configured spec engine before it is
-built, and the hooks keep the engine's steps in order. `[spec]` in `config.toml`:
+built, and the gates wait for the engine's steps. `[spec]` in `config.toml`:
 
 - `engine` (default `"speckit"`): `speckit`, `superpowers`, `openspec`, or `none`, which
   checks nothing (the behaviour before this section).
@@ -847,13 +838,10 @@ needs its spec after all.
 Enforcement. Cooperative mistake prevention (9.1), in item worktrees only (the item whose
 recorded worktree contains the path):
 
-- PreToolUse on Write, Edit, MultiEdit and NotebookEdit refuses a path outside the
-  engine's own directories (`specs/` and `.specify/`, `docs/superpowers/`, `openspec/`)
-  while a step before implementation is not done. The reason names the next step, its
-  artifact and its command, and the engine's install line when its files are absent from
-  the repository.
-- PostToolUse on the same tools and Bash records each step whose artifact newly appears as
-  one `spec.step` event (item, engine, step, path) per item and day. It never refuses.
+- No hook refuses a source edit for a missing step (#843); the gates wait instead.
+- PostToolUse on Write, Edit, MultiEdit, NotebookEdit and Bash records each step whose
+  artifact newly appears as one `spec.step` event (item, engine, step, path) per item and
+  day. It never refuses.
 - The build loop (5.3) moves an item to the gates (implement to gate, fix to delta) only
   when every step is done, implementation included, on every runtime. A gap goes back to
   the builder as a failing check named `spec`, under the same error signature and stuck
@@ -1422,7 +1410,7 @@ The floor blocks whatever the switch says (constitution VII):
   one owner decision from `wuwei next` (4.6, #816).
 
 No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
-default still blocks (the floor, the force push and default-branch edges, day close, spec mode),
+default still blocks (the floor, the force push and default-branch edges, day close, the spec check before the gates),
 and so do two process checks: a seat launch that matches no logged brief
 at an unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a
 logged `guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch

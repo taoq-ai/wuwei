@@ -57,6 +57,19 @@ def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     assert dispatch.next_step('A', root)['action'] == 'gates'
 
 
+def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
+    # #843: the spec check before gates stays in dispatch; a light item skips it.
+    (root / '.wuwei/config.toml').write_text('')
+    tree = root / 'tree'
+    tree.mkdir()
+    monkeypatch.setattr(dispatch, 'tier', lambda root, config, row: {
+        'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']})
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree), tier='light'),
+                       root, reserved=False)
+    action = dispatch.next_step('A', root)
+    assert (action['action'], action['roles']) == ('gates', ['quality'])
+
+
 def test_gate_dispatch_requires_builder_stand_down(root):
     from wuwei import dispatch
 
@@ -165,32 +178,6 @@ def test_invalid_verdict_does_not_enter_trusted_state(root):
     with pytest.raises(dispatch.Refused, match='REJECT'):
         record(root, 'quality', 'quality-bad', 'Verdict: PASS\n')
     assert state.read_state(root)['gate_verdicts'] == {}
-
-
-def test_discovery_trigger(root):
-    from wuwei import dispatch
-
-    assert dispatch.discovery('sweep', root) == {'action': 'discover'}
-    assert dispatch.discovery('seat-free', root) == {'action': 'discover'}
-    state._write_state(lambda data: data['items'].update({
-        'B': {'phase': 'planned'}, 'C': {'phase': 'planned'}}), root, reserved=False)
-    assert dispatch.discovery('seat-free', root) == {'action': 'none'}
-    events = [json.loads(line)['kind'] for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    assert events.count('discovery.requested') == 2
-
-
-def test_seat_free_discovery_only_records_the_request(root, monkeypatch):
-    from wuwei import discovery, dispatch
-
-    calls = []
-    monkeypatch.setattr(discovery, 'intake', lambda root, **kwargs: calls.append(kwargs))
-    assert dispatch.discovery('seat-free', root) == {'action': 'discover'}
-    assert calls == []
-    found = {'sources': {}, 'candidates': []}
-    assert dispatch.discovery('sweep', root, found) == {'action': 'discover'}
-    assert calls == [{'trigger': 'sweep', 'found': found}]
-    kinds = [json.loads(line)['kind'] for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    assert kinds.count('discovery.requested') == 2
 
 
 def test_delta_nonblocking_residual_becomes_review_note(root):

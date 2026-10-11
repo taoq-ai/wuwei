@@ -58,7 +58,6 @@ class Runtime:
             if self.spec:
                 message = 'Spec: specs/001-a\n' + RETRO
             if self.spec and self.builds == 1:
-                assert 'specify first: /speckit.specify' in day.hook('PreToolUse', 2, **demo)
                 for source in sorted(SPEC.rglob('*.md'), key=lambda path: path.name != 'spec.md'):
                     target = day.repo / 'specs/001-a' / source.relative_to(SPEC)
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -294,10 +293,6 @@ lead_login = "lead"
 
     def plan(self, *, agent_surface=False, tier=None):
         proposal = self.proposal(agent_surface=agent_surface, tier=tier)
-        candidates = proposal['candidates']
-        source = self.root / 'candidates.json'
-        source.write_text(json.dumps(candidates))
-        assert [row['id'] for row in json.loads(self.run('rank', source))] == ['A', 'B']
         source = self.root / 'proposal.json'
         source.write_text(json.dumps(proposal))
         self.run('plan', 'propose', source)

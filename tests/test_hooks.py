@@ -240,10 +240,11 @@ def test_subagent_stop_skips_watch_and_memory(tmp_path):
 
 @pytest.mark.parametrize('event, name, target, loaded', [
     ('PreToolUse', 'bash', None, False), ('PreToolUse', 'write', 'notes.md', False),
-    ('PostToolUse', 'example', None, False), ('PreToolUse', 'write', 'repo/src/app.py', True)])
+    ('PostToolUse', 'example', None, False), ('PreToolUse', 'write', 'repo/src/app.py', False),
+    ('PostToolUse', 'example', 'repo/src/app.py', True)])
 def test_spec_helper_loads_only_in_item_worktrees(tmp_path, event, name, target, loaded):
-    # #346: the spec guard reads state and returns before importing wuwei.specmode unless
-    # the path lies in an item's recorded worktree.
+    # #346: the spec recorder reads state and returns before importing wuwei.specmode unless
+    # the path lies in an item's recorded worktree; #843: PreToolUse never loads it.
     from fakes.integrity import seed
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[spec]\nmode = "advisory"\n')
@@ -256,7 +257,7 @@ def test_spec_helper_loads_only_in_item_worktrees(tmp_path, event, name, target,
     payload = {**json.loads((ROOT / f'tests/payloads/{event}/{name}.json').read_text()), 'cwd': str(tmp_path)}
     if target:
         payload['tool_input'] = {'file_path': str(tmp_path / target), 'content': 'x'}
-    if event == 'PostToolUse':
+    if event == 'PostToolUse' and not target:
         payload.update(tool_name='Bash', tool_input={'command': 'true'})
     out = tmp_path / 'modules.json'
     script = ('import json, sys\nsys.path.insert(0, sys.argv[1])\n'
@@ -1106,17 +1107,18 @@ COUNTING = (
 def test_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
     # #516: one state write per seat stop (the session row rides in it) and one directory
     # fsync per state write: 3 fsyncs instead of 8, 3 appends instead of 4, same records.
+    # #843: the seat-free discovery request is gone, one append fewer.
     from wuwei import state, workspace
     root = seeded_workspace[0][0].parent
     run_launcher(seeded_workspace, tmp_path, 'SubagentStop')  # writes the config cache, as on a warm day
-    assert run_launcher(seeded_workspace, tmp_path, 'SubagentStop', COUNTING) == {'fsync': 3, 'appends': 3}
+    assert run_launcher(seeded_workspace, tmp_path, 'SubagentStop', COUNTING) == {'fsync': 3, 'appends': 2}
     data = state.read_state(root)
     seat = data['seats']['builder-1']
     assert (seat['status'], seat['agent_id']) == ('stopped', 'builder-agent')
     assert data['sessions']['abc123']['last_hook'] == 'SubagentStop:wuwei:builder'
     rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    rows = [row for row in rows if row['kind'] != 'note'][-4:]
-    assert [row['kind'] for row in rows] == ['seat stopped', 'session.seen', 'discovery.requested', 'spec.warned']
+    rows = [row for row in rows if row['kind'] != 'note'][-3:]
+    assert [row['kind'] for row in rows] == ['seat stopped', 'session.seen', 'spec.warned']
     assert rows[0]['payload'] == {'name': 'builder-1', 'prs_seen': True}
     assert rows[1]['payload'] == {'session_id': 'abc123', 'hook': 'SubagentStop:wuwei:builder', 'prs_seen': True}
 

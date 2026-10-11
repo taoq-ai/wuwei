@@ -13,8 +13,8 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` show a diff and ask on a card in the session. | [Configuration](configuration.md#calibration) |
-| `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
-| `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate; `dispatch polish <item>` and `dispatch skip-polish <item>` take or decline a polish round. | [Review tiers](concepts.md#review-tiers) |
+| `bin/wuwei discover` | Discovers candidate work for the morning plan. | [Goals and discovery](configuration.md#goals-and-discovery) |
+| `bin/wuwei dispatch` | Decides planner gate work; `dispatch opinion <item>` runs the second-opinion gate; `dispatch polish <item>` and `dispatch skip-polish <item>` take or decline a polish round. | [Review tiers](concepts.md#review-tiers) |
 | `bin/wuwei dora` | Prints the DORA keys over the last 28 days (`--window <days>` changes that). Lead time to merge and to deploy, deployment frequency, change failure rate and time to restore, each with its source or why it is unmeasured. Read-only; exits 2 when the code host could not run. | [DORA keys](concepts.md#dora-keys) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
@@ -35,7 +35,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `add <id> --from-finding` admits a seat's finding as a light item; `carry` and `park` record an open item's disposition on the item; `resume <item>` returns a parked item to its phase on your Yes on its Owner step card; `set <item> ticket=<id>` records an existing ticket once the tracker confirms it (the planner's below strict, yours under strict), and `set <item> spec=skipped --reason <why>` skips the spec for one item. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei pr` | Measures owned PRs, raises one, shows its reviewers, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
 | `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
-| `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei report` | Shows your report. | [Day close](concepts.md#day-close) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
@@ -69,9 +68,7 @@ Run `bin/wuwei plan template` in a workspace for a complete lead JSON skeleton. 
 
 Each candidate needs a unique `id`, a confirmed `goal` or `unplanned`, `evidence`, `scope`, `overlap`, `track`, `flags`, `score`, and `evidence_lines`. `track` is `SLICE` for a small change with one pre-PR gate set, or `FULL` when a spec-done gate is needed. `flags` has exactly three booleans: `trust_surface`, `boundary_relevant`, and `agent_surface`. These affect owner routing and security gates. An optional `tier` (`light`, `standard` or `full`) raises the review tier `wuwei dispatch next` computes from the diff; a lower one is refused and recorded as a reason. For a docs-only diff the measurement wins: one reviewer, with `lead tier <t> overridden: docs-only` recorded. An optional `paths`, a list of repository-relative file paths, lets the CLI name the item's repository when it exists in exactly one. An optional `ticket` names the item's existing ticket, an id such as `ENG-12`, `PROJ-12` or `owner/repo#12`. An empty or null `ticket` or `tier` counts as absent. Any other value that is not a ticket id refuses the proposal, naming the item, the value and the accepted form. `evidence_lines` has a nonempty one-line citation for every score component.
 
-`bin/wuwei rank template` prints a candidate list for the configured framework. Pass it to `bin/wuwei rank -` to inspect the order. Ties use goal priority, then candidate id.
-
-`bin/wuwei rank FILE` (or `-` for stdin) also accepts a whole lead JSON, such as `bin/wuwei plan template` output or today's `.wuwei/days/<date>/proposal.json`, and ranks its `candidates`. An object without a `candidates` list exits 2 with `candidates must be a list`.
+`bin/wuwei plan template` prints a lead JSON whose candidate carries the configured framework's components. `bin/wuwei plan propose` orders the queue by `prioritisation.framework` from the scores and their evidence lines; ties use goal priority, then candidate id. The lead's own order is never used.
 
 ### WSJF and RICE
 

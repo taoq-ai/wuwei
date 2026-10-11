@@ -226,17 +226,6 @@ def propose(data, root=None):
         data = {**data, 'goals': list(goal_list)}
     found = discovery.discover(root)
     day = workspace.day_dir(root)
-    prior = sorted((path for path in (root / '.wuwei/days').glob('*')
-                    if path.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name)
-                    and path.name < day.name), reverse=True)
-    carried = []
-    if prior:
-        earlier = state.read_state(directory=prior[0])
-        carried = [proposal['candidate'] for proposal in
-                   earlier.get('intraday_proposals', {}).values()
-                   if proposal.get('decision') == 'tomorrow']
-    discovered_ids = {row['id'] for row in found['candidates']}
-    found['candidates'].extend(row for row in carried if row['id'] not in discovered_ids)
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
@@ -294,7 +283,7 @@ def propose(data, root=None):
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
                   *([f'Ticket: {shown[item["id"]]}'] if item['id'] in shown else []),
                   *owner_steps(item), '']
-    lines += ['## Discovery intake',
+    lines += ['## Discovered',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
               *(['## Open PRs to claim', *(f'- {row["id"]}: {row["pr"]} {row["title"]} (claimed under '
                                            f'{data["goals"][0]})' for row in data['adopt']), '']
@@ -446,8 +435,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
 
 
 def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None):
-    """Admit one item after the gate: a discovered candidate through the intraday
-    policy, or an item the owner names under a goal (the owner naming it is the decision)."""
+    """Admit one item after the gate: an item the owner names under a goal (the owner naming it
+    is the decision) or a seat's finding."""
     root = workspace.find_workspace(root)
     day = state.read_state(root)
     if not day['gate_approved']:
@@ -469,63 +458,22 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         goal, title = goal or day['goals'][0], finding['scope']
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
-    candidate = day.get('discovery_candidates', {}).get(item)
-    owner_item = candidate is None
-    if owner_item:
-        if goal is None:
-            raise state.StateError(f"{item} is not a discovery candidate; to add it as the owner's item "
-                                   f'run bin/wuwei plan add {item} --goal G-n')
-        if goal not in day['goals']:
-            raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
-                                   f'run bin/wuwei plan add {item} --goal <one of them>')
-        candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
-                     'flags': {key: False for key in FLAGS},
-                     'title': title or item, 'score': {size_key: 1 if size is None else size},
-                     **({'ticket': ticket} if ticket else {}),
-                     **({'tier': 'light'} if source == 'finding' else {})}
-    else:
-        goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-        _proposal({'goals': day['goals'], 'cap': day['cap'],
-                   'seat_policy': day['seat_policy'], 'envelope': day['envelope'],
-                   'sweep': {'discovery': 'measured: candidate'},
-                   'candidates': [candidate]}, goals_text,
-                  config['prioritisation']['framework'])
+    if goal is None:
+        raise state.StateError(f"{item} is not in the plan; to add it as the owner's item "
+                               f'run bin/wuwei plan add {item} --goal G-n')
+    if goal not in day['goals']:
+        raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
+                               f'run bin/wuwei plan add {item} --goal <one of them>')
+    candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
+                 'flags': {key: False for key in FLAGS},
+                 'title': title or item, 'score': {size_key: 1 if size is None else size},
+                 **({'ticket': ticket} if ticket else {}),
+                 **({'tier': 'light'} if source == 'finding' else {})}
     from wuwei import tracker
     if candidate.get('ticket'):  # #741: one id format, before anything is written
         candidate = {**candidate, 'ticket': tracker.full_id(config, candidate['ticket'])}
     chosen = proposed(candidate)
     size = candidate['score'][size_key]
-    decision = 'start'
-    if not owner_item:
-        committed = sum(row.get('budget_size', float('inf')) for row in day['items'].values())
-        within_budget = committed + size <= day['envelope']['net_build_hours']
-        running = sum(seat.get('status') == 'running' and seat.get('role') == 'builder'
-                      for seat in day['seats'].values())
-        within_cap = running < day['cap']
-        above_cut = True
-        if config['discovery']['autostart'] == 'strict' and day['approved_items']:
-            proposal_path = workspace.day_dir(root) / 'proposal.json'
-            if proposal_path.is_symlink():
-                raise ValueError(f'proposal.json must not be a symlink; {SYMLINK}')
-            proposal = json.loads(proposal_path.read_text(encoding='utf-8'))
-            approved = [row for row in proposal['candidates']
-                        if row['id'] in day['approved_items']]
-            if approved:
-                ordered = rank.rank([*approved, candidate], config['prioritisation']['framework'],
-                                    goals.parse(goals_text))
-                above_cut = [row['id'] for row in ordered].index(item) < len(approved)
-        decision = discovery.start_decision(candidate, config, set(day['goals']),
-                                            within_budget=within_budget and within_cap,
-                                            above_cut=above_cut)
-    if decision != 'start':
-        def propose(current):
-            if item in current['items']:
-                raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
-            current.setdefault('intraday_proposals', {})[item] = {
-                'decision': decision, 'candidate': candidate}
-        state._write_state(propose, root, reserved=False, kind='plan.proposed',
-                           payload={'item': item, 'decision': decision})
-        return {'action': decision, 'item': item}
 
     def admit(current):
         if item in current['items']:
@@ -539,7 +487,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
     state._write_state(admit, root, reserved=False, kind='plan.added',
-                       payload={'item': item, 'source': candidate.get('source', 'discovery'),
+                       payload={'item': item, 'source': candidate['source'],
                                 'flags': {item: candidate['flags']}})
     return {'action': 'build next', 'item': item}
 

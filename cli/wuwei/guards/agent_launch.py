@@ -418,20 +418,6 @@ def stop(payload):
                 payload[RECORDED] = str(root.resolve())
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
-    if payload.get('stop_hook_active'):
-        return 0, ''
-    if role == 'builder' and today:
-        try:
-            from wuwei import dispatch
-            dispatch.discovery('seat-free', root)
-        except (OSError, ValueError, RuntimeError) as exc:
-            try:
-                state.append_event('discovery.unmeasured', {'reason': str(exc)},
-                                   root, directory=directory)
-            except Exception as log_error:
-                import sys
-                print(f'discovery failure could not be recorded: {log_error}', file=sys.stderr)
-            return 2, f'discovery unmeasured: {exc}'
     return 0, ''
 
 

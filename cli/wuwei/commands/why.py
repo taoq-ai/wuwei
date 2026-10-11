@@ -141,8 +141,8 @@ def item(root, name):
             elif kind == 'state.import' and name in payload.get('items', []):
                 add('queued', f'queued: carried over from an earlier day, goal {row.get("goal", NOT)}')
             if kind == 'plan.added' and payload.get('item') == name:
-                score = data.get('discovery_candidates', {}).get(name, {}).get('score')
-                add('queued', f'queued: goal {row.get("goal", NOT)}, {scored(score)}', rel(day / 'state.json'))
+                add('queued', f'queued: goal {row.get("goal", NOT)}, added by {payload.get("source", NOT)}',
+                    rel(day / 'state.json'))
             if kind == 'worktree.created' and payload.get('item') == name:
                 add('worktree', f'worktree: branch {payload.get("branch", NOT)} from {payload.get("base", NOT)} '
                     f'at {str(payload.get("start", NOT))[:12]}')

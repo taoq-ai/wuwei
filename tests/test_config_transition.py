@@ -372,7 +372,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                              'user_file = "~/.claude.json"\ntimeout_seconds = 60\nblock = ["critical"]\n', 1)
                     + '[pace]\ndefault = "fast"\n[listen]\npoll_seconds = 60\n[responder]\nenabled = true\n'
                     + '[control_plane]\nowner = "T1/U1"\n'
-                    + '[grants]\nstanding = []\n' + repos
+                    + '[grants]\nstanding = []\n' + '[discovery]\nmin_queue = 2\nautostart = "goal"\n' + repos
                     + 'tests = "pytest"\n')  # repos.1.tests has a near key (repos.1.gates)
     clean += repos
     capsys.readouterr()
@@ -382,7 +382,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
                 'grants', 'scanner.mcp.project_file', 'scanner.mcp.user_file',
                 'scanner.mcp.timeout_seconds', 'scanner.mcp.block', 'tracker.required',
-                'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto'):
+                'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 

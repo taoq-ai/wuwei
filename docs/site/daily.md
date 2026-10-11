@@ -104,8 +104,8 @@ section of the day report. When `bin/wuwei doctor` asks after `guards.shadow_day
 ## 3. Plan and the morning gate
 
 Run `/wuwei plan` in Claude Code. The planner registers its session
-(`wuwei plan session`), sweeps live work, asks the lead for candidates, orders them with
-`wuwei rank` and writes the proposal with `wuwei plan propose`. It then asks you one
+(`wuwei plan session`), sweeps live work, asks the lead for candidates and writes the
+proposal with `wuwei plan propose`, which orders the queue by your framework. It then asks you one
 `Morning gate` question, `Approve today's plan as proposed?`. Pick `Change something` to get
 the separate questions on goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
 [envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answer. While `memory/goals.md` has no goals,
@@ -122,8 +122,7 @@ approve it ahead of time: when the seat gets there, the command asks you its own
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
 serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
 joins today's plan. Every builder and gate brief for it quotes your words under `Approved as:`,
-and `wuwei why <item>` shows them. A candidate the discovery sweep found goes through
-`wuwei plan add <item>` and the intraday start policy.
+and `wuwei why <item>` shows them.
 
 The planner asks the morning gate as question cards. After you approve, it records the goals
 and the plan, and you can run the last command yourself. A clean first plan with one
@@ -240,9 +239,8 @@ minutes).
 
 On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
 (spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
-the item's worktree. Under [strict mode](concepts.md#strict-mode) the hooks refuse source edits until the
-steps before implementation are done, and the build loop keeps the item from the gates
-until all of them are. An item the lead marks `tier: light` skips the spec. To skip one
+the item's worktree. Under [strict mode](concepts.md#strict-mode) the build loop keeps the item from the gates
+until all of them are done. An item the lead marks `tier: light` skips the spec. To skip one
 item yourself, run `bin/wuwei plan set <item> spec=skipped --reason <why>` in a host
 terminal; `spec=required` turns the check back on.
 

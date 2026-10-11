@@ -598,7 +598,7 @@ def bash_span(command, session='P'):
 
 @pytest.mark.parametrize('command,findings', [
     ('/plugin/bin/wuwei plan park A --reason fixture', 0),
-    ('/plugin/bin/wuwei rank lead.json', 1),
+    ('/plugin/bin/wuwei goals', 1),
 ])
 def test_start_mode_fails_on_an_off_path_command(command, findings):
     runner = load('headless_e2e')

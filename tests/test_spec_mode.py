@@ -115,16 +115,11 @@ def test_openspec_validation_and_archive(tmp_path):
     assert specmode.status(path, 'openspec', 'A', build=True)['step'] == 'archive'
 
 
-def test_missing_location_and_own_paths(tmp_path):
+def test_missing_location_and_done_steps(tmp_path):
     from wuwei import specmode
     gap = specmode.status(tmp_path, 'speckit', 'A')
     assert gap['step'] == 'specify' and gap['command'] == '/speckit.specify'
     assert specmode.status(None, 'speckit', 'A')['step'] == 'specify'
-    assert specmode.own('speckit', tmp_path, tmp_path / 'specs/001-a/spec.md')
-    assert specmode.own('speckit', tmp_path, tmp_path / '.specify/memory/constitution.md')
-    assert not specmode.own('speckit', tmp_path, tmp_path / 'src/app.py')
-    assert specmode.own('superpowers', tmp_path, tmp_path / 'docs/superpowers/plans/x.md')
-    assert specmode.own('openspec', tmp_path, tmp_path / 'openspec/changes/a/proposal.md')
     path = tree(tmp_path, 'speckit')
     assert specmode.done(path, 'speckit', 'A') == [
         ('specify', 'specs/001-a/spec.md'), ('clarify', 'specs/001-a/spec.md'),
@@ -252,40 +247,13 @@ def write(ws, path, tool='Edit'):
     return payload(ws, 'PreToolUse', tool_name=tool, tool_input={'file_path': str(path)})
 
 
-def test_pre_tool_use_refuses_source_edits_until_the_spec(ws, item, monkeypatch, capsys):
-    code, out = hook('PreToolUse', write(ws, item / 'src/app.py'), monkeypatch, capsys)
-    assert code == 2 and 'specify first: /speckit.specify' in out.err
-    assert [kind for kind, _ in kinds(ws, 'hook.refusal')] == ['hook.refusal']
-    assert hook('PreToolUse', write(ws, item / 'specs/001-a/spec.md', 'Write'), monkeypatch, capsys)[0] == 0
-    assert hook('PreToolUse', write(ws, ws / 'notes.md', 'Write'), monkeypatch, capsys)[0] == 0
-    other = item.parent / 'other'
-    other.mkdir()
-    assert hook('PreToolUse', write(ws, other / 'x.py', 'Write'), monkeypatch, capsys)[0] == 0
-    shutil.copytree(FIXTURES / 'speckit/specs', item / 'specs')
-    assert hook('PreToolUse', write(ws, item / 'src/app.py'), monkeypatch, capsys)[0] == 0
-
-
-def test_spec_guard_decides_by_path_not_by_file_name(ws, item, tmp_path, monkeypatch, capsys):
-    # #649: a scratch analysis.md is an ordinary write; only the path decides.
-    for tool in ('Write', 'Edit'):
-        code, out = hook('PreToolUse', write(ws, tmp_path / 'scratch/analysis.md', tool), monkeypatch, capsys)
+def test_pre_tool_use_never_refuses_an_edit_for_a_missing_spec(ws, item, monkeypatch, capsys):
+    # #843: the gates wait for the spec (dispatch, build loop); source edits are never refused.
+    (ws / '.wuwei/config.toml').write_text('[guards]\nenforce = true\n')
+    for target in (item / 'src/app.py', item / 'scratch/analysis.md'):
+        code, out = hook('PreToolUse', write(ws, target), monkeypatch, capsys)
         assert (code, out.out, out.err) == (0, '', '')
-    assert kinds(ws) == [] and kinds(ws, 'hook.') == []
-    refusals = [hook('PreToolUse', write(ws, item / name, 'Write'), monkeypatch, capsys)
-                for name in ('scratch/analysis.md', 'scratch/notes.txt')]
-    assert [code for code, _ in refusals] == [2, 2]
-    assert refusals[0][1].err == refusals[1][1].err and 'specify first' in refusals[0][1].err
-    (item / 'specs/001-a').mkdir(parents=True)
-    code, out = hook('PreToolUse', write(ws, item / 'specs/001-a/analysis.md', 'Write'), monkeypatch, capsys)
-    assert (code, out.out, out.err) == (0, '', '')
-    shutil.rmtree(item / 'specs')
-    shutil.copytree(FIXTURES / 'speckit/specs', item / 'specs')
-    report = (item / 'specs/001-a/analysis.md').read_text()
-    (item / 'specs/001-a/analysis.md').unlink()
-    code, out = hook('PreToolUse', write(ws, item / 'src/app.py', 'Write'), monkeypatch, capsys)
-    assert code == 2 and 'bin/wuwei spec analysis a' in out.err
-    (item / 'specs/001-a/analysis.md').write_text(report)
-    assert hook('PreToolUse', write(ws, item / 'scratch/analysis.md', 'Write'), monkeypatch, capsys)[0] == 0
+    assert kinds(ws, 'hook.') == [] and kinds(ws, 'spec.') == []
 
 
 def test_post_tool_use_records_each_step_once(ws, item, monkeypatch, capsys):

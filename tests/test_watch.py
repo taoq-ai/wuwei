@@ -117,7 +117,8 @@ def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, c
     assert row['payload']['scanner'] == ('not configured' if scanner == 'none' else
                                         'unmeasured' if scanner == 'failed' else 'measured')
     assert 'watch dead' in capsys.readouterr().out
-    assert events(root, 'discovery.requested')[-1]['payload']['trigger'] == 'sweep'
+    # #843: no intraday intake; the sweep measures no discovery and records none.
+    assert 'discovery' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 
 def test_sweep_failed_discovery_never_clean(case):
@@ -485,23 +486,6 @@ def test_activity_skips_running_adhoc_seat(case):
     assert watch_module().activity(root)[1]['unreadable'] == 0
 
 
-def test_sweep_reports_unmeasured_discovery_with_measured_scanner(case, monkeypatch):
-    root, host, _, _ = case
-    watch = watch_module()
-    known = registry.known
-    monkeypatch.setattr(registry, 'known', lambda kind: ['none', 'ziran']
-                        if kind == 'scanner' else known(kind))
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('\n[adapters]\nscanner="ziran"\n')
-    (workspace.day_dir(root) / 'traces.jsonl').write_text('{}\n')
-    state.append_event('watch: clock', {}, root)
-    host.results['pr'].data['state'] = 'closed'
-    assert watch.sweep(root) == 2
-    row, = events(root, 'watch: sweep')
-    assert any(key.startswith('discovery') and value.startswith('unmeasured')
-               for key, value in row['payload'].items() if isinstance(value, str))
-
-
 def test_session_real_cli_boundary(case):
     import os
     import subprocess
@@ -816,7 +800,7 @@ def trace_sweep_case(case, *, mapped=True, code=1, session=None, agent_id=None):
     from uuid import uuid4
     from fakes.ziran import install
     from wuwei.guards.traces import check
-    from wuwei import discovery, dispatch, steward, obligations
+    from wuwei import steward, obligations
     root, _, _, monkeypatch = case
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[adapters]\nscanner="ziran"\n')
@@ -850,8 +834,6 @@ def trace_sweep_case(case, *, mapped=True, code=1, session=None, agent_id=None):
                         importlib.import_module('adapters.scanner.ziran') if kind == 'scanner'
                         else original(kind, config))
     monkeypatch.setattr(obligations, 'evaluate', lambda root: dict(prs=0, reply_owed=0, visibility_owed=0, unreadable=0))
-    monkeypatch.setattr(discovery, 'discover', lambda root: {'sources': {}, 'candidates': []})
-    monkeypatch.setattr(dispatch, 'discovery', lambda *a, **kw: None)
     monkeypatch.setattr(steward, 'run', lambda *a, **kw: None)
     return session, directory
 
@@ -959,32 +941,6 @@ def test_poll_records_complete_measurement_time(case):
     monkeypatch.setattr(watch, 'owned', failed)
     assert watch.poll(root) == 2
     assert watch.saved(root)['measured_at'] is None
-
-
-def test_tick_runs_pending_seat_free_discovery_once(case):
-    root, _, _, monkeypatch = case
-    watch = watch_module()
-    from wuwei import discovery
-    calls, failing = [], []
-    def intake(root, *, trigger, found=None):
-        calls.append(trigger)
-        if failing:
-            raise ValueError('tracker down')
-        state.append_event('discovery.intake', {'trigger': trigger}, root)
-    monkeypatch.setattr(discovery, 'intake', intake)
-    watch.tick(root)
-    calls.clear()
-    state.append_event('discovery.requested', {'trigger': 'seat-free', 'queued': 0}, root)
-    assert watch.tick(root) == 0
-    assert watch.tick(root) == 0
-    assert calls == ['seat-free']
-    failing.append(1)
-    state.append_event('discovery.requested', {'trigger': 'seat-free', 'queued': 0}, root)
-    assert watch.tick(root) == 2
-    assert watch.tick(root) == 0
-    assert calls == ['seat-free', 'seat-free']
-    unmeasured, = events(root, 'discovery.unmeasured')
-    assert unmeasured['payload'] == {'reason': 'tracker down'}
 
 
 def measured_pr(**changes):
