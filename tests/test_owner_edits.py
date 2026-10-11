@@ -64,14 +64,26 @@ def test_approve_records_the_gate_goals(tmp_path, monkeypatch, posture):
     assert integrity.workspace_check(tmp_path).exit == 0
 
 
-def test_approve_keeps_defined_goals(tmp_path, monkeypatch):
+def test_approve_records_goals_edited_in_the_session(tmp_path, monkeypatch):
+    """#833: goals the planner changed on the owner's word are recorded by the gate approval."""
     from wuwei import plan
     base, draft = gated(tmp_path, monkeypatch)
     defined = (tmp_path / draft).read_text()
     (base / 'memory/goals.md').write_text(defined)
-    before = history(base)
+    assert integrity.workspace_check(tmp_path).exit == 1
     plan.approve(['A'], tmp_path, goals_confirmed=True)
     assert (base / 'memory/goals.md').read_text() == defined
+    assert 'Edited-by: owner' in history(base)
+    assert integrity.workspace_check(tmp_path).exit == 0
+
+
+def test_approve_leaves_committed_goals_alone(tmp_path, monkeypatch):
+    from wuwei import plan
+    base, draft = gated(tmp_path, monkeypatch)
+    plan.approve(['A'], tmp_path, goals_confirmed=True)
+    before = history(base)
+    from wuwei import promotion
+    assert promotion.save_goals(tmp_path, (base / 'memory/goals.md').read_text()) is False
     assert history(base) == before
 
 

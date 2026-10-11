@@ -7,7 +7,7 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def register(subparsers):
-    subparsers.add_parser('promote', help='promote memory proposals').set_defaults(func=run)
+    subparsers.add_parser('promote', help='land charter proposals').set_defaults(func=run)
 
 
 def run(args):

@@ -371,7 +371,8 @@ def test_approve_refused_when_the_goals_commit_fails(empty, monkeypatch):
     monkeypatch.setattr(registry, 'load', lambda kind, config: refused if kind == 'vcs' else load(kind, config))
     plan.propose(lead(), empty)
     before = (empty / '.wuwei/memory/goals.md').read_bytes()
-    with pytest.raises(OSError, match='commit refused'):
+    with pytest.raises(OSError, match='commit refused; the goals are not recorded and the day stays '
+                                      'unapproved; run bin/wuwei doctor, then plan approve again'):
         plan.approve(['A'], empty, goals_confirmed=True)
     assert not state.read_state(empty).get('gate_approved')
     assert (empty / '.wuwei/memory/goals.md').read_bytes() == before

@@ -66,7 +66,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
                        and bool(paths) and all(_workspace_path(p) for p in paths))
         case ('commit', '--allow-empty', '-m', 'WUWEI promotion\n\nPromoted-by: wuwei'):
             allowed = local
-        case ('log', '-z', '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00', '--name-only', '--no-renames', 'HEAD', '--', 'charters', 'memory', 'goals', 'voice'):
+        case ('log', '-z', '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00', '--name-only', '--no-renames', 'HEAD', '--', 'charters', 'memory', 'goals'):
             allowed = local
         case ('rev-parse', '--absolute-git-dir') | ('rev-parse', '--path-format=absolute', '--git-common-dir') | ('rev-parse', '--path-format=absolute', '--git-path', 'hooks'):
             allowed = True
@@ -804,7 +804,7 @@ def read_tree(repo, ref, paths, root=None):
     return tree
 
 
-_WORKSPACE_DIRS = ('charters', 'memory', 'goals', 'voice')
+_WORKSPACE_DIRS = ('charters', 'memory', 'goals')
 _PROMOTION_MESSAGE = 'WUWEI promotion\n\nPromoted-by: wuwei'
 _OWNER_EDIT_MESSAGE = _PROMOTION_MESSAGE + '\nEdited-by: owner'
 

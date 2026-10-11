@@ -418,6 +418,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         if set(imported) & set(items):
             raise state.StateError('imported and approved item ids overlap; remove the overlapping ids from --items, or run without --import-yesterday')
     current, reasons = state.read_state(root), []
+    if not current.get('gate_approved'):  # #833: the gate answer records the goals it approved
+        from wuwei import promotion
+        try:
+            promotion.save_goals(root, text)
+        except OSError as exc:
+            raise OSError(f'{exc}; the goals are not recorded and the day stays unapproved; '
+                          'run bin/wuwei doctor, then plan approve again') from exc
     if (tracker.in_force(config) and workspace.posture(config)[0] != 'strict'
             and not current.get('gate_approved')):
         from wuwei import drafts
@@ -432,9 +439,6 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
         raise state.StateError('\n'.join(reasons))
-    if provisional and not current.get('gate_approved'):
-        from wuwei import promotion
-        promotion.save_goals(root, text)  # #833: the approval records the goals the gate showed
 
     def update(current):
         if current.get('gate_approved'):

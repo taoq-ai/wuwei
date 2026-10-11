@@ -58,7 +58,8 @@ fast ones.
 Any other value is one `wuwei config set <key> <value>`, on its card too. Credentials go in
 `.wuwei/env`; `bin/wuwei config check` names each variable the selected adapters still need.
 You do not write goals by hand: the lead proposes them at the first morning plan and
-`wuwei plan approve` records the ones you approve. You can edit `.wuwei/memory/goals.md` later.
+`wuwei plan approve` records the ones you approve. A later change to `.wuwei/memory/goals.md` is
+recorded by the next gate approval.
 [Configuration](configuration.md) lists every key.
 
 Then run `bin/wuwei doctor`. A missing calibration warns `never applied` with the fix

@@ -21,6 +21,8 @@ def save_goals(root, text):
     previous = target.read_text(encoding='utf-8')
     vcs = registry.load('vcs', workspace.load_config(root))
     if text == previous:
+        if not (root / '.wuwei/.git').is_dir():
+            return False  # no workspace history, so no unrecorded edit to commit
         result = vcs.workspace_changes(root / '.wuwei', root=root)
         if result.exit:
             raise OSError(result.reason)

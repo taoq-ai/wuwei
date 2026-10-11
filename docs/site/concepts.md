@@ -209,7 +209,7 @@ For example, a seat writes "I will ship it tomorrow". To a client channel it is 
 
 ## Memory
 
-`wuwei init` creates `.wuwei/memory/` with a spine, index, goals and changelog. Day records live under `.wuwei/days/`. Settled facts belong in the spine; procedure belongs in charters. The CLI provides `index`, `payload` and `promote` commands. Goals are yours: the lead proposes, the morning gate confirms and `wuwei plan approve` records them, and you can edit `memory/goals.md` later. The index is generated: one line per past day.
+`wuwei init` creates `.wuwei/memory/` with a spine, index, goals and changelog. Day records live under `.wuwei/days/`. Settled facts belong in the spine; procedure belongs in charters. The CLI provides `index`, `payload` and `promote` commands. Goals are yours: the lead proposes, the morning gate confirms and `wuwei plan approve` records them; a later change to `memory/goals.md` is recorded by the next gate approval. The index is generated: one line per past day.
 
 A session loads the spine, then the past-day lines of the index and the last promote line, within `memory.budget_tokens`; over it today is left out first. Rules live only in charters: the retro writes charter proposals and `wuwei promote` lands them. `wuwei memory export --claude` writes the charter rules into a marked block in `CLAUDE.md`, so the harness memory sees them; the records stay the one source and nothing reads the block back.
 
