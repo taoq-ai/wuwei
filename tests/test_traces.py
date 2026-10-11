@@ -875,38 +875,20 @@ def test_trace_slow_is_reserved():
     assert main(['event', 'traces.slow', '{}']) == 1
 
 
-def test_digest_counts_calls_without_reading_events(trace_workspace, call_payload, monkeypatch):
-    """#659: below a steward boundary a traced call reads neither traces.jsonl nor events.jsonl."""
+def test_tool_calls_never_mark_the_steward_due(trace_workspace, call_payload):
+    """Part 14: the steward runs at sweep and close; a traced call reads no events and writes none."""
     from wuwei import watch
     state.append_event('x.y', {}, trace_workspace.parents[2])
     reads = []
-    monkeypatch.setattr(watch, 'records', lambda path: reads.append(path) or [])
-    for _ in range(5):
-        assert recorder()(call_payload) == (0, '')
+    original = watch.records
+    watch.records = lambda path: reads.append(path) or original(path)
+    try:
+        for _ in range(260):
+            assert recorder()(call_payload) == (0, '')
+    finally:
+        watch.records = original
     assert reads == []
-    assert json.loads((trace_workspace / 'traces.digest.json').read_text()) == {'tool_calls': 5, 'steward': 0}
-
-
-@pytest.mark.parametrize('digest', [None, '{"tool_calls": -1}', 'not json'])
-def test_missing_or_invalid_digest_recounts_spans(trace_workspace, call_payload, digest):
-    trace_workspace.mkdir(parents=True)
-    (trace_workspace / 'traces.jsonl').write_text('{}\n' * 3)
-    if digest is not None:
-        (trace_workspace / 'traces.digest.json').write_text(digest)
-    assert recorder()(call_payload) == (0, '')
-    assert json.loads((trace_workspace / 'traces.digest.json').read_text())['tool_calls'] == 4
-
-
-def test_steward_check_is_skipped_over_budget(trace_workspace, call_payload, monkeypatch):
-    from wuwei.guards import traces
-    root = trace_workspace.parents[2]
-    (root / '.wuwei/config.toml').write_text('[steward]\nevery_tool_calls = 1\n')
-    with monkeypatch.context() as patch:
-        patch.setattr(traces, 'BUDGET_MS', 0)
-        assert recorder()(call_payload) == (0, '')
-    assert not (trace_workspace / 'events.jsonl').exists()
-    assert recorder()(call_payload) == (0, '')
-    assert [row['kind'] for row in error_events(trace_workspace)] == ['steward.due']
+    assert 'steward' not in (trace_workspace / 'events.jsonl').read_text()
 
 
 def test_bound_seat_is_not_rewritten(trace_workspace, call_payload):

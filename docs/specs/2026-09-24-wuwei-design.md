@@ -26,7 +26,7 @@ that engagement ships in this repository.
   are checked for dangerous tool sequences, and items that build agents are gated by an
   agent security scanner (ZIRAN by default).
 - G4. Memory that outlives the session: episodes, procedure and settled facts, each with one
-  home, one writer and a consolidation cadence.
+  home and one writer.
 - G5. Works with only `git`, `gh` and `python3`. Every other integration is an optional
   adapter.
 
@@ -77,7 +77,7 @@ wuwei/
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json
   agents/            9 role agents, generated from charters/, each with a tool allowlist
-  skills/            wuwei-init, wuwei-plan, wuwei-report, wuwei-retro, wuwei-consolidate
+  skills/            wuwei-init, wuwei-plan, wuwei-report, wuwei-retro
   hooks/hooks.json   shims that call the CLI and nothing else
   charters/          _common.md, _common-authoring.md, one file per role
   cli/wuwei/         stdlib Python package, entry point `wuwei`
@@ -121,11 +121,10 @@ Code repos receive only worktrees, branches and pull requests.
   charters/            local overrides layered over the plugin charters
   memory/
     spine.md           the structural model, loaded in full every session
-    goals.md           the owner's goals (5.7); edited only by the owner
-    voice.md           the owner's voice per audience (4.8); edited only by the owner
-    index.md           generated; one line per note and per past day
-    notes/*.md         settled facts with frontmatter
-    archive/           retired notes; moving one back revives it
+    goals.md           the owner's goals (5.7); plan approve or the owner writes it
+    index.md           generated; one line per past day
+    notes/baseline.md  the owner's baseline (5.6)
+    archive/           dropped charter rules
     ledger.jsonl       append-only: every promoted or rejected change, with evidence
     CHANGELOG.md       every dated rule change, verbatim; never loaded by seats
   days/YYYY-MM-DD/
@@ -181,8 +180,9 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
+| PostToolUse | `AskUserQuestion` | never refuses a well-formed card; records the owner's answer to an Owner step card for the command that asked it (#831) |
 | PostToolUse | Write, Edit, MultiEdit, NotebookEdit or Bash in an item worktree | never refuses; records each spec step whose artifact appeared (5.10) |
-| SubagentStop | a seat finishes | its three-line retro note is missing, or a builder's last message does not name its spec artifacts (5.10); otherwise records it, flagging a last message that asks the owner a question without a decision id (5.8) |
+| SubagentStop | a seat finishes | its three-line retro note is missing, or a builder's last message does not name its spec artifacts (5.10); otherwise records it |
 | SessionStart | new session | never refuses; prints the memory payload and its size, flags a dead watch process and orphans from the last close |
 | PreCompact | before summarising | never refuses; flushes pending state and events |
 | Stop | every planner turn end (4.2.1), and day close | any owned PR has an overdue action; at day close also reply or visibility obligations owed, or the retro did not land |
@@ -234,7 +234,7 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   queues every other state with its evidence as `shepherd.overnight` events, which open the
   next morning plan. It never replies, fixes, rebases, starts a seat or calls a model.
 - Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
-  action past its deadline and no decision record parking it, naming the PR, its state and the
+  action past its deadline and no park, naming the PR, its state and the
   action. The day close additionally requires every owned PR merged, parked or explicitly
   carried to the next day.
 
@@ -245,17 +245,13 @@ deadline, so the owner never checks PRs one by one.
 
 Configured in `config.toml`: the owner's name and pronouns (never used in third person in
 text sent as the owner), patterns that reveal the routine's internal state (drafts pending,
-queues, which agent wrote what), banned characters, and a maximum length per channel. The
-lint also applies the mechanical checks of the owner's voice for the message's audience
-(4.8).
+queues, which agent wrote what), banned characters, and a maximum length per channel.
 
 The internal-state patterns (`outward.patterns`, empty by default) apply by kind and
 audience (#533). Tracker, docs and code-host writes are the team's records and never read
 them. On chat and mail, a client or public reader gets a card naming the audience and the
 matched word, decided with the approval tier, so one approval sends it. A team or company
-reader gets the message; under `autonomy.mode = "supervised"` an `outward.lint` event and a
-warning name the word, and under autonomous nothing is recorded. The strict posture keeps
-the refusal. A message only the owner reads is never checked.
+reader gets the message. The strict posture keeps the refusal. A message only the owner reads is never checked.
 
 ### 4.4 Profiles
 
@@ -300,8 +296,8 @@ test runner allows arbitrary code, so it would add refusals without adding a gua
 WUWEI may merge a pull request when the policy clears it; otherwise the merge is a decision
 for the owner. The policy is one CLI function, `wuwei merge check <pr>`, used by the merge
 guard, the shepherd and the report; `wuwei merge <pr>` runs the check and merges in one step.
-In decision terms this policy is the `merge` class (5.8.1), recorded under the mandate, with
-the conditions below unchanged.
+A merge the policy does not clear is the owner's decision on the Owner step card of
+`wuwei merge <pr>` (5.8), with the conditions below unchanged.
 
 Eligibility, per repository in `config.toml` (default off):
 
@@ -388,42 +384,13 @@ standing line, seat, default or hook answers for the owner.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
-Everything sent as the owner (chat posts, PR comments and replies, tracker comments, digests,
-responder drafts) is written in one voice, so the owner reads as one consistent person.
-
-Home. `memory/voice.md`, owned by the owner like `goals.md`: seats and the steward propose
-changes (6.8) and the owner approves them at the morning gate. One profile per audience
-(`internal`, `external`, `review`, `tracker`, plus any named channel from config), each with
-register, length target, structure (for example answer first, one ask per message), phrases
-the owner uses, phrases the owner never uses, and 5 to 10 exemplars of the owner's real
-messages with personal data redacted. A shared `never` list holds machine tells (stock
-openers and closers, hedging preambles, summary sign-offs, filler praise). The profile stays
-in the workspace, never in this repository.
-
-Learning. `wuwei voice learn` reads only the owner's own sent messages and PR comments
-through the chat and tracker adapters, read-only, and writes a proposal for each audience.
-Every draft the owner edits before sending is recorded as a before and after pair; the
-steward turns repeated edits into voice proposals, so the profile converges on the owner.
-
-Enforcement. Seats that write outward text (shepherd, planner digests, responder) load the
-profile for the audience. The outward-text lint (4.3) checks what is mechanical: length,
-`never` phrases, required structure, banned characters. Tone cannot be linted, so under
-`strict` every message that is not mechanical stays a draft the owner approves (the
-approved-draft rule), and the draft shows which profile it was written against.
-
-Disclosure. `voice.disclosure = "none" | "footer" | "per-channel"` (default `per-channel`:
-`none` on internal channels, a short footer marking agent-sent messages on external ones).
-Substantive claims, disagreement and scope statements are always the owner's own, through the
-approved-draft rule, whatever the disclosure setting.
-
-Metrics (steward): share of drafts sent without edit, and the size of the owner's edits to the
-rest, per audience. Both should rise as the voice converges; a fall is a steward finding.
+Retired by #789 (owner, 2026-10-11, #833).
 
 ### 4.9 Outbound approval tiers (owner, 2026-09-28)
 
 Every message sent as the owner is either auto-sent or drafted for approval. The tier is
 decided by one CLI function (`wuwei outbound tier`) from the channel, the audience and the
-message, before the outward-text lint and the voice checks (4.3, 4.8) run.
+message, before the outward-text lint (4.3) runs.
 
 - Auto-send: channels the owner marks as work channels in config (for example PR and review
   channels, the team engineering channel) and code-host threads on the owner's team's pull
@@ -458,7 +425,7 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 | sentinel-security | per gate | one verdict file; runs the scanner when `agent_surface` is set |
 | sentinel-goal | per docs gate | one verdict file |
 | shepherd | per PR set | PR raise, reviewer requests, thread replies, obligation ledger |
-| steward | at each sweep, at close and every N tool calls, fresh seat | steering notes, the decision queue, the retro and charter proposals |
+| steward | at each sweep and at close, fresh seat | the retro and charter proposals |
 
 ### 5.2 Flow
 
@@ -470,36 +437,19 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 /wuwei report -> steward retro -> planner report -> Stop guard
 ```
 
-Briefs (amended 2026-10-01, #301). Every seat brief carries a mandate block generated from
-`autonomy.mode` and the owner's calibration interview answers: what the seat decides alone
-(what the brief, its charter and the engineering standards already answer), what it
-decides and records (under `autonomous`: two-way open questions inside the item, as
-assumptions, 5.3, and records of class `retry`, `park`, `accept-residual` or `merge`; under
-`supervised`: none), and what goes to the owner (one-way doors, the interview's
-trust-surface areas and owner-run commands, records of every other class; under
-`supervised`, every class). It closes with: nothing else is a question. A
-seat does not ask what it may decide.
+Briefs (amended 2026-10-01, #301; amended 2026-10-11, #789 part 14). Every seat brief carries a
+mandate block of three fixed lines: decide alone what the brief, the charter and the
+standards answer; record two-way choices under `Assumptions:` in the spec or PR body (5.3);
+name a one-way, scope, goal or trust-boundary question in the result (a sentinel's ESCALATE,
+a builder's `Blocked:` line), which `wuwei next` asks the owner. It adds the commands the
+owner runs (`deploy.deny`). A seat does not ask what it may decide.
 
 Records (owner, 2026-10-03, #357). The records under `.wuwei/` are written by the workflow
 from the owner's answers; no step asks the owner to create or edit a file by hand. The owner
-answers questions (in the session, in the DM, or y/N at a terminal) and may edit any record
-afterwards; the planner records. The host terminal remains for the strict posture and for
-credentials. (owner, 2026-10-05, #529) Outside strict the owner's answer on a card is the
-confirmation of the config write its record command makes: `calibrate --answer` for an
-interview card, `config set --from-card D-n` for a decision whose options carry a `Value:`
-row `KEY = VALUE` (or, as before, a title that reads `KEY = VALUE`). The answer is recorded
-hashed on the planner's session row when the card is answered, and the command writes only
-that answer, as shown (a list is replaced, not extended); an answer that sets nothing (Defer,
-Keep) records the outcome only. A `config set` in a session without a card exits 1 naming the
-card; under strict the command is printed for a host terminal. (#600) A config record whose
-`Previous:` line records the key's value before the change is two-way: its undo is the same
-`config set` back to that value; the first route stores it two-way and, without a better
-class, `approach`. A config record is never taken under the mandate; it waits for the
-owner's answer on its card. `repos.N.fast_checks = []` means none configured: items build,
-the PR body says `checks: none configured`, CI and the gates are the evidence; strict asks the
-repository's fast-checks card once before its first launch. `calibrate --questions` writes
-that card (detected checks or none, with the reason), taken under the mandate in autonomous
-mode.
+answers questions in the session, on the Owner step card of the command that needs the
+answer (#831), and may edit any record afterwards; the planner records.
+`repos.N.fast_checks = []` means none configured: items build, the PR body says
+`checks: none configured`, CI and the gates are the evidence.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
@@ -522,23 +472,23 @@ the seats (#528); no day value adjusts either.
 - Pre-PR gate set: arch, quality and security in parallel on every code item. After the PR is
   open, fix rounds and deltas are arch-only.
 - Assume and record (amended 2026-10-01, #301). "When unsure, it is one-way" (5.8) still
-  decides reversibility. An open question on a two-way door inside the item (the `approach`
-  class under `autonomy.mode = autonomous`; under supervised, an `approach` record) is not asked:
+  decides reversibility. An open question on a two-way door inside the item is not asked:
   the seat takes its recommendation, records it under `Assumptions:` in the item's spec or
   PR body (what was assumed, why, what would overturn it) and continues. Gates review
   assumptions as findings. Only a one-way door, a trust-surface area, or a question outside the item (its agreed
-  scope, the queue, a person), becomes a decision record (5.8).
+  scope, the queue, a person) reaches the owner, as a sentinel's ESCALATE or a builder's
+  `Blocked:` line that `wuwei next` asks (5.8).
 - Negotiation budget (amended 2026-10-01, #301): one fix round plus one delta check per
   gate. Residual non-blocking findings become review notes in the PR body. A trust-boundary
   security finding always blocks. The verdict lint refuses a finding without a failure
   scenario and a verdict without a probe or mutation row. Exceeding the budget is a design
-  reconsideration, never another round: the item parks with a decision record stating why
-  the approach keeps leaking and what replaces it, agreed with the owner before more code,
+  reconsideration, never another round: the CLI parks the item with the reason stating why
+  the approach keeps leaking; what replaces it is agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
-  Amended (owner, 2026-10-10, #732): a PARK or ESCALATE verdict is a decision card that
-  dispatch next writes from the verdict (fix or park; the planner answers below strict, the
-  owner under strict); a blocked item with no round left parks with its record; every
-  escalate names the record and the command that answers it, and build next prints the same.
+  Amended (owner, 2026-10-10, #732; owner, 2026-10-11, #789 part 14): a PARK verdict parks
+  the item in code; an ESCALATE verdict asks the owner on the Owner step card of
+  `dispatch next`, which `build next` names too; a blocked item with no round left parks
+  in code and names `wuwei plan resume`.
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
 - Process depth follows the tier (owner, 2026-10-08, #567). The tier (#280, from the diff,
   the repository floor and the lead tier) decides the process depth, not only the gate
@@ -591,7 +541,7 @@ the seats (#528); no day value adjusts either.
   `build.max_iterations` (default 8). Each iteration's failing checks are hashed into an
   error signature (check name, failing test ids, normalised error text); the same signature
   in `build.stuck_after` consecutive iterations (default 3) is a stuck loop: the item parks
-  with a decision record instead of spending more budget. Progress, not activity, keeps a
+  with its reason instead of spending more budget, and `wuwei plan resume` asks the owner. Progress, not activity, keeps a
   seat running.
 - Step loop amendment (owner, 2026-09-29). Claude Code subagents are the primary
   runtime. `wuwei build next <item>` returns one JSON action: `launch` with the shared
@@ -633,27 +583,24 @@ the seats (#528); no day value adjusts either.
 
 ### 5.4 When the user is asked
 
-At the morning gate (goals, ranked queue, seat policy); for decisions the mandate does not
-take (5.8), one question per decision, recommended option first, pending decisions
-batched, pre-triaged by the steward; for work outside the goals or above the auto-start bar
-(5.7); for merges the merge policy does not clear. Never for what a seat's mandate lets it
-decide (5.2). Otherwise the session is silent, with a
-digest at most every two hours that lists the two-way decisions taken. Under
-`autonomy.mode = autonomous` a decision the mandate covers (5.8, decision classes) is never a
-card (owner, 2026-10-05, #530).
+What reaches the owner comes from `wuwei next`, one named decision at a time, on the Owner
+step card of the command that needs it (5.8): the morning gate (goals, ranked queue, seat
+policy); work outside the goals or above the auto-start bar (5.7); a merge the merge policy
+does not clear or one the owner keeps; an ESCALATE verdict; a parked item to resume; a scope
+change a reviewer asks on a PR. Never for what a seat's mandate lets it decide (5.2).
+Otherwise the session is silent (owner, 2026-10-11, #789).
 
 ### 5.5 The steward
 
 Outside the dispatch path. Reads `events.jsonl`, verdicts, traces and CLI metrics: fix rounds
 per item, hand-backs per PR, time in phase, verdict-lint rejections, decisions reaching the
-user per day, build-loop iterations and stuck parks per item, and cost per item, role and day. Writes steering notes the planner must acknowledge, the pre-triaged decision
-queue, and the retro. Charter and note changes it only proposes; `wuwei promote` lands them
+user per day, build-loop iterations and stuck parks per item, and cost per item, role and day. Writes
+the retro. Charter and note changes it only proposes; `wuwei promote` lands them
 (section 6.8). Never briefs a seat, never dispatches, never changes item state. A day on
 which the steward did not run is a finding in the next plan.
 
-The steward runs at each sweep, at close, and after every `steward.every_tool_calls` tool
-calls counted from `traces.jsonl` (default 50), so a busy hour gets a reflection and an idle
-one does not.
+The steward runs at each sweep and at close. It never gates a dispatch: the round cap (5.3)
+is the budget (owner, 2026-10-11, #789).
 
 ### 5.6 Outcome metrics (owner, 2026-09-28)
 
@@ -691,20 +638,18 @@ beside the owner's baseline:
   of those items (the measure above); deployment frequency and lead time to deploy read the
   code host's deployments, or its published releases when a repository never deployed;
   time to restore stays unmeasured until on-call incidents exist (#415). The report and the
-  retro show the table under `## DORA (last 28 days)`, the week digest ends its Metrics with
-  it, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
+  retro show the table under `## DORA (last 28 days)`, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
   refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
-`memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
+`memory/notes/baseline.md`, never in this repository. A metric that
 cannot be computed reports "unmeasured", never zero.
 
 ### 5.7 Goals, discovery and prioritisation (owner, 2026-09-28)
 
 Goals. `memory/goals.md` holds the owner's goals, one block each: id (`G-n`), outcome, measure,
 target, date, priority. While it has none, the lead proposes goals in its JSON, the morning
-gate shows them and the planner records the approved blocks with `wuwei goals edit --file`
-(5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
+gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
 Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
@@ -743,123 +688,25 @@ flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to
 
 Anything that does not start joins the next decision batch as a proposed item.
 
-### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282 and #301; amended 2026-10-04, #475)
+### 5.8 Owner decisions (owner, 2026-10-11, #789 part 14; replaces the decision framework of 2026-09-28)
 
-Every decision that the owner or the mandate answers is a record
-`days/<date>/decisions/D-<n>.md` in one shape (MADR with a Kepner-Tregoe evaluation); a
-two-way open question inside the item is an assumption instead (5.3):
+A seat assumes and records a two-way choice in its spec (5.3); it names a one-way, scope,
+goal or trust-boundary question in its result. No seat writes a decision record, routes one
+or cites one. What reaches the owner comes from `wuwei next` as one named decision, on the
+Owner step card of the command that applies the answer; the CLI applies the safe choice on No:
 
-- `Question:` one line; `Context:` what forces the decision, with evidence paths
-- `Class:` one of the decision classes listed in 5.8.1
-- `Role:` optional, one line: the role (charter name) that wrote the record
-- `Options:` at least two, one of them doing nothing or deferring, as the table
-  `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
-  backtick, `$` or backslash), why the option scores as it does against the musts and wants,
-  and what changes if it is chosen, what it costs and what it closes (owner, 2026-10-04, #475)
-- `Musts:` pass/fail criteria that filter options out
-- `Wants:` weighted criteria (weights 1 to 10), each option scored 0 to 10 against each
-- `Recommendation:` the option with the highest weighted score among those passing every
-  must, with `Confidence: high|medium|low`, and `Reasoning:` one line naming the wants that
-  decided it and what would flip it (owner, 2026-10-04, #475)
-- `Lenses:` for an engineering class (`design`, `boundary`, `refactor`, `dependency-bump`),
-  the table `Lens | <option ids>` with one line per option for each configured lens. The
-  defaults are SOLID (which principle it keeps or breaks), twelve-factor (config, backing
-  services, processes and dev-prod parity where relevant), YAGNI (what it builds that no item
-  needs yet) and ponytail (a simpler thing that works: stdlib before custom, native before a
-  dependency). `[decisions.lenses]` maps a name to its one-line question: a name adds a lens,
-  an empty question drops one. Prioritisation keeps its framework's evidence lines (5.6) and
-  reversibility keeps the one-way or two-way test; neither is a configured lens
-  (owner, 2026-10-04, #475)
-- `Reversibility: one-way|two-way`, `Blast radius:` who or what is affected if it is wrong
-- `Pre-mortem:` the most likely way the recommendation fails
-- `Revisit:` a date or trigger that reopens it
-- `Decided-by:` `seat`, `owner` or `mandate`; `Outcome:` once taken
+| Decision | The card | Yes | No |
+|---|---|---|---|
+| Morning gate | `wuwei plan gate` | `plan approve` | change something |
+| Merge policy not cleared, owner_merge | `wuwei merge <pr>` | merges | `plan park` |
+| ESCALATE verdict, rounds left | `wuwei dispatch next <item>` | opens the fix round | parks the item |
+| Round cap spent, or another park (build limit, scanner chain, owner park) | `wuwei plan resume <item>` | resumes the item | it stays parked |
+| Scope change a reviewer asks on a PR | `wuwei pr act <pr>` | opens a fix round for it | the thread waits for the owner |
 
-When unsure, it is one-way.
-
-Decision classes (owner, 2026-10-05, #530). `decision route` derives an MIT CISR class from
-two axes already in the record. Risk is low when the record is two-way and its blast radius
-starts with item, own branch, own PR or day; anything else is high. Ambiguity is low when
-Confidence is not low and the margin (5.8.1) is at least 0.2. Routine is low on both,
-Consequential is high risk with low ambiguity, Exploratory is low risk with high ambiguity and
-Strategic is high on both. The classes below (5.8.1) `retry` (a fix round after FIX verdicts),
-`approach` (a builder's task round, a choice between seat procedures), `park` (a parked item's
-next step) and `accept-residual` are Routine by definition. `autonomy.mode` holds the owner's
-setup answer, default `autonomous`: a Routine, Consequential or Exploratory record whose
-recommendation scores ahead is taken as recommended, written `Decided-by: mandate` by the CLI,
-listed in the digest and in the day report with the reversal command, and never a card; a tie,
-a Strategic record, a one-way record (an `unsure` one too, unless its class is Routine by
-definition) and a record written `Decided-by: owner` (a security finding) go to the owner with
-the lens lines. A one-way record is never Routine by definition. Under `supervised` routing stays
-as before this amendment. The lint OK line names the class, and a record without a
-recommendation is refused with "add the recommendation and the reasoning".
-
-Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
-missing any field, with an unknown class, with fewer than two options, or whose
-recommendation is not the top passing option by the stated weights (the CLI recomputes the
-score). A record written from 2026-10-04 on is also refused without `Class:`, the four option
-columns, unique titles, `Reasoning:` or, for an engineering class, exactly one lens row per
-configured lens; earlier records still count in the history readers (owner, 2026-10-04,
-#475). The owner's question card labels each option with its title, the recommended one first
-and marked (Recommended); each description is the rationale, the consequence and the lens
-lines, cut to their first sentence at brief verbosity; the question ends with the first
-sentence of the reasoning. A seat question that is not a decision record is refused, in every runtime: a
-PreToolUse guard refuses `AskUserQuestion` and every control-plane escalation that does not
-cite a decision id whose record passes the lint, and SubagentStop flags a seat whose last
-message asks the owner a question without one (Codex and headless runs). The steward's
-metrics add: decisions per day by class and reversibility, owner asks per item, and
-unnecessary asks (an owner answer equal to the recommendation).
-
-#### 5.8.1 Decision classes (owner, 2026-10-11, #814)
-
-Classes are a fixed list; a new class is an amendment to this section, not config.
-
-| Class | Decides |
-|---|---|
-| `approach` | an implementation choice inside the item's agreed scope; an assumption, not a record, under `autonomy.mode = autonomous` (5.3) |
-| `retry` | re-running a failing check |
-| `park` | parking an item, such as a stuck build loop (5.3) |
-| `accept-residual` | keeping a non-blocking residual finding as a review note (5.3) |
-| `defer` | moving an item or a follow-up to a later day |
-| `scope-cut` | dropping part of an item's agreed scope |
-| `re-plan` | changing the approved queue |
-| `dependency-bump` | changing a dependency manifest or lockfile |
-| `design` | an architecture, interface or data-shape choice that outlives the item (owner, 2026-10-04, #475) |
-| `boundary` | moving or changing a module, service or ownership boundary (owner, 2026-10-04, #475) |
-| `refactor` | restructuring code without changing behaviour (owner, 2026-10-04, #475) |
-| `merge` | merging a pull request (4.6) |
-| `message` | sending or replying to a person; the 4.9 tiers are unchanged; an external confirmation holds no reversible work (5.8.2) |
-| `other` | anything no class above covers |
-
-The margin is the recommendation's weighted score minus the best other option's, passing its
-musts or not, over 10 times the sum of the weights.
-
-Routing is fixed in code (5.8, decision classes); no class level, budget, calibration or
-shadow exists.
-
-#### 5.8.2 External waits and negotiation loops (owner, 2026-10-01, #301)
-
-External confirmation. A confirmation from a person outside the loop (anyone but the owner
-and the seats: a client, a stakeholder) is never a precondition a seat may impose. The
-question becomes a `message` record (a draft the owner sends, 4.9; always the owner's); the item
-carries `assumption: external` with the recommended reading, and reversible work on it
-continues. Time box: when `decisions.wait_hours` pass without an answer (default 24,
-counting weekday hours in `owner.timezone`, one working day), the watch sweep (4.2) confirms
-the item's `assumption: external` reading (the draft stays unsent with the owner, 4.9) only
-when that reading is two-way and it touches no scope agreed with other people, no trust
-boundary and nothing outside the goals; otherwise it parks the item with a decision
-record; either way the CLI writes an event.
-
-Negotiation loops. At each steward run (5.5) the CLI counts, per item over the last
-`steward.loop_window_hours` (default 4): decision and clarification records naming the
-item, gate verdicts on it, re-dispatches of a role already dispatched on it, and fix-round
-continuations (gate or PR feedback, not the build loop's fast-check backpressure, which 5.3
-bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
-gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
-the CLI, naming the counts and the last two exchanges. It is a `warn` (owner, 2026-10-10, #789), and a page when the
-item is past the date of the goal it serves (5.7); the control plane sent the owner's DM
-the same summary within `control_plane.content` (15.4) (retired by #789, owner, 2026-10-10); the status line shows `loops N`.
-The signal reports; the negotiation budget (5.3) is what stops the rounds.
+A PARK verdict parks the item in code with its reason and no card; the report and `why` show
+it. The process checks stay in code: the round cap, gates at head, the merge policy. The
+learning cards of `outbound learn` and the MCP registry cards keep their records until their
+parts of #789 land.
 
 ### 5.9 Cockpit, signals and briefings (owner, 2026-09-28) (cockpit, menu bar and briefings retired: owner, 2026-10-11, #789)
 
@@ -869,10 +716,10 @@ attention is demanded only for what matters.
 Signals. Every event is classified once by `signal.classify` into a delivery tier and
 an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
 security finding fired, a base branch went red after an auto-merge, an owner decision
-blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
+blocks a running item, the dead-man switch
 or the budget cap hit), `warn` (owner, 2026-10-10, #789) (recorded in the day's event log for `why` and the retro,
-never a list and never on the status line: an owner decision not yet blocking, a negotiation
-loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
+never a list and never on the status line: an owner decision not yet blocking, a merge the
+policy does not clear, work outside the goals, budget
 at 80 percent, a person's ask nearing its reply window, a telemetry week ready to send
 (5.13)), `silent` (visible, never pushed:
 normal progress, auto-merges that went well). Lanes: Work (items by phase),
@@ -896,8 +743,7 @@ Surfaces, all reading the same classification:
   cut at whole names; #658), then pages (owner, 2026-10-10, #789)
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
-  sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
-  and the plugin and template versions. It shares the hook latency
+  sessions, the next person reply due, the next meeting and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
   default, messaging adapters in M5 (retired by #789, owner, 2026-10-10)), plus approvals.
@@ -1019,13 +865,11 @@ recorded worktree contains the path):
 written only by the CLI. The artifacts are written by the seat: they show the work was
 done, never that the owner agreed; only `plan set` lowers the requirement for one item.
 
-Engine presence. `wuwei setup` and `wuwei doctor` look for each engine in each configured
+Engine presence. `wuwei doctor` looks for each engine in each configured
 repository: `.specify/` for spec-kit, `openspec/` for OpenSpec, and a `superpowers@` entry
 in Claude Code's installed plugins file (`scanner.mcp.plugins_file`) for superpowers.
-Setup proposes the engine it finds, spec-kit when it finds none, and the interview asks
-"Which spec engine do your repositories use?" with that answer first. A configured engine
+A configured engine
 absent from a repository is a doctor fail carrying its install line; `none` never is.
-`wuwei calibrate` already reads `.specify/memory/constitution.md` as a convention source.
 
 Seats and owner. The builder, lead and planner charters and the plan skill name the
 configured engine's steps and the skip rule; the orientation block (`wuwei next`) shows the
@@ -1042,9 +886,8 @@ owner's choice. Nothing runs in a hook. `[telemetry]` in `config.toml`:
 - `enabled` (default true): false stops the aggregate, sharing and the OpenTelemetry
   export (owner, 2026-10-11, #789); the events a day needs are recorded as before.
 - `share` (default `""`, not asked yet, which behaves as `"off"`): `"anonymous"`,
-  `"attributed"` or `"off"`. Set by the interview question below, by the owner with
-  `bin/wuwei config set telemetry.share`, or by `wuwei telemetry off`. A calibration
-  profile (#313) never carries a `telemetry` key: consent is per workspace.
+  `"attributed"` or `"off"`. Set by the owner with `bin/wuwei config set telemetry.share`
+  or by `wuwei telemetry off`.
 - `endpoint` (default: the project's collector URL, empty until the project deploys it):
   where anonymous mode posts. Empty, or not `https://`, keeps every week local.
 - `repository` (default `"taoq-ai/wuwei"`): where attributed mode opens issues.
@@ -1067,8 +910,8 @@ step to any hook:
 - items: `plan.approved`, `state.import`, `plan.added`, the `phase_changes` of state
   writes, `gate.received`, `gate.tiered`, `build.parked`.
 - decisions: `decision.routed`, `decision.decided`, `decision.reversed`, and the record's
-  `Class:` field (5.8).
-- loops: `negotiation.loop` (5.8.2).
+  `Class:` field, from the cards that still write a record (5.8).
+- loops: `negotiation.loop`, from days before #789 part 14.
 - owner interactions: `decision.decided` with `decided_by` `owner`; DM commands, the
   `remote.*` events written by `wuwei listen` (retired by #789, owner, 2026-10-10); owner host actions, `remote.acknowledged` (retired by #789, owner, 2026-10-10),
   `state.recovered`, `integrity_confirmation`, `mcp.decided`, `draft.sending` and
@@ -1116,10 +959,10 @@ percentiles as in 5.6.
 | `gate_rounds_per_item` | p50 and max of `gate.received` per item with a verdict in the week |
 | `fix_rounds_per_item` | p50 and max of moves into `fix` per item with a verdict in the week |
 | `gate_tiers` | per tier, the computed tier of `gate.tiered` (#280) |
-| `long_loops` | `negotiation.loop` records: items over the loop threshold (5.8.2) |
+| `long_loops` | `negotiation.loop` records from days before #789 part 14 |
 | `stuck_parks` | `build.parked` records (5.3) |
 | `decisions` | decision ids routed or decided in the week |
-| `decisions_by_class` | per 5.8.1 class, from the record's `Class:`; unreadable counts as `other` |
+| `decisions_by_class` | per class, from the record's `Class:`; unreadable counts as `other` |
 | `decided_by` | `decision.decided` per `owner` and `seat` |
 | `reversals` | `decision.reversed` records |
 | `owner_wait_hours` | p50 and p90 from `decision.routed` to `decision.decided`, for decisions decided in the week |
@@ -1145,7 +988,7 @@ never anything else in the file (owner, 2026-10-11, #789). Anonymisation, checke
 `telemetry.validate` before every send and by the collector on receipt:
 
 - every key comes from this section; every key inside a metric is a guard module name,
-  `config`, a phase, a tier, a 5.8.1 class, a posture area, `p50`, `p75`, `p90`, `p95`,
+  `config`, a phase, a tier, a record class, a posture area, `p50`, `p75`, `p90`, `p95`,
   `max`, `merged`, `escaped`, `owner` or `seat`; every key inside `adapters` is
   a port name; an adapter name is one shipped under `adapters/<port>/`;
 - every value is a non-negative integer, a non-negative number rounded to two decimals,
@@ -1208,18 +1051,9 @@ stays the source of truth and what the aggregation reads.
 `wuwei telemetry preview [<week>]` prints exactly what each mode would send for that final
 week (the latest by default) and names the mode in force. `wuwei telemetry off` sets
 `share = "off"` without a confirmation, since it only narrows what leaves, and records
-`telemetry.off`; turning sharing on is the owner's (the interview or `config set`). Every
+`telemetry.off`; turning sharing on is the owner's (`config set`). Every
 `telemetry.*` event is written only by the CLI; `telemetry.ready` is a `warn` (owner, 2026-10-10, #789) and the rest
 are silent.
-
-Interview. One workspace question after the posture: "Share weekly usage counts with the
-WUWEI project?", choices in this order:
-
-- Anonymous: "Counts only, sent over HTTPS with a random workspace id; no account, nothing
-  about your code or people."
-- Attributed: "The same counts as a GitHub issue opened from your gh account, so it shows
-  your login."
-- Off: "Nothing leaves this machine; the counts stay local."
 
 Project side, in this repository and outside the plugin. `scripts/telemetry-worker/` holds
 the collector: a small function that checks a payload with `telemetry.validate` itself
@@ -1248,7 +1082,7 @@ as comments.
 
 Configuration. `adapters.tracker` is `linear`, `jira`, `github` (issues, plus Projects v2
 when a board is set) or `none`. The schema default stays `none`, so a first day works on
-defaults; `setup` and the interview recommend `linear`. `[tracker]` in `config.toml`:
+defaults. `[tracker]` in `config.toml`:
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -1331,7 +1165,7 @@ retried.
 | `progress` | phase changes, builder and gate starts and stops, fast-check results, a park | one line each, such as `Phase: implement.` or `Fast checks: 3 passed, 1 failed.` |
 | `verdicts` | `gate.received` | `Review <role> (<round>): <verdict>, <n> blocking findings.` |
 | `pr` | `pr.raised`, `pr.claimed` | `Pull request: <url>.` |
-| `close` | `wuwei close` | `Merged in <pr>.`, `Carried to <date> (D-<n>).` or `Parked (D-<n>).` |
+| `close` | `wuwei close`, `plan carry` or `plan park` | `Merged in <pr>.`, `Carried to <date>.` or `Parked: <reason>.` |
 
 Approval. Comments and creations are external writes sent as the owner, so they go through
 the tracker port's text-bearing operations and the outward policy (4.9, 9.1): a write whose
@@ -1372,15 +1206,10 @@ returns state changes in one shape for lead time (5.6).
 | `jira` | `PROJ-123` | `JIRA_SITE` (https), `JIRA_EMAIL`, `JIRA_API_TOKEN` | REST: JQL search of `project` not in the Done category, narrowed by `backlog_filter`; create a Task or Bug and a Relates link; add a comment; the transition whose target status has the configured name |
 | `github` | `owner/repo#123` | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only | GraphQL: open issues of `project`, `backlog_filter` as a label; create an issue; add a comment; with `board`, the Projects v2 Status option with the configured name, otherwise a label for `in_review` and closing the issue for `done` |
 
-Setup and health. `setup` reads each repository's README, CONTRIBUTING and pull request
-template for tracker links (`linear.app`, `atlassian.net`) and prints what it found before
-the interview. The interview asks where the backlog lives (Linear first, as recommended;
-Jira; GitHub; none; or `<tracker> <project>` typed in), whether every item needs a ticket
-(every item; all but `light` items; optional), and which tracker updates go without approval
-(progress, pull request and close; those plus new tickets; everything; nothing). `doctor`
+Health. `doctor`
 fails the tracker row when `required` is in force and the adapter cannot read the backlog,
-naming the missing credentials or `bin/wuwei config set tracker.required false`. `setup` and
-`init --upgrade` from a host terminal create the lifecycle labels the tracker port needs (today only the GitHub
+naming the missing credentials or `bin/wuwei config set tracker.required false`.
+`init --upgrade` from a host terminal creates the lifecycle labels the tracker port needs (today only the GitHub
 `in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
 failed in-review move creates the label on the owner's tracker below strict and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
@@ -1399,8 +1228,7 @@ Configuration, `[docs]` in `config.toml`:
 
 - `system`: `notion`, `confluence`, `markdown` (pages as files in the item's repository) or
   `none`. The schema default is `none`, so a workspace that never chose one is unchanged;
-  setup and the interview recommend `notion` unless the repositories' links point
-  elsewhere. The value selects the `docs` port's adapter (section 8); the config check
+  the value selects the `docs` port's adapter (section 8); the config check
   refuses a name with no adapter under `adapters/docs/`.
 - `required_tiers` (default `["standard", "full"]`): the gate tiers, named as
   `repos.gates.floor` names them, whose items carry the docs obligation. `light` items are
@@ -1495,12 +1323,7 @@ is empty, otherwise appends to `draft.ref`, from `kind`, `item`, `title` and a M
 Credentials are named in `.wuwei/env` and kept out of seat environments. Each adapter
 passes the docs port contract test with recorded fixtures; no test reaches the network.
 
-Setup, interview and doctor. The interview asks "Where does your documentation live?" with
-Notion, Confluence, Markdown and None, or a page link as free text that sets `system` and
-`space` together. Setup reads each configured repository's README and CONTRIBUTING for
-documentation links (`notion.so` or `notion.site` for `notion`, `atlassian.net/wiki` for
-`confluence`, with the linked page as `space`) and offers the system it found first; with
-none found Notion leads. `doctor` adds a docs row: `not used` under `none`; under `notion`
+Doctor. `doctor` adds a docs row: `not used` under `none`; under `notion`
 or `confluence`, a fail when `space` is empty, a credential is missing, or `read(space)`
 could not run or found no page; under `markdown`, a fail when `root` is not a directory in
 a configured repository; each fail names the fix; a warn when `publish` is set under
@@ -1513,55 +1336,17 @@ an item's unmet obligation.
 
 ### 5.14 Memory over time (owner, 2026-10-03, #443)
 
-Records grow every day; what a session loads must not. Memory has three tiers by age and
-use, one producer per tier, and a token budget for what SessionStart loads.
-
-- `raw`: a day's records under `days/<date>/`, complete and never edited. A day older than
-  `consolidation.archive_after_days` (default 30) moves, at `wuwei consolidate`, into
-  `archive/<year>/<date>.tar.gz`; `wuwei memory show <date>` prints it from either place.
-  An archived day leaves `memory/index.md`; its month digest stands for it.
-- `digest`: one Markdown record per ISO week (`memory/digests/<year>-W<week>.md`) and per
-  month (`memory/digests/<year>-<month>.md`), rebuilt from the day records in a fixed
-  shape: `## Decisions` (id, question, outcome), `## Lessons` (ledger lines landed or
-  rejected), `## Metrics` (the report's outcome lines; the #421 effectiveness metrics join
-  when #422 lands), `## Incidents` (page-tier events by kind), `## Items` (closed and
-  carried). `wuwei close` rebuilds the current week; `wuwei consolidate` rebuilds the
-  weeks and months of the days it archives plus the current ones. Free text in a line
-  passes the outward lint (owner-addressed) and carries no path; a line that fails keeps
-  only its structured fields (date, id, outcome label, target name, counts). `[memory]
-  digest = "week"` (or `"off"`, no digests).
-- `rules`: the local charter overrides and the spine and notes. Promoted rules live only in
-  charters (6.8); a digest records that a lesson landed, never the rule text.
-
-Budget. `[memory] budget_tokens` (default 6000) caps the SessionStart payload, built in
-priority order: digests (latest month, then current week), rules (spine, note lines of
-the index), today (raw day lines of the index, the promote line). When the whole would
-exceed the budget, SessionStart loads digests and rules only and says so in one line. The
-orientation block and `Active constraints:` (#358) precede the payload and are not part
-of it. `doctor` warns when a raw day is older than the archive window, which means
-`consolidate` has not run.
-
-Forgetting. `consolidate` proposes, with one evidence line each, to archive a note no
-brief, decision or retro under `days/` or the archive has named in 60 days; to fold one of
-two near-duplicate notes into the other; to drop a charter rule superseded by a later
-near-duplicate line in the same charter; and to drop a charter rule a later answered
-decision contradicts. Proposals sit in `memory/forget.json` as `F-n`; `wuwei consolidate
---widget` asks them (#359) and `wuwei memory forget F-n apply|keep` is a host terminal owner
-action. `apply` asks y/N, then lands the change through `wuwei promote`'s own landing,
-which keeps the before text under `memory/archive/` and appends the ledger, and records a
-`memory.folded` event. Nothing is removed without that record; `keep` declines and the
-proposal is not asked again.
+Records grow every day; what a session loads must not. Budget. `[memory] budget_tokens`
+(default 6000) caps the SessionStart payload, built in priority order: the spine, then the
+past-day lines of the index, then the promote line. When the whole would exceed the budget,
+SessionStart leaves today out and says so in one line. The orientation block and
+`Active constraints:` (#358) precede the payload and are not part of it.
 
 No duplicate memory. The harness has its own memory (CLAUDE.md, auto-memory, rules
 files). WUWEI's records stay the source and nothing is read back from the harness. `wuwei
-memory export --claude`, run by `consolidate` and by `promote` when a proposal landed,
-writes the charters' rule lines and the current week's lessons as one block between
-markers it owns into the workspace's `CLAUDE.md` (or `[memory] export_to`), idempotent.
-Harness rules files (#441) get the same export when that item lands.
-
-Digests, `forget.json` and the archive are producer-only records under the records guard
-(9.1). `wuwei memory status` prints sizes and tokens per tier, the payload against the
-budget, the last consolidate and the pending proposals.
+memory export --claude`, run by `promote` when a proposal landed, writes the charters' rule
+lines as one block between markers it owns into the workspace's `CLAUDE.md` (or
+`[memory] export_to`), idempotent.
 
 ## 6. Memory
 
@@ -1572,42 +1357,23 @@ budget, the last consolidate and the pending proposals.
 | Working | `days/<date>/state.json`, `events.jsonl` | on demand by the planner | CLI |
 | Episodic | `days/<date>/` | by summary line in the index | planner, steward |
 | Procedural | charters, `memory/CHANGELOG.md`, `memory/ledger.jsonl`, guards | charter as system prompt; changelog and ledger never | `wuwei promote`, from steward proposals |
-| Semantic | `memory/spine.md`, `memory/notes/` | spine in full, notes by index | any seat: `wuwei note` creates, `wuwei promote` changes |
-
-### 6.2 Frontmatter contract
-
-Every note declares `type` (hub, reference, decision, person, question), `summary` (one line,
-present tense, current state), `aliases`, `status` (active, archived). The summary is the
-only thing loaded by default.
+| Semantic | `memory/spine.md` | in full | the owner |
 
 ### 6.3 Index and payload
 
-`wuwei index` writes `memory/index.md`: one line per note with summary and estimated token
-cost, one line per past day. Session start loads spine, index and today's state, and prints
-the payload size.
-
-### 6.4 Memory lint (session start)
-
-- summary older than the newest date in its own body
-- note over its line cap
-- state note accumulating dated entries (turning into a log)
-- raw intake with nothing routed out of it
-- a note past probation that was never loaded (archive candidate, section 6.8)
+`wuwei index` writes `memory/index.md`: one line per past day. Session start loads the spine,
+the index and today's state, and prints the payload size.
 
 ### 6.5 Routing
 
-A decision goes to a decision note only if someone will later ask why the system is shaped
-this way. A world fact goes to the spine or a note, never only to a ticket. A lesson about
+A design choice goes to the spec only if someone will later ask why the system is shaped
+this way. A world fact goes to the spine, never only to a ticket. A lesson about
 how to work goes to a charter through a steward proposal and `wuwei promote`, never to a log.
 
 ### 6.6 Consolidation
 
 Daily: the steward folds the retro into charter proposals at close, `wuwei promote` lands
-them, and the Stop guard verifies they landed. Weekly: `/wuwei consolidate` as a scheduled
-task finds contradictions, near-duplicates and stale summaries across notes and local
-charter rules, folds duplicates under one survivor, and archives days older than 30. It
-snapshots `memory/` and `charters/` before it starts, since a fold is the one change a
-rename cannot undo.
+them, and the Stop guard verifies they landed.
 
 ### 6.7 Claude's own memory
 
@@ -1617,27 +1383,21 @@ nothing mixes across workspaces.
 ### 6.8 Self-maintaining procedure (owner, 2026-09-28)
 
 Mechanisms adapted from autoharness (tigerless-labs/autoharness, MIT), applied to charters
-and notes rather than to Claude skills, so procedure keeps one home.
+rather than to Claude skills, so procedure keeps one home.
 
-- Propose, then promote. Seats and the steward never edit a charter override or an
-  existing note directly; they write a proposal to `days/<date>/proposals/` (target, action
-  `add`, `patch`, `fold` or `archive`, the new text or delta, reason, evidence path).
+- Propose, then promote. Seats and the steward never edit a charter override directly;
+  they write a proposal to `days/<date>/proposals/` (target, action `add` or `patch`, the
+  new text or delta, reason, evidence path).
   `wuwei promote` is the single writer: it lints the proposal and lands it by atomic
   rename, or rejects it with the reason.
-- Promote lint: the target is WUWEI-authored (a local override in `.wuwei/charters/`, a
-  note), never a plugin charter or a user file; a rule body
-  stays under its line cap; the evidence path exists; an `add` that duplicates an existing
-  rule is rejected in favour of a `patch` of that rule; a lesson that contradicts an
-  existing rule must rewrite that rule in the same proposal; a `fold` names a live survivor.
+- Promote lint: the target is a local charter override in `.wuwei/charters/`, never a
+  plugin charter or a user file; a rule body stays under its line cap; the evidence path
+  exists; an `add` that duplicates an existing rule is rejected in favour of a `patch` of
+  that rule; a lesson that contradicts an existing rule must rewrite that rule in the same
+  proposal.
 - Ledger. Every landed or rejected proposal appends one line to `memory/ledger.jsonl`:
   target, action, reason, evidence, date. `memory/CHANGELOG.md` stays the human-readable
   record; the ledger traces a rule back to the day that taught it.
-- Adherence, not age. A note's loads are counted from `traces.jsonl` (a seat read it); a
-  guard-backed rule's use is its refusals. A new note or rule is in probation for
-  `memory.probation_days` working days (default 10) and cannot be archived. After
-  probation, one never loaded and never fired is an archive candidate for the next
-  consolidate. The index is bounded by `memory.max_notes` (default 60); past it, the lowest
-  load rates are archived first. Archive moves to `memory/archive/`, never deletes.
 - Visible outcome. The SessionStart payload carries one line for the last promote run: what
   landed and what was rejected, with the reason, so a lost lesson is never silent.
 
@@ -1686,8 +1446,8 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   until the owner reinstalls or re-confirms on the host.
 - Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
-  memory, goals or voice that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
-  a `page` for charter overrides and the voice.
+  memory or goals that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
+  a `page` for charter overrides.
 - Prompt canary. `wuwei init` generates a random canary token per workspace, embedded in
   every charter and skill the seats load. The canary appearing in outbound text, a PR or
   tracker comment, or content fetched from outside means instructions leaked or were echoed

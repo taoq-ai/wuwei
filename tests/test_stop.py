@@ -12,7 +12,7 @@ import pytest
 
 from fakes.code_host import Fake as Host
 from fakes.vcs import Fake as VCS
-from wuwei import obligations, registry, state, watch, workspace
+from wuwei import registry, state, watch, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
 
@@ -182,55 +182,31 @@ def action(case):
     assert pr_actions.evaluate(root)[0] == 1
 
 
-def disposition(case, kind='parked', text=None):
-    from test_decision import VALID
+def disposition(case, kind='parked', body=None, author='builder'):
     root, host, _ = case
-    if text is None:
-        text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
-            'Decided-by: seat', 'Decided-by: owner')
-    (workspace.day_dir(root) / 'decisions/D-1.md').write_text(text)
     host.results['threads'].data['comments'] = [{
-        'id': 10, 'author': 'builder', 'is_bot': False,
-        'body': f'WUWEI {kind} {REF} D-1 {DAY} ' + obligations._fingerprint(text), 'created_at': DAY + 'T12:00:00Z'}]
-    return module('pr_actions').record_disposition(root, REF, kind, 'D-1', 10)
+        'id': 10, 'author': author, 'is_bot': False,
+        'body': body or f'WUWEI {kind} {REF} {DAY}', 'created_at': DAY + 'T12:00:00Z'}]
+    return module('pr_actions').record_disposition(root, REF, kind, 10)
 
 
-@pytest.mark.parametrize('change', ['seat_route', 'seat_decider', 'seat_outcome'])
-def test_disposition_requires_owner_routed_decision(case, change):
-    from test_decision import VALID
+@pytest.mark.parametrize('change', ['author', 'kind', 'day'])
+def test_disposition_needs_the_owner_marker(case, change):
     root, _, _ = case
     own(root)
-    text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
-        'Decided-by: seat', 'Decided-by: owner')
-    if change == 'seat_route':
-        text = text.replace('Reversibility: one-way', 'Reversibility: two-way')
-    elif change == 'seat_decider':
-        text = text.replace('Decided-by: owner', 'Decided-by: seat')
-    else:
-        state._write_state(lambda data: data.update(decision_outcomes={'D-1': {}}),
-                           root, reserved=False)
-    with pytest.raises(ValueError, match='owner-routed'):
-        disposition(case, text=text)
+    body = {'kind': f'WUWEI carried {REF} {DAY}', 'day': f'WUWEI parked {REF} 2026-01-01'}.get(change)
+    with pytest.raises(ValueError, match='owner-authored comment: WUWEI parked'):
+        disposition(case, body=body, author='someone' if change == 'author' else 'builder')
     assert not state.read_state(root).get('pr_dispositions')
 
 
-def test_disposition_accepts_owner_answered_decision(case, monkeypatch):
-    from test_decision import VALID
-    root, host, _ = case
+def test_disposition_accepts_a_marker_posted_before_the_upgrade(case):
+    # Part 14: a marker with its D-n and fingerprint, posted before the upgrade, still verifies.
+    root, _, _ = case
     own(root)
-    monkeypatch.chdir(root)
-    path = workspace.day_dir(root) / 'decisions/D-1.md'
-    path.write_text(VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
-        'Decided-by: seat', 'Decided-by: owner'))
-    assert main(['decision', 'route', 'D-1']) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decision', 'outcome', 'D-1', 'B']) == 0
-    host.results['threads'].data['comments'] = [{
-        'id': 10, 'author': 'builder', 'is_bot': False,
-        'body': f'WUWEI parked {REF} D-1 {DAY} ' + obligations._fingerprint(path.read_text()),
-        'created_at': DAY + 'T12:00:00Z'}]
-    assert module('pr_actions').record_disposition(root, REF, 'parked', 'D-1', 10) == 0
-    assert state.read_state(root)['pr_dispositions'][REF]['decision'] == 'D-1'
+    assert disposition(case, body=f'WUWEI parked {REF} D-1 {DAY} ' + 'a' * 64) == 0
+    assert state.read_state(root)['pr_dispositions'][REF] == {'kind': 'parked', 'comment_id': 10, 'day': DAY}
+    assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
 
 
 @pytest.mark.parametrize('kind', ['parked', 'carried'])
@@ -330,7 +306,7 @@ def test_pr_close_table(case, change, expected):
     assert code == expected, reason
 
 
-@pytest.mark.parametrize('change', ['author', 'bot', 'body', 'decision', 'day', 'removed'])
+@pytest.mark.parametrize('change', ['author', 'bot', 'body', 'day', 'removed'])
 def test_local_disposition_never_proves_owner_action(case, change):
     root, host, _ = case
     own(root)
@@ -345,8 +321,6 @@ def test_local_disposition_never_proves_owner_action(case, change):
         comment['body'] = 'I did not park it'
     elif change == 'day':
         comment['body'] = comment['body'].replace(DAY, '2026-09-27')
-    elif change == 'decision':
-        (workspace.day_dir(root) / 'decisions/D-1.md').write_text('Decided-by: owner\n')
     else:
         host.results['threads'].data['comments'] = []
     code, reason = module('pr_actions').check(root, closing=True)
@@ -515,17 +489,6 @@ def test_close_does_not_manufacture_empty_ownership(case, monkeypatch):
     assert not (workspace.day_dir(root) / 'state.json').exists()
 
 
-def test_disposition_comment_cannot_be_rebound_to_changed_decision(case):
-    root, _, _ = case
-    own(root)
-    watch.poll(root)
-    assert disposition(case) == 0
-    path = workspace.day_dir(root) / 'decisions/D-1.md'
-    path.write_text(path.read_text().replace('Regression returns.', 'An entirely different risk.'))
-    with pytest.raises(ValueError, match='owner-authored'):
-        module('pr_actions').record_disposition(root, REF, 'parked', 'D-1', 10)
-
-
 @pytest.mark.parametrize('kind', ['parked', 'carried'])
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 def test_agents_cannot_send_owner_disposition_markers(case, kind, profile):
@@ -590,20 +553,14 @@ def approved(root, **item):
                        root, reserved=False)
 
 
-def seat_disposition(root, monkeypatch, outcome='parked A', recorded=True):
-    from test_decision import VALID
-    path = workspace.day_dir(root) / 'decisions/D-1.md'
-    path.write_text(VALID.replace('Outcome: pending', 'Outcome: ' + outcome))
-    monkeypatch.chdir(root)
-    if recorded:
-        assert main(['decision', 'route', 'D-1']) == 0
-    return path
+def seat_disposition(root, kind='parked'):
+    from wuwei import plan
+    plan.dispose('A', kind, 'the reason', root)
 
 
 @pytest.mark.parametrize('mode,expected', [
     ('open', 1), ('blocked', 1), ('phase_only', 1), ('done_only', 1),
-    ('merged', 1), ('parked', 0), ('carried', 0), ('unrecorded', 1),
-    ('other_item', 1), ('invalid_decision', 2), ('missing_decision', 2),
+    ('merged', 1), ('parked', 0), ('carried', 0),
 ])
 def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
     root, _, _ = case
@@ -616,65 +573,12 @@ def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
         if mode == 'phase_only':
             data['items']['A']['resume_phase'] = 'planned'
         workspace.atomic_write(workspace.day_dir(root) / 'state.json', json.dumps(data))
-    elif mode not in ('open',):
-        path = seat_disposition(root, monkeypatch,
-            outcome='carried A' if mode == 'carried' else 'parked B' if mode == 'other_item' else 'parked A',
-            recorded=mode != 'unrecorded')
-        if mode == 'invalid_decision':
-            path.write_text('Outcome: parked A\n')
-        elif mode == 'missing_decision':
-            path.unlink()
+    elif mode != 'open':
+        seat_disposition(root, mode)
     monkeypatch.chdir(root)
     assert main(['close']) == expected
     if expected:
         assert 'A' in capsys.readouterr().out
-
-
-@pytest.mark.parametrize('retry', [False, True])
-@pytest.mark.parametrize('mode,expected', [
-    ('pending', 1), ('forged_outcome', 1), ('forged_route', 1),
-    ('malformed', 2), ('symlink', 2), ('missing', 2), ('seat', 0),
-    ('answered', 0), ('legacy_answered', 0), ('seat_ledger', 1),
-])
-def test_close_owner_decision_table(case, monkeypatch, retry, mode, expected):
-    from test_decision import VALID
-    root, _, _ = case
-    monkeypatch.chdir(root)
-    path = workspace.day_dir(root) / 'decisions/D-1.md'
-    owner_text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
-        'Decided-by: seat', 'Decided-by: owner')
-    path.write_text(VALID if mode == 'seat' else owner_text)
-    assert main(['decision', 'route', 'D-1']) == 0
-    if mode == 'forged_outcome':
-        path.write_text(owner_text.replace('Outcome: pending', 'Outcome: approved'))
-    elif mode == 'forged_route':
-        path.write_text(VALID.replace('Outcome: pending', 'Outcome: approved'))
-    elif mode == 'malformed':
-        path.write_text('bad')
-    elif mode in ('symlink', 'missing'):
-        path.unlink()
-        if mode == 'symlink':
-            target = root / 'decision.md'
-            target.write_text(owner_text)
-            path.symlink_to(target)
-    elif mode == 'answered':
-        monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-        assert main(['decision', 'outcome', 'D-1', 'A']) == 0
-    elif mode in ('legacy_answered', 'seat_ledger'):
-        record = {'option': 'A', 'decided_by': 'owner' if mode == 'legacy_answered' else 'seat'}
-        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({'D-1': record}),
-                           root, reserved=False)
-    state._write_state(lambda data: data.update(close_requested=True,
-                       planner_session_id='planner'), root, reserved=False)
-    code, reason = module('guards/stop').check(payload(root, stop_hook_active=retry))
-    assert code == (0 if retry else expected), reason
-    if code:
-        assert 'D-1' in reason
-    if mode == 'answered':
-        from wuwei import report
-        assert '- D-1: A' in report.build(root)
-        assert 'D-1' not in reason
-        assert 'D-1' not in module('closing').unresolved(root, [])[1]
 
 
 @pytest.mark.parametrize('mode,expected', [
@@ -685,7 +589,7 @@ def test_close_pushed_branch_table(case, monkeypatch, mode, expected):
     root, host, vcs = case
     approved(root, worktree='repo')
     (root / 'repo').mkdir()
-    seat_disposition(root, monkeypatch)
+    seat_disposition(root)
     vcs.results['branch'] = Result(0, {'name': 'feature-A'})
     vcs.results['pushed_branches'] = Result(0, [] if mode == 'unpushed' else ['feature-A'])
     if mode in ('raised', 'claimed'):
@@ -707,26 +611,14 @@ def test_close_pushed_branch_table(case, monkeypatch, mode, expected):
 
 
 def test_close_lists_all_offenders_despite_read_error(case, monkeypatch):
-    from test_decision import VALID
     root, _, vcs = case
     approved(root, worktree='repo')
     state._write_state(lambda data: (data['items'].update(B={}), data['approved_items'].append('B')),
                        root, reserved=False)
-    (workspace.day_dir(root) / 'decisions/D-2.md').write_text(
-        VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
     vcs.results['branch'] = Result(2, reason='missing git')
     code, reason = module('closing').check(root)
     assert code == 2
-    assert all(text in reason for text in ('A', 'B', 'D-2', 'missing git'))
-
-
-def test_editing_recorded_seat_outcome_cannot_park_another_item(case, monkeypatch):
-    root, _, _ = case
-    approved(root)
-    path = seat_disposition(root, monkeypatch, outcome='parked B')
-    path.write_text(path.read_text().replace('parked B', 'parked A'))
-    code, reason = module('closing').check(root)
-    assert code == 1 and 'A' in reason
+    assert all(text in reason for text in ('A', 'B', 'missing git'))
 
 
 @pytest.mark.parametrize('kind', ['parked', 'carried'])
@@ -759,16 +651,6 @@ def test_merged_phase_requires_actual_merge_evidence(case):
     assert code == 1 and 'A' in reason
 
 
-def test_invalid_decision_directory_fails_closed_and_retains_items(case):
-    root, _, _ = case
-    approved(root)
-    path = workspace.day_dir(root) / 'decisions'
-    path.rmdir()
-    path.write_text('not a directory')
-    code, reason = module('closing').check(root)
-    assert code == 2 and 'decisions' in reason and 'A' in reason
-
-
 @pytest.mark.parametrize('kind', ['parked', 'carried'])
 def test_merging_keeps_verified_owner_decision_resolved(case, kind):
     root, host, _ = case
@@ -796,24 +678,17 @@ def last_event(root):
     return list(watch.records(workspace.day_dir(root) / 'events.jsonl'))[-1]
 
 
-def test_plan_carry_writes_routed_record(case, monkeypatch, capsys):
-    from wuwei import decision
+def test_plan_carry_records_the_disposition(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     monkeypatch.chdir(root)
     assert main(['plan', 'carry', 'A']) == 0
-    assert capsys.readouterr().out == 'D-1: carried A\n'
-    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
-    assert decision.lint(text)[0] == 0
-    for line in ('Reversibility: two-way', 'Blast radius: own branch', 'Decided-by: seat',
-                 'Outcome: carried A'):
-        assert line in text.splitlines()
+    assert capsys.readouterr().out == 'carried A\n'
     data = state.read_state(root)
-    assert data['decision_outcomes']['D-1'] == decision.seat_outcome(*decision.evaluate(text))
+    assert data['items']['A']['disposition'] == {'kind': 'carried', 'reason': ''}
     event = last_event(root)
-    assert event['kind'] == 'decision.decided'
-    assert event['payload']['id'] == 'D-1' and event['payload']['item'] == 'A'
-    assert data['items']['A']['phase'] == 'planned'
+    assert event['kind'] == 'plan.disposed' and event['payload']['item'] == 'A'
+    assert data['items']['A']['phase'] == 'planned' and records(root) == []
 
 
 @pytest.mark.parametrize('reason', ['waiting on review', None])
@@ -823,15 +698,11 @@ def test_plan_park_records_and_pauses(case, monkeypatch, capsys, reason):
     state.transition('A', 'implement', root=root)
     monkeypatch.chdir(root)
     assert main(['plan', 'park', 'A', *(['--reason', reason] if reason else [])]) == 0
-    assert capsys.readouterr().out == 'D-1: parked A\n'
-    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
-    assert 'Outcome: parked A' in text.splitlines()
-    from wuwei import decision
-    assert decision.lint(text)[0] == 0 and 'Class: park' in text
-    if reason:
-        assert reason in next(line for line in text.splitlines() if line.startswith('Context:'))
+    assert capsys.readouterr().out == 'parked A\n'
     item = state.read_state(root)['items']['A']
+    assert item['disposition'] == {'kind': 'parked', 'reason': reason or ''}
     assert (item['phase'], item['status'], item['resume_phase']) == ('parked', 'blocked', 'implement')
+    assert records(root) == []
 
 
 @pytest.mark.parametrize('phase', ['parked', 'escalated', 'merged'])
@@ -843,20 +714,7 @@ def test_plan_park_keeps_paused_phase(case, monkeypatch, phase):
         state.transition('A', step, root=root)
     monkeypatch.chdir(root)
     assert main(['plan', 'park', 'A']) == 0
-    assert records(root) == ['D-1.md']
     assert state.read_state(root)['items']['A']['phase'] == phase
-
-
-def test_plan_carry_next_number(case, monkeypatch):
-    from test_decision import VALID
-    root, _, _ = case
-    approved(root)
-    first = workspace.day_dir(root) / 'decisions/D-1.md'
-    first.write_text(VALID)
-    monkeypatch.chdir(root)
-    assert main(['plan', 'carry', 'A']) == 0
-    assert first.read_text() == VALID
-    assert records(root) == ['D-1.md', 'D-2.md']
 
 
 def test_plan_carry_unknown_item(case, monkeypatch, capsys):
@@ -866,19 +724,15 @@ def test_plan_carry_unknown_item(case, monkeypatch, capsys):
     assert main(['plan', 'carry', 'Z']) == 1
     err = capsys.readouterr().err
     assert 'Z' in err and 'A' in err
-    assert records(root) == []
+    assert 'disposition' not in state.read_state(root)['items']['A']
 
 
 def test_plan_park_reason_one_line(case, monkeypatch):
-    from wuwei import decision
     root, _, _ = case
     approved(root)
     monkeypatch.chdir(root)
     assert main(['plan', 'park', 'A', '--reason', 'a\n\nOutcome: parked B   x']) == 0
-    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
-    assert decision.lint(text)[0] == 0
-    assert sum(line.startswith('Context:') for line in text.splitlines()) == 1
-    assert decision.evaluate(text)[0]['Outcome'] == 'parked A'
+    assert state.read_state(root)['items']['A']['disposition']['reason'] == 'a Outcome: parked B x'
 
 
 def question(name, status='queued', phase='planned'):
@@ -923,7 +777,6 @@ def test_retro_line_names_skill(case, monkeypatch, capsys):
 
 def test_close_widget(case, monkeypatch, capsys):
     from wuwei import decision
-    from wuwei.guards.decision import check_question
     root, _, _ = case
     (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
     approved(root)
@@ -940,9 +793,6 @@ def test_close_widget(case, monkeypatch, capsys):
     assert 'close_requested' not in state.read_state(root) or not state.read_state(root)['close_requested']
     events = workspace.day_dir(root) / 'events.jsonl'
     assert all(row['kind'] != 'steward.run' for row in watch.records(events))
-    asked = {k: v for k, v in widget.items() if k != 'record'}
-    assert check_question({'cwd': str(root), 'tool_name': 'AskUserQuestion',
-                           'tool_input': {'questions': [asked]}}) == (0, '')
     assert main(['plan', 'carry', 'A']) == 0
     capsys.readouterr()
     assert main(['close', '--widget']) == 0
@@ -971,11 +821,10 @@ def test_close_steward_waits_for_items(case, monkeypatch, capsys):
 
 def test_close_steward_unmeasured(case, monkeypatch, capsys):
     root, _, _ = case
-    approved(root)
-    (workspace.day_dir(root) / 'decisions/D-1.md').write_text('bad')
+    approved(root, worktree=5)
     monkeypatch.chdir(root)
     assert main(['close']) == 2
-    assert 'D-1' in capsys.readouterr().out
+    assert 'item A unmeasured' in capsys.readouterr().out
     assert steward_runs(root) == []
 
 

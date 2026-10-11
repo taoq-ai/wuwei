@@ -60,11 +60,11 @@ def _preview(root, config, args):
 
 
 def _off(root, config, args):
-    from wuwei.commands import setup
+    from wuwei.commands.config import set_value
     if config['telemetry']['share'] == 'off':
         print('telemetry.share is already "off"')
         return CLEAN
-    code = setup.set_value(Namespace(key='telemetry.share', value='"off"'), confirm=lambda *_, **__: True)
+    code = set_value(Namespace(key='telemetry.share', value='"off"'), confirm=lambda *_, **__: True)
     if code == CLEAN:
         state.append_event('telemetry.off', {}, root)
     return code

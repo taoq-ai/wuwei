@@ -71,18 +71,12 @@ def test_scripted_day(day):
     assert [row['tier'] for row in pages] == ['page']
     state.append_event('watch: clock', {}, day.root)
     assert not [row for row in attention(day.directory) if row['source'] == 'watch: health']
-    from test_decision import VALID
-    (day.directory / 'decisions/D-1.md').write_text(VALID.replace(
-        'Reversibility: two-way', 'Reversibility: one-way').replace('Decided-by: seat', 'Decided-by: owner'))
-    day.run('decision', 'route', 'D-1')
-    assert 'D-1: pending owner decision' in day.run('close', expected=1)
+    # Part 14: the open PR holds the close; no decision record does.
+    assert 'A is still open' in day.run('close', expected=1)
     assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
     day.hook('Stop', stop_hook_active=True)
     day.run('retro')
     day.run('close', '--check', 'retro')
-    day.patch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    day.run('decision', 'outcome', 'D-1', 'A')
-    assert 'D-1' not in day.run('close', expected=1)
     assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
     # A replayed server-side merge is external evidence, not a forged local outcome.
     day.host.results['pr'].data.update(state='closed', merged=True,
@@ -90,7 +84,8 @@ def test_scripted_day(day):
     assert json.loads(day.run('pr', 'state'))[0]['state'] == 'merged'
     assert day.data['items']['A']['phase'] == 'merged'
     day.run('report')
-    assert '- D-1: A' in (day.directory / 'report.md').read_text()
+    assert '## Decisions answered' not in (day.directory / 'report.md').read_text()
+    assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002
     day.run('close')
     day.hook('Stop')
     assert day.data['close_requested'] is True

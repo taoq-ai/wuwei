@@ -141,11 +141,6 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         return FINDINGS, 'outward: banned character; remove the banned character (outward.banned_characters lists them) and send again'
     if channel in limits and len(text) > limits[channel]:
         return FINDINGS, 'outward: channel length exceeded; split the message or shorten it to the channel limit (outward.max_length)'
-    if root is not None:
-        from wuwei.voice import lint as voice_lint
-        code, reason = voice_lint(text, channel, config, root)
-        if code:
-            return code, reason
     return CLEAN, ''
 
 
@@ -623,9 +618,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         return FINDINGS, 'draft'
 
     def tier(name, evidence):
-        from wuwei import voice
-        return held(f'approval tier {name} for '
-                    f'{voice.audience(destinations[0] if destinations else kind, config)}: {evidence}')
+        audience = destinations[0] if destinations else kind
+        return held(f"approval tier {name} for {'review' if audience == 'code_host' else audience}: {evidence}")
 
     try:
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
@@ -827,20 +821,13 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
             if code:
                 return code, reason
         # #533: outward.patterns on chat and mail only; a client or public reader was held by
-        # classify, so a reader here is team, company or owner-approved. Strict refuses,
-        # supervised warns, autonomous stays silent.
-        # ponytail: the hook runs this even when check_tier held the call, so a held supervised
-        # call can record outward.lint too; pass the tier result in if the count must be exact.
+        # classify, so a reader here is team, company or owner-approved. Strict refuses; the
+        # other postures let it through.
         if word:
             from wuwei import workspace
-            reason = (f'outward: internal state word "{word}" in a {kind} message (outward.patterns); '
-                      'remove it or change the list')
             if workspace.posture(config)[0] == 'strict':
-                return FINDINGS, reason
-            if config['autonomy']['mode'] == 'supervised':
-                from wuwei import state
-                state.append_event('outward.lint', {'kind': kind, 'word': word}, root)
-                print(f'warning: {reason}', file=sys.stderr)
+                return FINDINGS, (f'outward: internal state word "{word}" in a {kind} message '
+                                  '(outward.patterns); remove it or change the list')
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'

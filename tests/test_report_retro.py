@@ -42,7 +42,7 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert ('## Tickets seats filed\n| Ticket | Class | Item | Seat |\n| --- | --- | --- | --- |\n'
             '| ENG-2 | bugs | a | sentinel-quality |\n\n') in text
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
-    assert '## Owner preferences\nnone\n' in text
+    assert '## Owner preferences' not in text
     assert '"asks_per_item"' in text and '"unnecessary_asks"' in text
     dora = text.index('## DORA (last 28 days)\n| Key | Value | Source |')
     assert text.index('## Tickets seats filed') < dora < text.index('## Gate verdicts')
@@ -53,7 +53,35 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert json.loads(proposals[0].read_text())['evidence'] == evidence.relative_to(root).as_posix()
 
 
-def test_hard_rule_change_is_decision_only(tmp_path, monkeypatch):
+def test_retro_proposal_lands_through_promote(tmp_path, monkeypatch):
+    """#833 SC-003: the retro to charter loop, end to end."""
+    from wuwei import promotion, retro
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    day = workspace.day_dir(root)
+    (day / 'retro').mkdir(parents=True)
+    record = {'agent_id': 'builder-1', 'agent_type': 'builder',
+              'fields': {'Blocked': 'none', 'Gap': 'Review lag', 'Change': 'Check review timing'},
+              'missing': [], 'invalid': []}
+    (day / 'retro/role.json').write_text(json.dumps(record))
+    state.append_event('retro.captured', {**record, 'evidence': f'.wuwei/days/{day.name}/retro/role.json'}, root)
+    retro.compile(root)
+    commits = []
+    monkeypatch.setattr(registry, 'load', lambda *a: SimpleNamespace(
+        workspace_changes=lambda *a, **kw: registry.Result(0, []),
+        workspace_commit=lambda repo, paths, **kw: commits.append(paths) or registry.Result(0)))
+    [landed] = promotion.promote(root)
+    assert (landed['status'], landed['target']) == ('landed', '.wuwei/charters/builder.md'), landed
+    assert (root / '.wuwei/charters/builder.md').read_text().endswith('- Check review timing\n')
+    assert '2026-09-29 builder.md: Review lag' in (root / '.wuwei/memory/CHANGELOG.md').read_text()
+    assert commits == [['charters/builder.md', 'memory/CHANGELOG.md', 'memory/ledger.jsonl']]
+
+
+def test_hard_rule_change_is_a_retro_line(tmp_path, monkeypatch):
+    # Part 14: a Hard rule change is a line of the retro for the owner, not a decision record.
     root = tmp_path
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text('')
@@ -73,10 +101,8 @@ def test_hard_rule_change_is_decision_only(tmp_path, monkeypatch):
     text = retro.compile(root).read_text()
     assert '## Tickets seats filed\n| Ticket | Class | Item | Seat |\n| --- | --- | --- | --- |\n| none | | | |' in text
     assert not list((day / 'proposals').glob('*.json'))
-    decisions = list((day / 'decisions').glob('D-*.md'))
-    assert len(decisions) == 1
-    from wuwei.decision import lint
-    assert lint(decisions[0].read_text())[0] == 0
+    assert not list((day / 'decisions').glob('D-*.md'))
+    assert '## Hard rule changes\n- refuse all shell commands (sentinel-security, retro/role.json)\n' in text
 
 
 def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
@@ -92,19 +118,14 @@ def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
     state._write_state(lambda data: data.update(items={
         'open': {'phase': 'implement', 'status': 'running'},
         'park': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked',
-                 'decision': 'D-1'}}), root, reserved=False)
-    day = workspace.day_dir(root)
-    (day / 'decisions').mkdir()
-    (day / 'decisions/D-1.md').write_text('Question: Defer?\nOutcome: pending\n')
-    (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
+                 'disposition': {'kind': 'parked', 'reason': 'gate quality PARK: P1'}},
+        'held': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked'}}), root, reserved=False)
     assert main(['report']) == 0
     text = capsys.readouterr().out
-    assert all(section in text for section in ('## Outcome', '## Open at close',
-        '## Parked', '## Decisions answered', '## Carry'))
+    assert all(section in text for section in ('## Outcome', '## Open at close', '## Parked', '## Carry'))
     assert all(value in text for value in ('0.2', '1.4', '32 minutes', '3 days', 'unmeasured'))
-    assert 'open' in text and 'park' in text and 'D-1' in text
-    assert 'D-2: Accepted' in text
-    assert 'decisions/D-1.md' in text
+    assert '## Parked\n- held: parked\n- park: gate quality PARK: P1\n' in text
+    assert '## Decisions answered' not in text and 'D-' not in text
 
 
 def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
@@ -310,13 +331,10 @@ def test_report_levels(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
         'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root, reserved=False)
-    day = workspace.day_dir(root)
-    (day / 'decisions').mkdir()
-    (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close', '## Parked',
-                        '## Decisions answered', '## Carry', '## Steward runs']
+    assert sections == ['## Changed', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close',
+                        '## Parked', '## Carry', '## Steward runs']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
         'Escaped-defect-rate: 0.2\nReview-rework: 1.4\n'
@@ -326,11 +344,10 @@ def test_report_levels(tmp_path, monkeypatch):
     (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
     standard = report.build(root)
     assert '## Changed' not in standard and '## Outcome' in standard and '## Process metrics' in standard
-    assert '- D-2: Accepted\n' in standard
     (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "full"\n')
     full = report.build(root)
     assert '## DORA (last 28 days)' in full.split('## Cycle time')[1] and '## Pace' not in full
-    assert full == standard.replace('- D-2: Accepted\n', '- D-2: Accepted (decisions/D-2.md)\n')
+    assert full == standard
 
 
 def test_report_shadow_section(tmp_path, monkeypatch):
@@ -408,7 +425,7 @@ def test_retro_pairs_a_moved_second_opinion_with_round_one(tmp_path, monkeypatch
 
 
 def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
-    # #732: every non-PASS verdict and what followed it: a fix round, a card answer or a park.
+    # #732, part 14: every non-PASS verdict and what followed it: a fix round or a park in code.
     from wuwei import retro
     root = tmp_path
     banded_day(monkeypatch, root)
@@ -422,20 +439,19 @@ def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
         state.transition('C', phase, root)
 
     def seed(data):
-        data['items']['C']['decision'] = 'D-2'
+        data['items']['C']['disposition'] = {'kind': 'parked', 'reason': 'gate security PARK: P1'}
         data['builds'] = {'A': {'fix_rounds': 1}}
-        data['decision_outcomes'] = {'D-1': {'option': 'fix'}}
         data['gate_verdicts'].update({
             'A:quality:initial': {'item': 'A', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX'},
             'A:arch:initial': {'item': 'A', 'role': 'arch', 'round': 'initial', 'verdict': 'PASS'},
             'B:quality:initial': {'item': 'B', 'role': 'quality', 'round': 'initial',
-                                  'verdict': 'ESCALATE', 'decision': 'D-1'},
+                                  'verdict': 'ESCALATE'},
             'C:security:initial': {'item': 'C', 'role': 'security', 'round': 'initial', 'verdict': 'PARK'}})
     state._write_state(seed, root, reserved=False)
     section = retro.compile(root).read_text().split('## Blocks\n', 1)[1].split('\n\n', 1)[0]
     assert section.splitlines()[2:] == ['| A | quality initial | FIX | fix round 1 |',
-                                        '| B | quality initial | ESCALATE | card D-1: fix |',
-                                        '| C | security initial | PARK | parked: D-2 |']
+                                        '| B | quality initial | ESCALATE | none yet |',
+                                        '| C | security initial | PARK | parked: gate security PARK: P1 |']
 
 
 def test_report_lists_spec_warnings(tmp_path, monkeypatch):
@@ -450,38 +466,6 @@ def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     assert '## Spec warnings' not in report.build(root)
     state.append_event('spec.warned', {'item': 'A', 'engine': 'speckit', 'step': 'plan', 'where': 'edit'}, root)
     assert '## Spec warnings\n- A: plan (edit)\n' in report.build(root)
-
-
-def test_report_lists_mandate_decisions_and_counts_by_class(tmp_path, monkeypatch):
-    # #530: decisions taken under the mandate, Consequential first, and decisions and cards per class.
-    from wuwei import report
-    root = tmp_path
-    (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: None, root, reserved=False)
-    text = report.build(root)
-    assert '## Taken under mandate\nnone\n' in text and text.index('## Decisions by class') < text.index('## Merged')
-    state._write_state(lambda data: data.update(decision_outcomes={
-        'D-1': {'option': 'A', 'decided_by': 'mandate', 'cisr': 'Routine'},
-        'D-2': {'option': 'B', 'decided_by': 'mandate', 'cisr': 'Routine'},
-        'D-3': {'option': 'A', 'decided_by': 'mandate', 'cisr': 'Consequential'},
-        'D-5': {'option': 'B', 'decided_by': 'owner', 'cisr': 'Routine'},
-    }, decision_routes={'D-4': {'reversibility': 'one-way', 'recommendation': 'A', 'cisr': 'Strategic'}}),
-        root, reserved=False)
-    for verbosity in ('brief', 'full'):
-        (root / '.wuwei/config.toml').write_text(f'[adapters]\ncode_host = "none"\n[owner.verbosity]\nreport = "{verbosity}"\n')
-        text = report.build(root)
-        assert text.index('## Decisions by class') < text.index('## Merged')
-        assert text.split('## Taken under mandate\n')[1].split('\n\n')[0].splitlines() == [
-            '- D-3 (Consequential): A, decisions/D-3.md; reverse: bin/wuwei decide D-3 <option>',
-            '- D-1 (Routine): A, decisions/D-1.md; reverse: bin/wuwei decide D-1 <option>',
-            '- D-2 (Routine): B, decisions/D-2.md; reverse: bin/wuwei decide D-2 <option>']
-        assert text.split('## Decisions by class\n')[1].split('\n\n')[0].splitlines() == [
-            '- Routine: 3 decisions, 0 cards', '- Consequential: 1 decisions, 0 cards',
-            '- Exploratory: 0 decisions, 0 cards', '- Strategic: 1 decisions, 1 cards',
-            'Target: cards only for Strategic and for floors (publish, merge).']
 
 
 def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):

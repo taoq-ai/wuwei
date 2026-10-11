@@ -435,7 +435,7 @@ def test_calibrate_is_off_every_hook_path(tmp_path):
               'from wuwei.__main__ import main\n'
               'for event, payload in json.loads(sys.argv[2]):\n'
               '    sys.stdin = io.StringIO(json.dumps(payload))\n    main(["hook", event])\n'
-              'sys.exit(3 if {"wuwei.calibrate", "wuwei.interview", "wuwei.profiles"} & set(sys.modules) else 0)\n')
+              'sys.exit(3 if {"wuwei.calibrate"} & set(sys.modules) else 0)\n')
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), json.dumps(calls)],
                             text=True, capture_output=True, cwd=tmp_path,
                             env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_BENCH': '1'})
@@ -1057,7 +1057,7 @@ def test_workspace_hook_latency(seeded_workspace, capsys, path):
 
 
 # #516: the modules the SubagentStop path runs beyond the PreToolUse Bash call's.
-SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.decision', 'wuwei.guards.lifecycle',
+SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.lifecycle',
                          'wuwei.guards.spec', 'wuwei.guards.verdict', 'wuwei.brief', 'wuwei.dispatch',
                          'wuwei.sessions', 'wuwei.specmode'}
 
@@ -1179,15 +1179,14 @@ def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbea
     assert_latency_budget('heartbeat tick', cpu_ms, wall_ms, capsys, wall_budget=200, runs=runs)
 
 
-def test_seat_question_without_record_blocks_subagent_stop(subprocess_plugin, tmp_path):
+def test_seat_question_without_record_stops_freely(subprocess_plugin, tmp_path):
+    # Part 14: a seat names a one-way question in its result; nothing asks it for a record.
     payload = json.loads((ROOT / 'tests/payloads/SubagentStop/example.json').read_text())
     payload.update(cwd=str(tmp_path), agent_type='wuwei:builder',
                    agent_transcript_path=str(tmp_path / 'missing.jsonl'),
                    last_assistant_message='Should I add a cache?\nBlocked: none\nGap: none\nChange: none')
     result = subprocess_replay(subprocess_plugin, 'SubagentStop', json.dumps(payload))
-    assert result.returncode == 2, result.stderr
-    output = json.loads(result.stdout)
-    assert output['decision'] == 'block' and 'Cite a decision D-n' in output['reason']
+    assert result.returncode == 0 and 'decision' not in result.stdout, result.stderr
 
 
 def shadow_mode(plugin, mode='shadow'):

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from adapters.runtime import claude
-from wuwei import decision, registry, state, workspace
+from wuwei import registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.commands import build
 from wuwei.guards import agent_launch
@@ -173,7 +173,7 @@ def test_fresh_agent_binds_the_pending_continue(seat, capsys):
     assert code == 1 and 'brief already used' in reason
 
 
-def test_stop_uses_measured_failure_and_parks_valid_decision(seat):
+def test_stop_uses_measured_failure_and_parks(seat):
     root, repo, path, day, _ = seat
     for iteration in range(3):
         action = build.next_action('A', root=root)
@@ -190,9 +190,7 @@ def test_stop_uses_measured_failure_and_parks_valid_decision(seat):
     action = build.next_action('A', root=root)
     assert action['action'] == 'park'
     assert 'same' in action['reason']
-    records = list((day / 'decisions').glob('D-*.md'))
-    assert len(records) == 1
-    assert decision.lint_file(records[0], record=False)[0] == 0
+    assert not list((day / 'decisions').glob('D-*.md'))
     before = (day / 'events.jsonl').read_bytes()
     assert build.next_action('A', root=root) == action
     assert (day / 'events.jsonl').read_bytes() == before
@@ -278,8 +276,7 @@ def test_maximum_iterations_parks_despite_changing_signature(seat):
         results.append(registry.Result(1, {'test_ids': [f'test_{iteration}'], 'error': 'broken'}))
         assert main(['build', 'check', 'A']) == 1
     action = build.next_action('A', root=root)
-    assert action['action'] == 'park' and 'maximum' in action['reason']
-    assert decision.lint_file(root / action['decision'], record=False)[0] == 0
+    assert action == {'action': 'park', 'reason': action['reason']} and 'maximum' in action['reason']
 
 
 @pytest.mark.parametrize('case', ['unmeasured', 'invalid-exit', 'invalid-usage', 'missing-id'])
@@ -544,18 +541,10 @@ def test_dispatch_launches_a_briefed_item_with_no_fast_checks(seat):
     assert [(row['item'], row['action']) for row in entries] == [('A', 'launch')]
 
 
-def test_strict_asks_once_per_repository(seat):
-    from wuwei import calibrate
+def test_strict_builds_without_fast_checks(seat):
+    # #832: no fast checks is a state under strict too; CI and the gates are the evidence.
     root, _, _, _, _ = seat
     no_checks(root, 'strict')
     phase(root, 'planned')
-    with pytest.raises(ValueError, match='wuwei calibrate --questions --repo app'):
-        build.next_action('A', root=root)
-    path = decision.write(calibrate.checks_text(0, 'app', [], []), root)
-    path.write_text(path.read_text().replace('Outcome: pending', 'Outcome: A'))  # Decided-by: owner
-    # a seat-written answer clears nothing
-    with pytest.raises(ValueError, match='fast-checks card'):
-        build.next_action('A', root=root)
-    state._write_state(lambda data: data.update(decision_outcomes={path.stem: {
-        'decided_by': 'owner', 'option': 'B'}}), root, reserved=False)
     assert build.next_action('A', root=root)['action'] == 'launch'
+    assert state.read_state(root)['builds']['A']['commands'] == []

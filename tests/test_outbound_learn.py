@@ -1,7 +1,6 @@
 """#492: bin/wuwei outbound learn proposes an unknown connector on one card; the answer writes it."""
 
 import json
-from types import SimpleNamespace
 
 import pytest
 
@@ -75,6 +74,12 @@ def events(root, kind):
 
 def decisions(root):
     return sorted(path.name for path in (workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+
+
+def linted(path):
+    """The record passes the record library's new-record check."""
+    from wuwei import decision
+    return decision.evaluate(path.read_text(), decision.LENSES, write=True)[0]
 
 
 def test_reserved(root, capsys):
@@ -158,7 +163,7 @@ def test_card(root, capsys):
     from wuwei.__main__ import main
     widget = card(root, capsys)
     assert decisions(root) == ['D-1.md']
-    assert main(['decision', 'lint', str(workspace.day_dir(root) / 'decisions/D-1.md')]) == 0
+    linted(workspace.day_dir(root) / 'decisions/D-1.md')
     data = state.read_state(root)
     assert 'D-1' in data['decision_routes'] and data['outbound_learn']['D-1']['answered'] is None
     [question] = widget
@@ -170,15 +175,29 @@ def test_card(root, capsys):
     from wuwei import decision
     fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
     assert question['record'] == (
-        f'{workspace.owner_cli(root)} decide D-1 "<label>" --card {decision.card_hash("D-1", fields)}')
+        f'{workspace.owner_cli(root)} outbound answer D-1 "<label>" --card {decision.card_hash("D-1", fields)}')
     capsys.readouterr()
     assert card(root, capsys) == widget and decisions(root) == ['D-1.md']
 
 
 def answer(root, monkeypatch, option):
-    from wuwei.commands import decision
-    monkeypatch.setattr(decision, 'owner_confirm', lambda *args: 'at the host terminal')
-    return decision.owner_outcome(SimpleNamespace(id='D-1', option=option), root=root)
+    """The planner asks the card in its session, then runs the card's record command; under
+    strict the card does not confirm (#357, until part 18), so the owner answers at the prompt."""
+    from wuwei.__main__ import main
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+        return main(['outbound', 'answer', 'D-1', option]), option
+    from wuwei import decision, plan
+    from wuwei.__main__ import main
+    from wuwei.guards.answers import record_gate
+    if state.read_state(root).get('planner_session_id') is None:
+        plan.session('P', root)
+    fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
+    question = f'D-1: {fields["Question"]}'
+    assert record_gate({'cwd': str(root), 'session_id': 'P', 'tool_name': 'AskUserQuestion',
+                        'tool_input': {'questions': [{'question': question, 'header': 'D-1'}]}}) == (0, '')
+    code = main(['outbound', 'answer', 'D-1', option, '--card', decision.card_hash('D-1', fields)])
+    return code, option
 
 
 def send(root, guard):
@@ -227,7 +246,7 @@ def test_other_card(root, capsys, monkeypatch):
     [question] = json.loads(capsys.readouterr().out)
     assert question['question'].startswith(f'D-1: Connector {UUID} is other, mode send? ')
     assert 'Approve, mode refuse' in [row['label'] for row in question['options']]
-    assert main(['decision', 'lint', str(workspace.day_dir(root) / 'decisions/D-1.md')]) == 0
+    linted(workspace.day_dir(root) / 'decisions/D-1.md')
     assert answer(root, monkeypatch, 'refuse') == (0, 'refuse')
     config = workspace.load_config(root)
     assert config['outward']['servers'] == {UUID: 'other'}
@@ -435,7 +454,7 @@ def test_learn_card_sets_a_class(root, capsys, monkeypatch, option, channels, cl
     from wuwei.__main__ import main
     card(root, capsys)
     path = workspace.day_dir(root) / 'decisions/D-1.md'
-    assert main(['decision', 'lint', str(path)]) == 0
+    assert linted(path)
     assert '| C01-client | Approve, #team-review (C01) as client |' in path.read_text()
     assert answer(root, monkeypatch, option) == (0, option)
     config = workspace.load_config(root)
@@ -566,7 +585,7 @@ def test_local_card(root, capsys, monkeypatch):
     assert question['question'].startswith(f'D-1: Connector {UUID} is local?')
     labels = [row['label'] for row in question['options']]
     assert labels == ['Approve (Recommended)', 'Defer: keep as drafts']
-    assert main(['decision', 'lint', str(workspace.day_dir(root) / 'decisions/D-1.md')]) == 0
+    linted(workspace.day_dir(root) / 'decisions/D-1.md')
     assert answer(root, monkeypatch, 'approve')[0] == 0
     config = workspace.load_config(root)
     assert config['outward']['servers'] == {UUID: 'local'}
@@ -591,3 +610,33 @@ def test_auto_never_learns_local_without_the_card(root, capsys, name):
     assert decisions(root) == ['D-1.md']
     assert events(root, 'outbound.learned') == []
     assert UUID not in workspace.load_config(root)['outward'].get('servers', {})
+
+
+def test_answer_needs_the_asked_card(root, capsys):
+    from wuwei import decision
+    from wuwei.__main__ import main
+    card(root, capsys)
+    fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
+    capsys.readouterr()
+    assert main(['outbound', 'answer', 'D-1', 'approve', '--card', decision.card_hash('D-1', fields)]) == 1
+    err = capsys.readouterr().err
+    assert 'no card answer' in err and 'host terminal' not in err
+    assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None
+
+
+def test_under_strict_an_asked_card_does_not_confirm(root, capsys, monkeypatch):
+    # #834 review F2: under strict a planner-asked D-n card never confirms outbound answer.
+    from wuwei import decision, plan
+    from wuwei.__main__ import main
+    from wuwei.guards.answers import record_gate
+    posture(root, 'strict')
+    card(root, capsys)
+    plan.session('P', root)
+    fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
+    assert record_gate({'cwd': str(root), 'session_id': 'P', 'tool_name': 'AskUserQuestion', 'tool_input': {
+        'questions': [{'question': f'D-1: {fields["Question"]}', 'header': 'D-1'}]}}) == (0, '')
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda *args, **kwargs: pytest.fail('prompted'))
+    capsys.readouterr()
+    assert main(['outbound', 'answer', 'D-1', 'approve', '--card', decision.card_hash('D-1', fields)]) == 1
+    assert 'no card answer' in capsys.readouterr().err
+    assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None

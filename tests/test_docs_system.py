@@ -466,7 +466,7 @@ def test_report_publishes_once(day, monkeypatch, capsys):
     draft = row['inputs']['draft']
     assert draft['title'] == 'Report 2026-10-03' and draft['kind'] == 'report' and draft['ref'] == ''
     assert [line for line in draft['body'].splitlines() if line.startswith('## ')] == [
-        '## Merged', '## Parked', '## Decisions answered', '## Carry', '## Docs']
+        '## Merged', '## Parked', '## Carry', '## Docs']
     assert '- X: none (why)' in draft['body']
     assert main(['report']) == 0
     assert f'already {row["id"]}' in capsys.readouterr().out and len(drafts_of(day)) == 1
@@ -501,15 +501,3 @@ def test_publish_under_markdown_and_without_a_report(day, capsys):
     write_config(day, 'markdown')
     assert main(['docs', 'publish', 'report']) == 0
     assert 'no effect under markdown' in capsys.readouterr().out and drafts_of(day) == []
-
-
-def test_detect_finds_the_first_docs_link(tmp_path):
-    from wuwei import docs
-    one, two = tmp_path / 'one', tmp_path / 'two'
-    one.mkdir()
-    two.mkdir()
-    wiki = 'https://example.atlassian.net/wiki/spaces/DOCS/pages/1/Home'
-    (one / 'README.md').write_text(f'Docs live at [the wiki]({wiki}).\n')
-    (one / 'CONTRIBUTING.md').write_text('See https://www.notion.so/Docs-00000000111122223333444444444444\n')
-    assert docs.detect([one, two]) == wiki
-    assert docs.detect([two]) is None

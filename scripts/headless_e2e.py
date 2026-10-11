@@ -21,9 +21,9 @@ ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError
 # ponytail: initial bounds (turns, USD, seconds) per rehearsal session; the owner
 # tunes them after measured runs.
 REHEARSAL = {'first': (150, 15, 1800), 'second': (40, 5, 600)}
-PLANNED = 'decision outcome D-1 (planned, host terminal)'
+PLANNED = 'merge Owner step card (planned, answered by the harness as the owner)'
 # #551: the fixture's own park of A, which no next action names; any other off-path command fails.
-PARK = ('wuwei plan park A --reason <label>', 'wuwei decision route D-1', 'cp park.md <label>')
+PARK = ('wuwei plan park A --reason <label>',)
 
 
 def check_result(result):
@@ -236,8 +236,6 @@ remote = "refs/heads"
 code_host = "none"
 ''')
     fixture_plan(root, 'repo/README.md', 'Verify README exists; no tracked edits')
-    decision = checked([cli, 'decision', 'template'], cwd=root, env=env)
-    (root / 'park.md').write_text(decision.replace('Outcome: pending', 'Outcome: parked A'))
     return root, plugin, env
 
 
@@ -285,7 +283,7 @@ default_branch = {json.dumps(base)}
 merge_deploys = false
 fast_checks = [{json.dumps(check)}]
 [repos.merge]
-auto = true
+auto = false
 soak_minutes = 0
 [shepherd]
 min_reviewers = 0
@@ -331,9 +329,8 @@ applicable, and the three-line retro with Change: none if no charter change is
 needed. Use runtime dispatch sentinel-ROLE BRIEF repo, then Agent with the exact
 returned prompt and agent_type. These three reviews may run in parallel.
 After each seat stops, dispatch receive A ROLE ROLE. dispatch next A must say raise.
-5. This fixture deliberately publishes nothing. Copy park.md to today's
-.wuwei/days/{DAY}/decisions/D-1.md, run decision route D-1, then
-state transition A parked. Run close now, BEFORE retro: it must refuse. Its
+5. This fixture deliberately publishes nothing. Run plan park A --reason fixture.
+Run close now, BEFORE retro: it must refuse. Its
 steward_launch is an instruction: launch that steward via Agent with the returned
 prompt unchanged; its scope is to observe only, propose no changes for this
 fixture, and return a three-line retro. End your turn once now, so the real Stop
@@ -352,8 +349,7 @@ supplied (goals G-1, queue A, CAP 1, the seat policy and the envelope). It is th
 lead proposal, so launch no discovery. This is a headless run: ask me nothing.
 All work stays inside this scratch workspace; no network, commits, pushes, pull
 requests, tracker or chat calls. This fixture publishes nothing: when item A has
-passed its gates, park it with the decision in park.md as today's D-1 (copy it to
-.wuwei/days/{DAY}/decisions/D-1.md). Then close the day.
+passed its gates, park item A with the reason fixture. Then close the day.
 '''
 
 
@@ -381,8 +377,7 @@ def exercise(*, local_login=False, start=False, model='sonnet'):
 def rehearsal_prompt(plugin, stage, *, repo=None, base=None, pr=None):
     cli = shlex.quote(str(plugin / 'bin/wuwei'))
     if stage == 'second':
-        return f"""The owner has answered D-1 on the host terminal. Continue the same day.
-Use {cli} for every wuwei command, from the workspace root. Run merge {pr}. Then
+        return f"""Continue the same day. Use {cli} for every wuwei command, from the workspace root. Run merge {pr}. Then
 run pr state until it reports {pr} as merged, polling at most once a minute. Then
 run report, retro, close --check retro and close. Finish only after close
 succeeds. Never run state transition, state set or state recover, and never edit
@@ -411,10 +406,7 @@ else PASS. Follow action fix and the delta round exactly as the skill says.
 5. When dispatch next A says raise, push the item branch to origin with git, write
 a short PR body file and run pr raise {repo} --base {base} --title "WUWEI
 rehearsal" --body-file <file> --item A.
-6. Write today's decisions/D-1.md from decision template: Question "Merge the
-rehearsal PR today or defer?", option A merge today, option B defer, Recommendation
-A, Reversibility: one-way, Decided-by: owner. Run decision route D-1. Then end your
-turn; if the Stop hook blocks for the pending decision, end your turn again.
+6. Then end your turn; the owner decides the merge on the Owner step card of merge.
 """
 
 
@@ -433,23 +425,29 @@ def day_evidence(root):
     return data, events, hooks
 
 
-def owner_decision(root, plugin, env, planned):
-    """The owner answers D-1 through the product's host terminal digest; no bypass."""
-    path = max((root / '.wuwei/days').iterdir()) / 'decisions/D-1.md'
-    if not path.is_file():
-        return 'decision D-1 was not written'
-    option = re.search(r'^Recommendation:\s*(\S+)', path.read_text(), re.M)
-    if not option:
-        return 'decision D-1 has no recommendation'
-    print(f'Rehearsal: confirm decision D-1 option {option[1]} on this terminal', flush=True)
+def owner_decision(root, plugin, env, planned, pr):
+    """The owner answers the Owner step card of merge: the harness runs merge once, which waits
+    for the owner (merge.auto is off), and answers its card Yes through the product's own
+    PostToolUse recorder, as the planner's AskUserQuestion would; never a terminal prompt."""
+    if not pr:
+        return 'no PR was raised'
+    result = adapter.run([plugin / 'bin/wuwei', 'merge', pr], cwd=root, env=env, timeout=120)
+    text = result.stdout + result.stderr
+    if result.returncode != 1 or '{"question": "Owner step: ' not in text:
+        return f'merge {pr} printed no Owner step card (exit {result.returncode})'
+    card, _ = json.JSONDecoder().raw_decode(text[text.index('{"question": "Owner step: '):])
+    question = {key: value for key, value in card.items() if key != 'record'}
+    sys.path.insert(0, str(ROOT / 'cli'))
+    try:
+        from wuwei.guards.answers import record_gate
+    finally:
+        sys.path.pop(0)
+    code, reason = record_gate({'cwd': str(root), 'session_id': 'rehearsal-owner',
+                                'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [question]},
+                                'tool_response': {'answers': {card['question']: 'Yes'}}})
+    if code:
+        return f'the merge card answer was not recorded: {reason}'
     planned.append(PLANNED)
-    # own_group=False keeps the controlling terminal that _host_confirm opens. PATH drops the
-    # observer shim: its 30s bound would kill the digest prompt; decision.decided records the answer.
-    result = adapter.run([plugin / 'bin/wuwei', 'decision', 'outcome', 'D-1', option[1]],
-                         cwd=root, env={**env, 'PATH': env['PATH'].split(os.pathsep, 1)[1]},
-                         timeout=600, own_group=False)
-    if result.returncode:
-        return f'decision outcome D-1 exited {result.returncode}: {result.stderr.strip()}'
     return None
 
 
@@ -479,8 +477,7 @@ def rehearsal_findings(data, events, hooks):
                 for role, round_name, result in gates), 'no delta PASS for the FIX gate')
     kinds = [e['kind'] for e in events]
     require('pr.raised' in kinds and len(data.get('raised_prs', [])) == 1, 'pr was not raised once')
-    require(any(e['kind'] == 'decision.decided' and e['payload'].get('id') == 'D-1' for e in events),
-            'owner decision D-1 was not recorded')
+    require(any(e['kind'] == 'gate.asked' for e in events), 'the owner answer to the merge card was not recorded')
     require('merge.auto' in kinds, 'merge policy did not merge')
     require(data.get('items', {}).get('A', {}).get('phase') == 'merged', 'item A is not merged')
     phases = [e['payload']['phase_changes']['A'] for e in events
@@ -503,14 +500,6 @@ def measure(events, hooks, results, planned):
             'cost_usd': None if not costs or None in costs else round(sum(costs), 4)}
 
 
-def host_terminal():
-    try:
-        with open('/dev/tty'):
-            return True
-    except OSError:
-        return False
-
-
 def preconditions(local_login):
     """Return the first missing input as a reason, before any external call."""
     if not os.environ.get('ANTHROPIC_API_KEY') and not local_login:
@@ -519,8 +508,6 @@ def preconditions(local_login):
         return 'WUWEI_REHEARSAL_REPO must name the test repository as owner/name'
     if not os.environ.get('GH_TOKEN'):
         return 'GH_TOKEN is not set'
-    if not host_terminal():
-        return 'no host terminal for the owner decision'
     return None
 
 
@@ -554,11 +541,11 @@ def rehearse(*, local_login=False):
             config = tomllib.loads((root / '.wuwei/config.toml').read_text())
             text = rehearsal_prompt(plugin, 'first', repo=repo, base=config['repos'][0]['default_branch'])
             results.append(session(plugin, root, env, 'first', text))
-            failure = owner_decision(root, plugin, env, planned)
             pr = (day_evidence(root)[0].get('raised_prs') or [None])[0]
+            failure = owner_decision(root, plugin, env, planned, pr)
             if failure:
                 findings.append(failure)
-            elif pr:
+            else:
                 results.append(session(plugin, root, env, 'second', rehearsal_prompt(plugin, 'second', pr=pr),
                                        resume=results[0]['session_id']))
             data, events, hooks = day_evidence(root)

@@ -288,8 +288,3 @@ def test_direct_check_missing_profile_fails_closed(configured):
     assert code == 2
     assert reason
 
-
-def test_tier_keys_are_private():
-    # #496: the owner's tier rows and channel classes name people and channels.
-    from wuwei import profiles
-    assert {'outbound.tiers', 'outbound.channel_classes'} <= set(profiles.PRIVATE)

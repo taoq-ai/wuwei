@@ -46,14 +46,12 @@ def register(subparsers):
     record = commands.add_parser('disposition')
     record.add_argument('ref')
     record.add_argument('kind', choices=('parked', 'carried'))
-    record.add_argument('--decision', required=True)
     record.add_argument('--comment', type=int, required=True)
     record.set_defaults(func=run)
 
 
 def run(args):
-    return pr_actions.record_disposition(workspace.find_workspace(), args.ref, args.kind,
-                                         args.decision, args.comment)
+    return pr_actions.record_disposition(workspace.find_workspace(), args.ref, args.kind, args.comment)
 
 
 def run_state(args):

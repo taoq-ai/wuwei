@@ -236,8 +236,7 @@ def _host(root, config):
         (repo['identity']['name'] and repo['identity']['email'])
         or resolved((root / Path(repo['path']).expanduser()).resolve())[0] for repo in config['repos'])
     rows.append(_row('host', 'git identity', 'ok', f"{result.data['name']} <{result.data['email']}>") if good else
-                _row('host', 'git identity', 'ok', "not set globally; setup reads each repository's own identity"
-                     if root is None else 'not set globally; repositories set their own') if own else
+                _row('host', 'git identity', 'ok', 'not set globally; repositories set their own') if own else
                 _row('host', 'git identity', 'fail', result.reason or 'missing',
                      'git config --global user.name "<name>" and git config --global user.email "<email>"'))
     if adapters['scanner'] != 'ziran':
@@ -273,7 +272,7 @@ def _workspace(root, config, error, found):
     from wuwei.commands import init
     if root is None:
         return [_row('workspace', 'workspace', 'fail', error or f'no .wuwei/ found from {Path.cwd()}',
-                     'bin/wuwei setup --shadow in the directory that holds your repositories')]
+                     'bin/wuwei init --shadow in the directory that holds your repositories')]
     rows = [_row('workspace', 'workspace', 'ok', str(root / '.wuwei'))]
     if config is not None and found:
         rows.append(_row('workspace', 'config', 'warn', f'loads; {len(found)} unknown keys',
@@ -316,16 +315,6 @@ def _workspace(root, config, error, found):
                          detail=charters, docs='docs/site/charter-overrides.md'))
     if config is None:
         return rows
-    window = config['consolidation']['archive_after_days']
-    try:
-        from wuwei import consolidation
-        late = [path for path in consolidation.expired(root) if path.parent.name == 'days']
-        rows.append(_row('workspace', 'memory tiers', 'warn', f'{len(late)} raw days older than '
-                         f'consolidation.archive_after_days ({window}); consolidate has not run',
-                         'wuwei consolidate') if late else
-                    _row('workspace', 'memory tiers', 'ok', f'within {window} days'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'memory tiers', 'unmeasured', str(exc), 'wuwei consolidate'))
     vcs = registry.load('vcs', config)
     for index, repo in enumerate(config['repos']):
         name, branch = repo['name'], repo['default_branch']
@@ -436,35 +425,23 @@ SHADOW = ('Observe posture has run {days} days. To enforce, set '
 
 
 def _calibration(root, config):
-    from wuwei import calibrate, interview, profiles, watch
+    from wuwei import calibrate, watch
     rows = []
     try:
         approved = calibrate.approved(root)
         rows.append(_row('workspace', 'calibration', 'ok', ', '.join(
             f"{name} {data.get('date', 'undated')}" for name, data in approved.items())) if approved else
-            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei calibrate, then wuwei config promote'))
+            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei config promote'))
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'calibration', 'unmeasured', str(exc), 'fix .wuwei/calibration.json'))
     try:
         drifted = sorted({row['payload'].get('repo', '?') for row in
                           watch.records(workspace.day_dir(root) / 'events.jsonl')
                           if row['kind'] == 'calibration.drift'})
-        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei calibrate',
-                         apply='calibrate') if drifted else _row('workspace', 'drift', 'ok', 'none today'))
+        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei config promote')
+                    if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
         rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
-    try:
-        count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
-        rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
-                    if count else _row('workspace', 'interview', 'ok', 'all setup questions answered'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'interview', 'unmeasured', str(exc), 'wuwei calibrate --interview'))
-    try:
-        name, _ = profiles.load(root, config)
-        rows.append(_row('workspace', 'profile', 'ok',
-                         f"guards profile {config['profile']}; calibration profile {name or 'none'}"))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'profile', 'unmeasured', str(exc), 'wuwei calibrate import <profile>'))
     guards, name = config['guards'], workspace.posture(config)[0]
     shown = f'{name} (from {workspace.posture_source(config)})'
     if guards['mode'] == 'shadow':
@@ -480,8 +457,8 @@ def _calibration(root, config):
                     _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
     telemetry = config['telemetry']
-    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
-                     'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']
+    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet',
+                     'bin/wuwei config set telemetry.share \'"anonymous"\' (or "attributed" or "off")') if telemetry['enabled'] and not telemetry['share']
                 else _row('workspace', 'telemetry', 'ok', f"share {telemetry['share'] or 'off'}"
                           if telemetry['enabled'] else 'disabled'))
     return rows
@@ -575,8 +552,7 @@ def pr_flow(config):
                quoted('shepherd.lead_login', '<lead login>')),
               ('shepherd.authors', f"{len(shepherd['authors'])} mapped" if shepherd['authors'] else '',
                'reviewer mentions in the review ping at pr ping',
-               'bin/wuwei setup (maps your git email and the bot authors), or add '
-               '"<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
+               'add "<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
     if config['adapters']['chat'] != 'none':
         checks.append(('shepherd.review_channel', shepherd['review_channel'], 'the review ping at pr ping',
                        quoted('shepherd.review_channel', '<channel id>')))
@@ -600,7 +576,7 @@ def _day(root, config, probes):
             _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
                  'wuwei plan session <session id> --take-over from the live session')]
     try:
-        found, health, beat, _ = status.scan(workspace.day_dir(root))
+        found, health, beat = status.scan(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover')]
     if health == 'alive':
@@ -665,17 +641,10 @@ def _day(root, config, probes):
     except watch.ERRORS as exc:
         rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
-        if ids := _legacy_traces(root):
-            rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
-                             'wuwei doctor --fix', apply='trace-decisions'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover'))
-    try:
         ids = _unrecorded(root)
         rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
                          f'{", ".join(ids)} answered on a card, not recorded' if ids else 'none',
-                         "the planner runs each card's record command (wuwei decision show <id> --widget "
-                         'names it); under strict you run it in a host terminal'))
+                         "the planner runs each card's record command (the card names it)"))
     except (OSError, ValueError) as exc:
         rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
@@ -717,22 +686,6 @@ def _tracker_labels(root, config):
         return _row('day', 'tracker labels', 'warn', 'missing: ' + ', '.join(
             f'"{name}"' for name in result.data['missing']), 'wuwei init --upgrade')
     return _row('day', 'tracker labels', 'ok', 'none missing')
-
-
-LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
-                'Context: Session has no matching item reservation.\n')
-SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
-
-
-def _legacy_traces(root):
-    """Today's pending, unanswered decisions the pre-#352 sweep wrote for a non-seat session."""
-    from wuwei import decision, state
-    data = state.read_state(root)
-    return [path.stem for path in sorted((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-            if not path.is_symlink()
-            and (text := path.read_text(encoding='utf-8')).startswith(LEGACY_TRACE)
-            and re.search(r'^Outcome: pending$', text, re.M)
-            and decision.answered(data, path.stem) is None]
 
 
 def _unrecorded(root):
@@ -885,41 +838,6 @@ def _reconfirm(root, token):
     return result.exit
 
 
-def _supersede_preview(root):
-    ids = _legacy_traces(root)
-    if not ids:
-        raise ValueError('nothing to supersede; run bin/wuwei doctor without --apply supersede')
-    return ''.join(f'{ident}: Outcome: superseded ({SUPERSEDED})\n' for ident in ids), ids
-
-
-def _supersede(root, token):
-    """Close each previewed record: the Outcome line for readers of the record, an owner outcome for close,
-    status and the steward queue."""
-    from wuwei import decision, state
-    if _legacy_traces(root) != token:
-        print('trace-decisions: changed since the preview; nothing applied')
-        return 1
-    for ident in token:
-        path = decision.today_path(ident, root)
-        text = path.read_text(encoding='utf-8')
-        fields, _ = decision.evaluate(text)
-        text = re.sub(r'^Outcome: pending$', 'Outcome: superseded', text, count=1, flags=re.M)
-        workspace.atomic_write(path, text + f'Notes: {SUPERSEDED}\n')
-        outcome = {'option': 'superseded', 'outcome': 'superseded', 'decided_by': 'owner',
-                   'reversibility': fields['Reversibility']}
-        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({ident: outcome}),
-                           root, reserved=False, kind='decision.decided',
-                           payload={'id': ident, 'option': 'superseded', 'decided_by': 'owner',
-                                    'reversibility': fields['Reversibility']})
-    return 0
-
-
-def _calibrate(root, token):
-    from wuwei.commands import calibrate
-    return calibrate.run(Namespace(action=None, target=None, repo=None, measure=False, skip=[],
-                                   interview=None, questions=False, answer=None))
-
-
 def _reports_preview(root):
     from wuwei import mcp
     plan = mcp.migrate(root)
@@ -940,11 +858,7 @@ def _reports(root, token):
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
-    'calibrate': ('wuwei calibrate', lambda root: (
-        "profile the configured repositories; writes today's calibration.md and charter proposals; "
-        'config.toml unchanged\n', None), _calibrate),
     'watch-install': _planned('wuwei watch install', _service('watch')),
-    'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
     'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }
 

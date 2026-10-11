@@ -27,6 +27,13 @@ def register(subparsers):
     learn_parser.add_argument('--thread', metavar='FILE',
                               help="JSON {channel, thread_ts, participants} from the connector's replies tool (slack only)")
     learn_parser.set_defaults(func=learn)
+    answer_parser = actions.add_parser('answer', help="record the owner's answer to a learning card (the card names it)")
+    answer_parser.add_argument('id', help='the D-n of the learning card')
+    answer_parser.add_argument('option', help='the label or option id the owner chose')
+    answer_parser.add_argument('--card', metavar='HASH',
+                               help="the card's hash, as its record command carries it; under strict "
+                                    'the card does not confirm and the owner answers at the prompt')
+    answer_parser.set_defaults(func=answer)
     actions.add_parser('tiers', help='print the effective outbound tier table').set_defaults(func=tiers)
     explain_parser = actions.add_parser('explain', help='print the rows a draft passed and the row that held it')
     explain_parser.add_argument('draft', help='the draft id')
@@ -369,10 +376,14 @@ Outcome: pending
 '''
 
 
+# The command that records the owner's answer to a learning card; <label> is the chosen option.
+RECORD = '{cli} outbound answer {id} "<label>" --card {card}'
+
+
 def _widget(root, config, identifier):
     from wuwei import decision
     fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
-    print(json.dumps([decision.record_widget(identifier, fields,
+    print(json.dumps([decision.record_widget(identifier, fields, RECORD,
                                              level=workspace.verbosity(config, 'decisions'), root=root)], indent=2))
 
 
@@ -394,7 +405,7 @@ def apply(root, proposal, option, decision_id=None):
     """Write what the answer approved through the owner edit frame; the answer is the
     confirmation. One outbound.learned event (ids only) after a write."""
     from wuwei import state
-    from wuwei.commands import setup
+    from wuwei.commands.config import _edit, _settle, merged
     choice = option
     for row in [*proposal['channels'], *proposal['people']]:
         if option == f"{row['id']}-{_other_class(row)}":  # #496: approve with this entry's other class
@@ -422,12 +433,12 @@ def apply(root, proposal, option, decision_id=None):
         settings += [(('outward', 'modes'), proposal['server'], mode)] if mode else []
         for key, ids in (('work_channels', team), ('external_channels', client)):  # #496: by class.
             if ids:
-                settings += setup.merged(config, ['outbound', key], ids, add=True)
+                settings += merged(config, ['outbound', key], ids, add=True)
         settings += [(('outbound', 'people'), f"slack:{row['id']}", row['entry']) for row in people]
         settings += [(('outbound', 'owner', 'slack'), key, value) for key, value in owner.items()]
-        return setup._settle(raw, settings)
+        return _settle(raw, settings)
 
-    code = setup._edit('outbound learn', 'learned connector', lambda *args, **kwargs: True, change, root)
+    code = _edit('outbound learn', 'learned connector', lambda *args, **kwargs: True, change, root)
     if code == CLEAN:
         state.append_event('outbound.learned', {
             'decision': decision_id, 'option': option, 'mode': 'card' if decision_id else 'auto',
@@ -472,7 +483,7 @@ def learn(args):
     if args.channel and found and args.channel not in found:
         # Verify #492: --as names a channel for a connector that has none; it never lowers one.
         return fail(f'connector {server} already resolves to {", ".join(sorted(found))}; --as cannot change it; '
-                    'the owner changes outward.servers in a host terminal')
+                    'the owner changes outward.servers with bin/wuwei config set')
     channel = args.channel or (next(iter(found)) if len(found) == 1 else None)
     if channel is None:
         return fail(f'connector {server} has no channel; pass --as slack, tracker, code_host, docs, mail, other or local')
@@ -546,3 +557,56 @@ def learn(args):
         return ask(root, config, proposal) if card else apply(root, proposal, 'approve')
     except (OSError, ValueError) as exc:
         return fail(f'{exc}; run bin/wuwei doctor', UNRUN)
+
+
+def owner_answer(root, identifier, label, card):
+    """(code, message): the owner's answer to today's learning card, confirmed by the card hash
+    the planner session asked; the answer writes the learned connector first."""
+    import hashlib
+    from wuwei import decision, state
+    path = decision.today_path(identifier, root)
+    if path.is_symlink() or path.parent.is_symlink():
+        return UNRUN, 'outbound answer: the record must be a regular file; restore it from the day directory'
+    text = path.read_text(encoding='utf-8')
+    try:
+        fields, _ = decision.evaluate(text)
+    except ValueError as exc:
+        return FINDINGS, f'outbound answer: {exc}'
+    data = state.read_state(root)
+    learned = data.get('outbound_learn', {}).get(identifier)
+    if learned is None:
+        return FINDINGS, f'outbound answer: {identifier} is not a learning card today; bin/wuwei outbound learn asks one'
+    option = decision.option_id(fields, label)
+    if option not in {row[0] for row in decision.options(fields)}:
+        return FINDINGS, f'outbound answer: {label} is not an option of {identifier}; pass a label the card shows'
+    if decision.answered(data, identifier) is not None:
+        return FINDINGS, f'outbound answer: {identifier} is already answered; bin/wuwei outbound learn asks again'
+    digest = hashlib.sha256((identifier + '\n' + option + '\n' + text).encode()).hexdigest()
+    where = decision.owner_confirm(root, identifier, digest, fields['Question'], card, fields)
+    if not where:
+        return FINDINGS, decision.no_card(identifier) if card is not None else 'outbound answer: declined; nothing written; run it again to answer'
+    if apply(root, learned, option, identifier):
+        return FINDINGS, 'outbound answer: the learned connector was not written; run bin/wuwei config check, then answer again'
+
+    def update(current):
+        if decision.answered(current, identifier) is not None:
+            raise ValueError(f'outbound answer: {identifier} was answered meanwhile; read it with bin/wuwei why')
+        current['outbound_learn'][identifier]['answered'] = option
+        current.setdefault('decision_outcomes', {})[identifier] = {
+            'option': option, 'outcome': option, 'decided_by': 'owner',
+            'reversibility': fields['Reversibility'], 'class': fields.get('Class'),
+            'recommendation': fields['Recommendation'], 'at': workspace.now().isoformat()}
+    state._write_state(update, root, reserved=False, kind='decision.decided',
+                       payload={'id': identifier, 'option': option, 'decided_by': 'owner',
+                                'reversibility': fields['Reversibility'], 'class': fields.get('Class')})
+    workspace.atomic_write(path, decision.owner_record(text, option, where))
+    return CLEAN, option
+
+
+def answer(args):
+    try:
+        code, message = owner_answer(workspace.find_workspace(), args.id, args.option, args.card)
+    except (OSError, ValueError) as exc:
+        code, message = UNRUN, f'outbound answer: {exc}; run bin/wuwei doctor'
+    print(message, file=sys.stderr if code else sys.stdout)
+    return code

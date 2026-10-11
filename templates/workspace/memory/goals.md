@@ -1,7 +1,7 @@
 # Goals
 
-The lead proposes goals at the morning plan, you confirm them in the gate question, and the
-planner records them here. You can edit them later with `bin/wuwei goals edit`.
+The lead proposes goals at the morning plan, you confirm them in the gate question, and
+plan approve records them here. You can edit this file yourself.
 Each block uses this shape:
 
     ## G-1

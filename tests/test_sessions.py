@@ -273,7 +273,6 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
     from wuwei import memory, watch
     from wuwei.guards import lifecycle
     monkeypatch.setattr(memory, 'session_payload', lambda root: ('ctx', 3, 1))
-    monkeypatch.setattr(memory, 'lint', lambda root: [])
     monkeypatch.setattr(watch, 'health', lambda root, clocks=None, name='watch': (0, ''))
 
     def broken(*args, **kwargs):
@@ -297,15 +296,13 @@ GOALS = ('# Goals\n\n## G-1\noutcome: Ship checkout v2\nmeasure: orders\ntarget:
 BRIEF = '.wuwei/days/2026-09-30/briefs/builder-1.md'
 
 
-def rotating(root, limit, *, turns=0, seat='stopped', outcome=True, started=NOW):
+def rotating(root, limit, *, turns=0, seat='stopped', started=NOW):
     (root / '.wuwei/config.toml').write_text(f'[owner]\ntimezone = "UTC"\n[sessions]\nrotate_after = {limit}\n')
 
     def seed(data):
         data.update(planner_session_id='P',
                     seats={'builder-1': {'id': 'builder-1', 'role': 'builder', 'item': 'ITEM-1',
-                                         'brief': BRIEF, 'status': seat}},
-                    decision_routes={'D-1': {'reversibility': 'unsure'}},
-                    decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}} if outcome else {})
+                                         'brief': BRIEF, 'status': seat}})
         data['sessions'] = {'P': {'role': 'adhoc', 'started': started, 'last_seen': started,
                                   'cwd': str(root), 'last_hook': 'Stop', 'turns': turns}}
     state._write_state(seed, root, reserved=False)
@@ -321,7 +318,6 @@ def constrained(root):
     def seed(data):
         data.update(goals=['G-1'], gate_approved=True, approved_items=['ITEM-1'])
         data['seats']['builder-1']['status'] = 'running'
-        data['decision_routes']['D-2'] = {'reversibility': 'unsure'}
     state._write_state(seed, root, reserved=False)
 
 
@@ -350,15 +346,14 @@ def test_issue_acceptance_rotation_after_turns(root, monkeypatch, capsys):
     from wuwei.guards import lifecycle
     code, text = lifecycle.session_start({'cwd': str(root), 'session_id': 'Q'})
     assert 'G-1 Ship checkout v2' in text and 'plan.md' in text
-    assert 'Open decisions: D-2' in text and BRIEF in text
+    assert 'Open decisions' not in text and BRIEF in text
 
 
-@pytest.mark.parametrize('case', ['off', 'unanswered', 'wake', 'other', 'active', 'running', 'check'])
+@pytest.mark.parametrize('case', ['off', 'wake', 'other', 'active', 'running', 'check'])
 def test_rotation_not_at_dirty_boundary_or_off(root, monkeypatch, case):
     from wuwei import watch
     from wuwei.guards import lifecycle
-    rotating(root, '{}' if case == 'off' else '{ turns = 1 }', turns=500,
-             outcome=case != 'unanswered')
+    rotating(root, '{}' if case == 'off' else '{ turns = 1 }', turns=500)
     if case in ('running', 'check'):
         state._write_state(lambda data: data.setdefault('builds', {}).update(
             {'ITEM-1': {'status': case, 'job': 'j1', 'runtime': 'codex', 'brief': BRIEF}}),
@@ -402,7 +397,7 @@ def test_issue_acceptance_payload_after_compaction(root, monkeypatch, capsys):
     text = json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
     assert text.startswith(HEADER) and '\nActive constraints:\n' in text
     assert 'G-1 Ship checkout v2' in text and 'plan.md (approved: ITEM-1)' in text
-    assert 'Open decisions: D-2\n' in text and BRIEF in text
+    assert 'Open decisions' not in text and BRIEF in text
     assert state.read_state(root)['sessions']['P']['compactions'] == 1
 
 
@@ -442,3 +437,19 @@ def test_session_start_flags_the_env_file(root, monkeypatch, tmp_path_factory):
     hook(monkeypatch, 'SubagentStop', 'A', root, agent_type='Explore')
     seen = [row['payload'] for row in events(root, 'session.seen')]
     assert [row.get('env_file', 'absent') for row in seen] == [True, False, 'absent', 'absent']
+
+
+def test_owner_answer_reads_yes_no_or_none(root):
+    """Part 14: the latest recorded answer on one Owner step card; needs_owner is None only on Yes."""
+    from fakes import owner
+    command = 'bin/wuwei dispatch next A'
+    assert sessions.owner_answer(root, command, 'x', 't1') is None
+    owner.answer(root, command, 't1', reply='No')
+    assert sessions.owner_answer(root, command, 'x', 't1') == 'No'
+    assert sessions.needs_owner(root, command, 'x', 't1') is not None
+    owner.answer(root, command, 't1')
+    assert sessions.owner_answer(root, command, 'x', 't1') == 'Yes'
+    assert sessions.needs_owner(root, command, 'x', 't1') is None
+    assert sessions.owner_answer(root, command, 'x', 't2') is None
+    owner.answer(root, command, 't1', reply='Something else')
+    assert sessions.owner_answer(root, command, 'x', 't1') is None

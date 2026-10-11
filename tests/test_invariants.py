@@ -11,7 +11,7 @@ from test_reasons import CLI, reasons
 # A wall: the only way out is the owner acting outside the session, and no card is named.
 WALL = re.compile(r'no setting lowers it|host terminal|ask the owner to|only the owner|by hand'
                   r'|leave \w+ to the owner')
-CARD = re.compile(r'bin/wuwei (?:decision show D-|drafts show draft-)')
+CARD = re.compile(r'bin/wuwei drafts show draft-')
 
 
 def wall(reason, line):

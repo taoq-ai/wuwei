@@ -501,8 +501,7 @@ CLIENT_WHY = 'internal state word "i-12" for the client audience of C2 (outward.
 
 
 @pytest.mark.parametrize('tier', ['send', 'ask'])
-@pytest.mark.parametrize('mode', ['autonomous', 'supervised'])
-def test_internal_state_client_holds(configured, tier, mode):
+def test_internal_state_client_holds(configured, tier):
     # #533: a client reader gets a card naming the audience and the word.
     from wuwei import outward
     from wuwei.guards.outward import check_tier
@@ -510,7 +509,7 @@ def test_internal_state_client_holds(configured, tier, mode):
     outbound_line(root, 'external_channels = ["C2"]')
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('default_tier = "ask"', f'default_tier = "{tier}"'))
-    write_config(root, PATTERNS + f'\n[autonomy]\nmode = "{mode}"\n')
+    write_config(root, PATTERNS)
     config = workspace.load_config(root)
     why = []
     assert outward.classify(TEXT, root, config, {'channel': 'C2', 'text': TEXT},
@@ -564,25 +563,7 @@ def test_internal_state_client_approved_sends(configured):
 WARNING = 'warning: outward: internal state word "i-12" in a'
 
 
-@pytest.mark.parametrize('channel', ['C1', 'C7'])
-def test_internal_state_team_warns_when_supervised(configured, monkeypatch, capsys, channel):
-    # #533: team and company readers get the message and an outward.lint event, no card.
-    from wuwei import outward
-    root = configured[0]
-    path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
-    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n')
-    monkeypatch.chdir(root)
-    assert run_hook(monkeypatch, payload(root, TEXT, channel=channel)) == 0
-    config = workspace.load_config(root)
-    assert outward.check_call({'text': TEXT, 'channel': channel}, root, config, {'chat'}, port=True) == (0, '')
-    assert [row['payload'] for row in events_of(root, 'outward.lint')] == [
-        {'kind': 'slack', 'word': 'i-12'}, {'kind': 'chat', 'word': 'i-12'}]
-    assert WARNING in capsys.readouterr().err
-    assert events_of(root, 'guard.would_refuse') == []
-
-
-def test_internal_state_team_silent_when_autonomous(configured, monkeypatch, capsys):
+def test_internal_state_team_passes_below_strict(configured, monkeypatch, capsys):
     from wuwei import outward
     root = configured[0]
     path = root / '.wuwei/config.toml'
@@ -596,20 +577,10 @@ def test_internal_state_team_silent_when_autonomous(configured, monkeypatch, cap
     assert WARNING not in capsys.readouterr().err
 
 
-def test_internal_state_mail_warns(configured, capsys):
-    from wuwei import outward
-    root = configured[0]
-    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n')
-    config = workspace.load_config(root)
-    assert outward.check_lint({'text': TEXT, 'to': 'dev@example.test'}, root, config, {'mail'}) == (0, '')
-    assert [row['payload'] for row in events_of(root, 'outward.lint')] == [{'kind': 'mail', 'word': 'i-12'}]
-
-
 def test_internal_state_to_owner_never(configured):
     from wuwei import outward
     root = configured[0]
-    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n'
-                 '\n[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
+    write_config(root, PATTERNS + '\n[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
     config = workspace.load_config(root)
     assert outward.check_lint({'text': TEXT, 'channel': 'D01'}, root, config, {'slack'}) == (0, '')
     assert events_of(root, 'outward.lint') == []
@@ -953,7 +924,7 @@ def test_owner_facing_templates_are_plain():
     from wuwei import outward
     cli = Path(__file__).resolve().parents[1] / 'cli/wuwei'
     for name in ('report.py', 'decision.py', 'retro.py',
-                 'interview.py', 'watch.py', 'commands/decision.py', 'commands/status.py'):
+                 'watch.py', 'commands/outbound.py', 'commands/status.py'):
         for node in ast.walk(ast.parse((cli / name).read_text(encoding='utf-8'))):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 assert '\u2014' not in node.value and outward.tells(node.value) == [], (name, node.value)

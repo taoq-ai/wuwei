@@ -1,10 +1,10 @@
-"""Explain from recorded events why an item, a decision or a refusal is where it is."""
+"""Explain from recorded events why an item or a refusal is where it is."""
 
 import json
 import re
 import sys
 
-from wuwei import decision, references, security, state, verdict, watch, workspace
+from wuwei import references, security, state, verdict, watch, workspace
 from wuwei.commands.event import EVENT_PRODUCERS
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.redact import redact
@@ -13,7 +13,7 @@ NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
 DRAFT = r'draft-[0-9a-f]{32}'
-GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'decision', 'phase', 'merge')
+GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
 
 
@@ -22,8 +22,8 @@ class Missing(Exception):
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('why', help='Explain from records why an item, decision or refusal happened')
-    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, a target key, an event id or "last refusal"')
+    parser = subparsers.add_parser('why', help='Explain from records why an item or refusal happened')
+    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
     parser.add_argument('--json', action='store_true',
                         help="print an item's live docs, ticket and spec values and its steps as JSON")
@@ -38,7 +38,7 @@ def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
     if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
-            EVENT_ID, decision.DECISION_ID, DRAFT))):
+            EVENT_ID, DRAFT))):
         print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
         return UNRUN
     try:
@@ -47,8 +47,6 @@ def run(args):
             return CLEAN
         if target == 'last refusal' or re.fullmatch(EVENT_ID, target):
             steps = refusal(root, target)
-        elif re.fullmatch(decision.DECISION_ID, target):
-            steps = decided(root, target)
         elif re.fullmatch(DRAFT, target):  # #552
             steps = [(line, None, []) for line in held(root, target)]
         elif target == 'adhoc':  # #676
@@ -83,13 +81,6 @@ def render(steps, level, root):
     return [security.redact(redact(text if level != 'full' else f'{text} (event {event or NOT}'
                                    + ''.join(f'; {path}' for path in paths) + ')'), markers)
             for text, event, paths in steps]
-
-
-def question(day, ident):
-    path = day / 'decisions' / f'{ident}.md'
-    if not path.is_file():
-        return NOT
-    return (verdict.rows(verdict.active_text(path.read_text(encoding='utf-8')), 'Question') or [NOT])[0].strip()
 
 
 def scored(score):
@@ -148,11 +139,6 @@ def item(root, name):
     groups = {group: [] for group in GROUPS}
     for day, data in days:
         row = data['items'][name]
-        ids = {ident for ident, names in decision.naming(day, [name]).items()
-               if names and ident.startswith('D-')}
-        ids |= {value for value in (row.get('decision'), row.get('assumption', {}).get('decision'))
-                if isinstance(value, str)}
-        named = set()
         for number, event in enumerate(watch.records(day / 'events.jsonl'), 1):
             at, kind, payload = f'{day.name}:{number}', event['kind'], event['payload']
             add = lambda group, text, *paths: groups[group].append((text, at, list(paths)))
@@ -189,17 +175,6 @@ def item(root, name):
                     add('gate', text + (', blocking: ' + '; '.join(blocking) if blocking else ''), rel(path))
                 else:
                     add('gate', text + f', blocking findings {NOT}')
-            if kind.startswith('decision.') and (payload.get('id') in ids or payload.get('item') == name):
-                ident, by = payload.get('id'), payload.get('decided_by') or NOT
-                outcome = {'decision.decided': f'{payload.get("option")} by {by}',
-                           'decision.reversed': f'reversed to {payload.get("option")} by {by}',
-                           'decision.routed': 'routed to the owner',
-                           'decision.waited': f'{payload.get("outcome")} by {EVENT_PRODUCERS["decision.waited"]}'
-                                              ' after decisions.wait_hours'}.get(kind)
-                if outcome:
-                    named.add(ident)
-                    add('decision', f'decision {ident}: {question(day, ident)}: {outcome}',
-                        rel(day / 'decisions' / f'{ident}.md'))
             if name in payload.get('phase_changes', {}):
                 add('phase', f'phase {payload["phase_changes"][name]} by {EVENT_PRODUCERS.get(kind, kind)}')
             if kind == 'merge.auto' and row.get('pr') and payload.get('pr') == row['pr']:
@@ -210,9 +185,6 @@ def item(root, name):
                     f'{str(evidence.get("head", NOT))[:12]}, checks {checks}, '
                     f'approvals {", ".join(evidence.get("approvals", [])) or "none"}',
                     *(entry['path'] for entry in evidence.get('verdicts', [])))
-        for ident in sorted(ids - named):
-            groups['decision'].append((f'decision {ident}: {question(day, ident)}: decided {NOT}', None,
-                                       [rel(day / 'decisions' / f'{ident}.md')]))
     day, data = days[-1]
     row = data['items'][name]
     if row.get('approved_as'):  # #731: the owner's recorded approval, once, from the latest day
@@ -220,12 +192,11 @@ def item(root, name):
     steps = [step for group in GROUPS for step in groups[group] or (
         [(f'{REQUIRED[group]}: {NOT}', None, [])]
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]
-    now, wait = f'now: {row["phase"]} ({row["status"]})', row.get('assumption', {})
+    now = f'now: {row["phase"]} ({row["status"]})'
     action = data.get('watch', {}).get('actions', {}).get(row.get('pr'), {}).get('action')
-    if row['phase'] in ('parked', 'escalated'):
-        now += f', waiting on decision {row["decision"]}' if row.get('decision') else f', waiting on: {NOT}'
-    elif wait.get('status') == 'waiting':
-        now += f', waiting on external confirmation {wait.get("decision", NOT)}'
+    if row['phase'] in ('parked', 'escalated'):  # a park in code shows its reason; the owner resumes it
+        reason = (row.get('disposition') or {}).get('reason')
+        now += (f', {reason}' if reason else '') + f'; waiting on: wuwei plan resume {name}'
     elif action:
         now += f', waiting on {action}'
     return steps + [(now, None, [rel(day / 'state.json')])]
@@ -293,29 +264,3 @@ def held(root, draft_id):
         raise Missing(f'no draft {draft_id} today; run bin/wuwei drafts for the queued ids')
     rule = row['tier_reason'].removeprefix(outward.APPROVAL_REQUIRED + ': ')
     return [f'held: {rule}', *edges(root, rule, row.get('tool'))]
-
-
-def decided(root, ident):
-    """Today's D-n: options and scores, weights, margin, class and who decided."""
-    path = decision.today_path(ident, root)
-    if not path.is_file():
-        raise Missing(f'no decision record {ident} today; run bin/wuwei status --json for open decisions')
-    text = path.read_text(encoding='utf-8')
-    fields, scores = decision.evaluate(text)
-    _, _, wants, _ = decision._scored(fields)
-    margin = decision.margin(fields, scores)
-    kind = (verdict.rows(verdict.active_text(text), 'Class') or [''])[0].strip() or NOT
-    lines = [*decision.present(ident, fields, 'brief').splitlines(),
-             'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),
-             f'margin: {margin:.2f}', f'class: {kind}']
-    steps = [(line, None, [str(path.relative_to(root))]) for line in lines]
-    rows = list(enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl'), 1))
-    last = next(((number, event['payload']) for number, event in reversed(rows)
-                 if event['kind'] in ('decision.decided', 'decision.reversed')
-                 and event['payload'].get('id') == ident), None)
-    if last is None:
-        return steps + [(f'decided: {NOT}', None, [])]
-    number, payload = last
-    by = str(payload.get('decided_by') or NOT)
-    at = f'{workspace.day_dir(root).name}:{number}'
-    return steps + [(f'decided: {payload.get("option")} by {by}', at, [])]

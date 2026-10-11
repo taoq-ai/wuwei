@@ -15,7 +15,7 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 
 ## What the planner records
 
-1. Owner decisions batched by valid record id, recommended option first; two-way seat decisions go in the next digest.
+1. Owner decisions come from `wuwei next`, one at a time, on the Owner step card a command prints.
 2. A denied action, missing measurement or over-budget item stays pending with its reason; never call an absent measurement clean.
 3. Each follow-up the retro proposes, with `bin/wuwei tracker create --follow-up <item> "<title>" --evidence "<line>"`.
 

@@ -32,6 +32,7 @@ def compile(root=None):
         raise ValueError(f'no captured role evidence; {DAMAGED}')
     proposals = day / 'proposals'
     proposals.mkdir(exist_ok=True)
+    hard = []
     for row in watch.records(day / 'events.jsonl'):
         if row['kind'] != 'retro.captured':
             continue
@@ -40,39 +41,12 @@ def compile(root=None):
         if change.casefold() == 'none':
             continue
         ident = sha256(record['evidence'].encode()).hexdigest()[:12]
-        if change.casefold().startswith('hard rule:'):
-            decision = day / 'decisions' / f'D-{int(ident, 16)}.md'
-            if not decision.exists():
-                decision.parent.mkdir(exist_ok=True)
-                summary = change.removeprefix('Hard rule:').strip().replace('|', '/')
-                if '\n' in summary or not summary:
-                    raise ValueError('hard-rule change must be one nonempty line; write the change as one line')
-                workspace.atomic_write(decision, f'''Question: Should the hard rule change to {summary}?
-Class: other
-Context: Captured role evidence at {record['evidence']}.
-Options:
-| Option | Title | Rationale | Consequence |
-| --- | --- | --- | --- |
-| A | Propose the rule | Passes owner review but scores lower on evidence before a rule change. | {summary} is proposed for implementation. |
-| B | Defer the rule change | Passes owner review and waits for more evidence. | The hard rule stays as it is. |
-Musts:
-| Criterion | A | B |
-| --- | --- | --- |
-| Owner review | pass | pass |
-Wants:
-| Criterion | Weight | A | B |
-| --- | --- | --- | --- |
-| Evidence before rule change | 5 | 5 | 8 |
-Recommendation: B
-Reasoning: Evidence before a rule change decided it; more captured evidence would flip it.
-Confidence: medium
-Reversibility: one-way
-Blast radius: Guard behavior across the workspace
-Pre-mortem: A broad refusal could block legitimate work.
-Revisit: After owner review of the recorded evidence.
-Decided-by: owner
-Outcome: pending
-''')
+        if change.casefold().startswith('hard rule:'):  # the owner's to decide: a retro line
+            summary = change[len('hard rule:'):].strip()
+            if '\n' in summary or not summary:
+                raise ValueError('hard-rule change must be one nonempty line; write the change as one line')
+            evidence = Path(record['evidence']).relative_to(day.relative_to(root)).as_posix()
+            hard.append(f"- {summary} ({record['agent_type'].rsplit(':', 1)[-1]}, {evidence})")
             continue
         role = record['agent_type'].rsplit(':', 1)[-1]
         if not (Path(__file__).resolve().parents[2] / 'charters' / f'{role}.md').is_file():
@@ -91,6 +65,8 @@ Outcome: pending
         for fields in notes:
             lines.append('| ' + ' | '.join([role] + [fields[key].replace('|', '/')
                 for key in ('Blocked', 'Gap', 'Change')]) + ' |')
+    if hard:
+        lines += ['', '## Hard rule changes', *hard]
     lines += ['', '## Cycle', '| Item | Phase | Status | Fix rounds |',
               '| --- | --- | --- | --- |']
     rounds = measured['fix_rounds_per_item']
@@ -152,8 +128,6 @@ Outcome: pending
     applied = sorted(proposals.glob('*.landed')) if proposals.exists() else []
     def targets(paths):
         return [json.loads(path.read_text(encoding='utf-8'))['target'] for path in paths]
-    from wuwei import interview
-    lines += ['', '## Owner preferences', *(interview.reask(root) or ['none'])]
     lines += ['', '## Metrics', json.dumps(measured, sort_keys=True), '',
               '## Applied', *(['- `' + p + '`' for p in targets(applied)] or ['none']),
               '## Proposed', *(['- `' + p + '`' for p in targets([*pending, *rejected])] or ['none']), '']
@@ -162,18 +136,15 @@ Outcome: pending
 
 
 def _blocks(data):
-    """#732: each non-PASS verdict and what followed it: its card's answer, a park or a fix round."""
+    """#732: each non-PASS verdict and what followed it: a park or a fix round."""
     lines = ['', '## Blocks', '| Item | Gate | Verdict | Followed |', '| --- | --- | --- | --- |']
     for _, record in sorted(data['gate_verdicts'].items()):
         if record.get('verdict') == 'PASS':
             continue
         item = data['items'].get(record.get('item'), {})
         rounds = (data.get('builds', {}).get(record.get('item')) or {}).get('fix_rounds', 0)
-        if record.get('decision'):
-            answer = (data.get('decision_outcomes', {}).get(record['decision']) or {}).get('option')
-            followed = f"card {record['decision']}: {answer or 'open'}"
-        elif item.get('phase') in ('parked', 'escalated'):
-            followed = f"parked: {item.get('decision') or 'no record'}"
+        if item.get('phase') in ('parked', 'escalated'):
+            followed = f"parked: {(item.get('disposition') or {}).get('reason') or 'no reason recorded'}"
         else:
             followed = f'fix round {rounds}' if rounds else 'none yet'
         lines.append(f"| {record.get('item')} | {record.get('role')} {record.get('round')} | "

@@ -5,7 +5,7 @@ import os
 import re
 from uuid import uuid4
 
-from wuwei import outward, state, voice, workspace
+from wuwei import outward, state, workspace
 from wuwei.exits import RACE, DAMAGED
 
 
@@ -77,7 +77,8 @@ def create(root, config, channel, operation, adapter, inputs, reason, tool=None)
     texts, destinations = outward._text(inputs)
     nested = inputs.get('draft', {})
     target = destination(inputs, channel, operation)
-    audience = voice.audience(target if destinations or operation == 'dm' else channel, config)
+    audience = target if destinations or operation == 'dm' else channel
+    audience = 'review' if audience == 'code_host' else audience
     draft_id = 'draft-' + uuid4().hex
     row = {'id': draft_id, 'channel': channel, 'operation': operation,
            'adapter': adapter, 'destination': target, 'inputs': inputs,
@@ -254,13 +255,13 @@ def _edit(inputs, root, source=None):
 
 def _add_row(root, added):
     """#496: append the card's tier row to outbound.tiers; the card answer is the confirmation."""
-    from wuwei.commands import setup
+    from wuwei.commands import config as config_command
 
     def change(_, raw):
         rows = [{key: value for key, value in row.items() if value}
                 for row in workspace.load_config(root, raw=raw)['outbound']['tiers']]
-        return raw if added in rows else setup._settle(raw, [(('outbound',), 'tiers', [*rows, added])])
-    return setup._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
+        return raw if added in rows else config_command._settle(raw, [(('outbound',), 'tiers', [*rows, added])])
+    return config_command._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
 
 
 def approve(root, draft_id, *, answered, edit=False, source=None, always=False):

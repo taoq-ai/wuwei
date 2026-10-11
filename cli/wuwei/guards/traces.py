@@ -5,40 +5,8 @@ import time
 from wuwei.guards import Guard
 from wuwei.exits import PAYLOAD
 
-# A warm call takes 5 to 20 ms; one that has already run a second is under load.
-# ponytail: sustained load above it defers the advisory steward.due event until a call fits.
-BUDGET_MS = 1000
 
-
-def _digest(directory, calls=0, steward=None):
-    """The writer's running count of today's spans and the steward base (#659), so a call
-    rescans neither traces.jsonl nor events.jsonl. A cache, not evidence: missing or invalid
-    means one recount of the span lines."""
-    import json
-    from wuwei import state, workspace
-    path = directory / 'traces.digest.json'
-    with (directory / 'state.lock').open('a') as lock:
-        state.lock_ex(lock, 'state.lock')
-        try:
-            digest = json.loads(path.read_text(encoding='utf-8'))
-            if not (isinstance(digest, dict) and set(digest) == {'tool_calls', 'steward'}
-                    and all(type(digest[key]) is int for key in digest)
-                    and 0 <= digest['steward'] <= digest['tool_calls']):
-                raise ValueError
-            digest['tool_calls'] += calls
-        except (OSError, ValueError):
-            try:
-                spans = (directory / 'traces.jsonl').read_bytes().count(b'\n')
-            except FileNotFoundError:
-                spans = 0
-            digest = {'tool_calls': spans, 'steward': 0}
-        if steward is not None:
-            digest['steward'] = max(digest['steward'], steward)
-        workspace.atomic_write(path, json.dumps(digest) + '\n', sync_dir=False)
-    return digest
-
-
-def _record(payload, root, findings=(), transcript_path=None, started=None):
+def _record(payload, root, findings=(), transcript_path=None):
     # Discovery runs on every hook; load recorder dependencies only for PostToolUse.
     import hashlib
     import json
@@ -124,15 +92,6 @@ def _record(payload, root, findings=(), transcript_path=None, started=None):
                    or payload['session_id'] not in seat.get('trace_sessions', ())
                    for seat in bound(state.read_state(root))):
                 state._write_state(bind, root, reserved=False)  # once per seat and session (#659)
-    try:
-        from wuwei import steward
-        digest = _digest(directory, calls=1)
-        if started is None or (time.monotonic() - started) * 1000 < BUDGET_MS:
-            base = steward.maybe_run_for_tool_calls(digest['tool_calls'], root, digest['steward'])
-            if base != digest['steward']:
-                _digest(directory, steward=base)
-    except Exception:
-        pass  # The due signal must never turn a recorded tool span into a hook refusal.
     return 0, ''
 
 
@@ -189,7 +148,7 @@ def check(payload):
             # #601: never the message, which can carry private details.
             inspect, reason = True, f'wuwei traces: {type(exc).__name__}: could not read {step}'
         else:
-            code, reason = _record(payload, root, findings, transcript_path, started)
+            code, reason = _record(payload, root, findings, transcript_path)
             if not code:
                 return 0, ''
     except BaseException as exc:

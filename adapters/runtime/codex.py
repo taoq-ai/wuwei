@@ -144,10 +144,6 @@ def result(job, *, root=None):
         for code, reason in verdicts:
             if code:
                 return registry.Result(code, output, reason)
-        from wuwei.guards.decision import unrecorded
-        code, reason = unrecorded(text, root)
-        if code:
-            return registry.Result(code, output, reason)
         if retro_code:
             return registry.Result(retro_code, output, retro_reason)
         return registry.Result(0, output)

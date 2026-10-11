@@ -1,6 +1,6 @@
 # Configuration
 
-`bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)). In the session, outside the strict posture, the planner asks the value on a card and your answer writes it: `CAP`, `host.seats` and the autonomy answer (`security.posture`, `outbound.default_tier`, `merge.default_tier`, `outbound.learn` and `autonomy.mode` at once) through `wuwei calibrate --questions` and `--answer`, any other key through a decision card and `config set <key> <value> --from-card D-n`. A `config set` in the session without a card exits 1 and names the card. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key, in every posture. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
+`bin/wuwei init .` creates `.wuwei/config.toml`. Change one value with `wuwei config set <key> <value>` and add a repository with `wuwei config add-repo` (see [calibration](#calibration)); each prints the diff and asks its Owner step card in the session, and writes only on your Yes. No host terminal is needed. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key, in every posture. `wuwei init --upgrade` removes an unknown key that has no near documented key and keeps a likely typo for you to fix, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
 ## Sections
 
@@ -9,12 +9,10 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
-| `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[decisions]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -24,8 +22,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host and `budget.tokens_per_day`. Claude subagent seats take `host.seats`, or one per core, and free memory is not read; when a seat runtime launches its own process, CAP is the median of today's last five readings of the running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`; a positive number is your override, still bounded by the budget. `bin/wuwei calibrate` reports the derived value and never proposes it. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
-| `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
+| `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host and `budget.tokens_per_day`. Claude subagent seats take `host.seats`, or one per core, and free memory is not read; when a seat runtime launches its own process, CAP is the median of today's last five readings of the running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`; a positive number is your override, still bounded by the budget. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
+| `template_version` | `""` | Plugin version that last wrote this file. `wuwei init` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
 | `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items come to you. |
@@ -45,9 +43,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
 | `guards.shadow_days` | `7` | Days in the `observe` posture before `bin/wuwei doctor` asks you to switch to `guarded` or raise this number. |
-| `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and `setup --shadow` set it. The Autonomous answer does not: observe is then the chosen posture, not a trial week. Empty means no such ask. |
+| `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and `init --shadow` set it. `config set security.posture '"observe"'` does not: observe is then the chosen posture, not a trial week. Empty means no such ask. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then `bin/wuwei doctor` asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
+| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `init --shadow` sets `observe` for `guards.shadow_days` days from `guards.shadow_since`, then `bin/wuwei doctor` asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
 | `security.areas.<area>` | `""` | Override one area of the posture with `off`, `warn` or `block`; empty takes the posture's level. Areas: `integrity`, `mcp`, `publish`, `records`, `outward`, `seats`; for example `security.areas.mcp` = `"off"` skips the MCP registry check. `records` below `block` is a config finding. |
 | `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`, and refuses under `security.posture = "strict"`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
@@ -55,7 +53,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
 | `repos.default_branch` | Required per entry | Protected base branch. |
 | `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository; the commit guards compare commits against it. Set both values. `wuwei worktree add` writes it to each item worktree's Git config. |
-| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. While it is not `false`, every merge in the repository is yours. Setup and the planner's cards ask it per repository (the `deploys` question); only your answer sets `false`. |
+| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. While it is not `false`, every merge in the repository is yours. Only you set `false`, with `config set repos.<n>.merge_deploys false` on its card. |
 | `repos.merge_method` | `"auto"` when omitted | How WUWEI merges in the repository: `squash`, `rebase` or `merge`. `auto` uses the first of squash, rebase, merge that the repository and its rulesets allow. An explicit method the repository does not allow is yours to merge, and the reason names `repos.merge_method`. `wuwei merge check` names the method. |
 | `repos.merge.auto` | `false` | Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass. |
 | `repos.merge.size_exclude` | `[]` | Path globs, matched on any path suffix, for generated files such as `results/*.json`. A changed file whose every path matches one does not count toward `max_changed_lines` or the review tier; a rename counts when either path does not match. Lockfiles, `linguist-generated` globs in the repository's root `.gitattributes` (ignored when the diff changes that file) and data files never count either. Never-auto paths still apply to these files. |
@@ -67,16 +65,15 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
 | `repos.shepherd.reviewers` | `[]` | Code host logins requested for this repository's PRs; when set it replaces `shepherd.reviewers` here. |
 | `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. A command whose first word starts with `.venv/`, `venv/` or `node_modules/.bin/` resolves that interpreter in the item worktree first, then in the repository's main worktree (its `path`); the check record names the interpreter it ran with. `worktree add` warns when a new worktree will use the main worktree's, `doctor` shows a `check interpreter` row, and the builder brief names it. |
-| `repos.check_timeout_seconds` | `300` | Seconds one run of one check command may take in this repository: fast checks, `repos.tests`, `checks.bootstrap` and `calibrate --measure`. Past it the check is exit 2 with ``fast check `<cmd>` exceeded <n> s (repos.<n>.check_timeout_seconds)``. |
+| `repos.check_timeout_seconds` | `300` | Seconds one run of one check command may take in this repository: fast checks, `repos.tests`, `checks.bootstrap` and `config promote --measure`. Past it the check is exit 2 with ``fast check `<cmd>` exceeded <n> s (repos.<n>.check_timeout_seconds)``. |
 | `checks.python` | `""` | Interpreter for fast checks whose first word is a relative Python such as `.venv/bin/python`; absolute or relative to the repository's path. It wins in every worktree. |
 | `checks.bootstrap` | `""` | One command `worktree add` runs in each new worktree through the checks runner (capped at `repos.check_timeout_seconds`), for example `python3 -m venv .venv && .venv/bin/python -m pip install -q -e .`. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. See [People, channels and tools](#people-channels-and-tools). |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
-| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. |
-| `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
-| `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
+| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
+| `owner.verbosity.decisions` | `""` | Level for a learning or MCP registry card. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -121,7 +118,6 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 A Claude Code subagent cannot write `analysis.md` itself: Claude Code refuses a subagent's Write of a Markdown file named like a report, in any directory. A builder seat saves the analyze report with `bin/wuwei spec analysis <item> < report` and gives a scratch file another name.
 A Claude Code subagent cannot write `analysis.md` itself, so a builder seat saves the analyze report with `bin/wuwei spec analysis <item> < report`. An item can name a governing document: the lead's `governed_by`, or a `Governing: <path>#<heading>` line in `spec.md`. Its report must then end with a `## Governing` table, or the command refuses it. The table has one row per assumption: `agrees`, `conflicts` or `not covered`, and the cited `<path>:<line>`.
 
-`wuwei setup` offers the engine it finds first (`.specify/`, `openspec/`, or a `superpowers@` entry in `scanner.mcp.plugins_file`), spec-kit when it finds none.
 
 ## Host, build and memory
 
@@ -132,11 +128,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit to reset before one retry; beyond it the reason names the reset time. `0` never waits. |
-| `memory.max_notes` | `60` | Index note limit. |
-| `memory.note_line_cap` | `80` | Maximum lines in a note. |
-| `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
-| `memory.state_entry_cap` | `3` | State entries included in memory payload. |
-| `memory.digest` | `"week"` | `"week"` writes the week digest at close and consolidate writes week and month digests; `"off"` writes none. |
 | `memory.budget_tokens` | `6000` | SessionStart memory payload budget in estimated tokens; over it today's lines are left out first. |
 | `memory.export_to` | `"CLAUDE.md"` | Workspace-relative file that receives the generated rules block (`init`, `init --upgrade`; `init --upgrade` also removes the guide block an older version wrote); never under `.wuwei/`. |
 | `retro.repo` | `"."` | Repository used for retro evidence. |
@@ -144,8 +135,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
 | `metrics.band_margin` | `0.2` | The retro names a worst hour or session-age band only when its gate FIX rate over the last 7 days exceeds every other measured band by at least this much. |
-| `consolidation.archive_after_days` | `30` | Pack older day directories into `archive/<year>/<date>.tar.gz`; read them with `wuwei memory show <date>`. |
-| `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
 | `build.stuck_after` | `3` | Repeated progress limit. |
 | `build.poll_interval_seconds` | `5` | Runtime job poll interval. |
@@ -154,7 +143,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
 | `gates.second_opinion` | `"off"` | `"<runtime>:<model>"`, for example `"codex:gpt-6-astra"`, runs one gate of every STANDARD and FULL item a second time on that runtime and model. Its verdict is one more gate record named `<role>@<runtime>`; a blocking finding from either model blocks. `claude` and `none` are refused. |
 | `gates.second_opinion_role` | `"quality"` | The gate role the second opinion repeats: `arch`, `quality` or `security`. |
-| `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with a decision record naming the finding and what would unpark it. Minimum 1. The report's `## Rounds` section counts them. |
+| `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with the finding as its reason; `wuwei plan resume <item>` asks you to resume it. Minimum 1. The report's `## Rounds` section counts them. |
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `gates.polish` | `"offer"` | After a round-one pass with review notes: `never` raises the PR at once, `offer` lets the planner take one polish round (`dispatch polish <item>`) or decline it (`dispatch skip-polish <item>`), `always` opens it. The builder fixes only the notes and one gate (the one that wrote them, else quality) re-checks the delta. It counts as a fix round. |
 | `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. |
@@ -169,27 +158,15 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. See [People, channels and tools](#people-channels-and-tools). |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. See [People, channels and tools](#people-channels-and-tools). |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner pages through the heartbeat. |
-| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
-| `steward.every_tool_calls` | `250` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in `fix` or `delta`, a tool-call or sweep review waits for the round to end; the close review never waits. |
-| `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
-| `steward.loop_threshold` | `9` | Exchanges in the window above which an item writes one `negotiation.loop` event a day; a second fix round today raises it too. |
+| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 
-## Decisions
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
-| `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
-| `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
-
-These keys feed the mandate block in every seat prompt (design spec 5.2). Under `autonomous` the seat assumes `approach`, records `retry`, `park`, `accept-residual` and `merge`, and sends every other class to you; under `supervised` every class comes to you.
 
 ## Telemetry
 
@@ -198,7 +175,7 @@ Weekly usage counts that say whether WUWEI itself works: how often guards refuse
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `telemetry.enabled` | `true` | `false` stops the aggregate, sharing and the OpenTelemetry export. |
-| `telemetry.share` | `""` | `"anonymous"`, `"attributed"` or `"off"`. Empty means the interview question is not answered yet and sends nothing; `bin/wuwei doctor` lists it as pending. A calibration profile never carries it. |
+| `telemetry.share` | `""` | `"anonymous"`, `"attributed"` or `"off"`. Empty means you have not chosen yet and sends nothing; `bin/wuwei doctor` lists it as pending with the `config set telemetry.share` command. |
 | `telemetry.endpoint` | `""` | Where anonymous mode posts; empty or not `https://` keeps every week local. |
 | `telemetry.repository` | `"taoq-ai/wuwei"` | Where attributed mode opens issues with `bin/wuwei telemetry send`. |
 | `telemetry.otlp.endpoint` | `""` | An `https://` OTLP/HTTP base URL on your own platform; off when empty. |
@@ -223,7 +200,7 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 | `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output port. No command calls it since #789 part 5. |
 | `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
 | `adapters.transcripts` | `"none"` | Meeting transcript port. No command calls it since #789 part 5. |
-| `adapters.redactor` | `"builtin"` | Redacts text before a profile export: built-in patterns for phone numbers, email addresses and secrets. |
+| `adapters.redactor` | `"builtin"` | The redactor adapter: built-in patterns for phone numbers, email addresses and secrets. |
 | `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
 | `brief.remote` | `"origin"` | Git remote used for a brief. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
@@ -279,13 +256,6 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `docs.auto` | `[]` | Page kinds (`page`, `report`, `retro`) written at once; any other kind is stored as a draft for `bin/wuwei drafts approve <id>`. Sensitive text drafts anyway. |
 | `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
 
-## Owner voice
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `voice.review_prs` | `[]` | PR references whose owner comments teach the review audience voice. |
-| `voice.sources.internal` | Not set | Example internal audience mapped to sent chat channel IDs. See [People, channels and tools](#people-channels-and-tools). |
-
 ## Boundaries and deployment
 
 | Key | Default | Meaning |
@@ -300,87 +270,41 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 ## Calibration
 
-`bin/wuwei setup` runs the calibration and your interview: it adds a `[[repos]]` table for each repository it finds, calibrates them, and applies everything after one digest in a host terminal. The sections below describe what it proposes.
+`wuwei config promote` runs the calibration: it surveys every configured repository and applies the proposal after you answer its Owner step card in the session. The section below describes what it proposes.
 
-Two host terminal commands change one value later, each with a diff and a digest, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
+Two commands change one value, each with a diff and its Owner step card, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
 - `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and `'[]'` empties it (`config set docs.publish '[]'`; a deploy list still only grows). After the write it prints `replaced: <key> = <new> (was <old>)`. `--add` adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (`config set outbound.work_channels '["C1"]' --add`); on a named-entry table such as `outbound.people` or `outward.servers` it adds or replaces the given entries. It then prints `added: ...`, as does a deploy list. `--add` on any other key is refused. `--replace` is the default and may be passed for clarity. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
 - `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
 
-Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes `config.toml`, and without `--measure` it runs nothing in the checkout. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
+Run `wuwei config promote` after `init` and the `[[repos]]` entries (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout; without `--measure` it runs nothing there. It exits 0 when it applied or found nothing to change, 1 without your Yes, and 2 when it could not run.
 
 | Detector | Reads | Proposes |
 | --- | --- | --- |
 | Toolchain | `pyproject.toml`, `pytest.ini`, `package.json`, `Cargo.toml`, `go.mod`, `Makefile`, a markdownlint config, `.latexmkrc`. With none of those, a single-line test, check or lint `run:` step of a workflow on `pull_request` or `push`, with no shell control or expansion character (`;&|<>$` or a backtick) | `repos.fast_checks` from a fixed command table; only the CI step is the repository's own command |
 | CI checks | `.github/workflows/*.yml` run on `pull_request` | `repos.review_required_checks`: job names, one per leg of a single inline matrix, without `continue-on-error: true` jobs |
-| Conventions | `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.specify/memory/constitution.md`, `CODEOWNERS`, PR and issue templates | charter blocks for the builder and the quality sentinel; `[boundary]` candidates from `CODEOWNERS` |
+| Conventions | `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.specify/memory/constitution.md`, `CODEOWNERS`, PR and issue templates | `[boundary]` candidates from `CODEOWNERS` |
 | Deploy signals | workflows run on a push to the default branch, tags or a release that use an environment, a deploy or release action, or a deploy command; deploy `Makefile` targets and `package.json` scripts; infrastructure directories | `deploy.workflows`, `[environments]`, `deploy.deny`, `repos.merge_deploys = true`, `repos.merge.never_auto_paths` |
 
-It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
+It also reads the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
 
-The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`. The interview's `deploys` question asks you instead.
+The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the digest lists it under "Config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`; you set them with `config set`.
 
-Only fast commands go into `repos.fast_checks` and the charter blocks through `config promote`. `ruff check .`, `black --check .`, `npm run lint`, `make lint` and `markdownlint .` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `bin/wuwei calibrate --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at `repos.check_timeout_seconds`, default 300), and may leave tool caches there. A measured run at 80 % of that limit or more proposes `check_timeout_seconds` at twice the limit. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The `## CI only (not proposed as fast checks)` section of `calibration.md` lists the rest with the measurement or "unmeasured", and the calibrate output and the promote digest print the same lines. `bin/wuwei config promote --measure` measures again before it applies.
+Only fast commands go into `repos.fast_checks` through `config promote`. `ruff check .`, `black --check .`, `npm run lint`, `make lint` and `markdownlint .` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `wuwei config promote --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at `repos.check_timeout_seconds`, default 300), and may leave tool caches there. A measured run at 80 % of that limit or more proposes `check_timeout_seconds` at twice the limit. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The promote digest lists the rest as `CI only, not proposed as a fast check` lines with the measurement or "unmeasured".
 
-`fast_checks = []` means none configured: items build, `wuwei pr raise` adds `checks: none configured` to the PR body, and CI and the gates are the evidence; `wuwei status` and `wuwei doctor` say so. Under strict the first launch in such a repository waits for your answer on its fast-checks card. `bin/wuwei calibrate --questions` (the daily `wuwei next` row) writes that card once per repository. It recommends what the repository declares, measured or not (a slow runner is replaced on a card or with `--measure` and `config promote`), or none with the reason. In autonomous mode it is taken under the mandate and written at once; supervised asks the card.
+`fast_checks = []` means none configured: items build, `wuwei pr raise` adds `checks: none configured` to the PR body, and CI and the gates are the evidence; `wuwei status` and `wuwei doctor` say so, in every posture.
 
-Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the report names its file, line and rule without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
+Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the digest names its file, line and rule as a `Flagged` line without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
 
-`bin/wuwei config promote` is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks y/N, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both. `bin/wuwei config promote --keys <key> ...` applies only those keys of today's answers, also over a value already set, with no repository survey and no `calibration.json`; `calibrate --answer` prints it with the keys of its answer. The charter blocks land through `bin/wuwei promote`.
+`wuwei config promote` recomputes the proposal, prints the diff and the calibration it will record, asks its Owner step card, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both.
 
-On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` event per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
-
-## Owner interview
-
-The interview asks a short, fixed set of questions about your own preferences. Each answer maps to a config key, a line in a charter override or a voice rule that already exists; nothing applies until you promote it. The questions live in one table, `cli/wuwei/interview.py`.
-
-| Question | Maps to |
-| --- | --- |
-| `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
-| `deploys` (per repository) | `repos.merge_deploys`: `Merges deploy` sets `true`, `Merges do not deploy` sets `false`. The first choice is the recommended one: `Merges do not deploy` only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets `Merges deploy` first |
-| `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
-| `gates` (per repository) | `repos.gates.floor` |
-| `quiet` (per repository) | `repos.merge.quiet_hours` |
-| `interrupt`, `decisions`, `hours` | a line in `.wuwei/charters/planner.md`: when decisions interrupt you, how they are presented, your working hours and time zone |
-| `avoid` | `- never:` phrases under `## shared` in `.wuwei/memory/voice.md`, which the outward lint enforces |
-| `formality`, `signature` | a line in `.wuwei/charters/shepherd.md` |
-| `risk` | a line in `.wuwei/charters/lead.md`: what else sets `trust_surface` |
-| `manual` | `deploy.deny` patterns for commands you always run yourself |
-| `verbosity` | `owner.verbosity.default` |
-| `telemetry` | `telemetry.share`: `Anonymous`, `Attributed` or `Off` |
-| `tracker` | `adapters.tracker`: `Linear`, `Jira`, `GitHub` or `None` (then set its credentials in `.wuwei/env`); typing `jira PROJ` or `github owner/repo` also sets `tracker.project` |
-| `tickets` | `Every item` sets `tracker.required = true`; `All but light items` sets `tracker.skip_tiers = ["light"]`; `Optional` sets `tracker.required = false` |
-| `updates` | `tracker.auto`: progress, pull request and close by default; `Plus new issues` adds the four classes; `Everything` adds decisions and verdicts; `Nothing` drafts every tracker write |
-| `chat` | `adapters.chat`: `None` or `Slack`; typing a channel ID such as `C0123ABCD` sets `slack` and `shepherd.review_channel` |
-| `review_bot` | `adapters.review_bot`: `None` or `Greptile` (then set `GREPTILE_API_KEY` in `.wuwei/env`) |
-| `reviewers` | `shepherd.min_reviewers`: `Owner only` sets `0`, `Code authors` sets `1`; typing a teammate's code-host login sets `shepherd.lead_login` to it and `min_reviewers = 1` |
-| `allowlist` | No config key. `Allow` adds Claude Code `permissions.allow` rules to `.claude/settings.local.json`, keeping every other key and rule. They cover `bin/wuwei` and the configured adapters' reads and local commits: `git status`, `diff`, `log`, `show`, `rev-parse`, `fetch` (exact, no options), `add`, `commit`, `worktree list`; `gh pr view`, `list`, `checks`, `diff`, `status`, `gh issue view`, `list`, `gh run view`, `list`. It never allows a push, merge, deploy, release or `gh api`; production reads of your projects stay your decision |
-
-Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. At every plan, whatever the day, the plan skill runs `bin/wuwei calibrate --questions`, which prints only the questions no recorded `interview.json` answers (`[]` once all are) as `Morning gate` widgets, and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. `bin/wuwei init --upgrade` and `bin/wuwei doctor` print the same count: `setup: N questions unanswered: the planner asks them on cards (bin/wuwei calibrate --questions), or bin/wuwei setup in a host terminal`. The `allowlist` answer writes `.claude/settings.local.json` only after you answered its card, at `bin/wuwei setup` or with `bin/wuwei calibrate --interview allowlist` in a host terminal; otherwise it prints that command as a `Next:` line. Free text is checked against the calibration character set and the instruction-like scan.
-
-Answers are recorded in `.wuwei/days/<date>/interview.json`, which only the CLI writes; answers not promoted that day are asked again. The charter and voice changes are written as proposals (`proposals/interview-<target>.json`): one `## Owner preferences (interview)` block per override, patched in place when you answer again. `bin/wuwei config promote` folds the config answers into the calibration proposal and lists them in the digest you confirm: an absent key or one at its default is set; a present key you changed from its default is kept and listed as `Skipped <key>: kept <value>; to apply the answer run bin/wuwei config promote --keys <key>`, and that command replaces it in place in any layout; a table answered with a single value is listed as "config differs; edit by hand". `deploy.deny` only grows. `bin/wuwei promote` lands the charter and voice proposals.
-
-When you merge three or more pull requests the merge policy routed to you within seven days and `merge.auto` is false for that repository, the steward retro proposes `repos.merge.auto = true` under `## Owner preferences` with the decisions as evidence and the command to ask again: `bin/wuwei calibrate --interview merge --repo <name>`. It never records an answer for you.
-
-## Calibration profiles
-
-A profile carries a promoted calibration to another workspace of the same kind. `bin/wuwei calibrate export <name>` writes `<name>.json` in the current directory and refuses to replace one. It holds the config keys that differ from the shipped template (the `repos` part comes from the first repository, or from `--repo <name>`, and applies to every repository on import), the lines your charter overrides add to the shipped charters, and the ledger reasons that landed them. Anything personal stays out: owner, people, channel and repository identity keys, workspace paths, `guards` and `security` (the posture says where this workspace runs), plus any key, value, charter line or reason that names one of those values, holds an absolute path or trips the redactor. The `dropped` list names each one and why, never the value. If the redactor cannot run, the export exits 2.
-
-`bin/wuwei calibrate import <source>` reads a starter name, an `https` URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:
-
-- A profile that sets `repos.merge.auto = true`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
-- Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).
-- `--skip <key>` (a dotted config key or `charters.<role>`) leaves a change out; `--repo <name>` limits the `repos` part to one repository.
-
-Import prints the `config.toml` diff, writes the accepted part to `.wuwei/days/<date>/profile.json` (only the CLI writes it) and one `proposals/profile-<role>.json` per role, without lines the charter already has. `bin/wuwei config promote` re-checks `profile.json`, lists each change as `Profile <name>: <key> = <value>` in the digest you confirm, and lets an interview answer for the same key win. `bin/wuwei promote` lands the charter blocks. Lists replace yours, except `deploy.deny`, which only grows.
-
-Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `python-library` (pytest fast check, packaging and CI on the trust surface, package publishing denied, short builder and quality rules) and `cli-tool` (the same, plus `bin/*` and rules on exit codes and reference docs). Try one with `bin/wuwei calibrate import python-library`.
+On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` event per change per day. Run `wuwei config promote` again to approve the new state; `bin/wuwei doctor` names it.
 
 ## Outward text and outbound tiers
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message (a warning under `autonomy.mode = "supervised"`); the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
+| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message; the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` or from `config set` replaces the defaults; `config set --add` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail`, `other` or `local`), checked before the rules. A `local` server acts only on your machine and passes the outward guard. Built in: `terminal`, `Claude_Preview`, `Claude_Code_iOS_Simulator`, `computer-use` and the `Claude_Browser` preview tools. The Bash guards judge a `run_in_terminal` command; `bin/wuwei outbound learn` proposes entries. Reads still pass. See [People, channels and tools](#people-channels-and-tools). |
@@ -400,8 +324,8 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys, each with `email`, `org` and `class` (`owner`, `team`, `company`, `client` or `public`); `bin/wuwei outbound learn` proposes `slack:` entries for the day's reviewers with `class = "team"`. Without a `class`, an internal person is `team` and anyone else takes the connector's default class; `doctor` warns. See [People, channels and tools](#people-channels-and-tools). |
 | `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
 | `outbound.default_tier` | `"send"` | The umbrella: what no tier row narrows gets this (`send`, `ask` or `block`) for chat, code host, mail and other writes. It also covers bug, triage and follow-up tickets in the workspace's own tracker; other docs and tracker writes keep `docs.auto` and `tracker.auto`. With `send` the broad commitment, disagreement and company rows drop out of the defaults; narrow with `outbound.tiers` rows per tool, person, channel, audience or topic. |
-| `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). Setup proposes `mail`, `code_host` and `slack.user` from what it measures; `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. See [People, channels and tools](#people-channels-and-tools). |
-| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the digest and day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
+| `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. See [People, channels and tools](#people-channels-and-tools). |
+| `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |
 | `outbound.sensitive_keywords` | Built-in sensitive topic words | Optional replacement list; see the template for the full list. |
 | `outbound.sensitive_patterns` | `['\\bmental\\s+health\\b']` | Optional replacement regex list. |
 | `outbound.commitment_patterns` | Built-in commitment regexes | Optional replacement list; see the template for exact regexes. |
@@ -421,7 +345,6 @@ What WUWEI learns about your workspace is relational. A person belongs to channe
 | `owner.handles` | `person:owner` maps to each handle: a Slack user id as `person:slack:<id>`, any other as `login:<handle>`. |
 | `outward.servers`, `outward.modes`, `outward.classes` | `connector:<server>` sends through its channel kind, has its mode and its default class. |
 | `shepherd.authors` | `address:<email>` maps to its `login:` and its `person:slack:` mention. |
-| `voice.sources` | `channel:<id>` is a member of `voice:<audience>`. |
 | `repos.<n>.shepherd.reviewers` | `login:<login>` reviews `repo:<name>`. |
 
 Each view edge names its config key. The register also keeps what no key can hold: the names an approved `bin/wuwei outbound learn` card gave a channel or a person, and that a thread's participants are members of its channel, each naming the card. The guards keep reading `config.toml`; the register decides nothing.
@@ -434,9 +357,7 @@ A hand edit of a modeled key is drift: `bin/wuwei doctor` warns on its `register
 
 ## Goals and discovery
 
-While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and after you approve them in the morning gate the planner records that file with `wuwei goals edit --file`. Under the strict posture the hook refuses the planner's call and prints the command for a host terminal. Later you can run `bin/wuwei goals edit` to open `$EDITOR`, or `bin/wuwei goals edit --file goals.md` to use a prepared file. The command validates and commits the change in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
-
-You use `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md` for the same validated history flow. Seat proposals still go through `wuwei promote`.
+While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. A later change to `.wuwei/memory/goals.md` is recorded the same way by the next gate approval; agent tools cannot write the file. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
 
 After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
 
@@ -533,8 +454,8 @@ followed by `Reports:` with each report path. The snippet is redacted, limited t
 plain characters and cut to 60. Since reads `first measurement`, or
 `changed since <day>` when the server has an accepted baseline.
 
-To answer it, run `bin/wuwei decide D-<n> proceed` (or `defer`), or
-`bin/wuwei mcp decide D-<n> proceed`, from a host terminal and answer y. Under
+To answer it, run `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a host terminal
+and answer y. Under
 `observe` and `guarded` the planner asks it in the session and records the answer with
 the same command. The command writes `Outcome:`, `Decided-by: owner` and a
 `Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line

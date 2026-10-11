@@ -92,7 +92,8 @@ def test_codex_prompt_carries_the_mandate(tmp_path, monkeypatch):
     assert calls[0][-2].endswith(briefs.mandate(root))
 
 
-def test_codex_result_flags_an_unrecorded_question(tmp_path, monkeypatch):
+def test_codex_result_with_a_question_is_its_result(tmp_path, monkeypatch):
+    # Part 14: a seat names its question in the result; no record is required.
     root = setup(tmp_path, monkeypatch)
     adapter = importlib.import_module('adapters.runtime.codex')
     payloads = companion_payloads(root)
@@ -101,7 +102,7 @@ def test_codex_result_flags_an_unrecorded_question(tmp_path, monkeypatch):
     monkeypatch.setattr(adapter, '_call', lambda *args, **kwargs: adapter.registry.Result(
         0, payloads['result']))
     result = adapter.result({'id': 'j1', 'worktree': str(root), 'role': 'builder'}, root=root)
-    assert result.exit == 1 and 'Cite a decision D-n' in result.reason
+    assert result.exit == 0 and result.data['text'].startswith('Which option')
 
 
 def test_codex_result_preserves_stored_usage(tmp_path, monkeypatch):

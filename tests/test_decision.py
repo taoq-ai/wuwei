@@ -1,8 +1,5 @@
-"""Decision evaluation, scoped hook checks and command outcomes, in process."""
+"""The decision record library the learning and MCP cards still use (part 14 keeps it)."""
 
-from hashlib import sha256
-import io
-import json
 from pathlib import Path
 import re
 
@@ -43,8 +40,6 @@ Revisit: Regression returns.
 Decided-by: seat
 Outcome: pending
 '''
-# #530: the owner-card tests keep today's routing under supervised.
-SUPERVISED = '[autonomy]\nmode = "supervised"\n'
 B_ROW = '| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |'
 LENS_BLOCK = VALID[VALID.index('Lenses:'):VALID.index('Musts:')]
 # A record written before #475: description column, no Class, no Reasoning.
@@ -94,9 +89,14 @@ def save(root, text=VALID, name='D-3.md'):
     return path
 
 
-def events(root):
-    from wuwei.workspace import day_dir
-    return [json.loads(line) for line in (day_dir(root) / 'events.jsonl').read_text().splitlines()]
+def lint(text):
+    """(code, message) of the new-record check write() applies, with the default lenses."""
+    from wuwei import decision
+    try:
+        decision.evaluate(text, decision.LENSES, write=True)
+    except ValueError as exc:
+        return 1, str(exc)
+    return 0, 'OK'
 
 
 @pytest.mark.parametrize('old,new,reason', [
@@ -121,7 +121,6 @@ def events(root):
     ('Outcome: pending', 'Outcome: pending\nOutcome: done', 'duplicate'),
 ])
 def test_lint_findings(old, new, reason):
-    from wuwei.decision import lint
     code, message = lint(VALID.replace(old, new))
     assert code == 1
     assert reason in message
@@ -133,7 +132,6 @@ def test_lint_findings(old, new, reason):
     'Recommendation', 'Confidence', 'Reversibility', 'Blast radius', 'Pre-mortem',
     'Revisit', 'Decided-by', 'Outcome'])
 def test_missing_fields(field):
-    from wuwei.decision import lint
     code, message = lint(VALID.replace(field + ':', 'Omitted:'))
     assert code == 1 and field in message
 
@@ -143,335 +141,13 @@ def test_missing_fields(field):
     VALID.replace('| Safe | pass | pass |', '| Safe | fail | pass |').replace('Recommendation: A', 'Recommendation: B'),
     VALID.replace('Question:', '**Question:**'), VALID.replace('Reversibility: two-way', 'Reversibility: unsure')])
 def test_valid_evaluation(text):
-    from wuwei.decision import lint
     assert lint(text)[0] == 0
 
 
 @pytest.mark.parametrize('wrap', [lambda s: '```\n' + s + '```',
     lambda s: '<!--\n' + s + '-->', lambda s: '\n'.join('> ' + line for line in s.splitlines())])
 def test_examples_do_not_supply_fields(wrap):
-    from wuwei.decision import lint
     assert lint(wrap(VALID))[0] == 1
-
-
-@pytest.mark.parametrize('text,code', [(VALID, 0), ('Question: bad', 1), (None, 2)])
-def test_file_and_cli_exits(ws, capsys, text, code):
-    from wuwei.__main__ import main
-    path = save(ws, text)
-    assert main(['decision', 'lint', str(path)]) == code
-    if code:
-        assert events(ws)[-1]['kind'] == 'decision.rejected'
-        assert events(ws)[-1]['payload']['reasons']
-
-
-
-def test_lint_prints_no_door_correction(ws, capsys):
-    # #815: the written door stands; lint names no undo.
-    from wuwei.__main__ import main
-    path = save(ws, VALID.replace('Class: design', 'Class: message').replace(LENS_BLOCK, ''))
-    assert main(['decision', 'lint', str(path)]) == 0
-    out = capsys.readouterr().out.strip().splitlines()
-    assert len(out) == 1 and out[0].startswith('OK:')
-
-def test_unreadable_and_event_failure(ws, monkeypatch):
-    from wuwei.decision import lint_file
-    from wuwei import state
-    path = save(ws)
-    path.write_bytes(b'\xff')
-    assert lint_file(path)[0] == 2
-    def fail(*args, **kwargs):
-        raise OSError('event unavailable')
-    monkeypatch.setattr(state, 'append_event', fail)
-    code, message = lint_file(path)
-    assert code == 2 and 'event unavailable' in message
-
-
-def write_payload(cwd, path, tool='Write'):
-    return {'cwd': str(cwd), 'tool_name': tool, 'tool_input': {
-        'notebook_path' if tool == 'NotebookEdit' else 'file_path': str(path)}}
-
-
-@pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
-@pytest.mark.parametrize('text,code', [(VALID, 0), ('Question: bad', 1), (None, 2)])
-def test_write_guard(ws, tool, text, code):
-    from wuwei.guards.decision import check_write
-    path = save(ws, text)
-    assert check_write(write_payload(ws, path, tool))[0] == code
-    if code:
-        assert events(ws)[-1]['kind'] == 'decision.rejected'
-
-
-@pytest.mark.parametrize('command', ['cat > {path}', 'env X=1 sh -c "cat > {path}"',
-    'command tee {path}', 'exec tee {path}', '(cat > {path})',
-    'python script.py {path}', 'cd . && cat > {path}'])
-def test_bash_scan(ws, command):
-    from wuwei.guards.decision import check_write
-    path = save(ws, 'Question: bad')
-    payload = {'cwd': str(ws), 'tool_name': 'Bash',
-               'tool_input': {'command': command.format(path=path)}}
-    assert check_write(payload)[0] == 1
-    path.write_text(VALID)
-    assert check_write(payload)[0] == 0
-
-
-@pytest.mark.parametrize('command', ['python -c "print(1)" # D-3',
-    'xargs tee decisions/D-3.md', 'node --eval="1" # D-3', 'perl -e "1" # D-3', 'cat > "D-3',
-    'for x in D-3; do touch x; done'])
-def test_relevant_opaque_or_unparseable_bash(ws, command):
-    from wuwei.guards.decision import check_write
-    save(ws)
-    code, message = check_write({'cwd': str(ws), 'tool_name': 'Bash',
-        'tool_input': {'command': command}})
-    assert code == 2 and message
-    from wuwei.workspace import day_dir
-    assert not (day_dir(ws) / 'events.jsonl').exists()
-
-
-@pytest.mark.parametrize('command', ['python3 -m pytest -q', 'for x in a; do echo x; done',
-                                    'export X=1', 'echo "unterminated'])
-def test_irrelevant_bash_passes(ws, command):
-    from wuwei.guards.decision import check_write
-    save(ws, 'bad')
-    assert check_write({'cwd': str(ws), 'tool_name': 'Bash',
-        'tool_input': {'command': command}}) == (0, '')
-
-
-def test_resolved_file_scope(ws, tmp_path, monkeypatch):
-    from wuwei.guards.decision import check_write
-    path = save(ws, 'bad')
-    outside = tmp_path / 'unrelated'
-    outside.mkdir()
-    other = outside / 'decisions/D-3.md'
-    other.parent.mkdir()
-    other.write_text('bad')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    assert check_write(write_payload(outside, other)) == (0, '')
-    assert check_write(write_payload(ws, other)) == (0, '')
-    assert check_write(write_payload(outside, path))[0] == 1
-    alias = outside / 'alias.md'
-    alias.symlink_to(path)
-    assert check_write(write_payload(outside, alias))[0] == 1
-    link = path.parent / 'D-4.md'
-    link.symlink_to(other)
-    assert check_write(write_payload(ws, link)) == (0, '')
-
-
-def test_bash_target_from_outside(ws, tmp_path):
-    from wuwei.guards.decision import check_write
-    path = save(ws, 'bad')
-    assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-        'tool_input': {'command': f'cat > {path}'}})[0] == 1
-    assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-        'tool_input': {'command': 'python -c "bad" # D-3'}}) == (0, '')
-
-
-def test_configured_repo_and_worktree(ws, tmp_path, monkeypatch):
-    from wuwei.guards.decision import check_write
-    from wuwei import registry
-    from fakes.vcs import Fake
-    repo, tree = tmp_path / 'repo', tmp_path / 'tree'
-    repo.mkdir()
-    tree.mkdir()
-    (tree / '.git').write_text('gitdir: ignored; port resolves this')
-    (ws / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname="org/repo"\npath="../repo"\ndefault_branch="main"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    fake = Fake({'repo_context': registry.Result(0, {'common_dir': str(repo / '.git')})})
-    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
-    for cwd in (repo, tree):
-        path = cwd / 'decisions/D-3.md'
-        path.parent.mkdir()
-        path.write_text('bad')
-        assert check_write(write_payload(cwd, path))[0] == 1
-    assert len(fake.calls) == 2
-
-
-def test_hook_translates_findings(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    path = save(ws, 'bad')
-    payload = write_payload(ws, path)
-    payload.update(session_id='test', transcript_path='transcript.jsonl',
-                   hook_event_name='PostToolUse', tool_response={})
-    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))
-    assert main(['hook', 'PostToolUse']) == 2
-    assert 'missing fields' in capsys.readouterr().err
-
-
-def question_payload(cwd, text='Choose for D-3?'):
-    return {'cwd': str(cwd), 'tool_name': 'AskUserQuestion',
-            'tool_input': {'questions': [{'question': text}]}}
-
-
-@pytest.mark.parametrize('text,record,code', [('Choose?', VALID, 1),
-    ('D-3?', VALID, 0), ('D-3?', None, 2), ('D-3?', 'bad', 1),
-    ('XD-3suffix?', VALID, 1), ('D-0?', VALID, 1), ('D-3 and D-4?', VALID, 2)])
-def test_question_table(ws, text, record, code):
-    from wuwei.guards.decision import check_question
-    save(ws, record)
-    result, message = check_question(question_payload(ws, text))
-    assert result == code
-    if code:
-        assert 'decision' in message.lower() and 'D-' in message
-
-
-@pytest.mark.parametrize('tool_input', [None, {}, {'questions': []},
-    {'questions': ['D-3']}, {'questions': [{'question': 3}]},
-    {'questions': [{'header': 'D-3', 'question': 'Choose?'}]}])
-def test_question_malformed_or_metadata(ws, tool_input):
-    from wuwei.guards.decision import check_question
-    save(ws)
-    payload = question_payload(ws)
-    payload['tool_input'] = tool_input
-    assert check_question(payload)[0] != 0
-
-
-def test_every_question_needs_its_own_citation(ws):
-    from wuwei.guards.decision import check_question
-    save(ws)
-    payload = question_payload(ws)
-    payload['tool_input']['questions'].append({'question': 'Unrelated choice?'})
-    assert check_question(payload)[0] == 1
-
-
-def test_question_today_and_symlink(ws, monkeypatch):
-    from wuwei.guards.decision import check_question
-    path = save(ws)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
-    assert check_question(question_payload(ws))[0] == 2
-    today = save(ws, None)
-    today.symlink_to(path)
-    assert check_question(question_payload(ws))[0] == 2
-
-
-def test_question_scope_and_escalation_input(ws, tmp_path, monkeypatch):
-    from wuwei.guards.decision import check_question
-    save(ws)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    assert check_question(question_payload(tmp_path, 'Choose?')) == (0, '')
-    assert check_question({'cwd': str(ws), 'tool_input': {'question': 'D-3?'}})[0] == 0
-    assert check_question({'cwd': str(ws), 'tool_input': {'question': 'Choose?'}})[0] == 1
-
-
-GATE = 'Morning gate (days/2026-09-28/plan.md): Record the goals?'
-CITE = 'Morning gate questions cite days/2026-09-28/plan.md'
-
-
-def test_morning_gate_without_plan_names_plan_propose(ws):
-    from wuwei.guards.decision import check_question
-    payload = question_payload(ws, GATE)
-    payload['tool_input']['questions'][0]['header'] = 'Goals'
-    assert check_question(payload) == (1, f'{CITE}; run bin/wuwei plan propose <lead.json> first')
-    plan = ws / '.wuwei/days/2026-09-28/plan.md'
-    plan.parent.mkdir(parents=True)
-    plan.write_text('# Plan\n')
-    assert check_question(question_payload(ws, 'Morning gate: Record the goals?')) == (1, CITE)
-    assert check_question(payload) == (0, '')
-    code, message = check_question(question_payload(ws, 'Choose?'))
-    assert code == 1 and message.startswith('Cite a decision D-n')
-
-
-def gate_hook(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from fakes.integrity import seed
-    seed(ws)
-    payload = question_payload(ws, GATE)
-    payload['tool_input']['questions'][0]['header'] = 'Goals'
-    payload.update(session_id='test', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
-    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))
-    code = main(['hook', 'PreToolUse'])
-    return code, capsys.readouterr().out
-
-
-def test_gate_question_before_plan_warns_under_guarded(ws, monkeypatch, capsys):
-    code, out = gate_hook(ws, monkeypatch, capsys)
-    assert code == 0 and 'deny' not in out
-    warned = [event for event in events(ws) if event['kind'] == 'guard.would_refuse']
-    assert len(warned) == 1
-    payload = warned[0]['payload']
-    assert (payload['guard'], payload['area']) == ('decision', 'outward') and 'plan propose' in payload['reason']
-
-
-def test_gate_question_before_plan_refused_under_strict(ws, monkeypatch, capsys):
-    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
-    code, out = gate_hook(ws, monkeypatch, capsys)
-    output = json.loads(out)['hookSpecificOutput']
-    assert code == 2 and output['permissionDecision'] == 'deny'
-    assert 'plan propose' in output['permissionDecisionReason']
-
-
-def test_question_hook_exit_two(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from fakes.integrity import seed
-    seed(ws)
-    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
-    payload = question_payload(ws, 'Choose?')
-    payload.update(session_id='test', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
-    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))
-    assert main(['hook', 'PreToolUse']) == 2
-    assert json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecision'] == 'deny'
-
-
-@pytest.mark.parametrize('door,radius,expected', [('two-way', 'own branch', 'seat'),
-    ('two-way', 'own PR', 'seat'), ('one-way', 'own branch', 'owner'),
-    ('unsure', 'own branch', 'owner'), ('two-way', 'scope agreed with others', 'owner'),
-    ('two-way', 'own branch and trust boundaries', 'owner'),
-    ('two-way', 'goals', 'owner'), ('two-way', 'spend above budget', 'owner')])
-def test_route(ws, monkeypatch, capsys, door, radius, expected):
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
-    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: ' + door)
-         .replace('Blast radius: own branch', 'Blast radius: ' + radius))
-    assert main(['decision', 'route', 'D-3']) == 0
-    assert capsys.readouterr().out.strip() == expected
-    recorded = state.read_state(ws).get('decision_outcomes', {})
-    if expected == 'seat':
-        assert recorded['D-3']['decided_by'] == 'seat'
-        assert recorded['D-3']['option'] == 'A'
-        assert events(ws)[-1]['kind'] == 'decision.decided'
-    else:
-        assert not recorded
-
-
-@pytest.mark.parametrize('text,code', [('bad', 1), (None, 2)])
-def test_route_invalid_record(ws, monkeypatch, text, code):
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    save(ws, text)
-    assert main(['decision', 'route', 'D-3']) == code
-    assert not state.read_state(ws).get('decision_outcomes')
-
-
-def test_seat_route_rejects_owner_decider(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
-    save(ws, VALID.replace('Decided-by: seat', 'Decided-by: owner'))
-    assert main(['decision', 'route', 'D-3']) == 1
-    assert 'Decided-by must be seat for a seat-routed decision' in capsys.readouterr().err
-    assert not state.read_state(ws).get('decision_outcomes')
-    assert events(ws)[-1]['kind'] == 'decision.rejected'
-
-
-@pytest.mark.parametrize('decision_id', ['../D-3', 'D-0', 'D-3.md', 'D-3/../../state'])
-def test_route_invalid_id(ws, monkeypatch, decision_id):
-    from wuwei.__main__ import main
-    monkeypatch.chdir(ws)
-    assert main(['decision', 'route', decision_id]) == 2
-
-
-def test_outcome_command_cannot_record_owner_answer(ws, monkeypatch):
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    save(ws)
-    with pytest.raises(SystemExit) as exc:
-        main(['decision', 'outcome', 'D-3', 'Accepted', '--decided-by', 'owner'])
-    assert exc.value.code == 2
-    assert not state.read_state(ws).get('decision_outcomes')
 
 
 @pytest.mark.parametrize('path,value', [('decision_outcomes', {}),
@@ -489,39 +165,10 @@ def test_reserved_callback(ws):
         state.write_state(lambda data: data.update(decision_outcomes={'D-3': {}}), ws)
 
 
-def test_citation_rejects_symlinked_decisions_directory(ws, monkeypatch):
-    from wuwei.guards.decision import check_question
-    from wuwei.workspace import day_dir
-    yesterday = save(ws)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
-    day_dir(ws).mkdir()
-    (day_dir(ws) / 'decisions').symlink_to(yesterday.parent, target_is_directory=True)
-    assert check_question(question_payload(ws))[0] == 2
-
-
-def test_bash_parse_error_target_with_workspace_anchor(ws, tmp_path, monkeypatch):
-    from wuwei.guards.decision import check_write
-    path = save(ws)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-        'tool_input': {'command': f'for x in 1; do cat > {path}; done'}})
-    assert code == 2 and 'decision record' in message and 'git/gh' not in message
-
-
 def test_reserved_outcomes_inside_list(ws):
     from wuwei import state
     with pytest.raises(state.StateError, match='reserved'):
         state.set_state('metadata', [{'decision_outcomes': {'D-3': {}}}], ws)
-
-
-@pytest.mark.parametrize('command', ['dd if=input of={path}', 'tool --output={path}',
-    'cat > {quoted}'])
-def test_bash_target_operand_and_obfuscated_relevance(ws, tmp_path, command):
-    from wuwei.guards.decision import check_write
-    path = save(ws, 'bad')
-    raw = command.format(path=path, quoted=str(path).replace('D-3', "D''-3"))
-    assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-                       'tool_input': {'command': raw}})[0] == 1
 
 
 def test_reserved_outcomes_inside_tuple_callback(ws):
@@ -542,7 +189,6 @@ def test_generic_event_reserves_all_decision_kinds(ws, monkeypatch, capsys, kind
 
 @pytest.mark.parametrize('field', ['Context', 'Blast radius', 'Pre-mortem', 'Revisit', 'Outcome'])
 def test_prose_fields_allow_continuation(field):
-    from wuwei.decision import lint
     lines = VALID.splitlines()
     index = next(i for i, line in enumerate(lines) if line.startswith(field + ':'))
     lines.insert(index + 1, 'More evidence and explanation.')
@@ -551,7 +197,6 @@ def test_prose_fields_allow_continuation(field):
 
 @pytest.mark.parametrize('field', ['Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by'])
 def test_scalar_fields_reject_continuation(field):
-    from wuwei.decision import lint
     lines = VALID.splitlines()
     index = next(i for i, line in enumerate(lines) if line.startswith(field + ':'))
     lines.insert(index + 1, 'Another value')
@@ -561,7 +206,6 @@ def test_scalar_fields_reject_continuation(field):
 @pytest.mark.parametrize('suffix', ['\n## Consequences\nA longer explanation.\n## Notes\nEvidence.',
                                     '\nConsequences: A longer explanation.\nNotes: Evidence.'])
 def test_trailing_madr_sections(suffix):
-    from wuwei.decision import lint
     assert lint(VALID + suffix)[0] == 0
     assert lint(VALID.replace('Outcome: pending', '') + suffix)[0] == 1
 
@@ -573,230 +217,6 @@ def test_markdown_tables_and_case_insensitive_musts(outer_pipes):
     if not outer_pipes:
         text = '\n'.join(line.strip('|') if line.startswith('|') else line for line in text.splitlines())
     assert evaluate(text)[1]['B'] == 30
-
-
-@pytest.mark.parametrize('command,named', [('echo D-3', False), ('cat {path}', True)])
-def test_bash_scan_records_only_named_rejections(ws, command, named):
-    from wuwei.guards.decision import check_write
-    from wuwei.workspace import day_dir
-    path = save(ws, 'bad')
-    save(ws, 'bad', 'D-4.md')
-    code, message = check_write({'cwd': str(ws), 'tool_name': 'Bash',
-        'tool_input': {'command': command.format(path=path)}})
-    assert code == 1 and 'missing fields' in message
-    if named:
-        assert [event['payload']['file'] for event in events(ws)] == [str(path)]
-    else:
-        assert not (day_dir(ws) / 'events.jsonl').exists()
-
-
-CLARIFICATION = '''Question: Which repository?
-Context: The request names two repositories.
-Options:
-- A: service
-- B: client
-'''
-
-
-@pytest.mark.parametrize('record,code', [(CLARIFICATION, 0),
-    (CLARIFICATION.replace('Options:\n- A: service\n- B: client', 'Options: service\nOptions: client'), 0),
-    (CLARIFICATION.replace('- B: client\n', ''), 1),
-    (CLARIFICATION.replace('Context: The request names two repositories.\n', ''), 1),
-    (CLARIFICATION + 'Wants:\n| Criterion | Weight | A | B |\n', 1),
-    (VALID, 1), (None, 2)])
-def test_clarification_question(ws, record, code):
-    from wuwei.guards.decision import check_question
-    save(ws, record, 'C-2.md')
-    assert check_question(question_payload(ws, 'Clarify C-2?'))[0] == code
-
-
-def test_clarification_cannot_replace_decision_or_another_question(ws):
-    from wuwei.guards.decision import check_question
-    save(ws, CLARIFICATION)
-    save(ws, CLARIFICATION, 'C-2.md')
-    assert check_question(question_payload(ws))[0] == 1
-    payload = question_payload(ws, 'C-2?')
-    payload['tool_input']['questions'].append({'question': 'Choose?'})
-    assert check_question(payload)[0] == 1
-    assert check_question(question_payload(ws, 'XC-2suffix?'))[0] == 1
-
-
-def test_clarification_must_belong_to_today(ws, monkeypatch):
-    from wuwei.guards.decision import check_question
-    old = save(ws, CLARIFICATION, 'C-2.md')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
-    assert check_question(question_payload(ws, 'C-2?'))[0] == 2
-    save(ws, None, 'C-2.md').symlink_to(old)
-    assert check_question(question_payload(ws, 'C-2?'))[0] == 2
-
-
-@pytest.mark.parametrize('header,text,code', [
-    ('Morning gate', 'Approve {plan}?', 0),
-    ('Plan', 'Morning gate: approve {plan}?', 0),
-    ('Morning gate', 'Approve days/2026-09-28/plan.md?', 0),
-    ('Morning gate', 'Approve?', 1),
-    ('Plan', 'Approve {plan}?', 1),
-    ('Morning gate', 'Approve days/2026-09-27/plan.md?', 1),
-    ('Morning gate', 'Approve unrelated/days/2026-09-28/plan.md?', 1),
-    ('Morning gate', 'Approve days/2026-09-28/plan.md.bak?', 1),
-])
-def test_morning_gate_requires_marker_and_current_plan(ws, header, text, code):
-    from wuwei.guards.decision import check_question
-    from wuwei.workspace import day_dir
-    plan = day_dir(ws) / 'plan.md'
-    plan.parent.mkdir(parents=True)
-    plan.write_text('Today: fix the failing test.')
-    payload = question_payload(ws, text.format(plan=plan))
-    payload['tool_input']['questions'][0]['header'] = header
-    assert check_question(payload)[0] == code
-    if code == 0:
-        payload['tool_input']['questions'].append({'question': 'Unrelated choice?'})
-        assert check_question(payload)[0] == 1
-
-
-def test_question_rejection_is_feedback_without_write_event(ws):
-    from wuwei.guards.decision import check_question
-    from wuwei.workspace import day_dir
-    save(ws, 'bad')
-    assert check_question(question_payload(ws))[0] == 1
-    assert not (day_dir(ws) / 'events.jsonl').exists()
-
-
-def test_owner_outcome_resumes_linked_item_and_report(ws, monkeypatch):
-    from wuwei.__main__ import main
-    from wuwei import state, report
-    monkeypatch.chdir(ws)
-    decision_path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    def park(data):
-        data['items']['X'] = {'phase': 'parked', 'status': 'blocked', 'resume_phase': 'planned'}
-        data.setdefault('builds', {})['X'] = {'action': {'decision': str(decision_path)}}
-    state._write_state(park, ws, reserved=False)
-    assert main(['decision', 'route', 'D-3']) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decision', 'outcome', 'D-3', 'A']) == 0
-    data = state.read_state(ws)
-    assert data['items']['X']['phase'] == 'planned'
-    assert data['items']['X']['status'] == 'queued'
-    assert data['decision_outcomes']['D-3']['outcome'] == 'A'
-    assert '- D-3: A' in report.build(ws)
-    text = decision_path.read_text()
-    assert 'Outcome: A\n' in text and 'Outcome: pending' not in text
-    from wuwei import decision
-    assert decision.lint(text)[0] == 0
-
-
-def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypatch):
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
-    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    before = path.read_bytes()
-    assert main(['decision', 'route', 'D-3']) == 0
-    assert main(['decision', 'outcome', 'D-3', 'missing']) == 1
-    assert path.read_bytes() == before
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: False)
-    assert main(['decision', 'outcome', 'D-3', 'A']) == 1
-    assert not state.read_state(ws).get('decision_outcomes')
-    assert path.read_bytes() == before
-    from wuwei.commands.decision import owner_outcome
-    from wuwei.workspace import owner_cli
-    from types import SimpleNamespace
-    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws) == (
-        1, f'decision: owner confirmation declined; rerun {owner_cli(ws)} decide <id> <option> '
-           'in a host terminal and answer y')
-
-
-@pytest.mark.parametrize('label,code', [('Implement fix (Recommended)', 0), ('implement fix', 0),
-                                        ('A', 0), ('Nope', 1)])
-def test_decide_accepts_a_title_label(ws, monkeypatch, label, code):
-    from types import SimpleNamespace
-    from wuwei import decision, state
-    from wuwei.commands.decision import owner_outcome
-    save(ws)
-    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    result = owner_outcome(SimpleNamespace(id='D-3', option=label), root=ws)
-    if code:
-        assert result == (1, 'decision: option is not in the record; pick an option id from bin/wuwei decision show <id>')
-    else:
-        assert result == (0, 'A')
-        assert state.read_state(ws)['decision_outcomes']['D-3']['option'] == 'A'
-
-
-def test_owner_outcome_takes_a_root(ws, monkeypatch, tmp_path):
-    from types import SimpleNamespace
-    from wuwei import decision, state
-    from wuwei.commands.decision import owner_outcome
-    elsewhere = tmp_path / 'elsewhere'
-    elsewhere.mkdir()
-    monkeypatch.chdir(elsewhere)
-    path = save(ws)
-    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws) == (0, 'A')
-    assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'owner'
-    assert 'Outcome: A\n' in path.read_text()
-
-
-def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch, capsys):
-    import builtins
-    from wuwei.__main__ import main
-    from wuwei import state
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
-    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    assert main(['decision', 'route', 'D-3']) == 0
-    before = path.read_bytes()
-    real_open = builtins.open
-    def fake_open(name, *args, **kwargs):
-        if name == '/dev/tty':
-            raise OSError(6, 'Device not configured')
-        return real_open(name, *args, **kwargs)
-    monkeypatch.setattr(builtins, 'open', fake_open)
-    capsys.readouterr()
-    assert main(['decision', 'outcome', 'D-3', 'A']) == 2
-    assert capsys.readouterr().err == 'wuwei decision: this is an owner action: run it in a host terminal\n'
-    assert path.read_bytes() == before
-    assert not state.read_state(ws).get('decision_outcomes')
-
-
-@pytest.mark.parametrize('command', [['decision', 'outcome'], ['decide']])
-def test_outcome_accepts_the_card_hash(planner, monkeypatch, capsys, command):
-    """#661: the record command a card names parses; #599 binds the hash to the record's card."""
-    from wuwei.__main__ import main
-    from wuwei import decision
-    from wuwei.guards.decision import record_gate
-    monkeypatch.chdir(planner)
-    text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way')
-    save(planner, text)
-    assert main(['decision', 'route', 'D-3']) == 0
-    calls = []
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: calls.append(value) or True)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    capsys.readouterr()
-    assert main([*command, 'D-3', 'B', '--from-card', 'abcdef012345']) == 1
-    assert 'decision show D-3 --widget' in capsys.readouterr().err
-    assert record_gate({'cwd': str(planner), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
-                        'tool_input': {'questions': [{'question': 'D-3: Which fix?', 'header': 'D-3'}]},
-                        'tool_response': {'answers': {'D-3: Which fix?': 'B'}}}) == (0, '')
-    card = decision.card_hash('D-3', decision.evaluate(text)[0])
-    assert main([*command, 'D-3', 'B', '--card', card]) == 0, capsys.readouterr().err
-    assert calls == []
-
-
-def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
-    from wuwei.__main__ import main
-    from wuwei import metrics
-    monkeypatch.chdir(ws)
-    save(ws)
-    assert main(['decision', 'route', 'D-3']) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert metrics.collect(ws)['seat_decisions_owner_reversed'] == 0
-    assert main(['decision', 'outcome', 'D-3', 'B']) == 0
-    assert main(['decision', 'outcome', 'D-3', 'B']) == 1
-    assert [row['kind'] for row in events(ws)].count('decision.reversed') == 1
-    assert metrics.collect(ws)['seat_decisions_owner_reversed'] == 1
 
 
 @pytest.mark.parametrize('data,expected', [
@@ -812,131 +232,6 @@ def test_answered_reads_only_owner_outcomes(data, expected):
     assert decision.answered(data, 'D-1') == expected
 
 
-def template():
-    from contextlib import redirect_stdout
-    from argparse import Namespace
-    from wuwei.commands.decision import run
-    out = io.StringIO()
-    with redirect_stdout(out):
-        run(Namespace(action='template'))
-    return out.getvalue()
-
-
-def test_template_is_a_design_record_with_lenses(ws, monkeypatch):
-    from wuwei import decision
-    text = template()
-    assert decision.lint(text) == (0, 'OK: A (80), Routine')
-    assert 'Class: design' in text.splitlines()
-    for name, question in decision.LENSES.items():
-        assert any(line.startswith(f'| {name} |') for line in text.splitlines())
-        assert f'{name}: {question}' in text
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
-    text = template()
-    assert any(line.startswith('| company-rule |') for line in text.splitlines())
-    assert decision.lint(text, {**decision.LENSES, 'company-rule': 'Q?'}) == (0, 'OK: A (80), Routine')
-
-
-THREE = VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '').replace(
-    B_ROW, B_ROW + '\n| C | Rewrite it | Scores 9 on Correctness but fails Safe. | The module is rewritten. |').replace(
-    '| Criterion | A | B |\n| --- | --- | --- |\n| Safe | pass | pass |',
-    '| Criterion | A | B | C |\n| --- | --- | --- | --- |\n| Safe | pass | pass | fail |').replace(
-    '| Criterion | Weight | A | B |\n| --- | --- | --- | --- |\n| Correctness | 10 | 8 | 2 |\n| Speed | 2 | 3 | 5 |',
-    '| Criterion | Weight | A | B | C |\n| --- | --- | --- | --- | --- |\n'
-    '| Correctness | 10 | 8 | 2 | 9 |\n| Speed | 2 | 3 | 5 | 1 |')
-
-
-def test_present_brief():
-    from wuwei import decision
-    fields, _ = decision.evaluate(THREE)
-    assert decision.present('D-3', fields, 'brief').splitlines() == [
-        'D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
-        'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
-        'C: Rewrite it (score 92, fails a must). The module is rewritten.',
-        'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.']
-    only = VALID.replace('| Safe | pass | pass |', '| Safe | pass | fail |')
-    assert decision.present('D-3', decision.evaluate(only)[0], 'brief').splitlines()[-1].startswith(
-        'Recommended: A, the only option that passes every must. ')
-    tied = VALID.replace('| 8 | 2 |', '| 2 | 2 |').replace('| 3 | 5 |', '| 5 | 5 |')
-    assert decision.present('D-3', decision.evaluate(tied)[0], 'brief').splitlines()[-1].startswith(
-        'Recommended: A, tied with B on score. ')
-
-
-def test_present_standard():
-    from wuwei import decision
-    fields, _ = decision.evaluate(VALID.replace('Context: tests', 'Context:\n\ntests')
-                                  + '\n## Notes\nOnly here.')
-    assert decision.present('D-3', fields, 'standard').splitlines() == [
-        'D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
-        '  Rationale: Passes every must and scores 8 on Correctness. It costs a little Speed.',
-        '  SOLID: Keeps single responsibility.', '  twelve-factor: No new config.',
-        '  YAGNI: Builds only the fix.', '  ponytail: Smallest diff that works.',
-        'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
-        '  Rationale: Passes every must but scores 2 on Correctness.',
-        '  SOLID: No change.', '  twelve-factor: No change.', '  YAGNI: Builds nothing.',
-        '  ponytail: Simplest: nothing.',
-        'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.',
-        'Context: tests/test_example.py records the failure.',
-        'Confidence: high. Reversibility: two-way.', 'Blast radius: own branch',
-        'Pre-mortem: Regression returns.', 'Revisit: Regression returns.']
-
-
-def test_present_legacy_unchanged():
-    from wuwei import decision
-    fields, _ = decision.evaluate(LEGACY)
-    brief = ['D-3: Which fix?', 'A: Implement fix (score 86)', 'B: Defer until tomorrow (score 30)',
-             'Recommended: A, ahead of B on Correctness.']
-    assert decision.present('D-3', fields, 'brief').splitlines() == brief
-    assert decision.present('D-3', fields, 'standard').splitlines() == brief + [
-        'Context: tests/test_example.py records the failure.',
-        'Confidence: high. Reversibility: two-way.', 'Blast radius: own branch',
-        'Pre-mortem: Regression returns.', 'Revisit: Regression returns.']
-
-
-def test_decision_show(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei import decision
-    from wuwei.workspace import day_dir
-    monkeypatch.chdir(ws)
-    path = save(ws)
-    fields, _ = decision.evaluate(VALID)
-    assert main(['decision', 'show', 'D-3']) == 0
-    out = capsys.readouterr().out
-    assert out == decision.present('D-3', fields, 'brief') + '\nFull record: wuwei decision show D-3 --full\n'
-    assert len(out.splitlines()) < 12
-    assert main(['decision', 'show', 'D-3', '--full']) == 0
-    assert capsys.readouterr().out == VALID
-    rich = VALID.replace('records the failure.', 'records the failure.\n```\nFAILED test_x\n```\n'
-                         '> Reviewer said: **do not merge**') + '## Notes\nEvidence: probe.log\n'
-    path.write_text(rich)
-    assert main(['decision', 'show', 'D-3', '--full']) == 0
-    assert capsys.readouterr().out == rich
-    path.write_text(VALID)
-    (ws / '.wuwei/config.toml').write_text('[owner.verbosity]\ndecisions = "standard"\n')
-    assert main(['decision', 'show', 'D-3']) == 0
-    assert capsys.readouterr().out.startswith(decision.present('D-3', fields, 'standard') + '\nFull record:')
-    path.write_text('Question: bad')
-    assert main(['decision', 'show', 'D-3']) == 1
-    assert 'missing fields' in capsys.readouterr().err
-    path.unlink()
-    assert main(['decision', 'show', 'D-3']) == 0  # #362: a state answer
-    assert 'No D-3 today' in capsys.readouterr().out
-    path.symlink_to(save(ws, name='D-4.md'))
-    assert main(['decision', 'show', 'D-3']) == 2
-    assert 'must belong to today' in capsys.readouterr().err
-    assert not (day_dir(ws) / 'events.jsonl').exists()
-
-
-def test_lint_reports_style_without_rejecting(ws):
-    from wuwei.decision import lint, lint_file
-    text = VALID.replace('records the failure.', 'records the failure. It is not just a fix but a rewrite; we delve into it.')
-    assert lint(text) == (0, 'OK: A (86), Routine\nstyle: not-x-but-y, stock-word')
-    assert lint_file(save(ws, text)) == (0, 'OK: A (86), Routine\nstyle: not-x-but-y, stock-word')
-    from wuwei.workspace import day_dir
-    assert not (day_dir(ws) / 'events.jsonl').exists()
-    assert lint(template()) == (0, 'OK: A (80), Routine')
-
-
 def test_classes_are_the_fixed_list():
     from wuwei import decision
     assert decision.CLASSES == ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
@@ -948,35 +243,18 @@ def test_cruise_decided_by_reads_as_mandate_and_is_refused_on_write():
     from wuwei import decision
     text = VALID.replace('Decided-by: seat', 'Decided-by: cruise park@L2')
     assert decision.evaluate(text)[0]['Decided-by'] == 'mandate'
-    code, message = decision.lint(text)
+    code, message = lint(text)
     assert code == 1 and message.startswith('Decided-by'), message
 
 
 def test_role_is_an_optional_validated_field():
     from wuwei import decision
     with_role = lambda role: VALID.replace('Class: design', f'Class: design\nRole: {role}')
-    assert decision.lint(with_role('builder'))[0] == 0
-    code, message = decision.lint(with_role('wizard'))
+    assert lint(with_role('builder'))[0] == 0
+    code, message = lint(with_role('wizard'))
     assert code == 1 and message.startswith('Role:')
-    assert decision.lint(with_role('builder\nreviewer'))[0] == 1
-    outcome = decision.seat_outcome(*decision.evaluate(with_role('builder')))
-    assert (outcome['confidence'], outcome['role']) == ('high', 'builder')
-
-
-@pytest.mark.parametrize('text,record,code', [
-    ('Done.\nBlocked: none', VALID, 0),
-    ('Should I add a cache?', VALID, 1),
-    ('Should I take D-3?', VALID, 0),
-    ('Should I take D-9?', VALID, 2),
-    ('```\nWhy?\n```\n> Really?\nDone.', VALID, 0),
-])
-def test_unrecorded_question(ws, text, record, code):
-    from wuwei.guards.decision import unrecorded
-    save(ws, record)
-    result, message = unrecorded(text, ws)
-    assert result == code
-    if code:
-        assert 'Cite a decision D-n' in message
+    assert lint(with_role('builder\nreviewer'))[0] == 1
+    assert decision.evaluate(with_role('builder'))[0]['Role'] == 'builder'
 
 
 @pytest.mark.parametrize('old,new,named', [
@@ -996,7 +274,6 @@ def test_unrecorded_question(ws, text, record, code):
     ('| A | Implement fix |', '| A | Implement $fix |', 'Implement $fix'),
 ])
 def test_explained_record_fields(old, new, named):
-    from wuwei.decision import lint
     assert old in VALID
     code, message = lint(VALID.replace(old, new))
     assert code == 1 and named in message, message
@@ -1005,39 +282,14 @@ def test_explained_record_fields(old, new, named):
 def test_legacy_record_still_evaluates(ws):
     from wuwei import decision
     assert decision.evaluate(LEGACY)[1]['A'] == 86
-    code, message = decision.lint(LEGACY)
+    code, message = lint(LEGACY)
     assert code == 1 and ('Options' in message or 'Class' in message)
     with pytest.raises(ValueError):
         decision.write(LEGACY, ws)
 
 
 def test_prioritisation_record_needs_no_lens():
-    from wuwei.decision import lint
-    assert lint(VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '')) == (0, 'OK: A (86), Routine')
-
-
-def test_custom_lens_is_required(ws):
-    from wuwei.decision import lint_file
-    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
-    path = save(ws)
-    code, message = lint_file(path, record=False)
-    assert code == 1 and 'company-rule' in message
-    path.write_text(VALID.replace('Musts:', '| company-rule | Follows it. | Follows it. |\nMusts:'))
-    assert lint_file(path, record=False)[0] == 0
-    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\nYAGNI = ""\n')
-    path.write_text(VALID)
-    code, message = lint_file(path, record=False)
-    assert code == 1 and 'YAGNI' in message
-
-
-def test_lens_table():
-    from wuwei import decision
-    def lenses(configured):
-        return decision.lens_table({'decisions': {'lenses': configured}})
-    assert lenses({}) == decision.LENSES
-    assert list(decision.LENSES) == ['SOLID', 'twelve-factor', 'YAGNI', 'ponytail']
-    assert list(lenses({'company-rule': 'Q?'})) == [*decision.LENSES, 'company-rule']
-    assert 'YAGNI' not in lenses({'YAGNI': ''})
+    assert lint(VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '')) == (0, 'OK')
 
 
 def test_class_after_question_is_its_own_field():
@@ -1046,150 +298,6 @@ def test_class_after_question_is_its_own_field():
     assert decision.evaluate(text)[0]['Class'] == 're-plan'
     with pytest.raises(ValueError, match='Class'):
         decision.evaluate(text.replace('Class: re-plan', 'Class: desing'))
-
-
-def stop_payload(cwd, **changes):
-    return {'cwd': str(cwd), 'agent_id': 'a1', 'agent_type': 'wuwei:builder',
-            'stop_hook_active': False, 'agent_transcript_path': str(cwd / 'none.jsonl'),
-            'last_assistant_message': 'Should I add a cache?', **changes}
-
-
-@pytest.mark.parametrize('changes,code', [
-    ({}, 1), ({'stop_hook_active': True}, 0), ({'agent_type': 'general-purpose'}, 0),
-    ({'last_assistant_message': 'Done.'}, 0)])
-def test_check_stop(ws, changes, code):
-    from wuwei import state
-    from wuwei.guards.decision import check_stop
-    result, message = check_stop(stop_payload(ws, **changes))
-    assert result == code
-    assert not state.read_state(ws).get('steward_notes')
-
-
-def test_check_stop_outside_workspace(ws, tmp_path):
-    from wuwei.guards.decision import check_stop
-    outside = tmp_path / 'outside'
-    outside.mkdir()
-    assert check_stop(stop_payload(outside)) == (0, '')
-
-
-def external(ws, monkeypatch, *, reversibility='two-way', goal='G-1', trust=False, when='09:00'):
-    from wuwei import state
-    from wuwei.__main__ import main
-    monkeypatch.chdir(ws)
-    monkeypatch.setenv('WUWEI_NOW', f'2026-09-28T{when}:00+00:00')
-    (ws / '.wuwei/config.toml').write_text(
-        '[owner]\ntimezone = "UTC"\n[decisions]\nwait_hours = 2\n')
-    state._write_state(lambda data: data['items'].update(alpha={
-        'goal': goal, 'flags': {'trust_surface': trust, 'boundary_relevant': False,
-                                'agent_surface': False}}), ws, reserved=False)
-    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: ' + reversibility),
-         name='D-1.md')
-    return main(['decision', 'route', 'D-1', '--external', 'alpha'])
-
-
-def test_route_external_marks_the_item(ws, monkeypatch, capsys):
-    from wuwei import dispatch, state
-    from wuwei.__main__ import main
-    assert external(ws, monkeypatch) == 0
-    assert capsys.readouterr().out.strip() == 'owner'
-    data = state.read_state(ws)
-    assert 'D-1' in data['decision_routes'] and 'D-1' not in data.get('decision_outcomes', {})
-    assert data['items']['alpha']['assumption'] == {
-        'kind': 'external', 'decision': 'D-1', 'day': '2026-09-28',
-        'since': '2026-09-28T09:00:00+00:00', 'status': 'waiting'}
-    routed = [row for row in events(ws) if row['kind'] == 'decision.routed']
-    assert routed[-1]['payload']['item'] == 'alpha'
-    count = len(events(ws))
-    assert main(['decision', 'route', 'D-1', '--external', 'alpha']) == 0
-    assert len(events(ws)) == count
-    with pytest.raises(dispatch.Refused) as refused:
-        dispatch.next_step('alpha', ws)
-    assert 'D-1' not in str(refused.value) and 'steward' not in str(refused.value)
-    assert main(['decision', 'route', 'D-1', '--external', 'beta']) == 1
-    assert len(events(ws)) == count
-
-
-@pytest.mark.parametrize('start,end,zone,hours', [
-    ('2026-09-25T12:00:00+02:00', '2026-09-28T12:00:00+02:00', 'Europe/Amsterdam', 24),
-    ('2026-09-28T09:00:00+02:00', '2026-09-29T08:00:00+02:00', 'Europe/Amsterdam', 23),
-    ('2026-10-23T12:00:00+02:00', '2026-10-26T12:00:00+01:00', 'Europe/Amsterdam', 24),
-])
-def test_weekday_hours(start, end, zone, hours):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    from wuwei import decision
-    assert decision.weekday_hours(datetime.fromisoformat(start), datetime.fromisoformat(end),
-                                  ZoneInfo(zone)) == hours
-
-
-def waited(ws):
-    return [{key: value for key, value in row['payload'].items() if key != 'prs_seen'}
-            for row in events(ws) if row['kind'] == 'decision.waited']
-
-
-def test_two_way_external_wait_confirms(ws, monkeypatch):
-    from wuwei import decision, state
-    assert external(ws, monkeypatch) == 0
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
-    assert decision.waits(ws) == 1
-    item = state.read_state(ws)['items']['alpha']
-    assert item['assumption']['status'] == 'confirmed' and item['phase'] == 'planned'
-    assert waited(ws) == [{'item': 'alpha', 'id': 'D-1', 'outcome': 'confirmed',
-                           'recommendation': 'A'}]
-    assert decision.answered(state.read_state(ws), 'D-1') is None
-    assert decision.waits(ws) == 0 and len(waited(ws)) == 1
-
-
-@pytest.mark.parametrize('options', [{'reversibility': 'one-way'}, {'reversibility': 'unsure'},
-                                     {'goal': 'unplanned'}, {'trust': True}])
-def test_one_way_external_wait_parks(ws, monkeypatch, options):
-    from wuwei import decision, state
-    assert external(ws, monkeypatch, **options) == 0
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
-    assert decision.waits(ws) == 1
-    item = state.read_state(ws)['items']['alpha']
-    assert (item['phase'], item['status'], item['decision']) == ('parked', 'blocked', 'D-1')
-    assert item['assumption']['status'] == 'parked'
-    assert waited(ws)[0]['outcome'] == 'parked'
-    assert decision.waits(ws) == 0
-
-
-def test_owner_answer_resumes_a_parked_wait(ws, monkeypatch):
-    from wuwei import decision, state
-    from wuwei.__main__ import main
-    assert external(ws, monkeypatch, reversibility='one-way') == 0
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
-    decision.waits(ws)
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda *args, **kwargs: True)
-    assert main(['decision', 'outcome', 'D-1', 'A']) == 0
-    assert state.read_state(ws)['items']['alpha']['phase'] == 'planned'
-
-
-def test_external_wait_holds_before_the_time_box_or_after_an_answer(ws, monkeypatch):
-    from wuwei import decision, state
-    assert external(ws, monkeypatch, when='11:00') == 0
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
-    assert decision.waits(ws) == 0
-    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(
-        {'D-1': {'option': 'B', 'decided_by': 'owner'}}), ws, reserved=False)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T15:00:00+00:00')
-    assert decision.waits(ws) == 0 and not waited(ws)
-
-
-def test_unreadable_external_record_fails_closed(ws, monkeypatch):
-    from wuwei import decision
-    assert external(ws, monkeypatch) == 0
-    save(ws, 'bad', name='D-1.md')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
-    with pytest.raises(ValueError):
-        decision.waits(ws)
-
-
-def ask(cwd, widget):
-    """The four AskUserQuestion keys of a widget through the question guard."""
-    from wuwei.guards.decision import check_question
-    return check_question({'cwd': str(cwd), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
-        {key: widget[key] for key in ('question', 'header', 'options', 'multiSelect')}]}})
 
 
 def test_widget_shape():
@@ -1234,11 +342,12 @@ Outcome: pending
 '''
 
 
-def test_decision_widget_passes_the_question_guard(ws):
+def test_record_widget(ws):
     from wuwei import decision
+    from wuwei.commands.outbound import RECORD
     from wuwei.workspace import owner_cli
     save(ws)
-    built = decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)
+    built = decision.record_widget('D-3', decision.evaluate(VALID)[0], RECORD, root=ws)
     assert built['question'] == 'D-3: Which fix? Correctness decided it.' and built['header'] == 'D-3'
     assert [o['label'] for o in built['options']] == ['Implement fix (Recommended)', 'Defer until tomorrow']
     assert built['multiSelect'] is False
@@ -1247,17 +356,15 @@ def test_decision_widget_passes_the_question_guard(ws):
         'SOLID: Keeps single responsibility.', 'twelve-factor: No new config.',
         'YAGNI: Builds only the fix.', 'ponytail: Smallest diff that works.']
     fields = decision.evaluate(VALID)[0]
-    assert built['record'] == f'{owner_cli(ws)} decide D-3 "<label>" --card {decision.card_hash("D-3", fields)}'
-    assert ask(ws, built) == (0, '')
+    assert built['record'] == f'{owner_cli(ws)} outbound answer D-3 "<label>" --card {decision.card_hash("D-3", fields)}'
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
-    built = decision.record_widget('D-3', decision.evaluate(swapped)[0], root=ws)
+    built = decision.record_widget('D-3', decision.evaluate(swapped)[0], RECORD, root=ws)
     assert [o['label'] for o in built['options']] == ['Defer until tomorrow (Recommended)', 'Implement fix']
     save(ws, FIVE)
-    built = decision.record_widget('D-3', decision.evaluate(FIVE)[0], root=ws)
+    built = decision.record_widget('D-3', decision.evaluate(FIVE)[0], RECORD, root=ws)
     assert [o['label'] for o in built['options']] == [
         'Fix three (Recommended)', 'Fix one', 'Defer until tomorrow', 'Fix four']
     assert built['options'][0]['description'] == 'Scores 9.\nThree changes.'
-    assert ask(ws, built) == (0, '')
 
 
 def test_card_hash_names_question_and_options():
@@ -1273,140 +380,15 @@ def test_card_hash_names_question_and_options():
     assert decision.card_hash('D-3', decision.evaluate(VALID + 'Notes: later.\n')[0]) == found
 
 
-def test_printed_decide_runs_from_anywhere(planner, monkeypatch, tmp_path):
-    import os
-    import shlex
-    from wuwei.__main__ import main
-    from wuwei import decision, state
-    from wuwei.guards.decision import record_gate
-    ws = planner
-    save(ws)
-    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
-    built = decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)
-    label = built['options'][0]['label']
-    assert record_gate({'cwd': str(ws), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
-                        'tool_input': {'questions': [{'question': built['question'], 'header': 'D-3'}]},
-                        'tool_response': {'answers': {built['question']: label}}}) == (0, '')
-    command = built['record'].replace('<label>', label)
-    elsewhere = tmp_path / 'elsewhere'
-    elsewhere.mkdir()
-    monkeypatch.chdir(elsewhere)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    try:
-        assert main(shlex.split(command)[1:]) == 0
-    finally:
-        os.environ.pop('WUWEI_WORKSPACE', None)
-    assert state.read_state(ws)['decision_outcomes']['D-3']['option'] == 'A'
-
-
 def test_widget_trims_by_verbosity():
     from wuwei import decision
     fields = decision.evaluate(VALID)[0]
-    brief = decision.record_widget('D-3', fields, root=Path('/w'))['options'][0]['description'].splitlines()[0]
-    full = decision.record_widget('D-3', fields, level='full', root=Path('/w'))['options'][0]['description'].splitlines()[0]
+    brief = decision.record_widget('D-3', fields, 'r', root=Path('/w'))['options'][0]['description'].splitlines()[0]
+    full = decision.record_widget('D-3', fields, 'r', level='full', root=Path('/w'))['options'][0]['description'].splitlines()[0]
     assert brief == 'Passes every must and scores 8 on Correctness.'
     assert full == 'Passes every must and scores 8 on Correctness. It costs a little Speed.'
-    assert decision.record_widget('D-3', fields, level='full', root=Path('/w'))['question'] == (
+    assert decision.record_widget('D-3', fields, 'r', level='full', root=Path('/w'))['question'] == (
         'D-3: Which fix? Correctness decided it.')
-
-
-def test_custom_lens_on_the_card(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    monkeypatch.chdir(ws)
-    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
-    save(ws, VALID.replace('Musts:', '| company-rule | Follows it. | Follows it too. |\nMusts:'))
-    assert main(['decision', 'show', 'D-3', '--widget']) == 0
-    options = json.loads(capsys.readouterr().out)[0]['options']
-    assert [o['description'].splitlines()[-1] for o in options] == [
-        'company-rule: Follows it.', 'company-rule: Follows it too.']
-
-
-def test_decision_show_widget(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei import decision
-    monkeypatch.chdir(ws)
-    path = save(ws)
-    assert main(['decision', 'show', 'D-3', '--widget']) == 0
-    assert json.loads(capsys.readouterr().out) == [decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)]
-    path.write_text(LEGACY)
-    assert main(['decision', 'show', 'D-3', '--widget']) == 1
-    assert 'Class' in capsys.readouterr().err
-    path.write_text('Question: bad')
-    assert main(['decision', 'show', 'D-3', '--widget']) == 1
-    assert 'missing fields' in capsys.readouterr().err
-    path.unlink()
-    assert main(['decision', 'show', 'D-3', '--widget']) == 1
-    with pytest.raises(SystemExit, match='2'):
-        main(['decision', 'show', 'D-3', '--widget', '--full'])
-
-
-@pytest.mark.parametrize('command, expected', [
-    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
-     'print(open("days/x/decisions/D-1.md").read())\'', 'unparsed'),
-    ('for f in days/x/decisions/D-1.md days/x/decisions/D-2.md; do cat $f; done', 'clean'),
-    ('for f in a; do echo x > days/x/decisions/D-1.md; done', 'kept'),
-])
-def test_issue_347_unparsed_decision_commands(ws, command, expected):
-    from wuwei.guards.decision import check_write
-    from wuwei.shell import UNPARSED
-    result = check_write({'cwd': str(ws), 'tool_name': 'Bash', 'tool_input': {'command': command}})
-    assert result == {'unparsed': (2, UNPARSED), 'clean': (0, ''),
-                      'kept': (2, 'decision lint: could not inspect decision record; '
-                               'use a plain file write')}[expected]
-
-
-def test_issue_347_inline_snippet_still_lints_the_day(ws):
-    from wuwei.guards.decision import check_write
-    from wuwei.shell import UNPARSED
-    save(ws, 'Question: bad')
-    code, message = check_write({'cwd': str(ws), 'tool_name': 'Bash', 'tool_input': {
-        'command': 'python3 -c \'print(open("decisions/D-3.md").read())\''}})
-    assert code == 2 and message.splitlines()[0] == UNPARSED and len(message.splitlines()) > 1
-def gate(ws, session='planner-1', header='Goals', **extra):
-    from wuwei.workspace import day_dir
-    text = f'Morning gate ({day_dir(ws).relative_to(ws / ".wuwei").as_posix()}/plan.md): confirm goals G-1 and G-2?'
-    return {'cwd': str(ws), 'session_id': session, 'tool_name': 'AskUserQuestion',
-            'tool_input': {'questions': [{'question': text, 'header': header}]}, **extra}
-
-
-@pytest.fixture
-def planner(ws):
-    from wuwei import plan
-    from wuwei.workspace import day_dir
-    day_dir(ws).mkdir(parents=True, exist_ok=True)
-    (day_dir(ws) / 'plan.md').write_text('# Morning plan\n')
-    plan.session('planner-1', ws)
-    return ws
-
-
-def test_record_gate_notes_planner_topics(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    assert record_gate(gate(planner)) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['goals']
-    assert [e['kind'] for e in events(planner)].count('gate.asked') == 1
-
-
-def test_record_gate_ignores_seats_and_others(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    plain = gate(planner)
-    plain['tool_input']['questions'][0]['question'] = 'Morning gate: confirm goals?'
-    other = gate(planner, header='Pick')
-    other['tool_input']['questions'][0]['question'] = 'Choose D-3 for the build?'
-    for payload in (gate(planner, agent_id='a1'), gate(planner, 'other'), plain, other):
-        assert record_gate(payload) == (0, '')
-    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
-    assert 'gate.asked' not in [e['kind'] for e in events(planner)]
-
-
-def test_record_gate_voice_topic(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    payload = gate(planner, header='Voice')
-    payload['tool_input']['questions'][0]['question'] = payload['tool_input']['questions'][0]['question'].replace('goals G-1 and G-2', 'these lines')
-    assert record_gate(payload) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['voice']
 
 
 def test_set_outcome_rewrites_first_outcome():
@@ -1425,160 +407,5 @@ def test_owner_record_writes_outcome_owner_and_notes(ws):
         '\nNotes: Decided at 2026-09-28T12:00:00+00:00 at the host terminal.\n')
 
 
-def test_decide_command_records_routed_decision(ws, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei import decision, state
-    monkeypatch.chdir(ws)
-    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    assert main(['decision', 'route', 'D-3']) == 0
-    before = path.read_bytes()
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decide', 'D-3', 'B', '--note', 'a\nb']) == 2
-    assert path.read_bytes() == before
-    assert main(['decide', 'D-3', 'B', '--note', 'phone answer']) == 0
-    text = path.read_text()
-    fields, _ = decision.evaluate(text)
-    assert fields['Outcome'] == 'B' and fields['Decided-by'] == 'owner'
-    assert text.endswith('at the host terminal. phone answer\n')
-    assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'owner'
-    assert [row['kind'] for row in events(ws)].count('decision.decided') == 1
-
-
-def test_record_gate_notes_asked_decisions(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    save(planner)
-
-    def asked(header, text, session='planner-1', **extra):
-        return {'cwd': str(planner), 'session_id': session, 'tool_name': 'AskUserQuestion',
-                'tool_input': {'questions': [{'question': text, 'header': header}]}, **extra}
-    for payload in (asked('D-3', 'Which option?'), asked('D-9', 'D-9: Which option?'),
-                    asked('D-3', 'D-3: Which option?', agent_id='a1'),
-                    asked('D-3', 'D-3: Which option?', 'other'), asked('D-3', 'D-30: Which option?')):
-        assert record_gate(payload) == (0, '')
-    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
-    assert record_gate(asked('D-3', 'D-3: Which option?')) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['D-3']
-
-
-def pending_draft(root):
-    """A pending port draft today (#493)."""
-    from wuwei import drafts, outward, workspace
-    return drafts.create(root, workspace.load_config(root), 'chat', 'post', 'none',
-                         {'channel': 'C2', 'text': 'Thanks'},
-                         outward.APPROVAL_REQUIRED + ': unknown destination C2: not in outbound.work_channels')
-
-
-def draft_question(root, draft_id, header='Draft', session='planner-1', answer=None, **extra):
-    text = f'{draft_id}: send this to C2 through none?'
-    if answer is not None:
-        extra['tool_response'] = {'answers': {text: answer}}
-    return {'cwd': str(root), 'session_id': session, 'tool_name': 'AskUserQuestion',
-            'tool_input': {'questions': [{'question': text, 'header': header}]}, **extra}
-
-
-def test_question_citing_a_pending_draft_is_accepted(planner):
-    from wuwei import drafts
-    from wuwei.guards.decision import check_question
-    (planner / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
-    draft_id = pending_draft(planner)
-    assert check_question(draft_question(planner, draft_id)) == (0, '')
-    code, reason = check_question(draft_question(planner, 'draft-' + '0' * 32))
-    assert code == 1 and 'bin/wuwei drafts' in reason
-    assert drafts.drop(planner, draft_id).exit == 0
-    code, reason = check_question(draft_question(planner, draft_id))
-    assert code == 1 and draft_id in reason and 'bin/wuwei drafts' in reason
-
-
-def test_record_gate_notes_asked_drafts(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    draft_id = pending_draft(planner)
-    for payload in (draft_question(planner, draft_id, header='Pick'),
-                    draft_question(planner, draft_id, agent_id='a1'),
-                    draft_question(planner, draft_id, session='other'),
-                    draft_question(planner, 'draft-' + '0' * 32)):
-        assert record_gate(payload) == (0, '')
-    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
-    assert record_gate(draft_question(planner, draft_id)) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == [draft_id]
-
-
-@pytest.mark.parametrize('answer,extra', [
-    ('Send now (Recommended)', ':send'), ('Send with an edit', ':edit'), ('Keep as draft', None),
-    ('Drop', None), (' See you then \n', ':text:' + sha256(b'See you then').hexdigest())])
-def test_record_gate_notes_the_owner_draft_answer(planner, answer, extra):
-    """Only the owner's Send answer unlocks approve, and only a typed text unlocks that text (#493)."""
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    draft_id = pending_draft(planner)
-    assert record_gate(draft_question(planner, draft_id, answer=answer)) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == sorted(
-        {draft_id} | ({draft_id + extra} if extra else set()))
-
-
 def test_keep_is_a_status_quo_title():
-    from wuwei.decision import lint
     assert lint(VALID.replace('Defer until tomorrow', 'Keep owner-only'))[0] == 0
-
-
-# #600: config cards carry values in a Value row and the previous value in a Previous line.
-CHECKS_RECORD = '''Question: Which fast checks gate every change in repo:acme/paper?
-Class: other
-Context: Detected in Makefile:1 and .markdownlint.json:1.
-Options:
-| Option | Title | Rationale | Consequence |
-| --- | --- | --- | --- |
-| A | Detected | Passes every must and scores 9 on Evidence. | Every change runs the detected checks. |
-| B | None | Passes every must but scores 4 on Evidence. | CI and the gates are the evidence. |
-| C | Defer | Passes every must but scores 1 on Evidence. | The question comes back tomorrow. |
-Value:
-| Option | Value |
-| --- | --- |
-| A | repos.0.fast_checks = ["make test", "markdownlint ."] |
-| B | repos.0.fast_checks = [] |
-Previous: repos.0.fast_checks = []
-Musts:
-| Criterion | A | B | C |
-| --- | --- | --- | --- |
-| Safe | pass | pass | pass |
-Wants:
-| Criterion | Weight | A | B | C |
-| --- | --- | --- | --- | --- |
-| Evidence | 10 | 9 | 4 | 1 |
-Recommendation: A
-Reasoning: Catching broken code on every push decided it. A slow runner would flip it to B.
-Confidence: high
-Reversibility: one-way
-Blast radius: repository acme/paper fast checks
-Pre-mortem: The detected command is slow.
-Revisit: When a check runs longer than a minute.
-Decided-by: owner
-Outcome: pending
-'''
-
-
-def test_value_rows_lint_and_read():
-    from wuwei import decision
-    assert decision.lint(CHECKS_RECORD)[0] == 0, decision.lint(CHECKS_RECORD)
-    fields, _ = decision.evaluate(CHECKS_RECORD, decision.LENSES)
-    assert decision.config_keys(fields) == {
-        'A': ('repos.0.fast_checks', ['make test', 'markdownlint .']), 'B': ('repos.0.fast_checks', [])}
-    from test_card_confirms import CONFIG_RECORD
-    fields, _ = decision.evaluate(CONFIG_RECORD, decision.LENSES)
-    assert decision.config_keys(fields) == {'A': ('cap', 5), 'B': ('cap', 3)}
-    assert decision.config_keys(decision.evaluate(VALID)[0]) == {}
-    assert 'Value' not in decision.evaluate(VALID)[0]
-
-
-@pytest.mark.parametrize('old,new,reason', [
-    ('| A | repos.0.fast_checks = [', '| Z | repos.0.fast_checks = [', 'Value: row Z'),
-    ('| B | repos.0.fast_checks = [] |', '| B | nope.key = [] |', 'Value: row B'),
-    ('| B | repos.0.fast_checks = [] |', '| B | repos.0.fast_checks = [make test |', 'Value: row B'),
-    ('Previous: repos.0.fast_checks = []', 'Previous: repos.0.fast_checks = []\nand more', 'Previous'),
-    ('Previous: repos.0.fast_checks = []', 'Previous: nope', 'Previous'),
-])
-def test_value_rows_reject(old, new, reason):
-    from wuwei import decision
-    code, message = decision.lint(CHECKS_RECORD.replace(old, new))
-    assert code == 1 and reason in message, message

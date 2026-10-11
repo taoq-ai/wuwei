@@ -53,18 +53,17 @@ THEN = {
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
                 'tool. On exit 1 or 2 show the owner the reason; then run wuwei next.'),
+    'setup': ('Ask the owner which repositories WUWEI works on (owner/repo, path, default branch); '
+              'run the command for each, which asks its Owner step card; then run wuwei next.'),
     'gate': ('Ask the widget list with AskUserQuestion. On any Approve option run its record command with '
              '<label> replaced by the chosen label; on Change '
              'something ask the owner what to change, edit {days}/lead.json and run wuwei plan propose '
              '{days}/lead.json again; then run wuwei next.'),
-    'goals': ('Under strict the hook refuses and prints the command: show that line to the owner for '
-              'a host terminal; then run wuwei next.'),
-    'calibrate': ('Ask the widget list with AskUserQuestion, record each answer with its record '
-                  'command (outside strict the answer writes its config key); when it prints a Next: '
-                  'line, show the owner that line for a host terminal (bin/wuwei config promote, or '
-                  'bin/wuwei calibrate --interview allowlist). Then run wuwei next.'),
-    'pr': ('Run it and do any action it prints; when it prints nothing the PR waits on people: end '
-           'the turn with wuwei status --line, the watch wakes you when it changes.'),
+    'pr': ('Run it and do any action it prints; on exit 1 with an Owner step card, ask it with '
+           'AskUserQuestion, then run it again on Yes. When it prints nothing the PR waits on people: '
+           'end the turn with wuwei status --line, the watch wakes you when it changes.'),
+    'owner-step': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion, then run '
+                   'it again on Yes. Then run wuwei next.'),
     'merge': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion. On Yes run it '
               'again; on No run wuwei plan park {item} --reason "the owner keeps the merge of {pr}". '
               'Then run wuwei next.'),
@@ -99,23 +98,20 @@ def _row(name, why, command=None, action='run', then=None, **extra):
 
 
 def approved(data):
-    """Approved items in queue order, less those a seat decision carried or parked."""
-    disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]
-                for record in data.get('decision_outcomes', {}).values()
-                if isinstance(record, dict) and record.get('decided_by') in ('seat', 'mandate')
-                and str(record.get('item_disposition')).startswith(('carried ', 'parked '))}
-    return [name for name in data['approved_items'] if name in data['items'] and name not in disposed]
+    """Approved items in queue order, less those plan carry or park disposed of."""
+    return [name for name in data['approved_items'] if name in data['items']
+            and (data['items'][name].get('disposition') or {}).get('kind') not in ('carried', 'parked')]
 
 
 def _seen(directory):
-    """(done (state, key) pairs, passed pairs, steward runs, steward due, day closed, the PRs
-    whose latest merge event is an owner block) from one read of today's events; only lines
+    """(done (state, key) pairs, steward runs, day closed, the PRs whose latest
+    merge event is an owner block) from one read of today's events; only lines
     naming a kind next needs are parsed (#346 budget). A row is done when its command ran (the
     done pairs run() records) or it passed with nothing to ask."""
-    done, passed, returns, runs, due, closed, merges = set(), set(), {}, [], False, False, {}
+    done, passed, returns, runs, closed, merges = set(), set(), {}, [], False, {}
     path = directory / 'events.jsonl'
     for text in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
-        if not ('"next.action"' in text or '"steward.' in text or '"day.closed"' in text
+        if not ('"next.action"' in text or '"steward.run"' in text or '"day.closed"' in text
                 or '"merge.' in text):
             continue
         row = json.loads(text)
@@ -131,9 +127,6 @@ def _seen(directory):
             done.update(tuple(pair) for pair in payload.get('done', ()))
         elif kind == 'steward.run':
             runs.append(payload)
-            due = False
-        elif kind == 'steward.due':
-            due = True
         elif kind == 'day.closed':
             closed = True
         elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816
@@ -141,7 +134,7 @@ def _seen(directory):
     # ponytail: a row returned three times counts as done, so a refused or failed command (no
     # PostToolUse span) never holds the day; evidence from PostToolUseFailure would lift it.
     done |= passed | {key for key, count in returns.items() if count >= 3}
-    return done, passed, runs, due, closed, merges
+    return done, runs, closed, merges
 
 
 def _carry(root, directory):
@@ -164,18 +157,13 @@ def step(root, ran=()):
     ran: the (state, key) pairs whose command ran since the last recorded action.
     ponytail: one row, not a list; the first runnable item wins and its rows name the rest (#666)."""
     if root is None:
-        return _row('no-workspace', 'No WUWEI workspace here; create one in observe posture in a '
-                    'host terminal in the project directory.',
-                    'bin/wuwei setup --shadow', 'card', THEN['owner'])
+        return _row('no-workspace', 'No WUWEI workspace here; create one in the observe posture in '
+                    'the project directory.', 'bin/wuwei init --shadow')
     config = workspace.load_config(root)
-    # Not calibrate.approved: hook paths must not import calibrate (test_hooks pins it).
-    calibration = root / '.wuwei/calibration.json'
-    if (not config['repos'] or not calibration.is_file()
-            or not json.loads(calibration.read_text(encoding='utf-8'))):
-        return _row('setup', 'Setup is incomplete. Run bin/wuwei setup through Bash: without a terminal it '
-                    'prints the unanswered setup questions as cards to ask (#635); repositories and '
-                    'calibration still need you in a host terminal.', 'bin/wuwei setup', 'card',
-                    THEN['owner'])
+    if not config['repos']:
+        return _row('setup', 'No repository is configured yet.',
+                    'wuwei config add-repo --name <owner/repo> --path <path> --branch <branch>',
+                    then=THEN['setup'])
     directory = workspace.day_dir(root)
     days = f'.wuwei/days/{directory.name}'
     data = state.read_state(directory=directory)
@@ -184,7 +172,7 @@ def step(root, ran=()):
         session = os.environ.get('WUWEI_SESSION_ID', '').strip() or '<session id>'
         return _row('session', "Register this session as today's planner.",
                     f'wuwei plan session {session}')
-    returned, passed, runs, due, closed, merges = _seen(directory)
+    returned, runs, closed, merges = _seen(directory)
     returned |= set(ran)
     if not (directory / 'plan.md').is_file():
         if ('pr-flow', '') not in returned:
@@ -209,21 +197,6 @@ def step(root, ran=()):
         return _row('gate', f'Morning gate open: the plan in {days}/plan.md is approved only on '
                     'your answer.', 'wuwei plan gate' + (' --import-yesterday' if _carry(root, directory) else ''),
                     'card', THEN['gate'].format(days=days))
-    if (directory / 'goals.md').is_file() and ('goals', '') not in returned:
-        return _row('goals', 'Record the goals you approved at the gate.',
-                    f'wuwei goals edit --file {days}/goals.md', then=THEN['goals'])
-    if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
-        return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
-                    'wuwei calibrate --questions', 'card', THEN['calibrate'])
-    routes = data.get('decision_routes', {})
-    if not isinstance(routes, dict):
-        raise ValueError(f'invalid decision ledger; {DAMAGED}')
-    from wuwei.decision import answered
-    pending = [identifier for identifier in routes if answered(data, identifier) is None]
-    for identifier in pending:
-        if ('decision', identifier) not in returned:
-            return _row('decision', f'Decision {identifier} waits for your answer.',
-                        f'wuwei decision show {identifier} --widget', 'card', item=identifier)
     seats = brief.seats(data)
     if stuck := brief.stuck(data):
         return _row('stuck', f'Seat {stuck[0]} ended with no recorded result.',
@@ -285,13 +258,9 @@ def step(root, ran=()):
     queue = {'rows': queue} if len(queue) > 1 else {}
     if found:
         return {**found[0], **queue}
-    # #617: one steward at a time, on the newest brief; due waits (not cleared) while one runs.
-    # #624: and while an item is mid fix round.
+    # #617: one steward at a time, on the newest brief; #624: and not while an item is mid fix round.
     if not state.mid_round(data) and not any(
             seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
-        if due:
-            return _row('steward', 'The steward is due after the recorded tool calls.',
-                        'wuwei steward run --trigger tool-calls', then=THEN['background'])
         stem = str(runs[-1].get('brief', '')).rsplit('/', 1)[-1].removesuffix('.md') if runs else ''
         if stem and stem not in seats:
             return _row('steward', 'Launch the steward seat on its brief.', 'wuwei next --json',
@@ -314,7 +283,7 @@ def step(root, ran=()):
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
     # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
     from wuwei.commands.status import scan
-    _, watch, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
+    _, watch, beat = scan(directory, {**data, 'now': workspace.now().isoformat()})
     if (watch == 'dead' or beat == 'degraded') and ('doctor', '') not in returned:
         return _row('doctor', f'Watch {watch}, heartbeat {beat}; run the doctor and fix what it '
                     'names.', 'wuwei doctor')
@@ -322,10 +291,6 @@ def step(root, ran=()):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])
     if not any(run.get('trigger') == 'close' for run in runs):
-        pending = [identifier for identifier in pending if ('close', identifier) not in passed]
-        if pending:  # a decision that holds the close is asked again (#530)
-            return _row('close', f'Decision {pending[0]} holds the close.',
-                        f'wuwei decision show {pending[0]} --widget', 'card', item=pending[0])
         return _row('close', 'Close the day once nothing holds it.', 'wuwei close', then=THEN['close'])
     if not (directory / 'retro' / f'{directory.name}.md').is_file():
         return _row('retro', 'Compile the steward retro.', 'wuwei retro')
@@ -394,11 +359,11 @@ def resolve(row, root):
     if name == 'verdicts':
         from wuwei import dispatch
         action = dispatch.next_step(item, root)
-        if action['action'] == 'fix':
+        if action['action'] in ('fix', 'parked'):  # a PARK verdict or the owner's No parked it
             return None
-        if action['action'] == 'escalate':
-            return _row(name, f"{item}: {action['reason']}; decision {action['decision']}.",
-                        action['command'], item=item)  # #732: the command that answers it
+        if action['action'] == 'escalate':  # the owner decides on the command's Owner step card
+            return _row(name, f"{item}: {action['reason']}", action['command'], item=item,
+                        then=THEN['owner-step'])
         if action['action'] == 'raise':
             return _shepherd(root, item, action['notes'], row['why'])
         if action['action'] == 'polish':  # #723

@@ -13,21 +13,21 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
           'decision.decided',
-          'decision.routed', 'decision.digest', 'mcp.decided',
+          'decision.routed', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
-          'pr.reply.drafted', 'pr.action.decision',
+          'pr.reply.drafted',
           'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
-          'gate.received', 'gate.tiered', 'gate.delta_head', 'gate.card', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
+          'gate.received', 'gate.tiered', 'gate.delta_head', 'discovery.requested', 'discovery.intake',
+          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'finding.noted', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
+          'plan.added', 'finding.noted', 'steward.run', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
           'build.held', 'build.released',
           'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set',
+          'outbound.proposed', 'outbound.learned', 'outbound.thread',
           'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
           'cap.derived')
 
@@ -47,8 +47,6 @@ def classify(event, state):
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
     if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
         return ('warn' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
-    if kind == 'negotiation.loop':
-        return ('page' if payload.get('past_goal') is True else 'warn'), lane
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
     if kind == 'mcp.checked':
@@ -92,7 +90,7 @@ def classify(event, state):
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'warn'), lane
     if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
-                'build.parked', 'steward.due'):
+                'build.parked'):
         return 'warn', lane
     if kind in SILENT:
         return 'silent', lane

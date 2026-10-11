@@ -1,6 +1,5 @@
 """Profile a checkout and propose workspace configuration; repository text is data, never a rule."""
 
-from collections import Counter
 from datetime import datetime
 import difflib
 import fnmatch
@@ -150,7 +149,7 @@ MARKDOWNLINT = ('.markdownlint.json', '.markdownlint.jsonc', '.markdownlint.yaml
 TEST_STEP = re.compile(r'(?!(?:pip3?|npm (?:ci|install)|apt(?:-get)?|brew|sudo|cd|echo)\b)'
                        r'.*\b(?:pytest|test|tests|check|lint|latexmk|markdownlint)\b')
 LINT = ('ruff check .', 'black --check .', 'npm run lint', 'make lint', 'markdownlint .')
-UNMEASURED = 'test runner, unmeasured; run bin/wuwei calibrate --measure'
+UNMEASURED = 'test runner, unmeasured; run bin/wuwei config promote --measure'
 
 
 NEAR = 0.8  # #724: a measured run at 80 % of its limit proposes twice the limit
@@ -439,21 +438,6 @@ def drift_facts(facts):
     return {key: sorted(facts[key]) for key in DRIFT}
 
 
-CONVENTIONAL = re.compile(r'[a-z]+(?:\(([^)]+)\))?!?: ')
-SCOPE = re.compile(r'[a-z0-9][a-z0-9-]{0,30}')
-
-
-def commit_style(commits):
-    """Conventional when at least 80 percent of subjects match; scopes are checked words only."""
-    matches = [CONVENTIONAL.match(c['subject']) for c in commits]
-    count = len(commits)
-    scopes = Counter(m[1] for m in matches if m and m[1] and SCOPE.fullmatch(m[1]))
-    return {'conventional': bool(count) and sum(map(bool, matches)) >= 0.8 * count,
-            'scopes': [scope for scope, _ in sorted(scopes.items(), key=lambda s: (-s[1], s[0]))[:5]],
-            'sign_off': bool(count) and sum(c['signed_off'] for c in commits) >= 0.8 * count,
-            'commits': count}
-
-
 def baseline(prs):
     """Advisory steward input: merged pull request size and creation-to-merge hours."""
     if not prs:
@@ -496,100 +480,6 @@ def _labelled(raw):
 
 def _empty_list(key, line):
     return re.fullmatch(rf'{key}\s*=\s*\[\]\s*(#.*)?', line.strip())
-
-
-# ponytail: default seat cost before any seat ran (the default memory floor); measured after.
-SEAT_MIB = 1024
-
-
-def _gb(mib):
-    return f'{round(mib / 1024, 1):g} GB'
-
-
-def processes(config, policy):
-    """#658: True when a seat runtime of the day launches its own process: any runtime but the
-    Claude subagent, and none launches nothing. policy: the seat policy, role to row."""
-    rows = policy.values() if isinstance(policy, dict) else ()
-    names = {config['adapters']['runtime'], *(row.get('runtime') for row in rows if isinstance(row, dict))}
-    return bool(names - {'claude', 'none', None})
-
-
-def host(root, config, running=0, free=None, policy=None):
-    """Capacity (#528, #658): CAP and the seat ceiling. Claude subagent seats take host.seats,
-    else one per core, and never read free memory; seats that are separate processes take the
-    median of today's last five memory readings (the seats that fit above the floor, one per
-    core). Then the owner's values and the token budget; `bound` names what set CAP. `free` is
-    MiB when the caller already measured it; `policy` the day's seat policy when held."""
-    from wuwei import metrics, state, workspace
-    from wuwei.guards.agent_launch import free_memory
-
-    owner_cap, owner_seats = config['cap'], config['host']['seats']
-    try:
-        if policy is None:
-            policy = state.read_state(root)['seat_policy']
-        separate = processes(config, policy)
-        if separate and free is None:
-            free = free_memory(config, root) // 2**20
-        cores = os.cpu_count()
-        if not cores:
-            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again')
-    except (OSError, ValueError) as exc:
-        cap = owner_cap or 1
-        return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
-                'text': f'cap {cap} (unmeasured): {exc}'}
-    days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
-    damaged, memory = None, {}
-    if separate:
-        try:
-            seat = next((cost for day in days
-                         if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
-        except ValueError as exc:
-            # a damaged day log never blocks a launch: default seat cost, budget unmeasured
-            seat, damaged = None, exc
-        seat_mib = seat or SEAT_MIB
-        reading = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
-        try:  # the sweep records each reading on cap.derived; smooth over today's last five
-            readings = [row['payload']['reading'] for row in metrics._events(workspace.day_dir(root)) or []
-                        if row['kind'] == 'cap.derived' and type(row['payload'].get('reading')) is int][-4:]
-        except ValueError as exc:
-            readings, damaged = [], damaged or exc
-        readings.append(reading)
-        fit, rule = statistics.median_low(readings), 'memory'
-        measured = ((f'median of {", ".join(map(str, readings))}; ' if len(readings) > 1 else '')
-                    + f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores')
-        memory = {'free_mib': free, 'seat_mib': seat_mib,
-                  'seat_source': 'default' if seat is None else 'measured', 'reading': reading}
-    else:
-        fit, rule = owner_seats or cores, 'host.seats'
-        measured = 'subagent runtime, free memory not read' + ('' if owner_seats else f'; host.seats unset, {cores} cores')
-    # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
-    from wuwei.dispatch import ROLES
-    seats = owner_seats or max(fit, len(ROLES))
-    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
-    text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
-            if owner_cap else f'cap {cap} ({bound}): {measured}')
-    budget = config['budget']['tokens_per_day']
-    if budget:
-        # ponytail: counts tokens already spent today, not what running seats will still spend;
-        # reserve a per-seat share at launch if this overshoots.
-        try:
-            per_seat = None if damaged else next((statistics.median(tokens) for day in days
-                                                  if (tokens := metrics.seat_tokens(metrics._events(day) or []))), None)
-            used = sum(metrics.seat_tokens(metrics._events(workspace.day_dir(root)) or []))
-        except ValueError as exc:
-            per_seat, damaged = None, damaged or exc
-        if per_seat is None:
-            text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
-        else:
-            per_seat = max(1, round(per_seat))
-            fits = max(1, (budget - used) // per_seat)
-            if fits < cap:
-                cap, bound = fits, 'budget'
-                text = f'cap {cap} (budget): {measured}'
-            text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
-    if damaged:
-        text += f'; warning: {damaged}'
-    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
 
 
 def proposal(raw, targets):
@@ -664,28 +554,6 @@ def apply(raw, additions):
     return text
 
 
-def charter_proposals(repo, facts, style):
-    """Builder and quality sentinel charter blocks from paths, fixed phrases, scope words and commands."""
-    bullets = []
-    if facts['conventions']:
-        bullets.append('- Read the convention sources before changing code: '
-                       + ', '.join(facts['conventions']) + '.')
-    if style and (style['conventional'] or style['sign_off']):
-        parts = []
-        if style['conventional']:
-            parts.append('Commit subjects follow Conventional Commits, type(scope): summary'
-                         + (f"; common scopes: {', '.join(style['scopes'])}" if style['scopes'] else ''))
-        if style['sign_off']:
-            parts.append('every commit carries a Signed-off-by trailer')
-        bullets.append('- ' + '; '.join(parts) + '.')
-    if facts['fast_checks']:
-        bullets.append('- Run the fast checks before handing off: ' + '; '.join(facts['fast_checks']) + '.')
-    if not bullets:
-        return {}
-    text = f"## Repository conventions: {repo['name']}\n" + '\n'.join(bullets) + '\n'
-    return {'builder': text, 'sentinel-quality': text}
-
-
 NO_REPOS = ('no [[repos]] entry in config.toml; add name, path and default_branch for each '
             'repository first')
 
@@ -708,8 +576,8 @@ def measure_checks(root, config, result, runner):
     result['check_timeout'] = 2 * limit if max(measured.values(), default=0) >= NEAR * limit else None
 
 
-def survey(root, config, selected, *, style=True, measure=False):
-    """Profile and classify each selected (index, repo), then read commit style and the PR baseline.
+def survey(root, config, selected, *, measure=False):
+    """Profile and classify each selected (index, repo), then read the PR baseline.
 
     Test runners run only with measure, through the checks port.
     """
@@ -722,154 +590,10 @@ def survey(root, config, selected, *, style=True, measure=False):
         result = {'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)}
         measure_checks(root, config, result, runner)
         results.append(result)
-    vcs = registry.load('vcs', config) if style else None
     host = registry.load('code_host', config)
     for result in results:
-        result['style'] = (_port(vcs.recent_commits(str(result['checkout']), root=root), commit_style)
-                           if style else None)
-        prs = host.merged_prs(result['repo']['name'], root=root)
-        result['baseline'], result['bots'] = _port(prs, baseline), _port(prs, bot_authors)
+        result['baseline'] = _port(host.merged_prs(result['repo']['name'], root=root), baseline)
     return results
-
-
-CHECKS = 'Which fast checks gate every change in repo:{repo}?'
-NOTHING = ('no Makefile test, check or lint target, no pyproject.toml or package.json check, no latexmk '
-           'or markdownlint configuration and no CI test step')
-
-
-def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem,
-            revisit, *, cls='other', confidence='medium', door='one-way', extra=''):
-    """A decision record from (id, title, rationale, consequence, score) rows; extra (#600, Value
-    rows and a Previous line) goes before the Recommendation."""
-    ids, cells = ' | '.join(row[0] for row in rows), ' --- |' * len(rows)
-    return f'''Question: {question}
-Class: {cls}
-Context: {context}
-Options:
-| Option | Title | Rationale | Consequence |
-| --- | --- | --- | --- |
-{''.join(f'| {row[0]} | {row[1]} | {row[2]} | {row[3]} |{chr(10)}' for row in rows)}Musts:
-| Criterion | {ids} |
-| --- |{cells}
-| Owner decides |{' pass |' * len(rows)}
-Wants:
-| Criterion | Weight | {ids} |
-| --- | --- |{cells}
-| {criterion} | 10 | {' | '.join(str(row[4]) for row in rows)} |
-{extra}Recommendation: {recommendation}
-Reasoning: {reasoning}
-Confidence: {confidence}
-Reversibility: {door}
-Blast radius: {blast}
-Pre-mortem: {premortem}
-Revisit: {revisit}
-Decided-by: owner
-Outcome: pending
-'''
-
-
-def checks_text(index, name, commands, sources):
-    """#600: the fast-checks card of a repository with none configured: what it declares, or
-    none with the reason. Two-way: its undo is config set back to the Previous line."""
-    key = f'repos.{index}.fast_checks'
-    # ponytail: recommends what the repository declares, measured or not; a slow runner is
-    # replaced on a card or with calibrate --measure and config promote.
-    rows = [('Detected', commands, 'Runs what the repository declares before every push.',
-             f'Every change runs {", ".join(commands)} before its push.', 9)] if commands else []
-    rows += [('None', [], 'CI and the gates are the evidence.',
-              'Items build with checks none configured and merge at green CI.', 4 if commands else 9),
-             ('Defer', None, 'Nothing changes today.', 'fast_checks stays empty; ask again on a new card.', 1)]
-    rows = [(chr(65 + n), title, value, rationale, consequence, score)
-            for n, (title, value, rationale, consequence, score) in enumerate(rows)]
-    extra = ('Value:\n| Option | Value |\n| --- | --- |\n'
-             + ''.join(f'| {row[0]} | {key} = {configtext.dumps(row[2], inline=True)} |\n'
-                       for row in rows if row[2] is not None)
-             + f'Previous: {key} = []\n')
-    return _record(
-        CHECKS.format(repo=name),
-        f'Detected in {", ".join(sources)}.' if commands else f'Nothing detected: {NOTHING}.',
-        [(row[0], row[1], row[3], row[4], row[5]) for row in rows], 'Evidence on every change', 'A',
-        'Catching broken code on every push decided it; a slow runner would flip it to None.' if commands
-        else 'Nothing to run locally decided it; a test runner added to the repository would flip it.',
-        f'repository {name} fast checks', 'A wrong check blocks every push until it is changed.',
-        'When a check runs longer than a minute or the repository adds a test runner.',
-        cls='approach', confidence='high', door='two-way', extra=extra)
-
-
-def checks_record(root, name):
-    """(day directory, D-n) of the newest fast-checks record for name on a live day, else None."""
-    # ponytail: live days only; after its day is archived the repository is proposed again. A
-    # memory file is the upgrade if that proves noisy.
-    from wuwei import decision, watch
-    question = CHECKS.format(repo=name)
-    for day in watch.days(Path(root)):
-        paths = sorted((path for path in (day / 'decisions').glob('D-*.md')
-                        if re.fullmatch(decision.DECISION_ID, path.stem)), key=lambda path: -int(path.stem[2:]))
-        for path in paths:
-            try:
-                if not path.is_symlink() and decision.evaluate(path.read_text(encoding='utf-8'))[0]['Question'] == question:
-                    return day, path.stem
-            except (OSError, UnicodeError, ValueError):
-                continue
-    return None
-
-
-def checks_answered(root, name):
-    """#600: the owner answered the repository's fast-checks card (CLI-written day state)."""
-    from wuwei import decision, state
-    found = checks_record(root, name)
-    return bool(found) and decision.answered(state.read_state(directory=found[0]), found[1]) is not None
-
-
-def propose_checks(root, config, selected):
-    """#600: one fast-checks record per selected repository with none configured and no record
-    on a live day. Autonomous below strict takes it under the mandate and writes the value (the
-    CLI computed it in this process); otherwise it is routed and returned as a card.
-    Returns (widgets, stderr lines)."""
-    import contextlib
-    import sys
-    from wuwei import decision, state
-    from wuwei.commands import setup
-    from wuwei.commands.decision import CONFIG_RECORD
-    widgets, lines = [], []
-    mandate = config['autonomy']['mode'] == 'autonomous' and workspace.posture(config)[0] != 'strict'
-    for index, repo in selected:
-        if repo['fast_checks'] or checks_record(root, repo['name']):
-            continue
-        checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
-        if not checkout.is_dir():
-            lines.append(f"calibrate: {repo['name']}: checkout {repo['path']} is not a directory; "
-                         'no fast-checks card until it is restored')
-            continue
-        found = [f for f in profile(checkout, repo)['findings'] if f['kind'] == 'fast_check']
-        commands = sorted({f['value'] for f in found})
-        text = checks_text(index, repo['name'], commands, sorted({f['source'] for f in found}))
-        path = decision.write(text, root)
-        ident, (fields, scores) = path.stem, decision.evaluate(text)
-        if not mandate:
-            decision.route_owner(ident, fields, root)
-            widgets.append(decision.record_widget(ident, fields, CONFIG_RECORD, root=root))
-            continue
-        record = decision.seat_outcome(fields, scores, by='mandate')  # the build._park pattern
-        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).__setitem__(ident, record),
-                           root, reserved=False, kind='decision.decided', payload={'id': ident, **record})
-        workspace.atomic_write(path, decision.decided_record(text, 'A', 'mandate'))
-        key = f'repos.{index}.fast_checks'
-        if commands:
-            with contextlib.redirect_stdout(sys.stderr):  # stdout carries the widget JSON
-                code = setup.card_write(root, 'calibrate', lambda _, raw: setup._settle(
-                    raw, [(('repos', index), 'fast_checks', commands)]), [key], ident)
-            if code:
-                raise ValueError(f'{ident} was taken under mandate but {key} was not written; the owner '
-                                 f'sets it with bin/wuwei config set {key}')
-        lines.append(f'calibrate: {ident} taken under mandate ({record["cisr"]}): '
-                     f'{key} = {configtext.dumps(commands, inline=True)}')
-    return widgets, lines
-
-
-def bot_authors(prs):
-    """{noreply email: bot login} for the bot authors among merged pull requests."""
-    return {row['author_email'].casefold(): row['author'] for row in prs if row['author_email']}
 
 
 def proposed(result):
@@ -914,98 +638,13 @@ def settle(raw, settings):
     return additions, edits
 
 
-def kept(raw, settings):
-    """#604: (settings to apply, skipped (dotted key, current value)): a stored answer never
-    overwrites a key present in raw that the owner changed from its default and the answer would
-    change; config promote --keys names it."""
-    present = tomllib.loads(raw)
-    apply_, skipped = [], []
-    for path, key, value in settings:
-        table, node = _table(present, path), configtext.declared((*path, key))
-        if (table is not None and key in table and settle(raw, [(path, key, value)])[0]
-                and (node is None or table[key] != workspace._default(node))):
-            skipped.append(('.'.join(map(str, (*path, key))), table[key]))
-        else:
-            apply_.append((path, key, value))
-    return apply_, skipped
-
-
-def propose(raw, results, settings=()):
-    """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
+def propose(raw, results):
+    """Return the proposed config text, its diff and the hand edits."""
     additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results])
     text = apply(raw, additions)
-    extra, more = settle(text, settings)
-    text, edits = apply(text, extra), edits + more
     diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
                                         'config.toml', 'config.toml (proposed)'))
     return text, diff, edits
-
-
-SECTIONS = (
-    ('Toolchain', ('language', 'fast_check')), ('CI checks', ('ci_check', 'required_check')),
-    ('Conventions', ('convention', 'boundary')),
-    ('Deploy signals', ('deploy_workflow', 'environment', 'deploy_deny', 'never_auto')),
-    ('Instruction-like text (never quoted, never proposed)', ('instruction_like',)),
-    ('Unsafe values (dropped)', ('unsafe',)), ('Skipped files', ('skipped',)))
-LABELS = {'language': 'language', 'fast_check': 'fast check', 'ci_check': 'CI check',
-          'required_check': 'required check', 'convention': 'convention source',
-          'boundary': 'boundary candidate', 'deploy_workflow': 'deploy workflow',
-          'environment': 'environment', 'deploy_deny': 'deploy command',
-          'never_auto': 'never-auto path', 'instruction_like': 'rule', 'unsafe': 'unsafe value',
-          'skipped': 'skipped'}
-
-
-def _label(result, finding):
-    if finding['kind'] != 'fast_check':
-        return LABELS[finding['kind']]
-    fast, note = result['checks'][finding['value']]
-    return f"{'fast check' if fast else 'CI only'} ({note})"
-
-
-def report(results, diff, edits, written, error=None, host=None, config=None):
-    """Markdown report: every finding with its file and line, then the proposal and next step."""
-    lines = ['# Calibration', '']
-    if host:
-        lines += ['## Host', ''] + ([f"- unmeasured: {host['unmeasured']}"] if 'unmeasured' in host else [
-            f"- cores: {host['cores']}", *([
-                f"- free memory: {host['free_mib']} MiB (floor {config['host']['free_memory_mb']} MiB)",
-                f"- seat cost: {host['seat_mib']} MiB ("
-                + ('measured)' if host['seat_source'] == 'measured' else 'default, unmeasured until the first seats run)')]
-                if 'free_mib' in host else []),
-            f"- derived: {host['text']}"]) + ['']
-    for result in results:
-        lines += [f"## {result['repo']['name']}", '']
-        for title, kinds in SECTIONS:
-            rows = [f for f in result['findings'] if f['kind'] in kinds]
-            if rows or title in ('Toolchain', 'CI checks', 'Conventions', 'Deploy signals'):
-                lines.append(f'### {title}')
-                lines += [f"- {': '.join(f['value']) if isinstance(f['value'], tuple) else f['value']} "
-                          f"({f['source']}) {_label(result, f)}" for f in rows] or ['- none found']
-                lines.append('')
-        style = result['style']
-        lines += ['### Commit style', '- unmeasured' if style is None else
-                  f"- {'conventional' if style['conventional'] else 'not conventional'} "
-                  f"over {style['commits']} commits; scopes: {', '.join(style['scopes']) or 'none'}; "
-                  f"sign-off: {'yes' if style['sign_off'] else 'no'}", '']
-        lines += ['### PR baseline', '- unmeasured' if result['baseline'] is None else
-                  '- ' + json.dumps(result['baseline'], sort_keys=True), '']
-    lines += ['## Proposed config.toml changes', '']
-    lines += ([f'Could not place the proposal: {error}', ''] if error else
-              ['```diff', diff.rstrip('\n'), '```', ''] if diff else ['No config.toml changes', ''])
-    if edits:
-        lines += ['## Config differs; edit by hand', '']
-        lines += [f'- {key}: config has {json.dumps(current)}, detected {json.dumps(detected)}'
-                  for key, current, detected in edits] + ['']
-    if ci_only(results):
-        lines += ['## CI only (not proposed as fast checks)', '']
-        lines += [f'- {name}: {command} ({note})' for name, command, note in ci_only(results)] + ['']
-    lines += ['## Charter proposals', ''] + [f'- {path}' for path in written] + (
-        [] if written else ['- none']) + ['']
-    lines += ['## Next step', '',
-              '- Review this report, then run `bin/wuwei config promote` to apply '
-              'the config proposal and record the approved calibration.',
-              '- Run `bin/wuwei promote` to land the charter proposals.', '']
-    return '\n'.join(lines)
 
 
 def approved(root):

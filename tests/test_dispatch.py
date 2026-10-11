@@ -1,10 +1,11 @@
 """Planner decisions use recorded evidence and never launch agents."""
 
 import json
+import os
 
 import pytest
 
-from wuwei import state, workspace
+from wuwei import dispatch, state, workspace
 
 
 PASS = 'Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
@@ -111,11 +112,10 @@ def built(root):
 
 def round_used(root):
     from wuwei import dispatch
-    assert dispatch.next_step('A', root) == {  # #732: the item parks with its record
-        'action': 'escalate', 'reason': 'fix round already used', 'decision': 'D-1',
-        'command': 'wuwei decision show D-1 --widget'}
+    assert dispatch.next_step('A', root) == {  # part 14: parked in code; plan resume asks the owner
+        'action': 'escalate', 'reason': 'fix round already used', 'command': 'wuwei plan resume A'}
     row = state.read_state(root)['items']['A']
-    assert (row['phase'], row['decision']) == ('parked', 'D-1')
+    assert (row['phase'], row['disposition']['reason']) == ('parked', 'fix round already used')
 
 
 def test_fix_pass_then_only_quality_delta(root):
@@ -156,7 +156,7 @@ def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
         record(root, 'security', 'security-3', FIX, 'delta')
     found = dispatch.next_step('A', root)
     assert found['reason'].startswith('round cap 1 reached: security still blocks:')
-    assert (found['decision'], state.read_state(root)['items']['A']['phase']) == ('D-1', 'parked')
+    assert (found['command'], state.read_state(root)['items']['A']['phase']) == ('wuwei plan resume A', 'parked')
 
 
 def test_invalid_verdict_does_not_enter_trusted_state(root):
@@ -787,8 +787,7 @@ def test_fix_with_park_or_missing_gate_stays_in_gate(root):
     record(root, 'security', 'security-1', FIX.replace('Verdict: FIX', 'Verdict: PARK'))
     assert state.read_state(root)['items']['A']['phase'] == 'gate'
     found = dispatch.next_step('A', root)
-    assert (found['action'], found['decision'], found['command']) == (
-        'escalate', 'D-1', 'wuwei decision route D-1')
+    assert (found['action'], found['command']) == ('parked', 'wuwei plan resume A')
     assert found['reason'].startswith('gate security PARK: ')
 
 
@@ -1699,8 +1698,9 @@ def day_set(tmp_path, monkeypatch):
              'P3': ('planned', 'G-2'), 'P4': ('planned', 'G-2')}
     state._write_state(lambda data: data.update(
         gate_approved=True, cap=3, approved_items=list(goals), goal_seats={'G-1': 1, 'G-2': 1},
-        decision_outcomes={'D-1': {'decided_by': 'seat', 'item_disposition': 'carried C'}},
-        items={name: {'phase': phase, 'goal': goal} for name, (phase, goal) in goals.items()}),
+        items={name: {'phase': phase, 'goal': goal, **({'disposition': {'kind': 'carried', 'reason': ''}}
+                                                       if name == 'C' else {})}
+               for name, (phase, goal) in goals.items()}),
         tmp_path, reserved=False)
     gate = {'action': 'gates', 'roles': list(dispatch.ROLES),
             'seats': [{'action': 'launch', 'agent_type': f'wuwei:sentinel-{role}'}
@@ -1769,12 +1769,12 @@ def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
         assert 'dispatch next --all' in capsys.readouterr().err
 
     def refuse(item, root=None):
-        raise dispatch.Refused('steward note N-1 requires planner acknowledgement')
+        raise dispatch.Refused('builder must stand down before gates')
     monkeypatch.setattr(dispatch, 'next_step', refuse)
     assert main(['dispatch', 'next', '--all']) == 1
     entries = json.loads(capsys.readouterr().out)['entries']
     assert entries[0] == {'item': 'G', 'goal': 'G-1', 'action': 'refused',
-                          'reason': 'steward note N-1 requires planner acknowledgement'}
+                          'reason': 'builder must stand down before gates'}
     assert len(entries) == 6
 
 
@@ -1984,7 +1984,7 @@ TRUST = FIX.replace('fails when empty', 'tool output across the trust boundary f
 def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monkeypatch, capsys):
     from wuwei import dispatch
     from wuwei.__main__ import main
-    from wuwei.commands import decision as decision_command
+    from fakes import owner
     from wuwei.commands import next as next_command
     built(root)
     record(root, 'arch', 'arch-1', PASS)
@@ -2001,22 +2001,21 @@ def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monk
     reason = outcome['reason']
     assert reason.startswith('round cap 2 reached: security still blocks: - P1 | cli/example.py:12 | tool output')
     assert 'unpark after a design change' in reason
-    assert (outcome['decision'], outcome['command']) == ('D-1', 'wuwei decision show D-1 --widget')
+    assert outcome['command'] == 'wuwei plan resume A'
     assert len(fix_events(root)) == 2
-    row = state.read_state(root)['items']['A']  # #732: parked with its record, not a plan park to run
-    assert (row['phase'], row['decision']) == ('parked', 'D-1')
-    text = (workspace.day_dir(root) / 'decisions' / 'D-1.md').read_text()
-    assert 'across the trust boundary' in text.split('Context:', 1)[1].splitlines()[0]
-    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
-    assert 'plan park' not in str(found)
+    row = state.read_state(root)['items']['A']  # part 14: parked in code, its reason on the item
+    assert (row['phase'], row['disposition']['reason']) == ('parked', reason)
+    assert 'across the trust boundary' in reason and not cards(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     state._write_state(lambda data: data['builds']['A'].update(status='done', action={'action': 'done'}),
                        root, reserved=False)  # the last round's builder finished
     assert build_next(capsys, root)[:2] == (1, cli(capsys, 'dispatch', 'next', 'A')[1])
-    assert cli(capsys, 'dispatch', 'next', 'A')[1]['decision'] == 'D-1'
-    monkeypatch.setattr(decision_command, 'owner_confirm', lambda *args: 'at the host terminal')
-    assert main(['decide', 'D-1', 'keep']) == 0
+    assert cli(capsys, 'dispatch', 'next', 'A')[1]['command'] == 'wuwei plan resume A'
+    assert main(['plan', 'resume', 'A']) == 1  # only the owner resumes a parked item
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
     assert state.read_state(root)['items']['A']['phase'] == 'delta'
+    assert dispatch.next_step('A', root)['command'] == 'wuwei plan resume A'  # no round past the cap
 
 
 def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
@@ -2030,8 +2029,8 @@ def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'escalate' and outcome['reason'].startswith('round cap 1 reached: quality still blocks:')
     assert len(fix_events(root)) == 1
-    row = state.read_state(root)['items']['A']  # #732: parked with its record
-    assert (outcome['decision'], row['phase'], row['decision']) == ('D-1', 'parked', 'D-1')
+    row = state.read_state(root)['items']['A']  # part 14: parked in code
+    assert (outcome['command'], row['phase'], 'decision' in row) == ('wuwei plan resume A', 'parked', False)
 
 
 MANIFEST = ('pilot/manifest.json', 4800, 0)
@@ -2348,7 +2347,7 @@ def test_delta_continuation_carries_the_ci_steps(root, monkeypatch):
     launch = brief.seat_action('sentinel-quality', workspace.day_dir(root) / 'briefs/quality-1.md', tree, root)
     assert action['feedback'].endswith('\n' + CI_BLOCK)
     assert action['prompt'] == launch['prompt'] + '\n\n' + action['feedback']
-# #732: a blocking verdict is a fix round or a card; every escalate names its record and command
+# Part 14: PARK parks in code; ESCALATE asks the owner on the Owner step card of dispatch next.
 
 
 ESCALATE = FIX.replace('Verdict: FIX', 'Verdict: ESCALATE') + 'Simplicity: none\nDesign: none\n'
@@ -2370,49 +2369,30 @@ def cards(root):
     return sorted(path.name for path in (workspace.day_dir(root) / 'decisions').glob('D-*.md'))
 
 
-def card_fields(root, ident='D-1'):
-    from wuwei import decision
-    return decision.evaluate((workspace.day_dir(root) / 'decisions' / f'{ident}.md').read_text())[0]
+def owner_says(root, found, reply='Yes'):
+    from fakes import owner
+    owner._record(root, found['card'], reply, 'planner-session', None)
 
 
-def waiting(ident, command):
-    return {'action': 'escalate', 'decision': ident, 'command': f'wuwei decision {command} {ident}'
-            + (' --widget' if command == 'show' else '')}
-
-
-def test_issue_acceptance_escalate_writes_the_card_both_commands_name(root, monkeypatch, capsys):
-    blocked(root, monkeypatch)
+@pytest.mark.parametrize('strict', [False, True])
+def test_escalate_asks_the_owner_step_card_of_dispatch_next(root, monkeypatch, capsys, strict):
+    blocked(root, monkeypatch, strict=strict)
     code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
     assert code == 1 and found['reason'].startswith('gate quality ESCALATE: - P1 | cli/example.py:12')
-    assert {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'route')
+    assert (found['action'], found['command']) == ('escalate', 'wuwei dispatch next A')
+    card = found['card']
+    assert card['header'] == 'Owner step' and card['record'] == 'bin/wuwei dispatch next A'
+    assert card['question'].startswith('Owner step: bin/wuwei dispatch next A (')
+    assert 'Yes opens a fix round; No parks the item.' in card['options'][0]['description']
     assert build_next(capsys, root)[:2] == (1, found)
     assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (1, found)
-    assert cards(root) == ['D-1.md']
-    fields = card_fields(root)
-    assert (fields['Class'], fields['Recommendation'], fields['Decided-by']) == ('park', 'fix', 'seat')
-    assert 'gate-quality-1.md' in fields['Context'] and 'fails when empty' not in fields['Context']
-    assert state.read_state(root)['gate_verdicts']['A:quality:initial']['decision'] == 'D-1'
-    assert [{key: row[key] for key in ('item', 'role', 'round', 'decision')}
-            for row in events_of(root, 'gate.card')] == [
-        {'item': 'A', 'role': 'quality', 'round': 'initial', 'decision': 'D-1'}]
+    assert cards(root) == [] and state.read_state(root)['items']['A']['phase'] == 'gate'
 
 
-def test_under_strict_the_card_is_the_owners_and_routed_to_the_owner(root, monkeypatch, capsys):
-    blocked(root, monkeypatch, strict=True)
-    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
-    assert code == 1 and {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'show')
-    assert build_next(capsys, root)[:2] == (1, found)
-    assert card_fields(root)['Decided-by'] == 'owner'
-    assert 'D-1' in state.read_state(root)['decision_routes']
-    assert cards(root) == ['D-1.md']
-
-
-def test_card_answered_fix_opens_the_round_and_regates_the_asking_gate(root, monkeypatch, capsys):
+def test_owner_yes_opens_the_fix_round_and_regates_the_asking_gate(root, monkeypatch, capsys):
     from wuwei import dispatch
-    from wuwei.__main__ import main
     blocked(root, monkeypatch)
-    dispatch.next_step('A', root)
-    assert main(['decision', 'route', 'D-1']) == 0
+    owner_says(root, dispatch.next_step('A', root))
     assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (0, _fix_action(['quality']))
     data = state.read_state(root)
     assert data['items']['A']['phase'] == 'fix'
@@ -2427,37 +2407,66 @@ def test_card_answered_fix_opens_the_round_and_regates_the_asking_gate(root, mon
     assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [], 'seats': [], 'commands': [
         f'wuwei brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
         '--body ' + shlex.quote(dispatch.SHEPHERD_BODY.format(item='A'))]}
+    assert cards(root) == []
 
 
-def test_card_answered_park_parks_the_item_and_both_commands_name_it(root, monkeypatch, capsys):
+def test_owner_no_parks_the_item_without_a_record(root, monkeypatch, capsys):
     from wuwei import dispatch
-    from wuwei.__main__ import main
-    blocked(root, monkeypatch, quality=PARKS)
-    dispatch.next_step('A', root)
-    assert card_fields(root)['Recommendation'] == 'park'
-    assert main(['decision', 'route', 'D-1']) == 0
+    blocked(root, monkeypatch)
+    owner_says(root, dispatch.next_step('A', root), 'No')
     code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
-    assert code == 1 and {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'show')
-    assert build_next(capsys, root)[:2] == (1, found)
-    assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (1, found)
+    assert code == 0 and found['action'] == 'parked'
+    assert found['reason'].startswith('gate quality ESCALATE: - P1 | cli/example.py:12')
+    assert found['command'] == 'wuwei plan resume A'
     row = state.read_state(root)['items']['A']
-    assert (row['phase'], row['status'], row['decision'], row['resume_phase']) == ('parked', 'blocked', 'D-1', 'gate')
+    assert (row['phase'], row['status'], row['resume_phase']) == ('parked', 'blocked', 'gate')
+    assert row['disposition'] == {'kind': 'parked', 'reason': found['reason']}
+    assert cards(root) == [] and 'decision' not in row
+    code, again, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert (code, again['action'], again['command']) == (1, 'escalate', 'wuwei plan resume A')
 
 
-def test_a_park_verdict_waits_for_the_other_gates_before_its_card(root):
+def test_a_park_verdict_parks_in_code_with_no_card(root, monkeypatch, capsys):
+    blocked(root, monkeypatch, quality=PARKS)
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert code == 0 and 'card' not in found
+    assert (found['action'], found['command']) == ('parked', 'wuwei plan resume A')
+    assert found['reason'].startswith('gate quality PARK: - P1 | cli/example.py:12')
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['disposition']['reason']) == ('parked', found['reason'])
+    assert [event['outcome'] for event in events_of(root, 'plan.disposed')] == ['parked']
+    assert cards(root) == []
+
+
+def test_a_park_verdict_waits_for_the_other_gates(root):
     from wuwei import dispatch
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', PARKS)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['security'], 'seats': []}
-    assert cards(root) == []
     record(root, 'security', 'security-1', PASS)
-    found = dispatch.next_step('A', root)
-    assert {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'route')
+    assert dispatch.next_step('A', root)['action'] == 'parked'
 
 
-def test_gate_card_is_reserved_to_dispatch_next():
-    from wuwei.commands.event import EVENT_PRODUCERS
-    assert EVENT_PRODUCERS['gate.card'] == 'wuwei dispatch next'
+def test_a_new_round_needs_a_new_answer(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    caps(root, 'max_rounds = 3\n')
+    blocked(root, monkeypatch)
+    first = dispatch.next_step('A', root)
+    owner_says(root, first)
+    assert dispatch.next_step('A', root)['action'] == 'fix'
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-2', ESCALATE.replace('abc1234', 'def5678'), 'delta', head='def5678' + '0' * 33)
+    second = dispatch.next_step('A', root)
+    assert second['action'] == 'escalate' and second['card']['question'] != first['card']['question']
+
+
+def test_a_third_fix_round_dispatches_without_a_steward_note(root):
+    from wuwei import dispatch
+    caps(root, 'max_rounds = 3\n')
+    built(root)
+    gate_fix(root)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    assert dispatch.next_step('A', root) == _fix_action(['quality'])
 
 
 def test_registered_noted_launch_is_not_offered_again(root, monkeypatch):
@@ -2786,3 +2795,285 @@ def test_a_day_value_never_changes_the_tier(root, monkeypatch):
     after = tier()
     assert before == after and 'depth' not in after
     assert not any(reason.startswith('pace') for reason in after['reasons'])
+
+
+# Moved from test_calibrate (#832): CAP and the seat ceiling live in dispatch.host.
+
+
+# #658: seats that are subagents of one process do not read free memory; process seats smooth it.
+
+PROCESS = {'builder': {'runtime': 'codex', 'model': 'm'}}
+
+
+@pytest.fixture
+def ports(monkeypatch):
+    from fakes.code_host import Fake as Host
+    from fakes.host import Fake as Memory
+    from fakes.vcs import Fake as Vcs
+    from wuwei import registry
+
+    selected = {'vcs': Vcs(), 'code_host': Host(),
+                'host': Memory({'free_memory': registry.Result(0, 10240 * 2**20)})}
+    monkeypatch.setattr(registry, 'load', lambda kind, config: selected[kind])
+    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
+    return selected
+
+
+@pytest.fixture
+def workspace_root(tmp_path, monkeypatch, ports):
+    (tmp_path / '.wuwei').mkdir()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T09:00:00Z')
+    return tmp_path
+
+
+def seat_day(root, cost):
+    from wuwei import state
+    for free, running in ((10240, 0), (10240 - cost, 1)):
+        state.append_event('seat launched', {'name': f'seat-{running}', 'item': 'A',
+                                             'free_mib': free, 'running': running}, root)
+
+
+def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
+    # #528, #658: on process seats, one derivation from free memory above the floor, the seat cost and the cores.
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    memory = lambda mib: ports['host'].results.update(free_memory=registry.Result(0, mib * 2**20))
+    memory(8192)
+    assert dispatch.host(workspace_root, config, policy=PROCESS) == {
+        'cores': 4, 'free_mib': 8192, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4,
+        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores',
+        'reading': 4}
+    memory(3072)
+    # the derived seat ceiling always holds one three-role gate, so a gate never deadlocks
+    assert (dispatch.host(workspace_root, config, policy=PROCESS)['cap'], dispatch.host(workspace_root, config, policy=PROCESS)['seats']) == (2, 3)
+    memory(2048)
+    assert dispatch.host(workspace_root, config, policy=PROCESS, running=2)['cap'] == 3
+    assert dispatch.host(workspace_root, config, policy=PROCESS, free=8192)['cap'] == 4
+    memory(512)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['cap'] == 1
+    memory(8192)
+    config['cap'] = 1
+    owner = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (owner['cap'], owner['seats'], owner['bound']) == (1, 4, 'owner')
+    assert owner['text'] == ('cap 1 (owner): config cap; the host fits 4 '
+                             '(8 GB free, 1 GB per seat, 4 cores)')
+    config['cap'], config['host']['seats'] = 0, 2
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'seats', 'bound')] == [2, 2, 'memory']
+    seat_day(workspace_root, 1536)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['text'].endswith('1.5 GB per seat, 4 cores')
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    assert dispatch.host(workspace_root, config, policy=PROCESS) == {
+        'unmeasured': 'vm_stat failed', 'cap': 1, 'seats': 2, 'bound': 'unmeasured',
+        'text': 'cap 1 (unmeasured): vm_stat failed'}
+    memory(8192)
+    monkeypatch.setattr(os, 'cpu_count', lambda: None)
+    unmeasured = dispatch.host(workspace_root, {**config, 'cap': 3, 'host': {**config['host'], 'seats': 0}}, policy=PROCESS)
+    assert 'cores' in unmeasured['unmeasured'] and 'run bin/wuwei doctor, then retry' in unmeasured['unmeasured'] and (unmeasured['cap'], unmeasured['seats']) == (3, 4)
+
+
+def test_host_seat_ceiling_holds_one_gate_on_a_two_core_host(workspace_root, monkeypatch):
+    from wuwei import dispatch, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setattr(os, 'cpu_count', lambda: 2)
+    limits = dispatch.host(workspace_root, workspace.load_config(workspace_root), free=65536)
+    assert (limits['cap'], limits['seats']) == (2, len(dispatch.ROLES))
+
+
+def test_host_falls_back_when_a_past_day_log_is_damaged(workspace_root, monkeypatch):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    events = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
+    events.parent.mkdir(parents=True, exist_ok=True)
+    events.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
+    limits = dispatch.host(workspace_root, workspace.load_config(workspace_root), free=8192, policy=PROCESS)
+    assert (limits['cap'], limits['seats'], limits['seat_mib']) == (4, 4, dispatch.SEAT_MIB)
+    assert 'per-seat tokens unmeasured' in limits['text'] and 'events.jsonl' in limits['text']
+
+
+def usage_day(root, day, *tokens):
+    events = root / '.wuwei/days' / day / 'events.jsonl'
+    events.parent.mkdir(parents=True, exist_ok=True)
+    with events.open('a') as rows:
+        for count in tokens:
+            rows.write(json.dumps({'ts': f'{day}T09:00:00+00:00', 'kind': 'seat.usage', 'payload': {'item': 'A', 'usage': {
+                'input_tokens': count // 2, 'output_tokens': count - count // 2}}}) + '\n')
+
+
+def test_token_budget_bounds_cap(workspace_root, ports, monkeypatch):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+    unmeasured = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (unmeasured['cap'], unmeasured['bound']) == (4, 'memory')
+    assert unmeasured['text'].endswith('; budget 200000 tokens a day, per-seat tokens unmeasured')
+    usage_day(workspace_root, '2026-09-30', 100000, 100000)
+    budget = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (budget['cap'], budget['bound']) == (2, 'budget')
+    assert budget['text'] == ('cap 2 (budget): 10 GB free, 1 GB per seat, 4 cores; '
+                              'budget 200000 tokens a day, 0 used, 100000 per seat')
+    usage_day(workspace_root, '2026-10-01', 150000)
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
+    usage_day(workspace_root, '2026-10-01', 150000)
+    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
+
+
+def test_runtime_rule(workspace_root):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    claude = {'runtime': 'claude', 'model': 'opus'}
+    assert not dispatch.processes(config, {})
+    assert not dispatch.processes(config, {'builder': claude})
+    assert not dispatch.processes(config, {'builder': {'runtime': 'none'}})
+    assert dispatch.processes(config, {**PROCESS, 'sentinel-arch': claude})
+    assert dispatch.processes({**config, 'adapters': {**config['adapters'], 'runtime': 'codex'}}, {})
+    assert not dispatch.processes(config, ['codex']) and not dispatch.processes(config, {'builder': 'codex'})
+    second = {**config, 'gates': {**config['gates'], 'second_opinion': 'codex:gpt-5'}}
+    assert not dispatch.processes(second, {})
+
+
+def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 6\n')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    for mib in (9216, 5120, 7168, 9216, 3072):
+        ports['host'].results['free_memory'] = registry.Result(0, mib * 2**20)
+        limits = dispatch.host(workspace_root, config, policy={})
+        assert (limits['cap'], limits['bound']) == (6, 'host.seats') and 'load' not in limits
+        assert limits['text'] == 'cap 6 (host.seats): subagent runtime, free memory not read'
+        assert dispatch.host(workspace_root, config)['cap'] == 6
+    assert not [call for call in ports['host'].calls if call[0] == 'free_memory']
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    failing = dispatch.host(workspace_root, config, policy={})
+    assert failing['cap'] == 6 and 'unmeasured' not in failing
+    config['host']['seats'] = 0
+    unset = dispatch.host(workspace_root, config, policy={})
+    assert (unset['cap'], unset['seats'], unset['bound']) == (10, 10, 'host.seats')
+    assert unset['text'].endswith('host.seats unset, 10 cores')
+
+
+def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch):
+    from wuwei import registry, state, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    ports['host'].results['free_memory'] = registry.Result(0, 5120 * 2**20)
+    first = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (first['cap'], first['bound'], first['reading']) == (4, 'memory', 4)
+    assert first['text'] == 'cap 4 (memory): 5 GB free, 1 GB per seat, 10 cores'
+    for reading in (8, 4, 6, 8):
+        state.append_event('cap.derived', {'cap': reading, 'bound': 'memory', 'reading': reading}, workspace_root)
+    smoothed = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert (smoothed['cap'], smoothed['reading']) == (6, 4)
+    assert smoothed['text'].startswith('cap 6 (memory): median of 8, 4, 6, 8, 4; ')
+    state.append_event('cap.derived', {'cap': 9, 'bound': 'memory', 'reading': 9}, workspace_root)
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['text'].startswith(
+        'cap 6 (memory): median of 4, 6, 8, 9, 4; ')
+    log = workspace.day_dir(workspace_root) / 'events.jsonl'
+    log.chmod(0o600)
+    with log.open('a') as rows:
+        rows.write('{"kind": "cap.derived"')
+    damaged = dispatch.host(workspace_root, config, policy=PROCESS)
+    assert damaged['cap'] == 4 and 'median' not in damaged['text'] and '; warning: ' in damaged['text']
+
+
+
+# #834 review: a resume after a verdict park opens the fix round; a builder's Blocked: line asks.
+
+
+def resume_yes(root, capsys):
+    from fakes import owner
+    from wuwei.__main__ import main
+    assert main(['plan', 'resume', 'A']) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+
+
+@pytest.mark.parametrize('verdict', ['PARK', 'ESCALATE'])
+def test_a_resumed_verdict_park_opens_the_fix_round(root, monkeypatch, capsys, verdict):
+    from wuwei import dispatch
+    blocked(root, monkeypatch, quality=PARKS if verdict == 'PARK' else ESCALATE)
+    found = dispatch.next_step('A', root)
+    if verdict == 'ESCALATE':
+        assert found['card']['options'][1]['description'] == 'The item parks.'
+        owner_says(root, found, 'No')
+        found = dispatch.next_step('A', root)
+    assert found['action'] == 'parked' and state.read_state(root)['items']['A']['phase'] == 'parked'
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root) == _fix_action(['quality'])
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+
+
+def test_a_new_park_after_the_resumed_round_parks_again(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    caps(root, 'max_rounds = 3\n')
+    blocked(root, monkeypatch, quality=PARKS)
+    dispatch.next_step('A', root)
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root)['action'] == 'fix'
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-2', PARKS.replace('abc1234', 'def5678'), 'delta', head='def5678' + '0' * 33)
+    assert dispatch.next_step('A', root)['action'] == 'parked'
+
+
+def builder_says(root, blocked_line):
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state.append_event('retro.captured', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
+        'Blocked': blocked_line, 'Gap': 'none', 'Change': 'none'}, 'missing': [], 'invalid': []}, root)
+
+
+def test_a_builder_blocked_line_asks_the_owner_before_the_gates(root, monkeypatch):
+    from wuwei import dispatch
+    builder_says(root, 'the schema change needs the owner')
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['command']) == ('escalate', 'wuwei dispatch next A')
+    assert found['reason'] == 'builder blocked: the schema change needs the owner'
+    assert found['card']['options'][1]['description'] == 'The item parks.'
+    owner_says(root, found)
+    built(root)
+    found = dispatch.next_step('A', root)
+    assert found['action'] == 'gates' and found['roles'] == ['arch', 'quality', 'security']
+    import shlex
+    assert all("the owner said Yes to the builder's Blocked: line: the schema change needs the owner"
+               in shlex.split(command)[-1] for command in found['commands'])
+
+
+def test_a_builder_blocked_line_no_parks(root):
+    from wuwei import dispatch
+    builder_says(root, 'the schema change needs the owner')
+    owner_says(root, dispatch.next_step('A', root), 'No')
+    found = dispatch.next_step('A', root)
+    assert found['action'] == 'parked' and found['reason'] == 'builder blocked: the schema change needs the owner'
+
+
+def test_a_builder_blocked_none_goes_to_the_gates(root):
+    from wuwei import dispatch
+    builder_says(root, 'none')
+    assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+def test_a_resumed_blocked_park_goes_to_the_gates(root, capsys, monkeypatch):
+    # #834 delta D1: a No on the Blocked card is undone by the owner's resume.
+    from wuwei import dispatch
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    builder_says(root, 'the schema change needs the owner')
+    owner_says(root, dispatch.next_step('A', root), 'No')
+    assert dispatch.next_step('A', root)['action'] == 'parked'
+    resume_yes(root, capsys)
+    assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
+    # #834 delta D2: a note missing Gap: is a retro.gap, and its Blocked: line still asks.
+    from wuwei import dispatch
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state.append_event('retro.gap', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
+        'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner')

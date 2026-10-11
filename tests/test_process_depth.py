@@ -177,7 +177,7 @@ def test_launch_prompt_repeats_the_depth_line(day, monkeypatch):
     assert prompt.split('\n\n', 1)[1].startswith('Mandate (design 5.2):')
     plain = directory / 'briefs/plain.md'
     plain.write_text('Item: X\n\nbody\nDepth: not a header line\n')
-    assert briefs.launch_prompt(plain, 'charter.md', root=root).endswith('Nothing else is a question.')
+    assert briefs.launch_prompt(plain, 'charter.md', root=root).endswith('wuwei next asks the owner.')
 
 
 THREE = 'Verdict: PASS\nHead: abc1234\nFindings: none\n'
@@ -327,36 +327,6 @@ def test_light_fix_is_re_read_by_the_same_seat(root, light, monkeypatch):
         assert feedback.startswith('Delta review:')
         # #623: no scope widening after round one
         assert 'did not change is blocks: no, unless it is a trust-boundary security finding' in feedback
-
-
-from test_decision_classes import record as decision_record, route, ws  # noqa: E402,F401
-from test_decision import save  # noqa: E402
-
-
-def show(capsys, *args):
-    from wuwei.__main__ import main
-    code = main(['decision', 'show', 'D-3', *args])
-    return code, capsys.readouterr().out
-
-
-def test_routine_mandate_record_shows_one_line(ws, capsys):
-    from wuwei import decision
-    path = save(ws, decision_record(cls='retry', door='unsure', radius='item DIV-1'))
-    assert route(ws, capsys) == (0, 'mandate')
-    fields, _ = decision.evaluate(path.read_text())
-    code, out = show(capsys)
-    assert code == 0 and out == (f"D-3 (Routine, mandate): {fields['Question']} Took A. "
-                                 'Full record: wuwei decision show D-3 --full\n')
-    assert show(capsys, '--full') == (0, path.read_text().rstrip() + '\n')
-    assert show(capsys, '--widget') == (0, '[]\n')
-
-
-@pytest.mark.parametrize('kwargs', [dict(radius='outside'), dict(door='one-way')])
-def test_other_records_show_as_today(ws, capsys, kwargs):
-    save(ws, decision_record(**kwargs))
-    route(ws, capsys)
-    code, out = show(capsys)
-    assert code == 0 and len(out.splitlines()) > 1 and 'Routine, mandate' not in out
 
 
 @pytest.fixture

@@ -59,13 +59,6 @@ def test_rice_templates_use_configured_components(workspace):
         assert result.returncode == 0, result.stderr
 
 
-def test_decision_template_lints(workspace):
-    from wuwei.decision import lint
-    result = cli(workspace, 'decision', 'template')
-    assert result.returncode == 0, result.stderr
-    assert lint(result.stdout)[0] == 0
-
-
 @pytest.mark.parametrize('case,cue', [
     ('flags', 'trust_surface'),
     ('stand_down', 'wuwei build next'),

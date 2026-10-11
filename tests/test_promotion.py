@@ -1,4 +1,4 @@
-"""Proposal promotion and adherence contracts."""
+"""Proposal promotion contracts."""
 
 import json
 import os
@@ -62,6 +62,21 @@ def test_plugin_charter_rejected_with_reason(tmp_path):
     assert not (base / 'charters/builder.md').exists()
 
 
+def test_note_and_voice_targets_are_rejected(tmp_path):
+    """#833: promote lands charter overrides only."""
+    base = setup(tmp_path)
+    (base / 'memory/notes/old.md').write_text('Old fact\n')
+    (base / 'memory/voice.md').write_text('## internal\n')
+    proposal(base, target='.wuwei/memory/notes/old.md', action='patch', old_text='Old fact', text='New fact')
+    proposal(base, 'two', target='.wuwei/memory/voice.md', action='add', text='- never: hype\n')
+    assert cli(tmp_path, 'promote').returncode == 1
+    for record in ledger(base):
+        assert record['status'] == 'rejected'
+        assert record['reason'] == ('target must be a WUWEI charter override; use a path under '
+                                    '.wuwei/charters')
+    assert (base / 'memory/notes/old.md').read_text() == 'Old fact\n'
+
+
 def test_duplicate_add_rejected_in_favour_of_patch(tmp_path):
     base = setup(tmp_path)
     (base / 'charters/builder.md').write_text('Check tests before review.\n')
@@ -83,7 +98,7 @@ def test_promote_does_not_replay_processed_proposal(tmp_path):
     assert (base / 'days' / DAY / 'proposals/one.landed').exists()
 
 
-def test_add_patch_and_archive_land(tmp_path):
+def test_add_and_patch_land(tmp_path):
     base = setup(tmp_path)
     proposal(base)
     assert cli(tmp_path, 'promote').returncode == 0
@@ -93,68 +108,6 @@ def test_add_patch_and_archive_land(tmp_path):
              text='Check tests and lint before review.')
     assert cli(tmp_path, 'promote').returncode == 0
     assert (base / 'charters/builder.md').read_text().endswith('Check tests and lint before review.\n')
-    note = base / 'memory/notes/old.md'
-    note.write_text('---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\ncreated: 2026-09-01\n---\nOld fact\n')
-    proposal(base, 'three', target='.wuwei/memory/notes/old.md', action='archive', text='')
-    assert cli(tmp_path, 'promote').returncode == 0
-    assert not note.exists()
-    assert (base / 'memory/archive/old.md').exists()
-
-
-def test_archive_accepts_regenerated_index(tmp_path, monkeypatch):
-    from wuwei import promotion, registry
-
-    base = setup(tmp_path)
-    (base / 'memory/notes/old.md').write_text(
-        '---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\n'
-        'created: 2026-09-01\n---\nOld fact\n')
-    proposal(base, target='.wuwei/memory/notes/old.md', action='archive')
-    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
-
-    class VCS:
-        def workspace_changes(self, *args, **kwargs):
-            return registry.Result(0, ['memory/index.md'])
-
-        def workspace_commit(self, *args, **kwargs):
-            return registry.Result(0, None)
-
-    monkeypatch.setattr(registry, 'load', lambda *args: VCS())
-    assert promotion.promote(tmp_path)[0]['status'] == 'landed'
-    assert (base / 'memory/archive/old.md').exists()
-
-
-def test_invalid_unrelated_note_rejects_fold_before_moving_files(tmp_path, monkeypatch):
-    from wuwei import promotion, registry
-
-    base = setup(tmp_path)
-    note = ('---\ntype: reference\nsummary: One\naliases: []\nstatus: active\n'
-            'created: 2026-09-01\n---\n')
-    old = base / 'memory/notes/old.md'
-    live = base / 'memory/notes/live.md'
-    old.write_text(note + 'Original\n')
-    live.write_text(note + 'Survivor\n')
-    (base / 'memory/notes/broken.md').write_text('no frontmatter\n')
-    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
-    memory.write_index(tmp_path)
-    index_before = (base / 'memory/index.md').read_text()
-    proposal(base, target='.wuwei/memory/notes/old.md', action='fold',
-             survivor='.wuwei/memory/notes/live.md')
-    class VCS:
-        def workspace_changes(self, *args, **kwargs):
-            return registry.Result(0, [])
-
-        def workspace_commit(self, *args, **kwargs):
-            return registry.Result(0, None)
-
-    monkeypatch.setattr(registry, 'load', lambda *args: VCS())
-    record = promotion.promote(tmp_path)[0]
-    assert record['status'] == 'rejected'
-    assert 'INVALID broken' in record['reason']
-    assert old.read_text() == note + 'Original\n'
-    assert live.read_text() == note + 'Survivor\n'
-    assert not (base / 'memory/archive/old.md').exists()
-    assert not (base / 'memory/snapshots').exists()
-    assert (base / 'memory/index.md').read_text() == index_before
 
 
 def test_dirty_changelog_rejects_before_charter_write(tmp_path, monkeypatch):
@@ -194,16 +147,11 @@ def test_promote_uses_configured_changelog(tmp_path, monkeypatch):
     assert commits == [['charters/builder.md', 'memory/retro-history.md', 'memory/ledger.jsonl']]
 
 
-def test_missing_evidence_and_missing_fold_survivor_rejected(tmp_path):
+def test_missing_evidence_rejected(tmp_path):
     base = setup(tmp_path)
     proposal(base, evidence='.wuwei/days/' + DAY + '/missing.md')
     assert cli(tmp_path, 'promote').returncode == 1
     assert 'evidence' in ledger(base)[0]['reason']
-    (base / 'memory/notes/old.md').write_text('---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\ncreated: 2026-09-01\n---\nBody\n')
-    proposal(base, target='.wuwei/memory/notes/old.md', action='fold',
-             survivor='.wuwei/memory/notes/absent.md')
-    assert cli(tmp_path, 'promote').returncode == 1
-    assert 'survivor' in ledger(base)[1]['reason']
 
 
 def test_payload_groups_last_run(tmp_path):
@@ -215,45 +163,6 @@ def test_payload_groups_last_run(tmp_path):
     payload = cli(tmp_path, 'payload')
     assert payload.returncode == 0
     assert 'Last promote 2026-09-28: landed 1 (.wuwei/charters/builder.md); rejected 1 (charters/plugin.md:' in payload.stdout
-
-
-def test_consolidate_lists_unloaded_note_past_probation(tmp_path):
-    base = setup(tmp_path)
-    (base / 'memory/notes/old.md').write_text('---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\ncreated: 2026-09-01\n---\nBody\n')
-    result = cli(tmp_path, 'consolidate')
-    assert result.returncode == 1, result.stderr
-    assert 'old' in result.stdout and 'archive candidate' in result.stdout
-
-
-def test_note_add_refuses_symlinked_wuwei(tmp_path):
-    outside = tmp_path / 'outside'
-    setup(outside)
-    root = tmp_path / 'workspace'
-    root.mkdir()
-    (root / '.wuwei').symlink_to(outside / '.wuwei', target_is_directory=True)
-    result = cli(root, 'note', 'add', 'unsafe', '--type', 'hub', '--summary', 'Unsafe')
-    assert result.returncode == 2
-    assert not (outside / '.wuwei/memory/notes/unsafe.md').exists()
-
-
-def test_trace_load_prevents_idle_candidate_and_capacity_ranks(tmp_path):
-    base = setup(tmp_path)
-    for slug in ('read', 'idle', 'new'):
-        created = '2026-09-27' if slug == 'new' else '2026-09-01'
-        (base / 'memory/notes' / (slug + '.md')).write_text(
-            f'---\ntype: reference\nsummary: {slug}\naliases: []\nstatus: active\ncreated: {created}\n---\nBody\n')
-    (base / 'config.toml').write_text('[memory]\nmax_notes = 1\n')
-    trace = {'resourceSpans': [{'scopeSpans': [{'spans': [{'attributes': [
-        {'key': 'gen_ai.tool.name', 'value': {'stringValue': 'Read'}},
-        {'key': 'gen_ai.tool.arguments', 'value': {'stringValue': json.dumps(
-            {'file_path': '.wuwei/memory/notes/read.md'})}},
-    ]}]}]}]}
-    (base / 'days' / DAY / 'traces.jsonl').write_text(json.dumps(trace) + '\n')
-    result = cli(tmp_path, 'consolidate')
-    assert result.returncode == 1, result.stderr
-    assert 'idle: archive candidate (0 loads)' in result.stdout
-    assert 'read: archive candidate' in result.stdout
-    assert 'new:' not in result.stdout
 
 
 def test_symlinked_ledger_fails_closed(tmp_path):
@@ -304,64 +213,11 @@ def test_guard_refusal_event_kind_cannot_be_forged(tmp_path):
     assert not (tmp_path / '.wuwei/days' / DAY / 'events.jsonl').exists()
 
 
-def test_guard_refusals_are_counted_from_events(tmp_path, monkeypatch, capsys):
-    setup(tmp_path)
-    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    from wuwei.commands.hook import refuse
-    from wuwei.promotion import adherence_counts
-    assert refuse('PreToolUse', 'deploy: refused by rule', cwd=tmp_path) == 2
-    assert adherence_counts(tmp_path)['guard_refusals'] == {'deploy: refused by rule': 1}
-
-
-def test_new_note_cannot_be_archived_during_probation(tmp_path):
-    base = setup(tmp_path)
-    note = base / 'memory/notes/new.md'
-    note.write_text('---\ntype: reference\nsummary: New\naliases: []\nstatus: active\ncreated: 2026-09-27\n---\nBody\n')
-    proposal(base, target='.wuwei/memory/notes/new.md', action='archive')
-    assert cli(tmp_path, 'promote').returncode == 1
-    assert 'probation' in ledger(base)[0]['reason']
-    assert note.exists()
-
-
 def test_malformed_proposal_is_rejected_and_logged(tmp_path):
     base = setup(tmp_path)
     (base / 'days' / DAY / 'proposals/one.json').write_text('[]')
     assert cli(tmp_path, 'promote').returncode == 1
     assert ledger(base)[0]['status'] == 'rejected'
-
-
-def test_external_read_does_not_count_as_workspace_note_load(tmp_path):
-    base = setup(tmp_path)
-    (base / 'memory/notes/old.md').write_text('---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\ncreated: 2026-09-01\n---\nBody\n')
-    trace = {'resourceSpans': [{'scopeSpans': [{'spans': [{'attributes': [
-        {'key': 'gen_ai.tool.name', 'value': {'stringValue': 'Read'}},
-        {'key': 'gen_ai.tool.arguments', 'value': {'stringValue': json.dumps(
-            {'file_path': '/outside/memory/notes/old.md'})}},
-    ]}]}]}]}
-    (base / 'days' / DAY / 'traces.jsonl').write_text(json.dumps(trace) + '\n')
-    assert 'old: archive candidate (0 loads)' in cli(tmp_path, 'consolidate').stdout
-
-
-def test_capacity_uses_load_rate_not_absolute_load_count(tmp_path):
-    base = setup(tmp_path)
-    (base / 'config.toml').write_text('[memory]\nmax_notes = 1\n')
-    for slug, created in (('old', '2026-08-01'), ('recent', '2026-09-10')):
-        (base / 'memory/notes' / (slug + '.md')).write_text(
-            f'---\ntype: reference\nsummary: {slug}\naliases: []\nstatus: active\ncreated: {created}\n---\nBody\n')
-    spans = []
-    for slug in ('old', 'old', 'recent'):
-        spans.append({'attributes': [
-            {'key': 'gen_ai.tool.name', 'value': {'stringValue': 'Read'}},
-            {'key': 'gen_ai.tool.arguments', 'value': {'stringValue': json.dumps(
-                {'file_path': '.wuwei/memory/notes/' + slug + '.md'})}},
-        ]})
-    trace = {'resourceSpans': [{'scopeSpans': [{'spans': spans}]}]}
-    (base / 'days' / DAY / 'traces.jsonl').write_text(json.dumps(trace) + '\n')
-    result = cli(tmp_path, 'consolidate')
-    assert result.returncode == 1, result.stderr
-    assert 'old: archive candidate' in result.stdout
-    assert 'recent: archive candidate' not in result.stdout
 
 
 def fake_vcs(monkeypatch, commits=None):
@@ -402,7 +258,7 @@ def test_charter_patch_with_empty_text_drops_one_rule(tmp_path, monkeypatch):
             promotion._apply(tmp_path, drop(base, old_text))
     note = base / 'memory/notes/one.md'
     note.write_text('---\ntype: reference\nsummary: One\naliases: []\nstatus: active\n---\n- Body.\n')
-    with pytest.raises(ValueError, match='text or delta'):
+    with pytest.raises(ValueError, match='charter override'):
         promotion._apply(tmp_path, drop(base, '- Body.\n', target='.wuwei/memory/notes/one.md'))
 
 

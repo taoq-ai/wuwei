@@ -17,9 +17,8 @@ EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompa
 # to the modules' GUARDS.
 MODULES = {
     'agent_launch': {'PreToolUse': 'Agent', 'SubagentStop': None},
+    'answers': {'PostToolUse': 'AskUserQuestion'},
     'commit_push': {'PreToolUse': 'Bash'},
-    'decision': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash|AskUserQuestion',
-                 'PreToolUse': 'AskUserQuestion', 'SubagentStop': None},
     'deploy': {'PreToolUse': 'Bash'},
     'integrity': {'PreToolUse': None, 'SessionStart': None},
     'lifecycle': {'SessionStart': None, 'PreCompact': None, 'Stop': None,
@@ -36,8 +35,8 @@ MODULES = {
 # #331: the posture area of each guard check; 'module.function' overrides its module. A test
 # pins the keys to MODULES. None: the check applies its own posture (the MCP launch gate in
 # mcp.cached; spec mode's own mode setting), so the hook enforces it as returned.
-AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
-         'decision': 'records', 'decision.check_question': 'outward', 'deploy': 'publish',
+AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'answers': 'records',
+         'commit_push': 'publish', 'deploy': 'publish',
          'integrity': 'integrity', 'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
          'protect_state': 'records', 'protect_state.check_scratch': 'seats',
          'spec': None, 'stop': 'publish', 'traces': 'records',

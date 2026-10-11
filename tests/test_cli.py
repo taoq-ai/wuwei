@@ -328,7 +328,8 @@ def test_cockpit_is_gone(capsys):
 def test_undo_is_gone():
     # #815: the undo door, its rehearsal and decision undo are deleted.
     from wuwei.__main__ import main
-    for argv in (['undo', 'D-1'], ['decision', 'undo', 'D-1']):
+    for argv in (['undo', 'D-1'], ['decision', 'undo', 'D-1'], ['decide', 'D-1', 'A'], ['decision', 'show', 'D-1'],
+                 ['steward', 'ack', 'A-fix-3']):  # part 14: decide, decision and steward ack go too
         with pytest.raises(SystemExit) as exc:
             main(argv)
         assert exc.value.code == 2

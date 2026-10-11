@@ -73,20 +73,17 @@ def _protected_name(path, directories=False):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
             return True
-        if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
+        if tail == ('memory', 'goals.md'):
             return True
         if tail and tail[0] == 'archive':
             return True
         if tail[:2] == ('memory', 'archive'):
             return True
-        if tail[:2] in (('memory', 'snapshots'), ('memory', 'digests')) or tail == ('memory', 'forget.json'):
-            return True
         if directories and (not tail or (len(tail) in (1, 2) and tail[0] == 'days')):
             return True
-        if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
-                                    ('memory', 'archive'), ('charters',)):
+        if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True
@@ -112,10 +109,9 @@ def _hint(path):
     if tail[:1] == ('ziran',):
         return ('Registry records are protected: wuwei mcp check writes them and the owner '
                 'runs wuwei mcp decide in a host terminal, outside agent tools.')
-    if tail in (('memory', 'goals.md'), ('memory', 'voice.md')):
-        return ('goals.md and voice.md are protected: after the morning gate the planner runs '
-                'wuwei goals edit --file <draft> or wuwei voice edit --file <draft>; other '
-                "edits are the owner's, outside agent tools.")
+    if tail == ('memory', 'goals.md'):
+        return ('goals.md is protected: plan approve records the goals the morning gate approved; '
+                "other edits are the owner's, outside agent tools.")
     if tail == ('graph.json',):
         return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
                 'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')

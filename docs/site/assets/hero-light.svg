@@ -57,8 +57,8 @@
 <rect x="1022" y="311" width="20" height="34" rx="3" fill="#42615C" opacity="0.2"/>
 <path id="ask-loop" stroke-dasharray="6 5" d="M 640 440 V 462 H 1050 V 446" fill="none" stroke-width="1.5" stroke="#42615C" marker-end="url(#m-muted)"/>
 <path id="answer-loop" stroke-dasharray="6 5" d="M 1120 440 V 494 H 520 V 446" fill="none" stroke-width="1.5" stroke="#42615C" marker-end="url(#m-muted)"/>
-<text x="845" y="480" fill="#42615C" font-size="12" text-anchor="middle">a seat asks through a decision record</text>
-<text x="820" y="512" fill="#42615C" font-size="12" text-anchor="middle">you answer from the phone, or the mandate answers</text>
+<text x="845" y="480" fill="#42615C" font-size="12" text-anchor="middle">a one-way question reaches you on one card</text>
+<text x="820" y="512" fill="#42615C" font-size="12" text-anchor="middle">you answer from the phone; seats assume the rest</text>
 <text x="56" y="548" fill="#42615C" font-size="11" letter-spacing="1">UNDER THE HOOD</text>
 <circle cx="63" cy="570" r="6" fill="#42615C" opacity="0.3"/><text x="76" y="574" fill="#183B37" font-size="12">guards: every call checked, 1 caught</text>
 <circle cx="329" cy="570" r="6" fill="#00C9A7" opacity="1" class="beat"/><text x="342" y="574" fill="#183B37" font-size="12">heartbeat</text>
@@ -82,9 +82,9 @@
 <g fill="#183B37"><rect x="475" y="319" width="110" height="30" rx="15" fill="#FFFFFF" stroke="#935600" stroke-width="1.5"></rect><text x="530" y="339" text-anchor="middle">login fix</text></g>
 <g fill="#183B37"><rect x="305" y="373" width="110" height="30" rx="15" fill="#FFFFFF" stroke="#00C9A7" stroke-width="1.5"></rect><text x="360" y="393" text-anchor="middle">docs page</text></g>
 <text x="802" y="412" fill="#00735F" font-size="12" font-weight="600">shipped today: 0</text>
-<text x="1015" y="248" fill="#183B37" font-size="11">D-1 under mandate</text>
-<text x="1015" y="268" fill="#183B37" font-size="11">D-2 under mandate</text>
-<text x="1015" y="288" fill="#935600" font-size="11" font-weight="600">D-3 client wants Friday?</text>
+<text x="1015" y="248" fill="#183B37" font-size="11">assumed in the spec</text>
+<text x="1015" y="268" fill="#183B37" font-size="11">assumed in the spec</text>
+<text x="1015" y="288" fill="#935600" font-size="11" font-weight="600">client wants Friday?</text>
 <rect x="1022" y="311" width="20" height="34" rx="3" fill="#935600"></rect>
 <text x="1015" y="380" fill="#183B37" font-size="12" font-weight="600">asked today: 1 of 3</text>
 <text x="1160" y="58" fill="#183B37" font-size="26" text-anchor="end" font-weight="700">13:55</text>
@@ -128,10 +128,10 @@
 <text x="802" y="412" fill="#00735F" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.86;0.87;0.9;0.91;1" dur="16s" repeatCount="indefinite"/>shipped today: 2</text>
 <text x="802" y="412" fill="#00735F" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.9;0.91;1" dur="16s" repeatCount="indefinite"/>shipped today: 3</text>
 <text x="802" y="430" fill="#935600" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/>carried to tomorrow: 2</text>
-<text x="1015" y="248" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.31;0.32;1" dur="16s" repeatCount="indefinite"/>D-1 under mandate</text>
-<text x="1015" y="268" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.46;1" dur="16s" repeatCount="indefinite"/>D-2 under mandate</text>
-<text x="1015" y="288" fill="#935600" font-size="11" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>D-3 client wants Friday?</text>
-<text x="1015" y="288" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>D-3 answered: Allow once</text>
+<text x="1015" y="248" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.31;0.32;1" dur="16s" repeatCount="indefinite"/>assumed in the spec</text>
+<text x="1015" y="268" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.46;1" dur="16s" repeatCount="indefinite"/>assumed in the spec</text>
+<text x="1015" y="288" fill="#935600" font-size="11" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>client wants Friday?</text>
+<text x="1015" y="288" fill="#183B37" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>answered: Allow once</text>
 <rect x="1022" y="311" width="20" height="34" rx="3" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.12;0.13;1" dur="16s" repeatCount="indefinite"/></rect>
 <rect x="1022" y="311" width="20" height="34" rx="3" fill="#935600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/></rect>
 <text x="1015" y="380" fill="#183B37" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.52;0.53;1" dur="16s" repeatCount="indefinite"/>asked today: 1 of 3</text>

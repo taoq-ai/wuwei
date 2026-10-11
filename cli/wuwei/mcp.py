@@ -687,7 +687,7 @@ def decide(root, identifier=None, option=None, *, servers=None, confirm=None, no
             except OSError as exc:
                 return registry.Result(2, reason=str(exc))
             if not where:
-                return registry.Result(1, reason=DECLINED if card is None else decision.no_card(root, identifier, option))
+                return registry.Result(1, reason=DECLINED if card is None else decision.no_card(identifier))
             if path.read_text(encoding='utf-8') != text:
                 raise ValueError(f'decision changed during confirmation; {RACE}')
             workspace.atomic_write(path, decision.owner_record(text, option, where, note))

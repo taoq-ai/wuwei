@@ -166,13 +166,3 @@ def test_dora_command_without_a_workspace(tmp_path, monkeypatch, capsys):
     assert 'wuwei dora:' in captured.err and '| Key |' not in captured.out
 
 
-def test_week_digest_ends_metrics_with_the_table(ws):
-    from datetime import date
-    from wuwei import digest
-    seed(ws)
-    config(ws)
-    text = digest.write(ws, date(2026, 9, 23), 'week').read_text()
-    metrics_section = text.split('## Metrics\n')[1].split('\n\n')[0]
-    assert metrics_section.endswith('| Time to restore | unmeasured | no on-call incident signal yet (#415) |')
-    assert '| Lead time to merge | 2.0 hours | cycle_minutes of 3 merged items (#567) |' in metrics_section
-    assert '| Key |' not in digest.write(ws, date(2026, 9, 23), 'month').read_text()

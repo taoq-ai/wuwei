@@ -927,18 +927,7 @@ def test_revert_is_detected_even_with_incomplete_base_checks(case, checks):
     assert 'reverted' in state.read_state(root)['merge_breakers']['example/project']['reason']
 
 
-def test_generic_note_writer_cannot_forge_owner_baseline(case):
-    from argparse import Namespace
-    from wuwei.commands.note import run_add
-    root, _ = case
-    directory = root / '.wuwei/memory/notes'
-    directory.mkdir(parents=True)
-    assert run_add(Namespace(slug='baseline', type='reference', summary='Baseline',
-                             alias=[], body='Escaped-defect-rate: 1')) == 1
-    assert not (directory / 'baseline.md').exists()
-
-
-@pytest.mark.parametrize('action', ['patch', 'archive', 'fold'])
+@pytest.mark.parametrize('action', ['add', 'patch'])
 def test_generic_promotion_cannot_change_owner_baseline(case, action):
     from wuwei.promotion import _apply
     root, _ = case
@@ -950,10 +939,9 @@ def test_generic_promotion_cannot_change_owner_baseline(case, action):
     target.write_text(original)
     proof = '.wuwei/memory/notes/proof.md'
     (root / proof).write_text('Observation')
-    with pytest.raises(ValueError, match='owner'):
+    with pytest.raises(ValueError, match='target must be a WUWEI charter override'):
         _apply(root, {'target': '.wuwei/memory/notes/baseline.md', 'action': action,
-                     'reason': 'Improve', 'evidence': proof, 'old_text': '0.1', 'text': '1',
-                     'survivor': proof})
+                     'reason': 'Improve', 'evidence': proof, 'old_text': '0.1', 'text': '1'})
     assert target.read_text() == original
 
 

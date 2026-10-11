@@ -1,5 +1,6 @@
 """Planner decisions from recorded seats and gate verdicts."""
 
+import os
 from pathlib import Path
 import re
 import shlex
@@ -25,6 +26,101 @@ AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'a
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
 # #734: a scratch path in verdict text, workspace-relative or absolute, maybe with :<line>
 SCRATCH_PATH = r'[^\s`\'"()<>\[\]{},;|]*(?:scratchpad|\.wuwei/scratch)/[^\s`\'"()<>\[\]{},;|]+'
+
+
+# ponytail: default seat cost before any seat ran (the default memory floor); measured after.
+SEAT_MIB = 1024
+
+
+def _gb(mib):
+    return f'{round(mib / 1024, 1):g} GB'
+
+
+def processes(config, policy):
+    """#658: True when a seat runtime of the day launches its own process: any runtime but the
+    Claude subagent, and none launches nothing. policy: the seat policy, role to row."""
+    rows = policy.values() if isinstance(policy, dict) else ()
+    names = {config['adapters']['runtime'], *(row.get('runtime') for row in rows if isinstance(row, dict))}
+    return bool(names - {'claude', 'none', None})
+
+
+def host(root, config, running=0, free=None, policy=None):
+    """Capacity (#528, #658): CAP and the seat ceiling. Claude subagent seats take host.seats,
+    else one per core, and never read free memory; seats that are separate processes take the
+    median of today's last five memory readings (the seats that fit above the floor, one per
+    core). Then the owner's values and the token budget; `bound` names what set CAP. `free` is
+    MiB when the caller already measured it; `policy` the day's seat policy when held."""
+    import statistics  # lazy: dispatch is on the hook path (#346)
+
+    from wuwei import metrics, state, workspace
+    from wuwei.guards.agent_launch import free_memory
+
+    owner_cap, owner_seats = config['cap'], config['host']['seats']
+    try:
+        if policy is None:
+            policy = state.read_state(root)['seat_policy']
+        separate = processes(config, policy)
+        if separate and free is None:
+            free = free_memory(config, root) // 2**20
+        cores = os.cpu_count()
+        if not cores:
+            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei doctor, then retry')
+    except (OSError, ValueError) as exc:
+        cap = owner_cap or 1
+        return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
+                'text': f'cap {cap} (unmeasured): {exc}'}
+    days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
+    damaged, memory = None, {}
+    if separate:
+        try:
+            seat = next((cost for day in days
+                         if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
+        except ValueError as exc:
+            # a damaged day log never blocks a launch: default seat cost, budget unmeasured
+            seat, damaged = None, exc
+        seat_mib = seat or SEAT_MIB
+        reading = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
+        try:  # the sweep records each reading on cap.derived; smooth over today's last five
+            readings = [row['payload']['reading'] for row in metrics._events(workspace.day_dir(root)) or []
+                        if row['kind'] == 'cap.derived' and type(row['payload'].get('reading')) is int][-4:]
+        except ValueError as exc:
+            readings, damaged = [], damaged or exc
+        readings.append(reading)
+        fit, rule = statistics.median_low(readings), 'memory'
+        measured = ((f'median of {", ".join(map(str, readings))}; ' if len(readings) > 1 else '')
+                    + f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores')
+        memory = {'free_mib': free, 'seat_mib': seat_mib,
+                  'seat_source': 'default' if seat is None else 'measured', 'reading': reading}
+    else:
+        fit, rule = owner_seats or cores, 'host.seats'
+        measured = 'subagent runtime, free memory not read' + ('' if owner_seats else f'; host.seats unset, {cores} cores')
+    # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
+    seats = owner_seats or max(fit, len(ROLES))
+    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
+    text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
+            if owner_cap else f'cap {cap} ({bound}): {measured}')
+    budget = config['budget']['tokens_per_day']
+    if budget:
+        # ponytail: counts tokens already spent today, not what running seats will still spend;
+        # reserve a per-seat share at launch if this overshoots.
+        try:
+            per_seat = None if damaged else next((statistics.median(tokens) for day in days
+                                                  if (tokens := metrics.seat_tokens(metrics._events(day) or []))), None)
+            used = sum(metrics.seat_tokens(metrics._events(workspace.day_dir(root)) or []))
+        except ValueError as exc:
+            per_seat, damaged = None, damaged or exc
+        if per_seat is None:
+            text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
+        else:
+            per_seat = max(1, round(per_seat))
+            fits = max(1, (budget - used) // per_seat)
+            if fits < cap:
+                cap, bound = fits, 'budget'
+                text = f'cap {cap} (budget): {measured}'
+            text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
+    if damaged:
+        text += f'; warning: {damaged}'
+    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
 
 
 def gate_set(row):
@@ -309,79 +405,69 @@ def _record(data, item, role, round_name):
     return data['gate_verdicts'].get(f'{item}:{role}:{round_name}')
 
 
-CARD = (  # #732: the card a PARK or ESCALATE verdict asks for; no finding text is copied
-    'Question: Gate {role} says {verdict} on {item}: open a fix round or park it?\nClass: park\n'
-    'Context: {file} holds the {verdict} verdict and its findings.\n'
-    'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-    '| fix | Open a fix round | The verdict file names the finding and what closes it. | '
-    'The builder fixes the blocking findings and the gate checks them again. |\n'
-    '| park | Defer and park the item | Stops spending until the finding is reconsidered. | '
-    'The item pauses until the owner resumes it. |\n'
-    'Musts:\n| Criterion | fix | park |\n| --- | --- | --- |\n| Within the round cap | pass | pass |\n'
-    'Wants:\n| Criterion | Weight | fix | park |\n| --- | --- | --- | --- |\n'
-    '| Follows the gate verdict | 10 | {fix} | {park} |\n'
-    "Recommendation: {recommendation}\nReasoning: The gate's {verdict} verdict decided it; "
-    "the owner's answer on this card would flip it.\n"
-    'Confidence: medium\nReversibility: two-way\nBlast radius: own branch\n'
-    'Pre-mortem: A fix round that cannot close the finding spends a round; the round cap then parks the item.\n'
-    "Revisit: When the fix round's delta verdict is in, or when the owner resumes the item.\n"
-    'Decided-by: {by}\nOutcome: pending\n')
-
-
-def _waiting(ident, reason, owner=True):
-    """#732: every escalate names its record and the command that answers it."""
-    return {'action': 'escalate', 'reason': reason, 'decision': ident,
-            'command': f'wuwei decision show {ident} --widget' if owner else f'wuwei decision route {ident}'}
-
-
-def _parked(root, item, reason):
-    """#732: a blocked item with no round left parks with its record (plan.dispose)."""
+def _parked(root, item, reason, ask=True):
+    """Park the item in code (plan.park). At the round cap the owner decides on plan resume's
+    Owner step card (ask); a PARK verdict or the owner's No parks with no card."""
     from wuwei import plan
-    return _waiting(plan.dispose(item, 'parked', reason, root), reason)
+    plan.park(item, reason, root)
+    return {'action': 'escalate' if ask else 'parked', 'reason': reason,
+            'command': 'wuwei plan resume ' + shlex.quote(item)}
 
 
-def _card(root, config, data, item, role, round_name):
-    """#732: (id, recorded option or None, owner's) of the card a PARK or ESCALATE verdict asks
-    for; written once, its id kept on the verdict record; routed to the owner under strict."""
-    from wuwei import decision
-    key = f'{item}:{role}:{round_name}'
-    result = data['gate_verdicts'][key]
-    ident = result.get('decision')
-    strict = workspace.posture(config)[0] == 'strict'
-    if ident is None:
-        text = CARD.format(item=item, role=role, verdict=result['verdict'], file=result['file'],
-                           by='owner' if strict else 'seat',
-                           **({'recommendation': 'park', 'fix': 0, 'park': 10} if result['verdict'] == 'PARK'
-                              else {'recommendation': 'fix', 'fix': 10, 'park': 0}))
-        payload = {'item': item, 'role': role, 'round': round_name}
+def _asked(root, data, item, results, roles, round_name):
+    """The owner's answer ('Yes', 'No' or None) and the card for the ESCALATE verdicts asked."""
+    import hashlib
+    from wuwei import sessions
+    key = ':'.join(f"{item}:{round_name}:{role}:{results[role]['verdict']}:{results[role]['file']}"
+                   for role in roles)
+    token = hashlib.sha256(key.encode()).hexdigest()[:12]
+    role = roles[0]
+    detail = (f"Gate {role} says {results[role]['verdict']} on {item}: {_head(results[role])}. "
+              'Yes opens a fix round; No parks the item.')
+    command = 'bin/wuwei dispatch next ' + shlex.quote(item)
+    return (sessions.owner_answer(root, command, detail, token, PARKS),
+            sessions.owner_card(command, detail, token, PARKS))
 
-        def update(fresh):
-            if fresh['gate_verdicts'][key].get('decision'):
-                raise Refused(f'gate card changed during dispatch; {RACE}')
-            fresh['gate_verdicts'][key]['decision'] = payload['decision'] = decision.write(text, root).stem
-        state._write_state(update, root, reserved=False, kind='gate.card', payload=payload)
-        ident = payload['decision']
-    if strict and ident not in data.get('decision_routes', {}):  # idempotent; repairs a lost route
-        decision.route_owner(ident, decision.evaluate(
-            decision.today_path(ident, root).read_text(encoding='utf-8'))[0], root)
-    return (ident, (data.get('decision_outcomes', {}).get(ident) or {}).get('option'),
-            strict or ident in data.get('decision_routes', {}))
+
+PARKS = 'The item parks.'
+
+
+def _resumed(root, item):
+    """True when the owner resumed the item after its last park and no fix round has opened
+    since: the resume is the owner's Yes to the verdict that parked it."""
+    from wuwei import watch
+    last = {}
+    for number, row in enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl')):
+        if row['payload'].get('item') == item and row['kind'] in ('plan.resumed', 'plan.disposed', 'build.fix_opened'):
+            last[row['kind']] = number
+    return last.get('plan.resumed', -1) > max(last.get('plan.disposed', -1), last.get('build.fix_opened', -1))
+
+
+def _blocked(root, data, item):
+    """(the stopped builder's Blocked: line, its agent id) when the line is not none, else None."""
+    from wuwei import watch
+    ids = {seat.get('agent_id') for seat in brief.seats(data).values()
+           if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'stopped'} - {None}
+    found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])
+             for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+             if row['kind'] in ('retro.captured', 'retro.gap') and row['payload'].get('agent_id') in ids]
+    return found[-1] if found and found[-1][0] and found[-1][0].casefold() != 'none' else None
+
+
+def _head(result):
+    """The first finding of a verdict on one line."""
+    return ' '.join((result['findings'] or ['no finding'])[0].splitlines()[0].split())
 
 
 def next_step(item, root=None):
     """Return the next planner action without launching a seat."""
-    from wuwei import steward
     root = workspace.find_workspace(root)
-    steward.review(root)
     data = state.read_state(root)
     row = _item(data, item)
-    notes = steward.pending(data, item)
-    if notes:
-        raise Refused(f'steward note {notes[0]["id"]} requires planner acknowledgement: '
-                      f'{notes[0]["text"]}')
     phase = row['phase']
-    if phase in ('parked', 'escalated') and row.get('decision'):  # #732: waits on its record
-        return _waiting(row['decision'], f'{item} is {phase} on decision {row["decision"]}')
+    if phase in ('parked', 'escalated'):  # only the owner resumes it, on plan resume's card
+        return {'action': 'escalate', 'reason': (row.get('disposition') or {}).get('reason') or f'{item} is {phase}',
+                'command': 'wuwei plan resume ' + shlex.quote(item)}
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
@@ -392,6 +478,21 @@ def next_step(item, root=None):
         if not any(seat['item'] == item and seat['role'] == 'builder'
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
+    note = ''
+    if phase == 'gate' and not _resumed(root, item) and (stopped := _blocked(root, data, item)):  # a builder's Blocked: line asks the owner
+        import hashlib
+        from wuwei import sessions
+        line, agent = stopped
+        reason, command = f'builder blocked: {line}', 'bin/wuwei dispatch next ' + shlex.quote(item)
+        detail = f'The {item} builder stopped on: {line}. Yes sends it to its gates with your answer; No parks the item.'
+        token = hashlib.sha256(f'{agent}\n{line}'.encode()).hexdigest()[:12]
+        answer = sessions.owner_answer(root, command, detail, token, PARKS)
+        if answer == 'No':
+            return _parked(root, item, reason, ask=False)
+        if answer != 'Yes':
+            return {'action': 'escalate', 'reason': reason, 'command': 'wuwei dispatch next ' + shlex.quote(item),
+                    'card': sessions.owner_card(command, detail, token, PARKS)}
+        note = f"\nOwner decision: the owner said Yes to the builder's Blocked: line: {line}"
     config = workspace.load_config(root)
     if phase == 'gate' and not row['gates'] and all(
             _record(data, item, role, 'initial') is None for role in ROLES):
@@ -436,7 +537,7 @@ def next_step(item, root=None):
     if missing:
         commands = []
         action = {'action': 'gates', 'roles': missing,
-                  'seats': _seats(root, data, item, missing, round_name, commands)}
+                  'seats': _seats(root, data, item, missing, round_name, commands, note)}
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
@@ -462,17 +563,17 @@ def next_step(item, root=None):
             f'round cap {cap} reached: {blocking[0]} still blocks: '
             f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
             'that closes it is recorded in the spec'))
-    for role in asked:  # #732: the verdict's decision request is a card; its answer decides
-        ident, answer, owner = _card(root, config, data, item, role, round_name)
-        if answer is None:
-            head = (results[role]['findings'] or ['no finding'])[0]
-            return _waiting(ident, f'gate {role} {results[role]["verdict"]}: '
-                            f'{" ".join(head.splitlines()[0].split())}', owner)
-        if answer == 'park':
-            state._write_state(lambda fresh: fresh['items'][item].update(
-                phase='parked', status='blocked', decision=ident), root, reserved=False,
-                kind='gate.card', payload={'item': item, 'phase': 'parked', 'decision': ident})
-            return _waiting(ident, f'{item} is parked on decision {ident}')
+    parks = [role for role in asked if results[role]['verdict'] == 'PARK']
+    if parks and not _resumed(root, item):  # a PARK verdict parks in code; a resume is the owner's Yes
+        return _parked(root, item, f"gate {parks[0]} PARK: {_head(results[parks[0]])}", ask=False)
+    if asked and not _resumed(root, item):  # ESCALATE: the owner decides on the Owner step card of dispatch next
+        answer, card = _asked(root, data, item, results, asked, round_name)
+        reason = f"gate {asked[0]} {results[asked[0]]['verdict']}: {_head(results[asked[0]])}"
+        if answer == 'No':
+            return _parked(root, item, reason, ask=False)
+        if answer != 'Yes':
+            return {'action': 'escalate', 'reason': reason, 'command': 'wuwei dispatch next ' + shlex.quote(item),
+                    'card': card}
     from wuwei.commands import build
     build.open_fix(item, _fix_feedback(data, item, blocking, round_name), root=root)
     return _fix(item, blocking)
@@ -504,11 +605,10 @@ def launch_set(root=None):
     from wuwei.commands.next import approved
     root = workspace.find_workspace(root)
     data, config = state.read_state(root), workspace.load_config(root)
-    from wuwei import calibrate
     items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
-    limits = calibrate.host(root, config, running=len(running), policy=data['seat_policy'])
+    limits = host(root, config, running=len(running), policy=data['seat_policy'])
     cap, bound = limits['cap'], limits['bound']
     ceiling = limits['seats']
     # #658: under the memory rule every sweep records its reading; CAP smooths over them
@@ -613,7 +713,7 @@ def _start(root, name, repos):
     return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
-def _seats(root, data, item, roles, round_name, commands):
+def _seats(root, data, item, roles, round_name, commands, note=''):
     """Ready launch or continue actions for gate seats the planner has not started; the brief
     and receive commands still due go to commands."""
     worktree = data['items'][item].get('worktree')
@@ -633,7 +733,7 @@ def _seats(root, data, item, roles, round_name, commands):
             logged = _first_briefs(rows, item, role)
             if not logged and worktree:
                 commands.append(f'wuwei brief {role} {item} {role}-{item} --gate --worktree '
-                                f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item)))
+                                f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
             if logged and data['seats'].get(logged[-1].get('name'), {}).get('status') == 'stopped':
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, logged[-1]['name']))))
             if not logged or logged[-1].get('name') in data['seats']:
@@ -955,9 +1055,8 @@ def opinion(item, root=None):
     runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
     seat = data['seats'].get(name)
     if seat is None or seat['status'] == 'stopped':
-        from wuwei import calibrate
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
-        ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
+        ceiling = host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set')
         head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']

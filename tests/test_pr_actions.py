@@ -160,61 +160,45 @@ def test_unmerged_or_paused_items_keep_their_phase(case, capsys, phase):
     assert state.read_state(root)['items']['A']['phase'] == phase
 
 
-def test_scope_disagreement_creates_decision(case, capsys):
-    root, host, _, _ = linked(case)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'This is out of scope; add a new API instead',
-            'created_at': workspace.now().isoformat()}]}]
-    assert main(['pr', 'act', REF]) == 1
-    action = json.loads(capsys.readouterr().out)
-    assert action['action'] == 'owner_decision'
-    from wuwei import decision
-    assert decision.lint((root / action['decision']).read_text())[0] == 0
-    assert main(['pr', 'act', REF]) == 1
-    assert json.loads(capsys.readouterr().out.splitlines()[-1])['decision'] == action['decision']
+SCOPE = 'This is out of scope; add a new API instead'
 
 
-def test_pr_act_decision_is_routed(case, monkeypatch, capsys):
-    root, host, _, _ = linked(case)
-    monkeypatch.chdir(root)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'This is out of scope; add a new API instead',
-            'created_at': workspace.now().isoformat()}]}]
-    assert main(['pr', 'act', REF]) == 1
-    identifier = json.loads(capsys.readouterr().out)['decision'].rsplit('/', 1)[-1].removesuffix('.md')
-    assert identifier in state.read_state(root)['decision_routes']
-    lines = (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
-    assert any(json.loads(line)['kind'] == 'decision.routed' for line in lines)
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decision', 'outcome', identifier, 'defer']) == 0
-
-
-@pytest.mark.parametrize('option', ['defer', 'change'])
-def test_answered_scope_decision_routes_by_option(case, monkeypatch, capsys, option):
-    root, host, _, tree = linked(case)
-    if option == 'change':
-        completed_build(root, tree)
-    body = 'This is out of scope; add a new API instead'
+def scope_thread(host, body=SCOPE):
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': body, 'created_at': workspace.now().isoformat()}]}]
+
+
+def test_scope_change_asks_the_owner_step_card(case, capsys):
+    # Part 14: a reviewer's scope change is the owner's decision, on the card of pr act.
+    root, host, _, _ = linked(case)
+    scope_thread(host)
     assert main(['pr', 'act', REF]) == 1
-    path = json.loads(capsys.readouterr().out)['decision']
-    identifier = path.rsplit('/', 1)[-1].removesuffix('.md')
-    assert main(['decision', 'route', identifier]) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decision', 'outcome', identifier, option]) == 0
-    capsys.readouterr()
+    err = capsys.readouterr().err
+    assert f'Owner step: bin/wuwei pr act {REF} (' in err
+    assert f'Reviewer asks a scope change on {REF} (T17): \\"{SCOPE}\\"' in err
+    assert 'The planner replies that the thread is deferred to you.' in err
+    assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+    assert 'pr_action_decisions' not in state.read_state(root)
+    assert main(['pr', 'act', REF]) == 1  # asked again until the owner answers
+    assert f'Owner step: bin/wuwei pr act {REF} (' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('reply', ['No', 'Yes'])
+def test_answered_scope_card_routes_by_answer(case, capsys, reply):
+    from fakes import owner
+    root, host, _, tree = linked(case)
+    if reply == 'Yes':
+        completed_build(root, tree)
+    scope_thread(host)
+    assert main(['pr', 'act', REF]) == 1
+    owner.answer_card(root, capsys.readouterr().err, reply=reply)
     assert main(['pr', 'act', REF]) == 1
     action = json.loads(capsys.readouterr().out.splitlines()[-1])
-    assert action.get('action') != 'owner_decision'
-    if option == 'defer':
-        assert action['action'] == 'reply'
-        assert action['decision'] == path and action['option'] == 'defer'
+    if reply == 'No':
+        assert (action['action'], action['option']) == ('reply', 'defer')
     else:
-        assert body in action['prompt']
+        assert SCOPE in action['prompt']
 
 
 def test_allowed_tier_sends_thread_reply(case, monkeypatch):

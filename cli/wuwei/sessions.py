@@ -37,7 +37,8 @@ def caller(root, card=False):
 
 def gate_topics(root, session_id):
     """(topics and D-n records today's planner session asked through the gate, caller is that
-    planner); strict asks nothing, so the owner runs the command (#357, #354)."""
+    planner); strict asks nothing, so a D-n card never confirms there (#357, #354) until part 18
+    deletes the D-n cards; an Owner step card counts under every posture (#831)."""
     if not session_id:
         return frozenset(), False  # before any state read: a host terminal has no session
     data = state.read_state(root)
@@ -55,19 +56,14 @@ def card_topic(card, answer):
     return f'{card}={sha256(text.encode()).hexdigest()}'
 
 
-def card_answered(root, card, answer):
-    """The calling planner session recorded this answer on that card; never under strict."""
-    return card_topic(card, answer) in gate_topics(root, caller(root))[0]
-
-
 OWNER_STEP = 'Owner step'
 
 
-def owner_card(command, detail, token=''):
+def owner_card(command, detail, token='', no='Nothing changes.'):
     """#831: the Owner step card of one command; record is the command to run again on Yes."""
     return {'question': f'{OWNER_STEP}: {command}' + (f' ({token})' if token else ''), 'header': OWNER_STEP,
             'multiSelect': False, 'options': [{'label': 'Yes', 'description': detail},
-                                              {'label': 'No', 'description': 'Nothing changes.'}],
+                                              {'label': 'No', 'description': no}],
             'record': command}
 
 
@@ -78,13 +74,13 @@ def owner_topic(question, options, reply):
     return card_topic(OWNER_STEP, text if reply else question)
 
 
-def needs_owner(root, command, detail, token=''):
-    """#831: None when the owner's latest answer on this step's card today (recorded by the
-    hook) is Yes, else the refusal naming the card to ask."""
-    card = owner_card(command, detail, token)
-    asked, yes = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes'))
+def owner_answer(root, command, detail, token='', no='Nothing changes.'):
+    """'Yes', 'No' or None: the owner's latest answer on this step's Owner step card today,
+    recorded by the hook; any other reply, or none, is None."""
+    card = owner_card(command, detail, token, no)
+    asked, *replies = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes', 'No'))
     path = workspace.day_dir(root) / 'events.jsonl'
-    answered = False
+    answer = None
     for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
         try:
             row = json.loads(line)
@@ -92,9 +88,16 @@ def needs_owner(root, command, detail, token=''):
         except (ValueError, TypeError, KeyError):
             continue  # a damaged row is no answer
         if isinstance(topics, list) and asked in topics:
-            answered = yes in topics
-    if answered:
+            answer = next((label for label, topic in zip(('Yes', 'No'), replies) if topic in topics), None)
+    return answer
+
+
+def needs_owner(root, command, detail, token='', no='Nothing changes.'):
+    """#831: None when the owner's latest answer on this step's card today (recorded by the
+    hook) is Yes, else the refusal naming the card to ask."""
+    if owner_answer(root, command, detail, token, no) == 'Yes':
         return None
+    card = owner_card(command, detail, token, no)
     return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
             f'then run the command again on Yes: {json.dumps(card)}')
 
@@ -205,9 +208,6 @@ def rotation(root, config, data, session_id):
             or any(build.get('status') in ('running', 'check')
                    for build in data.get('builds', {}).values())):
         return ''
-    from wuwei.decision import answered
-    if any(answered(data, ident) is None for ident in data.get('decision_routes', {})):
-        return ''
     payload = {'session_id': session_id, 'reason': reason,
                'turns': row.get('turns', 0), 'compactions': row.get('compactions', 0)}
     state._write_state(lambda fresh: fresh['sessions'][session_id].update(
@@ -215,7 +215,7 @@ def rotation(root, config, data, session_id):
         payload=payload)
     return (f'planner rotation due ({reason}): finish this turn and end this session. Start a '
             'fresh Claude Code session in this workspace and run there: '
-            'wuwei plan session "$WUWEI_SESSION_ID" --take-over. Goals, plan, decisions and '
+            'wuwei plan session "$WUWEI_SESSION_ID" --take-over. Goals, plan and '
             'briefs live in .wuwei/ and load at its SessionStart.')
 
 

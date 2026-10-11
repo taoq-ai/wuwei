@@ -65,7 +65,7 @@ def test_init_layout(tmp_path, explicit):
     assert result.returncode == 0, result.stderr
     workspace = target / '.wuwei'
     for name in ('config.toml', 'memory/spine.md', 'memory/index.md',
-                 'memory/CHANGELOG.md', 'memory/voice.md'):
+                 'memory/CHANGELOG.md'):
         assert (workspace / name).is_file()
     for name in ('charters', 'memory/notes', 'days', 'archive'):
         assert (workspace / name).is_dir()
@@ -204,12 +204,6 @@ def test_initialized_config_checks(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_initialized_memory_lint(tmp_path):
-    assert cli(tmp_path, 'init').returncode == 0
-    result = cli(tmp_path, 'memory', 'lint')
-    assert result.returncode == 0, result.stderr
-
-
 def test_config_defaults_and_independence(tmp_path):
     from wuwei import workspace
     from wuwei.workspace import load_config
@@ -223,7 +217,6 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['patterns'] == [] and outward['tool_patterns']
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
-    assert config.pop('autonomy') == {'mode': 'autonomous'}  # #530
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
@@ -231,7 +224,7 @@ def test_config_defaults_and_independence(tmp_path):
         'security': {'required': False, 'posture': 'guarded',
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
-            'default': 'brief', 'decisions': '', 'digest': '', 'report': ''}},
+            'default': 'brief', 'decisions': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
@@ -247,11 +240,8 @@ def test_config_defaults_and_independence(tmp_path):
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
                  'rate_limit_wait_seconds': 120}, 'profile': 'strict',
-            'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3,
-                       'digest': 'week', 'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
+            'memory': {'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
             'metrics': {'transcripts': '~/.claude/projects', 'band_margin': 0.2},
-            'consolidation': {'archive_after_days': 30, 'similarity_threshold': 0.85},
-            'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
@@ -261,8 +251,6 @@ def test_config_defaults_and_independence(tmp_path):
                       'sweep_seconds': 7200, 'ping_url': ''},
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
-        'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
-        'decisions': {'wait_hours': 24, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
@@ -423,13 +411,12 @@ def test_owner_verbosity(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
-    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'digest': '',
-                                            'report': ''}
-    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndigest = "brief"\n')
+    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndecisions = "brief"\n')
     config = workspace.load_config(tmp_path)
-    assert workspace.verbosity(config, 'digest') == 'brief'
+    assert workspace.verbosity(config, 'decisions') == 'brief'
     assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'digest = "loud"'):
+    for text in ('default = "short"', 'decisions = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -746,7 +733,7 @@ def test_upgrade_previous_workspace(tmp_path):
     assert '# Owner comment stays.' in raw
     assert config['cap'] == 3 and config['owner']['name'] == 'Pat'
     assert config['host']['free_memory_mb'] == 2048
-    assert config['memory']['max_notes'] == 60
+    assert config['memory']['budget_tokens'] == 6000
     assert config['host']['reservation_timeout_seconds'] == 14400
     assert '# Report stale reservations' in raw
     assert config['adapters']['checks'] == 'local'
@@ -1222,13 +1209,15 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_a_cruise_table_only_warns(tmp_path):
-    # #814: decisions.cruise is retired; a stale table loads with an unknown-key warning.
+def test_retired_decision_tables_only_warn(tmp_path):
+    # #814, part 14: decisions, autonomy and steward are retired; stale tables load with a warning.
     from wuwei.workspace import load_config
-    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[security]\nposture = "strict"\n')
+    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[autonomy]\nmode = "supervised"\n'
+                 '[steward]\nevery_tool_calls = 9\n[security]\nposture = "strict"\n')
     found = []
-    assert 'cruise' not in load_config(tmp_path, warnings=found)['decisions']
-    assert any('decisions.cruise' in line for line in found), found
+    config = load_config(tmp_path, warnings=found)
+    assert not {'decisions', 'autonomy', 'steward'} & set(config)
+    assert all(any(name in line for line in found) for name in ('decisions', 'autonomy', 'steward')), found
 
 
 def test_grant_keys_only_warn(tmp_path):
@@ -1240,19 +1229,6 @@ def test_grant_keys_only_warn(tmp_path):
     config = load_config(tmp_path, warnings=found)
     assert 'grants' not in config and 'default_tier' not in config['merge']
     assert any('merge.default_tier' in line for line in found) and any('grants' in line for line in found), found
-
-
-def test_decision_lenses_config(tmp_path):
-    from wuwei.workspace import ConfigError, load_config
-    write_config(tmp_path, '')
-    assert load_config(tmp_path)['decisions']['lenses'] == {}
-    write_config(tmp_path, '[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\nYAGNI = ""\n')
-    assert load_config(tmp_path)['decisions']['lenses'] == {
-        'company-rule': 'Does it follow our rule?', 'YAGNI': ''}
-    for name in ('"bad name"', '9x'):
-        write_config(tmp_path, f'[decisions.lenses]\n{name} = "Q?"\n')
-        with pytest.raises(ConfigError, match='decisions.lenses.' + name.strip('"')):
-            load_config(tmp_path)
 
 
 def test_second_opinion_config(tmp_path):
@@ -1358,7 +1334,6 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     assert raw == before.replace('mode = "shadow"\n', '', 1).replace(
         'posture = "guarded"', 'posture = "observe"', 1)
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
-
 
 
 def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
@@ -1526,13 +1501,13 @@ def test_memory_tier_keys_default_and_validate(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
     memory = load_config(tmp_path)['memory']
-    assert (memory['digest'], memory['budget_tokens'], memory['export_to']) == ('week', 6000, 'CLAUDE.md')
-    for text in ('digest = "month"', 'budget_tokens = 0'):
+    assert (memory['budget_tokens'], memory['export_to']) == (6000, 'CLAUDE.md')
+    for text in ('budget_tokens = 0', 'export_to = 1'):
         write_config(tmp_path, '[memory]\n' + text + '\n')
         with pytest.raises(ConfigError):
             load_config(tmp_path)
     shipped = (ROOT / 'templates/workspace/config.toml').read_text()
-    assert all(f'\n{key} = ' in shipped for key in ('digest', 'budget_tokens', 'export_to'))
+    assert all(f'\n{key} = ' in shipped for key in ('budget_tokens', 'export_to'))
     write_config(tmp_path, shipped)
     assert load_config(tmp_path)['memory']['budget_tokens'] == 6000
 
@@ -1627,13 +1602,13 @@ def test_upgrade_builds_the_register_once(modeled, capsys):
     config = workspace.load_config(modeled)
     assert graph.drift(register, config) == []
     for node in ('person:slack:U01', 'person:github:dev', 'channel:C04', 'connector:acme', 'address:dev@example.test',
-                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'voice:client', 'repo:fixture-org/app'):
+                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'repo:fixture-org/app'):
         assert node in register['nodes'], node
     after = tomllib.loads(raw)
-    for key in ('owner', 'outbound', 'shepherd', 'voice', 'outward'):
+    for key in ('owner', 'outbound', 'shepherd', 'outward'):
         for name, value in before[key].items():
             assert after[key][name] == value, (key, name)
-    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]', '[voice.sources]',
+    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]',
                    '[outward.servers]'):
         assert raw.count(f'{graph.COMMENT}\n{header}\n') == 1, header
     assert main(['init', '--upgrade']) == 0
@@ -1650,82 +1625,6 @@ def test_upgrade_warns_on_a_damaged_register_and_goes_on(modeled, capsys):
     assert 'init --upgrade' in captured.err
     assert 'template_version' in captured.out
     assert (modeled / '.wuwei/graph.json').read_text() == 'not json'
-
-
-def test_upgrade_counts_the_unanswered_setup_questions(tmp_path, monkeypatch, capsys):
-    # #530: a workspace on day 5 that never answered the interview hears it on upgrade.
-    import json
-    from wuwei import interview
-    path = trial(tmp_path, monkeypatch, 'enforce')
-    with path.open('a') as stream:
-        stream.write('\n[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n')
-    for day in ('2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28'):
-        (tmp_path / '.wuwei/days' / day).mkdir(parents=True)
-    count = len(interview.unanswered(tmp_path, ['example/project']))
-    line = f'setup: {count} questions unanswered: {interview.HOW}'
-    for dry_run in (True, False):
-        code, out = upgraded(tmp_path, capsys, dry_run=dry_run)
-        assert code == 0 and line in out.out.splitlines(), out
-    answers = {row['id']: ({'example/project': row['choices'][0][0]} if row['scope'] == 'repo'
-                           else row['choices'][0][0]) for row in interview.QUESTIONS}
-    (tmp_path / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(answers))
-    assert 'setup:' not in upgraded(tmp_path, capsys)[1].out
-    (tmp_path / '.wuwei/days/2026-09-27/interview.json').mkdir()  # an unreadable day: warn, finish
-    code, out = upgraded(tmp_path, capsys)
-    assert code == 0 and 'setup: unanswered questions unmeasured:' in out.out
-
-
-PUBLISH_SAMPLES = ('git push origin main', 'git push --force', 'git push --tags', 'gh release create v1',
-                   'gh pr merge 1 --admin', 'gh api repos/o/r/releases',
-                   # not publishes, but just as unsafe without a prompt: a token in the transcript, a program run
-                   'gh auth status --show-token', 'git fetch --upload-pack=touch .')
-
-
-def publishes(rules):
-    """The rules whose pattern matches a deploy, release, protected-branch push or force push."""
-    from fnmatch import fnmatchcase
-    from wuwei.guards.deploy import PERMISSIONS_DENY
-    samples = [*PUBLISH_SAMPLES, *(rule[5:-1].rstrip('*') for rule in PERMISSIONS_DENY)]
-    return [rule for rule in rules for sample in samples if fnmatchcase(sample, rule[5:-1])]
-
-
-def test_allow_rules_never_allow_a_publish_target(tmp_path):
-    # #530: the harness allowlist covers WUWEI's own commands and the adapters' reads and commits.
-    from wuwei import workspace
-    from wuwei.commands import init
-    write_config(tmp_path, '')
-    config = workspace.load_config(tmp_path)
-    rules = init.allow_rules(config, 'bin/wuwei')
-    assert rules[0] == 'Bash(bin/wuwei *)' and {'Bash(git status*)', 'Bash(git commit *)', 'Bash(gh pr view*)',
-                                                  'Bash(git fetch)'} <= set(rules)
-    assert publishes(rules) == [] and not [rule for rule in rules if 'push' in rule or 'api' in rule]
-    config['adapters'].update(vcs='none', code_host='none')
-    assert init.allow_rules(config, 'bin/wuwei') == ['Bash(bin/wuwei *)']
-
-
-def test_allow_writes_only_the_missing_rules(tmp_path):
-    import json
-    from wuwei import workspace
-    from wuwei.commands import init
-    write_config(tmp_path, '')
-    (tmp_path / '.wuwei/executable').write_text('bin/wuwei\n')
-    path = tmp_path / '.claude/settings.local.json'
-    path.parent.mkdir()
-    path.write_text(json.dumps({'env': {'A': '1'}, 'permissions': {'allow': ['Bash(git status*)', 'Read']}}))
-    rules = init.allow_rules(workspace.load_config(tmp_path), 'bin/wuwei')
-    added = init.allow(tmp_path)
-    assert added == [rule for rule in rules if rule != 'Bash(git status*)']
-    assert json.loads(path.read_text()) == {'env': {'A': '1'}, 'permissions': {
-        'allow': ['Bash(git status*)', 'Read', *added]}}
-    assert init.allow(tmp_path) == []
-    path.write_text(json.dumps({'permissions': {'allow': 'Bash(*)'}}))
-    with pytest.raises(ValueError, match='permissions.allow must be a list of strings'):
-        init.allow(tmp_path)
-    path.unlink()
-    (tmp_path / 'elsewhere.json').write_text('{}')
-    path.symlink_to(tmp_path / 'elsewhere.json')
-    with pytest.raises(ValueError, match='must not be symlinks'):
-        init.allow(tmp_path)
 
 
 def repos(*paths):

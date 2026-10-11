@@ -33,11 +33,11 @@ def test_pushed_branches_tool_failure(monkeypatch, tmp_path, error):
 
 
 @pytest.mark.parametrize('passing', [True, False])
-def test_passing_close_writes_the_week_digest(tmp_path, monkeypatch, passing):
+def test_passing_close_records_the_day_without_a_digest(tmp_path, monkeypatch, passing):
     from argparse import Namespace
     from wuwei import closing, pr_actions, state, steward
     from wuwei.commands import close
-    (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
+    (tmp_path / '.wuwei/memory').mkdir(parents=True)
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
@@ -48,12 +48,8 @@ def test_passing_close_writes_the_week_digest(tmp_path, monkeypatch, passing):
     monkeypatch.setattr(steward, 'run', lambda *a, **k: 0)
     monkeypatch.setattr(closing, 'check', lambda root: (0, '') if passing else (1, 'refused'))
     args = Namespace(check=None, widget=False)
-    digest = tmp_path / '.wuwei/memory/digests/2026-W40.md'
     assert close.run(args) == (0 if passing else 1)
-    assert digest.is_file() == passing
+    assert not (tmp_path / '.wuwei/memory/digests').exists()  # #833: close writes no digest
     closed = [row for row in (tmp_path / '.wuwei/days/2026-10-03/events.jsonl').read_text().splitlines()
               if '"day.closed"' in row]
     assert len(closed) == int(passing)  # #551: next reads it to say the day is done
-    if passing:
-        before = digest.read_bytes()
-        assert close.run(args) == 0 and digest.read_bytes() == before

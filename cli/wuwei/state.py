@@ -250,21 +250,15 @@ STATE_PRODUCERS = {
     'planner_session_id': 'wuwei plan session',
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
-    'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix'),
-    'decision_routes': 'wuwei decision route',
+    'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei outbound answer',
+    'decision_routes': 'wuwei outbound learn',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
     'author_logins': 'wuwei pr raise, ping or reviewers',
-    'scanner_decisions': 'wuwei sweep',
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
     'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
-    'pr_action_decisions': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
-    'steward_notes': 'wuwei steward run or wuwei hook SubagentStop',
-    'steward_acks': 'wuwei steward ack',
-    'negotiation_loops': 'wuwei steward run or wuwei dispatch next',
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
     'seat_findings': 'wuwei note --fix',
@@ -272,7 +266,7 @@ STATE_PRODUCERS = {
     'claims': 'wuwei brief builder or wuwei worktree add',
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
-    'outbound_learn': 'wuwei outbound learn or wuwei decide',
+    'outbound_learn': 'wuwei outbound learn or wuwei outbound answer',
     'outbound_threads': 'wuwei outbound learn',
     'main_broken': 'wuwei build',
 }
@@ -354,7 +348,7 @@ def _producer_error(parts):
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
                     'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
                     'docs': 'wuwei plan set or wuwei docs page',
-                    'assumption': 'wuwei decision route --external or wuwei sweep',
+                    'disposition': 'wuwei plan carry, park or resume, wuwei dispatch next or wuwei build',
                     'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
                         parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')

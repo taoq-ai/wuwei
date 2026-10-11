@@ -398,9 +398,3 @@ def brief_line(config, item, row, tree, gate):
               f'--short-name {item.lower()}' if engine == 'speckit' else '')
     return (f'Spec: {engine} {effective}; artifacts in {where}{create}; steps in order: {steps}; '
             'name the artifacts in your final message.')
-
-
-def detect(paths, config):
-    """The engine setup proposes: spec-kit, then OpenSpec, then superpowers where found; else spec-kit."""
-    return next((engine for engine in ('speckit', 'openspec', 'superpowers')
-                 if any(present(path, engine, config) for path in paths)), 'speckit')

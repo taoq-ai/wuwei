@@ -169,7 +169,7 @@ def test_apply_places_through_the_writer():
 
 
 def write(raw, key, value, mode='replace'):
-    from wuwei.commands.setup import write_value
+    from wuwei.commands.config import write_value
     return write_value(raw, key, value, mode)
 
 
@@ -239,21 +239,22 @@ def owned(tmp_path, monkeypatch):
 
 def _set(key, value):
     from argparse import Namespace
-    from wuwei.commands import setup
-    return setup.set_value(Namespace(key=key, value=value, replace=False, from_card=None),
+    from wuwei.commands import config as config_command
+    return config_command.set_value(Namespace(key=key, value=value, replace=False),
                            confirm=lambda *args, **kwargs: True)
 
 
 def test_a_config_write_writes_the_register(owned, capsys):
     # #552: the one writer keeps the register and its views together.
     from wuwei import graph, workspace
-    from wuwei.commands import setup
+    from wuwei.commands import config as config_command
     assert _set('outbound.work_channels', '["C05"]') == 0
     register = graph.load(owned)
     assert {'from': 'channel:C05', 'type': 'class', 'to': 'team', 'view': 'outbound.work_channels'} in register['edges']
     assert graph.drift(register, workspace.load_config(owned)) == []
-    assert setup.card_write(owned, 'config set', lambda root, raw: raw + 'external_channels = ["C06"]\n',
-                            ['outbound.external_channels'], 'D-1') == 0
+    assert config_command._edit('outbound learn', 'change', lambda *args, **kwargs: True,
+                                lambda root, raw: raw + 'external_channels = ["C06"]\n', owned,
+                                keys=['outbound.external_channels']) == 0
     assert 'channel:C06' in graph.load(owned)['nodes']
 
 

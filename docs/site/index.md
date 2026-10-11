@@ -37,20 +37,18 @@ archives are unsigned. In Claude Code, run:
 /plugin install wuwei@wuwei
 ```
 
-In your project directory, in a [host terminal](concepts.md#host-terminal), set up the workspace:
+In your project directory, create the workspace:
 
 ```sh
-../wuwei-plugin/bin/wuwei setup --shadow
+../wuwei-plugin/bin/wuwei init --shadow
 ```
 
-`setup` runs `bin/wuwei init` when there is no workspace, finds the git repositories in the
-project directory, calibrates them and asks your interview questions, then applies the whole
-`config.toml` proposal after one [digest](concepts.md#digest), runs `doctor` and ends with
-`Ready: run /wuwei:wuwei-plan` or the one `Next:` command still required. `--shadow` starts the
-guards in the observe posture for a first week. `init` checks the installation: an intact signed
-release prints `plugin integrity: clean` and needs no reconfirmation. Use `bin/wuwei` or
-`python3 -P -m wuwei` for CLI calls. To change one value later, use `bin/wuwei config set` or
-`bin/wuwei config add-repo` in a host terminal ([daily path](daily.md)).
+`--shadow` starts the guards in the observe posture for a first week. `init` checks the
+installation: an intact signed release prints `plugin integrity: clean` and needs no
+reconfirmation. Then, in the session, the planner adds each repository with
+`wuwei config add-repo` and applies the repository survey with `wuwei config promote`; each asks
+its Owner step card. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls. To change one value
+later, run `bin/wuwei config set <key> <value>`; it asks on a card too ([daily path](daily.md)).
 
 Then run `../wuwei-plugin/bin/wuwei doctor`. It prints one row per check, with the fix for
 anything that is not ok; `bin/wuwei doctor --fix` applies the deterministic fixes after one

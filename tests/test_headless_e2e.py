@@ -302,7 +302,7 @@ def last_json(output):
 
 @pytest.mark.parametrize('missing,reason', [
     ('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'), ('WUWEI_REHEARSAL_REPO', 'WUWEI_REHEARSAL_REPO'),
-    ('invalid-repo', 'WUWEI_REHEARSAL_REPO'), ('GH_TOKEN', 'GH_TOKEN'), ('tty', 'terminal')])
+    ('invalid-repo', 'WUWEI_REHEARSAL_REPO'), ('GH_TOKEN', 'GH_TOKEN')])
 def test_rehearsal_preconditions_are_unmeasured_before_any_external_call(
         missing, reason, monkeypatch, capsys):
     runner = load('headless_e2e')
@@ -311,9 +311,8 @@ def test_rehearsal_preconditions_are_unmeasured_before_any_external_call(
         monkeypatch.setenv(key, value)
     if missing == 'invalid-repo':
         monkeypatch.setenv('WUWEI_REHEARSAL_REPO', 'not-a-repo')
-    elif missing != 'tty':
+    else:
         monkeypatch.delenv(missing)
-    monkeypatch.setattr(runner, 'host_terminal', lambda: missing != 'tty')
     for name in ('exercise', 'prepare'):
         monkeypatch.setattr(runner, name, lambda *a, **kw: pytest.fail('must not run'))
     monkeypatch.setattr(runner.adapter, 'run', lambda *a, **kw: pytest.fail('must not run'))
@@ -331,7 +330,7 @@ def rehearsal_evidence():
     events = [{'kind': 'gate.received', 'payload': {'item': 'A', 'role': 'quality', 'round': r,
                'verdict': v}} for r, v in (('initial', 'FIX'), ('delta', 'PASS'))]
     events += [{'kind': 'pr.raised', 'payload': {}},
-               {'kind': 'decision.decided', 'payload': {'id': 'D-1', 'option': 'A'}},
+               {'kind': 'gate.asked', 'payload': {'session_id': 'rehearsal-owner', 'topics': ['t']}},
                {'kind': 'merge.auto', 'payload': {}}]
     events += [{'kind': 'state.transition', 'payload': {'phase_changes': {'A': phase}}}
                for phase in ('implement', 'gate', 'fix', 'delta', 'raised', 'merged')]
@@ -345,7 +344,7 @@ def test_complete_rehearsal_evidence_passes():
 
 @pytest.mark.parametrize('mutation,step', [
     ('no-continue', 'continue'), ('fix-round-continue', 'continue'), ('no-fix', 'FIX'), ('no-delta', 'delta'), ('no-raise', 'pr'),
-    ('no-decision', 'D-1'), ('no-merge', 'merge'), ('not-merged', 'merged'),
+    ('no-decision', 'merge card'), ('no-merge', 'merge'), ('not-merged', 'merged'),
     ('no-close', 'close'), ('live-seat', 'seat'), ('manual', 'manual repair: state transition A fix')])
 def test_missing_rehearsal_step_is_a_finding(mutation, step):
     runner = load('headless_e2e')
@@ -362,7 +361,7 @@ def test_missing_rehearsal_step_is_a_finding(mutation, step):
     elif mutation == 'no-raise':
         events = [e for e in events if e['kind'] != 'pr.raised']
     elif mutation == 'no-decision':
-        events = [e for e in events if e['kind'] != 'decision.decided']
+        events = [e for e in events if e['kind'] != 'gate.asked']
     elif mutation == 'no-merge':
         events = [e for e in events if e['kind'] != 'merge.auto']
     elif mutation == 'not-merged':
@@ -383,7 +382,7 @@ def test_measure_counts_refusals_interventions_and_cost():
     hooks = [{'event': 'cli', 'args': ['merge', 'acme/rehearsal#1'], 'exit': 2},
              {'event': 'PreToolUse', 'args': ['hook', 'PreToolUse'], 'exit': 2},
              {'event': 'cli', 'args': ['state', 'set', 'x', '1'], 'exit': 0}]
-    planned = ['decision outcome D-1 (planned, host terminal)']
+    planned = [load('headless_e2e').PLANNED]
     fields = runner.measure(events, hooks, [{'total_cost_usd': 1.5}, {'total_cost_usd': 2.25}], planned)
     assert fields['refusals'] == ['first', 'second', 'wuwei merge acme/rehearsal#1: exit 2']
     assert fields['interventions'] == [*planned, 'manual repair: state set x 1']
@@ -435,7 +434,7 @@ def test_rehearsal_fixture_targets_the_test_repository(tmp_path, monkeypatch):
     assert config['adapters']['code_host'] == 'github' and config['brief']['remote'] == 'origin'
     assert config['owner']['handles'] == ['octo'] and config['shepherd']['min_reviewers'] == 0
     assert repo['name'] == 'acme/rehearsal' and repo['default_branch'] == 'main'
-    assert repo['merge']['auto'] is True and repo['merge']['soak_minutes'] == 0
+    assert repo['merge']['auto'] is False and repo['merge']['soak_minutes'] == 0  # the owner decides the merge
     assert repo['merge_deploys'] is False
     clone = root / repo['path']
     assert subprocess.run(['git', '-C', clone, 'remote', 'get-url', 'origin'], capture_output=True,
@@ -452,23 +451,32 @@ def test_rehearsal_fixture_targets_the_test_repository(tmp_path, monkeypatch):
     assert subprocess.run(['/bin/sh', '-c', repo['fast_checks'][0]], cwd=clone).returncode == 0
 
 
-@pytest.mark.parametrize('decision_exit,first_error,code', [(0, False, 0), (1, False, 1), (0, True, 2)])
-def test_rehearsal_sessions_and_owner_decision(tmp_path, monkeypatch, capsys,
-                                               decision_exit, first_error, code):
+CARD = {'question': 'Owner step: bin/wuwei merge acme/rehearsal#4 (abc)', 'header': 'Owner step',
+        'multiSelect': False, 'options': [{'label': 'Yes', 'description': 'Merge'},
+                                          {'label': 'No', 'description': 'Nothing changes.'}],
+        'record': 'bin/wuwei merge acme/rehearsal#4'}
+
+
+@pytest.mark.parametrize('merge_exit,first_error,code', [(1, False, 0), (2, False, 1), (1, True, 2)])
+def test_rehearsal_sessions_and_the_owner_merge_card(tmp_path, monkeypatch, capsys,
+                                                     merge_exit, first_error, code):
+    # #834: the harness answers the merge Owner step card as the owner, through the recorder.
     runner = load('headless_e2e')
     monkeypatch.setenv('WUWEI_REHEARSAL_REPO', 'acme/rehearsal')
     monkeypatch.setattr(runner, 'preconditions', lambda local_login: None)
     root, plugin = tmp_path / 'workspace', tmp_path / 'plugin'
     day = root / '.wuwei/days/2026-09-30'
-    (day / 'decisions').mkdir(parents=True)
-    (day / 'decisions/D-1.md').write_text('Recommendation: B\n')
+    day.mkdir(parents=True)
     (day / 'state.json').write_text(json.dumps({'raised_prs': ['acme/rehearsal#4']}))
     (day / 'events.jsonl').write_text('')
     (root / 'headless-hooks.jsonl').write_text('')
     (root / '.wuwei/config.toml').write_text('[[repos]]\ndefault_branch = "main"\n')
-    monkeypatch.setattr(runner, 'prepare', lambda scratch, **kw: (
-        root, plugin, {'HOME': 'h', 'PATH': os.pathsep.join(['observer', '/usr/bin'])}))
+    monkeypatch.setattr(runner, 'prepare', lambda scratch, **kw: (root, plugin, {'HOME': 'h', 'PATH': '/usr/bin'}))
     monkeypatch.setattr(runner, 'rehearsal_findings', lambda *args: [])
+    sys.path.insert(0, str(ROOT / 'cli'))
+    from wuwei.guards import answers
+    recorded = []
+    monkeypatch.setattr(answers, 'record_gate', lambda payload: recorded.append(payload) or (0, ''))
     calls = []
 
     def run(argv, **kwargs):
@@ -478,7 +486,8 @@ def test_rehearsal_sessions_and_owner_decision(tmp_path, monkeypatch, capsys,
             return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
                 'type': 'result', 'subtype': 'success', 'is_error': first_error,
                 'session_id': f's{count}', 'total_cost_usd': 1.0}))
-        return SimpleNamespace(returncode=decision_exit, stdout='', stderr='declined')
+        text = 'merge policy: owner decides: merge.auto is off; wait for the Owner step card: x: ' + json.dumps(CARD)
+        return SimpleNamespace(returncode=merge_exit, stdout='', stderr=text if merge_exit == 1 else 'unmeasured')
     monkeypatch.setattr(runner.adapter, 'run', run)
     assert runner.rehearse() == code
     fields = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
@@ -487,18 +496,19 @@ def test_rehearsal_sessions_and_owner_decision(tmp_path, monkeypatch, capsys,
         assert len(calls) == 1 and fields['verdict'] == 'unmeasured'
         return
     assert sessions[0][sessions[0].index('--max-turns') + 1] == str(runner.REHEARSAL['first'][0])
-    decision = [(argv, kw) for argv, kw in calls if argv[0] != 'claude']
-    assert decision[0][0][1:] == ['decision', 'outcome', 'D-1', 'B']
-    assert decision[0][1]['own_group'] is False
-    # The owner command bypasses the observer shim, whose 30s bound would cut the digest prompt.
-    assert decision[0][1]['env']['PATH'] == '/usr/bin'
-    assert fields['interventions'] == ['decision outcome D-1 (planned, host terminal)']
-    if decision_exit:
-        assert len(sessions) == 1 and fields['verdict'] == 'fail'
-    else:
-        assert sessions[1][sessions[1].index('--resume') + 1] == 's1'
-        assert sessions[1][sessions[1].index('--max-budget-usd') + 1] == str(runner.REHEARSAL['second'][1])
-        assert fields == {**fields, 'verdict': 'pass', 'cost_usd': 2.0, 'pr': 'acme/rehearsal#4'}
+    merge = [argv for argv, _ in calls if argv[0] != 'claude']
+    assert merge[0][1:] == ['merge', 'acme/rehearsal#4']
+    if merge_exit != 1:
+        assert len(sessions) == 1 and fields['verdict'] == 'fail' and recorded == []
+        return
+    [payload] = recorded
+    assert payload['tool_response'] == {'answers': {CARD['question']: 'Yes'}}
+    assert payload['tool_input']['questions'] == [{key: value for key, value in CARD.items() if key != 'record'}]
+    assert fields['interventions'] == [runner.PLANNED]
+    assert sessions[1][sessions[1].index('--resume') + 1] == 's1'
+    assert sessions[1][sessions[1].index('--max-budget-usd') + 1] == str(runner.REHEARSAL['second'][1])
+    assert 'D-1' not in runner.rehearsal_prompt(plugin, 'second', pr='acme/rehearsal#4')
+    assert fields == {**fields, 'verdict': 'pass', 'cost_usd': 2.0, 'pr': 'acme/rehearsal#4'}
 
 
 def test_fixture_item_is_light_so_its_spec_is_skipped(tmp_path):
@@ -587,7 +597,7 @@ def bash_span(command, session='P'):
 
 
 @pytest.mark.parametrize('command,findings', [
-    ('/plugin/bin/wuwei plan park A --reason "fixture publishes nothing"', 0),
+    ('/plugin/bin/wuwei plan park A --reason fixture', 0),
     ('/plugin/bin/wuwei rank lead.json', 1),
 ])
 def test_start_mode_fails_on_an_off_path_command(command, findings):

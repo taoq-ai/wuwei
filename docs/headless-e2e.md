@@ -70,7 +70,7 @@ The USD 3 limit applies to this Claude session, including its subagents.
 The fixture supplies a lead proposal and explicit owner approval. Claude invokes
 the real plan skill, records the proposal and approval, probes an unbriefed Agent
 refusal, then uses the real builder step loop and three real sentinel seats. It
-parks the unpublished item with a valid seat decision, requests close before the
+parks the unpublished item with `plan park A --reason fixture`, requests close before the
 retro to exercise a blocking Stop, then compiles the retro and closes cleanly.
 No remote PR, tracker or chat action occurs. PR creation, a fix round and merge
 remain covered by `tests/test_e2e_day.py` with recorded adapters, and live by the

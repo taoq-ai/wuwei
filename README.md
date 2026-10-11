@@ -28,8 +28,8 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
 - Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
 - Review [tiers](docs/site/concepts.md#tier): one reviewer for a docs-only change, three gates for code or a [trust surface](docs/site/concepts.md#trust-surface) ([review tiers](docs/site/concepts.md#review-tiers)).
-- Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
-- Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its [digest](docs/site/concepts.md#digest) ([setup](docs/site/daily.md#2-configure)).
+- Calibration of each repository's checks and deploy signals ([calibration](docs/site/configuration.md#calibration)).
+- Setup in the session: `init --shadow`, then each repository and the calibration proposal on an Owner step card ([setup](docs/site/daily.md#2-configure)).
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
@@ -75,7 +75,7 @@ Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](
 
 ## What is inside
 
-- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md), [wuwei-retro](skills/wuwei-retro/SKILL.md) and [wuwei-consolidate](skills/wuwei-consolidate/SKILL.md).
+- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md) and [wuwei-retro](skills/wuwei-retro/SKILL.md).
 - Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four [sentinels](docs/site/concepts.md#sentinel): [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
 - Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes). PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note. SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
 - Adapters by port ([adapters and ports](docs/site/adapters.md)); the [documentation site](docs/site/index.md) covers the rest:
@@ -106,12 +106,11 @@ Planned: Signal and WhatsApp as owner channels (design spec, section 15).
 1. The CLI owns the path and the model walks it. `bin/wuwei next` returns the one next action: the exact command or Agent call, why, and what comes after. Skills and charters hold judgement, never a step list ([agent guide](docs/site/agent.md), [design spec](docs/specs/2026-09-24-wuwei-design.md) 5.2 and 5.3).
 2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
 3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each edge in design spec 9.2 at the moment of the call, and each edge has its own test. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
-4. Who decides follows from what is decided. Each record gets an MIT CISR class from how reversible it is, how far it reaches and how unclear it is. A Routine two-way decision is taken under the [mandate](docs/site/concepts.md#mandate); a Strategic or one-way one comes to you on a card ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
-5. Reversibility is a rule, not a score. A two-way door inside the item is assumed and recorded. A clear two-way decision beyond the item is taken under the mandate. A one-way, Strategic or tied one reaches you as one named decision from `wuwei next` ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
-6. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
-7. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
-8. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
-9. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
+4. Reversibility is a rule, not a score. A seat assumes a two-way choice and records it in its spec under the [mandate](docs/site/concepts.md#mandate). A one-way, scope, goal or trust-boundary question reaches you as one named decision from `wuwei next`, on one card ([owner decisions](docs/site/concepts.md#owner-decisions), design spec 5.8).
+5. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
+6. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
+7. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
+8. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
 
 ## Installation
 
@@ -148,20 +147,17 @@ More harnesses are tracked in [issue #441](https://github.com/taoq-ai/wuwei/issu
 
 ## Quick start
 
-From the same project directory, in a [host terminal](docs/site/concepts.md#host-terminal), set up the workspace:
+From the same project directory, create the workspace:
 
 ```sh
-../wuwei-plugin/bin/wuwei setup --shadow
+../wuwei-plugin/bin/wuwei init --shadow
 ```
 
-`setup` runs `init` when there is no workspace and finds the git repositories in the project
-directory (their GitHub names, default branches through `gh`, and commit identities). It checks
-the host, calibrates the repositories and asks the owner interview. It shows the whole
-`config.toml` proposal once and applies it after you answer y. Then it runs
-`doctor` and `mcp check` and ends with one line: `Ready: run /wuwei:wuwei-plan`, or `Next:`
-with the one command still required. Optional items, such as branch protections, are listed
-before it and do not block. A second run proposes nothing new
-([calibration](docs/site/configuration.md#calibration)).
+Then open Claude Code in the project directory. The planner asks which repositories WUWEI works
+on and adds each with `wuwei config add-repo`, then runs `wuwei config promote`, which surveys
+the repositories and proposes their checks and deploy signals. Each shows the `config.toml`
+diff and asks its Owner step card; nothing is written before your Yes. A second
+`config promote` proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
 
 `--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and the `## Shadow` section of the day report lists it. See [security posture](docs/site/concepts.md#security-posture).
 
@@ -193,7 +189,7 @@ Every Claude Code session in the workspace orients itself on start: what WUWEI i
   ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
 - It is early: so far only its author has used it day to day, and the
   [live rehearsal](docs/site/rehearsal.md) is the check before each release.
-- Start a new project with `setup --shadow`: a first week in the observe posture, where the
+- Start a new project with `init --shadow`: a first week in the observe posture, where the
   guards record what they would refuse before they refuse it
   ([security posture](docs/site/security.md#security-posture)).
 
@@ -271,5 +267,4 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   Sean McBride, Intercom; the `rice` ranking.
 - [One-way and two-way doors](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF):
   Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
-- [MIT CISR decision framework](https://cisr.mit.edu/): Sebastian, Weill, Haskamp and vom Brocke, "A framework for determining when AI can make decisions"; the decision classes.
 - [Verifiably Safe Autonomous Decision-Making (vGOAL)](https://www.kuleuven.be/): KU Leuven; a table of safety properties, each with its own test, without the model checker.

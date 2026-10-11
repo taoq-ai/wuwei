@@ -1,10 +1,9 @@
-"""wuwei why (#312): the item chain, the refusal and the decision views, from records only."""
+"""wuwei why (#312): the item chain and the refusal views, from records only."""
 
 import json
 
 import pytest
 
-from test_decision import SUPERVISED, VALID
 from wuwei import state
 from wuwei.__main__ import main
 
@@ -30,32 +29,6 @@ def events(root, day=DAY):
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
-def save(root, text, name='D-3', day=DAY):
-    path = day_of(root, day) / 'decisions' / f'{name}.md'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
-    return path
-
-
-def answer(root, monkeypatch, option, text=VALID.replace('Reversibility: two-way', 'Reversibility: one-way')):
-    save(root, text)
-    (root / '.wuwei/config.toml').write_text(SUPERVISED)  # #530: the owner card flow
-    assert main(['decision', 'route', 'D-3']) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main(['decision', 'outcome', 'D-3', option]) == 0
-    return events(root)[-1]
-
-
-def test_owner_outcome_names_its_decider(root, monkeypatch):
-    last = answer(root, monkeypatch, 'B')
-    assert last['kind'] == 'decision.decided' and last['payload']['decided_by'] == 'owner'
-
-
-def test_owner_reversal_names_its_decider(root, monkeypatch):
-    last = answer(root, monkeypatch, 'B', VALID)
-    assert last['kind'] == 'decision.reversed' and last['payload']['decided_by'] == 'owner'
-
-
 QUALITY = '''Verdict: FIX
 - P1 src/login.py:12 the token is logged in plain text
   blocks: yes
@@ -78,9 +51,6 @@ def merged_item(root, *, skip=(), phase='merged', proposal=True):
         path = day / 'decisions' / f'gate-fix-login-{role}.md'
         path.write_text(QUALITY if role == 'quality' else f'Verdict: {verdict}\n')
         files[role] = str(path.relative_to(root))
-    save(root, VALID.replace('Which fix?', 'Which fix for fix-login?'), 'D-3')
-    save(root, VALID.replace('Which fix?', 'Merge fix-login now?')
-         .replace('Reversibility: two-way', 'Reversibility: one-way'), 'D-4')
     (day / 'state.json').write_text(json.dumps({
         'items': {'fix-login': {'goal': 'ship-login', 'phase': phase,
                                 'status': 'done' if phase == 'merged' else 'running',
@@ -101,10 +71,8 @@ def merged_item(root, *, skip=(), phase='merged', proposal=True):
                          'roles': ['arch', 'quality', 'security']}),
         *(('gate.received', {'item': 'fix-login', 'role': role, 'round': 'initial', 'verdict': verdict})
           for role, verdict in (('arch', 'PASS'), ('quality', 'FIX'), ('security', 'PASS'))),
-        ('decision.decided', {'id': 'D-3', 'option': 'A', 'decided_by': 'seat'}),
         ('pr.raised', {'pr': 'acme/app#7', 'item': 'fix-login',
                        'phase_changes': {'fix-login': 'raised'}}),
-        ('decision.decided', {'id': 'D-4', 'option': 'B', 'decided_by': 'owner'}),
         ('merge.auto', {'pr': 'acme/app#7', 'head': HEAD, 'status': 'accepted', 'evidence': {
             'head': HEAD, 'checks': [{'name': 'test', 'conclusion': 'success'}],
             'approvals': ['alice'], 'verdicts': [{'path': files[role]} for role in files]}}),
@@ -122,8 +90,6 @@ BRIEF = [
     'gate arch initial: PASS',
     'gate quality initial: FIX, blocking: - P1 src/login.py:12 the token is logged in plain text',
     'gate security initial: PASS',
-    'decision D-3: Which fix for fix-login?: A by seat',
-    'decision D-4: Merge fix-login now?: B by owner',
     'phase implement by wuwei state transition',
     'phase gate by wuwei state transition',
     'phase raised by wuwei pr raise',
@@ -143,12 +109,11 @@ def why(capsys, *argv):
 def full(root):
     files = merged_item(root)
     rel = f'.wuwei/days/{DAY}'
-    ids = [f'event {DAY}:{n}' for n in (1, 4, 5, 6, 7, 8, 10, 2, 3, 9, 12, 11)]
+    ids = [f'event {DAY}:{n}' for n in (1, 4, 5, 6, 7, 2, 3, 8, 10, 9)]
     tails = [f'{ids[0]}; {rel}/proposal.json', ids[1],
              f'{ids[2]}; {files["arch"]}', f'{ids[3]}; {files["quality"]}',
-             f'{ids[4]}; {files["security"]}', f'{ids[5]}; {rel}/decisions/D-3.md',
-             f'{ids[6]}; {rel}/decisions/D-4.md', *ids[7:11],
-             f'{ids[11]}; ' + '; '.join(files.values()),
+             f'{ids[4]}; {files["security"]}', *ids[5:9],
+             f'{ids[9]}; ' + '; '.join(files.values()),
              f'event not recorded; {rel}/state.json']
     return [f'{line} ({tail})' for line, tail in zip(BRIEF, tails)]
 
@@ -217,13 +182,9 @@ def test_unmerged_item_has_no_merge_line(root, capsys):
 def test_missing_details_say_not_recorded(root, capsys):
     files = merged_item(root, proposal=False)
     (root / files['quality']).unlink()
-    save(root, VALID.replace('Which fix?', 'Retry fix-login?'), 'D-5')
-    state.append_event('decision.decided', {'id': 'D-4', 'option': 'A'}, directory=day_of(root))
     lines = why(capsys, 'fix-login')[1]
     assert lines[0] == 'queued: goal ship-login, score not recorded'
     assert 'gate quality initial: FIX, blocking findings not recorded' in lines
-    assert 'decision D-4: Merge fix-login now?: A by not recorded' in lines
-    assert 'decision D-5: Retry fix-login?: decided not recorded' in lines
 
 
 def write_state(root, data, day=DAY):
@@ -251,12 +212,11 @@ def test_item_carried_from_an_earlier_day_reads_both_days(root, capsys):
 
 
 @pytest.mark.parametrize('row,now', [
-    ({'phase': 'parked', 'status': 'blocked', 'resume_phase': 'implement', 'decision': 'D-5'},
-     'now: parked (blocked), waiting on decision D-5'),
+    ({'phase': 'parked', 'status': 'blocked', 'resume_phase': 'gate',
+      'disposition': {'kind': 'parked', 'reason': 'gate quality PARK: P1'}},
+     'now: parked (blocked), gate quality PARK: P1; waiting on: wuwei plan resume x'),
     ({'phase': 'escalated', 'status': 'blocked', 'resume_phase': 'implement'},
-     'now: escalated (blocked), waiting on: not recorded'),
-    ({'phase': 'implement', 'assumption': {'decision': 'D-6', 'status': 'waiting'}},
-     'now: implement (queued), waiting on external confirmation D-6'),
+     'now: escalated (blocked); waiting on: wuwei plan resume x'),
     ({'phase': 'raised', 'pr': 'acme/app#7'}, 'now: raised (queued), waiting on start a fix round'),
     ({'phase': 'raised'}, 'now: raised (queued)'),
 ])
@@ -344,32 +304,13 @@ def test_last_refusal_is_the_newest_across_days(root, capsys):
     assert why(capsys, 'last refusal')[1][3] == 'rule: today'
 
 
-DECIDED = ['D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
-           'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
-           'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.',
-           'weights: Correctness 10, Speed 2', 'margin: 0.47', 'class: design']
-
-
-def test_decision_view_after_an_owner_answer(root, monkeypatch, capsys):
-    answer(root, monkeypatch, 'B')
-    ident = f'{DAY}:{len(events(root))}'
-    assert why(capsys, 'D-3') == (0, [*DECIDED, 'decided: B by owner'], '')
-    lines = why(capsys, 'D-3', '--full')[1]
-    assert lines[0] == f'D-3: Which fix? (event not recorded; .wuwei/days/{DAY}/decisions/D-3.md)'
-    assert lines[-1] == f'decided: B by owner (event {ident})'
-
-
-def test_decision_view_without_a_record_exits_one(root, capsys):
-    assert why(capsys, 'D-9') == (1, [], 'wuwei why: no decision record D-9 today; run bin/wuwei status --json for open decisions\n')
-
-
 TOKEN = 'ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'
 
 
-@pytest.mark.parametrize('argv', [('fix-login',), ('fix-login', '--full'), ('D-3',), ('D-3', '--full')])
+@pytest.mark.parametrize('argv', [('fix-login',), ('fix-login', '--full')])
 def test_recorded_credentials_are_redacted(root, capsys, argv):
-    merged_item(root)
-    save(root, VALID.replace('Which fix?', f'Which fix for fix-login with {TOKEN}?'), 'D-3')
+    files = merged_item(root)
+    (root / files['quality']).write_text(QUALITY.replace('plain text', f'plain text {TOKEN}'))
     code, lines, _ = why(capsys, *argv)
     assert code == 0 and '[REDACTED]' in '\n'.join(lines) and TOKEN not in '\n'.join(lines)
 
@@ -502,7 +443,7 @@ def test_why_json_light_tier_and_no_spec_engine(root, capsys):
 def test_why_json_reads_an_item_only(root, capsys):
     live_item(root)
     assert why(capsys, 'Y', '--json')[0] == 1
-    for target in (['D-3'], ['last', 'refusal'], ['draft-' + '0' * 32]):
+    for target in (['last', 'refusal'], ['draft-' + '0' * 32]):
         code, lines, err = why(capsys, *target, '--json')
         assert (code, lines) == (2, []) and '--json reads an item' in err
 

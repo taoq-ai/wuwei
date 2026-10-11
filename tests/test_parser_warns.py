@@ -205,15 +205,6 @@ def test_issue_470_sixth_row(workspace, posture, command, monkeypatch, capsys):
     assert 'nonliteral guarded' not in json.dumps(out)
 
 
-def test_decision_lint_warns_inline_snippet(workspace, monkeypatch, capsys):
-    configure(workspace, 'observe')
-    command = 'python3 -c \'print(open("days/x/decisions/D-1.md").read())\''
-    code, _, _ = hook(workspace, command, monkeypatch, capsys, event='PostToolUse')
-    warned = [event['payload']['reason'] for event in events(workspace, 'guard.would_refuse')]
-    assert code == 0
-    assert warned == [shell.UNPARSED]
-
-
 @pytest.mark.parametrize('posture', POSTURES)
 @pytest.mark.parametrize('command', ['for f in a b; do git push origin $f; done',
                                      'for f in a b; do git commit -m $f; done'])

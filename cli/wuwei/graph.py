@@ -14,10 +14,10 @@ TYPES = ('member_of', 'class', 'sends_through', 'mode', 'maps_to', 'reviews')
 VIEWS = ('outbound.people', 'outbound.channel_classes', 'outbound.work_channels', 'outbound.external_channels',
          'outbound.owner.slack.user', 'outbound.owner.slack.dm', 'outbound.owner.mail', 'outbound.owner.code_host',
          'outward.servers', 'outward.modes', 'outward.classes', 'shepherd.authors', 'owner.handles',
-         'voice.sources', 'repos.shepherd.reviewers')
+         'repos.shepherd.reviewers')
 COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
            'bin/wuwei who walks it.')
-TABLES = ('owner', 'voice.sources', 'outward.servers', 'outward.modes', 'outward.classes', 'outbound',
+TABLES = ('owner', 'outward.servers', 'outward.modes', 'outward.classes', 'outbound',
           'outbound.people', 'outbound.channel_classes', 'outbound.owner', 'outbound.owner.slack',
           'shepherd.authors')
 FIX = 'move .wuwei/graph.json aside and run bin/wuwei init --upgrade'
@@ -36,8 +36,7 @@ def sections(config):
              'outbound.external_channels': outbound['external_channels'],
              'outward.servers': config['outward']['servers'], 'outward.modes': config['outward']['modes'],
              'outward.classes': config['outward']['classes'], 'shepherd.authors': config['shepherd']['authors'],
-             'owner.handles': config['owner']['handles'], 'voice.sources': config['voice']['sources'],
-             'repos.shepherd.reviewers': {}}
+             'owner.handles': config['owner']['handles'], 'repos.shepherd.reviewers': {}}
     for key, path, _ in OWNER:
         found[key] = owner[path[0]][path[1]] if len(path) == 2 else owner[path[0]]
     for repo in config['repos']:
@@ -79,10 +78,6 @@ def build(config, previous=None, add=(), names=None):
     for handle in found['owner.handles']:
         prefix = 'person:slack:' if re.fullmatch(SLACK_SHAPE['user'], handle) else 'login:'
         edge('person:owner', 'maps_to', prefix + handle, 'owner.handles')
-    for audience, channels in found['voice.sources'].items():
-        nodes[f'voice:{audience}'] = {'view': 'voice.sources'}
-        for channel in channels:
-            edge(f'channel:{channel}', 'member_of', f'voice:{audience}', 'voice.sources')
     for repo, logins in found['repos.shepherd.reviewers'].items():
         for login in logins:
             edge(f'login:{login}', 'reviews', f'repo:{repo}', 'repos.shepherd.reviewers')
@@ -109,8 +104,6 @@ def views(register):
             found['outbound.people'][node[7:]] = {'email': '', 'org': '', 'class': ''}
         elif attrs.get('view') == 'shepherd.authors':
             found['shepherd.authors'][node[8:]] = {'login': '', 'mention': ''}
-        elif attrs.get('view') == 'voice.sources':
-            found['voice.sources'][node[6:]] = []
     for edge in register['edges']:
         view, source, to = edge.get('view'), edge['from'], edge['to']
         rest = source.partition(':')[2]
@@ -129,8 +122,6 @@ def views(register):
         elif view == 'owner.handles':
             found[view].append(to.removeprefix('person:slack:') if to.startswith('person:slack:')
                                else to.removeprefix('login:'))
-        elif view == 'voice.sources':
-            found[view][to[6:]].append(rest)
         elif view == 'repos.shepherd.reviewers':
             found[view].setdefault(to[5:], []).append(rest)
     return found
