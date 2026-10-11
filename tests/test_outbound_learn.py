@@ -55,9 +55,9 @@ def configure(root, text):
     path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', f'[outbound]\ndefault_tier = "ask"\n{text}\n'))
 
 
-def posture(root, name):
+def enforce(root, value):
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'\n[security]\nposture = "{name}"\n')
+        stream.write(f'\n[guards]\nenforce = {value}\n')
 
 
 def learn(root, *extra, tool=TOOL, listings=True):
@@ -181,12 +181,7 @@ def test_card(root, capsys):
 
 
 def answer(root, monkeypatch, option):
-    """The planner asks the card in its session, then runs the card's record command; under
-    strict the card does not confirm (#357, until part 18), so the owner answers at the prompt."""
-    from wuwei.__main__ import main
-    if workspace.posture(workspace.load_config(root))[0] == 'strict':
-        monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-        return main(['outbound', 'answer', 'D-1', option]), option
+    """The planner asks the card in its session, then runs the card's record command."""
     from wuwei import decision, plan
     from wuwei.__main__ import main
     from wuwei.guards.answers import record_gate
@@ -263,19 +258,15 @@ def test_template_tables_are_sections():
     assert '# people = {' not in text and '# servers = {' not in text
 
 
-@pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('name', ['false', 'true'])
 def test_auto(root, capsys, name):
     configure(root, 'learn = "auto"')
-    posture(root, name)
+    enforce(root, name)
     (workspace.day_dir(root) / 'plan.md').write_text('Pairing with U03 today.\n')
     (workspace.day_dir(root) / 'people.json').write_text(json.dumps(
         [*PEOPLE, {'id': 'U03', 'name': 'Cy', 'email': 'cy@example.com'}]))
     assert learn(root, '--as', 'slack') == 0
     out = capsys.readouterr().out
-    if name == 'strict':
-        assert decisions(root) == ['D-1.md'] and '"record"' in out
-        assert events(root, 'outbound.learned') == []
-        return
     assert '"record"' not in out and not (workspace.day_dir(root) / 'decisions').exists()
     config = workspace.load_config(root)
     assert set(config['outbound']['people']) == {'slack:U01', 'slack:U02'}
@@ -285,7 +276,6 @@ def test_auto(root, capsys, name):
 def test_auto_never_learns_other_without_the_card(root, capsys):
     # Verify #492: `other` is mode send with no audience rules, so auto still asks.
     configure(root, 'learn = "auto"')
-    posture(root, 'guarded')
     assert learn(root, '--as', 'other', tool=f'mcp__{UUID}__create_project', listings=False) == 0
     assert '"record"' in capsys.readouterr().out and decisions(root) == ['D-1.md']
     assert events(root, 'outbound.learned') == []
@@ -296,7 +286,6 @@ def test_auto_never_learns_other_without_the_card(root, capsys):
 def test_as_cannot_override_a_resolving_channel(root, capsys):
     # Verify #492: a mail connector that drafted cannot be relabelled other to pass.
     configure(root, 'learn = "auto"')
-    posture(root, 'guarded')
     assert learn(root, '--as', 'other', tool=f'mcp__{UUID}__send_email', listings=False) == 1
     assert 'already resolves to mail' in capsys.readouterr().err
     assert events(root, 'outbound.learned') == []
@@ -366,12 +355,12 @@ def test_owner_file_unreadable(root, capsys):
     assert 'cannot read' in capsys.readouterr().err
 
 
-@pytest.mark.parametrize('mode,name', [('card', 'guarded'), ('auto', 'observe')])
+@pytest.mark.parametrize('mode,name', [('card', 'true'), ('auto', 'false')])
 def test_owner_identity_is_recorded_without_a_card(root, capsys, monkeypatch, mode, name):
-    # #537: the owner's own identity, from the connector's identity call, needs no card outside strict.
+    # #537: the owner's own identity, from the connector's identity call, needs no card.
     from wuwei.guards.outward import check_lint, check_tier
     configure(root, f'learn = "{mode}"')
-    posture(root, name)
+    enforce(root, name)
     path = owner_file(root, {'user': 'U09', 'dm': 'D09'})
     assert learn(root, '--owner', path, tool=SLACK, listings=False) == 0
     assert '"record"' not in capsys.readouterr().out
@@ -381,33 +370,6 @@ def test_owner_identity_is_recorded_without_a_card(root, capsys, monkeypatch, mo
     assert events(root, 'outbound.learned')[0]['owner'] is True
     assert dm(root, check_tier) == dm(root, check_lint) == (0, '')
     assert len(events(root, 'outward.to_owner')) == 1
-
-
-def test_owner_card_under_strict(root, capsys, monkeypatch):
-    from wuwei.guards.outward import check_tier
-    posture(root, 'strict')
-    path = owner_file(root, {'user': 'U09', 'dm': 'D09'})
-    assert learn(root, '--owner', path, tool=SLACK, listings=False) == 0
-    [question] = json.loads(capsys.readouterr().out)
-    assert 'your identity U09, DM D09' in question['question']
-    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
-    assert "- owner U09, DM D09 from the connector's identity call" in text
-    assert decisions(root) == ['D-1.md']
-    assert answer(root, monkeypatch, 'approve') == (0, 'approve')
-    assert workspace.load_config(root)['outbound']['owner']['slack'] == {'user': 'U09', 'dm': 'D09'}
-    assert events(root, 'outbound.learned')[0]['owner'] is True
-    assert dm(root, check_tier) == (0, '')
-
-
-def test_owner_keep_writes_nothing(root, capsys, monkeypatch):
-    from wuwei.guards.outward import check_tier
-    posture(root, 'strict')  # #537: outside strict the identity is written without a card
-    assert learn(root, '--owner', owner_file(root, {'user': 'U09', 'dm': 'D09'}),
-                 tool=SLACK, listings=False) == 0
-    before = (root / '.wuwei/config.toml').read_text()
-    assert answer(root, monkeypatch, 'keep') == (0, 'keep')
-    assert (root / '.wuwei/config.toml').read_text() == before
-    assert dm(root, check_tier)[0] == 1
 
 
 def test_owner_proposes_only_empty_fields(root, capsys):
@@ -601,11 +563,11 @@ def test_local_shape_proposes_local(root, capsys):
     assert question['question'].startswith('D-1: Connector terminal is local?')
 
 
-@pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('name', ['false', 'true'])
 def test_auto_never_learns_local_without_the_card(root, capsys, name):
     # #727: WUWEI cannot verify that a connector is local, so the owner always answers.
     configure(root, 'learn = "auto"')
-    posture(root, name)
+    enforce(root, name)
     assert learn(root, '--as', 'local', tool=f'mcp__{UUID}__run_job', listings=False) == 0
     assert decisions(root) == ['D-1.md']
     assert events(root, 'outbound.learned') == []
@@ -621,22 +583,4 @@ def test_answer_needs_the_asked_card(root, capsys):
     assert main(['outbound', 'answer', 'D-1', 'approve', '--card', decision.card_hash('D-1', fields)]) == 1
     err = capsys.readouterr().err
     assert 'no card answer' in err and 'host terminal' not in err
-    assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None
-
-
-def test_under_strict_an_asked_card_does_not_confirm(root, capsys, monkeypatch):
-    # #834 review F2: under strict a planner-asked D-n card never confirms outbound answer.
-    from wuwei import decision, plan
-    from wuwei.__main__ import main
-    from wuwei.guards.answers import record_gate
-    posture(root, 'strict')
-    card(root, capsys)
-    plan.session('P', root)
-    fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
-    assert record_gate({'cwd': str(root), 'session_id': 'P', 'tool_name': 'AskUserQuestion', 'tool_input': {
-        'questions': [{'question': f'D-1: {fields["Question"]}', 'header': 'D-1'}]}}) == (0, '')
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda *args, **kwargs: pytest.fail('prompted'))
-    capsys.readouterr()
-    assert main(['outbound', 'answer', 'D-1', 'approve', '--card', decision.card_hash('D-1', fields)]) == 1
-    assert 'no card answer' in capsys.readouterr().err
     assert state.read_state(root)['outbound_learn']['D-1']['answered'] is None

@@ -29,12 +29,6 @@ def run(args):
     dry_run = getattr(args, 'dry_run', False)
     if verb and not dry_run and sessions.current():
         root = workspace.find_workspace()
-        if workspace.posture(workspace.load_config(root))[0] == 'strict':
-            # #551: under strict a scheduled shepherd is the owner's to start or stop.
-            print(json.dumps({'action': 'owner_terminal', 'command': f'bin/wuwei shepherd {verb}',
-                              'why': 'a scheduled shepherd posts as you while no session runs; under strict you start or stop it',
-                              'then': 'bin/wuwei doctor shows the shepherd row'}))
-            return 1
         if verb == 'schedule' and not args.yes:
             # #548: the answer on the card is the confirmation; its record command installs.
             action = {'action': 'ask', 'command': RECORD, 'then': 'bin/wuwei doctor shows the shepherd row'}

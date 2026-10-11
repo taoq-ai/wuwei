@@ -28,8 +28,7 @@ def check(payload):
 
 
 def check_mcp(payload):
-    """The MCP launch gate (#325) as its own record: mcp.cached applies the mcp posture and
-    its floor (#331), so the seats level never relaxes it."""
+    """The MCP launch gate (#325) as its own record: mcp.cached reads guards.enforce."""
     try:
         seat = _seat(payload)
         if seat is None:
@@ -66,10 +65,6 @@ def _seat(payload):
     return root, inputs, agent_type.rsplit(':', 1)[-1]
 
 
-ADHOC = ('untyped Agent launch is not a WUWEI seat; register it first with '
-         'bin/wuwei seat start --role <role> --adhoc "<prompt>", then launch it with the same prompt')
-
-
 UNBRIEFED = ('unbriefed launch registered as adhoc seat {name} for {target}: the Agent prompt has no '
              'WUWEI brief: line, so WUWEI cannot receive or continue it; {fix}')
 
@@ -91,14 +86,14 @@ def _named_item(data, inputs):
 
 
 def _unbriefed(payload, root, inputs, role):
-    """#660: a WUWEI seat type launched with no marker: refused where seats block, else an
-    adhoc seat labelled with its role and a warning naming the brief command."""
+    """#660: a WUWEI seat type launched with no marker: refused while guards.enforce is on
+    (#837), else an adhoc seat labelled with its role and a warning naming the brief command."""
     from wuwei import brief, workspace
 
     item = '<item>'
     if (workspace.day_dir(root) / 'state.json').exists():
         _, data = brief.read_day(root)
-        if workspace.posture(workspace.load_config(root))[1]['seats'] != 'block':
+        if not workspace.load_config(root)['guards']['enforce']:
             return _adhoc(payload, role=role)
         item = _named_item(data, inputs) or item
     raise brief.Refused(f'no WUWEI brief: line in the Agent prompt; write the brief with bin/wuwei brief '
@@ -107,9 +102,9 @@ def _unbriefed(payload, root, inputs, role):
 
 
 def _adhoc(payload, role=None):
-    """#676: an untyped launch in a day is an adhoc seat; refused where seats block,
-    unless wuwei seat start --adhoc recorded its prompt. #660: with role, an unbriefed
-    WUWEI seat type, registered with a warning (the caller decided the posture)."""
+    """#676: an untyped launch in a day is an adhoc seat, labelled by wuwei seat start --adhoc
+    when it recorded its prompt. #660: with role, an unbriefed WUWEI seat type, registered
+    with a warning (guards.enforce = false)."""
     from wuwei import brief, sessions, state, workspace
     from wuwei.redact import redact
 
@@ -127,9 +122,6 @@ def _adhoc(payload, role=None):
     digest = brief.prompt_digest(prompt)
     started = [row['payload'] for row in brief.events(root)
                if row['kind'] == 'seat adhoc' and row['payload'].get('sha256') == digest]
-    if (role is None and workspace.posture(workspace.load_config(root))[1]['seats'] == 'block'
-            and not started):
-        raise brief.Refused(f'{kind}: {ADHOC}')
     session = payload.get('session_id')
     event, found = {'role': 'adhoc', 'type': kind}, []
 
@@ -190,7 +182,7 @@ def _check(payload):
             or path.parent != directory / 'briefs' or path.suffix != '.md'
             or path.resolve() != path):
         raise ValueError(f'invalid brief path; {DAMAGED}')
-    if not path.exists():  # #725: its prefix is in RECORDS_FLOOR, so it blocks in every posture
+    if not path.exists():  # #725: its prefix is in RECORDS_FLOOR, so it always blocks
         return 2, (f'brief {path.relative_to(root)} does not exist; '
                    f'run bin/wuwei brief {role} <item> <name> first')
     try:

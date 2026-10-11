@@ -137,8 +137,6 @@ def scan(directory, classified_state=None):
                 key = (kind, payload.get('pr'))
             elif kind == 'draft.created' and isinstance(payload, dict):
                 key = (kind, payload.get('id', number))
-            elif kind == 'guard.would_refuse' and isinstance(payload, dict):
-                key = (kind, payload.get('guard'))
             elif tier == 'page':
                 key = (kind, number)
             else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it
@@ -152,9 +150,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.changed' and isinstance(payload, dict):
                     reason = payload.get('summary') or (
                         f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
-                if kind == 'guard.would_refuse' and isinstance(payload, dict):
-                    reason = (f'{payload.get("guard")}: {payload.get("reason")} '
-                              f'(warn: security.areas.{payload.get("area")})')
                 if kind == 'mcp.finding' and isinstance(payload, dict):
                     from wuwei import mcp  # #351: scanner text only if it is a name.
                     shown = [value if isinstance(value, str) and mcp.NAME.fullmatch(value) else 'unnamed'
@@ -234,7 +229,7 @@ def snapshot(directory, line=False):
             if any(instant.tzinfo is None for instant, _ in parsed):
                 raise ValueError(f'{key}: expected timezone-aware timestamps; {DAMAGED}')
             result[destination] = min(parsed, key=lambda row: row[0])[1]
-    result['posture'] = workspace.posture(config)[0] if config is not None else None
+    result['enforce'] = config['guards']['enforce'] if config is not None else None
     from wuwei import integrity
     result['restart'] = integrity.restart(config) if config is not None else ''
     if line:
@@ -343,8 +338,8 @@ def _groups(data, shown=None):
         work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
                     + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
     attention = [f'pages {data["pages"]}']
-    if data.get('posture') not in (None, 'guarded'):
-        attention.append(data['posture'])
+    if data.get('enforce') is False:
+        attention.append('observe')
     return [now, work, attention]
 
 

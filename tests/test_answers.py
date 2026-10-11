@@ -106,4 +106,4 @@ def test_owner_step_answer_is_recorded_from_any_main_session(planner):
 def test_answers_is_the_one_ask_user_question_guard():
     from wuwei import guards
     assert guards.MODULES['answers'] == {'PostToolUse': 'AskUserQuestion'}
-    assert 'decision' not in guards.MODULES and guards.AREAS['answers'] == 'records'
+    assert 'decision' not in guards.MODULES and 'answers' in guards.FLOOR

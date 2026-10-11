@@ -435,12 +435,13 @@ def test_honeytoken_shell_input_redirection(secured, command):
     assert events(secured)[0]['kind'] == 'security.honeytoken'
 
 
-def test_security_load_error_before_trace_scope_is_unrun(secured):
+def test_security_load_error_before_trace_scope_warns(secured, capsys):
+    # #837: the traces recorder never refuses; the reason goes to stderr.
     from wuwei.guards.traces import check
     config = secured / '.wuwei/config.toml'
     config.write_text('[broken')
-    code, reason = check(trace_payload(secured))
-    assert code == 2 and reason
+    assert check(trace_payload(secured)) == (0, '')
+    assert 'wuwei traces:' in capsys.readouterr().err
 
 
 def test_legacy_lint_outside_workspace_keeps_existing_behavior(tmp_path, monkeypatch):

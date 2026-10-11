@@ -446,18 +446,6 @@ def test_no_internal_state_words_by_default(configured, text):
     assert lint(text, 'chat', configured[1]) == (0, '')
 
 
-def test_owner_internal_state_pattern_names_the_word(configured):
-    from wuwei.outward import check_lint
-    root = configured[0]
-    set_posture(root, 'strict')
-    config = workspace.load_config(root)
-    config['outward']['patterns'] = [r'\bsentinel\b', r'\b(?:the\s+)?agents?\b']
-    assert check_lint({'text': 'the agents are ready', 'channel': 'C1'}, root, config, {'slack'}) == (
-        1, 'outward: internal state word "the agents" in a slack message (outward.patterns); '
-        'remove it or change the list')
-    assert check_lint({'text': 'tests passed', 'channel': 'C1'}, root, config, {'slack'}) == (0, '')
-
-
 TEXT = 'Notes for I-12 in src/app/main.py'
 PATTERNS = "\n[outward]\npatterns = ['\\bI-[0-9]+\\b', '[a-z_]+/[a-z_/]+\\.py']\n"
 
@@ -481,14 +469,14 @@ def test_internal_word(configured):
         internal_word('abc', config)
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_internal_state_never_on_records(configured, posture):
     # #533: tracker, docs and code-host writes are the team's records; the list never applies.
     from wuwei import outward
     from wuwei.guards.outward import check_lint
     root = configured[0]
     write_config(root, PATTERNS + '\n[tracker]\nauto = ["items"]\n')
-    set_posture(root, posture)
+    set_enforce(root, posture)
     config = workspace.load_config(root)
     assert outward.check_call({'title': 'Notes', 'body': TEXT, 'category': 'items'},
                               root, config, {'tracker'}, port=True) == (0, '')
@@ -563,7 +551,7 @@ def test_internal_state_client_approved_sends(configured):
 WARNING = 'warning: outward: internal state word "i-12" in a'
 
 
-def test_internal_state_team_passes_below_strict(configured, monkeypatch, capsys):
+def test_internal_state_team_passes(configured, monkeypatch, capsys):
     from wuwei import outward
     root = configured[0]
     path = root / '.wuwei/config.toml'
@@ -584,19 +572,6 @@ def test_internal_state_to_owner_never(configured):
     config = workspace.load_config(root)
     assert outward.check_lint({'text': TEXT, 'channel': 'D01'}, root, config, {'slack'}) == (0, '')
     assert events_of(root, 'outward.lint') == []
-
-
-def test_internal_state_strict_refuses(configured):
-    # Strict posture keeps the refusal for team and company chat; records still pass.
-    from wuwei import outward
-    root = configured[0]
-    write_config(root, PATTERNS)
-    set_posture(root, 'strict')
-    config = workspace.load_config(root)
-    assert outward.check_lint({'text': TEXT, 'channel': 'C1'}, root, config, {'slack'}) == (
-        1, 'outward: internal state word "i-12" in a slack message (outward.patterns); '
-        'remove it or change the list')
-    assert outward.check_lint({'text': TEXT}, root, config, {'tracker'}) == (0, '')
 
 
 def test_internal_state_not_on_pr_text(configured):
@@ -1144,19 +1119,17 @@ def test_recorded_server_tools(configured, tool, outcome):
     assert outcome == 'read' or not tier == lint == (0, '')
 
 
-def set_posture(root, name, outward_area=''):
+def set_enforce(root, value):
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'\n[security]\nposture = "{name}"\n')
-        if outward_area:
-            stream.write(f'[security.areas]\noutward = "{outward_area}"\n')
+        stream.write(f'\n[guards]\nenforce = {value}\n')
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_unmatched_write_names_learn(configured, posture):
     # #492: a write nothing resolves names the connector and the learn command, never config.
     from wuwei.guards.outward import check_lint, check_tier
     root = configured[0]
-    set_posture(root, posture)
+    set_enforce(root, posture)
     for check in (check_tier, check_lint):
         code, reason = check(payload(root, 'A technical claim.', tool='mcp__acme__send_message'))
         assert code == 2 and 'connector acme' in reason
@@ -1197,11 +1170,12 @@ def unknown_events(root):
             if row['kind'] == 'outward.unknown_tool']
 
 
-@pytest.mark.parametrize('area,code,recorded', [('', 0, 1), ('off', 0, 0), ('block', 2, 0)])
-def test_unknown_tool_recorded_once(configured, monkeypatch, area, code, recorded):
-    # #469: under guarded an unknown tool passes with one warning per tool per day.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_unknown_tool_recorded_once(configured, monkeypatch, enforce):
+    # #469, #837: an unknown tool passes with one warning per tool per day, either way.
+    code, recorded = 0, 1
     root = configured[0]
-    set_posture(root, 'guarded', area)
+    set_enforce(root, enforce)
     call = payload(root, 'A technical claim.', tool='mcp__acme__frobnicate')
     assert run_hook(monkeypatch, call) == code
     assert run_hook(monkeypatch, call) == code
@@ -1209,7 +1183,7 @@ def test_unknown_tool_recorded_once(configured, monkeypatch, area, code, recorde
     assert len(rows) == recorded
     if rows:
         assert rows[0]['payload']['tool'] == 'mcp__acme__frobnicate'
-        assert rows[0]['payload']['posture'] == 'guarded'
+        assert 'posture' not in rows[0]['payload']
         assert 'bin/wuwei outbound learn --tool mcp__acme__frobnicate' in rows[0]['payload']['reason']
 
 
@@ -1225,13 +1199,13 @@ PROBES = ['conversations_search_messages', 'conversations_history', 'channels_li
           'slack_search_messages', 'slack_get_channel_history']
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 @pytest.mark.parametrize('name', [*PROBES, 'conversations_add_message', 'slack_post_message',
                                   'acme frobnicate'])
 def test_probe_tools(configured, monkeypatch, capsys, posture, name):
     # #469 acceptance: the owner's seven probes and an unknown name, through the hook.
     root = configured[0]
-    set_posture(root, posture)
+    set_enforce(root, posture)
     server, _, name = name.rpartition(' ')
     tool = f'mcp__{server or "slack"}__{name}'
     call = payload(root, 'A technical claim.', tool=tool, channel_id='C1')
@@ -1240,8 +1214,7 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
     if name in PROBES:
         assert code == 0
     elif server:
-        assert code == (2 if posture == 'strict' else 0)
-        assert posture != 'strict' or f'bin/wuwei outbound learn --tool {tool}' in err
+        assert code == 0
     else:
         assert code == 2 and 'outward: draft draft-' in err
 
@@ -1331,9 +1304,9 @@ def test_hook_refusal_names_draft_and_why_reads_it(configured, monkeypatch, caps
     assert run_hook(monkeypatch, payload(root, 'Thanks', channel='C9')) == 2
     lines = capsys.readouterr().err.splitlines()
     draft_id = lines[0].split()[2].rstrip(':')
-    assert lines[:2] == [
-        f'outward: draft {draft_id}: {RULES[0][3]}; the owner decides: bin/wuwei drafts show {draft_id} --widget',
-        'posture: outward = block; a draft is one card away']
+    assert lines[:1] == [
+        f'outward: draft {draft_id}: {RULES[0][3]}; the owner decides: bin/wuwei drafts show {draft_id} --widget']
+    assert not any(line.startswith('posture:') for line in lines)
     assert not any('no setting lowers it' in line for line in lines)
     assert main(['why', 'last', 'refusal']) == 0
     out = capsys.readouterr().out.splitlines()
@@ -1447,11 +1420,11 @@ def test_recorded_opaque_tools(configured, tool, outcome):
     assert 'config set' not in tier[1] + lint[1]
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 def test_learn_reasons(configured, monkeypatch, capsys, posture):
     from wuwei.guards.outward import check_lint, check_tier
     root = configured[0]
-    set_posture(root, posture)
+    set_enforce(root, posture)
     write = opaque('send_message')
     for check in (check_tier, check_lint):
         code, reason = check(payload(root, 'A technical claim.', tool=write))
@@ -1461,8 +1434,8 @@ def test_learn_reasons(configured, monkeypatch, capsys, posture):
     code = run_hook(monkeypatch, payload(root, 'A technical claim.', tool=unknown))
     err = capsys.readouterr().err
     rows = unknown_events(root)
-    reason = err if posture == 'strict' else rows[0]['payload']['reason']
-    assert code == (2 if posture == 'strict' else 0)
+    reason = rows[0]['payload']['reason']
+    assert code == 0
     assert UUID in reason and f'bin/wuwei outbound learn --tool {unknown}' in reason
     assert 'config set' not in reason
     text = (root / '.wuwei/config.toml').read_text().replace(
@@ -1654,13 +1627,13 @@ def test_to_owner_event_and_lint(configured):
     assert outward.check_lint({'text': 'Ready \U0001F600', 'channel': 'D01'}, root, config, {'slack'})[0] == 1
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_guard_to_owner_every_posture(configured, posture):
+@pytest.mark.parametrize('posture', ['false', 'true'])
+def test_guard_to_owner_either_way(configured, posture):
     from wuwei import state
     from wuwei.guards.outward import check_lint, check_tier
     root = configured[0]
     with_owner(root)
-    set_posture(root, posture)
+    set_enforce(root, posture)
     call = payload(root, 'Your build is green', tool=opaque('slack_send_message'), channel='D01')
     assert check_tier(call) == (0, '')
     assert check_lint(call) == (0, '')
@@ -1669,13 +1642,13 @@ def test_guard_to_owner_every_posture(configured, posture):
 
 
 def test_guard_to_owner_floor(configured):
-    # #495, owner: a self-DM always sends; a strict workspace with the outward area on block,
-    # the connector in mode draft or refuse and a sensitive word do not lower it.
+    # #495, owner: a self-DM always sends; the connector in mode draft or refuse and a
+    # sensitive word do not lower it.
     from wuwei import state
     from wuwei.guards.outward import check_lint, check_tier
     root = configured[0]
     with_owner(root)
-    set_posture(root, 'strict', 'block')
+    set_enforce(root, 'true')
     write_config(root, f'\n[outward.modes]\n"{UUID}" = "draft"\n')
     path = root / '.wuwei/config.toml'
     for mode, count, held, words in (('draft', 2, 1, 'ask by rule 1 '), ('refuse', 4, 1, 'block by rule 1 ')):
@@ -1708,7 +1681,7 @@ def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
     from wuwei.guards.outward import check_tier
     root = configured[0]
     with_owner(root)
-    set_posture(root, 'strict', 'block')
+    set_enforce(root, 'true')
     write_config(root, f'\n[outward.modes]\n"{UUID}" = "refuse"\n')
     mail = {'to': 'pat@example.test', 'subject': 'numbers', 'body': 'Our layoffs list'}
     call = payload(root, tool=opaque('send_mail'))
@@ -1842,9 +1815,8 @@ def test_tier_config(configured):
     ('{ person = "U07" }', 'outbound.tiers.0.tier'),
 ])
 def test_tier_row_validation(configured, row, key):
-    # A typo must not widen a row to match everything, so it refuses under every posture.
+    # A typo must not widen a row to match everything, so it refuses.
     root = configured[0]
-    set_posture(root, 'guarded')
     outbound_line(root, f'tiers = [{row}]')
     with pytest.raises(workspace.ConfigError, match=key.replace('.', r'\.')):
         workspace.load_config(root)
@@ -1994,20 +1966,12 @@ def test_owner_row_person(configured):
     assert outward.check_tier({'text': 'Can it wait', 'channel': 'U07'}, root, config, {'slack'}) == (0, '')
 
 
-def test_tier_floor_strict(configured, monkeypatch):
-    from wuwei import outward
+def test_tier_send_row_and_the_shepherd(configured, monkeypatch):
     root = configured[0]
     tiers_workspace(root)
     outbound_line(root, 'tiers = [{ audience = "client", tier = "send" }]')
     guarded = workspace.load_config(root)
     assert tier_run(root, guarded, 'thanks', 'C2') == ((0, 'send'), [])
-    set_posture(root, 'strict')
-    config = workspace.load_config(root)
-    why, trace = [], []
-    assert outward.classify('thanks', root, config, {'text': 'thanks', 'channel': 'C2'}, kind='slack',
-                            why=why, trace=trace) == (1, 'draft')
-    assert why[0].startswith('ask by rule 6 (audience=client) for C2')
-    assert '  rule 1 owner { audience = "client", tier = "send" }: ignored under strict' in trace
     monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
     for channel in ('D01', 'C2'):
         assert tier_run(root, guarded, 'thanks', channel)[0] == (1, 'draft')
@@ -2166,14 +2130,14 @@ def local_call(root, tool, command='sleep 600'):
     return call
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('posture', ['false', 'true'])
 @pytest.mark.parametrize('tool', LOCAL_TOOLS)
 def test_local_tools_pass(configured, posture, tool):
     # #727: a tool that acts only on the owner's machine is never drafted or blocked.
     from wuwei import state
     from wuwei.guards.outward import check_lint, check_tier, resolve
     root = configured[0]
-    set_posture(root, posture)
+    set_enforce(root, posture)
     call = local_call(root, tool)
     assert check_tier(call) == check_lint(call) == (0, '')
     assert not state.read_state(root).get('drafts')
@@ -2195,7 +2159,6 @@ def test_local_alias(configured):
     from wuwei.guards.outward import check_lint, check_tier, resolve
     from wuwei import state
     root = configured[0]
-    set_posture(root, 'strict')
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[outward.servers]\nacme = "local"\nterminal = "mail"\n')
     call = payload(root, 'A technical claim.', tool='mcp__acme__send_message')

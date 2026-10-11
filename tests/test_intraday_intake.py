@@ -296,18 +296,14 @@ def test_plan_add_unknown_item_without_goal_names_the_form(root):
     assert 'OWN-2' not in state.read_state(root)['items']
 
 
-def test_owner_named_item_needs_a_ticket_when_a_tracker_is_set(root):
+def test_owner_named_item_with_a_ticket_builds_next(root):
     (root / '.wuwei/config.toml').write_text(
-        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n'
-        '[security]\nposture = "strict"\n')
-    with pytest.raises(state.StateError, match='OWN-3 has no ticket'):
-        plan.add('OWN-3', root, goal='G-1')
-    assert not state.read_state(root).get('drafts')
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
     assert plan.add('OWN-3', root, goal='G-1', ticket='ENG-7')['action'] == 'build next'
     assert state.read_state(root)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
 
 
-GITHUB = '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "github"\n[security]\nposture = "strict"\n'
+GITHUB = '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "github"\n'
 REPO = '[[repos]]\nname = "{}"\npath = "{}"\ndefault_branch = "main"\n'
 
 
@@ -349,7 +345,7 @@ def test_owner_named_bare_ticket_without_a_repository_is_refused(root, monkeypat
 
 
 def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
-    """#636: below strict plan add drafts the owner item's ticket; its Send card opens it."""
+    """#636: plan add drafts the owner item's ticket; its Send card opens it."""
     from fakes.tracker import Fake, ported
     from wuwei import drafts, registry
     (root / '.wuwei/config.toml').write_text(

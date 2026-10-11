@@ -212,20 +212,15 @@ def _unmatched(tool, root, config, policy):
                        f'write it as a draft for the owner to send{learn}')
     if policy is outward.check_tier:
         return CLEAN, ''
-    from wuwei import workspace
-    name, levels = workspace.posture(config)
+    from wuwei import state, watch, workspace  # Only now: watch stays off every other hook path.
     unknown = f'outward: unknown MCP tool {tool} of connector {server}'
-    if levels['outward'] == 'block':
-        return UNRUN, f'{unknown}, not a read or a write by its name; write it as a draft for the owner to send{learn}'
-    if levels['outward'] == 'warn':
-        from wuwei import state, watch  # Only now: watch stays off every other hook path.
-        # ponytail: reads the day's events per call of an unknown tool; two racing first
-        # calls may both record. Keep a per-day set in state if that shows in latency.
-        if not any(row['kind'] == 'outward.unknown_tool' and row['payload'].get('tool') == tool
-                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-            state.append_event('outward.unknown_tool', {
-                'tool': tool, 'posture': name,
-                'reason': f'{unknown} passed under {name}; if it writes, write it as a draft for the owner to send{learn}'}, root)
+    # ponytail: reads the day's events per call of an unknown tool; two racing first
+    # calls may both record. Keep a per-day set in state if that shows in latency.
+    if not any(row['kind'] == 'outward.unknown_tool' and row['payload'].get('tool') == tool
+               for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+        state.append_event('outward.unknown_tool', {
+            'tool': tool,
+            'reason': f'{unknown} passed; if it writes, write it as a draft for the owner to send{learn}'}, root)
     return CLEAN, ''
 
 

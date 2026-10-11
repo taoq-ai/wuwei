@@ -16,16 +16,12 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     root = tmp_path / 'workspace'
     (root / '.wuwei').mkdir(parents=True)
-    (root / '.wuwei/config.toml').write_text('[security]\nposture = "guarded"\n')
+    (root / '.wuwei/config.toml').write_text('')
     workspace.day_dir(root).mkdir(parents=True)
     (workspace.day_dir(root) / 'plan.md').write_text('# Morning plan\n')
     plan.session('planner-1', root)
     monkeypatch.chdir(root)
     return root
-
-
-def strict(root):
-    (root / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
 
 
 def test_card_topic_normalises_and_hashes():
@@ -84,9 +80,9 @@ def test_owner_answer_records_without_reading_state(ws):
     assert sessions.needs_owner(ws, 'bin/wuwei state recover', 'x', token='abc') is None
 
 
-def test_owner_answer_counts_under_strict(ws):
+def test_owner_answer_counts_with_enforce_off(ws):
     from fakes import owner
-    strict(ws)
+    (ws / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     assert owner.answer(ws, OWNER_MERGE) == (0, '')
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
 
@@ -189,7 +185,7 @@ def test_a_config_that_does_not_load_is_repaired_in_the_session(ws, monkeypatch,
     import tomllib
     from fakes.integrity import seed
     seed(ws)
-    (ws / '.wuwei/config.toml').write_text('cap = "five"\n[security]\nposture = "guarded"\n')
+    (ws / '.wuwei/config.toml').write_text('cap = "five"\n[guards]\nenforce = true\n')
     plugin, recorded = launchers(ws)
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': 'ls'}) == 2
     for command in (f'{plugin} config set cap 5', f'{recorded} config set cap 5'):

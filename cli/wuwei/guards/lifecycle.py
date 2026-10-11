@@ -55,7 +55,7 @@ def session_start(payload):
     from wuwei import specmode
     session = payload.get('session_id')
     session = session if isinstance(session, str) and session.strip() else None
-    lines.append(next_command.orientation(row, workspace.posture(config)[0], specmode.label(config), session))
+    lines.append(next_command.orientation(row, config['guards']['enforce'], specmode.label(config), session))
     day = None
     try:
         env_file = None

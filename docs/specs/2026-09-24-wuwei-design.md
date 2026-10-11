@@ -168,9 +168,9 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11); under strict, an untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) whose prompt `bin/wuwei seat start --role <role> --adhoc "<prompt>"` did not record (#676). Below strict an untyped launch in a day is registered as an adhoc seat, never refused. The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. Under strict a WUWEI seat type launched with no brief line is refused naming `bin/wuwei brief <role> <item> <name>`; below strict it is registered as an adhoc seat labelled with its role, with that warning, and every launch refusal the posture lets through is shown to the session as `seat not registered: <reason>` (#660) |
-| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: below strict a missing fast check is a warning under observe and the owner's card under guarded, naming the check) |
-| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory); under strict, a recorded item that links no PR (#783: below strict a warning naming `bin/wuwei pr raise ... --item`) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11). An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
+| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: the native pre-push hook warns on a missing fast check, naming it) |
+| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed; no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory); a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837) |
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
@@ -227,7 +227,7 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   shows what fired and what was suppressed (#674). Nothing needs to be re-armed by a seat.
 - Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
   (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
-  Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the
+  Shepherd card in a session) sweeps the
   owning day: the newest day, today included, whose plan is approved. It does nothing while a
   planner session is live. It checks an `approved` PR against the 4.6 policy and queues it;
   until #524 lands the merge waits for the morning `wuwei pr act`. It sends a `review_stale` ping through 4.9, and
@@ -251,7 +251,7 @@ The internal-state patterns (`outward.patterns`, empty by default) apply by kind
 audience (#533). Tracker, docs and code-host writes are the team's records and never read
 them. On chat and mail, a client or public reader gets a card naming the audience and the
 matched word, decided with the approval tier, so one approval sends it. A team or company
-reader gets the message. The strict posture keeps the refusal. A message only the owner reads is never checked.
+reader gets the message. A message only the owner reads is never checked.
 
 ### 4.4 Profiles
 
@@ -268,7 +268,7 @@ overrides; treat `gh api` calls against the merge, review, branch-protection and
 deployment endpoints as the commands they implement. An interpreter one-liner (`python -c`,
 `node -e`, `perl -e`) or a script whose text invokes `git` or `gh` with a guarded verb is
 refused as opaque. Each bypass form is a test case in the guard's table. Amended (owner,
-2026-10-05, #530): below strict an opaque command runs with one `guard.would_refuse` warning
+2026-10-05, #530): an opaque command runs with one `guard.would_refuse` warning
 naming what could not be read, unless its literal text names a publish target (a
 protected-branch, force, tag or no-verify push, a deploy, a release, a gh merge, approval,
 admin, protection or text write, a hooks path change); the records floor stays.
@@ -741,7 +741,7 @@ Surfaces, all reading the same classification:
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
   cut at whole names; #658), then pages (owner, 2026-10-10, #789)
-  and the posture when it is not guarded. `wuwei status` prints the same groups one per line
+  and `observe` when `guards.enforce` is false. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
   sessions, the next person reply due, the next meeting and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
@@ -760,8 +760,8 @@ built, and the hooks keep the engine's steps in order. `[spec]` in `config.toml`
 - `mode` (default `"strict"`): `strict` refuses at every enforcement point below;
   `advisory` lets each call through and records the first gap per item and day as one
   `spec.warned` event, which `wuwei next` and the report list; `off` checks nothing. The
-  spec checks are not a 9.1 posture area: `mode` is their only setting, and under the
-  `observe` posture `strict` runs as `advisory`.
+  spec checks have no other setting: `mode` is their only one, and with
+  `guards.enforce = false` `strict` runs as `advisory`.
 - `skip_tiers` (default `["light"]`): the lead tiers (#280) whose items need no spec.
 
 Engines. The builder runs every step, in order, with the engine's own command or skill;
@@ -916,7 +916,9 @@ step to any hook:
   `remote.*` events written by `wuwei listen` (retired by #789, owner, 2026-10-10); owner host actions, `remote.acknowledged` (retired by #789, owner, 2026-10-10),
   `state.recovered`, `integrity_confirmation`, `mcp.decided`, `draft.sending` and
   `draft.dropped`.
-- configuration facts, read from `config.toml` when aggregating: `security.posture`,
+- configuration facts, read from `config.toml` when aggregating: the posture label
+  (`guarded` when `guards.enforce` is true, `observe` when false; #837 keeps the field for
+  stored weeks),
   `profile`, the adapter name per port, the number of repositories.
 - versions, read when aggregating: the plugin version, Python major.minor, the OS family
   (`darwin`, `linux` or `other`).
@@ -1211,7 +1213,7 @@ fails the tracker row when `required` is in force and the adapter cannot read th
 naming the missing credentials or `bin/wuwei config set tracker.required false`.
 `init --upgrade` from a host terminal creates the lifecycle labels the tracker port needs (today only the GitHub
 `in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
-failed in-review move creates the label on the owner's tracker below strict and moves again,
+failed in-review move creates the label on the owner's tracker and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
 
 Owner-facing. `wuwei next` and the DM show an item's ticket id beside its name.
@@ -1415,8 +1417,8 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
 - S2. Runtime traces. Each sweep runs `ziran analyze-traces --source otel` over the day's
   `traces.jsonl`. A dangerous sequence observed in a live session parks the affected item
   and prompts the user. Amendment (owner trial, 2026-10-03, #352): only seats park and prompt;
-  registered non-seat sessions are noted once per day, unknown sessions are noted once per
-  day and prompt once per day under strict.
+  registered non-seat sessions are noted once per day, and unknown sessions are noted once
+  per day.
 - S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
   servers attached to the session and registers them with `ziran watch-registry`; each
   morning plan runs the registry check, so a server whose tools changed after approval is
@@ -1425,7 +1427,8 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
   call, never runs an unpinned `uvx`, `npx` or `pipx run` launcher, and warns by default:
   `scanner.mcp.block` (default `["critical"]`) sets what blocks launches, while a check that
   could not run always blocks. Amendment (owner, 2026-10-03, #351): the default list is
-  empty; the security posture decides (strict blocks critical, high and unmeasured).
+  empty. Amendment (owner, 2026-10-11, #837): with `guards.enforce` on, the findings in
+  `scanner.mcp.block` and a check that could not run block; with it off they pass with a note.
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
@@ -1531,45 +1534,46 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
 - guards that concern roles (brief, retro, verdicts) apply to WUWEI role seats only, not to
   other subagents.
 
-Security posture (owner, 2026-10-03, #331). What the cooperative guards refuse is
-configurable by where the plugin runs: `security.posture` is `observe`, `guarded` (default)
-or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `block`.
-`guards.mode = "shadow"` (#308) is deprecated and means `observe`.
+Enforcement (owner, 2026-10-11, #837). One switch, `guards.enforce` (default true), replaces
+the postures, areas and floors of #331. With it on, a guard refusal blocks with its reason. With
+it off, the hook records it as `guard.would_refuse` (guard, reason, exit, target, session, item)
+and lets the call through; a launch refusal is also shown to the session (#660). `init
+--shadow` writes `false`; `init --upgrade` maps `security.posture = "observe"` and
+`guards.mode = "shadow"` to `false`, keeps an explicit `guards.enforce` and removes the
+retired keys.
 
-Autonomy (owner, 2026-10-05, #530): under `observe` and `guarded` a guard is a warning or a
-card, never a wall, with one floor: records are written by the workflow and answered by the
-owner. A refusal that names the plain form the seat runs itself is coaching, not a wall.
-Under `strict`, refusals stay.
+The floor blocks whatever the switch says (constitution VII):
 
-| Area | What it covers | observe | guarded (default) | strict |
-| --- | --- | --- | --- | --- |
-| `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
-| `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
-| `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
-| `mcp` | The MCP registry launch gate | warn | warn | block |
-| `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
-| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
+- records written by the workflow: the state-file guard, the Owner step answer recorder,
+  `lifecycle`, the verdict lint, canary and honeytoken egress, owner disposition markers and a
+  seat launch naming a brief that does not exist;
+- the owner's edges: deploy, merge, admin, approval and branch protection, and an outward send
+  the tiers hold. A deploy, release or publish runs only on the owner's recorded Yes on the
+  Owner step card of that exact command (#816); a held message is a draft card (#526). A merge
+  happens only through the merge policy; a merge it does not clear for an eligibility rule is
+  one owner decision from `wuwei next` (4.6, #816).
 
-Below strict a `block` is a card (deploy, release, publish, evidence; merge with #524) or a
-fix the seat runs; only `records` is a wall.
+No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
+default still blocks (the floor, integrity, commit and push, day close, spec mode, the MCP
+launch gate), and so do two process checks: a seat launch that matches no logged brief at an
+unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a logged
+`guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
+directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command, the workspace root `cd`, the
+deploy guard's unknown git subcommand and an opaque Bash call naming no publish target warn once
+per call either way. The traces recorder never refuses: a slow, unreadable or unwritten record
+is a warning and a `traces.slow` or `traces.gap` event.
 
-Floors no posture and no override lowers:
-
-- `records` always blocks, with canary and honeytoken egress, owner disposition markers and a seat launch naming a brief that does not exist, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish runs only on the owner's recorded Yes on the Owner step card of that exact command (#816); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. Admin merge, approvals and branch protection stay owner-only. A merge happens only through the merge policy; a merge it does not clear for an eligibility rule is one owner decision from `wuwei next` (4.6, #816). Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence is the seat's check: it warns under observe and refuses under guarded (#530, #816).
-- MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
-
-The posture changes what the cooperative guards refuse, never the hard boundaries above.
+The switch changes what the cooperative guards refuse, never the hard boundaries above.
 
 Owner answers (owner, 2026-10-11, #831). Nothing runs in a terminal. An owner step (a spec
 skip, an owner merge hold release, a config write, an integrity confirmation, a state recovery,
-a seat stop under strict, a doctor fix, a telemetry send) refuses until the owner answers Yes
+a doctor fix, a telemetry send) refuses until the owner answers Yes
 on its Owner step card: the refusal prints the card (header `Owner step`, the exact command and
 a digest of what it changes), the planner asks it with AskUserQuestion, the PostToolUse hook
 records the owner's reply from a main session as a hashed `gate.asked` topic, and the same
 command reads it from today's event log and proceeds. A seat's question never counts, and a
 Bash call that runs `wuwei hook` is refused, so a session cannot feed the hook an answer. The
-card counts under every posture. The boundary is the one the terminal prompt had: friction
+card counts whatever `guards.enforce` says. The boundary is the one the terminal prompt had: friction
 against the planner and seats, not proof against a process running as the owner's user.
 
 ### 9.2 Process edges (owner, 2026-10-11, #789)
@@ -1586,10 +1590,10 @@ code (`next`, dispatch, the verdict lint, the merge policy) and is tested where 
 | Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`) is refused | `guards/commit_push.py` | `tests/test_commit_push.py` |
 | Deploy | WUWEI never deploys (4.7) | `guards/deploy.py` | `tests/test_deploy.py` |
 | Outward send | A message, tracker or docs write leaves only as the outward lint and tiers allow (4.3, 4.9) | `guards/outward.py` | `tests/test_outward.py` |
-| PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item warns naming it, and is refused under strict | `guards/pr.py`, `shepherd.raise_pr` | `tests/test_pr_guards.py`, `tests/test_shepherd.py` |
+| PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item is refused naming it while `guards.enforce` is on (#837) | `guards/pr.py`, `shepherd.raise_pr` | `tests/test_pr_guards.py`, `tests/test_shepherd.py` |
 
-`tests/test_invariants.py` keeps one check across all guards: no guard reason is a wall under
-observe or guarded (#530).
+`tests/test_invariants.py` keeps one check across all guards: no guard reason is a wall,
+with `guards.enforce` on or off (#530, #837).
 
 ## 10. Testing
 

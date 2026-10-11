@@ -36,18 +36,6 @@ MERGE_SCHEMA = {
 
 LEVELS = ("brief", "standard", "full")
 SURFACES = ("decisions", "report")
-# #331: what warns and what blocks, per area, by where the plugin runs.
-AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
-AREA_LEVELS = ('off', 'warn', 'block')
-POSTURES = {
-    'observe': {**{area: 'warn' for area in AREAS}, 'records': 'block'},
-    'guarded': {'integrity': 'block', 'mcp': 'warn', 'publish': 'block', 'records': 'block',
-                'outward': 'warn', 'seats': 'warn'},
-    'strict': {area: 'block' for area in AREAS},
-}
-# Floors no posture or override lowers; a lower override is a config finding.
-FLOORS = {'records': 'block'}
-
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
 AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
 TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
@@ -59,7 +47,8 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
            'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
            'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest',
-           'autonomy', 'decisions', 'steward', 'owner.verbosity.digest')
+           'autonomy', 'decisions', 'steward', 'owner.verbosity.digest',
+           'security.posture', 'security.areas', 'guards.mode', 'guards.shadow_days', 'guards.shadow_since')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -68,8 +57,7 @@ SCHEMA = {
                         "user_file": (str, "~/.claude.json"),
                         "timeout_seconds": (int, 60, 1),
                         "block": [(str, None, ("critical", "high", "medium", "low", "unmeasured")), []]}},
-    "security": {"required": (bool, False), "posture": (str, "guarded", tuple(POSTURES)),
-                 "areas": {area: (str, "", ("", *AREA_LEVELS)) for area in AREAS}},
+    "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
               "timezone": (str, ""),
               "verbosity": {"default": (str, "brief", LEVELS),
@@ -156,8 +144,7 @@ SCHEMA = {
               "charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
-    "guards": {"mode": (str, "enforce", ("enforce", "shadow")), "shadow_days": (int, 7, 1),
-               "shadow_since": (str, "")},
+    "guards": {"enforce": (bool, True)},  # #837: false logs what a guard would refuse
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
@@ -731,7 +718,6 @@ def load_config(root=None, *, raw=None, warnings=None):
             if warnings is not None:
                 warnings.extend(f'config.toml: {text}' for text in unknown)
             return marshal.loads(config)
-        from datetime import date
         import tomllib
         parsed = tomllib.loads(raw)
         unknown = []
@@ -754,19 +740,6 @@ def load_config(root=None, *, raw=None, warnings=None):
             except re.error:
                 raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
                                   'with bin/wuwei config set') from None
-        since = config['guards']['shadow_since']
-        if since:
-            try:
-                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', since):
-                    raise ValueError
-                date.fromisoformat(since)
-            except ValueError:
-                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since') from None
-        for area, floor in FLOORS.items():
-            value = config['security']['areas'][area]
-            if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
-                raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
-                                  f'{area} always blocks, remove the override')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
@@ -815,20 +788,6 @@ def load_config(root=None, *, raw=None, warnings=None):
             if line:
                 hint = f'; repos is assigned on line {line}; delete that line before using [[repos]] tables'
         raise ConfigError(f"config.toml: {exc}{hint}; run bin/wuwei config check after the fix") from exc
-
-
-def posture(config):
-    """The posture name and each area's level (#331); guards.mode = "shadow" (#308,
-    deprecated) is observe."""
-    name = 'observe' if config['guards']['mode'] == 'shadow' else config['security']['posture']
-    return name, {area: config['security']['areas'][area] or level
-                  for area, level in POSTURES[name].items()}
-
-
-def posture_source(config):
-    """The key the effective posture comes from (#355); guards.mode is retired."""
-    return ('guards.mode = "shadow", deprecated; run doctor --fix'
-            if config['guards']['mode'] == 'shadow' else 'security.posture')
 
 
 def _require_gate(root):

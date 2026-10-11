@@ -20,7 +20,7 @@ TIMING = {
     ('test_adapters.py', 'test_watch_probe_runs_calls_together_and_times_out'),
     ('test_e2e_day.py', 'test_scripted_day'),
     ('test_path_day.py', 'test_the_day_closes_walking_only_next'),
-    ('test_path_day.py', 'test_posture_day'),
+    ('test_path_day.py', 'test_enforce_day'),
     ('test_hooks.py', 'test_hook_latency'),
     ('test_hooks.py', 'test_status_line_latency'),
     ('test_hooks.py', 'test_workspace_hook_latency'),

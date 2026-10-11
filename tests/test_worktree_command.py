@@ -315,7 +315,7 @@ def hooks_skipped(root):
             if row['kind'] == 'worktree.hooks_skipped']
 
 
-def test_worktree_add_skips_unchainable_hooks_under_guarded(tmp_path, monkeypatch, capsys):
+def test_worktree_add_skips_unchainable_hooks(tmp_path, monkeypatch, capsys):
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     (root / 'hooks-file').write_text('')
     git(repo, 'config', 'core.hooksPath', str(root / 'hooks-file'))
@@ -330,19 +330,10 @@ def test_worktree_add_skips_unchainable_hooks_under_guarded(tmp_path, monkeypatc
     assert len(events) == 1 and events[0]['worktree'] == 'X' and 'not a directory' in events[0]['reason']
 
 
-def test_worktree_add_refuses_unchainable_hooks_under_strict(tmp_path, monkeypatch, capsys):
-    root, repo = hooked_workspace(tmp_path, monkeypatch, '[security]\nposture = "strict"\n')
-    (root / 'hooks-file').write_text('')
-    git(repo, 'config', 'core.hooksPath', str(root / 'hooks-file'))
-    assert main(['worktree', 'add', 'X']) == 2
-    err = capsys.readouterr().err
-    assert 'not a directory' in err and 'worktree add again' in err
-
-
 def test_worktree_add_skip_mode_never_refuses(tmp_path, monkeypatch, capsys):
     root, repo = hooked_workspace(tmp_path, monkeypatch, (
         'identity = {name = "Builder", email = "builder@example.test"}\n'
-        '[security]\nposture = "strict"\n[worktree]\ngit_hooks = "skip"\n'))
+        '[worktree]\ngit_hooks = "skip"\n'))
     assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
     assert 'git hooks skipped' in capsys.readouterr().err
     assert hooks_skipped(root)[0]['reason'] == 'worktree.git_hooks = "skip"'

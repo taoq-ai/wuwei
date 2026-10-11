@@ -9,17 +9,17 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED
 
 HEADER = 'WUWEI orientation'
 TERMINAL = ('merged', 'parked', 'escalated')
-POSTURES = {
-    'observe': ('Observe posture is on: guards record what they would refuse and let the call '
-                'through. Records (state, events, config, verdicts, decisions) still refuse; deploys, '
-                'releases and approve-tier messages ask on a card; merges and approvals stay '
-                "owner-only. The day report's ## Shadow section lists the would-be refusals."),
-    'guarded': ('Posture guarded: records, publishing and plugin integrity block; deploys, releases '
-                'and approve-tier messages ask on a card; merges and approvals stay owner-only; seat '
-                'launches, outward text and MCP findings below the floor warn. A refusal names its '
-                'reason and the accepted form: use that form, never a way around it.'),
-    'strict': ('Posture strict: every guard area blocks. A refusal names its reason and the '
-               'accepted form: use that form, never a way around it.'),
+# #837: one sentence per guards.enforce value.
+ENFORCE = {
+    False: ('Guards log only (guards.enforce = false): guards record what they would refuse and '
+            'let the call through. Records (state, events, config, verdicts, decisions) still refuse; '
+            'deploys, releases and approve-tier messages ask on a card; merges and approvals stay '
+            "owner-only. The day report's ## Shadow section lists the would-be refusals."),
+    True: ('Guards enforce: records, publishing, plugin integrity and seat launches without a '
+           'matching brief block; deploys, releases and approve-tier messages ask on a card; merges '
+           'and approvals stay owner-only; outward text, scratch paths, seat capacity and MCP '
+           'findings below the floor are logged. A refusal names its reason and the accepted form: '
+           'use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
 EXECUTABLE = ('wuwei is the absolute path in .wuwei/executable: read it once and use it as the '
@@ -157,7 +157,7 @@ def step(root, ran=()):
     ran: the (state, key) pairs whose command ran since the last recorded action.
     ponytail: one row, not a list; the first runnable item wins and its rows name the rest (#666)."""
     if root is None:
-        return _row('no-workspace', 'No WUWEI workspace here; create one in the observe posture in '
+        return _row('no-workspace', 'No WUWEI workspace here; create one with guards logging only in '
                     'the project directory.', 'bin/wuwei init --shadow')
     config = workspace.load_config(root)
     if not config['repos']:
@@ -442,7 +442,7 @@ def _ran(root):
     return []
 
 
-def orientation(row, posture, spec=None, session=None):
+def orientation(row, enforce, spec=None, session=None):
     """The SessionStart block: the next action and the loop; paths are computed, nothing read.
     spec: the spec engine and its effective mode (5.10). session: the payload's session id."""
     plugin = integrity.PLUGIN
@@ -461,7 +461,7 @@ def orientation(row, posture, spec=None, session=None):
         'worktree, and merges follow a policy.',
         f'The owner answers questions and decisions; the session runs the commands ({EXECUTABLE}) '
         'and never asks the owner to edit a file.',
-        POSTURES[posture],
+        ENFORCE[enforce],
         *([f'Spec: {spec}'] if spec else []),
         f'Next: {shown}',
         entry,

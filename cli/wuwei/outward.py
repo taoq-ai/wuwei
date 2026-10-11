@@ -567,8 +567,6 @@ def _matches(row, party, topics, names):
 def decide(parties, topics, names, config, trace=None):
     """#496: (tier, fragment, source) of the strictest party, or None when the kind rules decide:
     any block, else any ask, else send when every party matched a send row."""
-    from wuwei import workspace
-    strict = workspace.posture(config)[0] == 'strict'
     rows = table(config)
     found = []
     for party in parties:
@@ -581,8 +579,6 @@ def decide(parties, topics, names, config, trace=None):
                 outcome = 'passed'
             elif party.get('own') and source == 'default' and row['tier'] == 'send':
                 outcome = "passed: the umbrella decides the owner's own tracker"  # #644
-            elif strict and row['tier'] == 'send' and party['class'] in ('client', 'public'):
-                outcome = 'ignored under strict'  # #496: strict never sends to a client or the public.
             else:
                 match = ' '.join(f'{key}={row[key]}' for key in KEYS[:-1] if key in row) or 'any'
                 evidence = (party['why'] + (f", {topics[row['topic']]}" if 'topic' in row else '')
@@ -814,20 +810,12 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
         if not texts:
             return CLEAN, ''  # #501: a write without text has nothing to lint.
         to_owner = to_owner or owner_only(inputs, config, next(iter(channels)))
-        kind = next(iter(channels))  # #533: matched first, so an invalid list fails closed.
-        word = internal_word(text, config) if kind in OWNER and not to_owner else None
+        if next(iter(channels)) in OWNER and not to_owner:
+            internal_word(text, config)  # #533: an invalid outward.patterns list fails closed
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config, root=root, to_owner=to_owner)
             if code:
                 return code, reason
-        # #533: outward.patterns on chat and mail only; a client or public reader was held by
-        # classify, so a reader here is team, company or owner-approved. Strict refuses; the
-        # other postures let it through.
-        if word:
-            from wuwei import workspace
-            if workspace.posture(config)[0] == 'strict':
-                return FINDINGS, (f'outward: internal state word "{word}" in a {kind} message '
-                                  '(outward.patterns); remove it or change the list')
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'

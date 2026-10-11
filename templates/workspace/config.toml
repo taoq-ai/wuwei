@@ -133,9 +133,8 @@ plugins_file = "~/.claude/plugins/installed_plugins.json"
 user_file = "~/.claude.json"
 # Missing defaults and absent project/plugin MCP files mean no attachment.
 # Explicit user_file/plugins_file overrides must exist. Invalid inputs fail closed.
-# Launch gate override: critical, high, medium, low or unmeasured. Unset, the posture decides:
-# observe and guarded block no finding; strict blocks critical, high and unmeasured.
-# A check that could not run blocks under guarded and strict.
+# Launch gate: critical, high, medium, low or unmeasured block a launch while guards.enforce is on.
+# Unset, no finding blocks. A check that could not run blocks while guards.enforce is on.
 # block = ["critical"]
 # Seconds for each server's watch-registry call.
 timeout_seconds = 60
@@ -208,7 +207,7 @@ code_host_orgs = []
 # People keys use slack:<id>, github:<login>, or email:<address> namespaces.
 # Unknown addressed people or PR participants draft. Any external identity wins.
 # The people table is the [outbound.people] section at the end of this section.
-# learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
+# learn = "card" # outbound learn asks on a card; "auto" writes reviewers without one; "off".
 # Your own identity per channel; a message only you receive is never a draft.
 # owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login"}
 # Where the planner posts the day report: "session" or "dm" (your own Slack DM).
@@ -273,18 +272,10 @@ mode = "strict"
 skip_tiers = ["light"]
 
 [security]
-# observe: guards record what they would refuse and let the call through; records and owner-only actions still refuse. init --shadow starts here.
-# guarded: the default. Records, publishing and integrity block; MCP findings, outward text and seat launches warn.
-# strict: every area blocks, and unknown config keys are errors.
-posture = "guarded" # The posture table and its floors are in the security docs.
 required = true
-# Per-area overrides of the posture: off, warn or block. records always blocks.
-# [security.areas]
-# mcp = "off" # integrity, mcp, publish, records, outward, seats
 
 [guards]
-shadow_days = 7 # Days in observe before wuwei doctor asks you to switch to guarded.
-shadow_since = "" # YYYY-MM-DD observe started; wuwei init --posture observe sets it.
+enforce = true # false logs what the guards would refuse and lets the call through; records, merges, deploys and held sends still refuse. init --shadow starts here.
 
 # Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means
 # not asked yet and sends nothing. bin/wuwei telemetry preview prints exactly what would leave.

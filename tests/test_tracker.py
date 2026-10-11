@@ -9,25 +9,19 @@ from wuwei import integrity, registry, state, tracker, workspace
 from wuwei.__main__ import main
 
 
-def config(adapter='linear', required=True, skip=(), posture='guarded'):
+def config(adapter='linear', required=True, skip=()):
     return {'adapters': {'tracker': adapter},
-            'tracker': {'required': required, 'skip_tiers': list(skip)},
-            'guards': {'mode': 'enforce'},
-            'security': {'posture': posture, 'areas': dict.fromkeys(workspace.AREAS)}}
+            'tracker': {'required': required, 'skip_tiers': list(skip)}}
 
 
 MISSING = ("item-1 has no ticket: the planner proposes one on the item's card (an existing "
            "ticket or a new one from its record) and records the owner's answer")
-STRICT = ("item-1 has no ticket: the owner runs bin/wuwei tracker create item-1 (opens one from "
-          "the item's record) or bin/wuwei plan set item-1 ticket=<id> in a host terminal")
 
 
-@pytest.mark.parametrize('posture,expected', [('observe', MISSING), ('guarded', MISSING),
-                                              ('strict', STRICT)])
-def test_missing_reason_by_posture(posture, expected):
-    """#636: below strict the reason names the card, never a terminal command."""
-    assert tracker.check({}, config(posture=posture), 'item-1') == ('missing', expected)
-    assert ('bin/wuwei' in expected) is (posture == 'strict')
+def test_missing_reason_names_the_card():
+    """#636: the reason names the card, never a terminal command."""
+    assert tracker.check({}, config(), 'item-1') == ('missing', MISSING)
+    assert 'bin/wuwei' not in MISSING
 
 
 def test_owners_none_is_skipped():
@@ -50,10 +44,9 @@ def test_check(settings, data, row, expected):
     assert tracker.check(data, settings, 'item-1', row) == expected
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_small_item_reads_later(posture):
+def test_small_item_reads_later():
     """#646: an unticketed light item starts now; its ticket comes at the gate or after it ships."""
-    settings = config(posture=posture)
+    settings = config()
     missing = tracker.check({}, settings, 'item-1')
     assert missing[0] == 'missing'
     assert tracker.check({}, settings, 'item-1', {'tier': 'light'}) == ('later', '')
@@ -63,7 +56,7 @@ def test_small_item_reads_later(posture):
     assert tracker.check({}, settings, 'item-1', {'tier': 'standard'}) == missing
     ticketed = {'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}}
     assert tracker.check(ticketed, settings, 'item-1', {'tier': 'light'}) == ('ticket', '')
-    assert tracker.check({}, config(skip=['light'], posture=posture), 'item-1',
+    assert tracker.check({}, config(skip=['light']), 'item-1',
                          {'tier': 'light'}) == ('skipped', '')
 
 
@@ -83,9 +76,6 @@ def test_pending_items_draft_names_approval():
     assert tracker.check(data, config(), 'item-1') == (
         'missing', 'item-1 has no ticket: draft draft-1 opens it once the owner answers Send '
                    'on its card (bin/wuwei drafts show draft-1 --widget)')
-    assert tracker.check(data, config(posture='strict'), 'item-1') == (
-        'missing', 'item-1 has no ticket: the owner runs bin/wuwei drafts approve draft-1 '
-                   'in a host terminal')
     row['status'] = 'sent'
     assert tracker.pending(data, 'item-1') is None
 
@@ -191,15 +181,6 @@ def test_bug_owner_row_holds(ws, capsys):
     out = capsys.readouterr().out
     assert 'rule 1' in out and 'tool=tracker audience=owner' in out
     assert day_events(root, 'draft.created') and fake.calls == []
-
-
-def test_bug_held_under_strict_names_the_terminal(ws, capsys):
-    root, fake = ws
-    seed_ticket(root)
-    outbound(root, '[outbound]\ndefault_tier = "ask"\n[security]\nposture = "strict"')
-    assert main(BUG) == 1
-    out = capsys.readouterr().out
-    assert 'bin/wuwei drafts approve draft-' in out and 'host terminal' in out
 
 
 def test_bug_blocked_under_block(ws, capsys):
@@ -421,23 +402,20 @@ def test_fold_holding_a_decision_drafts(ws):
     assert row['text'].endswith('Folded 3 updates: decisions 1, progress 1, verdicts 1.')
 
 
-def github(root, posture='guarded', orgs=('acme',), adapter='github'):
+def github(root, orgs=('acme',), adapter='github'):
     """The loaded config with a GitHub tracker on acme/app, by dict override."""
     base = workspace.load_config(root)
     return {**base, 'adapters': {**base['adapters'], 'tracker': adapter},
             'tracker': {**base['tracker'], 'project': 'acme/app'},
-            'outbound': {**base['outbound'], 'code_host_orgs': list(orgs)},
-            'security': {**base['security'], 'posture': posture}}
+            'outbound': {**base['outbound'], 'code_host_orgs': list(orgs)}}
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
 @pytest.mark.parametrize('orgs', [('acme',), ()])
-def test_creates_labels_by_posture_and_owner(ws, posture, orgs):
-    """#670: WUWEI creates a label on its own only on the owner's tracker below strict."""
+def test_creates_labels_by_owner(ws, orgs):
+    """#670: WUWEI creates a label on its own only on the owner's tracker."""
     root, _ = ws
-    owned = bool(orgs) and posture != 'strict'
-    assert tracker.creates_labels(github(root, posture, orgs)) is owned
-    assert tracker.creates_labels(github(root, posture, orgs, 'linear')) is (posture != 'strict')
+    assert tracker.creates_labels(github(root, orgs)) is bool(orgs)
+    assert tracker.creates_labels(github(root, orgs, 'linear')) is True
 
 
 NONE_MISSING = {'created': [], 'missing': []}

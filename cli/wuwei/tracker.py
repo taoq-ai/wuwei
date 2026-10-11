@@ -94,17 +94,11 @@ def check(data, config, item, row=None):
         return 'skipped', ''
     if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
         return 'later', ''
-    strict = workspace.posture(config)[0] == 'strict'
     draft = pending(data, item)
     if draft:
-        return 'missing', (f'{item} has no ticket: the owner runs bin/wuwei drafts approve {draft} '
-                           'in a host terminal' if strict else
-                           f'{item} has no ticket: draft {draft} opens it once the owner answers '
+        return 'missing', (f'{item} has no ticket: draft {draft} opens it once the owner answers '
                            f'Send on its card (bin/wuwei drafts show {draft} --widget)')
-    return 'missing', (f"{item} has no ticket: the owner runs bin/wuwei tracker create {item} (opens "
-                       f"one from the item's record) or bin/wuwei plan set {item} ticket=<id> in a "
-                       'host terminal' if strict else
-                       f"{item} has no ticket: the planner proposes one on the item's card (an "
+    return 'missing', (f"{item} has no ticket: the planner proposes one on the item's card (an "
                        "existing ticket or a new one from its record) and records the owner's answer")
 
 
@@ -123,13 +117,10 @@ def _candidate(root, data, item):
 
 
 def _held(root, config, subject, draft_id):
-    """#644: a held ticket is the planner's card below strict, a host-terminal approve under strict."""
+    """#644: a held ticket is the planner's card."""
     from wuwei import drafts, outward
     rule = drafts.read(state.read_state(root))[draft_id]['tier_reason'].removeprefix(
         outward.APPROVAL_REQUIRED + ': ')
-    if workspace.posture(config)[0] == 'strict':
-        return (f'{subject}: ticket held ({rule}): the owner runs bin/wuwei drafts approve '
-                f'{draft_id} in a host terminal')
     return (f'{subject}: ticket held ({rule}): the planner asks it on its card '
             f'(bin/wuwei drafts show {draft_id} --widget)')
 
@@ -349,10 +340,10 @@ def log(root):
 
 
 def creates_labels(config):
-    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
-    below strict; init --upgrade from a host terminal creates on any tracker."""
+    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker;
+    init --upgrade from a host terminal creates on any tracker."""
     from wuwei import outward
-    return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
+    return not outward._external_tracker(config)
 
 
 def labels(root, config, create, port=None):

@@ -364,37 +364,19 @@ def test_schedule_installs_the_shepherd_unit_in_a_host_terminal(host_terminal, c
     assert not path.exists() and ['systemctl', '--user', 'disable', '--now', path.name] in calls
 
 
-def posture(root, name):
+def enforce(root, value):
     with (root / '.wuwei/config.toml').open('a') as handle:
-        handle.write(f'\n[security]\nposture = "{name}"\n')
+        handle.write(f'\n[guards]\nenforce = {value}\n')
 
 
-@pytest.mark.parametrize('verb', ['schedule', 'unschedule'])
-@pytest.mark.parametrize('planned', [True, False])
-def test_under_strict_a_session_gets_the_owner_action(host_terminal, monkeypatch, capsys, verb, planned):
-    from wuwei.__main__ import main
-    root, calls = host_terminal
-    posture(root, 'strict')
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'S1')
-    if planned:
-        (workspace.day_dir(root) / 'plan.md').write_text('# Morning plan\n')
-    assert main(['shepherd', verb, '--yes'] if verb == 'schedule' else ['shepherd', verb]) == 1
-    action = json.loads(capsys.readouterr().out)
-    assert action['action'] == 'owner_terminal' and action['command'] == f'bin/wuwei shepherd {verb}'
-    assert action['why'] and action['then'] and 'widget' not in action
-    assert not calls and not workspace.watch_unit(root, 'linux', name='shepherd')[1].exists()
-    assert main(['shepherd', 'schedule', '--dry-run']) == 0
-    assert 'wuwei-shepherd-' in capsys.readouterr().out
-
-
-@pytest.mark.parametrize('name', ['observe', 'guarded'])
+@pytest.mark.parametrize('name', ['false', 'true'])
 @pytest.mark.parametrize('planned', [True, False])
 def test_in_a_session_the_card_answer_schedules(host_terminal, monkeypatch, capsys, name, planned):
-    """Review F3: no new refusal under observe and guarded; the card's record command installs."""
+    """Review F3: no refusal either way; the card's record command installs."""
     from wuwei import decision
     from wuwei.__main__ import main
     root, calls = host_terminal
-    posture(root, name)
+    enforce(root, name)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'S1')
     unit = workspace.watch_unit(root, 'linux', name='shepherd')[1]
     if planned:

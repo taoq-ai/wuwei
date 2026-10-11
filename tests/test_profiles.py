@@ -30,8 +30,6 @@ work_channels = ["Cwork"]
 [outward.max_length]
 slack = 3
 chat = 3
-[security]
-posture = "strict" # #331: these tests pin the outward lint blocking; guarded warns.
 ''')
     from fakes.integrity import seed
     seed(tmp_path)
@@ -118,11 +116,18 @@ def test_outward_hook_profiles(configured, monkeypatch, capsys, profile, text, c
             stream.write('\n[outward]\npatterns = ["["]\n')
     result, out, err = replay(configured, monkeypatch, capsys,
                               inputs={'text': text, 'channel': channel})
-    blocked = invalid or channel == 'Cclient' or (text == 'Thanks' and profile != 'standard')
+    # #837: a held send (the tier) blocks; the outward lint, and a lint that could not read its
+    # policy, is logged with guards.enforce on, as under the old guarded default.
+    blocked = channel == 'Cclient'
+    logged = not blocked and (invalid or text == 'Thanks' and profile != 'standard')
     assert result == (2 if blocked else 0)
     assert text not in err
     if blocked:
         assert json.loads(out)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    elif logged:
+        assert out == err == ''
+        events, = (configured / '.wuwei').glob('days/*/events.jsonl')
+        assert '"guard.would_refuse"' in events.read_text()
     elif text == 'Thanks':
         assert out == ''
         assert err.startswith('warning: outward: channel length exceeded;')

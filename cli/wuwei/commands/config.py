@@ -54,7 +54,7 @@ def run(args):
     except ConfigError as exc:
         print(f"wuwei config check: {exc}", file=sys.stderr)
         return FINDINGS
-    for text in found:  # #799: unknown keys warn in every posture; the exit code ignores them.
+    for text in found:  # #799: unknown keys only warn; the exit code ignores them.
         print(f'wuwei config check: warning: {text}', file=sys.stderr)
     print('Credentials:')
     status = CLEAN
@@ -96,21 +96,15 @@ def run(args):
             print(f'  {label}: no credential variables required')
     # Reported, not a finding: the outward lint already fails closed without a name.
     print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
-    # Reported, not a finding (#331): a floor violation already failed load_config above.
-    name, levels = workspace.posture(config)
-    print(f'Posture: {name} (from {workspace.posture_source(config)})')
-    for area in workspace.AREAS:
-        mark = (' (floor)' if area in workspace.FLOORS else
-                ' (security.areas)' if config['security']['areas'][area] else '')
-        print(f'  {area}: {levels[area]}{mark}')
-    print('  owner-only actions ask on a card below strict (deploys, releases, approve-tier '
-          'messages); merges and approvals stay owner-only; records always block')
+    # Reported, not a finding (#837): one switch.
+    enforce = config['guards']['enforce']
+    print('Guards: enforce (guards.enforce = true)' if enforce else
+          'Guards: log only (guards.enforce = false); records, merges, deploys and held sends still refuse')
     block = config['scanner']['mcp']['block']
-    if block:  # Reported, not a finding (#351): the list against the posture default.
-        ignored = levels['mcp'] == 'off' or name == 'observe' and levels['mcp'] == 'warn'
+    if block:  # Reported, not a finding (#351).
         print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
-            f'no effect under {name} (mcp: {levels["mcp"]}); remove the key' if ignored else
-            f'blocks launches at these severities on top of the {name} default'))
+            'blocks launches at these severities' if enforce else
+            'no effect while guards.enforce = false'))
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')

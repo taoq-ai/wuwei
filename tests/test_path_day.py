@@ -192,27 +192,27 @@ def approve_at_head(day):
 
 
 @pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('posture', ['observe', 'guarded'])
-def test_posture_day(tmp_path, monkeypatch, posture):
-    # #530 E, part 14: a whole day under each posture. The quality gate says ESCALATE and the
-    # owner answers dispatch next's Owner step card; no decision record is written. Under observe
-    # the owner answers the gate, that card and one client draft; under guarded every owner-only
-    # action asks on a card. #816: the repository's merge policy merges under both.
+@pytest.mark.parametrize('posture', [False, True])
+def test_enforce_day(tmp_path, monkeypatch, posture):
+    # #530 E, part 14, #837: a whole day with guards.enforce false and true. The quality gate says
+    # ESCALATE and the owner answers dispatch next's Owner step card; no decision record is
+    # written. Log-only, the owner answers the gate, that card and one client draft; enforced,
+    # every owner-only action asks on a card. #816: the repository's merge policy merges either way.
     from fakes.day import Day
     started, answered, steps = time.monotonic(), [], set()
-    autonomous = posture == 'observe'
+    autonomous = not posture
     day = prepare(Day(tmp_path / 'workspace', monkeypatch))
     day.quality = 'ESCALATE'
-    # Spec mode runs advisory under observe (design 5.10): no spec-first refusal to meet.
+    # Spec mode runs advisory with guards.enforce = false (design 5.10): no spec-first refusal.
     day.runtime.spec = not autonomous
     path = day.root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('fast_checks = ["demo-check"]\n',
                                              'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
                                              'merge = {auto = true, soak_minutes = 0}\n')
                     + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n'
-                    + ('default_tier = "send"\nlearn = "auto"\n[security]\nposture = "observe"\n'
+                    + ('default_tier = "send"\nlearn = "auto"\n[guards]\nenforce = false\n'
                        if autonomous else
-                       'default_tier = "ask"\nlearn = "card"\n[security]\nposture = "guarded"\n')
+                       'default_tier = "ask"\nlearn = "card"\n[guards]\nenforce = true\n')
                     + '[deploy]\nworkflows = ["deploy.yml"]\n')
 
     def card(day, action):
@@ -257,7 +257,7 @@ def test_posture_day(tmp_path, monkeypatch, posture):
 
     data, events = day.data, day.events
     kinds = [row['kind'] for row in events]
-    assert workspace.load_config(day.root)['security']['posture'] == posture
+    assert workspace.load_config(day.root)['guards']['enforce'] is posture
     assert data['items']['A']['phase'] == 'merged' and 'day.closed' in kinds
     assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002: no item writes a record
     assert [row['payload']['verdict'] for row in events if row['kind'] == 'gate.received'

@@ -327,11 +327,12 @@ def test_shadow_refusal_is_explained(root, capsys):
     assert why(capsys, ident) == (0, SHADOWED, '')
 
 
-def test_posture_warning_names_area_level_and_posture(root, capsys):
-    # #331: a warning names the area, its level and the posture that produced it.
+def test_logged_refusal_from_before_the_upgrade_has_no_posture_line(root, capsys):
+    # #837: an event written before guards.enforce still carries area, level and posture; why
+    # shows its guard, rule and fix only.
     refusal(root, {**SHADOW, 'area': 'publish', 'level': 'warn', 'posture': 'observe'},
             kind='guard.would_refuse')
-    assert why(capsys, 'last refusal') == (0, [*SHADOWED, 'posture: publish = warn (observe)'], '')
+    assert why(capsys, 'last refusal') == (0, SHADOWED, '')
 
 
 # #552: why names the register edge behind an outward hold.

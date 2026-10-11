@@ -45,8 +45,10 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
-    if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
-        return ('warn' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
+    if kind == 'guard.would_refuse':  # #837: logged, read by why and the report
+        return 'silent', lane
+    if kind == 'traces.unmatched':  # #352
+        return 'warn', lane
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
     if kind == 'mcp.checked':

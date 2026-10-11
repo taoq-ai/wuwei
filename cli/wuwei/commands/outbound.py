@@ -31,8 +31,7 @@ def register(subparsers):
     answer_parser.add_argument('id', help='the D-n of the learning card')
     answer_parser.add_argument('option', help='the label or option id the owner chose')
     answer_parser.add_argument('--card', metavar='HASH',
-                               help="the card's hash, as its record command carries it; under strict "
-                                    'the card does not confirm and the owner answers at the prompt')
+                               help="the card's hash, as its record command carries it")
     answer_parser.set_defaults(func=answer)
     actions.add_parser('tiers', help='print the effective outbound tier table').set_defaults(func=tiers)
     explain_parser = actions.add_parser('explain', help='print the rows a draft passed and the row that held it')
@@ -74,17 +73,15 @@ KIND_RULES = ('no row: the kind rules decide (direct messages draft, tracker.aut
 
 
 def tiers(args):
-    """#496: the effective table, owner rows tagged; strict marks the send rows it ignores."""
+    """#496: the effective table, owner rows tagged."""
     try:
         config = workspace.load_config(workspace.find_workspace())
     except (OSError, ValueError) as exc:
         print(f'outbound tiers: {exc}', file=sys.stderr)
         return UNRUN
-    strict = workspace.posture(config)[0] == 'strict'
     print(f"{'rule':<6}{'source':<9}row")
     for number, (row, source, note) in enumerate(outward.table(config), 1):
-        ignored = strict and source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)
-        print(f"{number:<6}{source:<9}{outward.render(row)}{note}{' (ignored under strict)' if ignored else ''}")
+        print(f"{number:<6}{source:<9}{outward.render(row)}{note}")
     umbrella = config['outbound']['default_tier']
     if umbrella == 'ask':
         print(f"{'-':<6}{'default':<9}{KIND_RULES}")
@@ -543,9 +540,8 @@ def learn(args):
     except ValueError as exc:
         return fail(str(exc))
     # `other` carries mode send with no audience rules, so it is never learned without the card.
-    strict = workspace.posture(config)[0] == 'strict'
-    card = config['outbound']['learn'] == 'card' or strict or channel in ('other', 'local')
-    if owner and not channels and not people and not strict:
+    card = config['outbound']['learn'] == 'card' or channel in ('other', 'local')
+    if owner and not channels and not people:
         card = False  # #537: the owner's own identity, from the connector's identity call, needs no card.
     proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner,
                        participants=unknown, thread=thread)

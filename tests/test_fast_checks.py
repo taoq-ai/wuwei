@@ -26,11 +26,9 @@ def test_only_forged_evidence_cannot_authorize_push(workspace_case, monkeypatch,
     result = cli('state', 'set', 'fast_checks', json.dumps(forged))
     if anchor == 'bash':
         code = guard().check(payload(root, 'git push origin feature'))[0]
-    else:  # #530: the native hook refuses a missing check only under strict
-        with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write('[security]\nposture = "strict"\n')
-        code = invoke(workspace_case, monkeypatch, anchor,
-                      f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n')
+    else:  # #530, #837: the native hook warns on a missing check; the Bash guard refuses it
+        code = 1 + invoke(workspace_case, monkeypatch, anchor,
+                          f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n')
     assert code == 1
     assert result.returncode == 1
 

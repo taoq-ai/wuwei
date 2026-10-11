@@ -126,12 +126,6 @@ def port(root, monkeypatch):
     return adapter, calls
 
 
-def strict(root):
-    """The host confirmation runs under strict only (#493)."""
-    path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
-
-
 def edit_to(monkeypatch, text):
     original = registry.load
 
@@ -159,7 +153,6 @@ def test_owner_approval_sends_original_once(root, port):
 
 def test_approve_without_terminal_is_owner_action(root, port, monkeypatch, capsys):
     import builtins
-    strict(root)
     row = queued(root)
     monkeypatch.setattr(integrity, '_host_confirm', REAL_CONFIRM)
     real_open = builtins.open
@@ -177,7 +170,6 @@ def test_approve_without_terminal_is_owner_action(root, port, monkeypatch, capsy
 
 
 def test_approve_declined_digest_sends_nothing(root, port, monkeypatch, capsys):
-    strict(root)
     row = queued(root)
     monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: False)
     capsys.readouterr()
@@ -189,7 +181,6 @@ def test_approve_declined_digest_sends_nothing(root, port, monkeypatch, capsys):
 
 def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
     from hashlib import sha256
-    strict(root)
     row = queued(root)
     final = 'I can deliver this today.'
     edit_to(monkeypatch, final)
@@ -254,10 +245,9 @@ def test_session_approve_needs_the_owner_send_answer(root, port, monkeypatch, ca
     assert len(port[1]) == 1
 
 
-def test_strict_refusal_names_the_host_command(root, port, monkeypatch, capsys):
+def test_no_terminal_refusal_names_the_host_command(root, port, monkeypatch, capsys):
     def no_terminal(*args, **kwargs):
         raise OSError(integrity.HOST_TERMINAL)
-    strict(root)
     monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
     row = queued(root)
     assert main(['drafts', 'approve', row['id']]) == 2
@@ -289,7 +279,7 @@ def test_owner_edit_records_before_after_and_lints(root, port, monkeypatch):
     assert row['text'] not in events and final not in events
 
 
-def test_edit_outside_strict_still_asks_the_owner(root, port, monkeypatch):
+def test_edit_still_asks_the_owner(root, port, monkeypatch):
     # #493 verify: an editor text never comes from a card, so --edit is confirmed like --file.
     row = queued(root)
     edit_to(monkeypatch, 'attacker text')
@@ -484,7 +474,6 @@ def test_humanize_kinds_select_dm(root, sink):
 
 
 def test_approve_shows_humanize_findings(root, port, monkeypatch, capsys):
-    strict(root)
     row = queued(root, TELLS)
     assert main(['drafts']) == 0
     assert 'not-x-but-y' in capsys.readouterr().out
@@ -655,15 +644,6 @@ def test_card_for_a_port_draft(root, sink, capsys):
     assert widget['options'][0]['label'] == 'Send now (Recommended)'
 
 
-def test_strict_recommends_keep_for_a_tier_rule(root, sink, capsys):
-    path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
-    row = queued(root)
-    assert card(capsys, row['id'])['options'][0]['label'] == 'Keep as draft (Recommended)'
-    _, _, row = held(root)
-    assert card(capsys, row['id'])['options'][0]['label'] == 'Send now (Recommended)'
-
-
 def test_card_names_outbound_learn_when_on(root, capsys, monkeypatch):
     _, _, row = held(root)
     load = workspace.load_config
@@ -807,16 +787,6 @@ def test_allowance_cannot_be_forged_or_carry_a_canary(root, monkeypatch, capsys)
     code, reason, _ = held(root, f'Thanks {marker}')
     assert code == 1 and 'security' in reason
     assert state.read_state(root)['drafts'][row['id']]['status'] == 'approved'
-
-
-def test_strict_recommends_keep_for_a_client_row(root, capsys):
-    # #496: a draft a tier row held for a known audience keeps; an unknown audience is learnable.
-    path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nexternal_channels = ["C2"]\n')
-                    + '[security]\nposture = "strict"\n')
-    _, reason, row = held(root, channel='C2')
-    assert 'ask by rule 5 (audience=client) for C2' in reason
-    assert card(capsys, row['id'])['options'][0]['label'] == 'Keep as draft (Recommended)'
 
 
 def test_card_adds_a_tier_row(root, capsys):

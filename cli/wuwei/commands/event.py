@@ -23,7 +23,7 @@ EVENT_PRODUCERS = {
     'build.checked': 'wuwei build check', 'build.check_started': 'wuwei build check',
     **{f'spec.{kind}': 'wuwei hook, wuwei build or wuwei dispatch next' for kind in ('step', 'skipped', 'warned')},
     'spec.override': 'owner host wuwei plan set',
-    'guard.would_refuse': 'wuwei hook (shadow mode) or wuwei pr raise',
+    'guard.would_refuse': 'wuwei hook (guards.enforce = false) or wuwei pr raise',
     'traces.noted': 'wuwei sweep', 'traces.unmatched': 'wuwei sweep',
     'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build, wuwei dispatch opinion or SubagentStop',

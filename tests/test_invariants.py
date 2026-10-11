@@ -5,7 +5,7 @@ import ast
 from importlib import import_module
 import re
 
-from test_posture import fixed
+from test_enforce import fixed
 from test_reasons import CLI, reasons
 
 # A wall: the only way out is the owner acting outside the session, and no card is named.
@@ -82,14 +82,13 @@ def test_reason_corpus_has_no_wall(tmp_path, monkeypatch):
     assert len(rows) > 200
     stale = [row for row in OWNED + EXEMPT if not any(r[0] == row[0] and row[1] in r[3] for r in rows)]
     assert not stale, stale
-    for posture in ('observe', 'guarded'):
-        (tmp_path / '.wuwei/config.toml').write_text(f'[security]\nposture = "{posture}"\n')
+    for enforce in ('true', 'false'):
+        (tmp_path / '.wuwei/config.toml').write_text(f'[guards]\nenforce = {enforce}\n')
         for rel, line, (module, name), reason in rows:
-            check = fixed(module, 1, reason)
-            check.__name__ = name
-            for guard, shown, posture_line, _ in hook.posture(payload, [(check, reason, 1)], tmp_path):
-                if (not wall(shown, posture_line) or 'posture: records = ' in posture_line
-                        or shown.startswith(RECORDS_FLOOR) or listed(OWNED + EXEMPT, rel, shown)):
+            check = fixed(module, 1, reason, name)
+            for guard, shown, _ in hook.enforce(payload, [(check, reason, 1)], tmp_path):
+                if (not wall(shown, '') or shown.startswith(RECORDS_FLOOR)
+                        or listed(OWNED + EXEMPT, rel, shown)):
                     continue
-                walls.append(f'{posture} {rel}:{line} {module}.{name}: {shown} | {posture_line}')
+                walls.append(f'enforce={enforce} {rel}:{line} {module}.{name}: {shown}')
     assert not walls, '\n'.join(sorted(set(walls)))

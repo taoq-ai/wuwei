@@ -738,7 +738,7 @@ def test_status_json_names_plan_and_versions(tmp_path):
     assert not {'nudges', 'nudges_mode', 'decisions', 'loops'} & set(data)
     assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
             'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'health',
-            'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
+            'trace_gaps', 'prs_changed', 'solo', 'enforce', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
     assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
 
@@ -783,7 +783,7 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
     data = four_seats(tmp_path, monkeypatch)
     assert status.line(data) == (
         'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0')
-    assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · observe')
+    assert status.line({**data, 'enforce': False}).endswith('| pages 0 · observe')
     assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0'
     for moved in ('watch', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
                   'unplanned', 'checks'):
@@ -882,7 +882,7 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
             'watch': 'dead', 'health': 'ok', 'sessions': 2,
             'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
-            'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
+            'plugin': '0.16.0', 'template': '0.15.0', 'enforce': False}
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [

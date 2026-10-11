@@ -144,7 +144,7 @@ def test_mode_label_and_skip(tmp_path):
     assert specmode.mode(config('[spec]\nengine = "none"\n')) == 'off'
     assert specmode.mode(config('[spec]\nmode = "off"\n')) == 'off'
     assert specmode.mode(config('[spec]\nmode = "advisory"\n')) == 'advisory'
-    assert specmode.label(config('[security]\nposture = "observe"\n')) == 'speckit advisory'
+    assert specmode.label(config('[guards]\nenforce = false\n')) == 'speckit advisory'
     cfg = config()
     assert specmode.skip(cfg, {}) is None
     assert specmode.skip(cfg, {'tier': 'standard'}) is None
@@ -414,7 +414,7 @@ def test_spec_analysis_refusals(ws, item, unanalysed, monkeypatch, capsys, tmp_p
 @pytest.mark.parametrize('form', ['redirect', 'heredoc'])
 def test_builder_seat_runs_spec_analysis(ws, item, unanalysed, monkeypatch, capsys, form):
     from fakes.day import LAUNCHER
-    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
+    (ws / '.wuwei/config.toml').write_text('[guards]\nenforce = true\n')
     command = (f'{LAUNCHER} spec analysis a < /tmp/report.md' if form == 'redirect'
                else f"{LAUNCHER} spec analysis a <<'EOF'\n{REPORT}EOF")
     data = payload(ws, 'PreToolUse', tool_name='Bash', tool_input={'command': command},

@@ -144,12 +144,7 @@ def push_check(repo, actual, push, root, vcs):
     for update in updates:
         destination = update['destination']
         if isinstance(destination, str) and destination.startswith('refs/tags/'):
-            # #530, #816: a tag is a release. Below strict the deploy guard's tag push rule asks the
-            # owner's Owner step card; strict refuses it from the session.
-            if workspace.posture(config)[0] != 'strict':
-                continue
-            return 1, (f'tag push {destination} is a release; posture strict refuses it from the session; '
-                       f'run git push origin HEAD:refs/heads/{branch} without the tag')
+            continue  # #530, #816: a tag is a release; the deploy guard's tag push rule asks the owner
         if not isinstance(destination, str) or not destination.startswith('refs/heads/'):
             raise ValueError(f'only branch and tag pushes are supported; run git push origin HEAD:refs/heads/{branch}')
         if destination == 'refs/heads/' + repo['default_branch']:

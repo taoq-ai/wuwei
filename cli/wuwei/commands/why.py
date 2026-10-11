@@ -235,8 +235,6 @@ def refusal(root, target):
             except ValueError:  # a damaged queue still shows the refusal
                 tool = None
             lines += edges(root, rule, tool)
-    if shadowed and payload.get('area'):  # #331
-        lines.append(f'posture: {payload["area"]} = {payload.get("level")} ({payload.get("posture")})')
     return [(text, f'{day.name}:{number}', []) for text in lines]
 
 

@@ -128,11 +128,13 @@ def test_empty_week_is_unmeasured_and_first_hour_only_in_the_earliest_week(ws):
 def test_vocabularies_match_their_sources():
     from wuwei import decision, guards, registry
     assert telemetry.GUARDS == tuple(sorted(guards.MODULES))
-    assert {area for area in guards.AREAS.values() if area} <= set(telemetry.AREAS)
     assert set(telemetry.PHASES) == set(state.PHASES)
     assert telemetry.TIERS == workspace.SCHEMA['repos'][0]['gates']['floor'][2]
     assert set(telemetry.CLASSES) == set(decision.CLASSES)
-    assert telemetry.AREAS == workspace.AREAS and telemetry.POSTURES == tuple(workspace.POSTURES)
+    # #837: AREAS and POSTURES stay as the vocabularies of stored weeks; the label maps the switch.
+    assert telemetry.posture_label({'guards': {'enforce': True}}) == 'guarded'
+    assert telemetry.posture_label({'guards': {'enforce': False}}) == 'observe'
+    assert {'guarded', 'observe'} <= set(telemetry.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
     # #419: load_config mirrors docs.system into adapters.docs.
     assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs', 'inbound'}  # inbound: weeks before #810
@@ -501,6 +503,7 @@ def test_spans_carry_only_the_attributes(ws):
     assert attributes[0] == {'wuwei.event': 'PreToolUse', 'wuwei.guard': 'pr', 'wuwei.outcome': 'unmeasured',
                              'wuwei.reason_code': 'pr.2', 'wuwei.posture': 'guarded'}
     assert attributes[1]['wuwei.outcome'] == 'warn' and attributes[1]['wuwei.item'] == 'A'
+    assert attributes[1]['wuwei.posture'] == 'guarded'  # #837: the workspace's label, not the event's
     assert int(spans[2]['endTimeUnixNano']) - int(spans[2]['startTimeUnixNano']) == 30 * 60 * 10 ** 9
     assert [event['name'] for event in spans[3]['events']] == ['decision.routed', 'negotiation.loop', 'gate.received']
     assert len({span['traceId'] for span in spans}) == 1 and len({span['spanId'] for span in spans}) == 4

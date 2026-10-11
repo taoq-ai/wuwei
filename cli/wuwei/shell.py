@@ -697,7 +697,7 @@ def is_opaque(argv: list[str], stdin: bool = True) -> bool:
     return stdin and not has_snippet and (len(argv) == 1 or argv[1].startswith('-'))
 
 
-# Every cd, pushd and popd refusal of the state guard; the hook warns it in every posture.
+# Every cd, pushd and popd refusal of the state guard; the hook warns it whatever guards.enforce says.
 WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the workspace; '
                   'run it in a subshell, (cd <dir> && <command>), or use git -C <dir>')
 # A relevant call the guards could not read and that names no publisher (#347).

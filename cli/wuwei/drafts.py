@@ -205,12 +205,6 @@ def widget(row, config, root):
         options[2:] = [('Keep as draft', f'Nothing is sent; it stays in bin/wuwei drafts, or {cli} drafts '
                                          f'drop {draft_id} drops it.'),
                        (added[0], f'Send it now, and {later}: {cli} drafts approve {draft_id} --always.')]
-    # Strict recommends keeping a tier draft; a row that held only an unknown audience is learnable.
-    unknown = learnable or 'unknown DM recipient' in rule
-    if ((rule.startswith('approval tier') or rule.startswith('ask by rule')
-         and ('topic=' in rule.partition(')')[0] or not unknown))
-            and workspace.posture(config)[0] == 'strict'):
-        options.insert(0, options.pop(2))
     options[0] = (options[0][0] + ' (Recommended)', options[0][1])
     return decision.widget(f"{draft_id}: send this to {row['destination']} through "
                            f"{row.get('tool') or row['adapter']}? Rule: {rule}.\n\n{row['text']}",
@@ -312,19 +306,19 @@ def approve(root, draft_id, *, answered, edit=False, source=None, always=False):
         size = sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in
                    SequenceMatcher(None, row['text'], text, autojunk=False).get_opcodes()
                    if tag != 'equal')
-        # #493: outside strict the owner's recorded Send answer is the confirmation (#800: the
+        # #493: the owner's recorded Send answer is the confirmation (#800: the
         # caller says whether it is recorded). A --file text is the owner's only when they typed
         # it into a Draft card citing this id (record_gate).
         planner = data.get('sessions', {}).get(data.get('planner_session_id'), {})
         typed = f'{draft_id}:text:{sha256(text.strip().encode()).hexdigest()}' in planner.get('gate_asked', ())
         # An --edit text comes from an editor, never from a card, so it is confirmed like a --file text.
-        if workspace.posture(config)[0] == 'strict' or not answered or (edit or source) and not typed:
+        if not answered or (edit or source) and not typed:
             try:
                 confirmed = integrity._host_confirm(
                     sha256((draft_id + '\n' + text).encode()).hexdigest(),
                     prompt=f"Send this draft to {row['destination']}:\n{text}" + (f'\n{style}' if style else ''))
             except OSError as exc:
-                card = ('' if answered or workspace.posture(config)[0] == 'strict' else
+                card = ('' if answered else
                         f'ask it with bin/wuwei drafts show {draft_id} --widget and run the record command '
                         'the card names, or ')
                 return registry.Result(2, reason=f'{exc}; {card}the owner runs bin/wuwei drafts approve '

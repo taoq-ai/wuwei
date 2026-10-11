@@ -390,9 +390,7 @@ def _outbound(config):
                  detail=[f'{key}: team while internal by outbound.company_domains or outbound.code_host_orgs, '
                          'else the connector default class' for key in bare])
             if bare else _row('workspace', 'outbound classes', 'ok', 'every person has a class')]
-    strict = workspace.posture(config)[0] == 'strict'
-    sends = [f'rule {number} is ignored under strict' if strict
-             else f'rule {number} can send to a client or public audience'
+    sends = [f'rule {number} can send to a client or public audience'
              for number, (row, source, _) in enumerate(outward.table(config), 1)
              if source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)]
     rows.append(_row('workspace', 'outbound tiers', 'warn', f'{len(sends)} send rows for a client or public audience',
@@ -419,11 +417,6 @@ def _register(root, config):
                 f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
 
 
-SHADOW = ('Observe posture has run {days} days. To enforce, set '
-          'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
-          "The day report's ## Shadow section lists what would have been refused.")
-
-
 def _calibration(root, config):
     from wuwei import calibrate, watch
     rows = []
@@ -442,20 +435,11 @@ def _calibration(root, config):
                     if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
         rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
-    guards, name = config['guards'], workspace.posture(config)[0]
-    shown = f'{name} (from {workspace.posture_source(config)})'
-    if guards['mode'] == 'shadow':
-        rows.append(_row('workspace', 'posture', 'warn', shown, 'wuwei init --upgrade', apply='init-upgrade'))
-    elif name != 'observe':
-        rows.append(_row('workspace', 'posture', 'ok', shown))
-    else:
-        from datetime import date
-        since = guards['shadow_since']
-        days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
-        left = guards['shadow_days'] - days
-        rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
-                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
-                         'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
+    rows.append(_row('workspace', 'guards', 'ok', 'enforce (guards.enforce = true)')
+                if config['guards']['enforce'] else
+                _row('workspace', 'guards', 'ok', "log only (guards.enforce = false); the day report's "
+                     '## Shadow section lists what would have been refused; to enforce, run '
+                     'bin/wuwei config set guards.enforce true'))
     telemetry = config['telemetry']
     rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet',
                      'bin/wuwei config set telemetry.share \'"anonymous"\' (or "attributed" or "off")') if telemetry['enabled'] and not telemetry['share']
@@ -627,7 +611,7 @@ def _day(root, config, probes):
     untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
-                     'launch agents from a session inside the workspace after the morning plan; under strict '
+                     'launch agents from a session inside the workspace after the morning plan; '
                      'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
     from wuwei import watch
     try:  # #599: the last SessionStart says whether Bash calls carry WUWEI_SESSION_ID.
@@ -853,7 +837,7 @@ def _reports(root, token):
 
 
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (mcp decide, security.posture, state recover, the code host)
+# apply(root, token) -> exit). Decisions (mcp decide, guards.enforce, state recover, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),

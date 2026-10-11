@@ -798,10 +798,10 @@ def test_append_event_timeout_is_bounded(trace_workspace):
             state.append_event('x.y', {}, trace_workspace.parents[2], timeout=0)
 
 
-def secure(trace_workspace, posture):
+def secure(trace_workspace, enforce='true'):
     from wuwei import security
     root = trace_workspace.parents[2]
-    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = true\nposture = "{posture}"\n')
+    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = true\n[guards]\nenforce = {enforce}\n')
     security.initialize(root / '.wuwei')
     return root
 
@@ -810,15 +810,15 @@ def slow(*args):
     raise TimeoutError('state.lock remained locked for 30s')
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_slow_trace_read_is_a_warning_below_strict(trace_workspace, call_payload, monkeypatch, capsys, posture):
-    """#659: a read that did not finish in time names its elapsed time; only strict refuses."""
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_slow_trace_read_is_a_warning(trace_workspace, call_payload, monkeypatch, capsys, enforce):
+    """#659, #837: a read that did not finish in time names its elapsed time; it never refuses."""
     import re
     from wuwei import security
-    secure(trace_workspace, posture)
+    secure(trace_workspace, enforce)
     monkeypatch.setattr(security, 'trace_findings', slow)
     code, output = run_hook(call_payload, monkeypatch, capsys)
-    assert code == (2 if posture == 'strict' else 0)
+    assert code == 0
     assert re.search(r'wuwei traces: did not finish in time after \d+ ms', output.err)
     assert 'remained locked' not in output.err
     event, = error_events(trace_workspace)
@@ -827,29 +827,29 @@ def test_slow_trace_read_is_a_warning_below_strict(trace_workspace, call_payload
     assert (event['payload']['span'], event['payload']['session']) == ('Read', call_payload['session_id'])
 
 
-@pytest.mark.parametrize('posture', ['observe', 'strict'])
-def test_slow_unsecured_trace_read_refuses_only_under_strict(trace_workspace, call_payload, monkeypatch, capsys, posture):
-    """#659: without required security, strict still refuses a read that did not finish in time."""
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_slow_unsecured_trace_read_never_refuses(trace_workspace, call_payload, monkeypatch, capsys, enforce):
+    """#659, #837: without required security, a read that did not finish in time only warns."""
     from wuwei import security
     root = trace_workspace.parents[2]
-    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = false\nposture = "{posture}"\n')
+    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = false\n[guards]\nenforce = {enforce}\n')
     monkeypatch.setattr(security, 'trace_findings', slow)
     code, output = run_hook(call_payload, monkeypatch, capsys)
-    assert code == (2 if posture == 'strict' else 0)
+    assert code == 0
     assert 'did not finish in time' in output.err
 
 
-@pytest.mark.parametrize('posture', ['observe', 'strict'])
+@pytest.mark.parametrize('enforce', ['true', 'false'])
 @pytest.mark.parametrize('error', [TimeoutError, OSError])
-def test_slow_record_is_slow_and_unwritable_record_is_a_gap(trace_workspace, call_payload, monkeypatch, capsys, error, posture):
+def test_slow_record_is_slow_and_unwritable_record_is_a_gap(trace_workspace, call_payload, monkeypatch, capsys, error, enforce):
     def broken(*args):
         raise error('private details')
 
-    secure(trace_workspace, posture)
+    secure(trace_workspace, enforce)
     monkeypatch.setattr(state, 'append_jsonl', broken)
     code, output = run_hook(call_payload, monkeypatch, capsys)
     event, = error_events(trace_workspace)
-    assert code == (2 if posture == 'strict' else 0)  # #601: below strict neither fails the call
+    assert code == 0  # #601, #837: neither fails the call
     assert event['kind'] == ('traces.slow' if error is TimeoutError else 'traces.gap')
 
 
@@ -857,7 +857,7 @@ def test_slow_record_gives_up_on_a_held_lock(trace_workspace, call_payload, monk
     import fcntl
     import time
     from wuwei import security
-    secure(trace_workspace, 'observe')
+    secure(trace_workspace, 'false')
     monkeypatch.setattr(security, 'trace_findings', slow)
     trace_workspace.mkdir(parents=True, exist_ok=True)
     with (trace_workspace / 'state.lock').open('a') as holder:
@@ -906,11 +906,11 @@ def test_bound_seat_is_not_rewritten(trace_workspace, call_payload):
     assert seat['transcript'] == str(transcript) and seat['trace_sessions'] == [call_payload['session_id']]
 
 
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_traces_failure_warns_below_strict(trace_workspace, call_payload, monkeypatch, capsys, posture):
-    # #601: a failure names what it could not read and fails the tool call only under strict.
+@pytest.mark.parametrize('enforce', ['true', 'false'])
+def test_traces_failure_warns(trace_workspace, call_payload, monkeypatch, capsys, enforce):
+    # #601, #837: a failure names what it could not read and never fails the tool call.
     from wuwei import security
-    secure(trace_workspace, posture)
+    secure(trace_workspace, enforce)
 
     def broken(*args):
         raise OSError('private details')
@@ -918,16 +918,16 @@ def test_traces_failure_warns_below_strict(trace_workspace, call_payload, monkey
     with monkeypatch.context() as patch:
         patch.setattr(security, 'record', broken)
         code, output = run_hook(call_payload, monkeypatch, capsys)
-    assert code == (2 if posture == 'strict' else 0)
+    assert code == 0
     assert 'events.jsonl' in output.err and 'OSError' in output.err
     assert 'private details' not in output.err
     event, = error_events(trace_workspace)
     assert event['kind'] == 'traces.gap' and event['payload']['reason'] in output.err
 
 
-def test_traces_unparsable_honeytoken_read_warns_under_observe(trace_workspace, call_payload, monkeypatch, capsys):
+def test_traces_unparsable_honeytoken_read_warns(trace_workspace, call_payload, monkeypatch, capsys):
     # The reproduced trigger: the shell reader cannot parse a command naming the honeytoken file.
-    secure(trace_workspace, 'observe')
+    secure(trace_workspace, 'false')
     call_payload.update(tool_name='Bash', tool_input={'command': 'cat credentials/backup.env "x'})
     code, output = run_hook(call_payload, monkeypatch, capsys)
     assert code == 0
@@ -937,7 +937,7 @@ def test_traces_unparsable_honeytoken_read_warns_under_observe(trace_workspace, 
 
 def test_traces_failure_names_the_executable_mismatch(trace_workspace, call_payload, monkeypatch, capsys, tmp_path_factory):
     from wuwei import integrity, security
-    root = secure(trace_workspace, 'observe')
+    root = secure(trace_workspace, 'false')
     other = tmp_path_factory.mktemp('other') / 'bin/wuwei'
     this = integrity.PLUGIN / 'bin/wuwei'
 
@@ -955,14 +955,15 @@ def test_traces_failure_names_the_executable_mismatch(trace_workspace, call_payl
     assert code == 0 and '.wuwei/executable names' not in output.err
 
 
-def test_traces_unreadable_config_keeps_the_refusal(trace_workspace, call_payload, monkeypatch, capsys):
+def test_traces_unreadable_config_never_refuses(trace_workspace, call_payload, monkeypatch, capsys):
+    # #837: the recorder never refuses; it no longer reads the config to decide.
     from wuwei import security
-    root = secure(trace_workspace, 'observe')
+    root = secure(trace_workspace)
     (root / '.wuwei/config.toml').write_text('[security')
 
     def broken(*args):
         raise OSError('private details')
 
     monkeypatch.setattr(security, 'record', broken)
-    code, output = run_hook(call_payload, monkeypatch, capsys)
-    assert code == 2 and 'private details' not in output.err
+    assert recorder()(call_payload) == (0, '')
+    assert 'private details' not in capsys.readouterr().err

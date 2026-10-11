@@ -4,7 +4,6 @@ from itertools import chain
 import os
 from pathlib import Path
 import re
-import sys
 
 from wuwei.guards import Guard
 from wuwei.shell import WORKSPACE_ROOT, _cd_target, _cwd, _text
@@ -176,7 +175,7 @@ def check_file(payload):
 
 
 def check_scratch(payload):
-    """#647: a seat's Write into another item's scratch directory: a warning below strict."""
+    """#647: a seat's Write into another item's scratch directory; the hook logs it (#837)."""
     try:
         if 'agent_id' not in payload:
             return 0, ''
@@ -199,12 +198,7 @@ def check_scratch(payload):
             return 0, ''
         reason = (f"scratch: {Path(*parts)} is in item {other}'s scratch directory; write item "
                   f"{seat['item']}'s temporary files in {base / seat['item'] / seat['role']}/")
-        level = workspace.posture(workspace.load_config(root))[1]['seats']
-        if level == 'block':
-            return 1, reason
-        if level == 'warn':
-            print(f'warning: {reason}', file=sys.stderr)
-        return 0, ''
+        return 1, reason
     except (ValueError, OSError, RuntimeError, KeyError) as exc:
         return 2, str(exc)
 

@@ -6,7 +6,6 @@ import posixpath
 from pathlib import Path
 import re
 import shlex
-import sys
 from urllib.parse import unquote, urlsplit
 
 from wuwei import registry, shell, verdict, workspace
@@ -246,9 +245,7 @@ def create_check(args, command, cwd, root, config):
         hint = (f'{linked[0]} is a WUWEI item: raise its PR with bin/wuwei pr raise '
                 f'{repo or "<owner/repo>"} --base <branch> --title <title> --body-file <file> '
                 f'--item {linked[0]}. It links the PR to {linked[0]}; gh pr create does not')
-        if workspace.posture(config)[0] == 'strict':
-            return 1, hint
-        print(f'warning: {hint}', file=sys.stderr)
+        return 1, hint  # #837: a PR raised outside WUWEI; the hook decides
     reviewers = values(found, '--reviewer', '-r')
     if (reviewers or config['shepherd']['min_reviewers']) and not (reviewers and all(
             part.strip() and not part.strip().startswith('-')
