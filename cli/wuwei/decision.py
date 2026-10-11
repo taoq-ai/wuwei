@@ -211,7 +211,7 @@ def present(identifier, fields, level):
 
 
 # The command that records an owner's answer to a D-n widget; <label> is the chosen option.
-RECORD = 'wuwei decide {id} "<label>" --card {card}'
+RECORD = '{cli} decide {id} "<label>" --card {card}'
 
 
 def first(text):
@@ -249,7 +249,7 @@ def card_hash(identifier, fields):
     return card_topic(identifier, f'{fields["Question"]}\n{fields["Options"]}').split('=', 1)[1][:12]
 
 
-def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False):
+def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False, *, root):
     """A decision that passed the new-record check as a widget: titles as labels, the
     recommendation first; rationale, consequence and lens lines, trimmed at brief. hidden (the
     #283 weekly sample) keeps record order and shows neither the recommendation nor its reasons."""
@@ -263,7 +263,8 @@ def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False
                   [(title + (' (Recommended)' if option == chosen and not hidden else ''),
                     '\n'.join(trim(part) for part in ((consequence,) if hidden else
                                                        (rationale, consequence, *lenses.get(option, [])))))
-                   for option, title, rationale, consequence in rows[:4]], record.format(id=identifier, card=card_hash(identifier, fields)))
+                   for option, title, rationale, consequence in rows[:4]],
+                  record.format(id=identifier, cli=workspace.owner_cli(root), card=card_hash(identifier, fields)))
 
 
 def config_keys(fields):
@@ -543,7 +544,7 @@ def no_card(root, identifier, option):
     reason = (f'decision: {identifier} has no card answer for this record from the planner session; '
               f'ask it with bin/wuwei decision show {identifier} --widget and run its record command')
     if workspace.posture(workspace.load_config(root))[0] == 'strict':
-        reason += f'; under strict the owner runs bin/wuwei decide {identifier} {option} in a host terminal'
+        reason += f'; under strict the owner runs {workspace.owner_cli(root)} decide {identifier} {option} in a host terminal'
     return reason
 
 

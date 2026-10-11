@@ -103,7 +103,7 @@ def cockpit_snapshot(directory):
             signals.append({'tier': tier, 'lane': lane,
                             'kind': event.get('kind', 'unreadable') if isinstance(event, dict)
                             else 'unreadable'})
-    pending = [{**row, 'approve_command': f"bin/wuwei drafts approve {row['id']}"}
+    pending = [{**row, 'approve_command': f"{workspace.owner_cli(root)} drafts approve {row['id']}"}
                for row in drafts.read(data).values() if row['status'] == 'pending']
     return {'decisions': decisions, 'drafts': pending,
             'people': data.get('reply_obligations', 'unmeasured'),

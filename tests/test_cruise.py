@@ -6,6 +6,7 @@ import os
 import pytest
 
 from test_decision import SUPERVISED, save, events
+from wuwei.workspace import owner_cli
 from test_decision_classes import BELOW, LEAD, record, route, ws  # noqa: F401 (ws is a fixture)
 
 
@@ -340,10 +341,10 @@ def test_keep_closed_window_no_window_and_declined(ws, answered, capsys, monkeyp
     code, message = undo(ws)
     assert code == 1 and 'declined' in message
     later(monkeypatch, '13:00')
-    assert undo(ws) == (1, 'undo window closed at 13:00; reverse it with wuwei decide D-3 <option>')
+    assert undo(ws) == (1, f'undo window closed at 13:00; run {owner_cli(ws)} decide D-3 <option> to reverse it')
     save(ws, record(cls='retry', radius='item DIV-1'), name='D-4.md')
     route(ws, capsys, 'D-4')
-    assert undo(ws, 'D-4') == (1, 'D-4 has no undo window; reverse it with wuwei decide D-4 <option>')
+    assert undo(ws, 'D-4') == (1, f'D-4 has no undo window; run {owner_cli(ws)} decide D-4 <option> to reverse it')
     assert state.read_state(ws)['decision_outcomes']['D-3'] == before['decision_outcomes']['D-3']
 
 

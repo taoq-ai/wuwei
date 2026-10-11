@@ -9,6 +9,8 @@ import sys
 
 import pytest
 
+from wuwei.workspace import owner_cli
+
 ROOT = Path(__file__).resolve().parents[1]
 NOW = '2026-09-28T12:34:56+02:00'
 
@@ -278,7 +280,7 @@ def test_cockpit_snapshot_reads_pending_records_and_optional_lanes(workspace, mo
     assert data['prs'][0]['action'] == 'start a fix round'
     assert data['decisions'][1]['command'] == 'bin/wuwei decision route D-3'
     assert [row['id'] for row in data['drafts']] == ['draft-1']
-    assert data['drafts'][0]['approve_command'] == 'bin/wuwei drafts approve draft-1'
+    assert data['drafts'][0]['approve_command'] == f'{owner_cli(day.parents[2])} drafts approve draft-1'
     assert data['status']['pages'] == 1
     assert data['signals'] == [{'tier': 'page', 'lane': 'Work', 'kind': 'security.finding'}]
     assert data['briefing'] == 'Today <important>'

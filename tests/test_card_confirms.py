@@ -365,7 +365,8 @@ def test_widget_of_a_config_record_prints_the_config_command(ws, capsys):
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
     assert main('decision', 'show', 'D-2', '--widget') == 0
     card = decision.card_hash('D-2', decision.evaluate(VALID)[0])
-    assert json.loads(capsys.readouterr().out)[0]['record'] == f'wuwei decide D-2 "<label>" --card {card}'
+    assert json.loads(capsys.readouterr().out)[0]['record'] == (
+        f'{workspace.owner_cli(ws)} decide D-2 "<label>" --card {card}')
 
 
 # Phase 4: strict keeps the host terminal.
@@ -686,7 +687,7 @@ def test_decide_with_card_never_prompts(ws, monkeypatch, capsys, case):
         return
     assert code == 1 and 'Outcome: pending' in record_text(ws)
     assert 'bin/wuwei decision show D-1 --widget' in err
-    assert ('bin/wuwei decide D-1 A in a host terminal' in err) is (case == 'strict')
+    assert (f'{workspace.owner_cli(ws)} decide D-1 A in a host terminal' in err) is (case == 'strict')
 
 
 def test_hook_refuses_a_seat_record_command_with_card(ws, monkeypatch):

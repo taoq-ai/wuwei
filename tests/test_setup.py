@@ -175,6 +175,21 @@ def test_repository_table_lands_after_its_digest(workspace, capsys):
     assert repo['identity'] == {'name': 'Pat Example', 'email': 'pat@example.test'}
 
 
+def test_added_repository_is_indexed(workspace, capsys):
+    (workspace.parent / 'widget').mkdir()
+    assert add_repo(Confirm(), path='../widget') == 0
+    index = json.loads((Path.home() / '.config/wuwei/workspaces.json').read_text())
+    assert index == {str(workspace.resolve()): [str((workspace.parent / 'widget').resolve())]}
+
+
+def test_unwritable_index_still_writes_the_config(workspace, capsys):
+    (Path.home() / '.config').write_text('')
+    assert add_repo(Confirm(), path='../widget') == 0
+    assert load_config(workspace)['repos'][0]['path'] == '../widget'
+    err = capsys.readouterr().err
+    assert 'workspace index not written' in err and 'rerun bin/wuwei init --upgrade' in err
+
+
 @pytest.mark.parametrize('kwargs', [{}, {'name': 'acme/other'}])
 def test_duplicate_repository_is_refused_before_the_digest(workspace, capsys, kwargs):
     (workspace / '.wuwei/config.toml').write_text(TEMPLATE + REPO)

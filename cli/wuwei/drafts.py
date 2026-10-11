@@ -171,10 +171,11 @@ def always_row(row):
     return ('Always ask for this channel', {'channel': party, 'tier': 'ask'}) if party == row['destination'] else None
 
 
-def widget(row, config):
+def widget(row, config, root):
     """The draft card (#493): one #359 widget whose record is the Send now command."""
     from wuwei import decision
     draft_id, rule = row['id'], row['tier_reason'].removeprefix(outward.APPROVAL_REQUIRED + ': ')
+    cli = workspace.owner_cli(root)  # #735: runs from any folder
     allowance = row['adapter'] in ('mcp', 'none')
     send = 'Send the text as it is. ' + ('The seat repeats its call and it goes out once.' if allowance
                                          else f"It goes out through the {row['adapter']} adapter.")
@@ -191,18 +192,18 @@ def widget(row, config):
                  "and DM ids from the connector's identity tool, so later messages to you go out.")
     options = [('Send now', send),
                ('Send with an edit', f'I ask you for the new text in a Draft card citing {draft_id}, '
-                f'write it to a file and run bin/wuwei drafts approve {draft_id} --file <file>.'),
+                f'write it to a file and run {cli} drafts approve {draft_id} --file <file>.'),
                ('Keep as draft', 'Nothing is sent; it stays in bin/wuwei drafts.'),
-               ('Drop', f'Nothing is sent: bin/wuwei drafts drop {draft_id}.')]
+               ('Drop', f'Nothing is sent: {cli} drafts drop {draft_id}.')]
     added = always_row(row)
     if added:  # #496: the card holds four options; Keep names the drop command instead.
         target = added[1].get('person') or added[1]['channel']
         later = (f'later thread replies in {target} go out without a card' if added[1].get('topic')
                  else f'later sends that reach {target} go out without a card' if added[1]['tier'] == 'send'
                  else f'every later send to {target} asks you first')
-        options[2:] = [('Keep as draft', f'Nothing is sent; it stays in bin/wuwei drafts, or bin/wuwei drafts '
+        options[2:] = [('Keep as draft', f'Nothing is sent; it stays in bin/wuwei drafts, or {cli} drafts '
                                          f'drop {draft_id} drops it.'),
-                       (added[0], f'Send it now, and {later}: bin/wuwei drafts approve {draft_id} --always.')]
+                       (added[0], f'Send it now, and {later}: {cli} drafts approve {draft_id} --always.')]
     # Strict recommends keeping a tier draft; a row that held only an unknown audience is learnable.
     unknown = learnable or 'unknown DM recipient' in rule
     if ((rule.startswith('approval tier') or rule.startswith('ask by rule')
@@ -212,7 +213,7 @@ def widget(row, config):
     options[0] = (options[0][0] + ' (Recommended)', options[0][1])
     return decision.widget(f"{draft_id}: send this to {row['destination']} through "
                            f"{row.get('tool') or row['adapter']}? Rule: {rule}.\n\n{row['text']}",
-                           'Draft', options, f'bin/wuwei drafts approve {draft_id}')
+                           'Draft', options, f'{cli} drafts approve {draft_id}')
 
 
 def _edit(inputs, root, source=None):

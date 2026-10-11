@@ -800,7 +800,7 @@ def propose_checks(root, config, selected):
         ident, (fields, scores) = path.stem, decision.evaluate(text)
         if not mandate:
             decision.route_owner(ident, fields, root)
-            widgets.append(decision.record_widget(ident, fields, CONFIG_RECORD))
+            widgets.append(decision.record_widget(ident, fields, CONFIG_RECORD, root=root))
             continue
         record = decision.seat_outcome(fields, scores, by='mandate')  # the build._park pattern
         state._write_state(lambda data: data.setdefault('decision_outcomes', {}).__setitem__(ident, record),
