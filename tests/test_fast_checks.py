@@ -9,7 +9,7 @@ import pytest
 from wuwei import registry, state
 from wuwei.__main__ import main
 from wuwei.registry import Result
-from test_commit_push import SHA, OLD, guard, payload, workspace_case
+from test_commit_push import SHA, OLD, push, workspace_case
 from test_git_hook import invoke
 from test_state import cli
 
@@ -25,8 +25,8 @@ def test_only_forged_evidence_cannot_authorize_push(workspace_case, monkeypatch,
     forged = {'example/project': {'unit': {'sha': SHA, 'exit': 0}}}
     result = cli('state', 'set', 'fast_checks', json.dumps(forged))
     if anchor == 'bash':
-        code = guard().check(payload(root, 'git push origin feature'))[0]
-    else:  # #530, #837: the native hook warns on a missing check; the Bash guard refuses it
+        code = push(root)[0]
+    else:  # #530, #837: the native hook warns on a missing check; the policy refuses it
         code = 1 + invoke(workspace_case, monkeypatch, anchor,
                           f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n')
     assert code == 1
@@ -53,7 +53,7 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
         'example/project': {'unit': {'sha': SHA, 'exit': exit_code, 'data': None,
             'reason': 'check unavailable' if exit_code == 2 else '',
             'worktree': str(root / 'repo'), 'build': None, 'clean': False}}}
-    assert guard().check(payload(root, 'git push origin feature'))[0] == (0 if exit_code == 0 else 1)
+    assert push(root)[0] == (0 if exit_code == 0 else 1)
 
 
 
@@ -207,7 +207,7 @@ def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monk
             'check unavailable' if exit_code == 2 else '')) if kind == 'checks' else vcs))
     assert main(['build', 'check', 'A']) == exit_code
     assert state.read_state(root)['fast_checks']['example/project']['unit']['sha'] == SHA
-    assert guard().check(payload(root, 'git push origin feature'))[0] == (
+    assert push(root)[0] == (
         2 if not identity else 0 if exit_code == 0 else 1)
 
 

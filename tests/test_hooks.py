@@ -143,8 +143,7 @@ def test_discovery_returns_plain_list():
                and g.check.__module__ == 'wuwei.guards.traces' for g in discover())
     assert any(guard.event == 'PreToolUse' and guard.matcher == 'Agent' for guard in discover())
     assert any(record.event == 'PreToolUse' and record.matcher == 'Bash'
-               and record.check.__module__ == 'wuwei.guards.commit_push' for record in discover())
-    assert any(guard.check.__module__ == 'wuwei.guards.deploy' for guard in discover())
+               and record.check.__module__ == 'wuwei.guards.edges' for record in discover())
 
 
 def test_import_map_matches_guard_tables():
@@ -182,13 +181,11 @@ def test_selected_guards_match_full_discovery(event, tool):
     assert runnable(selected) == runnable(discover())
 
 
-BASH_GUARDS = {'commit_push', 'deploy', 'pr'}
 
 
 @pytest.mark.parametrize('event, name, unloaded', [
-    ('Stop', 'example', BASH_GUARDS | {'protect_state'}),
-    ('PostToolUse', 'example', BASH_GUARDS | {'protect_state'}),
-    ('PreToolUse', 'write', BASH_GUARDS),
+    ('Stop', 'example', {'edges', 'protect_state'}),
+    ('PostToolUse', 'example', {'edges', 'protect_state'}),
 ])
 def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
     # A fresh interpreter: loaded modules are process state and other tests import every guard.
@@ -1059,7 +1056,10 @@ def test_workspace_hook_latency(seeded_workspace, capsys, path):
 # #516: the modules the SubagentStop path runs beyond the PreToolUse Bash call's.
 SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.lifecycle',
                          'wuwei.guards.spec', 'wuwei.guards.verdict', 'wuwei.brief', 'wuwei.dispatch',
-                         'wuwei.sessions', 'wuwei.specmode'}
+                         'wuwei.sessions', 'wuwei.specmode',
+                         # #839: a git commit's PreToolUse no longer reads the identity (state, registry).
+                         'wuwei.registry', 'wuwei.state', 'wuwei.verdict', 'datetime', '_datetime', 'fcntl',
+                         'math'}  # datetime imports math on Python 3.11
 
 
 def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES, printed=False):
@@ -1294,23 +1294,22 @@ def test_floor_at_the_hook(plugin):
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
     enforce(plugin)
     try:
-        for name in ('protect_state', 'deploy', 'pr'):
+        for name in ('protect_state',):
             forget_guards()
             install(plugin, refusing('PreToolUse', 'kept'), name)
             assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
             assert events_of(plugin, 'guard.would_refuse') == []
             assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [{'guard': name, 'reason': 'kept', 'exit': 1}]
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
-        for name in ('commit_push', 'integrity'):
+        for name in ('edges', 'fake'):
             forget_guards()
             install(plugin, refusing('PreToolUse', 'kept'), name)
             result = replay(plugin, 'PreToolUse', payload)
             assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
-        assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == [
-            'commit_push', 'integrity']
+        assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == ['edges', 'fake']
         forget_guards()
-        install(plugin, refusing('PreToolUse', 'kept'), 'commit_push')
+        install(plugin, refusing('PreToolUse', 'kept'), 'edges')
         enforce(plugin, True)
         assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
         assert len(events_of(plugin, 'guard.would_refuse')) == 2
@@ -1412,22 +1411,6 @@ from wuwei.guards import Guard
 from wuwei.shell import {reason}
 GUARDS = [Guard('PreToolUse', None, lambda payload: ({code}, {reason}))]
 '''
-
-
-def test_unknown_git_reason_warns_only_from_deploy(plugin):
-    # #470: another guard's text starting with UNKNOWN_GIT keeps its own decision.
-    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
-    try:
-        forget_guards()
-        install(plugin, '''
-from wuwei.guards import Guard
-from wuwei.shell import UNKNOWN_GIT
-GUARDS = [Guard('PreToolUse', None, lambda payload: (2, UNKNOWN_GIT + 'x; run y'))]
-''', 'protect_state')
-        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
-                       'unknown git subcommand x; run y')
-    finally:
-        forget_guards()
 
 
 @pytest.mark.parametrize('value', [True, False])

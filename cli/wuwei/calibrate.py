@@ -13,7 +13,7 @@ import tomllib
 
 from wuwei import configtext, registry, workspace
 from wuwei.commands.init import _preserves_values, _sections
-from wuwei.guards.deploy import VERBS
+from wuwei.guards.edges import VERBS
 from wuwei.workspace import MERGE_SCHEMA
 from wuwei.exits import DAMAGED, SYMLINK
 

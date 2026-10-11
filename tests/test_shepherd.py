@@ -284,7 +284,7 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
     if solo:
         vcs.responses['authorship'] = Result(0, [])
         host.results['request_reviewers'] = Result(0, {'requested': ['lead']})
-    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
+    monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (0, ''))
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
                       data['approved_items'].extend(['ITEM-1'] if approved else [])), root, reserved=False)
     if not approved:
@@ -323,7 +323,7 @@ def solo_raise(case, monkeypatch, minimum=0):
                          authorship=Result(0, [{'email': 'builder@example.test', 'commits': 5}]))
     host.results['create_pr'] = Result(0, {'number': 7, 'url': 'https://github.com/acme/widget/pull/7'})
     host.results['request_reviewers'] = Result(2, reason='empty reviewer list')
-    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
+    monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (0, ''))
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
                       data['approved_items'].append('ITEM-1')), root, reserved=False)
     return root, host
@@ -423,7 +423,7 @@ def test_raise_refuses_failed_gate_without_creating(case, monkeypatch):
     from wuwei import shepherd
     root, host, _, _, vcs = case
     vcs.responses['head'] = Result(0, {'sha': SHA})
-    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (1, 'gate failed'))
+    monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (1, 'gate failed'))
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert not any(name == 'create_pr' for name, _, _ in host.calls)
 
@@ -438,7 +438,7 @@ def test_raise_checks_item_worktree_head(case, monkeypatch):
     vcs.responses['repo_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
     vcs.responses['head'] = Result(0, {'sha': SHA})
     observed = []
-    monkeypatch.setattr('wuwei.guards.pr.gate_check',
+    monkeypatch.setattr('wuwei.merge.gate_check',
                         lambda _, path, __, **kw: (observed.append((path, kw['sha'])) or 1, 'stop'))
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert observed == [(tree, SHA)]
@@ -936,7 +936,7 @@ GATE_MISS = f'pre-PR gates not passed at current HEAD {SHA} for item ITEM-1: sec
 
 def gate_miss(case, monkeypatch, enforce=True):
     root, host = solo_raise(case, monkeypatch)
-    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (1, GATE_MISS))
+    monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (1, GATE_MISS))
     if not enforce:
         with (root / '.wuwei/config.toml').open('a') as stream:
             stream.write('\n[guards]\nenforce = false\n')

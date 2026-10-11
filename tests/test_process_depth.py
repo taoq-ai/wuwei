@@ -248,7 +248,7 @@ SHA = 'a' * 40
 
 @pytest.mark.parametrize('tier,code', [('light', 0), ('standard', 1)])
 def test_pr_gate_check_accepts_recorded_light_verdicts(tmp_path, tier, code):
-    from wuwei.guards import pr
+    from wuwei import merge
     directory = workspace.day_dir(tmp_path) / 'decisions'
     directory.mkdir(parents=True)
     (directory / 'gate-9-quality.md').write_text(THREE.replace('abc1234', SHA))
@@ -258,9 +258,9 @@ def test_pr_gate_check_accepts_recorded_light_verdicts(tmp_path, tier, code):
                                      'file': str((directory / 'gate-9-quality.md').relative_to(tmp_path))}}
     if code:
         with pytest.raises(ValueError, match='quality verdict'):
-            pr._recorded_gates(tmp_path, SHA, records, '9', items)
+            merge._recorded_gates(tmp_path, SHA, records, '9', items)
     else:
-        assert pr._recorded_gates(tmp_path, SHA, records, '9', items) == (0, '')
+        assert merge._recorded_gates(tmp_path, SHA, records, '9', items) == (0, '')
 
 
 def test_obligation_verdict_is_met_by_a_light_verdict(root):

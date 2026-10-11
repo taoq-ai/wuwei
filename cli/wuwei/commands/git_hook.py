@@ -6,11 +6,11 @@ import re
 import sys
 
 from wuwei import workspace
-from wuwei.guards import commit_push as guard
+from wuwei import commit_push as guard
 from wuwei.exits import DAMAGED, PAYLOAD
 
 SKIPPED = ('wuwei: warning: git hooks skipped for {path}: {reason}; the Claude Code PreToolUse guard still '
-           'checks git commit and git push; run bin/wuwei doctor for the fix')
+           'refuses a force push and a push to the default branch; run bin/wuwei doctor for the fix')
 
 
 def register(subparsers):

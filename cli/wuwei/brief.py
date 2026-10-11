@@ -474,7 +474,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             head = read(vcs.head, tree, root=root)['sha']
             repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), None)
             if repo is None and config['repos']:
-                from wuwei.guards.commit_push import context
+                from wuwei.commit_push import context
                 repo = context(tree, {}, {}, root, identity=False)[0]
             repo = repo or {}
             remote = config['brief']['remote']

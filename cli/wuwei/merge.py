@@ -387,7 +387,6 @@ def check(ref, root=None, *, cwd=None, repo=None):
                 f'diff exceeds max changed lines: {changed} count over {policy["max_changed_lines"]}'
                 + (f' ({excluded} generated or data excluded)' if excluded else ''))
         from wuwei.dispatch import gate_set
-        from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
         if code:  # #675: the PR waits on its gates, never on the owner
             raise Routed(f'waits on the gate: {reason}; run bin/wuwei pr act {ref} once it holds')
@@ -780,3 +779,119 @@ def poll(root):
         print(f'merge watch unmeasured: {exc}', flush=True)
         return 2
     return result
+
+
+GATES = ('arch', 'quality', 'security')
+
+
+def _recorded_gates(root, sha, records, item, items=None):
+    """Check the bounded fix and delta path recorded by the receive producer."""
+    from wuwei import verdict
+    from wuwei.dispatch import base, depth, gate_set
+    candidates = [item] if item is not None else sorted({
+        key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
+    failures = []
+    for candidate in candidates:
+        roles = gate_set((items or {}).get(candidate, {}))
+        light = depth((items or {}).get(candidate, {}), gate=True) == 'light'  # #567
+        initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
+        missing = [role for role, row in zip(roles, initial) if row is None]
+        if missing:
+            failures.append((candidate, missing))
+            continue
+        # #623: a later fix round moves a gate's delta record to initial; only round one's agree
+        if len({row['head'] for row in initial if row.get('round', 'initial') == 'initial'}) > 1:
+            raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
+        complete = True
+        missing = []
+        # #723: a gate is judged on its delta whenever it has one (FIX, or the polish re-check)
+        rechecked = {role for role, first in zip(roles, initial)
+                     if first['verdict'] == 'FIX' or f'{candidate}:{role}:delta' in records}
+        for role, first in zip(roles, initial):
+            row = records.get(f'{candidate}:{role}:delta') if role in rechecked else first
+            if row is None or (row['verdict'] != 'PASS' and not (
+                    role in rechecked and row['verdict'] == 'FIX'
+                    and row['blocks'] is False)):
+                complete = False
+                missing.append(role)
+                continue
+            path = root / row['file']
+            expected = workspace.day_dir(root) / 'decisions'
+            if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
+                raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
+            text = path.read_text(encoding='utf-8')
+            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True, light=light)
+            if code:
+                raise ValueError(f'{role} verdict: {reason}')
+            active = verdict.active_text(text)
+            heads = verdict.rows(active, 'Head')
+            decisions = re.findall(verdict.VERDICT_ROW, active, re.M)
+            if heads != [row['head']] or decisions != [row['verdict']]:
+                raise ValueError(f'{role} recorded verdict differs from file; receive the verdict again with bin/wuwei dispatch receive')
+            actual_blocks = any(re.search(verdict.BLOCKS_YES, block, re.I)
+                                for block in verdict.finding_blocks(active))
+            if row['blocks'] is not actual_blocks:
+                raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
+            if not sha.lower().startswith(row['head'].lower()) and (role in rechecked or not rechecked):
+                complete = False
+                missing.append(role)
+        if complete:
+            return 0, ''
+        failures.append((candidate, missing))
+    candidate, missing = min(failures, key=lambda row: len(row[1])) if failures else (item, list(GATES))
+    label = f' for item {candidate}' if candidate else ''
+    return 1, f'pre-PR gates not passed at current HEAD {sha}{label}: {", ".join(missing or GATES)}; run the named gate for this HEAD'
+
+
+def gate_check(root, cwd, config, *, sha=None, item=None):
+    """(0, '') when every gate passed at the head; else (1, the gates to run)."""
+    from wuwei import verdict
+    vcs = registry.load('vcs', config)
+    if sha is None:
+        sha = registry.data(vcs.head(str(cwd), root=root)).get('sha')
+    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
+        raise ValueError(f'invalid current HEAD; {DAMAGED}')
+    current = state.read_state(root)
+    recorded = current['gate_verdicts']
+    if recorded:
+        return _recorded_gates(root, sha, recorded, item, current['items'])
+    groups = {}
+    for path in sorted((workspace.day_dir(root) / 'decisions').glob('gate-*.md')):
+        match = re.fullmatch(r'gate-(.+)-(arch|quality|security)\.md', path.name)
+        if not match:
+            continue
+        found_item, gate = match.groups()
+        if item is not None and found_item != item:
+            continue
+        passed = groups.setdefault(found_item, set())
+        try:
+            text = path.read_text(encoding='utf-8')
+            active = verdict.active_text(text)
+            heads = verdict.rows(active, 'Head')
+            if len(heads) != 1 or not re.fullmatch(r'[0-9a-fA-F]{7,64}', heads[0].strip()):
+                raise ValueError(f'expected exactly one valid Head row; {DAMAGED}')
+            head = heads[0].strip().lower()
+            if len(head) < len(sha):
+                resolved = registry.data(vcs.resolve(str(cwd), head, root=root)).get('sha')
+                if (not isinstance(resolved, str)
+                        or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', resolved)
+                        or not resolved.startswith(head)):
+                    raise ValueError(f'invalid resolved Head; {DAMAGED}')
+                head = resolved
+            if head != sha:
+                continue
+            decisions = re.findall(r'^(?:## |- )?Verdict:? *(\w+)\b', active, re.M)
+            if len(decisions) == 1 and decisions[0] in ('FIX', 'PARK', 'ESCALATE'):
+                continue
+            code, reason = verdict.lint(text, quality=gate == 'quality', class_sweep=True)
+            if code:
+                raise ValueError(reason)
+            if decisions == ['PASS']:
+                passed.add(gate)
+        except (OSError, ValueError) as exc:
+            raise ValueError(f'{gate} verdict: {exc}') from exc
+    if any(all(gate in passed for gate in GATES) for passed in groups.values()):
+        return 0, ''
+    best = max(groups.values(), key=len, default=set())
+    missing = ', '.join(gate for gate in GATES if gate not in best)
+    return 1, f'pre-PR gates not passed at current HEAD {sha}: {missing}; run the named gate for this HEAD'

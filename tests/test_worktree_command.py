@@ -206,8 +206,11 @@ def test_template_identity_lets_a_seat_commit(tmp_path, monkeypatch, capsys):
     assert git(repo, 'config', '--local', '--get', 'user.name').returncode == 1
     assert git(tree, 'config', '--worktree', '--get', 'user.email').stdout.strip() == 'builder@example.test'
     git(tree, 'config', '--worktree', 'user.email', 'other@example.test')
-    code, reason = commit_through_hook(tree, monkeypatch, capsys)
-    assert code == 2
+    # #839: the native pre-commit hook's identity policy, no longer a PreToolUse guard.
+    from wuwei import commit_push
+    repo, actual, _ = commit_push.context(tree, {}, {}, tmp_path)
+    code, reason = commit_push.identity_check(repo['identity'], actual)
+    assert code == 1
     assert 'wuwei worktree add' in reason and 'git config user.email builder@example.test' in reason
 
 

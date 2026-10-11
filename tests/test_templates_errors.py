@@ -103,7 +103,7 @@ def test_brief_lock_timeout_has_reason(workspace, monkeypatch):
 
 
 def test_gate_head_refusal_names_head_and_gates(workspace):
-    from wuwei.guards.pr import _recorded_gates
+    from wuwei.merge import _recorded_gates
     code, reason = _recorded_gates(workspace, 'a' * 40, {}, 'X')
     assert code == 1
     assert 'a' * 40 in reason

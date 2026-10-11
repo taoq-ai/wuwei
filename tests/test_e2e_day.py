@@ -200,9 +200,9 @@ def close_trap(payload):
 @pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei rank'),
                                             ('close_trap', "'stop_hook_active': True")])
 def test_day_names_the_reintroduced_bug(day, monkeypatch, mutation, match):
-    from wuwei.guards import Guard, deploy, stop
+    from wuwei.guards import Guard, edges, stop
     if mutation == 'launcher':
-        monkeypatch.setattr(deploy, 'GUARDS', [*deploy.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
+        monkeypatch.setattr(edges, 'GUARDS', [*edges.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
     else:
         monkeypatch.setattr(stop, 'GUARDS', [Guard('Stop', None, close_trap)])
     with pytest.raises(AssertionError, match=match):
@@ -230,17 +230,16 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
                    for row in day.events)
 
 
-def test_unconfirmed_plugin_change_denies_pretooluse(day):
+def test_unconfirmed_plugin_change_warns_and_never_denies_pretooluse(day):
+    # #839: integrity warns at session start; no tool call is refused for it.
     day.run('integrity', 'check')
     for command in ('python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'):
         day.hook('PreToolUse', tool_name='Bash', tool_input={'command': command})
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)
-    output = day.hook('PreToolUse', expected=2, tool_name='Read',
-                      tool_input={'file_path': str(day.repo / 'memory/demo.py')})
-    assert json.loads(output)['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert day.events[-1]['kind'] == 'hook.refusal'
-    assert 'plugin integrity' in day.events[-1]['payload']['reason']
+    day.hook('PreToolUse', tool_name='Read', tool_input={'file_path': str(day.repo / 'memory/demo.py')})
+    events = day.directory / 'events.jsonl'
+    assert not events.exists() or not any(row['kind'] == 'hook.refusal' for row in day.events)
     outside = day.root.parent / 'outside'
     outside.mkdir()
     day.hook('PreToolUse', cwd=str(outside), tool_name='Read',
@@ -264,7 +263,7 @@ def test_enforce_off_records_force_push_and_keeps_records_refused(day):
     assert day.hook('PreToolUse', cwd=str(day.repo), tool_name='Bash',
                     tool_input={'command': 'git push --force origin main'}) == ''
     event = day.events[-1]
-    assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'commit_push'
+    assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'edges'
     assert 'force' in event['payload']['reason'].lower()
     assert event['payload']['target'] == 'git push --force origin main'
     assert not {'area', 'level', 'posture'} & set(event['payload'])
@@ -274,15 +273,15 @@ def test_enforce_off_records_force_push_and_keeps_records_refused(day):
     assert denied['permissionDecision'] == 'deny'
     assert 'posture:' not in denied['permissionDecisionReason']
     from wuwei import report
-    assert report.shadow_lines([day.directory])[0].startswith('- commit_push: 1 ')
+    assert report.shadow_lines([day.directory])[0].startswith('- edges: 1 ')
     day.run('integrity', 'check')
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)
-    # Integrity is logged with guards.enforce = false: recorded, the read goes through.
+    # #839: integrity warns at session start; a tool call is neither refused nor logged for it.
+    count = len(day.events)
     assert day.hook('PreToolUse', tool_name='Read',
                     tool_input={'file_path': str(day.repo / 'memory/demo.py')}) == ''
-    event = day.events[-1]
-    assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'integrity'
+    assert len(day.events) == count
 
 
 def test_background_handback_day(tmp_path, monkeypatch):

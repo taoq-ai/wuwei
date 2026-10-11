@@ -19,10 +19,8 @@ _SCRATCH = r'[\\/]scratch[\\/](?![^\s\x27"]*\.\.)'
 _STATE_MENTION = (r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|'
                   rf'\.wuwei(?!{_SCRATCH})')
 _STATE_GLOB = rf'(?i)\.w(?!uwei{_SCRATCH})[\w*?\[]'
-_DYNAMIC = r'\$\(|[`*?\[]'
-_WRITE_CONSTRUCT = (
-    r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
-    r'\bsed\s+(?:--in-place\b|-[^\s]*i)')
+_WRITE_CONSTRUCT = (r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
+                    r'\bsed\s+(?:--in-place\b|-[^\s]*i)')
 
 
 def _wuwei_action(argv):
@@ -301,24 +299,18 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError(f'missing or invalid command; {DAMAGED}')
-        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads, snippet_write
+        from wuwei.shell import ParseError, UNPARSED, normalize, reads, snippet_write
 
         try:
             commands = normalize(script)
-        except ParseError as exc:
-            shape = classify(script, cwd=cwd)
-            # #347: only text a write can target counts.
-            if not shape.readonly and (
-                    re.search(_STATE_MENTION, shape.written) or re.search(_STATE_GLOB, shape.written)
-                    or (root is not None and _protected_name(cwd, directories=True)
-                        and (isinstance(exc, NonliteralPathError)
-                             or (re.search(_DYNAMIC, script) and re.search(_WRITE_CONSTRUCT, script))))):
-                return 2, str(exc)
+        except ParseError:
+            # #839: a call the parser cannot read is logged, never refused.
             if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
                 return 2, WORKSPACE_ROOT
-            if shape.readonly:
-                return 0, ''
-            if re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script):
+            # Review F7: or a write construct while cwd is a protected directory.
+            if (re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script)
+                    or root is not None and _protected_name(cwd, directories=True)
+                    and re.search(_WRITE_CONSTRUCT, re.sub(r'\d*>\s*/dev/null', '', script))):
                 return 2, UNPARSED
             return 0, ''
         directories = persistent = {cwd}

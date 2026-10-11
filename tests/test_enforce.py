@@ -43,16 +43,20 @@ def test_floor_keys_name_guard_modules():
 
 # (check, reason, blocks with enforce on, blocks with enforce off)
 TABLE = [
-    (fixed('commit_push', 1, 'commit refused'), True, False),
-    (fixed('integrity', 2, 'integrity gate'), True, False),
     (fixed('spec', 1, 'spec missing'), True, False),
     (fixed('stop', 1, 'stop refused'), True, False),
-    (fixed('pr', 1, 'pr raise: pre-PR gates not passed'), True, False),
-    (fixed('pr', 1, 'push to the default branch is refused'), True, True),
-    (fixed('pr', 1, 'merge policy requires an explicit PR'), True, True),
-    (fixed('pr', 1, 'admin merge is refused'), True, True),
-    (fixed('pr', 1, 'PR approval is refused'), True, True),
-    (fixed('deploy', 1, 'deploy refused'), True, True),
+    # #839: the edges; merge, approval, admin and protection are on the floor by their prefix.
+    (fixed('edges', 1, 'force-push is refused', 'check_bash'), True, False),
+    (fixed('edges', 1, 'push to the default branch main is refused', 'check_bash'), True, False),
+    (fixed('edges', 1, 'pr raise: DIV-1 is a WUWEI item', 'check_bash'), True, False),
+    (fixed('edges', 2, 'edges guard could not run: x', 'check_bash'), True, False),
+    (fixed('edges', 1, 'merge policy: a PR merges only through bin/wuwei merge', 'check_bash'), True, True),
+    (fixed('edges', 1, 'admin merge is refused', 'check_bash'), True, True),
+    (fixed('edges', 1, "PR approval is the owner's", 'check_bash'), True, True),
+    (fixed('edges', 1, 'branch protection changes are refused', 'check_bash'), True, True),
+    (fixed('edges', 1, 'outward: security.canary', 'check_bash'), True, True),
+    (fixed('edges', 1, 'publish: terraform apply', 'check_deploy'), True, True),
+    (fixed('edges', 1, 'unlisted send', 'check_send'), True, True),
     (fixed('answers', 2, 'answer not recorded'), True, True),
     (fixed('lifecycle', 2, 'lifecycle failed'), True, True),
     (fixed('verdict', 1, 'verdict lint'), True, True),
@@ -61,13 +65,13 @@ TABLE = [
     (fixed('protect_state', 1, 'another item scratch', 'check_scratch'), False, False),
     (fixed('traces', 2, 'RuntimeError: could not run PostToolUse guard'), False, False),
     (fixed('outward', 1, 'outward lint', 'check_lint'), False, False),
-    (fixed('outward', 1, 'unlisted send', 'check_send'), True, True),
     (fixed('outward', 1, CANARY, 'check_lint'), True, True),
     (fixed('agent_launch', 1, MISMATCH), True, False),
     (fixed('agent_launch', 2, MISSING), True, True),
     (fixed('agent_launch', 1, CAP), False, False),
     (fixed('agent_launch', 1, 'seat not registered: running seats 4 at host seat ceiling'), False, False),
     (fixed('agent_launch', 1, 'seat not registered: free memory 1 bytes below floor 2'), False, False),
+    (fixed('agent_launch', 2, 'seat not registered: free memory unmeasured; retry'), False, False),
     (fixed('agent_launch', 1, 'seat not registered: P-1 has no ticket: the planner proposes one'), False, False),
 ]
 
@@ -141,30 +145,23 @@ def events(root, kind):
 def test_one_reason_most_specific(guarded, monkeypatch, capsys):
     import json
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
-        fixed('commit_push', 1, 'commit_push specific'), fixed('deploy', 2, 'deploy generic'),
-        fixed('integrity', 2, 'integrity gate')])
-    assert code == 2 and out.err == 'commit_push specific\n'
-    assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'] == 'commit_push specific'
+        fixed('spec', 2, 'spec generic'), fixed('edges', 1, 'edges specific', 'check_bash'),
+        fixed('stop', 2, 'stop generic')])
+    assert code == 2 and out.err == 'edges specific\n'
+    assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'] == 'edges specific'
     [event] = events(guarded, 'hook.refusal')
-    assert event['reason'] == 'commit_push specific'
-    assert [row['guard'] for row in event['refusals']] == ['commit_push', 'deploy', 'integrity']
-
-
-def test_one_reason_integrity_last(guarded, monkeypatch, capsys):
-    code, out = hook_call(guarded, monkeypatch, capsys, guards=[
-        fixed('integrity', 2, 'integrity gate'), fixed('deploy', 2, 'deploy generic')])
-    assert out.err.splitlines() == ['deploy generic']
-    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('integrity', 2, 'integrity gate')])
-    assert out.err.splitlines()[0] == 'integrity gate'
+    assert event['reason'] == 'edges specific'
+    assert [row['guard'] for row in event['refusals']] == ['edges', 'spec', 'stop']
 
 
 def test_enforce_off_keeps_the_floor(guarded, monkeypatch, capsys):
     (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
-        fixed('commit_push', 1, 'commit_push specific'), fixed('deploy', 2, 'deploy generic')])
+        fixed('edges', 1, 'force-push is refused', 'check_bash'),
+        fixed('edges', 2, 'deploy generic', 'check_deploy')])
     assert code == 2 and out.err.splitlines() == ['deploy generic']
     [event] = events(guarded, 'guard.would_refuse')
-    assert event['reason'] == 'commit_push specific'
+    assert event['reason'] == 'force-push is refused'
 
 
 def test_traces_exception_never_blocks(guarded, monkeypatch, capsys):
@@ -181,7 +178,7 @@ def test_traces_exception_never_blocks(guarded, monkeypatch, capsys):
 def test_one_reason_session_start_unchanged(guarded, monkeypatch, capsys):
     import json
     code, out = hook_call(guarded, monkeypatch, capsys, event='SessionStart', guards=[
-        fixed('deploy', 2, 'first'), fixed('integrity', 2, 'second')])
+        fixed('lifecycle', 2, 'first'), fixed('integrity', 2, 'second')])
     context = json.loads(out.out)['hookSpecificOutput']['additionalContext']
     assert code == 0 and 'first' in context and 'second' in context
     assert out.err.splitlines() == ['first', 'second']
@@ -192,36 +189,6 @@ def test_reads_pass(guarded, monkeypatch, capsys, command):
     code, out = hook_call(guarded, monkeypatch, capsys, command=command)
     assert code == 0, out.err
     assert not events(guarded, 'hook.refusal') and not events(guarded, 'guard.would_refuse')
-
-
-@pytest.mark.parametrize('enforce', ['true', 'false'])
-def test_opaque_refusals_give_one_warning(guarded, monkeypatch, capsys, enforce):
-    # #530: guards that could not read an opaque call naming no publish target warn once.
-    (guarded / '.wuwei/config.toml').write_text(f'[guards]\nenforce = {enforce}\n')
-    (guarded / 'loop.sh').write_text('gh pr view 7\n')
-    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh', guards=[
-        fixed('deploy', 2, 'deploy: could not inspect'), fixed('pr', 2, 'PR guard could not run'),
-        fixed('commit_push', 2, 'unparsed')])
-    assert code == 0, out.err
-    [event] = events(guarded, 'guard.would_refuse')
-    assert event['reason'].startswith('opaque: script loop.sh;') and 'strict' not in event['reason']
-
-
-def test_opaque_reason_error_enforces(guarded, monkeypatch, capsys):
-    from wuwei import shell
-    def broken(*args, **kwargs):
-        raise RuntimeError('boom')
-    monkeypatch.setattr(shell, 'unreadable', broken)
-    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh',
-                          guards=[fixed('commit_push', 2, 'commit_push: could not inspect')])
-    assert code == 2 and 'commit_push: could not inspect' in out.err
-
-
-def test_opaque_floor_still_blocks(guarded, monkeypatch, capsys):
-    (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
-    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh',
-                          guards=[fixed('protect_state', 2, 'state write', 'check_bash')])
-    assert code == 2 and 'state write' in out.err
 
 
 def test_logged_launch_refusal_is_shown_to_the_session(guarded, monkeypatch, capsys):
@@ -237,7 +204,7 @@ def test_logged_launch_refusal_is_shown_to_the_session(guarded, monkeypatch, cap
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('outward', 1, 'outward reason')])
     assert code == 0 and out.out == ''
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
-        fixed('agent_launch', 1, 'launch reason'), fixed('deploy', 2, 'deploy reason')])
+        fixed('agent_launch', 1, 'launch reason'), fixed('edges', 2, 'deploy reason', 'check_deploy')])
     assert code == 2
     [line] = out.out.splitlines()
     assert json.loads(line)['hookSpecificOutput']['permissionDecisionReason'].startswith('deploy reason')

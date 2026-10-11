@@ -18,19 +18,16 @@ def wall(reason, line):
 
 
 # Reasons the guards return from helpers outside guards/: (file, functions, guard checks).
-CALLED = [('security.py', ('outbound', 'gh_outbound'), ('outward.check_send', 'pr.check')),
+CALLED = [('security.py', ('outbound', 'gh_outbound'), ('edges.check_send', 'edges.check_bash')),
           ('outward.py', ('check_lint', 'humanize_lint', 'lint'), ('outward.check_lint',)),
-          ('integrity.py', ('measure',), ('integrity.check',)),
           ('shell.py', ('_text', '_cwd', '_cd_target'), ('protect_state.check_bash',))]
 # Walls a later item removes; the note on each row is its rationale: (file, substring, note).
 OWNED = []  # #831: the config and integrity commands ask their own Owner step card
 # Refusals that are not walls the workflow puts up; the note on each row is its rationale.
 MERGES = "merge family: bin/wuwei merge is the path (#524); approval and override stay the owner's"
-EXEMPT = [*[('guards/pr.py', part, MERGES) for part in (
-              'merge policy', 'admin merge', 'PR approval', 'branch protection', 'a shepherd seat never merges')],
-          ('guards/stop.py', 'day state missing for registered planner', 'records: state recovery'),
-          ('guards/deploy.py', 'if it publishes, run it as a plain literal command',
-           'unknown git: the hook levels it to a warning below strict')]
+EXEMPT = [*[('guards/edges.py', part, MERGES) for part in (
+              'merge policy', 'admin merge', 'PR approval', 'branch protection')],
+          ('guards/stop.py', 'day state missing for registered planner', 'records: state recovery')]
 
 
 def _functions(tree):
@@ -77,7 +74,8 @@ def test_reason_corpus_has_no_wall(tmp_path, monkeypatch):
     payload = {'hook_event_name': 'PreToolUse', 'session_id': 'fixture', 'tool_name': 'Read',
                'tool_input': {}}
     rows, walls = corpus(), []
-    assert len(rows) > 200
+    # #839 (part 17): the parser guards' reasons went with their code; the floor is the count measured after.
+    assert len(rows) >= 157
     stale = [row for row in OWNED + EXEMPT if not any(r[0] == row[0] and row[1] in r[3] for r in rows)]
     assert not stale, stale
     for enforce in ('true', 'false'):

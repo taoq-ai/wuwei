@@ -15,19 +15,17 @@ PROBES = {
     ('agent_launch', 'SubagentStop', None, 'stop'): ('stop event', {}, 'event'),
     ('agent_launch', 'PreToolUse', 'Agent', 'check_mcp'):
         ('Agent', {'prompt': 'p', 'description': 'build', 'subagent_type': 'wuwei:builder'}, 2),
-    ('commit_push', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'git push "'}, 2),
     ('answers', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
         ('AskUserQuestion', {'questions': [{}]}, 2),
-    ('deploy', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'terraform apply'}, 1),
-    ('integrity', 'PreToolUse', None, 'check'): ('Bash', {'command': 'echo hi'}, 2),
+    ('edges', 'PreToolUse', 'Bash', 'check_bash'): ('Bash', {'command': 'gh pr review 7 --approve'}, 1),
+    ('edges', 'PreToolUse', 'Bash', 'check_deploy'): ('Bash', {'command': 'terraform apply'}, 1),
+    ('edges', 'PreToolUse', None, 'check_send'): ('mcp__slack__post_message', [], 2),
     ('integrity', 'SessionStart', None, 'session_start'): ('Bash', {}, 1),
     ('lifecycle', 'PreCompact', None, 'pre_compact'): ('Bash', {}, 2),
     ('lifecycle', 'SessionStart', None, 'session_start'): ('Bash', {}, 2),
     ('lifecycle', 'Stop', None, 'stop'): ('Bash', {}, 'message'),
     ('lifecycle', 'SubagentStop', None, 'subagent_stop'): ('Bash', {}, 'message'),
-    ('outward', 'PreToolUse', None, 'check_send'): ('mcp__slack__post_message', [], 2),
     ('outward', 'PreToolUse', None, 'check_lint'): ('mcp__slack__post_message', [], 2),
-    ('pr', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'gh pr review --approve'}, 1),
     ('protect_state', 'PreToolUse', 'Bash', 'check_bash'):
         ('Bash', {'command': 'echo x > .wuwei/days/2026-09-29/state.json'}, 1),
     ('protect_state', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_file'):
@@ -49,7 +47,7 @@ PROBES = {
 
 SPECIAL_TESTS = {
     ('wuwei.merge', 'check'): 'test_disabling_merge_policy_makes_its_probe_red',
-    ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
+    ('wuwei.guards.edges', 'check_deploy'): 'test_disabling_guard_makes_its_probe_red',
     ('wuwei.commands.hook', 'reaches_workspace'): 'test_disabling_scope_gate_makes_outside_probe_red',
 }
 
@@ -89,11 +87,11 @@ def test_special_policies_have_mutation_probes():
     from wuwei import merge
 
     required = {(merge.check.__module__, merge.check.__name__),
-                ('wuwei.guards.deploy', 'check'),
+                ('wuwei.guards.edges', 'check_deploy'),
                 ('wuwei.commands.hook', 'reaches_workspace')}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
     assert not missing_guards(required, covered), 'special policy lacks a mutation test'
-    assert ('deploy', 'PreToolUse', 'Bash', 'check') in PROBES
+    assert ('edges', 'PreToolUse', 'Bash', 'check_deploy') in PROBES
 
 
 def test_disabling_merge_policy_makes_its_probe_red(tmp_path):

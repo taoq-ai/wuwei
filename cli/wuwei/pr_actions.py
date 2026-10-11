@@ -287,7 +287,7 @@ def _item(root, ref):
 
 def _rebase(root, ref, item, tree, *, resume=False):
     from wuwei import fast_checks, registry
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     config = workspace.load_config(root)
     host = registry.load('code_host', config)
     measured = watch.evidence(host, ref, root)

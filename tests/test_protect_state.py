@@ -74,8 +74,8 @@ def test_file_guard(workspace, tool, path, code):
     ('bin/wuwei state show', 0), ('python3 -P -m wuwei state show', 0),
     ('python3 -c \'open("state.json", "w")\'', 2),
     ('node -e \'writeFileSync("events.jsonl", "")\'', 2),
-    ('tee "$FILE"', 2), ('cp source *.json', 1), ('xargs tee', 0),
-    ('echo data >', 0), ('echo "unterminated', 0),
+    ('tee "$FILE"', 2), ('cp source *.json', 1), ('xargs tee', 2),
+    ('echo data >', 2), ('echo "unterminated', 0),
     ('cp --unknown source destination', 0), ('cp -r inside backup', 0),
     ('', 0), (None, 2), (42, 2),
 ])
@@ -439,11 +439,18 @@ def test_f8_hardlink_scan_requires_known_root(workspace, monkeypatch, override, 
     'for f in *.json; do rm "$f"; done',
     'for f in *.json; do patch "$f" patchfile; done',
 ])
-def test_f9_dynamic_writes_fail_closed(workspace, outside, script):
+def test_f9_dynamic_writes_are_logged(workspace, outside, script):
+    # #839: a write the parser cannot read from a protected directory is logged as UNPARSED.
     from wuwei.guards.protect_state import check_bash
+    from wuwei.shell import UNPARSED
     cwd = workspace.parent if outside else workspace / '.wuwei/days/2026-09-28'
-    expected = 0 if outside else (1 if script in ('cp source *.json', 'mv *.json backup') else 2)
-    assert check_bash(payload(cwd, 'Bash', command=script))[0] == expected
+    result = check_bash(payload(cwd, 'Bash', command=script))
+    if outside:
+        assert result == (0, '')
+    elif script in ('cp source *.json', 'mv *.json backup'):
+        assert result[0] == 1
+    else:
+        assert result == (2, UNPARSED)
 
 
 @pytest.mark.parametrize('script,expected', [
@@ -705,8 +712,8 @@ def test_writes_beside_the_cli_stay_refused(workspace, command):
     ('echo x > .wuwei/generated/agents/arch.md', 2),
     ('printf x >> .wuwei/config.toml', 2),
     ('echo x | tee .wuwei/config.toml', 2),
-    ('echo .wuwei/config.toml | xargs rm', 2),
-    ('echo .wuwei/config.toml | sh', 2),
+    ('echo .wuwei/config.toml | xargs rm', 0),  # #839: unread, so logged as UNPARSED
+    ('echo .wuwei/config.toml | sh', 0),
 ])
 def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command, expected):
     from wuwei.commands.hook import run
@@ -717,7 +724,7 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
 
 
 @pytest.mark.parametrize('script, expected', [
-    ('for r in a b; do cat .wuwei/$r/report.json; done', (0, '')),
+    ('for r in a b; do cat .wuwei/$r/report.json; done', 'unparsed'),
     ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
     ('cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done', (2, 'root')),
     ('mkdir -p ../scratch && cd ../scratch && ls', (1, 'root')),
@@ -725,10 +732,11 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
     ('pushd', (2, 'root')),
     ('cd "$DEST"', (2, 'root')),
     ('echo x > .wuwei/days/2026-09-28/state.json', 'kept'),
-    ('for r in a; do echo x > .wuwei/days/2026-09-28/state.json; done', 'kept'),
-    ('echo x > .wuwei/days/$(date +%F)/state.json', 'kept'),
-    ('echo x | tee $(ls -d .wuwei/days/2026-09-28)/state.json', 'kept'),
-    ('T="tee .wuwei/days/2026-09-28/state.json"; echo x | $T', 'kept'),
+    # #839: a state write the parser cannot read is logged, never refused.
+    ('for r in a; do echo x > .wuwei/days/2026-09-28/state.json; done', 'unparsed'),
+    ('echo x > .wuwei/days/$(date +%F)/state.json', 'unparsed'),
+    ('echo x | tee $(ls -d .wuwei/days/2026-09-28)/state.json', 'unparsed'),
+    ('T="tee .wuwei/days/2026-09-28/state.json"; echo x | $T', 'unparsed'),
     ('python3 -c \'open(".wuwei/days/2026-09-28/state.json", "w").write("x")\'', 'kept'),
 ])
 def test_issue_347_reads_warns_and_writes(workspace, script, expected):
@@ -759,12 +767,6 @@ def test_issue_347_reads_warns_and_writes(workspace, script, expected):
 def test_issue_349_shared_read_predicate(argv, expected):
     from wuwei import shell
     assert shell.reads(argv) is expected
-
-
-def test_issue_349_classify_less_and_redirect_only():
-    from wuwei import shell
-    assert shell.classify('less x').readonly
-    assert shell.classify('for f in a; do cat $f; done > out.txt').readonly is False
 
 
 @pytest.mark.parametrize('argv, expected', [

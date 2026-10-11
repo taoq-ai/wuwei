@@ -34,7 +34,7 @@ UNLOADED = 'config.toml does not load'
 
 def identity_row(repo, index, path, vcs):
     """#605: the commit and push guard's rule, reason and fix; the fix names what git resolves."""
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     identity, name = repo['identity'], f"{repo['name']} identity"
     if not commit_push.unset_identity(identity):
         return _row('workspace', name, 'ok', f"{identity['name']} <{identity['email']}>")
@@ -333,7 +333,7 @@ def _workspace(root, config, error, found):
         found = vcs.hooks_target(str(path)) if mode != 'skip' else None
         if found is None:
             rows.append(_row('workspace', hooks, 'ok', 'skipped (worktree.git_hooks = "skip"); the '
-                             'PreToolUse guard still checks git commit and git push'))
+                             'PreToolUse guard still refuses a force push and a push to the default branch'))
         elif found.exit == 2:
             rows.append(_row('workspace', hooks, 'unmeasured', found.reason,
                              f'run git -C {path} config --show-scope --get-all core.hooksPath and fix what it names'))

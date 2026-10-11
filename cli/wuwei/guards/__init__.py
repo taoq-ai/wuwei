@@ -18,13 +18,11 @@ EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompa
 MODULES = {
     'agent_launch': {'PreToolUse': 'Agent', 'SubagentStop': None},
     'answers': {'PostToolUse': 'AskUserQuestion'},
-    'commit_push': {'PreToolUse': 'Bash'},
-    'deploy': {'PreToolUse': 'Bash'},
-    'integrity': {'PreToolUse': None, 'SessionStart': None},
+    'edges': {'PreToolUse': None},
+    'integrity': {'SessionStart': None},
     'lifecycle': {'SessionStart': None, 'PreCompact': None, 'Stop': None,
                   'SubagentStop': None},
     'outward': {'PreToolUse': None},
-    'pr': {'PreToolUse': 'Bash'},
     'protect_state': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash'},
     'spec': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit',
              'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
@@ -33,10 +31,11 @@ MODULES = {
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
 # #837: one switch, guards.enforce. The floor blocks whatever it says (constitution VII):
-# records written by the workflow and the owner's merge, approve, admin, deploy and outward send
-# edges. Keys are modules or 'module.function'; a LOG_ONLY function is not on its module's floor.
-FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'deploy', 'pr', 'protect_state',
-                   'outward.check_send'})
+# records written by the workflow and the owner's edges (#839): deploy and outward send here,
+# merge, approve, admin and branch protection by their MERGE prefix. Keys are modules or
+# 'module.function'; a LOG_ONLY function is not on its module's floor.
+FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'protect_state', 'edges.check_deploy',
+                   'edges.check_send'})
 # B5 lead call (#837): no new walls. With guards.enforce on these still only log, as under the
 # old guarded default: the outward lint, another item's scratch directory,
 # the traces recorder (it never refuses, even when it raises) and the launch capacity and
@@ -47,17 +46,12 @@ CAPACITY = ('running build seats', 'host seat ceiling', 'free memory', ' has no 
 # The missing-reviewer refusal names its ways out.
 REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
                      "bin/wuwei config set shepherd.reviewers '[\"login\"]'")
-# This guard never reads shepherd.reviewers, so that way out goes through pr raise.
-NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
-               'bin/wuwei config set shepherd.min_reviewers 0; or set '
-               'shepherd.reviewers and raise with bin/wuwei pr raise')
 
-# #530: the prefix of every PR create refusal; raising is gated by evidence, not the floor.
+# #530: the prefix of the PR create refusal; raising is gated by evidence, not the floor.
 RAISE = 'pr raise: '
 # #530, #524: a session merge goes through bin/wuwei merge; approval and override stay
 # the owner's (design 9.2, I1 exempt). The floor.
-MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection',
-         'a shepherd seat never merges')
+MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection')
 # Canary and honeytoken egress, owner disposition markers and (#725) a seat launch naming a
 # brief that does not exist: the records floor.
 RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner',
@@ -74,8 +68,7 @@ def floor(check, reason):
     if reason.startswith(MERGE + RECORDS_FLOOR):
         return True
     module, key = _keys(check)
-    return ((key in FLOOR or module in FLOOR and key not in LOG_ONLY)
-            and not (reason == NO_REVIEWER or reason.startswith(RAISE)))
+    return key in FLOOR or module in FLOOR and key not in LOG_ONLY
 
 
 def logs(check, reason):

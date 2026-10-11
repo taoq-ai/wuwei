@@ -164,7 +164,7 @@ def test_no_question_is_refused_for_a_missing_record(ws, monkeypatch):
 
 
 def test_a_failed_integrity_verdict_leaves_the_reconfirm_card_reachable(ws, monkeypatch, capsys):
-    """#831 F2: the integrity gate lets its own Owner step card and command through."""
+    """#831 F2, #839: integrity refuses no tool call; its Owner step card and command run."""
     (ws / '.wuwei/integrity').mkdir(exist_ok=True)
     (ws / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 1, 'reason': 'page: plugin integrity: dirty development checkout', 'plugin': None}))
@@ -172,12 +172,8 @@ def test_a_failed_integrity_verdict_leaves_the_reconfirm_card_reachable(ws, monk
     assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question(reconfirm)) == 0
     plugin, recorded = launchers(ws)
     for command in (f'{plugin} integrity reconfirm', f'{recorded} integrity reconfirm',
-                    f'{plugin} doctor --fix --apply integrity-reconfirm'):
+                    f'{plugin} doctor --fix --apply integrity-reconfirm', 'ls'):
         assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0, command
-    for command in ('ls', f'{plugin} integrity reconfirm; ls', f'{plugin} doctor --fix',
-                    *outside_launchers(ws, 'integrity reconfirm')):
-        assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 2, command
-    assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question('bin/wuwei state recover')) == 2
 
 
 def test_a_config_that_does_not_load_is_repaired_in_the_session(ws, monkeypatch, capsys):

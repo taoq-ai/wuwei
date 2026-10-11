@@ -169,9 +169,9 @@ WUWEI is built as ports and adapters (hexagonal).
 | Event | Trigger | Refuses when |
 |---|---|---|
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11). An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
-| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: the native pre-push hook warns on a missing fast check, naming it) |
-| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed; no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory); a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837) |
-| PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
+| PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); identity, the default branch and the fast checks stay with the native Git hooks |
+| PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
+| PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
@@ -267,6 +267,10 @@ refused as opaque. Each bypass form is a test case in the guard's table. Amended
 naming what could not be read, unless its literal text names a publish target (a
 protected-branch, force, tag or no-verify push, a deploy, a release, a gh merge, approval,
 admin, protection or text write, a hooks path change); the records floor stays.
+Amended (owner, 2026-10-11, #839): guards match exact argv per command segment (`shlex`), with
+leading assignments, `env` and `sh -c` unwrapped and here-doc bodies skipped. A call they
+cannot split is logged, never refused. Interpreter snippets, scripts, aliases and names built
+at run time are not read: the code host and the credential layout hold them.
 
 What the normalisation guarantees depends on what the guard protects (9.1):
 
@@ -375,7 +379,9 @@ merge into a repository with `merge_deploys = true` is a deployment and goes to 
 
 Amended (owner, 2026-10-11, #816): the guard refuses and prints the Owner step card of that
 exact command; only the owner's recorded Yes on it lets that command through, the same day. No
-standing line, seat, default or hook answers for the owner.
+standing line, seat, default or hook answers for the owner. The hook matches these by exact
+argv (#839); a session merge is refused naming `bin/wuwei merge`, which checks
+`merge_deploys` and environment bases.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
@@ -1429,8 +1435,8 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   hooks, charters, skills, agents, templates) signed in CI with an SSH signing key
   (`ssh-keygen -Y sign`); the public key is pinned in the plugin and in the workspace at
   `wuwei init`. SessionStart and every sweep re-hash the installed plugin and verify the
-  signature (`ssh-keygen -Y verify`). A mismatch is a `page`, and every guard fails closed
-  until the owner reinstalls or re-confirms on the host.
+  signature (`ssh-keygen -Y verify`). A mismatch is a `page` at session start naming the
+  reconfirm or reinstall step; no tool call is refused for it (#839).
 - Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
   memory or goals that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
@@ -1512,8 +1518,8 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
   for file guards) is inside a WUWEI workspace, one of its configured repos, or a WUWEI
   worktree; everywhere else it returns 0;
 - relevance comes before parsing: a guard first decides from the raw input whether the
-  call concerns it, and only relevant calls are parsed; a parse failure blocks only a
-  relevant call, so a parser limit never blocks unrelated work;
+  call concerns it, and only relevant calls are parsed; a call a guard cannot read is
+  logged, never refused (#839), so a parser limit never blocks work;
 - guards that concern roles (brief, retro, verdicts) apply to WUWEI role seats only, not to
   other subagents.
 
@@ -1538,13 +1544,13 @@ The floor blocks whatever the switch says (constitution VII):
   one owner decision from `wuwei next` (4.6, #816).
 
 No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
-default still blocks (the floor, integrity, commit and push, day close, spec mode, the MCP
-launch gate), and so do two process checks: a seat launch that matches no logged brief at an
-unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a logged
-`guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
-directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command, the workspace root `cd`, the
-deploy guard's unknown git subcommand and an opaque Bash call naming no publish target warn once
-per call either way. The traces recorder never refuses: a slow, unreadable or unwritten record
+default still blocks (the floor, the force push and default-branch edges, day close, spec mode,
+the MCP launch gate), and so do two process checks: a seat launch that matches no logged brief
+at an unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a
+logged `guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
+directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command
+and the workspace root `cd` are logged once per call either way. Plugin integrity is a
+SessionStart warning and refuses no tool call (#839). The traces recorder never refuses: a slow, unreadable or unwritten record
 is a warning and a `traces.slow` or `traces.gap` event.
 
 The switch changes what the cooperative guards refuse, never the hard boundaries above.
@@ -1568,13 +1574,13 @@ code (`next`, dispatch, the verdict lint, the merge policy) and is tested where 
 
 | Edge | Rule | Guard | Test |
 | --- | --- | --- | --- |
-| Host merge | A PR merges only through `bin/wuwei merge` under the merge policy (4.6): at the head the gates checked, with green required checks, never with `owner_merge` set; a session `gh pr merge` or a merge API call is refused naming it | `guards/pr.py`, `merge.check` | `tests/test_pr_guards.py`, `tests/test_merge.py` |
-| Approve | WUWEI never approves a PR: `gh pr review --approve` and an APPROVE review event are refused, and the code host port has no approval call | `guards/pr.py` | `tests/test_pr_guards.py`, `tests/test_code_host.py` |
-| Admin | `--admin` and branch protection or ruleset writes are refused | `guards/pr.py` | `tests/test_pr_guards.py` |
-| Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`) is refused | `guards/commit_push.py` | `tests/test_commit_push.py` |
-| Deploy | WUWEI never deploys (4.7) | `guards/deploy.py` | `tests/test_deploy.py` |
-| Outward send | An MCP send to other people only through a tool on `outward.allow`; the owner's own surfaces are local (4.9) | `guards/outward.py` | `tests/test_outward.py` |
-| PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item is refused naming it while `guards.enforce` is on (#837) | `guards/pr.py`, `shepherd.raise_pr` | `tests/test_pr_guards.py`, `tests/test_shepherd.py` |
+| Host merge | A PR merges only through `bin/wuwei merge` under the merge policy (4.6): at the head the gates checked, with green required checks, never with `owner_merge` set; a session `gh pr merge` or a merge API call is refused naming it; a push to a default branch is refused naming `bin/wuwei pr raise --item` | `guards/edges.py` (`check_bash`), `merge.check` | `tests/test_edges.py`, `tests/test_merge.py` |
+| Approve | WUWEI never approves a PR: `gh pr review --approve` and an APPROVE review event are refused, and the code host port has no approval call | `guards/edges.py` (`check_bash`) | `tests/test_edges.py`, `tests/test_code_host.py` |
+| Admin | `--admin` and branch protection or ruleset writes are refused | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
+| Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`, a `+refspec`) is refused | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
+| Deploy | WUWEI never deploys (4.7) | `guards/edges.py` (`check_deploy`) | `tests/test_edges.py` |
+| Outward send | An MCP send to other people only through a tool on `outward.allow`; the owner's own surfaces are local (4.9) | `guards/edges.py` (`check_send`) | `tests/test_edges.py`, `tests/test_outward.py` |
+| PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item is refused naming it while `guards.enforce` is on (#837) | `guards/edges.py` (`check_bash`), `shepherd.raise_pr` | `tests/test_edges.py`, `tests/test_shepherd.py` |
 
 `tests/test_invariants.py` keeps one check across all guards: no guard reason is a wall,
 with `guards.enforce` on or off (#530, #837).

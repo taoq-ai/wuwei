@@ -125,8 +125,6 @@ def test_config_error_names_config_toml(tmp_path, monkeypatch, capsys, config):
     payload = {'cwd': str(tmp_path), 'tool_name': 'Bash', 'tool_input': {'command': 'ls'},
                'hook_event_name': 'PreToolUse', 'session_id': 'test',
                'transcript_path': str(tmp_path / 'transcript.jsonl')}
-    code, message = integrity.check(payload)
-    assert code == 2 and message.startswith('config.toml:')
     code, message = integrity.session_start({'cwd': str(tmp_path)})
     assert code == 2 and message.startswith('config.toml:')
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))

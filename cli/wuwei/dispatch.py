@@ -241,7 +241,7 @@ def tier(root, config, row):
 
 def _changes(root, config, row):
     """(repository settings, diff stat rows) of the item's worktree against its merge base."""
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     if not row.get('worktree'):
         raise ValueError('no worktree; create one with bin/wuwei worktree add <item> before dispatching gates')
     tree = (root / row['worktree']).resolve()

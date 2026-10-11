@@ -140,7 +140,7 @@ def payload(root, text='fixed in abc1234', tool='mcp__slack__post_message', **fi
     ('', {}, 2), (None, {}, 2),
 ])
 def test_routing_and_bypass_table(configured, tool, inputs, code):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     call = payload(configured[0], tool=tool)
     call['tool_input'] = inputs
     assert check(call)[0] == code
@@ -148,7 +148,8 @@ def test_routing_and_bypass_table(configured, tool, inputs, code):
 
 def test_configured_matching(configured, monkeypatch):
     # #838: tool_patterns give the lint its channel; they decide no send.
-    from wuwei.guards.outward import check_lint, check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint, resolve
     root, config = configured
     config['outward']['tool_patterns'] = [{'pattern': 'mcp__x__custom_send', 'channel': 'customer'}]
     assert resolve('mcp__x__custom_send', config) == {'customer'}
@@ -176,7 +177,8 @@ def test_channel_limits_cannot_be_bypassed(configured, monkeypatch, specific):
     ('fixed in abc1234', True, 2, False),
 ])
 def test_standard_profile(configured, monkeypatch, capsys, text, invalid, code, warning):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root, config = configured
     config['profile'] = 'standard'
     config['outward']['allow'] = [] if text == 'The cache is thread safe.' else ['mcp__slack__post_message']
@@ -210,7 +212,7 @@ def test_hook_integration(configured, monkeypatch, capsys, code):
 
 
 def test_missing_workspace_and_policy(tmp_path, monkeypatch):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check(payload(tmp_path))[0] == 0
     (tmp_path / '.wuwei').mkdir()
@@ -249,7 +251,7 @@ def test_missing_workspace_and_policy(tmp_path, monkeypatch):
     ('mcp__unknown__anything', 0),  # #838 review: unknown names run and log
 ])
 def test_real_mcp_write_names(configured, tool, code):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     # #838: every write and every unknown name is refused until it is on outward.allow.
     mail = YOUR_MAIL if tool == 'mcp__gmail__draft_email' else None  # mail: the owner's address is unset
     assert check(payload(configured[0], 'A technical claim.', tool=tool)) == (
@@ -259,14 +261,14 @@ def test_real_mcp_write_names(configured, tool, code):
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS', 'Read',
                                   'mcp__unknown__send', 'mcp__slack__post', None])
 def test_scope_before_payload_and_policy(tmp_path, monkeypatch, tool):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check({'cwd': str(tmp_path), 'tool_name': tool, 'tool_input': None}) == (0, '')
 
 
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS'])
 def test_irrelevant_native_tools_ignore_broken_policy(configured, tool):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     root, _ = configured
     (root / '.wuwei/config.toml').write_text('broken [')
     assert check({'cwd': str(root), 'tool_name': tool, 'tool_input': None}) == (0, '')
@@ -306,7 +308,7 @@ def test_port_boundary(configured, monkeypatch, kind, operation, inputs, mode):
 
 
 def test_only_mcp_defaults_and_no_textless_operations(configured):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     root, config = configured
     assert all(row['pattern'].startswith('mcp__') for row in config['outward']['tool_patterns'])
     for tool in ('tracker.claim', 'tracker.transition'):
@@ -361,7 +363,7 @@ def test_ports_require_workspace(tmp_path, monkeypatch, override):
 @pytest.mark.parametrize('override', ['', 'missing'])
 @pytest.mark.parametrize('tool', ['Bash', 'mcp__slack__post_message'])
 def test_hook_invalid_workspace_override(configured, monkeypatch, override, tool):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     monkeypatch.setenv('WUWEI_WORKSPACE', override)
     code, reason = check(payload(configured[0], tool=tool))
     assert code == 2
@@ -371,7 +373,7 @@ def test_hook_invalid_workspace_override(configured, monkeypatch, override, tool
 @pytest.mark.parametrize('verb', ['get', 'list', 'search', 'read', 'find', 'fetch',
                                   'query', 'describe', 'view', 'lookup'])
 def test_unmatched_mcp_read_prefixes(configured, verb):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     assert check(payload(configured[0], tool=f'mcp__unknown__{verb}_item')) == (0, '')
 
 
@@ -389,7 +391,7 @@ def test_unmatched_mcp_read_prefixes(configured, verb):
     ('mcp__x__readwrite', 0),
 ])
 def test_service_prefixed_mcp_reads(configured, tool, code):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     assert check(payload(configured[0], 'A technical claim.', tool=tool))[0] == code
 
 
@@ -403,7 +405,7 @@ def test_service_prefixed_mcp_reads(configured, tool, code):
      {'body': 'fixed in abc1234', 'owner': 'org', 'repo': 'demo', 'pull_number': 42}),
 ])
 def test_default_tool_payload_metadata(configured, tool, inputs):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     call = payload(configured[0], tool=tool)
     call['tool_input'] = inputs
     # Metadata parses, but an unverified chat thread is never eligible.
@@ -421,7 +423,7 @@ def test_channel_id_limit(configured, monkeypatch):
 
 @pytest.mark.parametrize('value', [True, 1.5, {}, []])
 def test_invalid_numeric_metadata(configured, value):
-    from wuwei.guards.outward import check_send as check
+    from wuwei.guards.edges import check_send as check
     assert check(payload(configured[0], issue_number=value))[0] == 2
 
 
@@ -643,7 +645,7 @@ def set_enforce(root, value):
 
 def test_invalid_mcp_name(configured):
     from wuwei.exits import PAYLOAD
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     code, reason = check_send(payload(configured[0], 'A technical claim.', tool="mcp__acme__send'x"))
     assert code == 2 and PAYLOAD in reason and "send'x" not in reason
 
@@ -716,7 +718,8 @@ def events_of(root, kind):
 
 
 def test_resolve_opaque(configured, monkeypatch, capsys):
-    from wuwei.guards.outward import check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import resolve
     root = configured[0]
     monkeypatch.chdir(root)
     assert run_hook(monkeypatch, payload(root, 'A technical claim.',
@@ -733,7 +736,8 @@ def write_config(root, text):
 
 
 def test_alias_resolves_and_reads_still_pass(configured):
-    from wuwei.guards.outward import check_lint, check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint, resolve
     root = configured[0]
     write_config(root, f'\n[outward.servers]\n"{UUID}" = "slack"\n')
     assert resolve(opaque('send_message'), workspace.load_config(root)) == {'slack'}
@@ -803,7 +807,8 @@ RECORDED_OPAQUE = {
       for index, lists in enumerate(RECORDED_OPAQUE.values(), 1)
       for outcome, names in lists.items() for name in names]])
 def test_recorded_tools(configured, tool, outcome):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     call = payload(configured[0], 'A technical claim.', tool=tool)
     assert check_lint(call) == (0, '')
     mail = YOUR_MAIL if tool.endswith(tuple(RECORDED_OPAQUE['mail']['draft'])) else None
@@ -885,7 +890,8 @@ def test_to_owner_event_and_lint(configured):
 
 @pytest.mark.parametrize('posture', ['false', 'true'])
 def test_guard_to_owner_either_way(configured, posture):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     with_owner(root)
     set_enforce(root, posture)
@@ -897,7 +903,7 @@ def test_guard_to_owner_either_way(configured, posture):
 
 def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
     # #501 review F1: an outside cc or bcc means the owner is not the only reader.
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     with_owner(root)
     set_enforce(root, 'true')
@@ -939,7 +945,8 @@ def test_text_fields_corpus(configured):
 
 
 def test_connector_writes_through_the_guard(configured):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     tool = 'mcp__notion__append_block_children'
     notion = {**payload(root, tool=tool), 'tool_input': shaped(CORPUS[3][1], 'Your salary is set')}
@@ -966,7 +973,8 @@ def test_text_fields_keep_known_checks():
 def test_textless_write(configured):
     # #501: a write without text has nothing to lint; the allowlist decides it.
     from wuwei import outward
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root, config = configured
     tool = opaque('resolve_issue')
     resolve = {**payload(root, tool=tool), 'tool_input': {'issue_id': 'PROJ-1', 'status': 'resolved'}}
@@ -978,7 +986,8 @@ def test_textless_write(configured):
 
 
 def test_tool_input_not_an_object(configured):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     for check in (check_send, check_lint):
         for inputs, shape in (([], 'list'), ('x', 'str')):
@@ -1004,7 +1013,8 @@ def local_call(root, tool, command='sleep 600'):
 @pytest.mark.parametrize('tool', LOCAL_TOOLS)
 def test_local_tools_pass(configured, posture, tool):
     # #727: a tool that acts only on the owner's machine is never refused by the allowlist.
-    from wuwei.guards.outward import check_lint, check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint, resolve
     root = configured[0]
     set_enforce(root, posture)
     call = local_call(root, tool)
@@ -1013,7 +1023,8 @@ def test_local_tools_pass(configured, posture, tool):
 
 
 def test_local_shapes_are_exact(configured):
-    from wuwei.guards.outward import check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import resolve
     root, config = configured
     assert check_send(local_call(root, 'mcp__plugin_x_terminal__run_job')) == refused('mcp__plugin_x_terminal__run_job')
     assert resolve('mcp__Claude_Browser__navigate', config) != {'local'}
@@ -1022,7 +1033,8 @@ def test_local_shapes_are_exact(configured):
 
 
 def test_local_alias(configured):
-    from wuwei.guards.outward import check_lint, check_send, resolve
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint, resolve
     root = configured[0]
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[outward.servers]\nacme = "local"\nterminal = "mail"\n')
@@ -1033,7 +1045,8 @@ def test_local_alias(configured):
 
 def test_local_keeps_canary_floor(configured):
     from wuwei import security
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     canary = (security.load(root) or security.initialize(root / '.wuwei'))['canary']
     call = local_call(root, 'mcp__terminal__open_terminal_tab', f'echo {canary}')
@@ -1085,7 +1098,7 @@ def allow(root, *tools):
 
 @pytest.mark.parametrize('enforce', ['false', 'true'])
 def test_unlisted_send_is_refused_with_its_line(configured, monkeypatch, capsys, enforce):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     set_enforce(root, enforce)
     call = payload(root, 'Thanks', tool=SEND, channel='C1')
@@ -1096,7 +1109,8 @@ def test_unlisted_send_is_refused_with_its_line(configured, monkeypatch, capsys,
 
 
 def test_listed_send_passes_exactly(configured):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     allow(root, SEND)
     call = payload(root, 'Thanks', tool=SEND, channel='C1')
@@ -1108,7 +1122,8 @@ def test_listed_send_passes_exactly(configured):
 
 def test_listed_send_keeps_the_lint_and_canary(configured):
     from wuwei import security
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     allow(root, SEND)
     assert 'third-person' in check_lint(payload(root, 'Pat fixed it', tool=SEND, channel='C1'))[1]
@@ -1131,7 +1146,8 @@ def with_surfaces(root):
     ('mcp__gmail__send_email', {'to': 'pat@example.test', 'body': 'Notes'}),
 ])
 def test_owner_surfaces_are_local(configured, tool, inputs):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     with_surfaces(root)
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
@@ -1160,7 +1176,7 @@ def test_owner_surfaces_are_local(configured, tool, inputs):
     ('mcp__notion__notion-create-pages', {'title': 'Notes'}),
 ])
 def test_not_only_the_owner_is_not_local(configured, tool, inputs):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     with_surfaces(root)
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
@@ -1172,7 +1188,7 @@ def test_not_only_the_owner_is_not_local(configured, tool, inputs):
 
 
 def test_owner_unset_resolves_nothing(configured):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     assert workspace.load_config(root)['outbound']['owner']['pages'] == []
     assert check_send(payload(root, 'Hi', tool=SEND, channel='D01')) == refused(SEND)
@@ -1182,7 +1198,8 @@ def test_owner_unset_resolves_nothing(configured):
 @pytest.mark.parametrize('enforce', ['false', 'true'])
 @pytest.mark.parametrize('tool', ['mcp__Claude_Browser__computer', 'mcp__claude-in-chrome__navigate'])
 def test_unknown_tool_runs_and_logs(configured, monkeypatch, capsys, enforce, tool):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     set_enforce(root, enforce)
     call = payload(root, tool=tool)
@@ -1199,7 +1216,7 @@ def test_unknown_tool_runs_and_logs(configured, monkeypatch, capsys, enforce, to
 # #838 review F3: an owner disposition marker never leaves through the guard or a port.
 def test_owner_marker_refused_without_a_canary(configured):
     from wuwei import outward
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root, config = configured
     allow(root, SEND)
     assert check_send(payload(root, 'WUWEI parked x', tool=SEND, channel='C1')) == (1, outward.OWNER_MARKERS)
@@ -1223,7 +1240,7 @@ def test_owner_marker_refused_without_a_canary(configured):
     ('mcp__gmail__send_email', {'to': 'pat@example.test', 'body': 'Hi'}, YOUR_MAIL),
 ])
 def test_refusal_offers_a_canvas_or_page_first(configured, tool, inputs, surface):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
     call = payload(root, tool=tool)
@@ -1232,7 +1249,7 @@ def test_refusal_offers_a_canvas_or_page_first(configured, tool, inputs, surface
 
 
 def test_refusal_never_offers_a_set_mail_address(configured):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     with_owner(root)
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
@@ -1247,7 +1264,7 @@ def test_share_is_a_write():
 
 
 def test_refusal_on_another_channel_names_no_surface(configured):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     tool = 'mcp__linear__save_issue'
     result = check_send(payload(configured[0], 'Hi', tool=tool, channel='C1'))
     assert result == refused(tool) and 'outbound.owner' not in result[1]
