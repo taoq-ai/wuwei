@@ -283,21 +283,12 @@ def option_id(fields, label):
     return next((row[0] for row in options(fields) if wanted in (row[0].casefold(), row[1].casefold())), label)
 
 
-def lint(text, lenses=LENSES, root=None):
+def lint(text, lenses=LENSES):
     try:
         fields, scores = evaluate(text, lenses, write=True)
         option = fields['Recommendation']
         found = outward.tells(text)
-        said = ''
-        door = fields['Reversibility']
-        if root is not None:  # #557: report, never refuse
-            from wuwei import undo
-            if undo.config_write(fields):  # #600: the door the first route stores
-                said = '' if door == 'two-way' else '\n' + undo.two_way(door)
-            elif door != 'one-way':
-                reason = undo.measured(fields, root, workspace.load_config(root))[1]
-                said = '\n' + undo.line(door, reason) if reason else ''
-        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '') + said
+        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '')
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
 
@@ -364,7 +355,7 @@ def lint_file(path, *, root=None, record=True, clarification=False):
                     root = workspace.find_workspace(Path(path).parent)
                 except FileNotFoundError:
                     pass
-            code, message = lint(text, lens_table(workspace.load_config(root)), root) if root else lint(text)
+            code, message = lint(text, lens_table(workspace.load_config(root))) if root else lint(text)
     except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         code, message = 2, f'decision lint: could not read {path}: {exc}'
     return record_rejection(path, code, message, root=root) if record else (code, message)
@@ -419,15 +410,11 @@ def route_owner(identifier, fields, root, item=None):
     if identifier in data.get('decision_routes', {}) and (
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
-    from wuwei import novelty
     kind = cisr(fields, _scored(fields)[3])
     extra = {'class': fields.get('Class'), 'at': workspace.now().isoformat()}
     data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'],
                 'cisr': kind, **extra}
     payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind, **extra}
-    novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
-    if novel:  # #556: the owner's answer clears these
-        data_row['novel'] = payload['novel'] = novel
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 

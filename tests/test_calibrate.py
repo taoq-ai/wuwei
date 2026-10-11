@@ -1304,7 +1304,7 @@ def test_grants_record_defaults_are_unchanged():
     ([], [], ['None', 'Defer'], calibrate.NOTHING),
 ])
 def test_checks_text_is_a_routine_value_card(commands, sources, titles, reason):
-    from wuwei import decision, undo
+    from wuwei import decision
     text = calibrate.checks_text(0, 'acme/paper', commands, sources)
     fields, scores = decision.evaluate(text, decision.LENSES)
     assert fields['Question'] == 'Which fast checks gate every change in repo:acme/paper?'
@@ -1312,7 +1312,7 @@ def test_checks_text_is_a_routine_value_card(commands, sources, titles, reason):
     assert (fields['Class'], fields['Reversibility'], fields['Confidence']) == ('approach', 'two-way', 'high')
     assert fields['Recommendation'] == 'A' and reason in fields['Context']
     assert decision.config_keys(fields)['A'] == ('repos.0.fast_checks', commands)
-    assert fields['Previous'] == 'repos.0.fast_checks = []' and undo.config_write(fields)
+    assert fields['Previous'] == 'repos.0.fast_checks = []'
     assert decision.cisr(fields, scores) == 'Routine'
 
 

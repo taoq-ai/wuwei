@@ -208,15 +208,6 @@ def step(root, ran=()):
     if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
         return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
                     'wuwei calibrate --questions', 'card', THEN['calibrate'])
-    todo = [kind for kind in ('commit', 'decision') if ('rehearse', kind) not in returned]  # undo.SCRATCH
-    if todo:  # #557: the ledger is read only while a rehearse row is not done
-        from wuwei import undo
-        unrehearsed = [kind for kind in todo if kind in undo.missing(root)]
-        if unrehearsed:
-            kind = unrehearsed[0]
-            return _row('rehearse', f'The {kind} undo was never rehearsed here, so two-way {kind} records '
-                        'come to you as cards until it runs; run it once on a scratch target.',
-                        f'wuwei undo rehearse {kind}', item=kind)
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')

@@ -321,8 +321,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('undo.py', 'in a host terminal and answer y', 10),
-    ('commands/decision.py', 'decision undo {args.id} in a host terminal', 10),
     ('grants.py', 'host terminal', 11),
     ('commands/grants.py', '(owner, host terminal)', 11),
     ('merge.py', 'ask the owner to merge it in a host terminal', 11),

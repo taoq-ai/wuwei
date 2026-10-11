@@ -24,7 +24,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'plan.added', 'finding.noted', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
           'build.held', 'build.released',
-          'shepherd.overnight', 'shepherd.swept', 'undo.rehearsed', 'undo.done',
+          'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
           'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',

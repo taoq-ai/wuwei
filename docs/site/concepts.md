@@ -89,11 +89,6 @@ On a first day some sources are unmeasured until you set them up, for example `m
 The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
 Seats do not ask you what their mandate lets them decide.
 
-### Novel
-
-A repository, channel, person, tool, dependency, environment or workflow the workspace has never touched.
-A decision or send on it asks you once on a card, even when the mandate would take it; your answer clears it.
-
 ### Trust surface
 
 Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
@@ -447,18 +442,6 @@ requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on
 round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
 goal date has passed. It reports; the
 round cap (`gates.max_rounds`) is what stops the rounds.
-
-## Measured reversibility
-
-A seat writes `Reversibility: two-way`, but the CLI decides whether that holds. A record is
-two-way only when the CLI knows the undo for its kind of action and that undo ran once in
-this workspace. The class gives the kind: code changes undo with a git revert, park, defer
-and re-plan with `wuwei undo D-n`, and a merge with a revert PR when its repository does not
-deploy on merge. A message never has an undo, and neither does `other`. Each undo is
-rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo rehearse
-decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
-kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
-to you as a card. Nothing is refused for it.
 
 ## DORA keys
 

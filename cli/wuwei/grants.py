@@ -127,7 +127,7 @@ def close_merged(root, ref, pr):
 
 def active(config, data, name, found, standing=True):
     """(scope, D-n) of the grant that lets this action on this target through, else None;
-    standing=False leaves the [grants] lines out (#556: a novel target). #530: with
+    standing=False leaves the [grants] lines out. #530: with
     merge.default_tier = "today", a merge on a configured repository below strict, unless kept."""
     from wuwei import workspace
     if standing and workspace.posture(config)[0] != 'strict':
@@ -185,13 +185,8 @@ def gate(payload, root, config, argv, rule, repo, moved=False, pr=None):
         return 1, (f'publish: {command} {tail}; name the repository with -R <org>/<repo> or run it from '
                    'a configured repository, so the owner can decide on a card')
     head = f'publish: {command} on {found[5:]} {tail}'
-    from wuwei import novelty
-    novel = (novelty.novel(root, config, [found])
-             if name != 'evidence' and config['autonomy']['mode'] == 'autonomous' else [])
-    if novel:  # #556: a standing line never covers a target the workspace never touched
-        head += f'; {novelty.line(novel)}'
     data = state.read_state(root)
-    hit, where = active(config, data, name, found, standing=not novel), found
+    hit, where = active(config, data, name, found), found
     if not hit and pr:
         hit, where = active(config, data, name, f'pr:{pr}', standing=False), f'pr:{pr}'
     if hit:

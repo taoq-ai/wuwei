@@ -1335,7 +1335,7 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     before = path.read_text()
     code, out = upgraded(tmp_path, capsys, dry_run=True)
     assert code == 0 and path.read_text() == before
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith('setup:')] == [
         'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
@@ -1348,11 +1348,34 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
 
 
+
+def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
+    # #815: the rehearsal ledger, the seen set, their locks and the cruise file are no longer read.
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    names = ('rehearsals.json', 'rehearsals.lock', 'targets.json', 'targets.lock', 'cruise.json')
+    memory = tmp_path / '.wuwei/memory'
+    memory.mkdir(exist_ok=True)
+    for name in names:
+        (memory / name).write_text('{}')
+    code, out = upgraded(tmp_path, capsys, dry_run=True)
+    assert code == 0 and all((memory / name).exists() for name in names)
+    for name in names:
+        assert out.out.count(f'Would upgrade .wuwei/memory/{name}: remove (no longer read)') == 1
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    assert not any((memory / name).exists() for name in names)
+    for name in names:
+        assert out.out.count(f'Upgraded .wuwei/memory/{name}: remove (no longer read)') == 1
+
+
 def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'enforce')
     code, out = upgraded(tmp_path, capsys, dry_run=True)
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith('setup:')] == [
         'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
     assert upgraded(tmp_path, capsys)[0] == 0
     config = tomllib.loads(path.read_text())

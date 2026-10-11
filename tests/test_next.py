@@ -781,25 +781,10 @@ def test_an_empty_close_card_does_not_hold_next(root, capsys):
     assert (code, found['state'], found['command']) == (0, 'close', 'wuwei close'), found
 
 
-def test_unrehearsed_undos_are_run_rows_before_the_cards(root, capsys, rehearsed_undo, monkeypatch):
-    # #557: two-way records of an unrehearsed kind go to the owner until the planner rehearses it.
-    from wuwei import undo
-    monkeypatch.setattr(undo, 'ledger', rehearsed_undo)
+def test_no_rehearse_row(root, capsys):
+    # #815: no rehearsal ledger; the owner card comes first.
     approved(root, {}, decision_routes={'D-1': 'owner'})
-    found = coarse(root)
-    assert (found['state'], found['action'], found['command'], found['item']) == (
-        'rehearse', 'run', 'wuwei undo rehearse commit', 'commit')
-    assert 'come to you as cards until it runs' in found['why']
-    assert next_command.step(root, [('rehearse', 'commit')])['command'] == 'wuwei undo rehearse decision'
-    assert next_command.step(root, [('rehearse', 'commit'), ('rehearse', 'decision')])['state'] == 'decision'
-    undo.record(root, 'commit', 'rehearsal')
-    undo.record(root, 'decision', 'rehearsal')
     assert coarse(root)['state'] == 'decision'
-
-    def unread(root):
-        raise AssertionError('the ledger is not read once both rows are done')
-    monkeypatch.setattr(undo, 'ledger', unread)
-    assert next_command.step(root, [('rehearse', 'commit'), ('rehearse', 'decision')])['state'] == 'decision'
 
 
 @pytest.mark.parametrize('answered', [False, True])

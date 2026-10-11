@@ -387,22 +387,7 @@ def _workspace(root, config, error, found):
     rows += _outbound(config)
     rows.append(_register(root, config))
     rows += _calibration(root, config)
-    return rows + [_undo(root)]
-
-
-def _undo(root):
-    """#557: the kinds whose undo ran once in this workspace."""
-    from wuwei import undo
-    try:
-        done = undo.ledger(root)
-    except ValueError as exc:
-        return _row('workspace', 'undo rehearsals', 'fail', str(exc),
-                    'move .wuwei/memory/rehearsals.json aside, then run wuwei undo rehearse commit '
-                    'and wuwei undo rehearse decision')
-    rehearsed = [kind for kind in undo.REGISTRY if kind in done]
-    missing = [kind for kind in undo.REGISTRY if kind not in done]
-    return _row('workspace', 'undo rehearsals', 'ok', f'rehearsed: {", ".join(rehearsed) or "none"}; '
-                f'not rehearsed: {", ".join(missing) or "none"} (wuwei undo rehearse <kind>)')
+    return rows
 
 
 def _outbound(config):
@@ -756,16 +741,13 @@ def _legacy_traces(root):
 
 
 def _unrecorded(root):
-    """#661: cards the owner answered whose record command never ran (Keep and Undo answers
-    on an undo card record nothing more)."""
-    from wuwei import decision, drafts, sessions, state
+    """#661: cards the owner answered whose record command never ran."""
+    from wuwei import decision, drafts, state
     data = state.read_state(root)
     topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
     queue = drafts.read(data)
     found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-             and topic not in (sessions.card_topic(ident := topic.split('=')[0], 'Keep'),
-                               sessions.card_topic(ident, 'Undo'))
-             and decision.answered(data, ident) is None and not _owner_on_file(ident, root)}
+             and decision.answered(data, ident := topic.split('=')[0]) is None and not _owner_on_file(ident, root)}
     found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
               and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
     return sorted(found)

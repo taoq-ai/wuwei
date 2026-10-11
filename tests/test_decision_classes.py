@@ -227,12 +227,28 @@ Outcome: pending
 """
 
 
+
+def test_the_written_door_stands(ws, capsys):
+    # #815: no rehearsal ledger; a two-way record routes on the door it wrote.
+    path = save(ws, record(cls='approach'))
+    assert route(ws, capsys) == (0, 'mandate')
+    text = path.read_text()
+    assert 'Reversibility: two-way' in text and 'Reversibility corrected' not in text
+
+
+def test_a_new_target_routes_like_a_known_one(ws, capsys):
+    # #815: a target the workspace never touched asks nothing extra.
+    save(ws, record(cls='approach', wants=(('Context: tests/test_example.py', 'Context: repo:acme/new and tests/test_example.py'),)))
+    code, out = route(ws, capsys)
+    assert (code, out) == (0, 'mandate') and 'first time for' not in out
+    assert not (ws / '.wuwei/memory/targets.json').exists()
+
 def test_a_security_finding_still_asks_the_owner(ws, capsys):
     # Review F1: a record the CLI wrote for the owner is never taken under the mandate.
     from wuwei import state
     from wuwei.__main__ import main
     path = save(ws, SCANNER)
-    assert route(ws, capsys)[1].splitlines()[0] == 'owner'  # #557: other has no undo, one-way
+    assert route(ws, capsys)[1].splitlines()[0] == 'owner'
     data = state.read_state(ws)
     assert 'D-3' in data['decision_routes'] and not data.get('decision_outcomes')
     assert 'Decided-by: owner' in path.read_text() and 'Outcome: pending' in path.read_text()

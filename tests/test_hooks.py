@@ -1087,7 +1087,7 @@ def test_session_start_loads_only_what_it_prints(seeded_workspace, tmp_path):
     # no temp-file module in the ssh adapter and, with no decision routes, no decision ledger.
     loaded = [set(run_launcher(seeded_workspace, tmp_path, 'SessionStart', printed=True)) for _ in range(2)][1]
     assert loaded & {'shutil', 'tempfile', 'bz2', 'lzma', 'random', 'uuid', 'calendar',
-                     'wuwei.decision', 'wuwei.novelty'} == set()
+                     'wuwei.decision'} == set()
 
 
 COUNTING = (

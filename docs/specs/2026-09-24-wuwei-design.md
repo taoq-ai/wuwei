@@ -336,8 +336,7 @@ Never `--admin`, never a change to branch protection, never an approval. At most
 
 After the merge: the watch follows the base branch's checks for the merge commit. A red check
 opens a revert PR at once, pages the owner, and trips the breaker. Every merge is an event
-carrying the evidence (head sha, verdicts, checks, approvals) and an undo-log entry whose undo
-is the revert PR.
+carrying the evidence (head sha, verdicts, checks, approvals).
 
 Circuit breaker: auto-merge turns off for a repository, until the owner turns it back on,
 when a merged PR is reverted or red on the base branch, or when the rolling 14-day escaped
@@ -354,8 +353,8 @@ precondition above still holds at the current head, and the repository must allo
 merges. A precondition that fails names the condition: no grant lifts it. With no grant,
 `[merge] default_tier` decides: `ask` writes the card, `owner_only` prints the exact
 `gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal; unset, it is
-`owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
-undo-logged like auto-merges.
+`owner_only` under `strict` and `ask` otherwise. Granted merges are journaled and watched
+like auto-merges.
 
 Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
 green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
@@ -804,21 +803,6 @@ the lens lines. A one-way record is never Routine by definition. Under `supervis
 as before this amendment. The lint OK line names the class, and a record without a
 recommendation is refused with "add the recommendation and the reasoning".
 
-Measured reversibility (owner, 2026-10-08, #557). A record counts as two-way only when the CLI
-knows the undo for its action and that undo ran once in this workspace. The class gives the
-action kind. The commit classes (`approach`, `retry`, `accept-residual`, `scope-cut` and the
-engineering classes) undo with a git revert on the item branch. `park`, `defer` and `re-plan`
-undo with `wuwei undo D-n`. `merge` undoes with a revert PR through `wuwei undo <event id>`,
-and only when every repository the record names declares `merge_deploys = false` (4.6). A
-message has no undo (4.9), and `other` or a record without a class has none registered, so
-each of them is one-way. `wuwei undo rehearse commit` and `wuwei undo rehearse decision` run
-the undo once on a scratch target and write `memory/rehearsals.json`, which only those
-commands write; a merge counts after its first real `wuwei undo`. The CLI only lowers a door.
-`decision lint` prints the correction and keeps its exit code, and `decision route` writes
-`Reversibility: one-way` and a Notes line into the record on its first route, so the record
-comes to the owner as a card. `wuwei next` returns each missing rehearsal as a run row after
-the gate. The day report lists what was undone today and what cannot be undone.
-
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
@@ -861,23 +845,6 @@ musts or not, over 10 times the sum of the weights.
 
 Routing is fixed in code (5.8, decision classes); no class level, budget, calibration or
 shadow exists.
-
-Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
-has touched. A decision or guarded action whose target is novel asks the owner once. A target is a repository
-(`repo:<org>/<name>`), channel (`channel:<id>`), person (`person:<ns>:<id>`), connector
-tool (`tool:<server>/<name>`), dependency (`dependency:<ecosystem>/<name>`), environment
-(`env:<name>`) or workflow (`workflow:<name>`). Under `autonomy.mode = "autonomous"` that
-means a card: `decision route` sends a record naming a novel
-target to the owner (Routine included), an outward chat send to a novel channel holds as a
-draft, and a standing grant pattern does not apply to a novel repository. Under supervised
-routing does not change. A target is seen when config names it, or after the owner answered
-one card for it (a Keep owner-only grant answer leaves it novel; for a draft only an
-approval counts), or after an action on it was taken under mandate and not reversed within
-the undo window, whichever comes first.
-`init --upgrade` seeds the seen set from the CLI-written events and sent chat drafts of the
-last 30 days, so an upgraded workspace is not asked about what it already uses. The CLI
-keeps the first-seen date and the clearing in `memory/targets.json`, which no seat can
-write (the records floor). A novel target never creates a grant on its own.
 
 #### 5.8.2 External waits and negotiation loops (owner, 2026-10-01, #301)
 

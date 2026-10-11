@@ -86,9 +86,9 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
             return True
-        if tail in (('memory', 'ledger.jsonl'), ('memory', 'targets.json'), ('memory', 'rehearsals.json')):
+        if tail == ('memory', 'ledger.jsonl'):
             return True
         if len(tail) == 2 and tail[0] == 'charters' and tail[1].endswith('.md'):
             return True
@@ -119,12 +119,6 @@ def _hint(path):
     if tail == ('graph.json',):
         return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
                 'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')
-    if tail == ('memory', 'rehearsals.json'):
-        return ('rehearsals.json is the undo rehearsal ledger (design 5.8 Measured reversibility): '
-                'only wuwei undo rehearse and wuwei undo write it.')
-    if tail == ('memory', 'targets.json'):
-        return ('targets.json is the seen set (design 5.8.1 Novelty): the CLI writes it from owner '
-                'answers, drafts approve and init --upgrade.')
     if tail[:1] == ('integrity',):
         return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
                 'on its Owner step card.')

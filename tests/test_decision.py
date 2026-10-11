@@ -164,6 +164,15 @@ def test_file_and_cli_exits(ws, capsys, text, code):
         assert events(ws)[-1]['payload']['reasons']
 
 
+
+def test_lint_prints_no_door_correction(ws, capsys):
+    # #815: the written door stands; lint names no undo.
+    from wuwei.__main__ import main
+    path = save(ws, VALID.replace('Class: design', 'Class: message').replace(LENS_BLOCK, ''))
+    assert main(['decision', 'lint', str(path)]) == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and out[0].startswith('OK:')
+
 def test_unreadable_and_event_failure(ws, monkeypatch):
     from wuwei.decision import lint_file
     from wuwei import state

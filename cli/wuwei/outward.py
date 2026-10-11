@@ -801,18 +801,6 @@ def check_tier(inputs, root, config, channels, *, port=False, tool=None):
             return code, blocked(why[0])
         if decision == 'draft':
             return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
-        if (config['autonomy']['mode'] == 'autonomous' and kind in ('chat', 'slack')
-                and not owner_only(inputs, config, kind)):  # #556: a first-time channel asks once
-            from wuwei import novelty
-            try:
-                found = novelty.novel(root, config, [key for key in (f'channel:{value}' for value in channel_ids(inputs)
-                                                                    if isinstance(value, str))
-                                                     if re.fullmatch(novelty.KEY, key)])
-            except ValueError as exc:
-                return UNRUN, f'outward: {exc}'
-            if found:
-                return FINDINGS, f'{APPROVAL_REQUIRED}: ' + novelty.line(
-                    found, 'approving this draft clears it, then the tier table decides')
         if owner_only(inputs, config, kind):
             # ponytail: logged before check_lint, so a self-DM the lint refuses still counts; move it to the lint's clean result if the count must be exact.
             from wuwei import state  # Only a message to the owner pays for the event (#495).

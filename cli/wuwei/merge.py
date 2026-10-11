@@ -463,15 +463,6 @@ def save_entry(root, directory, ref, entry, kind):
                                 'evidence': entry['evidence']})
 
 
-def undo(root, directory, ref, entry):
-    from wuwei.watch import records
-    path = directory / 'undo.jsonl'
-    existing = records(path)
-    if not any(row['payload'].get('pr') == ref for row in existing):
-        state.append_jsonl(path, {'kind': 'merge.undo', 'ts': workspace.now().isoformat(),
-            'payload': {'pr': ref, 'head': entry['head'], 'operation': 'revert_pr'}})
-
-
 def owner_command(ref, head, method):
     repo, number = ref.split('#')
     return f'gh pr merge https://github.com/{repo}/pull/{number} --{method} --match-head-commit {head}'
@@ -524,7 +515,6 @@ def execute(ref, root=None, *, cwd=None):
             entry = {'head': evidence['head'], 'at': evidence['at'], 'status': 'intent',
                      'evidence': evidence}
             save_entry(root, directory, ref, entry, 'merge.intent')
-            undo(root, directory, ref, entry)
             host = registry.load('code_host', workspace.load_config(root))
             accepted = read(host.merge, ref, evidence['head'], evidence['method'], root=root)
             if accepted.get('accepted') is not True or accepted.get('sha') != evidence['head']:
@@ -647,7 +637,7 @@ def baseline(root):
 
 
 def revert(root, directory, ref, entry, host):
-    """Open the merge's revert PR once (the red-base watch and #557 wuwei undo); its URL."""
+    """Open the merge's revert PR once (the red-base watch); its URL."""
     if not entry.get('revert_pr'):
         result = read(host.revert_pr, ref, root=root)
         repo = ref.split('#')[0]
@@ -682,7 +672,6 @@ def monitor(root, directory, ref, entry, host, settings):
         raise ValueError('merge commit changed; run bin/wuwei pr state for the current merge commit, then retry')
     if 'merge_commit' not in entry:
         entry.update(status='merged', merge_commit=merge_commit, merged_at=pr['merged_at'])
-        undo(root, directory, ref, entry)
         save_entry(root, directory, ref, entry, 'merge.completed')
         from wuwei import dispatch
         items = state.read_state(directory=directory)['items']

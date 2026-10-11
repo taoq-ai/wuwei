@@ -324,6 +324,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
+    emitted.add('decision.reversed')  # owner_outcome picks its kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
@@ -383,7 +384,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
                 'decision.reversed': 'warn',
-                'undo.rehearsed': 'silent', 'undo.done': 'silent',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

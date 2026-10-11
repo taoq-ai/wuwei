@@ -445,7 +445,7 @@ def test_review_bot_score_and_same_summary_head(case, monkeypatch, score, head, 
     assert check(case).exit == code
 
 
-def test_merge_pins_head_and_writes_evidence_and_undo(case):
+def test_merge_pins_head_and_writes_evidence(case):
     root, host = case
     result = policy().execute(REF, root)
     assert result.exit == 0, result
@@ -454,9 +454,6 @@ def test_merge_pins_head_and_writes_evidence_and_undo(case):
     assert entry['head'] == SHA and entry['status'] == 'accepted'
     assert entry['evidence']['approvals'] == ['reviewer']
     assert any(e['kind'] == 'merge.auto' for e in events(root))
-    undo = [json.loads(line) for line in (workspace.day_dir(root) / 'undo.jsonl').read_text().splitlines()]
-    assert undo[0]['payload']['pr'] == REF and undo[0]['payload']['operation'] == 'revert_pr'
-    assert undo[0]['payload']['head'] == SHA
 
 
 def test_push_between_check_and_merge_fails(case, monkeypatch):
@@ -603,7 +600,6 @@ def test_watch_reconciles_accepted_mutation_after_timeout(case, monkeypatch):
     host.results['checks'].data[0]['sha'] = MERGED
     assert policy().poll(root) == 0
     assert state.read_state(root)['merges'][REF]['status'] == 'merged'
-    assert (workspace.day_dir(root) / 'undo.jsonl').exists()
 
 
 def test_missing_base_checks_are_unmeasured_and_keep_monitoring(case):
@@ -743,13 +739,6 @@ def test_required_app_cannot_be_spoofed_by_latest_status(case):
     assert check(case).exit == 1
 
 
-def test_fail_before_external_merge_if_undo_cannot_be_written(case, monkeypatch):
-    root, host = case
-    monkeypatch.setattr(policy(), 'undo', lambda *a: (_ for _ in ()).throw(OSError('disk full')))
-    assert policy().execute(REF, root).exit == 2
-    assert not any(c[0] == 'merge' for c in host.calls)
-
-
 def test_concurrent_merges_only_one_mutation(case, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
@@ -865,14 +854,6 @@ def test_outcome_uses_actual_merge_patch_and_fresh_base_branch(case):
                       'deletions': 1, 'patch': '@@ -100 +100 @@\n-new\n+fixed'}]}]})
     assert policy().poll(root) == 0
     assert ('history', ('example/project', MERGED, 'main', False), root) in host.calls
-
-
-def test_undo_file_is_protected(case):
-    from wuwei.guards.protect_state import check_file
-    path = workspace.day_dir(case[0]) / 'undo.jsonl'
-    payload = {'cwd': str(case[0]), 'tool_name': 'Write',
-               'tool_input': {'file_path': str(path), 'content': '{}'}}
-    assert check_file(payload)[0] == 1
 
 
 def test_insertions_preserve_original_line_tracking():
@@ -1021,7 +1002,7 @@ def test_shepherd_seat_never_merges(case, monkeypatch, capsys):
 
 
 def test_revert_opens_the_revert_pr_once(case):
-    # #557: the merge watch and wuwei undo share one revert call.
+    # The red-base watch opens one revert PR.
     root, host = merged(case)
     directory = workspace.day_dir(root)
     entry = state.read_state(root)['merges'][REF]

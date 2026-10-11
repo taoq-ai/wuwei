@@ -34,17 +34,6 @@ def quiet_heartbeat(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def rehearsed_undo(monkeypatch):
-    # #557: a workspace after its first two rehearsals: commit and decision undos ran once. A test
-    # of the ledger itself requests this fixture, whose value is the real reader, and restores it.
-    from wuwei import undo
-    real = undo.ledger
-    monkeypatch.setattr(undo, 'ledger', lambda root: {kind: {'at': '2026-09-28T12:00:00+00:00', 'by': 'rehearsal'}
-                                                      for kind in undo.SCRATCH})
-    return real
-
-
-@pytest.fixture(autouse=True)
 def unread_deploys(monkeypatch):
     # #586: no test spawns gh for deployments. A test of the deploy rows requests this fixture,
     # whose value is the real reader, and restores it.
