@@ -257,7 +257,7 @@ def propose(data, root=None):
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
-    if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
+    if state.day_started(directory) and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
     from wuwei import shepherd
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
@@ -376,7 +376,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         prior = sorted((path for path in days.iterdir() if path.is_dir() and
                         path.name < directory.name and re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name)),
                        reverse=True)
-        if not prior or not (prior[0] / 'state.json').is_file():
+        if not prior or not state.day_started(prior[0]):
             raise ValueError('no prior day state to import; run bin/wuwei plan approve without --import-yesterday')
         earlier = state.read_state(directory=prior[0])
         imported = {name: {**item, 'phase': 'planned', 'status': 'queued', 'gates': {}}
@@ -621,10 +621,21 @@ def park(item, reason, root=None):
     dispose(item, 'parked', reason, root)
 
 
+def resume_token(root, item, data=None):
+    """The token of plan resume's Owner step card: each resume takes a fresh Yes."""
+    import hashlib
+    from wuwei.watch import records
+    data = state.read_state(root) if data is None else data
+    row = data['items'][item]
+    why = (row.get('disposition') or {}).get('reason') or row['phase']
+    resumed = sum(event['kind'] == 'plan.resumed' and event['payload'].get('item') == item
+                  for event in records(workspace.day_dir(root) / 'events.jsonl'))
+    return hashlib.sha256(f'{why}\n{resumed}'.encode()).hexdigest()[:12]
+
+
 def resume(item, root=None):
     """plan resume <item>: only the owner's Yes on its Owner step card returns a parked or
     escalated item to the phase it paused in, queued."""
-    import hashlib
     import shlex
     root = workspace.find_workspace(root)
     data = state.read_state(root)
@@ -633,12 +644,8 @@ def resume(item, root=None):
         raise state.StateError(f'{item} is not parked; plan resume returns a parked item to its phase '
                                "(bin/wuwei status lists today's items)")
     why = (row.get('disposition') or {}).get('reason') or row['phase']
-    from wuwei.watch import records  # each resume takes a fresh Yes
-    resumed = sum(event['kind'] == 'plan.resumed' and event['payload'].get('item') == item
-                  for event in records(workspace.day_dir(root) / 'events.jsonl'))
-    token = hashlib.sha256(f'{why}\n{resumed}'.encode()).hexdigest()[:12]
     if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'resume', item]),
-                                      f'Resume {item}: {why}', token):
+                                      f'Resume {item}: {why}', resume_token(root, item, data)):
         raise state.StateError(reason)
 
     def update(fresh):

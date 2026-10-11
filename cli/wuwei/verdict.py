@@ -281,7 +281,7 @@ def day_state(path):
     from wuwei import state
     day = Path(path).parent.parent
     try:
-        return state.read_state(directory=day) if (day / 'state.json').is_file() else None
+        return state.read_state(directory=day) if state.day_started(day) else None
     except (OSError, ValueError):
         return None
 

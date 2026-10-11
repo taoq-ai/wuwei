@@ -9,7 +9,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outbound]` | [Outward sends](#outward-sends) |
@@ -135,7 +135,8 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with the finding as its reason; `wuwei plan resume <item>` asks you to resume it. Minimum 1. The report's `## Rounds` section counts them. |
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `gates.polish` | `"offer"` | After a round-one pass with review notes: `never` raises the PR at once, `offer` lets the planner take one polish round (`dispatch polish <item>`) or decline it (`dispatch skip-polish <item>`), `always` opens it. The builder fixes only the notes and one gate (the one that wrote them, else quality) re-checks the delta. It counts as a fix round. |
-| `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. |
+| `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs; `wuwei next` refreshes its PR listing (one list call per repository) when it is older. |
+| `duties.on` | `["ping", "shepherd", "tracker", "summary"]` | The outward duties `wuwei next` lists until each is recorded, each only while its channel is configured: `ping` (`shepherd.review_channel`: post the review request once the PR is raised), `shepherd` (a code host: answer new outside review threads), `tracker` (a tracker or `outbound.owner.pages`: update it once merged), `summary` (`outbound.owner_channel = "dm"`: post the day summary once the report is written). Remove a name to turn that duty off. `wuwei close` waits on an open one. Record one with the command its row names, `wuwei duty <item> <duty> --evidence <link>`, or `--skipped "<why>"` when it cannot be done (the report lists it). |
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. A warning in the event log after this deadline, a page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |

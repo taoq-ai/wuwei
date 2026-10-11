@@ -260,7 +260,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     return action
 
 
-def open_fix(item, feedback, *, root, polish=None):
+def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
     """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
     item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
@@ -285,7 +285,7 @@ def open_fix(item, feedback, *, root, polish=None):
     from wuwei import dispatch
     cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
     used = dispatch.rounds_used(data, item)
-    if used >= cap:  # #623: one round cap for gate and PR fixes alike
+    if used >= cap and not granted:  # #623: one round cap for gate and PR fixes alike; granted: the owner's resume
         raise ValueError(f'round cap {cap} reached (gates.max_rounds); park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised', 'delta'):
@@ -320,6 +320,9 @@ def open_fix(item, feedback, *, root, polish=None):
                 raise ValueError(f'polish round already recorded for {item}; run bin/wuwei dispatch next {item}')
             fresh['items'][item]['polish'] = polish
         fresh['items'][item]['phase'] = 'fix'
+        from wuwei import derive  # #844: the head each fix round starts from and leaves
+        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []),
+                                             [start or derive.head(record['worktree']), None]]
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
@@ -505,7 +508,16 @@ def complete_checks(item, results, *, root, expected=None):
           {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
     if not failures and after:
-        state.transition(item, after, root)
+        from wuwei import derive
+        end = derive.head(record['worktree'])
+
+        def move(data):
+            heads = data['items'][item].get('fix_heads') or []
+            if after == 'delta' and heads and heads[-1][1] is None:
+                heads[-1][1] = end  # #844: the head this fix round produced
+            state._move(data, item, after)
+        state._write_state(move, root, reserved=False, kind='state.transition',
+                           payload={'item': item, 'phase': after})
     return 1 if failures else 0
 
 

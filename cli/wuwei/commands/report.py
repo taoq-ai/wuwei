@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from wuwei import report, workspace
+from wuwei import report, state, workspace
 
 
 def register(subparsers):
@@ -13,7 +13,7 @@ def run(args):
     root = workspace.guard_scope({'cwd': str(Path.cwd())})
     if root is None:
         return 0
-    if not (workspace.day_dir(root) / 'state.json').is_file():
+    if not state.day_started(workspace.day_dir(root)):
         print('No report today: no day has started. Start one with /wuwei:wuwei-plan.')
         return 0
     print(report.write().read_text(encoding='utf-8'), end='')

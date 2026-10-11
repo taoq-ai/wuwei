@@ -55,11 +55,10 @@ def test_unchanged_needs_every_failure_held(tree):
 
 
 def write(root, change):
-    path = workspace.day_dir(root) / 'state.json'
-    data = json.loads(path.read_text())
+    from fakes import records  # #844: the log holds the records
+    data = state.read_state(root)
     change(data)
-    path.unlink()
-    path.write_text(json.dumps(data))
+    records.write(root, data)
 
 
 @pytest.fixture
@@ -200,7 +199,7 @@ def test_launch_set_gives_a_held_item_no_seat(day_set, monkeypatch):
     value = dispatch.launch_set(root)
     assert value['building'] == 0
     entries = {row['item']: row for row in value['entries']}
-    assert entries['B']['action'] == 'wait' and 'P1' in entries['B']['reason']
+    assert 'B' not in entries  # #844: a held item is never offered; next's rows name it waiting
     assert sum(row['action'] == 'start' for row in value['entries']) == 3 and entries['P1']['action'] == 'start'
 
 
@@ -216,12 +215,11 @@ def test_the_fix_items_brief_reads_main_broken(day_set):
 
 def test_next_skips_held_items_and_offers_the_fix(root):
     wait = {'status': 'ready', 'action': {'action': 'wait', 'fix': 'F', 'reason': 'held'}}
-    for phase, expected in (('planned', ('dispatch', 'wuwei dispatch next --all')),
-                            ('merged', ('build', 'wuwei build next A'))):
+    for phase, expected in (('planned', [('build', 'F')]), ('merged', [('build', 'A'), ('build', 'B')])):
         approved(root, {'A': ('implement', {}), 'B': ('implement', {}), 'F': (phase, {})}, cap=2,
                  builds={'A': wait, 'B': wait})
         found = coarse(root)
-        assert (found['state'], found['command']) == expected
+        assert [(launch['kind'], launch['item']) for launch in found['launches']] == expected
     approved(root, {'A': ('implement', {})}, builds={'A': wait})
     found = coarse(root)
     assert found['state'] == 'wait' and 'A' in found['why'] and 'F' in found['why']

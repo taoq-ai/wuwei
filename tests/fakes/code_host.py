@@ -76,6 +76,9 @@ class Fake(Recorder):
     def open_prs(self, repo, root=None):
         return self._call('open_prs', (repo,), root)
 
+    def pulls(self, repo, root=None):
+        return self._call('pulls', (repo,), root)
+
     def default_branch(self, repo, root=None):
         return self._call('default_branch', (repo,), root)
 

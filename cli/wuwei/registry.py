@@ -37,7 +37,7 @@ PARAMETERS = {
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha', 'method'), 'ready': ('ref',),
-                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'probe': ('ref', 'tags'),
+                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'pulls': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'deployments': ('repo', 'since'),
                   'issue': ('repo', 'title', 'body'), 'label': ('ref', 'name', 'present')},
     'vcs': {'workspace_init': ('repo',),

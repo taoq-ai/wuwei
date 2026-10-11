@@ -6,7 +6,8 @@ import shlex
 import time
 
 from wuwei import registry, state, workspace
-from wuwei.commit_push import context, data
+from wuwei import commit_push  # D1: read context at call time, never a bound copy
+from wuwei.commit_push import data
 from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')
@@ -58,7 +59,7 @@ def interpreter(command, worktree, repo, root, config):
 def record(path):
     path = Path(path).resolve()
     root = workspace.find_workspace(path)
-    repo, actual, vcs = context(path, {}, {}, root, identity=False)
+    repo, actual, vcs = commit_push.context(path, {}, {}, root, identity=False)
     records = {}
     from wuwei.commands.build import check_binding
     builds = [check_binding(item, build) for item, build in state.read_state(root).get('builds', {}).items()

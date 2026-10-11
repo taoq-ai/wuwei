@@ -149,7 +149,7 @@ def test_session_start_reads_the_day_state_twice(root, monkeypatch):
         return read(root, directory=directory)
     monkeypatch.setattr(state, 'read_state', counting)
     hook(monkeypatch, 'SessionStart', 'A', root)
-    assert reads.count(today) == 2
+    assert reads.count(today) == 1  # #844: the registry write folds the log itself
 
 
 def test_session_start_without_day_state_creates_none(root, monkeypatch, tmp_path_factory):

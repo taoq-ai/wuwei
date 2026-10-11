@@ -468,7 +468,32 @@ they wait for the owner.
 Process depth (owner, 2026-10-11, #811): the tier alone sets it (#280, #567) and CAP alone sets
 the seats (#528); no day value adjusts either.
 
+The derived next (owner, 2026-10-11, #789 part 22). `wuwei next` derives the day from the
+event log (every state write carries its patch, so the records fold back from the log), the
+item worktrees' HEAD, the verdict files, the cached PR listing (`prs.json`, refreshed by one
+code-host list call per repository when older than `pr.poll_seconds`) and the seat ledger.
+`state.json` is a cache of that fold, read only when it reflects the whole log, never
+required. After the morning gate `next` returns the set: every ready launch with its prompt,
+every due outward duty (each while its channel is configured, `[duties] on` turns one off:
+ping once a PR is raised, shepherd on new outside review activity, tracker once merged, summary
+once the report is written) and at most one owner decision. The log wins: a cache whose
+fingerprint, log identity or size does not hold is ignored, and a torn last line is skipped.
+A PR head a rebase or a push moved past its verdicts opens a round every gate re-reads; a PR
+closed unmerged, or a worktree whose HEAD cannot be read, is one owner decision to park. The planner does every launch and duty and asks the decision on its Owner
+step card. Code decides what is ready, due or waiting on the owner; the model writes every
+text. A PARK verdict parks in code; an ESCALATE, a builder's `Blocked:` line, the round cap,
+red checks at the cap, `owner_merge` and a merge the policy does not clear are the decision.
+`close` waits on every open duty, also one carried from an earlier day closed without close.
+
 ### 5.3 Rules
+
+- Pass at head (owner, 2026-10-11, #789 part 22, #669). A verdict counts only at the item
+  worktree's current HEAD, or at the head a recorded fix round produced from the head it was
+  given (each fix round records the head it starts from and the head it leaves). After a fix
+  round only the gates that asked for the fix re-read the delta; the other gates' PASS stands
+  for the head that round produced. A head moved any other way makes every PASS stale: its
+  seat re-reads at the new head and the new receipt replaces the stale one, and `pr raise`
+  refuses until every gate passes at HEAD.
 
 - Tracks. SLICE (default): no contract, boundary, schema or infrastructure change and under
   about twenty tasks; spec and implementation in one builder session; one gate set at
@@ -1112,13 +1137,15 @@ any day is not run again.
 | `tracker.in_review` | the PR is raised (`pr raise`) or claimed (`pr claim`) | the move to `states.in_review` and the `Pull request: <pr>.` comment both return 0 | `wuwei tracker move <item> in_review` |
 | `tracker.done` | the PR merges (the watch's `merge.completed`, or `pr state` seeing the merge, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
 
-`dispatch.tracker_call` performs each duty. It appends `duty.due {item, duty, ticket,
-command}` before the tracker call and `duty.done {item, duty, ticket, pr}` when every step
+`dispatch.tracker_call` performs each duty (amended, owner, 2026-10-11, #789 part 22: the
+configured duties of 5.2 use the same `duty.done` and `duty.skipped` events, and
+`wuwei duty <item> <duty> --evidence <link>` records one the model performed). It appends
+`duty.due {item, duty, ticket, command}` before the tracker call and `duty.done {item, duty, ticket, pr}` when every step
 returned 0. When a step fails after the adapter's own retry (unreachable, credentials, a
 rate limit past its wait) it appends `duty.skipped {item, duty, ticket, error}`. It never
 raises and still records `tracker.call` with the exit and reason. A duty is open while its
-last event for the `(item, duty)` pair is `duty.due`. `wuwei next` returns a `duty` row for
-each open duty, beside the build launches and also for a terminal item; `wuwei close` exits 1
+last event for the `(item, duty)` pair is `duty.due`. `wuwei next` lists each open duty in its
+`duties`, beside the build launches and also for a terminal item; `wuwei close` exits 1
 while one is open, naming the item, the duty and the command. Close accepts a skipped duty,
 and the day report lists each one under Skipped duties with its retry command, so a duty is
 never dropped silently and never holds the close forever. Duties live only in events; carried

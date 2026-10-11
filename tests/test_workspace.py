@@ -244,6 +244,7 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
+        'duties': {'on': ['ping', 'shepherd', 'tracker', 'summary']},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,

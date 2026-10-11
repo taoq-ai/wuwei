@@ -224,7 +224,7 @@ def test_union_deduplicates_and_continues_after_error(case):
     assert event['prs'] == 2 and event['unreadable'] == 1
 
 
-@pytest.mark.parametrize('mode,expected', [('empty', 0), ('closed', 0), ('missing', 2), ('malformed', 2)])
+@pytest.mark.parametrize('mode,expected', [('empty', 0), ('closed', 0), ('malformed', 2)])  # #844: no missing state
 def test_day_and_closed_pr(case, monkeypatch, mode, expected):
     root, host = case
     if mode == 'empty':
@@ -235,7 +235,8 @@ def test_day_and_closed_pr(case, monkeypatch, mode, expected):
     if mode == 'malformed':
         data = state.read_state(root)
         data['raised_prs'] = ['widget#7 widget#8']
-        workspace.atomic_write(workspace.day_dir(root) / 'state.json', json.dumps(data))
+        from fakes import records  # #844: the log holds the records
+        records.write(root, {'raised_prs': data['raised_prs']})
     assert sweep() == expected
     event, = sweep_event(root)
     assert event['exit'] == expected
@@ -418,21 +419,19 @@ def test_state_verdict_cannot_replace_linted_current_gate(case, bad):
     assert sweep_event(root)[-1]['visibility_owed'] == 1
 
 
-@pytest.mark.parametrize('history', ['state_write', 'dedicated_write', 'raised_prs', 'claimed_prs', 'sweep'])
+# #844: no dedicated_write case: a write after the log is deleted folds the new log alone (F8)
+@pytest.mark.parametrize('history', ['state_write', 'raised_prs', 'claimed_prs', 'sweep'])
 def test_empty_pr_set_cannot_erase_today_history(case, history):
     root, _ = case
     directory = workspace.day_dir(root)
     if history != 'state_write':
         (directory / 'events.jsonl').unlink()
-        if history == 'dedicated_write':
-            state._write_state(lambda data: None, root, kind='seat stopped')
-        elif history == 'sweep':
+        if history == 'sweep':
             state.append_event('watch: sweep', {'sweep': 'obligations', 'prs': 1}, root)
         else:
             state.append_event('state.set', {'path': history, 'value': [REF]}, root)
-    data = state.read_state(root)
-    data.update(raised_prs=[], claimed_prs=[])
-    workspace.atomic_write(directory / 'state.json', json.dumps(data))
+    from fakes import records  # #844: the log holds the records
+    records.write(root, {'raised_prs': [], 'claimed_prs': []})
     state.set_state('cap', 2, root)
     assert sweep() == 2
     assert sweep_event(root)[-1]['unreadable'] == 1
@@ -510,7 +509,7 @@ def test_fresh_day_before_the_first_pr(case, monkeypatch, before):
     if before == 'snapshot_only':
         directory.mkdir()
         (directory / state.SNAPSHOT).write_text(json.dumps(state.DAY_DEFAULTS))
-    expected = 2 if before in ('note_only', 'snapshot_only') else 0
+    expected = 2 if before == 'note_only' else 0  # #844: a snapshot alone is no day
     assert sweep() == expected
     if not expected:
         event = sweep_event(root)[-1]

@@ -41,7 +41,7 @@ def upgrade(root, config, write=True):
     from wuwei import watch
     if config['adapters']['tracker'] != 'github':
         return []
-    day = next((path for path in watch.days(root) if (path / 'state.json').exists()), None)
+    day = next((path for path in watch.days(root) if state.day_started(path)), None)
     if day is None:
         return []
     try:

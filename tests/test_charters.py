@@ -146,7 +146,7 @@ def test_a_seat_finding_has_its_route():
     assert 'wuwei note --fix "<title>"' in texts["lead.md"]
     assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
     assert "An item needs no ticket to start" in texts["planner.md"]
-    assert "returns a `duty` row, run its command" in texts["planner.md"]
+    assert "lists a duty, write its content and run its record command" in texts["planner.md"]  # #844
     assert "tracker.required" not in texts["lead.md"]
 
 

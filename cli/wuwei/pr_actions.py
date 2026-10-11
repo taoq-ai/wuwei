@@ -251,7 +251,7 @@ def evaluate(root, refs=None):
     """Return per-PR results, preserving each unreadable PR and its reason."""
     rows = []
     try:
-        if not (workspace.day_dir(root) / 'state.json').is_file():
+        if not state.day_started(workspace.day_dir(root)):
             raise ValueError('day state missing; start the day with /wuwei:wuwei-plan (bin/wuwei plan propose, then bin/wuwei plan approve)')
         config = workspace.load_config(root)
         host, owned = watch.owned(root, config)
@@ -404,6 +404,15 @@ def _fix(root, ref, item, tree, measured, feedback=None):
             print(f'{ref}: {exc}')
             return exc.code
         print(json.dumps(action, sort_keys=True))
+        return 1
+    from wuwei import dispatch
+    data = state.read_state(root)
+    cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
+    if dispatch.rounds_used(data, item) >= cap:  # #844: the owner decides on plan resume's card
+        reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
+        dispatch._parked(root, item, reason)
+        print(f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
+              f'bin/wuwei plan resume {item}')
         return 1
     action = build.open_fix(item, feedback, root=root)
     print(json.dumps(action, sort_keys=True))

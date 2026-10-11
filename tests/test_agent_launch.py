@@ -31,7 +31,7 @@ def check(payload):
     ('phase', 1, 'phase'), ('dirty', 1, 'dirty'), ('live', 1, 'builder'),
     ('missing-pid', 1, 'builder'), ('cap', 0, ''), ('memory', 1, 'memory'),
     ('memory-error', 2, 'unmeasured'), ('status-error', 2, 'unavailable'),
-    ('malformed-event', 2, 'events'), ('missing-state', 2, 'state'),
+    ('malformed-event', 2, 'events'), ('missing-state', 0, ''),  # #844: state.json is a cache
     ('no-marker', 1, 'brief'), ('nested-marker', 0, ''), ('traversal', 2, 'path'),
     ('missing-input', 2, 'tool_input'), ('bad-seats', 2, 'seat'),
 ])
@@ -584,7 +584,8 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
 
 
 def drop_day(directory):
-    for name in ('state.json', state.SNAPSHOT):
+    """No day yet: no records in the log (#844) and no cache."""
+    for name in ('state.json', state.SNAPSHOT, 'events.jsonl'):
         (directory / name).chmod(0o600)
         (directory / name).unlink()
 
@@ -699,10 +700,8 @@ def test_untraced_stop_before_the_day_records_nothing(day):
     from wuwei.guards import agent_launch
     root, directory, _, _ = day
     drop_day(directory)
-    before = (directory / 'events.jsonl').read_text()
     assert agent_launch.stop(adhoc_stop(root, root / 'none.jsonl')) == (0, '')
-    assert (directory / 'events.jsonl').read_text() == before
-    assert not (directory / 'state.json').exists()
+    assert not (directory / 'events.jsonl').exists() and not (directory / 'state.json').exists()
 
 
 def test_seat_start_records_an_adhoc_reviewer(day, monkeypatch, capsys):

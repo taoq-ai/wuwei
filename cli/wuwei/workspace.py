@@ -121,6 +121,10 @@ SCHEMA = {
                                   "clock": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
+    # #844: the outward duties next lists until recorded
+    # G7: a duty is due while its channel is configured; on only turns one off
+    "duties": {"on": [(str, None, ("ping", "shepherd", "tracker", "summary")),
+                      ["ping", "shepherd", "tracker", "summary"]]},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
                  "reviewers": [(str, None)], "reviewers_exclude": [(str, None)],
                  "review_gate_check": (str, "Review Gate"),
@@ -595,7 +599,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 22  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 23  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

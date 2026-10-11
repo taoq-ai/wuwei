@@ -187,7 +187,7 @@ def _visibility(ref, pr, reviews, data, me, directory, config):
 
 
 def _check_empty_day(directory):
-    written = (directory / 'state.json').exists()
+    written = state.day_started(directory)
     path = directory / 'events.jsonl'
     if not (written or path.exists()):
         return
@@ -295,7 +295,7 @@ def reply(ref, surface, target_id, text, root=None):
     if (surface not in ('comment', 'review', 'thread') or type(target_id) is not int or target_id <= 0
             or not isinstance(text, str) or not text.strip()):
         raise ValueError('reply needs a surface, positive ID and nonempty body; pass the surface, a positive ID and the reply text')
-    if not (directory / 'state.json').is_file():
+    if not state.day_started(directory):
         raise ValueError('day state missing; start the day with /wuwei:wuwei-plan')
     data = state.read_state(directory=directory)
     _ledger(data)

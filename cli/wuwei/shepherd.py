@@ -434,7 +434,7 @@ def owning_day(root, before=None):
     The watch writes clock state into every day, so state alone never makes a day the owner."""
     from wuwei import watch
     return next((day for day in watch.days(root) if (before is None or day.name < before)
-                 and (day / 'state.json').is_file() and state.read_state(directory=day).get('gate_approved')), None)
+                 and state.day_started(day) and state.read_state(directory=day).get('gate_approved')), None)
 
 
 def _live(root):
