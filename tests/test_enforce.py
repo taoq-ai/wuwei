@@ -59,6 +59,7 @@ TABLE = [
     (fixed('protect_state', 1, 'state write', 'check_file'), True, True),
     (fixed('protect_state', 1, 'state bash', 'check_bash'), True, True),
     (fixed('protect_state', 1, 'another item scratch', 'check_scratch'), False, False),
+    (fixed('traces', 2, 'RuntimeError: could not run PostToolUse guard'), False, False),
     (fixed('outward', 1, 'outward lint', 'check_lint'), False, False),
     (fixed('outward', 1, 'held send', 'check_tier'), True, True),
     (fixed('outward', 1, CANARY, 'check_lint'), True, True),
@@ -164,6 +165,17 @@ def test_enforce_off_keeps_the_floor(guarded, monkeypatch, capsys):
     assert code == 2 and out.err.splitlines() == ['deploy generic']
     [event] = events(guarded, 'guard.would_refuse')
     assert event['reason'] == 'commit_push specific'
+
+
+def test_traces_exception_never_blocks(guarded, monkeypatch, capsys):
+    def record(payload):
+        raise RuntimeError('recorder broke')
+    record.__module__ = 'wuwei.guards.traces'
+    code, out = hook_call(guarded, monkeypatch, capsys, event='PostToolUse', guards=[record])
+    assert code == 0, out.err
+    assert not events(guarded, 'hook.refusal')
+    [event] = events(guarded, 'guard.would_refuse')
+    assert event['guard'] == 'traces'
 
 
 def test_one_reason_session_start_unchanged(guarded, monkeypatch, capsys):

@@ -281,6 +281,9 @@ observe after the upgrade.
    - seat stop by Owner step card (the planner session check stays).
 4. **`--shadow` stays as the one init flag**, because the no-workspace row of `next` names it.
 5. **Opaque and unparsed commands warn in both settings** until part 17 deletes that machinery.
+   An exception escaping the traces recorder only logs (`traces` is in `guards.LOG_ONLY`). The
+   spec guard's could-not-run refusal now only logs with enforce off; dispatch keeps
+   spec-before-gates, and part 21 deletes the spec hook.
 6. **Status JSON renames `posture` to `enforce`.** Nothing outside the CLI reads it now that the
    cockpit is gone (#808).
 7. **Docs.** Per the pass plan, `docs/site` is edited only where a test forces it: the
