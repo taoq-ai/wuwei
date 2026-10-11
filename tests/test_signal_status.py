@@ -10,7 +10,6 @@ import sys
 
 import pytest
 
-from wuwei.workspace import owner_cli
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = '2026-09-28T12:00:00+02:00'
@@ -108,13 +107,6 @@ def test_escalation_without_running_seat_is_warn():
     from wuwei.signal import classify
     assert classify({'kind': 'item.escalated', 'payload': {'item': 'A'}},
                     {'seats': {}}) == ('warn', 'Decisions')
-
-
-def test_signal_cli_reads_event_from_stdin(tmp_path):
-    day(tmp_path, {'items': {}, 'cap': 1})
-    result = cli(tmp_path, 'signal', 'classify', input=json.dumps({'kind': 'security.finding'}))
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {'tier': 'page', 'lane': 'Work'}
 
 
 def test_status_line_and_json_share_snapshot(tmp_path):
@@ -324,7 +316,6 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.add('state.write')  # default writer kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
-    emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
     expected = {'draft.created': 'warn', 'draft.sending': 'silent', 'draft.approved': 'silent',
                 'worktree.hooks_skipped': 'warn',
@@ -334,7 +325,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
-                'brief.pack': 'silent', 'brief.answer': 'silent',
                 'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
@@ -348,8 +338,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'hook.warning': 'warn',
                 'verdict.rejected': 'silent', 'decision.rejected': 'warn',
                     'decision.decided': 'silent', 'decision.closed': 'silent',
-                    'decision.routed': 'silent',
-                    'decision.digest': 'silent', 'decision.replied': 'silent', 'decision.escalated': 'silent',
+                    'decision.routed': 'silent', 'decision.digest': 'silent',
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
@@ -371,16 +360,11 @@ def test_emitted_kinds_have_intended_tiers():
                 'tracker.logged': 'silent', 'plan.set': 'silent',
                 'discovery.unmeasured': 'warn', 'steward.notes': 'warn',
                 'steward.run': 'silent', 'steward.due': 'warn',
-                'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
+                'steward.acknowledged': 'silent',
                 'memory.folded': 'silent', 'memory.consolidated': 'silent',
-                'listen: clock': 'silent', 'listen: wake': 'silent',
-                'remote.pending': 'silent', 'remote.started': 'silent',
-                'remote.resumed': 'silent', 'remote.stopped': 'silent',
-                'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
-                'remote.confirmed': 'silent', 'calibration.drift': 'warn',
-                'shepherd.dispatched': 'silent', 'shepherd.finished': 'warn',
-                'shepherd.overnight': 'silent', 'shepherd.swept': 'silent', 'pr.notified': 'silent',
-                'negotiation.loop': 'warn', 'negotiation.notified': 'silent',
+                'calibration.drift': 'warn',
+                'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
+                'negotiation.loop': 'warn',
                 'decision.waited': 'warn', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent', 'outward.lint': 'silent',
                 'outward.unknown_tool': 'warn', 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
@@ -388,7 +372,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
-                'decision.reversed': 'warn', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'pace.set': 'silent', 'pace.carded': 'silent', 'decision.shadow': 'silent',
+                'decision.reversed': 'warn', 'cruise.carded': 'silent', 'decision.shadow': 'silent',
                 'undo.rehearsed': 'silent', 'undo.done': 'silent',
                 'cruise.burn': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
@@ -396,8 +380,6 @@ def test_emitted_kinds_have_intended_tiers():
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
     assert classify({'kind': 'build.iteration'}, {})[0] == 'silent'
-    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 0}}, {})[0] == 'silent'
-    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 1}}, {})[0] == 'warn'
 
 
 def test_emitted_kinds_scan_both_writer_forms_in_nested_files(tmp_path):
@@ -501,50 +483,6 @@ def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
 
 
-@pytest.mark.parametrize('outcomes', [{}, {'D-2': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}])
-def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch, capsys, outcomes):
-    from wuwei.__main__ import main
-    replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
-                'payload': {'id': 'D-2', 'option': option}} for option in 'AB']
-    from wuwei.commands.status import attention
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ROUTED, 'decision_outcomes': outcomes},
-                    replies)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    reason = f'D-2 answered from the phone: option A, confirm with {owner_cli(tmp_path)} decide D-2 A'
-    expected = [] if outcomes else [reason]
-    rows = [row for row in attention(directory) if 'D-2' in row['reason']]
-    assert rows == [{'tier': 'warn', 'source': 'decision.answered', 'lane': 'Decisions',
-                     'reason': reason}][:len(expected)]
-    assert main(['status']) == 0
-    text = capsys.readouterr().out
-    assert ('phone answers 1' in text) == bool(expected) and reason not in text
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['answered'] == expected
-
-
-def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    ids = [f'D-{n}' for n in range(1, 5)]
-    replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
-                'payload': {'id': identifier, 'option': option}} for identifier, option in zip(ids, 'ABAA')]
-    routes = {identifier: {'reversibility': 'two-way', 'recommendation': 'A'} for identifier in ids}
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes}, replies)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    reasons = [f'{identifier} answered from the phone: option {option}, '
-               f'confirm with {owner_cli(tmp_path)} decide {identifier} {option}' for identifier, option in zip(ids, 'ABAA')]
-    assert main(['status']) == 0
-    text = capsys.readouterr().out.strip()
-    assert text.count('phone answers') == 1 and 'phone answers 4' in text
-    assert 'answered from the phone' not in text
-    from wuwei.commands.status import attention
-    rows = [row['reason'] for row in attention(directory) if row['source'] == 'decision.answered']
-    assert rows == reasons
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['answered'] == reasons
-
-
 def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
     light = {'tier': 'light', 'computed': 'light', 'reasons': ['3 changed lines within light_max_lines 100'],
@@ -644,7 +582,6 @@ def test_negotiation_loop_tiers():
     assert classify(loop, {}) == ('warn', 'Work')
     loop['payload']['past_goal'] = True
     assert classify(loop, {}) == ('page', 'Work')
-    assert classify({'kind': 'negotiation.notified'}, {})[0] == 'silent'
     assert classify({'kind': 'decision.waited'}, {}) == ('warn', 'Decisions')
 
 
@@ -796,12 +733,12 @@ def test_outward_to_owner_is_silent_and_reserved(capsys):
     assert 'check_tier' in capsys.readouterr().err
 
 
-TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')
+TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'off')
 
 
 @pytest.mark.parametrize('name', TELEMETRY)
 def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, name):
-    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all six.
+    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all five.
     from wuwei.__main__ import main
     from wuwei.signal import classify
     assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('warn' if name == 'ready' else 'silent')
@@ -838,8 +775,8 @@ def test_status_json_names_plan_decisions_and_versions(tmp_path):
         False, ['D-7'], integrity.version(), '0.1.0')
     assert not {'nudges', 'nudges_mode'} & set(data)
     assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
-            'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'listen', 'health',
-            'loops', 'answered', 'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
+            'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'health',
+            'loops', 'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
     assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
 
@@ -886,7 +823,7 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
         'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0')
     assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · observe')
     assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0'
-    for moved in ('watch', 'listen', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
+    for moved in ('watch', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
                   'unplanned', 'checks'):
         assert moved not in status.line({**data, 'cap_bound': 'budget'})
     # #658: the seats token names the rule that set CAP; before the gate there is none
@@ -980,16 +917,16 @@ def test_status_without_a_flag_fails_closed(tmp_path):
 def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = {**four_seats(tmp_path, monkeypatch), 'cap_bound': 'budget', 'seats': {'G-1': 2},
-            'watch': 'dead', 'listen': 'off', 'health': 'ok', 'sessions': 2, 'answered': ['x'],
+            'watch': 'dead', 'health': 'ok', 'sessions': 2,
             'loops': 1, 'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
             'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [
-        'pages 1 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
+        'pages 1 · observe · loops 1 · prs 3 changed · reviewers: none (solo)'
         ' · traces: 2 gaps',
-        'watch dead · listen off · health ok · sessions 2',
+        'watch dead · health ok · sessions 2',
         'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',
         'plugin 0.16.0 · template 0.15.0']
     assert status.full({**data, 'plugin': '', 'template': None})[-len('plugin unmeasured · template none'):] == (

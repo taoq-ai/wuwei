@@ -2,10 +2,9 @@
 
 import pytest
 
-# These modules bind integrity.PLUGIN at import. Import them before any test patches it,
+# This module binds integrity.PLUGIN at import. Import it before any test patches it,
 # or the first lazy import under a patch pins a tmp plugin for the rest of the worker.
 from wuwei import mcp  # noqa: F401,E402
-from wuwei.commands import board  # noqa: F401,E402
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +17,7 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
     # A developer's Claude Code session must never leak into claims or the env export.
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     monkeypatch.delenv('CLAUDE_ENV_FILE', raising=False)
-    # A developer's owner DM channel must never turn test inbox events into commands.
+    # A developer's owner DM channel must never reach a test.
     monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL', raising=False)
     # A developer's Slack base must never redirect the recorded adapter tests.
     monkeypatch.delenv('SLACK_API_BASE', raising=False)

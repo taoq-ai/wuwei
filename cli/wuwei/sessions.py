@@ -10,7 +10,7 @@ from wuwei import state, workspace
 from wuwei.exits import PAYLOAD, DAMAGED
 
 
-ROLES = ('adhoc', 'seat-host', 'remote', 'shepherd')
+ROLES = ('adhoc', 'seat-host', 'shepherd')
 COUNTED = {'Stop': 'turns', 'SessionStart:compact': 'compactions'}
 
 
@@ -65,7 +65,7 @@ def stale_seconds(root):
     return workspace.SCHEMA['sessions']['stale_seconds'][1]
 
 
-def record(data, session_id, *, hook, cwd, role=None, thread=None):
+def record(data, session_id, *, hook, cwd, role=None):
     """Upsert one registry row inside the caller's state write."""
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError(f'session id must be a nonempty string; {PAYLOAD}')
@@ -80,8 +80,6 @@ def record(data, session_id, *, hook, cwd, role=None, thread=None):
     count(row, hook)
     if role is not None:
         row['role'] = role
-    if isinstance(thread, str) and thread.strip():
-        row['thread'] = thread
 
 
 def registered(data, session_id):
@@ -95,7 +93,7 @@ def registered(data, session_id):
     return role if role in ROLES and role != 'adhoc' else None
 
 
-def touch(root, session_id, *, hook, cwd, role=None, thread=None, env_file=None):
+def touch(root, session_id, *, hook, cwd, role=None, env_file=None):
     """Record hook activity; never creates today's state. env_file (SessionStart only, #599)
     says whether the session id reached later Bash calls."""
     if not (workspace.day_dir(root) / 'state.json').exists():
@@ -104,7 +102,7 @@ def touch(root, session_id, *, hook, cwd, role=None, thread=None, env_file=None)
     if env_file is not None:
         payload['env_file'] = env_file
     return state._write_state(
-        lambda data: record(data, session_id, hook=hook, cwd=cwd, role=role, thread=thread),
+        lambda data: record(data, session_id, hook=hook, cwd=cwd, role=role),
         root, reserved=False, kind='session.seen', payload=payload)
 
 
@@ -165,7 +163,7 @@ def rows(data, now, stale):
                        'items': sorted(item for item, holder in claims.items() if holder == session_id),
                        'cwd': row.get('cwd'), 'turns': row.get('turns', 0),
                        'compactions': row.get('compactions', 0),
-                       **{key: row[key] for key in ('thread', 'stopped', 'rotated') if key in row}})
+                       **{key: row[key] for key in ('stopped', 'rotated') if key in row}})
     return sorted(result, key=lambda row: row['started'])
 
 

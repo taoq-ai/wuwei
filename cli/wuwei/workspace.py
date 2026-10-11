@@ -35,7 +35,7 @@ MERGE_SCHEMA = {
 }
 
 LEVELS = ("brief", "standard", "full")
-SURFACES = ("decisions", "digest", "dm", "report")
+SURFACES = ("decisions", "digest", "report")
 # #331: what warns and what blocks, per area, by where the plugin runs.
 AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
 AREA_LEVELS = ('off', 'warn', 'block')
@@ -54,7 +54,9 @@ TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
-RETIRED = ('nudges', 'owner.verbosity.nudges')
+# A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
+RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
+           'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -71,7 +73,6 @@ SCHEMA = {
                             **{name: (str, "", ("", *LEVELS)) for name in SURFACES}}},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
-               "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
                "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
@@ -97,7 +98,6 @@ SCHEMA = {
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
-    "pace": {"default": (str, "steady", ("careful", "steady", "fast"))},  # #579
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
@@ -122,10 +122,7 @@ SCHEMA = {
              "auto": [(str, None, ("page", "report", "retro")), []],
              "strict_close": (bool, True)},
     "calendar": {"url": (str, "")},
-    "brief": {"lead_minutes": (int, 30, 1),
-              "style": {"length": (str, "standard", ("concise", "standard")),
-                        "speed": (int, 180, 120, 240)},
-              "remote": (str, "origin"),
+    "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
@@ -154,8 +151,6 @@ SCHEMA = {
     "sessions": {"stale_seconds": (int, 3600, 1),
                  "rotate_after": {"turns": (int, 0, 0), "compactions": (int, 0, 0),
                                   "clock": (str, "")}},
-    "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
-    "responder": {"enabled": (bool, True)},
     "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
@@ -176,7 +171,7 @@ SCHEMA = {
                  "review_gate_check": (str, "Review Gate"),
                  "min_reviewers": (int, 1, 0),
                  "author_windows_days": [(int, None, 1), [90, 180]],
-                 "tie_commits": (int, 2, 0), "autostart": (bool, True),
+                 "tie_commits": (int, 2, 0),
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
                  "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
@@ -255,7 +250,6 @@ SCHEMA = {
                   "endpoint": (str, ""), "repository": (str, "taoq-ai/wuwei"),
                   "otlp": {"endpoint": (str, ""), "headers_env": (str, "")}},
     "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
-    "control_plane": {"content": (str, "summary", ("summary", "none")), "owner": (str, "")},
     "spec": {"engine": (str, "speckit", ("speckit", "superpowers", "openspec", "none")),
              "mode": (str, "strict", ("strict", "advisory", "off")),
              "skip_tiers": [(str, None, ("light", "standard", "full")), ["light"]]},
@@ -265,7 +259,7 @@ SCHEMA = {
                  "vcs": (str, "git"), "host": (str, "local"),
                  "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
                  "calendar": (str, "none"), "transcripts": (str, "none"),
-                 "inbound": (str, "none"), "redactor": (str, "builtin")},
+                 "redactor": (str, "builtin")},
 }
 
 
@@ -685,7 +679,7 @@ CONFIG_CACHE_VERSION = 17  # Bump when the parse, the schema, the defaults or th
 # #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
-# doctor, why and the board stay read-only.
+# doctor and why stay read-only.
 CONFIG_CACHE_WRITES = False
 
 

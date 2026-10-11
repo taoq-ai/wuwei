@@ -522,16 +522,13 @@ def test_reserved_outcomes_inside_tuple_callback(ws):
             metadata=({'decision_outcomes': {'D-3': {}}},)), ws)
 
 
-@pytest.mark.parametrize('kind', ['decision.decided', 'decision.rejected', 'decision.future',
-                                  'decision.replied'])
+@pytest.mark.parametrize('kind', ['decision.decided', 'decision.rejected', 'decision.future'])
 def test_generic_event_reserves_all_decision_kinds(ws, monkeypatch, capsys, kind):
     from wuwei.__main__ import main
     from wuwei.workspace import day_dir
     monkeypatch.chdir(ws)
     assert main(['event', kind, '{}']) == 1
     assert not (day_dir(ws) / 'events.jsonl').exists()
-    if kind == 'decision.replied':
-        assert 'wuwei control plane poll_replies' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('field', ['Context', 'Blast radius', 'Pre-mortem', 'Revisit', 'Outcome'])
@@ -709,7 +706,8 @@ def test_decide_accepts_a_title_label(ws, monkeypatch, label, code):
     from wuwei.commands.decision import owner_outcome
     save(ws)
     decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
-    result = owner_outcome(SimpleNamespace(id='D-3', option=label), root=ws, where='in the owner DM')
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    result = owner_outcome(SimpleNamespace(id='D-3', option=label), root=ws)
     if code:
         assert result == (1, 'decision: option is not in the record; pick an option id from bin/wuwei decision show <id>')
     else:
@@ -717,7 +715,7 @@ def test_decide_accepts_a_title_label(ws, monkeypatch, label, code):
         assert state.read_state(ws)['decision_outcomes']['D-3']['option'] == 'A'
 
 
-def test_owner_outcome_takes_a_root_and_where(ws, monkeypatch, tmp_path):
+def test_owner_outcome_takes_a_root(ws, monkeypatch, tmp_path):
     from types import SimpleNamespace
     from wuwei import decision, state
     from wuwei.commands.decision import owner_outcome
@@ -726,30 +724,10 @@ def test_owner_outcome_takes_a_root_and_where(ws, monkeypatch, tmp_path):
     monkeypatch.chdir(elsewhere)
     path = save(ws)
     decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
-
-    def refuse(*args, **kwargs):
-        raise AssertionError('the host terminal must not be asked')
-    monkeypatch.setattr('wuwei.integrity._host_confirm', refuse)
-    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (0, 'A')
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws) == (0, 'A')
     assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'owner'
-    text = path.read_text()
-    assert 'Outcome: A\n' in text and ' in the owner DM.\n' in text
-
-
-def test_owner_outcome_with_where_refuses_a_one_way_record(ws, monkeypatch):
-    from types import SimpleNamespace
-    from wuwei.workspace import owner_cli
-    from wuwei import decision, state
-    from wuwei.commands.decision import owner_outcome
-    one_way = VALID.replace('Reversibility: two-way', 'Reversibility: one-way')
-    path = save(ws, one_way)
-    decision.route_owner('D-3', decision.evaluate(one_way)[0], ws)
-    before = path.read_bytes()
-    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (
-        1, 'decision: only a two-way decision is decided from the DM; '
-           f'run {owner_cli(ws)} decide D-3 A in a host terminal')
-    assert not state.read_state(ws).get('decision_outcomes')
-    assert path.read_bytes() == before
+    assert 'Outcome: A\n' in path.read_text()
 
 
 def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch, capsys):

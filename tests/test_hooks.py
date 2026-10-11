@@ -402,14 +402,14 @@ def test_unit_installed_matches_the_unit_file(tmp_path, monkeypatch):
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
     root = tmp_path / 'ws'
-    assert not workspace.unit_installed(root, name='listen')
-    unit = workspace.watch_unit(root, name='listen')[1]
+    assert not workspace.unit_installed(root, name='shepherd')
+    unit = workspace.watch_unit(root, name='shepherd')[1]
     unit.parent.mkdir(parents=True)
-    other = workspace.watch_unit(tmp_path / 'other', name='listen')[1]
+    other = workspace.watch_unit(tmp_path / 'other', name='shepherd')[1]
     other.write_text('')
-    assert not workspace.unit_installed(root, name='listen')
+    assert not workspace.unit_installed(root, name='shepherd')
     unit.write_text('')
-    assert workspace.unit_installed(root, name='listen') and not workspace.unit_installed(root)
+    assert workspace.unit_installed(root, name='shepherd') and not workspace.unit_installed(root)
 
 
 def test_guard_modules_defer_heavy_imports():

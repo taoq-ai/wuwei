@@ -1,4 +1,4 @@
-"""Telemetry (#422, design 5.13): a weekly aggregate off the hook path, proposals and sharing."""
+"""Telemetry (#422, design 5.13): a weekly aggregate off the hook path and sharing."""
 
 import json
 from pathlib import Path
@@ -67,7 +67,7 @@ def seed_week(root):
         ('12:00', 'seat launched', {'name': 's2', 'item': 'B'}),
         ('12:00', 'decision.routed', {'id': 'D-1', 'reversibility': 'two-way'}),
         ('12:00', 'decision.routed', {'id': 'D-2', 'reversibility': 'two-way', 'item': 'B'}),
-        ('12:30', 'remote.acknowledged', {}),
+        ('12:30', 'state.recovered', {}),
     ], traces=3, data={
         'items': {'A': {'phase': 'fix'}, 'B': {'phase': 'planned'}},
         'decision_routes': {'D-1': {'recommendation': 'Yes'}, 'D-2': {'recommendation': 'No'}},
@@ -109,7 +109,7 @@ def test_aggregate_every_metric(ws):
     assert isinstance(metrics.pop('aggregation_ms'), int)
     assert metrics == EXPECTED
     assert set(telemetry.METRICS) == set(EXPECTED) | {'aggregation_ms'}
-    assert found['evidence'] == {'verdict_items': 1, 'external_wait_hours': [26]}
+    assert 'evidence' not in found
     assert found['config'] == {'posture': 'guarded', 'profile': 'strict', 'repositories': 0,
                                'adapters': workspace.load_config(ws)['adapters']}
     assert found['versions']['python'] == f'{sys.version_info[0]}.{sys.version_info[1]}'
@@ -135,8 +135,9 @@ def test_vocabularies_match_their_sources():
     assert telemetry.AREAS == workspace.AREAS and telemetry.POSTURES == tuple(workspace.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
     # #419: load_config mirrors docs.system into adapters.docs.
-    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs'}
-    assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS} == telemetry.ADAPTERS
+    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs', 'inbound'}  # inbound: weeks before #810
+    assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS if port != 'inbound'} == {
+        port: names for port, names in telemetry.ADAPTERS.items() if port != 'inbound'}
 
 
 def test_validate_runs_without_the_wuwei_package(tmp_path):
@@ -149,7 +150,7 @@ def test_validate_runs_without_the_wuwei_package(tmp_path):
     assert result.stdout.split('\n')[:2] == ['top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>', 'False'], result.stderr
 
 
-def test_week_file_writes_final_weeks_with_proposals_and_keeps_marks(ws):
+def test_week_file_writes_final_weeks_and_keeps_marks(ws):
     seed_week(ws)
     write_day(ws, '2026-09-28', [])
     cfg = workspace.load_config(ws)
@@ -159,8 +160,8 @@ def test_week_file_writes_final_weeks_with_proposals_and_keeps_marks(ws):
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps({'week': '2026-W39', 'shared': 'anonymous', 'ready': True, 'presented': True}))
     final = telemetry.week_file(ws, cfg, '2026-W39')
-    assert final['final'] is True and final['proposals'] == []
-    assert (final['shared'], final['ready'], final['presented']) == ('anonymous', True, True)
+    assert final['final'] is True and 'proposals' not in final and 'presented' not in final
+    assert (final['shared'], final['ready']) == ('anonymous', True)
     assert json.loads(path.read_text()) == final == telemetry.load_week(ws, '2026-W39')
     assert final['metrics']['owner_wait_hours'] == {'p50': 25, 'p90': 25.8}
     assert telemetry.load_week(ws, '2026-W30') is None
@@ -247,82 +248,30 @@ def test_step_off_writes_nothing(ws):
     assert not (ws / '.wuwei/metrics').exists() and not workspace.day_dir(ws).exists()
 
 
-def week(**metrics):
-    """A final week that meets no rule unless a metric or the evidence says otherwise."""
-    evidence = metrics.pop('evidence', {})
-    return {'week': '2026-W39', 'final': True,
-            'metrics': {'days': 2, 'warnings': {}, 'escaped_by_tier': 'unmeasured',
-                        'fix_rounds_per_item': 'unmeasured', **metrics},
-            'evidence': {'verdict_items': 0, 'external_wait_hours': [], **evidence}}
-
-
-REPO = '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
-
-
-def test_three_proposal_fixtures(ws):
-    cfg = config(ws, REPO + '[security]\nposture = "observe"\n[security.areas]\n'
-                 'integrity = "block"\nmcp = "block"\npublish = "block"\noutward = "block"\n')
-    assert telemetry.proposals(week(escaped_by_tier={'standard': {'merged': 5, 'escaped': 1}}), cfg) == [
-        {'rule': 'floor-raise', 'evidence': 'standard: 1 of 5 merged items escaped',
-         'command': 'bin/wuwei config set repos.0.gates.floor \'"full"\''}]
-    assert telemetry.proposals(week(days=3, warnings={'outward': 1}), cfg) == [
-        {'rule': 'area-block', 'evidence': 'seats at warn, no warning in 3 days',
-         'command': 'bin/wuwei config set security.areas.seats \'"block"\''}]
-    assert telemetry.proposals(week(evidence={'external_wait_hours': [2, 3, 7]}), cfg) == [
-        {'rule': 'wait-hours', 'evidence': '3 external waits, p90 6.2 h under 12 h',
-         'command': 'bin/wuwei config set decisions.wait_hours 10'}]
-
-
-@pytest.mark.parametrize('rule, met, below', [
-    ('floor-raise', {'escaped_by_tier': {'light': {'merged': 5, 'escaped': 1}}},
-     {'escaped_by_tier': {'light': {'merged': 4, 'escaped': 1}}}),
-    ('floor-lower', {'escaped_by_tier': {'full': {'merged': 10, 'escaped': 0}}},
-     {'escaped_by_tier': {'full': {'merged': 9, 'escaped': 0}}}),
-    ('area-block', {'days': 3}, {'days': 2}),
-    ('wait-hours', {'evidence': {'external_wait_hours': [1, 1, 1]}}, {'evidence': {'external_wait_hours': [1, 1]}}),
-    ('fast-checks', {'evidence': {'verdict_items': 5}, 'fix_rounds_per_item': {'p50': 1, 'max': 2}},
-     {'evidence': {'verdict_items': 4}, 'fix_rounds_per_item': {'p50': 1, 'max': 2}}),
-])
-def test_each_rule_at_and_below_its_threshold(ws, rule, met, below):
-    floor = 'full' if rule == 'floor-lower' else 'light'
-    cfg = config(ws, REPO + f'[repos.gates]\nfloor = "{floor}"\n[security]\nposture = "strict"\n')
-    if rule == 'area-block':
-        cfg = config(ws, '[security.areas]\noutward = "warn"\n')
-    assert [found['rule'] for found in telemetry.proposals(week(**met), cfg)] == [rule]
-    assert telemetry.proposals(week(**below), cfg) == []
-    if rule == 'floor-lower':
-        assert telemetry.proposals(week(**met), cfg)[0]['command'] == (
-            'bin/wuwei config set repos.0.gates.floor \'"standard"\'')
-    if rule == 'fast-checks':
-        assert telemetry.proposals(week(**met), cfg)[0]['command'] == 'bin/wuwei calibrate --measure'
-
-
 def final_week(root, **changes):
-    found = {**week(evidence={'external_wait_hours': [2, 3, 7]}), 'schema': 1,
+    found = {'week': '2026-W39', 'final': True, 'schema': 1,
              'versions': {'plugin': '0.12.0', 'python': '3.12', 'os': 'linux'},
              'config': {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
-                        'adapters': {'tracker': 'none', 'code_host': 'github'}}}
-    found['proposals'] = telemetry.proposals(found, workspace.load_config(root))
+                        'adapters': {'tracker': 'none', 'code_host': 'github'}},
+             'metrics': {'days': 2, 'warnings': {}, 'escaped_by_tier': 'unmeasured',
+                         'fix_rounds_per_item': 'unmeasured'}}
     telemetry.save_week(root, {**found, **changes})
     return found
 
 
-def test_proposals_command_lists_then_presents_once(ws, capsys):
-    final_week(ws)
-    before = (ws / '.wuwei/metrics/2026-W39.json').read_text()
-    assert main(['telemetry', 'proposals']) == 0
-    assert 'wait-hours: 3 external waits' in capsys.readouterr().out
-    assert (ws / '.wuwei/metrics/2026-W39.json').read_text() == before and events(ws) == []
-    assert main(['telemetry', 'proposals', '--widget']) == 0
-    widget, = json.loads(capsys.readouterr().out)
-    assert widget['header'] == 'Telemetry' and widget['record'] == 'bin/wuwei config set decisions.wait_hours 10'
-    assert [option['label'] for option in widget['options']] == ['Yes', 'Skip']
-    assert widget['options'][0]['description'].startswith('Recommended.')
-    assert widget['question'].startswith('Morning gate (days/2026-10-03/plan.md): Telemetry 2026-W39')
-    assert telemetry.load_week(ws, '2026-W39')['presented'] is True
-    assert events(ws) == [('telemetry.presented', {'week': '2026-W39', 'count': 1})]
-    assert main(['telemetry', 'proposals', '--widget']) == 0
-    assert json.loads(capsys.readouterr().out) == [] and len(events(ws)) == 1
+def test_a_stored_week_with_proposals_still_loads(ws, capsys):
+    legacy = {'proposals': [{'rule': 'fast-checks', 'evidence': '5 items', 'command': 'bin/wuwei calibrate --measure'}],
+              'evidence': {'verdict_items': 5, 'external_wait_hours': []}, 'presented': True}
+    final_week(ws, **legacy)
+    found = telemetry.load_week(ws, '2026-W39')
+    assert found['proposals'] == legacy['proposals']
+    shared = telemetry.validate(telemetry.payload(found, token='a' * 32))
+    assert not set(legacy) & set(shared)
+    assert main(['telemetry', 'preview']) == 0
+    assert 'proposals' not in capsys.readouterr().out
+    with pytest.raises(SystemExit) as exc:
+        main(['telemetry', 'proposals'])
+    assert exc.value.code == 2
 
 
 CORPUS = {'repository': 'acme/secret-widget', 'path': '/srv/acme/widget/main.py', 'handle': '@pat-lee',
@@ -342,7 +291,7 @@ def seed_corpus(root):
         ('09:30', 'seat launched', {'name': CORPUS['handle'], 'item': item}),
         ('09:40', 'gate.received', {'item': item, 'role': CORPUS['handle'], 'verdict': reason}),
         ('09:50', 'decision.routed', {'id': 'D-1', 'item': item, 'ticket': CORPUS['ticket']}),
-        ('10:00', 'remote.started', {'from': CORPUS['handle'], 'text': CORPUS['time']}),
+        ('10:00', 'mcp.decided', {'from': CORPUS['handle'], 'text': CORPUS['time']}),
         ('11:00', 'state.write', {'phase_changes': {item: 'merged'}, 'repo': CORPUS['repository']}),
     ], traces=1, data={'items': {item: {'phase': 'merged', 'note': CORPUS['ticket']}}},
         decisions={'D-1': f"Question: Should {item} wait on {CORPUS['ticket']}?\nClass: approach\n"})
@@ -613,3 +562,16 @@ def test_otlp_posts_on_every_sweep_and_resends_failed_metrics(ws, service):
     service.posts = []
     telemetry.step(ws, cfg)
     assert service.posts == []
+
+
+def test_week_stored_with_an_inbound_adapter_still_validates_previews_and_sends(ws, host, capsys):
+    # A week recorded before #810 names adapters.inbound; it stays valid and shareable.
+    fake, answers = host
+    old = {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
+           'adapters': {'tracker': 'none', 'code_host': 'github', 'inbound': 'slack'}}
+    final_week(ws, config=old, **VERSIONS)
+    telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))
+    config(ws, '[telemetry]\nshare = "attributed"\n')
+    assert main(['telemetry', 'preview']) == 0 and 'inbound' in capsys.readouterr().out
+    answers.append(True)
+    assert main(['telemetry', 'send']) == 0 and len(fake.calls) == 1

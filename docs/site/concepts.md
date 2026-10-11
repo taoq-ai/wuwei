@@ -49,11 +49,6 @@ Work admitted during the day must fit the remaining build hours.
 Review tier: light (one reviewer agent) or standard and full (three), set per change from its diff: a docs-only change gets one reviewer, code or a trust surface gets three. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
-### Pace
-
-How hard the day pushes: `careful`, `steady` (the default) or `fast`, picked on the morning gate card and changed with `wuwei plan set pace=<p>`.
-Careful lifts light items to standard and keeps one seat free. Fast runs plain standard items at light depth with only the tests the diff changes, and CI is the gate. Guard code runs full at both. No pace moves a floor or changes who decides; `wuwei pace` shows the advice.
-
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
@@ -174,7 +169,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
-MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
+MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
 ## Grants
 
@@ -204,7 +199,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -260,8 +255,8 @@ In the workspace's own tracker a bug, triage or follow-up ticket is internal. Un
 umbrella it is created with no draft, under `ask` it is held as a card for the planner, and
 `block` refuses it. A row `{ tool = "tracker", audience = "owner", tier = "ask" }` makes it a
 card under send too. An external tracker keeps the outward rules. Each creation is written
-once per day and writes one `tracker.created` event naming the seat; the board's Tickets
-created table and the retro's Tickets seats filed section list who filed it.
+once per day and writes one `tracker.created` event naming the seat; the retro's Tickets
+seats filed section lists who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
 decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
@@ -385,7 +380,7 @@ it may be config. Agent instruction files never count as documents: `AGENTS.md`,
 `.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
 The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as
 `lead tier full overridden: docs-only`. A lead flag, track FULL, a trust, never-auto,
-FULL-pattern or binary path, `floor = "full"` or pace careful keeps the three gates. A
+FULL-pattern or binary path or `floor = "full"` keeps the three gates. A
 repository that keeps code under `docs/` or `specs/` lists those paths in
 `repos.gates.trust_paths`. The report lists the reviewer seats per item with its tier reason. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
@@ -443,7 +438,7 @@ Error budget. One unlucky reversal no longer drops a class. Each class may spend
 `budget_window_days` (14) on undos, reversals, weekly samples answered differently and
 escaped defects. The budget is spent with more events than that and at least two; the class
 then runs one level lower until the window refills, and gets no raise card meanwhile. A
-fast burn (`burn_warn`, the last 48 hours against the window's pace) writes a `cruise.burn` event naming
+fast burn (`burn_warn`, the last 48 hours against the window's rate) writes a `cruise.burn` event naming
 the events first. `bin/wuwei cruise budget` prints the table.
 
 Calibration. A record's `Confidence:` is checked against what happened. Each taken record
@@ -482,7 +477,7 @@ recommendation on a two-way door or parks the item on a one-way door, and record
 Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
 requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
 round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
-goal date has passed. The listener sends the summary to your DM. It reports; the
+goal date has passed. It reports; the
 round cap (`gates.max_rounds`) is what stops the rounds.
 
 ## Measured reversibility
@@ -516,16 +511,6 @@ stale and its claims lapse. One session is the planner, a second takes over with
 `plan session --take-over`, and `sessions.rotate_after` rotates the planner on a schedule.
 See [sessions](reference.md#sessions) and [long sessions](daily.md#long-sessions).
 
-## Listener
-
-`bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
-The responder wakes the planner and handles commands only from the pinned owner, with a
-second factor where a command needs one. While running it also probes raised and claimed
-PRs with conditional requests, sends each `pr.changed` summary to the DM and,
-unless `shepherd.autostart = false`, starts a headless shepherd seat that never merges. See
-[remote operation](remote.md) and
-[running the listener](configuration.md#running-the-listener).
-
 ## Heartbeat
 
 On every tick the watch runs a fixed table of probes: a refused and an allowed hook call,
@@ -534,9 +519,3 @@ the status line, a failed probe raises one page, a probe that turns from ok to f
 behaviour drift, and a healthy heartbeat pings an external dead-man monitor. See the
 [heartbeat reference](reference.md#heartbeat).
 
-## Cockpit and board
-
-`bin/wuwei dashboard` serves the read-only day board on loopback. The plugin's MCP server
-runs `bin/wuwei board` and offers the `wuwei_board` tool inside Claude Code; it is declared
-in the signed `plugin.json`, so integrity covers it. Answering a decision or approving a
-draft stays a host terminal action. See the [daily path](daily.md#6-close).

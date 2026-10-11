@@ -113,7 +113,7 @@ it records.
 
 ### An MCP finding on a server you installed yourself
 
-Under `guarded` the day proceeds and the finding stays on the board until
+Under `guarded` the day proceeds and the finding stays open until
 `bin/wuwei mcp decide D-<n> proceed` (or `defer`). Under `strict` seats wait for that
 command; the decision holds the findings table. A `tool_redirect`
 hit on a description that points to a sibling tool of the same server is a known

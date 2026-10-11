@@ -32,7 +32,6 @@ def register(subparsers):
     parser.add_argument("--posture", choices=tuple(workspace.POSTURES),
                         help="security posture for a new workspace: observe, guarded or strict")
     parser.add_argument("--shadow", action="store_true", help="same as --posture observe")
-    parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
     parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
                         help="decoy credentials path relative to .wuwei")
     parser.set_defaults(func=run)
@@ -40,21 +39,9 @@ def register(subparsers):
 
 def run(args):
     posture = 'observe' if getattr(args, 'shadow', False) else getattr(args, 'posture', None)
-    if posture and (getattr(args, 'upgrade', False) or getattr(args, 'menu_bar', False)):
+    if posture and getattr(args, 'upgrade', False):
         flag = '--shadow' if getattr(args, 'shadow', False) else '--posture'
         raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
-    if getattr(args, 'menu_bar', False):
-        if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
-            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run; run bin/wuwei init --menu-bar on its own')
-        if sys.platform != 'darwin':
-            print('SwiftBar menu bar is macOS only')
-            return CLEAN
-        template = Path(__file__).resolve().parents[3] / 'templates/swiftbar/wuwei.1m.sh'
-        print(f'Copy {template} into your SwiftBar Plugins folder as wuwei.1m.sh.')
-        print('Add this line near the top of the copied script:')
-        print(f'export WUWEI_WORKSPACE={shlex.quote(str(Path(args.path).expanduser().resolve()))}')
-        print('Install SwiftBar first if it is absent. No menu bar plugin runs until installed.')
-        return CLEAN
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
         raise ValueError('--dry-run requires --upgrade; run bin/wuwei init --upgrade --dry-run')
     if getattr(args, 'upgrade', False):
@@ -295,8 +282,8 @@ def _unread_keys(raw, warnings):
     paths, removed, kept = [], [], []
     for warning in warnings:
         match = re.match(r'config\.toml: unknown key (.+?)(?: at line \d+)?; (?:did you mean (.+)\?)?', warning)
-        retired = match and any(match.group(1) == key or match.group(1).startswith(key + '.')
-                                for key in workspace.RETIRED)
+        name = re.sub(r'\.\d+(?=\.|$)', '', match.group(1)) if match else ''  # repos.0.tests is repos.tests
+        retired = match and any(name == key or name.startswith(key + '.') for key in workspace.RETIRED)
         if match and match.group(2) and not retired:
             kept.append((match.group(1), match.group(2)))
         elif match:
@@ -521,6 +508,15 @@ def upgrade(args):
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
+        listener = workspace.watch_unit(destination.parent, name='listen')[1]  # #810: no longer shipped
+        listener = sys.platform in ('darwin', 'linux') and listener.exists() and listener
+        if listener and args.dry_run:
+            print('Would remove the listener service (no longer shipped)')
+        elif listener:
+            from wuwei import registry
+            from wuwei.commands.watch import _remove
+            _remove(listener, sys.platform, registry.watch_service(), 'listen')
+            print('Removed the listener service (no longer shipped)')
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,
@@ -547,7 +543,7 @@ def upgrade(args):
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
                 and not guide_changed and not seeded and not named and not graph_changed and text == raw
-                and not tickets and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
+                and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

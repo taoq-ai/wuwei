@@ -82,8 +82,8 @@ def health(root, clocks=None, name='watch'):
         return 2, f'{name} health unmeasured: {exc}'
 
 
-# The last events text health decoded and its rows: SessionStart asks for watch and listen
-# in turn, and an unchanged day decodes once. Only health reads it (kinds and stamps).
+# The last events text health decoded and its rows: SessionStart asks for watch health,
+# and an unchanged day decodes once. Only health reads it (kinds and stamps).
 _SEEN = {}
 
 
@@ -538,40 +538,33 @@ def poll(root):
     return 2 if unreadable else int(bool(fired))
 
 
-def mark_wake(root, *, prs=(), inbox=0, summaries=(), kind, payload):
-    """Merge into the planner wake; an unseen marker keeps its PRs, inbox count and summaries."""
+def mark_wake(root, *, prs=(), summaries=(), kind, payload):
+    """Merge into the planner wake; an unseen marker keeps its PRs and summaries."""
     def mark(data):
         value = data.setdefault('watch', {})
         prior = previous(root) if 'wake' not in value else {}
         pending = value.get('wake', prior.get('wake'))
         seen = value.get('wake_seen_at', prior.get('wake_seen_at'))
-        if pending and not prs and not summaries and inbox <= pending.get('inbox', 0):
-            return  # already covered: a listener restart must not wake twice
-        at, refs, count, lines = workspace.now(), set(prs), inbox, list(summaries)
+        if pending and not prs and not summaries:
+            return
+        at, refs, lines = workspace.now(), set(prs), list(summaries)
         if pending:
             at = max(at, obligations._time(pending['at']) + timedelta(microseconds=1))
             if seen != pending['at']:
                 refs.update(pending['prs'])
-                count = max(count, pending.get('inbox', 0))
                 lines = pending.get('summaries', []) + lines
         # ponytail: last 20 summaries while unseen; a day-long idle planner reads the rest in events.jsonl.
         value['wake'] = {'at': at.isoformat(), 'prs': sorted(refs),
-                         **({'inbox': count} if count else {}),
                          **({'summaries': lines[-20:]} if lines else {})}
     state._write_state(mark, root, reserved=False, kind=kind, payload=payload)
 
 
 def poll_prs(root):
-    """One full PR read and merge reconcile: the shared step of the watch and the listener."""
+    """The watch's full PR read and merge reconcile."""
     from wuwei import merge
     result = max(poll(root), merge.poll(root))
     save(root, {'poll_at': workspace.now().isoformat()})
     return result
-
-
-def listening(root):
-    """A live listener owns PR polling; the watch polls only without one."""
-    return health(root, name='listen') == (0, '')
 
 
 def tick(root):
@@ -589,7 +582,7 @@ def tick(root):
             old_health = health(root)
     from wuwei import heartbeat
     result = max(result, heartbeat.beat(root))
-    if due('poll_at', config['pr']['poll_seconds']) and not listening(root):
+    if due('poll_at', config['pr']['poll_seconds']):
         result = max(result, poll_prs(root))
     if old_health[0] == 1 or due('sweep_at', config['watch']['sweep_seconds']):
         result = max(result, sweep(root, watch_health=old_health))
@@ -682,16 +675,12 @@ def wake(root, *, consume=False):
         return ''
     obligations._time(value['at'])
     refs = [pull_request(ref) for ref in obligations._list(value['prs'])]
-    count = value.get('inbox', 0)
-    if type(count) is not int or count < 0:
-        raise ValueError(f'invalid inbox wake; {DAMAGED}')
     lines = obligations._list(value.get('summaries', []))
     if not all(isinstance(line, str) and line for line in lines):
         raise ValueError(f'invalid wake summaries; {DAMAGED}')
-    if not refs and not count and not lines:
-        raise ValueError('empty planner wake marker; pass at least one PR ref, count or summary')
-    message = '\n'.join([*lines, f'planner wake ({value["at"]}): ' + ', '.join(
-        refs + ([f'inbox to line {count}'] if count else []))])
+    if not refs and not lines:
+        return ''  # a marker with no PRs and no summaries is no wake
+    message = '\n'.join([*lines, f'planner wake ({value["at"]}): ' + ', '.join(refs)])
     if consume:
         def acknowledge(data):
             nonlocal message

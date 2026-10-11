@@ -54,7 +54,7 @@ THEN = {
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
                 'tool. On exit 1 or 2 show the owner the reason; then run wuwei next.'),
     'gate': ('Ask the widget list with AskUserQuestion. On any Approve option run its record command with '
-             '<label> replaced by the chosen label (the pace, #579); on Change '
+             '<label> replaced by the chosen label; on Change '
              'something ask the owner what to change, edit {days}/lead.json and run wuwei plan propose '
              '{days}/lead.json again; then run wuwei next.'),
     'goals': ('Under strict the hook refuses and prints the command: show that line to the owner for '
@@ -208,9 +208,6 @@ def step(root, ran=()):
     if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
         return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
                     'wuwei calibrate --questions', 'card', THEN['calibrate'])
-    if ('telemetry', '') not in returned:
-        return _row('telemetry', "Ask this week's telemetry proposals.",
-                    'wuwei telemetry proposals --widget', 'card')
     todo = [kind for kind in ('commit', 'decision') if ('rehearse', kind) not in returned]  # undo.SCRATCH
     if todo:  # #557: the ledger is read only while a rehearse row is not done
         from wuwei import undo
@@ -314,7 +311,7 @@ def step(root, ran=()):
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
     # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
     from wuwei.commands.status import scan
-    _, watch, _, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
+    _, watch, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
     if (watch == 'dead' or beat == 'degraded') and ('doctor', '') not in returned:
         return _row('doctor', f'Watch {watch}, heartbeat {beat}; run the doctor and fix what it '
                     'names.', 'wuwei doctor')

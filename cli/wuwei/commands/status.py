@@ -31,12 +31,12 @@ LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is star
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
          'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
-# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, replies,
-# draft and decision closures, wake, steward and acknowledgements).
+# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, draft and
+# decision closures, wake and steward).
 SKIP = frozenset(SILENT) - {
-    'watch: clock', 'listen: clock', 'heartbeat: clock', 'decision.replied',
+    'watch: clock', 'heartbeat: clock',
     'decision.decided', 'draft.sending', 'draft.sent', 'draft.dropped',
-    'session: wake-seen', 'steward.run', 'remote.acknowledged'}
+    'session: wake-seen', 'steward.run'}
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
@@ -59,11 +59,11 @@ def attention(directory, classified_state=None):
 
 
 def scan(directory, classified_state=None):
-    """Attention rows, watch and listen state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
+    """Attention rows, watch state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks, replied, pin, beat, loops = {}, {'watch': [], 'listen': []}, {}, None, None, 0
+    current, clocks, beat, loops = {}, {'watch': []}, None, 0
     path = directory / 'events.jsonl'
     if path.exists():
         # read_text's universal newlines without its second full-size copy of the day (#346).
@@ -89,12 +89,10 @@ def scan(directory, classified_state=None):
                 if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                     continue
                 loops += kind == 'negotiation.loop'
-                if kind in ('watch: clock', 'listen: clock'):
-                    clocks[kind.split(':')[0]].append(stamp)
+                if kind == 'watch: clock':
+                    clocks['watch'].append(stamp)
                 if kind == 'heartbeat: clock':
                     beat = payload
-                if kind == 'decision.replied' and isinstance(payload, dict):
-                    replied.setdefault(payload.get('id'), payload.get('option'))
                 if kind in ('state.transition', 'item.escalated'):
                     continue
                 if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
@@ -116,17 +114,8 @@ def scan(directory, classified_state=None):
                     current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
                 if kind == 'steward.run':
                     current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
-                if kind == 'remote.acknowledged' and isinstance(payload, dict):
-                    for identifier in payload.get('ids', []):
-                        current.pop(('remote.refused', identifier), None)
-                    continue
                 if kind in SILENT:
                     continue
-                if kind == 'remote.refused' and isinstance(payload, dict) and 'pin' in payload:
-                    if pin is None:
-                        pin = workspace.load_config(directory.parents[2])['control_plane']['owner']
-                    if payload['pin'] != pin:
-                        continue
             else:
                 kind, payload, stamp = 'unreadable event', {}, None
             if kind == 'watch: sweep' and isinstance(payload, dict):
@@ -153,7 +142,7 @@ def scan(directory, classified_state=None):
                 key = (kind, '')
             elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
-            elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
+            elif kind in ('decision.one_way', 'draft.created') and isinstance(payload, dict):
                 key = (kind, payload.get('id', number))
             elif kind == 'guard.would_refuse' and isinstance(payload, dict):
                 key = (kind, payload.get('guard'))
@@ -214,15 +203,8 @@ def scan(directory, classified_state=None):
     routes = classified_state.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')
-    for identifier in routes:
-        from wuwei.decision import answered  # Here: decision and outward cost a quiet day's line.
-        if answered(classified_state, identifier) is None and (option := replied.get(identifier)):
-            current[('decision.answered', identifier)] = {
-                'tier': 'warn', 'source': 'decision.answered', 'lane': 'Decisions',
-                'reason': f'{identifier} answered from the phone: option {option}, '
-                          f'confirm with {workspace.owner_cli(directory.parents[2])} decide {identifier} {option}'}
     rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
-    return rows, health['watch'], health['listen'], beat_health, loops
+    return rows, health['watch'], beat_health, loops
 
 
 def snapshot(directory, line=False):
@@ -234,7 +216,6 @@ def snapshot(directory, line=False):
         live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
             data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
     result = {'pages': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
-              'pace': data.get('pace'),
               'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
@@ -244,10 +225,9 @@ def snapshot(directory, line=False):
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'], result['listen'], result['health'], result['loops'] = scan(
+    active, result['watch'], result['health'], result['loops'] = scan(
         directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
-    result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
@@ -279,8 +259,6 @@ def snapshot(directory, line=False):
         result['checks_none'] = [repo['name'] for repo in config['repos'] if not repo['fast_checks']]  # #600
     result['plugin'] = integrity.version()
     result['template'] = config['template_version'] if config is not None else None
-    if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
-        result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
         from wuwei import registry
         root = directory.parents[2]
@@ -385,10 +363,6 @@ def _groups(data, shown=None):
     attention = [f'pages {data["pages"]}']
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
-    if data.get('pace') not in (None, 'steady'):  # #579
-        attention.append(f'pace {data["pace"]}')
-    if data.get('cap_bound') == 'load':
-        attention.append('held by load')
     return [now, work, attention]
 
 
@@ -421,8 +395,7 @@ def full(data):
     if split := state.goal_split(data.get('seats', {})):
         work.append(f'builders {split}')
     running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]
-    for shown, text in ((data.get('answered'), f'phone answers {len(data.get("answered") or [])}'),
-                        (data.get('loops'), f'loops {data.get("loops")}'),
+    for shown, text in ((data.get('loops'), f'loops {data.get("loops")}'),
                         (data.get('prs_changed'), f'prs {data.get("prs_changed")} changed'),
                         (data.get('trace_gaps'), f'traces: {data.get("trace_gaps")} gaps')):
         if shown:
@@ -430,7 +403,7 @@ def full(data):
     if data.get('solo'):
         from wuwei.obligations import SOLO
         attention.insert(-1 if data.get('trace_gaps') else len(attention), SOLO)
-    health = [f'watch {data["watch"]}', f'listen {data["listen"]}']
+    health = [f'watch {data["watch"]}']
     health += [f'health {data["health"]}'] if data.get('health') else []
     health.append(f'sessions {data["sessions"]}')
     calendar = [f'reply {data["next_reply_due"]}'] if data.get('next_reply_due') else []

@@ -568,7 +568,7 @@ def host(root, config, running=0, free=None, policy=None):
     cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
     text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
             if owner_cap else f'cap {cap} ({bound}): {measured}')
-    budget, costs = config['budget']['tokens_per_day'], {}
+    budget = config['budget']['tokens_per_day']
     if budget:
         # ponytail: counts tokens already spent today, not what running seats will still spend;
         # reserve a per-seat share at launch if this overshoots.
@@ -580,10 +580,8 @@ def host(root, config, running=0, free=None, policy=None):
             per_seat, damaged = None, damaged or exc
         if per_seat is None:
             text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
-            costs = {'per_seat_tokens': None, 'used_tokens': None}
         else:
             per_seat = max(1, round(per_seat))
-            costs = {'per_seat_tokens': per_seat, 'used_tokens': used}  # #579: the pace advice
             fits = max(1, (budget - used) // per_seat)
             if fits < cap:
                 cap, bound = fits, 'budget'
@@ -591,12 +589,7 @@ def host(root, config, running=0, free=None, policy=None):
             text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
     if damaged:
         text += f'; warning: {damaged}'
-    try:  # #579: the one-minute load average; the fast pace holds launches at the core count
-        load = round(os.getloadavg()[0], 1)
-    except (OSError, AttributeError):
-        load = None
-    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text,
-            'load': load, **costs}
+    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
 
 
 def proposal(raw, targets):

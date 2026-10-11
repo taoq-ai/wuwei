@@ -311,3 +311,16 @@ def test_dispatch_falls_back_to_discovery(plugin, candidate_exists):
     result = run_cli(plugin, 'scan-probe', 'findings')
     assert result.returncode == 1, result.stderr
     assert result.stdout == result.stderr == ''
+
+
+def test_cockpit_is_gone(capsys):
+    # #808: the board, dashboard, phone signal command and brief packs are deleted.
+    from wuwei.__main__ import main
+    assert main(['brief', 'pack']) == 2
+    assert 'expected ROLE ITEM NAME' in capsys.readouterr().err
+    for argv in (['dashboard'], ['board'], ['signal', 'classify']):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 2
+    assert 'mcpServers' not in json.loads((ROOT / '.claude-plugin/plugin.json').read_text())
+

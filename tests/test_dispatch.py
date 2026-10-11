@@ -1664,7 +1664,6 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     from fakes.tracker import Fake, ported
     from wuwei import registry
     from wuwei.__main__ import main
-    from wuwei.commands import board
 
     (root / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED + '[tracker]\nauto = ["items"]\n')
@@ -1684,8 +1683,6 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     capsys.readouterr()
     assert main(['dispatch', 'next', 'A']) == 0
     assert json.loads(capsys.readouterr().out)['action'] == 'gates'
-    row, = [line for line in board.read(root)[0].splitlines() if line.startswith('| A |')]
-    assert 'ENG-7' in row
 
 
 @pytest.fixture
@@ -2777,3 +2774,15 @@ def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypa
     [continued] = [call for call in runtime.calls if call[0] == 'continue']
     assert continued[2].startswith('Polish re-check:') and 'gate-q-1-codex.md' in continued[2]
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': []}
+
+
+def test_a_day_value_never_changes_the_tier(root, monkeypatch):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('cli/wuwei/report.py', 3, 1)], floor='standard')
+    tier = lambda: dispatch.tier(root, workspace.load_config(root), state.read_state(root)['items']['A'])
+    before = tier()
+    state._write_state(lambda data: data.update(pace='fast'), root, reserved=False)
+    after = tier()
+    assert before == after and 'depth' not in after
+    assert not any(reason.startswith('pace') for reason in after['reasons'])

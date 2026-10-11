@@ -181,12 +181,6 @@ QUESTIONS = (
          ('Yes or no', 'Only the recommendation, as a yes or no question.', {'planner': (
              'Ask the recommendation as a yes or no question; the other options stay in the record.')})),
      'free': None},
-    {'id': 'phone', 'scope': 'workspace', 'header': 'Phone',
-     'question': 'What may messages to your phone say about a decision? (control plane)',
-     'choices': (
-         ('Summary', 'A one-line summary of each decision.', {'control_plane.content': 'summary'}),
-         ('Nothing', 'Only that a decision is waiting.', {'control_plane.content': 'none'})),
-     'free': None},
     {'id': 'hours', 'scope': 'workspace', 'header': 'Hours',
      'question': 'When do you work, and in which time zone?',
      'choices': (
@@ -360,7 +354,7 @@ QUESTIONS = (
 )
 
 # #530: ids the old table asked; a day file written before a mid-day upgrade still loads.
-RETIRED = ('posture', 'tier', 'learn')
+RETIRED = ('posture', 'tier', 'learn', 'phone')
 
 
 def question(qid):

@@ -56,7 +56,7 @@ def select(root, days, now=None, every=False):
 
 def measure(answered, spent, recent, cruise):
     """(allowance, burn, state) of one class: spent with more events than the allowance and at
-    least two; warn when the last 48 hours burn at burn_warn times the window's pace."""
+    least two; warn when the last 48 hours burn at burn_warn times the window's rate."""
     allowance = cruise['budget_share'] * answered
     if allowance:
         burn = recent * cruise['budget_window_days'] / (2 * allowance)

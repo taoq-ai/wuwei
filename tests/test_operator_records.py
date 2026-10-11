@@ -59,12 +59,7 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
     line = capsys.readouterr().out
     assert 'pages 0' in line and 'nudges' not in line and '1 shipped' in line
 
-    assert main(['brief', 'pack']) == 0
-    pack = (root / capsys.readouterr().out.strip()).read_text()
-    assert section(pack, '## Headline').strip() == 'DIVIDE-1: merged (org/repo#1)'
-    assert section(pack, '## Decided').strip() == 'D-1: defer'
-
     from wuwei.commands.status import attention
     assert attention(workspace.day_dir(root)) == []
     assert set(state.read_state(root)['items']) == {'DIVIDE-1'}
-    assert not any('DISCOVERY' in text for text in (report, line, pack))
+    assert not any('DISCOVERY' in text for text in (report, line))

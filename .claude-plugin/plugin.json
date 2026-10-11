@@ -20,16 +20,5 @@
     "linear",
     "notion"
   ],
-  "icon": "./.claude-plugin/icon.png",
-  "mcpServers": {
-    "cockpit": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-      "args": [
-        "board"
-      ],
-      "env": {
-        "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
-      }
-    }
-  }
+  "icon": "./.claude-plugin/icon.png"
 }

@@ -39,8 +39,8 @@ that engagement ships in this repository.
 - Approving pull requests, or bypassing branch protection to merge. WUWEI never approves a
   review and never merges with admin override; a merge happens only when the repository's
   own rules already allow it (section 4.6).
-- A hosted service or database. A long-running process is out of scope for v1; M5 adds
-  exactly one, the listener (section 15). The optional telemetry collector (5.13) is the
+- A hosted service or database. A long-running process is out of scope for v1; M5 added
+  exactly one, the listener (section 15), (retired by #789, owner, 2026-10-10). The optional telemetry collector (5.13) is the
   project's, outside the plugin, and the plugin never needs it.
 - Multi-user team coordination (v1 is one person's workspace).
 - Replacing the tracker, chat tool or CI. Adapters talk to them; WUWEI does not own them.
@@ -89,7 +89,7 @@ wuwei/
     scanner/         none (default), ziran
     code_host/       github (default, through `gh`), none
     vcs/             git (default)
-  templates/         workspace skeleton, dashboard.html
+  templates/         workspace skeleton
   tests/
   docs/
   .github/workflows/ tests, ziran agent audit, release
@@ -158,7 +158,7 @@ WUWEI is built as ports and adapters (hexagonal).
   into exit 2 (section 9) before anything reaches the core.
 - Driving adapters: `hooks/hooks.json` with `wuwei hook <event>` (Claude Code lifecycle),
   the `wuwei` command line, `skills/` (typed entry points), and in M5 the listener and its
-  inbound and control-plane parsing. Each translates its input into one core call and its
+  inbound and control-plane parsing (retired by #789, owner, 2026-10-10). Each translates its input into one core call and its
   result into the caller's format. None holds a rule.
 - Tests: the core is tested against fake adapters and recorded fixtures, never against the
   real tools or the network; adapters get contract tests plus recorded-output tests.
@@ -238,7 +238,7 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   action. The day close additionally requires every owned PR merged, parked or explicitly
   carried to the next day.
 
-The cockpit shows one row per owned PR: state, last action, what it waits on and time to
+`wuwei next` shows one row per owned PR: state, last action, what it waits on and time to
 deadline, so the owner never checks PRs one by one.
 
 ### 4.3 Outward-text lint
@@ -327,7 +327,7 @@ Preconditions, all read fresh at the current head sha, never from cache or from
 - the review bot, when configured, reports no open blocking finding on this head;
 - the branch is up to date with its base, or the repository uses a merge queue;
 - a soak window has passed since the last approval or push (`merge.soak_minutes`, default
-  30), during which the owner can veto from the control plane.
+  30), during which the owner can veto from the control plane (retired by #789, owner, 2026-10-10).
 
 Mechanics: `gh pr merge --squash --match-head-commit <sha>` (or the repository's merge queue),
 so a push between the check and the merge makes it fail rather than merge unreviewed code.
@@ -514,34 +514,14 @@ mode.
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
 checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
-planner acts on its completion notification. The planner's turn ends with the board in one
+planner acts on its completion notification. The planner's turn ends with the day in one
 line (`wuwei status --line`, which names the running seats by role; `wuwei status` and
-`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from the board, never by
+`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from `wuwei next` and `wuwei status --line`, never by
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
-Pace (owner, 2026-10-08, #579). A day runs at one pace, chosen on the morning gate card and
-recorded in day state (`pace`); `wuwei plan set pace=<p>` changes it during the day for items
-tiered afterwards. The pace sets the inputs that tiers (#280), process depth (#567) and CAP
-(#528) already read; it never adds a second tier or depth table:
-
-| | careful | steady (default) | fast |
-| --- | --- | --- | --- |
-| Tier | light rises to standard; guard code or trust paths run full | the computed tier | the computed tier; guard code or trust paths run full; a standard item with a measured diff, no guard code, trust path, lead flag or FULL track runs at light depth |
-| Fix rounds | follow the depth (#567) | as today | follow the depth: light depth is re-read by the same sentinel |
-| Checks | the fast checks and `repos.tests` before the PR | the fast checks; CI runs the suite | `repos.tests` on the test files the diff changes; CI is the gate |
-| Seats | CAP minus one | CAP | CAP; every launch waits while the load average is at or over the core count |
-| Cards | as the classes say | as the classes say | as the classes say |
-
-`wuwei plan propose` advises the pace from three inputs and names the one that binds: the
-queue (predicted tiers, items whose `paths` touch guard code, expected cycle minutes from the
-#567 medians against the envelope end, the nearest goal date), the host (cores, load average,
-the last `repos.tests` duration) and the token budget (items the budget reaches at that
-pace). When inputs disagree the advice takes the slower pace and says what unlocks the faster
-one; the budget only advises against a pace. The owner's default (`[pace] default`) is shown
-in one line and never overridden. The pace never moves a floor: records, publish grants,
-strict refusals, trust-boundary findings, merge only at the gated head with green required
-checks, and decision routing hold at every pace.
+Process depth (owner, 2026-10-11, #811): the tier alone sets it (#280, #567) and CAP alone sets
+the seats (#528); no day value adjusts either.
 
 ### 5.3 Rules
 
@@ -715,11 +695,6 @@ beside the owner's baseline:
   the targets light under 60 and standard under 180 minutes on the fixture day. The report
   shows them under `## Cycle time`; the retro names the tier whose median moved most week
   over week. A missed target is a reading, never a refusal.
-- per pace (owner, 2026-10-08, #579): `by_pace`, per pace the days, items merged, cycle
-  minutes per tier, escaped defects (the measure above) and cards asked; a day counts at its
-  final pace. The report and the retro show them under `## Pace` and name a pace that costs
-  escaped defects. After ten days at two paces the steward proposes `pace.default` on one
-  config card, at most once per ten days.
 - DORA keys (owner, 2026-10-08, #586): `wuwei dora [--window 28]` prints five rows, each with
   its source or the reason it is unmeasured. Lead time to merge is the median
   `cycle_minutes` of items merged in the window; change failure rate is the escaped share
@@ -1041,16 +1016,16 @@ continuations (gate or PR feedback, not the build loop's fast-check backpressure
 bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
 gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
 the CLI, naming the counts and the last two exchanges. It is a `warn` (owner, 2026-10-10, #789), and a page when the
-item is past the date of the goal it serves (5.7); the control plane sends the owner's DM
-the same summary within `control_plane.content` (15.4); the status line shows `loops N`.
+item is past the date of the goal it serves (5.7); the control plane sent the owner's DM
+the same summary within `control_plane.content` (15.4) (retired by #789, owner, 2026-10-10); the status line shows `loops N`.
 The signal reports; the negotiation budget (5.3) is what stops the rounds.
 
-### 5.9 Cockpit, signals and briefings (owner, 2026-09-28)
+### 5.9 Cockpit, signals and briefings (owner, 2026-09-28) (cockpit, menu bar and briefings retired: owner, 2026-10-11, #789)
 
-The owner should not need to ask for status. State is pushed to three surfaces, and
+The owner should not need to ask for status. State is pushed to two surfaces, and
 attention is demanded only for what matters.
 
-Signals. Every event is classified once by `wuwei signal classify` into a delivery tier and
+Signals. Every event is classified once by `signal.classify` into a delivery tier and
 an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
 security finding fired, a base branch went red after an auto-merge, an owner decision
 blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
@@ -1083,33 +1058,10 @@ Surfaces, all reading the same classification:
   sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
   and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
-- Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
-  127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
-  decision or a draft from the cockpit calls the CLI, so every guard applies. Passive
-  otherwise.
-- Menu bar (optional adapter). `wuwei status --json` feeds a SwiftBar plugin script shipped
-  in `templates/`: a green, amber or red mark visible when the app is in the background,
-  with the pages in its menu (owner, 2026-10-10, #789). macOS only; absent when SwiftBar is not installed.
 - Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
-  default, messaging adapters in M5), plus the briefing pack and approvals.
+  default, messaging adapters in M5 (retired by #789, owner, 2026-10-10)), plus approvals.
 
-Briefings. A routine produces a pack before each calendar event that has attendees (lead
-time in config) and once a day:
-
-- audio brief of five minutes or less with chapters, through the `tts` port;
-- one visual of what changed since the last brief, highlighted, plus an optional deep dive
-  per topic for when the owner wants to go further;
-- a meeting card: three glanceable bullets (key facts, the one thing the owner will likely
-  be asked) for use during the meeting;
-- a defend drill: three questions the meeting is likely to raise, hardest first, answered
-  by voice or text, with immediate feedback and a streak; scores are a steward metric (is
-  the owner staying on top of the work).
-
-Every brief has the same fixed shape (headline, what changed, what is decided, what is at
-risk, what you will be asked), arrives at predictable times, and leads with the most
-interesting or contentious point. `brief.style` in config tunes length, speed, order and
-which parts are on. Sources: events, verdicts, decision records, memory, the calendar and
-meeting transcripts through their ports.
+Cockpit, menu bar and briefings: retired (owner, 2026-10-11, #789).
 
 ### 5.10 Specification mode (owner, 2026-10-03, #411)
 
@@ -1242,13 +1194,12 @@ configuration page documents `[spec]`.
 
 Telemetry tells the owner, and the project when the owner agrees, whether WUWEI itself
 works: how often its guards refuse or cannot run, how long a hook takes, how often items
-loop, how many decisions reach the owner. Three layers: the signals the CLI already
-records, a weekly aggregate computed off the hook path, and proposals from it; sharing is
-optional and the owner's choice. Nothing runs in a hook and nothing derived is applied on
-its own. `[telemetry]` in `config.toml`:
+loop, how many decisions reach the owner. Two layers (owner, 2026-10-11, #789): the signals the CLI already
+records and a weekly aggregate computed off the hook path; sharing is optional and the
+owner's choice. Nothing runs in a hook. `[telemetry]` in `config.toml`:
 
-- `enabled` (default true): false stops the aggregate, the proposals, sharing and the
-  OpenTelemetry export; the events a day needs are recorded as before.
+- `enabled` (default true): false stops the aggregate, sharing and the OpenTelemetry
+  export (owner, 2026-10-11, #789); the events a day needs are recorded as before.
 - `share` (default `""`, not asked yet, which behaves as `"off"`): `"anonymous"`,
   `"attributed"` or `"off"`. Set by the interview question below, by the owner with
   `bin/wuwei config set telemetry.share`, or by `wuwei telemetry off`. A calibration
@@ -1278,7 +1229,7 @@ step to any hook:
   `Class:` field (5.8).
 - loops: `negotiation.loop` (5.8.2).
 - owner interactions: `decision.decided` with `decided_by` `owner`; DM commands, the
-  `remote.*` events written by `wuwei listen`; owner host actions, `remote.acknowledged`,
+  `remote.*` events written by `wuwei listen` (retired by #789, owner, 2026-10-10); owner host actions, `remote.acknowledged` (retired by #789, owner, 2026-10-10),
   `state.recovered`, `integrity_confirmation`, `mcp.decided`, `draft.sending` and
   `draft.dropped`.
 - configuration facts, read from `config.toml` when aggregating: `security.posture`,
@@ -1296,8 +1247,8 @@ directories under `days/` whose date falls in an ISO week (`2026-W40`, in
 `owner.timezone`) and writes `.wuwei/metrics/<week>.json`, a generated record only the CLI
 writes and that `protect_state` guards like `state.json`. Each run refreshes the current
 week (`final: false`) and finalises each earlier week, of the last four, that has day
-directories and no final file (`final: true`, with its proposals). Budget: 10 seconds of
-wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
+directories and no final file (`final: true`, owner, 2026-10-11, #789). Budget: 10
+seconds of wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
 previous file and records `telemetry.skipped` with the week and the reason, and the next
 run tries again. A telemetry failure never changes the sweep's exit and is never owed work.
 `wuwei metrics --week [<week>]` prints a week's file, computing it when absent; it is a
@@ -1342,31 +1293,14 @@ percentiles as in 5.6.
 | `time_to_restore_hours` | unmeasured until on-call incidents exist (#415) |
 | `aggregation_ms` | the run's wall time |
 
-Proposals. Finalising a week evaluates a fixed list of rules against it; a new rule amends
-this section. A proposal carries its rule, one line of evidence (the numbers that met the
-rule) and one owner command. Nothing is applied on its own, as with calibration (#278).
-
-| Rule | When | Command |
-|---|---|---|
-| `floor-raise` | a tier below `full` has 5 or more merged items in `escaped_by_tier` and an escaped share of at least 0.2 | per repository whose floor is at or below that tier: `bin/wuwei config set repos.<n>.gates.floor '"<next tier>"'` |
-| `floor-lower` | `full` has 10 or more merged items and none escaped | per repository at `full`: the same command with `standard` |
-| `area-block` | a posture area running at `warn` had no `guard.would_refuse` in a week of at least 3 days | `bin/wuwei config set security.areas.<area> '"block"'` |
-| `wait-hours` | 3 or more external waits (5.8.2) answered in the week, p90 under half of `decisions.wait_hours` | `bin/wuwei config set decisions.wait_hours <max(4, ceil(p90 x 1.5))>` |
-| `fast-checks` | 5 or more items with a verdict and a `fix_rounds_per_item` p50 of 1 or more | `bin/wuwei calibrate --measure`, which proposes the fast checks itself (#328) |
-
-Cruise promotions stay the steward's (5.8.1). A finalised week's proposals reach the owner
-once, at the next morning gate: `wuwei telemetry proposals --widget` prints one yes-or-no
-question per proposal (#359, yes recommended, the command named) and records
-`telemetry.presented` for the week, so it is not asked again. Yes is the owner's command,
-which records itself like any owner command (#414); no records nothing. Without
-`--widget` the command lists the latest final week's proposals and writes nothing.
+Proposals: deleted (owner, 2026-10-11, #789); nothing is derived from a week.
 
 Sharing. Nothing leaves the machine unless `share` is `"anonymous"` or `"attributed"`, and
 then only the payload of a final week, a JSON object with exactly these top-level keys:
 `schema`; `week`; `token` (anonymous only); `versions` (`plugin`, `python`, `os`); `config`
 (`posture`, `profile`, `adapters`, `repositories`), where `adapters` maps each port name to
 its adapter name and `repositories` is a count; and `metrics`, the keys of the table above;
-never the proposals or anything else in the file. Anonymisation, checked by
+never anything else in the file (owner, 2026-10-11, #789). Anonymisation, checked by
 `telemetry.validate` before every send and by the collector on receipt:
 
 - every key comes from this section; every key inside a metric is a guard module name,
@@ -1401,7 +1335,7 @@ A payload that breaks a rule is not sent; the run records `telemetry.unsent` wit
   without the token, so an attributed week never ties the anonymous ones to a person. The
   canary and honeytoken checks (7.1) apply; the outward-text lint does not, because the
   body is the validated rendering, not authored text.
-- `off`: nothing is sent; the aggregate and the proposals continue while `enabled`.
+- `off`: nothing is sent; the aggregate continues while `enabled` (owner, 2026-10-11, #789).
 
 OpenTelemetry export (owner, 2026-10-03). The vocabulary maps to OpenTelemetry without
 translation: a day is a trace; each hook call and each seat run is a span with the
@@ -1539,7 +1473,7 @@ GitHub writes a `Related: <parent>` line that the host cross-references; a bug i
 a failing test id, a command); a line holding an absolute path is refused. Creation is
 idempotent per class, subject and title: a second call prints the existing ticket or draft
 and writes nothing. Each ticket that exists records one `tracker.created` event (class,
-subject, ticket, parent), and the board lists the day's created tickets per item.
+subject, ticket, parent).
 
 Comments. One CLI writer, `wuwei tracker log`, run by the watch sweep (4.2), by `wuwei close`
 once the close passes, and on demand, turns the day's CLI events into comments on each
@@ -1610,10 +1544,10 @@ naming the missing credentials or `bin/wuwei config set tracker.required false`.
 failed in-review move creates the label on the owner's tracker below strict and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
 
-Owner-facing. The board, `wuwei next` and the DM show an item's ticket id beside its name.
+Owner-facing. `wuwei next` and the DM show an item's ticket id beside its name.
 The documentation adds a `[tracker]` section to configuration.md, glossary entries (ticket,
 tracker hygiene, fold), one paragraph in daily.md ("every item has a ticket; you see the
-ticket id on the board and in the DM") and reference rows for `tracker create`, `tracker
+ticket id in `wuwei next` and in the DM") and reference rows for `tracker create`, `tracker
 log`, `tracker done` and `plan set`.
 ### 5.12 Documentation system (owner, 2026-10-03, #418)
 
@@ -1733,7 +1667,7 @@ a configured repository; each fail names the fix; a warn when `publish` is set u
 
 Owner-facing: a `[docs]` section in configuration.md, glossary entries for the docs system
 and the docs obligation, one paragraph in daily.md, and reference rows for `wuwei docs
-page`, `wuwei docs publish` and `plan set <item> docs=`. The board and `wuwei next` show
+page`, `wuwei docs publish` and `plan set <item> docs=`. `wuwei next` shows
 an item's unmet obligation.
 
 ### 5.14 Memory over time (owner, 2026-10-03, #443)
@@ -1936,13 +1870,12 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha, method)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
-| inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
-| control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
+| inbound (M5) (retired by #789, owner, 2026-10-10) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
+| control_plane (M5) (retired by #789, owner, 2026-10-10) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
-| tts | `speak(text, voice, out)` | macOS `say` (default on macOS), none |
+| tts | `speak(text, voice, out)` | macOS `say` (default on macOS), none (no caller since #789 part 5) |
 | calendar | `events(since, until)` | private ICS feed URL through `urllib`, none |
-| transcripts | `recent(since)`, `transcript(meeting)` | none (default); a meeting recorder's API |
-| menu_bar | `render(status)` | SwiftBar plugin script (optional, macOS), none |
+| transcripts | `recent(since)`, `transcript(meeting)` | none (default); a meeting recorder's API (no caller since #789 part 5) |
 
 ## 9. Error handling
 
@@ -1974,9 +1907,9 @@ the owner's user account, and they hold when no hook runs:
   approve, release or deploy, and a merge lands only through the protected ref's required
   checks and reviews (4.6, 4.5);
 - the owner sending messages that need approval: approve-tier text is delivered as a draft
-  the owner sends (a chat draft, a pending review comment, or the text in the cockpit or on
+  the owner sends (a chat draft, a pending review comment, or the text on
   the phone), never sent by WUWEI (4.9);
-- the out-of-process control plane (M5) for anything decided remotely.
+- the out-of-process control plane (M5) for anything decided remotely (retired by #789, owner, 2026-10-10).
 
 Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
 touch workspace state; this is a reason to route build seats there. Further hardening for
@@ -2112,7 +2045,9 @@ on it. The repository stays PRIVATE until the owner judges it stable enough to p
   MCP drift (section 7, S3).
 - Q3. Private until stable enough to become public (section 13).
 
-## 15. Post-v1 (M5): always-on responder and inbound messaging
+## 15. Post-v1 (M5): always-on responder and inbound messaging (retired by #789, owner, 2026-10-10)
+
+Retired: the listener, the inbox, the inbound port and the control plane were removed by #789; the text below is history.
 
 Decided 2026-09-24: designed now, built after v1, tracked under milestone M5.
 

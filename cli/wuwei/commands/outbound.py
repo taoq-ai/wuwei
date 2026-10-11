@@ -186,8 +186,7 @@ def _thread(path):
 
 
 def _owner(path):
-    """#495: the owner's Slack identity file, validated; never the WUWEI app DM, which the
-    listener reads as owner input."""
+    """#495: the owner's Slack identity file, validated; never the WUWEI app DM."""
     text = Path(path).read_text(encoding='utf-8')  # OSError: unreadable, the caller's exit 2
     try:
         found = json.loads(text)

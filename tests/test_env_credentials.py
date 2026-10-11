@@ -15,7 +15,6 @@ import pytest
 
 from wuwei import registry, state, workspace
 from wuwei.__main__ import main
-from wuwei.commands.config import PIN_MISSING
 
 ROOT = Path(__file__).resolve().parents[1]
 KEY = 'opaque-example-credential'
@@ -280,8 +279,6 @@ def test_entry_paths(case, entry, monkeypatch):
 @pytest.mark.parametrize('adapter,settings,required', [
     ('tracker="linear"', '', ('LINEAR_API_KEY',)),
     ('chat="slack"', '', ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
-    ('inbound="slack"', '[control_plane]\nowner="T1/U1"\n',
-     ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
     ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
@@ -728,14 +725,13 @@ def test_fresh_init_prints_publishing_layout_once(tmp_path, monkeypatch, capsys)
 
 
 def test_owner_dm_channel_is_not_redacted(case, monkeypatch):
-    # A channel id is an identifier: stored events must keep it so the listener can match it.
+    # A channel id is an identifier: stored events keep it.
     from wuwei import env, redact
-    write_env(case, f'SLACK_BOT_TOKEN={KEY}\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n'
-                    'WUWEI_TOTP_SECRET=other-private-value\n')
+    write_env(case, f'SLACK_BOT_TOKEN={KEY}\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n')
     with env.session():
         env.load(case)
         assert redact.known_values('D0123ABC/1.000001') == 'D0123ABC/1.000001'
-        assert redact.known_values(KEY + ' other-private-value') == '[REDACTED] [REDACTED]'
+        assert redact.known_values(KEY) == '[REDACTED]'
     (case / '.wuwei/env').unlink()
     monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D0123ABC')
     monkeypatch.setenv('SLACK_BOT_TOKEN', KEY)
@@ -754,32 +750,6 @@ def test_config_check_reports_owner_name(case, capsys):
     assert main(['config', 'check']) == 0
     output = capsys.readouterr().out
     assert 'owner.name: set' in output and outward.OWNER_UNSET not in output
-
-
-@pytest.mark.parametrize('pin, line, expected', [
-    ('', PIN_MISSING, 1),
-    ('U1', 'control_plane.owner: invalid', 1),
-    ('T1/U1', 'control_plane.owner: set', 0),
-])
-@pytest.mark.parametrize('secret', ['', 'JBSWY3DPEHPK3PXP'])
-def test_issue_acceptance_empty_pin_is_a_config_finding(case, monkeypatch, capsys, pin, line, expected, secret):
-    monkeypatch.delenv('WUWEI_TOTP_SECRET', raising=False)
-    path = case / '.wuwei/config.toml'
-    path.write_text('[adapters]\ncode_host="none"\ninbound="slack"\n[control_plane]\nowner="' + pin + '"\n')
-    write_env(case, 'SLACK_BOT_TOKEN=' + KEY + '\nSLACK_OWNER_DM_CHANNEL=D1\n'
-              + ('WUWEI_TOTP_SECRET=' + secret + '\n' if secret else ''))
-    assert main(['config', 'check']) == expected
-    output = capsys.readouterr().out
-    assert 'Control plane:\n  ' + line in output
-    assert ('WUWEI_TOTP_SECRET: set' if secret else
-            'WUWEI_TOTP_SECRET: missing (confirm replies are the only second factor)') in output
-    assert (pin == '' or pin not in output) and (secret == '' or secret not in output)
-
-
-def test_no_control_plane_section_without_an_inbound_adapter(case, capsys):
-    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n')
-    assert main(['config', 'check']) == 0
-    assert 'Control plane:' not in capsys.readouterr().out
 
 
 def test_docs_credentials(case, monkeypatch, capsys):

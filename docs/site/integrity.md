@@ -6,8 +6,8 @@ signature. Git source archives are unsigned and report a page. A source checkout
 is pinned by `wuwei integrity reconfirm` at a clean commit and passes until HEAD or
 the tracked tree changes; ignored development artifacts do not affect its fingerprint.
 The manifest inventories every packaged file except itself and its signature.
-That includes `.claude-plugin/plugin.json` and the board MCP server it declares, so
-`bin/wuwei mcp check` reports that server as covered by integrity instead of scanning it.
+That includes `.claude-plugin/plugin.json`, which declares no MCP server;
+`bin/wuwei mcp check` measures attached servers only.
 Git metadata and generated Python bytecode are not shipped or measured.
 Claude Code writes one marker file per running Claude process into `.in_use/` at the
 install root, named by the process id, so its plugin cache cleanup skips versions in
@@ -51,7 +51,7 @@ State/event commands cannot manufacture integrity verdicts or confirmations.
 Write/Bash protection covers the integrity directory and workspace git metadata.
 These records are local tamper evidence, not proof of owner identity. As described
 in design 9.1, a same-uid process can alter the verifier, forge records, or create a
-terminal. A separate OS principal or external control plane is needed for a hard
+terminal. A separate OS principal or external supervisor is needed for a hard
 owner boundary. Cache freshness is bounded by sessions and sweeps.
 
 ## Deferred owner setup
@@ -69,4 +69,4 @@ owner boundary. Cache freshness is bounded by sessions and sweeps.
    host; changing the plugin pin alone does not replace workspace pins.
 
 No real signing key or secret is included in this issue. Strong host identity is
-left to the external control-plane work described in design 9.1.
+left to the external supervisor work described in design 9.1.

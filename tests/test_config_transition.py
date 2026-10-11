@@ -356,3 +356,50 @@ def test_upgrade_keeps_keys_from_a_newer_template(tmp_path, monkeypatch, capsys)
         init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=True))
         out = capsys.readouterr().out
         assert ('Would upgrade config.toml: remove zzzz (no longer read)' in out) is removes, out
+
+
+def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys):
+    # #789 batch 2: every key workspace.RETIRED names leaves config.toml on init --upgrade.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    repo = '[[repos]]\nname = "{0}"\npath = "/{0}"\ndefault_branch = "main"\n'
+    repos = repo.format('a') + repo.format('b')
+    path.write_text(clean.replace('[brief]\n', '[brief]\nlead_minutes = 30\nstyle.length = "concise"\n', 1)
+                    .replace('[adapters]\n', '[adapters]\ninbound = "slack"\n', 1)
+                    .replace('[shepherd]\n', '[shepherd]\nautostart = false\n', 1)
+                    .replace('[owner.verbosity]\n', '[owner.verbosity]\ndm = "full"\n', 1)
+                    + '[pace]\ndefault = "fast"\n[listen]\npoll_seconds = 60\n[responder]\nenabled = true\n'
+                    + '[control_plane]\nowner = "T1/U1"\n' + repos
+                    + 'tests = "pytest"\n')  # repos.1.tests has a near key (repos.1.gates)
+    clean += repos
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False))
+    out = capsys.readouterr().out
+    for key in ('brief.lead_minutes', 'brief.style', 'pace', 'repos.1.tests', 'listen', 'responder',
+                'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_upgrade_removes_an_installed_listener_unit(tmp_path, monkeypatch, capsys, dry_run):
+    from wuwei import registry
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
+    calls = []
+    monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=calls.append))
+    unit = workspace.watch_unit(tmp_path, name='listen')[1]
+    unit.parent.mkdir(parents=True)
+    unit.write_text('old listener\n')
+    out = upgrade_output(tmp_path, monkeypatch, capsys, dry_run, [])
+    if dry_run:
+        assert 'Would remove the listener service (no longer shipped)' in out
+        assert unit.exists() and calls == []
+    else:
+        assert 'Removed the listener service (no longer shipped)' in out
+        assert not unit.exists() and calls

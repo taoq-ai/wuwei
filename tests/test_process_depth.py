@@ -16,6 +16,7 @@ def test_depth_reads_the_gate_tier_then_the_builder_prediction():
     assert depth({'depth': 'light'}, gate=True) == 'standard'  # a prediction never lightens a gate
     assert depth({'depth': 'light', 'gates': {'tier': 'full'}}) == 'full'
     assert depth({'depth': 'standard', 'gates': {'tier': 'light'}}, gate=True) == 'light'
+    assert depth({'gates': {'tier': 'standard', 'depth': 'light'}}, gate=True) == 'standard'
 
 
 def classes_of(root):

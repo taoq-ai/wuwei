@@ -15,7 +15,7 @@ PLUGIN = Path(__file__).resolve().parents[2]
 STARTERS = PLUGIN / 'templates/profiles'
 ROLES = sorted(path.stem for path in (PLUGIN / 'charters').glob('*.md') if SLUG_RE.fullmatch(path.stem))
 # Keys that name a person, a repository, a channel or this machine: never exported, never imported.
-PRIVATE = ('owner', 'control_plane.owner', 'repos.name', 'repos.path', 'repos.default_branch',
+PRIVATE = ('owner', 'repos.name', 'repos.path', 'repos.default_branch',
            'repos.identity', 'repos.merge.bot_login', 'voice', 'outbound.work_channels',
            'outbound.external_channels', 'outbound.company_domains', 'outbound.code_host_orgs',
            'outbound.people', 'outbound.tiers', 'outbound.channel_classes',
@@ -32,7 +32,6 @@ DENIED = (
     ('decisions.cruise.max_per_day', lambda new, old: new > old),
     ('repos.gates.floor', lambda new, old: FLOORS.index(new) < FLOORS.index(old)),
     ('repos.merge.auto', lambda new, old: new is True),
-    ('shepherd.autostart', lambda new, old: new is True),
     ('gates.second_opinion', lambda new, old: new != 'off'),
     ('autonomy.mode', lambda new, old: new == 'autonomous' and old == 'supervised'),
     *((pattern, lambda new, old: True)

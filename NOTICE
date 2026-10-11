@@ -46,13 +46,7 @@ Model Context Protocol
   Source: https://modelcontextprotocol.io
   Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
   documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
-  Used: the protocol the board server implements (cli/wuwei/commands/board.py).
-
-MCP Apps
-  Source: https://github.com/modelcontextprotocol/ext-apps
-  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
-  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
-  Used: the ui:// resource convention the board serves (ui://wuwei/board.html).
+  Used: the server configuration format the MCP registry gate reads (cli/wuwei/mcp.py).
 
 release-please
   Source: https://github.com/googleapis/release-please

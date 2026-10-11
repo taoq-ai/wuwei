@@ -395,30 +395,13 @@ def test_voice_metrics_use_successful_sends_per_audience(root, port, monkeypatch
                                    'edit_sizes': [size]}}
 
 
-def test_cockpit_lists_pending_drafts_read_only(root, port):
-    from wuwei.commands.dashboard import cockpit_snapshot
-    row = queued(root)
-    dropped = queued(root)
-    assert main(['drafts', 'drop', dropped['id']]) == 0
-    directory = workspace.day_dir(root)
-    before = [(directory / name).read_bytes() for name in ('state.json', 'events.jsonl')]
-    result = cockpit_snapshot(directory)['drafts']
-    assert len(result) == 1 and result[0]['id'] == row['id']
-    assert result[0]['text'] == row['text']
-    assert result[0]['approve_command'] == f"{workspace.owner_cli(root)} drafts approve {row['id']}"
-    assert before == [(directory / name).read_bytes() for name in ('state.json', 'events.jsonl')]
-
-
 @pytest.mark.parametrize('bad', [None, [], {'bad': {}}, {'bad': {'status': 'sent'}}])
 def test_malformed_drafts_fail_closed(root, bad):
     from wuwei import metrics
-    from wuwei.commands.dashboard import cockpit_snapshot
     state._write_state(lambda data: data.update(drafts=bad), root, reserved=False)
     assert main(['drafts']) == 2
     with pytest.raises(ValueError):
         metrics.collect(root)
-    with pytest.raises(ValueError):
-        cockpit_snapshot(workspace.day_dir(root))
 
 
 def test_multifield_edit_preserves_destination(root, monkeypatch):

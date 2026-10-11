@@ -754,7 +754,7 @@ REVIEWED = [
     ('repos.merge.auto', True, True, ''), ('decisions.cruise.levels.approach', 2, True, LEVEL1),
     ('decisions.cruise.levels.defer', 1, True, ON),
     ('decisions.cruise.enabled', True, True, '[decisions.cruise]\nenabled = false\n'),
-    ('repos.gates.floor', 'light', True, ''), ('shepherd.autostart', True, True, ''),
+    ('repos.gates.floor', 'light', True, ''),
     ('adapters.scanner', 'ziran', True, ''), ('calendar.url', 'https://x.test/c.ics', True, ''),
     ('watch.ping_url', 'https://x.test/p', True, ''), ('codex.command', ['node', 'x.mjs'], True, ''),
     ('owner.name', 'Pat', True, ''), ('repos.identity.email', 'pat@x.test', True, ''),
@@ -987,7 +987,7 @@ def builtin_redactor():
 
 
 TOKEN = 'ghp_' + 'a' * 36
-SEEDED = ('[owner]\nname = "Pat Example"\nhandles = ["U12345"]\n[control_plane]\nowner = "T0AAA/U0BBB"\n'
+SEEDED = ('[owner]\nname = "Pat Example"\nhandles = ["U12345"]\n'
           '[shepherd]\nreview_channel = "C0CCC"\n')
 
 
@@ -1018,7 +1018,7 @@ def test_profile_export_has_nothing_personal(workspace_root, monkeypatch, ports,
         ledger=[('calibration of acme/widget: repository conventions',), ('owner interview: interrupt',)])
     assert main('calibrate', 'export', 'team') == 0, capsys.readouterr().err
     text = (out / 'team.json').read_text()
-    for secret in ('Pat Example', 'U12345', 'T0AAA', 'U0BBB', 'C0CCC', TOKEN, 'acme/widget',
+    for secret in ('Pat Example', 'U12345', 'C0CCC', TOKEN, 'acme/widget',
                    str(workspace_root), str(Path.home()), str(FIXTURES), '/srv/pat'):
         assert secret not in text, secret
     profile = json.loads(text)
@@ -1028,9 +1028,9 @@ def test_profile_export_has_nothing_personal(workspace_root, monkeypatch, ports,
                                                'reasons': ['owner interview: interrupt']}}
     dropped = {row['where']: row['why'] for row in profile['dropped']}
     lines = len((ROOT / 'charters/builder.md').read_text().splitlines())
-    assert {key: dropped[key] for key in ('config.owner.name', 'config.control_plane.owner',
+    assert {key: dropped[key] for key in ('config.owner.name',
                                           'config.shepherd.review_channel', 'config.repos.name')} == dict.fromkeys(
-        ('config.owner.name', 'config.control_plane.owner', 'config.shepherd.review_channel', 'config.repos.name'),
+        ('config.owner.name', 'config.shepherd.review_channel', 'config.repos.name'),
         'personal')
     assert [dropped[f'charters.builder:{lines + n}'] for n in range(1, 5)] == [
         'personal', 'personal', 'secret', 'absolute path']
@@ -1081,12 +1081,9 @@ def test_profile_export_edges(workspace_root, monkeypatch, ports, capsys):
         ('acme/widget', FIXTURES / 'python',
          'merge_deploys = false\n[repos.merge]\nauto = true\n[repos.gates]\nfloor = "light"\n'),
         ('acme/gadget', FIXTURES / 'node', 'fast_checks = ["npm test"]\n')])
-    path = workspace_root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('"C0CCC"\n', '"C0CCC"\nautostart = true\n'))
     assert main('calibrate', 'export', 'team') == 0, capsys.readouterr().err
     profile = json.loads((out / 'team.json').read_text())
     assert 'merge' not in profile['config']['repos'] and 'gates' not in profile['config']['repos']
-    assert 'autostart' not in profile['config'].get('shepherd', {})
     dropped = {row['where']: row['why'] for row in profile['dropped']}
     for key in ('config.repos.merge.auto', 'config.repos.gates.floor'):
         assert dropped[key] == 'outside what a profile may carry', key
@@ -1136,12 +1133,11 @@ def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
     (workspace_root / '.wuwei/config.toml').write_text('')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
-    monkeypatch.setattr(os, 'getloadavg', lambda: (1.0, 1.0, 1.0))
     memory = lambda mib: ports['host'].results.update(free_memory=registry.Result(0, mib * 2**20))
     memory(8192)
     assert calibrate.host(workspace_root, config, policy=PROCESS) == {
         'cores': 4, 'free_mib': 8192, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4,
-        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores', 'load': 1.0,
+        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores',
         'reading': 4}
     memory(3072)
     # the derived seat ceiling always holds one three-role gate, so a gate never deadlocks
@@ -1370,14 +1366,14 @@ def test_runtime_rule(workspace_root):
 
 
 def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
-    from wuwei import pace, registry, workspace
+    from wuwei import registry, workspace
     (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 6\n')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 10)
     for mib in (9216, 5120, 7168, 9216, 3072):
         ports['host'].results['free_memory'] = registry.Result(0, mib * 2**20)
         limits = calibrate.host(workspace_root, config, policy={})
-        assert pace.seats('steady', limits) == (6, 'host.seats', None)
+        assert (limits['cap'], limits['bound']) == (6, 'host.seats') and 'load' not in limits
         assert limits['text'] == 'cap 6 (host.seats): subagent runtime, free memory not read'
         assert calibrate.host(workspace_root, config)['cap'] == 6
     assert not [call for call in ports['host'].calls if call[0] == 'free_memory']

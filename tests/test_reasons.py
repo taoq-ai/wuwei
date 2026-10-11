@@ -24,8 +24,7 @@ OWNER = re.compile(r'\bthe owner\b', re.I)
 KEEP = {('workspace.py', 'time component required')}
 # Person-facing scope (spec Assumptions): whole modules, or named top-level functions.
 PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py')
-PERSON_PARTS = {'commands/next.py': {'step'},
-                'control_plane.py': {'HELP', 'render', 'escalate', 'notify'}}
+PERSON_PARTS = {'commands/next.py': {'step'}}
 
 
 def _text(node):

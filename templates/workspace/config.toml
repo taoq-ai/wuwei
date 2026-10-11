@@ -63,8 +63,8 @@ pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 # timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
 [owner.verbosity]
-default = "brief" # brief, standard or full: how much decisions, the digest, the DM and the report say to you.
-# dm = "" # Per surface: decisions, digest, dm or report. Empty uses default.
+default = "brief" # brief, standard or full: how much decisions, the digest and the report say to you.
+# report = "" # Per surface: decisions, digest or report. Empty uses default.
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
@@ -115,10 +115,6 @@ timeout_seconds = 300
 # tier_max_rounds = { light = 0, standard = 0, full = 0 } # 0 uses max_rounds.
 # polish = "offer" # never, offer or always: one notes-only round after a pass.
 
-[control_plane]
-content = "summary" # summary or none; what a messaging transport sends about decisions.
-owner = "" # <team id>/<user id> pinned for commands from the owner DM; empty handles none.
-
 [adapters]
 tracker = "none"
 chat = "none"
@@ -165,13 +161,9 @@ review_prs = []
 # url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.
 
 [brief]
-lead_minutes = 30 # Produce a meeting pack inside this window before an event with attendees.
 remote = "origin"
 prior_branch_pattern = "*{item}*" # Item is lowercased.
 full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)'
-[brief.style]
-length = "standard" # standard or concise.
-speed = 180 # Words per minute for say.
 
 # Registers map names to descriptions.
 [boundary]
@@ -306,7 +298,6 @@ min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo 
 author_windows_days = [90, 180] # Authorship lookback windows before all history.
 tie_commits = 2 # Include a third author within this commit count of second place.
 source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
-autostart = true # Start a headless shepherd seat for mechanical PR actions when the listener sees them (wuwei listen).
 
 # A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
 [shepherd.authors]

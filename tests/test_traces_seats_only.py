@@ -56,11 +56,10 @@ def sweep(root):
 
 def test_registered_roles():
     data = {'planner_session_id': 'P', 'sessions': {
-        'S': {'role': 'shepherd'}, 'R': {'role': 'remote'}, 'A': {'role': 'adhoc'}}}
+        'S': {'role': 'shepherd'}, 'A': {'role': 'adhoc'}}}
     assert sessions.registered(data, 'P') == 'planner'
     assert sessions.registered(data, 'P:agent1') == 'planner'
     assert sessions.registered(data, 'S') == 'shepherd'
-    assert sessions.registered(data, 'R') == 'remote'
     assert sessions.registered(data, 'A') is None
     assert sessions.registered(data, 'X') is None
     assert sessions.registered({}, 'P') is None

@@ -188,7 +188,7 @@ def test_outcome_findings_before_unmeasured():
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
     assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'calibrate',
-                                 'watch-install', 'listen-install', 'trace-decisions', 'mcp-reports'}
+                                 'watch-install', 'trace-decisions', 'mcp-reports'}
 
 
 # US1: the rows
@@ -250,7 +250,6 @@ def host_case(ws, change):
     (('config', '[adapters]\ncode_host = "none"\n' + REPO), 'gh', 'ok', None),
     (('identity', None), 'git identity', 'fail', None),
     (('config', '[adapters]\nscanner = "ziran"\n' + REPO), 'ziran', 'ok', None),
-    (('config', '[adapters]\ninbound = "slack"\n' + REPO), 'claude', 'fail', None),
     (('config', '[adapters]\nruntime = "codex"\n[codex]\ncommand = ["codex"]\n' + REPO), 'codex', 'fail',
      'install the Codex CLI'),
     (('memory', None), 'memory', 'fail', None),
@@ -274,10 +273,9 @@ def test_host_rows(ws, change, name, status, fix):
 
 def test_host_rows_healthy(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'claude', 'codex', 'memory',
+    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'codex', 'memory',
                                    'service manager']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'host'), rows
-    assert row(rows, 'claude')['value'].startswith('not on PATH')
     (ws.bin / 'ziran').unlink()
     config(ws.root, '[adapters]\nscanner = "ziran"\n' + REPO)
     assert row(doctor.diagnose(), 'ziran')['status'] == 'fail'
@@ -555,7 +553,8 @@ def test_gates_rows(ws):
 
 
 def test_gates_without_scanner(ws):
-    # #424: CONFIG leaves adapters.scanner at "none": the gate is off and WUWEI's own servers are covered.
+    # #424: CONFIG leaves adapters.scanner at "none": the gate is off. #808: no own-server rows,
+    # even for a manifest that declares a server.
     from wuwei import mcp
     manifest = integrity.PLUGIN / '.claude-plugin/plugin.json'
     manifest.write_text(json.dumps({**json.loads(manifest.read_text()),
@@ -563,8 +562,8 @@ def test_gates_without_scanner(ws):
     record(ws.root, exit=2, unmeasured=[['docs', DIGEST]], reason='MCP registry unmeasured; docs: unmeasured')
     rows = doctor.diagnose()
     assert (row(rows, 'mcp gate')['status'], row(rows, 'mcp gate')['value']) == ('ok', mcp.NO_SCANNER)
-    assert row(rows, 'mcp cockpit') == {'section': 'gates', 'name': 'mcp cockpit', 'status': 'ok',
-                                        'value': 'covered by plugin integrity'}
+    assert not [r for r in rows if r['section'] == 'gates' and r['name'].startswith('mcp ')
+                and r['name'] != 'mcp gate']
     assert 'mcp docs' not in names(rows, 'gates')
 
 
@@ -634,10 +633,9 @@ def test_answered_cards_row(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'shepherd', 'heartbeat', 'stuck seats',
                                   'traces', 'untraced subagents', 'session id', 'answered cards', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
-    assert row(rows, 'listener')['value'] == 'not used'
     assert row(rows, 'untraced subagents')['value'] == 'none today'
     # #676: a subagent stop that matched no seat is named, with the way to register one.
     state.append_event('subagent.untraced', {'agent_type': 'Explore', 'agent_id': 'a1', 'reason': 'no seat'},
@@ -1026,7 +1024,6 @@ def legacy_decisions(root):
 
 def test_trace_decisions_row_and_fix(ws, capsys):
     from wuwei import decision
-    from wuwei.commands.dashboard import cockpit_snapshot
     directory = legacy_decisions(ws.root)
     seat = (directory / 'D-4.md').read_text()
     found = row(doctor.diagnose(), 'trace decisions')
@@ -1043,7 +1040,6 @@ def test_trace_decisions_row_and_fix(ws, capsys):
         decision.evaluate(text)
         assert data['decision_outcomes'][ident]['decided_by'] == 'owner'
         assert decision.answered(data, ident) == 'superseded'
-    assert [d['id'] for d in cockpit_snapshot(workspace.day_dir(ws.root))['decisions']] == ['D-4']
     assert {'fix': 'trace-decisions', 'exit': 0} in events(ws.root, 'doctor.fixed')
     assert not [r for r in doctor.diagnose() if r['name'] == 'trace decisions']
     assert (directory / 'D-4.md').read_text() == seat

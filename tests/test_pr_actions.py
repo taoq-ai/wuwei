@@ -711,7 +711,6 @@ def pr_row(capsys):
 
 def test_check_red_at_base_too_is_base_red(case, capsys):
     """#728: a check red at the base commit too is not the PR's; no fix round is asked."""
-    from wuwei import shepherd
     root, host, _, tree = linked(case)
     completed_build(root, tree)
     host.results['checks'] = Result(0, [check('audit', 'failure')])
@@ -726,7 +725,6 @@ def test_check_red_at_base_too_is_base_red(case, capsys):
     assert capsys.readouterr().out == ''
     data = state.read_state(root)
     assert data['items']['A']['phase'] == 'raised' and data['builds']['A'] == builds
-    assert not shepherd.pending(root)
 
 
 def test_base_red_drops_the_ci_red_episode(case, capsys):
@@ -800,7 +798,7 @@ def merged_pr(host, sha='b' * 40):
 
 @pytest.mark.parametrize('producer', ['watch', 'pr state'])
 def test_merged_pr_closes_its_merge_cards(case, producer):
-    from wuwei import control_plane, decision, watch
+    from wuwei import decision, watch
     from wuwei.commands import status
     root, host, _, _ = linked(case)
     ids = [merge_card(root, 'pr:' + REF), merge_card(root, 'repo:acme/widget', f'merge: {REF} at ' + 'a' * 40)]
@@ -819,7 +817,6 @@ def test_merged_pr_closes_its_merge_cards(case, producer):
     assert closed_events(root) == [{'id': key, 'pr': REF, 'outcome': 'merged by the owner',
                                     'sha': 'b' * 40, 'by': 'owner-login'} for key in ids]
     assert status.snapshot(workspace.day_dir(root))['decisions'] == []
-    assert control_plane.pending(root) == {}
 
 
 def test_merged_pr_leaves_other_cards_open(case, monkeypatch):

@@ -86,7 +86,7 @@ def rule(root, ident, fields, scores, config, data, run=None):
     now = workspace.now()
     found = {'rule': f'cruise {name}@L{level}', 'class': name, 'level': level,
              'at': now.isoformat(), 'items': named}
-    if level == 2:  # ponytail: the window runs from the answer; the listener has no delivery receipt.
+    if level == 2:  # the window runs from the answer
         found['undo_until'] = (now + timedelta(minutes=cruise['undo_minutes'])).isoformat()
     return found
 

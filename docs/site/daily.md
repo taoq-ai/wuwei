@@ -205,23 +205,7 @@ the lead proposes them, `plan.md` shows them as provisional and the approval que
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>" [--note "<your words>"]`.
-
-The gate card also carries the day's [pace](concepts.md#pace). `Approve` takes the
-recommended pace; `Approve at careful`, `Approve at steady` or `Approve at fast` approves the
-same plan at another pace. The recommendation's reasoning is in the Approve description, two
-lines, plus a third when it differs from your `[pace] default`:
-
-```text
-9 items, 7 light, 2 standard, G-2 due 2026-10-10: fast, 4 seats, expected close 14:30
-Host 10 cores, load 3.2, last suite 14 min; budget covers the queue at fast; binding: queue
-Your default is steady; the advice is fast (binding: queue)
-```
-
-`binding:` names the input that set the advice (queue, host or budget) and, when a faster
-pace is held back, what unlocks it. To change the pace during the day, the planner runs
-`wuwei plan set pace=careful`; items already under review keep their review depth. `wuwei pace` prints the
-pace, the advice and its inputs at any time.
+`wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`.
 
 When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
 more card per action, for example
@@ -268,7 +252,7 @@ morning sweep lists the open PRs you authored in the configured repositories (by
 
 Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
 makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
-claim adopts it too. The board shows the item as `PR-12 (adopted)`. A PR opened after the
+claim adopts it too. A PR opened after the
 gate is claimed with `bin/wuwei pr claim owner/repo#12 --goal G-1`; with one configured
 repository a bare `12` works, and with one goal for the day `--goal` can go.
 
@@ -380,7 +364,7 @@ moves to `merged` with the flag still set, so the record shows which way it went
 
 With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
 per item and Approve opens or links them. An item still without one stops with a line naming
-its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. The board and the loop DM show the
+its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. `wuwei next` and the loop DM show the
 ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
 Decisions and review results wait in `bin/wuwei drafts` until you send them.
 
@@ -399,9 +383,7 @@ timestamp, or a PR starting or stopping being owned does not wake the planner;
 The Stop hook message lists that summary first, and the status line
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
-put input into an idle session. The listener covers the gap: it sends the summary to your
-DM and, unless `shepherd.autostart = false`, starts a headless [shepherd](concepts.md#shepherd) seat for the
-mechanical PR actions ([remote](remote.md), section 5). For CI events in your own
+put input into an idle session. For CI events in your own
 session, the Claude Code desktop PR monitor is the complement.
 
 ## 5. Owner decisions
@@ -420,11 +402,7 @@ To answer from your phone, run the planner session with Claude Code Remote Contr
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
 mobile app and stays open until you answer. The planner records that answer with
-`bin/wuwei decide`, or you run it in a host terminal. To command the workspace and
-answer decisions from Slack as well, run `bin/wuwei setup slack` and see
-[remote operation](remote.md). A Slack DM answer to a two-way decision is your outcome at
-once. An answer to a one-way decision is evidence, and `status --line` counts it as
-`phone answers 1` until you record it with `bin/wuwei decide`.
+`bin/wuwei decide`, or you run it in a host terminal.
 
 A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one the workspace has
 never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
@@ -435,14 +413,13 @@ A record is two-way only when WUWEI can undo it and has tried that undo once her
 day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
 `wuwei next` returns after the gate. Until they ran, two-way records of that kind come to you as
 cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
-the card or reply `undo D-3` to the listener DM. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
+the card. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
 <event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
 `Undone today` and the one-way actions of the day under `Cannot be undone`.
 
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-event (a [page](concepts.md#page) when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
-your DM. An external confirmation a seat routed with `--external`
+event (a [page](concepts.md#page) when its goal date has passed). An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
 
@@ -458,7 +435,7 @@ take still comes to you.
 At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei decision show D-3
 --widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
 undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
-y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
+y. An undo puts the record back to you as `Outcome:
 pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
 decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
 two-way summary from the watch lists it, cruise answers first.
@@ -490,8 +467,7 @@ as a question card: tap an option, the recommended one first. The planner record
 with the command printed beside the card. When that command needs your confirmation in a
 host terminal, the planner shows you the line to run.
 
-Away from the session, the same question reaches your phone through Remote Control, or as a
-DM from the listener when the planner runs headless.
+Away from the session, the same question reaches your phone through Remote Control.
 
 Use the host terminal for what a hook sends there: today your commands listed at the top
 of this section, and under `strict` posture everything owner-only.
@@ -539,10 +515,5 @@ holds the session until close is clean. For each open item close asks: carry it 
 tomorrow (recommended), park it, or keep working, and records the answer with
 `wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with
 `bin/wuwei status --line`.
-
-Inside a session, ask Claude for the board, or call the plugin's `wuwei_board` tool. It
-shows items by phase with gate verdicts, owned PRs and what they wait on, pending decisions
-and pages as tables, and renders the cockpit inline where the host renders MCP
-Apps. It is read-only: answering a decision or approving a draft stays a CLI owner action.
 
 Anything not on this page is recovery, not daily use: see [recovery](recovery.md).
