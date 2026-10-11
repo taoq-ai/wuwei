@@ -331,9 +331,8 @@ executes each returned action unchanged:
    reviewer's seat, and the `continue` feedback names it. The delta verdict's `Head:` is that
    head, whether the planner continues the seat in its session or as a fresh Agent. After
    the delta verdicts it returns `raise` with review notes,
-   or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
-   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. A light item has no delta review: its `continue` feedback starts
-   the next fix round, or `escalate`. With no round left the item parks with its decision
+   the next fix round, or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
+   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. With no round left the item parks with its decision
    record, and `escalate` names it in `decision` with the `command` that answers it. A
    light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.

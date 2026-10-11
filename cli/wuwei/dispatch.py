@@ -434,56 +434,13 @@ def next_step(item, root=None):
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
-    results = [_record(data, item, role, round_name) for role in roles]
-    if any(result['verdict'] in ('PARK', 'ESCALATE') for result in results):
-        return {'action': 'escalate', 'reason': 'gate parked or escalated'}
-    if phase == 'gate':
-        failures = [role for role in roles if _record(data, item, role, 'initial')['verdict'] == 'FIX']
-        if not failures:
-            return raise_action(root, data, item, [])
-        from wuwei.commands import build
-        build.open_fix(item, _fix_feedback(data, item, failures, 'initial'), root=root)
-        return _fix(item, failures)
-    blocking = [role for role, result in zip(roles, results) if result['blocks']]
-    if blocking:  # #623: the next round below the cap; a park with its finding at the cap
-        cap = max_rounds(config, row)
-        if rounds_used(data, item) >= cap:
-            finding = next(text for text in results[roles.index(blocking[0])]['findings']
-                           if re.search(verdict.BLOCKS_YES, text, re.I))
-            return {'action': 'escalate', 'reason': (
-                f'round cap {cap} reached: {blocking[0]} still blocks: '
-                f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
-                'that closes it is recorded in the spec')}
-        from wuwei.commands import build
-        build.open_fix(item, _fix_feedback(data, item, blocking, 'delta'), root=root)
-        return _fix(item, blocking)
-    notes = [note for result in results for note in result['notes']]
-    return raise_action(root, data, item, notes)
-
-
-def raise_action(root, data, item, notes):
-    """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
-    name = f'shepherd-{item}'
-    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
-    worktree = data['items'][item].get('worktree') or str(root)
-    action = {'action': 'raise', 'notes': notes, 'seats': []}
-    if not path.is_file():
-        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
-        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
-                              '--body ' + shlex.quote(body)]
-    elif name not in data['seats']:
-        action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
-    else:
-        action['reason'] = (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
-                            f'bin/wuwei why {item} shows it')
-    return action
     results = dict(zip(roles, (_record(data, item, role, round_name) for role in roles)))
     asked = [role for role in roles if results[role]['verdict'] in ('PARK', 'ESCALATE')]
     blocking = [role for role in roles if role in asked or (
         results[role]['verdict'] == 'FIX' if phase == 'gate' else results[role]['blocks'])]
     if not blocking:
-        return {'action': 'raise', 'notes': [note for result in results.values() for note in result['notes']]
-                if phase == 'delta' else []}
+        return raise_action(root, data, item, [note for result in results.values() for note in result['notes']]
+                            if phase == 'delta' else [])
     cap = max_rounds(config, row)
     if rounds_used(data, item) >= cap:  # #623: a park with its finding at the cap
         findings = results[blocking[0]]['findings']
@@ -507,6 +464,25 @@ def raise_action(root, data, item, notes):
     from wuwei.commands import build
     build.open_fix(item, _fix_feedback(data, item, blocking, round_name), root=root)
     return _fix(item, blocking)
+
+
+
+def raise_action(root, data, item, notes):
+    """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
+    name = f'shepherd-{item}'
+    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
+    worktree = data['items'][item].get('worktree') or str(root)
+    action = {'action': 'raise', 'notes': notes, 'seats': []}
+    if not path.is_file():
+        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+                              '--body ' + shlex.quote(body)]
+    elif name not in data['seats']:
+        action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
+    else:
+        action['reason'] = (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
+                            f'bin/wuwei why {item} shows it')
+    return action
 
 
 def launch_set(root=None):

@@ -2424,7 +2424,11 @@ def test_card_answered_fix_opens_the_round_and_regates_the_asking_gate(root, mon
     found = dispatch.next_step('A', root)
     assert (found['action'], found['roles']) == ('gates', ['quality'])
     assert record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')['verdict'] == 'PASS'
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    import shlex
+    tree = state.read_state(root)['items']['A'].get('worktree') or str(root)
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [], 'seats': [], 'commands': [
+        f'wuwei brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
+        '--body ' + shlex.quote(dispatch.SHEPHERD_BODY.format(item='A'))]}
 
 
 def test_card_answered_park_parks_the_item_and_both_commands_name_it(root, monkeypatch, capsys):
