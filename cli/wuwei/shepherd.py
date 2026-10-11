@@ -279,7 +279,7 @@ def post_review_request(root, ref):
 def raise_pr(root, repo_name, base, title, body, item, draft=False):
     """Raise a prepared, pushed branch after the existing pre-PR gate."""
     try:
-        from wuwei.guards.pr import gate_check
+        from wuwei.merge import gate_check
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
         repo_name = repository(repo_name)

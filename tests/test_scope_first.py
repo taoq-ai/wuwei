@@ -20,6 +20,7 @@ TRIAL = [
     "print(subprocess.run(['git', 'status'], capture_output=True))\n"
     "PYEOF",
     'ls ~/x/wuwei/',
+    "cat .wuwei/days/x/state.json 'unclosed",  # #839: a guard that reads it would log UNPARSED
 ]
 
 SHAPES = [
@@ -32,7 +33,7 @@ SHAPES = [
     'echo x > .wuwei/days/2026-10-03/state.json', 'rm -rf .wuwei',
 ]
 
-GUARD_TABLES = ('test_commit_push', 'test_pr_guards', 'test_deploy', 'test_protect_state',
+GUARD_TABLES = ('test_edges', 'test_protect_state',
                 'test_seat_command_forms', 'test_pr_ownership',
                 'test_shell')
 COMMAND_ARGS = ('command', 'script', 'form', 'wrapper', 'operation')

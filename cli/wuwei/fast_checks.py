@@ -6,7 +6,7 @@ import shlex
 import time
 
 from wuwei import registry, state, workspace
-from wuwei.guards.commit_push import context, data
+from wuwei.commit_push import context, data
 from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')

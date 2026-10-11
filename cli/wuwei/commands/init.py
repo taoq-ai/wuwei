@@ -13,7 +13,7 @@ import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 from wuwei import env, integrity, security, workspace
-from wuwei.guards.deploy import PERMISSIONS_DENY
+from wuwei.guards.edges import PERMISSIONS_DENY
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
   protect each repository's default_branch: required status checks including the test jobs,

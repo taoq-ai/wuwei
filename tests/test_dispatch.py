@@ -2226,8 +2226,8 @@ def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys
     command = found['commands'][0]
     assert command.startswith(f'wuwei brief shepherd A shepherd-A --worktree {tree} --body ')
     assert all(part in command for part in ('bin/wuwei pr raise', '--item A')) and 'gh pr create' not in command
-    from wuwei.guards import pr
-    assert pr.check({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})[0] == 0
+    from wuwei.guards import edges
+    assert edges.check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})[0] == 0
     path = workspace.day_dir(root) / 'briefs/shepherd-A.md'
     path.write_text('brief\n')
     found = both()

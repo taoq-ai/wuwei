@@ -27,8 +27,9 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'escaped_by_tier', 'lead_time_merge_hours', 'lead_time_deploy_hours', 'deploys_per_week',
            'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
-GUARDS = ('agent_launch', 'answers', 'commit_push', 'deploy', 'integrity', 'lifecycle', 'outward', 'pr',
-          'protect_state', 'spec', 'stop', 'traces', 'verdict')
+GUARDS = ('agent_launch', 'answers', 'edges', 'integrity', 'lifecycle', 'outward', 'protect_state',
+          'spec', 'stop', 'traces', 'verdict')
+RETIRED_GUARDS = ('commit_push', 'deploy', 'pr')  # stored weeks (#839)
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
@@ -43,7 +44,7 @@ ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 's
             'calendar': ('ics', 'none'), 'transcripts': ('none',),
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
             'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
-INNER = frozenset((*GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
+INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat',
                    'cruise'))  # cruise: weeks stored before #814
 OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',

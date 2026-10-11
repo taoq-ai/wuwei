@@ -231,7 +231,8 @@ def test_missing_or_invalid_cache_is_unmeasured(tmp_path, content):
     assert api.cached(root).exit == 2
 
 
-def test_integrity_hook_scope_and_session_exit(tmp_path, monkeypatch, capsys):
+def test_integrity_warns_at_session_start_and_never_refuses_a_tool_call(tmp_path, monkeypatch, capsys):
+    # #839: integrity is a SessionStart warning; no PreToolUse call is refused for it.
     import io
     from wuwei.commands import hook
     api = core()
@@ -246,18 +247,16 @@ def test_integrity_hook_scope_and_session_exit(tmp_path, monkeypatch, capsys):
                'tool_input': {'command': 'echo hello'}}
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
     assert hook.run(Namespace(event='SessionStart')) == 0
-    assert 'page:' in capsys.readouterr().out
+    out = capsys.readouterr()
+    assert 'page:' in json.loads(out.out)['hookSpecificOutput']['additionalContext'] and 'page:' in out.err
+    assert api.cached(root).exit
     payload['hook_event_name'] = 'PreToolUse'
-    for tool in ('Bash', 'Read', 'Write', 'Agent', 'UnknownTool'):
-        payload['tool_name'] = tool
+    for tool, inputs in (('Bash', {'command': 'echo hello'}),
+                         ('Write', {'file_path': str(root / 'notes.md'), 'content': 'x'}),
+                         ('mcp__acme__get_item', {'id': '1'})):
+        payload.update(tool_name=tool, tool_input=inputs)
         monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
-        assert hook.run(Namespace(event='PreToolUse')) == 2
-    payload['cwd'] = str(tmp_path)
-    payload['tool_name'] = 'Bash'
-    for command in ('python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'):
-        payload['tool_input'] = {'command': command}
-        monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
-        assert hook.run(Namespace(event='PreToolUse')) == 0
+        assert hook.run(Namespace(event='PreToolUse')) == 0, (tool, capsys.readouterr())
 
 
 @pytest.mark.parametrize('name', ['verdict.json', 'confirmation.json', 'pinned.pub'])
@@ -656,24 +655,22 @@ def test_checkout_confirmation_pins_commit_and_clean_tree(checkout, git_file):
     confirmation = json.loads((root / '.wuwei/integrity/confirmation.json').read_text())
     verdict = json.loads((root / '.wuwei/integrity/verdict.json').read_text())
     assert confirmation['checkout'] == verdict['checkout'] == {'head': 'a' * 40, 'clean': True}
-    from wuwei.guards.integrity import check
-    payload = {'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
     fake.calls.clear()
     for _ in range(3):
-        assert check(payload) == (0, '')
+        assert api.cached(root).exit == 0
     assert len(fake.calls) == 6
     assert all(call[1] == (base,) for call in fake.calls)
     assert api.check(root).exit == 0
     # A pull can move HEAD without changing any installed file content.
     fake.results['head'] = registry.Result(0, {'sha': 'b' * 40})
-    assert check(payload)[0] == 2
+    assert api.cached(root).exit == 2
     assert api.check(root).exit == 1
     assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
-    assert check(payload)[0] == 0
+    assert api.cached(root).exit == 0
     (base / 'charters/builder.md').write_text('Uncommitted edit\n')
     fake.results['status'] = registry.Result(0, [
         {'path': 'charters/builder.md', 'index': ' ', 'worktree': 'M', 'original_path': None}])
-    assert check(payload)[0] == 2
+    assert api.cached(root).exit == 2
     assert api.check(root).exit == 1
     assert api.reconfirm(root, confirm=lambda digest: pytest.fail('dirty tree cannot be confirmed')).exit == 1
     assert api.cached(root).exit == 2
@@ -730,18 +727,6 @@ def test_checkout_legacy_confirmation_needs_new_host_confirmation(checkout):
     api._record(root, 'confirmation.json', {'fingerprint': fingerprint})
     assert api.check(root).exit == 1
     assert api.cached(root).exit == 2
-
-
-@pytest.mark.parametrize('command', ['python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'])
-def test_checkout_guard_uses_existing_scope_before_vcs_reads(checkout, tmp_path, command):
-    from wuwei.guards.integrity import check
-    api, root, base, fake = checkout
-    fake.results['head'] = registry.Result(2, reason='git missing')
-    payload = {'cwd': str(tmp_path), 'tool_name': 'Bash', 'tool_input': {'command': command}}
-    assert check(payload) == (0, '')
-    assert not fake.calls
-    payload.update(tool_name='Read', tool_input={'file_path': str(root / 'source.py')})
-    assert check(payload)[0] == 2
 
 
 @pytest.mark.parametrize('artifact', ['MANIFEST.sha256', 'MANIFEST.sha256.sig', 'both'])
@@ -819,13 +804,13 @@ def test_init_upgrade_measures_unless_dry_run(tmp_path, monkeypatch, capsys):
     assert calls == [(tmp_path, True)] and 'plugin integrity: clean' in capsys.readouterr().out
 
 
-def pre_tool_use(monkeypatch, root):
+def pre_tool_use(monkeypatch, root, event='PreToolUse'):
     import io
     from wuwei.commands import hook
     payload = {'cwd': str(root), 'session_id': 'test', 'transcript_path': 'transcript',
-               'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
+               'hook_event_name': event, 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
-    return hook.run(Namespace(event='PreToolUse'))
+    return hook.run(Namespace(event=event))
 
 
 def test_signed_install_is_usable_right_after_init(tmp_path, monkeypatch, capsys):
@@ -850,6 +835,7 @@ def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys)
     vcs = Namespace(workspace_init=lambda *a, **kw: registry.Result(0),
                     head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
                     status=lambda *a, **kw: registry.Result(0, []),
+                    workspace_changes=lambda *a, **kw: registry.Result(0, []),
                     read_tree=lambda *a, **kw: registry.Result(0, {
                         'charters/builder.md': 'Run tests.\n', api.KEY: 'ssh-ed25519 test-key\n'}))
     load = registry.load
@@ -859,9 +845,12 @@ def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys)
     assert init.run(Namespace(path=str(root))) == 0
     lines = [line for line in capsys.readouterr().out.splitlines() if 'wuwei integrity reconfirm' in line]
     assert len(lines) == 1
-    assert pre_tool_use(monkeypatch, root) == 2
-    reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
+    assert pre_tool_use(monkeypatch, root) == 0  # #839: a warning at session start only
+    assert pre_tool_use(monkeypatch, root, 'SessionStart') == 0
+    out = capsys.readouterr()
+    reason = json.loads(out.out.splitlines()[-1])['hookSpecificOutput']['additionalContext']
     assert 'run wuwei integrity reconfirm' in reason and 'Errno' not in reason
+    assert 'run wuwei integrity reconfirm' in out.err
 
 
 def no_terminal(monkeypatch, tmp_path, mode):

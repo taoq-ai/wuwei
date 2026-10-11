@@ -7,11 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from fakes.replay import install_replay
-
-NOT_A_REPOSITORY = {'exit': 128, 'stderr': 'fatal: not a git repository '
-                    '(or any of the parent directories): .git'}
-
 
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
@@ -41,7 +36,8 @@ def hook(cwd, command, monkeypatch, capsys):
 @pytest.mark.parametrize('command, code, words', [
     ('x=$(pwd); echo $x', 0, ()),
     ('python3 -m pytest -q && git status', 0, ()),
-    ('git push $(cat remote) main', 2, ('commit/push guard', 'deploy')),
+    ('git push $(cat remote) main', 0, ()),  # #839: not a force push or a default branch
+    ('git push --force $(cat remote) main', 2, ('force-push is refused',)),
     ('git status | python3', 0, ()),  # #530: an unparsed read warns
     ('cd $(git rev-parse --show-toplevel) && ls', 0, ()),
 ])
@@ -62,14 +58,6 @@ def refused(root):
                     for row in json.loads(line)['payload'].get('refusals', []))
 
 
-def test_commit_outside_a_repository_says_so(workspace, monkeypatch, capsys):
-    install_replay(monkeypatch, 'git', [NOT_A_REPOSITORY] * 8)
-    code, output = hook(workspace, 'git commit -m wip', monkeypatch, capsys)
-    assert code == 2
-    reason = output['permissionDecisionReason']
-    assert 'commit/push guard' in reason and 'not a git repository' in reason
-
-
 def events(root, kind):
     return [json.loads(line) for path in root.glob('.wuwei/days/*/events.jsonl')
             for line in path.read_text().splitlines() if json.loads(line)['kind'] == kind]
@@ -86,23 +74,13 @@ def test_issue_330_read_only_forms_pass(workspace, command, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('mode', ['enforce', 'log'])
-@pytest.mark.parametrize('command, words', [
-    ('for r in a b; do git -C $r push origin main; done', ('deploy',)),
-    ('x=$(cat f); gh pr merge $x', ('deploy', 'PR guard')),
-])
-def test_issue_330_effectful_forms_refuse(workspace, mode, command, words, monkeypatch, capsys):
+def test_issue_330_effectful_forms(workspace, mode, monkeypatch, capsys):
+    # #839: a merge is refused by its argv in both settings; a loop is a ceiling (design 9.1).
     if mode == 'log':
         (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
-    code, output = hook(workspace, command, monkeypatch, capsys)
-    assert code == 2 and output['permissionDecision'] == 'deny'
-    reason = output['permissionDecisionReason']
-    if mode == 'log':
-        assert [e['payload']['guard'] for e in events(workspace, 'guard.would_refuse')] == ['commit_push']
-        assert all(word in refused(workspace) for word in words) and 'commit/push guard' not in reason, reason
-
-
-def test_issue_330_log_only_records_commit_loop(workspace, monkeypatch, capsys):
-    (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
-    command = 'for r in a b; do git -C $r commit -m wip; done'
-    assert hook(workspace, command, monkeypatch, capsys) == (0, {})
-    assert [e['payload']['guard'] for e in events(workspace, 'guard.would_refuse')] == ['commit_push']
+    code, output = hook(workspace, 'x=$(cat f); gh pr merge $x', monkeypatch, capsys)
+    assert code == 2 and output['permissionDecisionReason'].startswith('merge policy')
+    for command in ('for r in a b; do git -C $r push --force origin main; done',
+                    'for r in a b; do git -C $r commit -m wip; done'):
+        assert hook(workspace, command, monkeypatch, capsys) == (0, {})
+    assert events(workspace, 'guard.would_refuse') == []

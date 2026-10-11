@@ -3,20 +3,27 @@
 from copy import deepcopy
 import importlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from fakes.code_host import Fake
+from fakes.vcs import Fake as VcsFake
 from wuwei import registry, state, workspace
 from wuwei.registry import Result
-from test_pr_guards import evidence
 
 SHA = 'a' * 40
 BASE = 'b' * 40
 MERGED = 'c' * 40
 REF = 'example/project#7'
+
+
+def evidence(sha=SHA, verdict='PASS'):
+    return (f'Head: {sha}\nVerdict: {verdict}\nProbes: tested\n'
+            'AUTH: PASS\nSimplicity: checked\nDesign: checked\n'
+            'Blocked: none\nGap: none\nChange: none\n')
 
 
 def policy():
@@ -500,26 +507,24 @@ def test_generic_event_cannot_forge_merge_evidence(case, kind):
 @pytest.mark.parametrize('command,code', [
     ('gh pr merge 7', 1), ('env X=1 gh pr merge 7 --squash', 1),
     ('gh pr merge 7 --admin', 1), ('gh api repos/example/project/pulls/7/merge -X PUT', 1),
-    ('gh pr merge $PR', 2), ('gh pr merge "', 2),
+    ('gh pr merge $PR', 1), ('gh pr merge "', 2),
     ('python3 -m pytest -q', 0), ('for x in 1; do echo x; done', 0), ('export X=1', 0),
 ])
 def test_guard_never_bypasses_dedicated_writer(case, command, code):
-    from wuwei.guards.pr import check as guard
+    from wuwei.guards.edges import check_bash as guard
     root, host = case
     result = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': command}})
     assert result[0] == code, result
     assert not any(c[0] == 'merge' for c in host.calls)
 
 
-def test_guard_calls_shared_policy(case, monkeypatch):
-    from wuwei.guards.pr import check as guard
+def test_guard_names_wuwei_merge_without_running_the_policy(case, monkeypatch):
+    # #839: every session merge is refused naming bin/wuwei merge, which runs the policy.
+    from wuwei.guards.edges import check_bash as guard
     calls = []
-    def fail(*args, **kwargs):
-        calls.append((args, kwargs))
-        return Result(2, None, 'offline')
-    monkeypatch.setattr(policy(), 'check', fail)
-    result = guard({'cwd': str(case[0] / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
-    assert result == (2, 'offline') and len(calls) == 1
+    monkeypatch.setattr(policy(), 'check', lambda *args, **kwargs: calls.append(args))
+    code, reason = guard({'cwd': str(case[0] / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
+    assert code == 1 and 'bin/wuwei merge <owner/repo>#7' in reason and not calls
 
 
 def merged(case):
@@ -1255,12 +1260,11 @@ def test_merge_waits_on_gates_at_a_moved_head(case):
     assert merged_calls(host) == []
 
 
-@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'pr guard', 'overnight shepherd'])
+@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'overnight shepherd'])
 def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
     # Former 9.2 I37 (#678): the command paths and the daemon path read one hold.
     from wuwei import plan, pr_actions, shepherd
     from wuwei.__main__ import main
-    from wuwei.guards.pr import check as guard
     from wuwei.watch import records
     root, host = case
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
@@ -1279,8 +1283,6 @@ def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
     elif path == 'pr act':
         code = pr_actions.act(root, REF)
         text = capsys.readouterr().out
-    elif path == 'pr guard':
-        code, text = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
     else:
         shepherd.overnight(root)
         capsys.readouterr()
@@ -1478,3 +1480,276 @@ def test_an_unmatched_owner_path_merges_as_before(case):
     owner_path(root, host, path='src/a.py')
     assert check(case).exit == 0
     assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')]
+
+
+# The pre-PR gate check, merge.gate_check (moved with the PR guard's gate cases, #839).
+@pytest.fixture
+def gates(tmp_path, monkeypatch):
+    """A workspace with every gate passed at SHA for item 9, and a fake vcs port."""
+    for key in os.environ:
+        if key.startswith(('GIT_', 'GH_')):
+            monkeypatch.delenv(key)
+    root = tmp_path / 'workspace'
+    repo = root / 'repo'
+    repo.mkdir(parents=True)
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('''
+[[repos]]
+name = "example/project"
+path = "repo"
+default_branch = "main"
+''')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
+    decisions = workspace.day_dir(root) / 'decisions'
+    decisions.mkdir(parents=True)
+    for gate in ('arch', 'quality', 'security'):
+        (decisions / f'gate-9-{gate}.md').write_text(evidence())
+    fake = VcsFake({'head': Result(0, {'sha': SHA}), 'resolve': Result(0, {'sha': SHA}),
+                    'repo_context': Result(0, {'path': str(repo), 'common_dir': str(repo / '.git')})})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    return root, fake, decisions
+
+
+def gated(root):
+    """merge.gate_check from the repository; 2 with the reason when the evidence is unreadable."""
+    try:
+        return policy().gate_check(root, root / 'repo', workspace.load_config(root))
+    except (OSError, ValueError) as exc:
+        return 2, str(exc)
+
+
+def test_pr_gate_accepts_quality_only_delta_after_fix(gates):
+    from wuwei import state
+    root, fake, decisions = gates
+    new_head = 'c' * 40
+    fake.results['head'] = Result(0, {'sha': new_head})
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        if role == 'quality':
+            path.write_text(evidence(BASE, 'FIX') +
+                '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
+        else:
+            path.write_text(evidence(BASE))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial',
+            'verdict': 'FIX' if role == 'quality' else 'PASS',
+            'head': BASE, 'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head))
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+
+
+def test_recorded_gate_refusal_names_only_unpassed_gate_at_head(gates):
+    from wuwei import state
+    root, _, decisions = gates
+    current = 'c' * 40
+    records = {}
+    for role in ('arch', 'quality'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(BASE, 'FIX') if role == 'quality' else evidence(BASE))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial', 'verdict': 'FIX' if role == 'quality' else 'PASS',
+            'head': BASE, 'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(current))
+    records['9:quality:delta'] = {'item': '9', 'role': 'quality', 'round': 'delta',
+        'verdict': 'PASS', 'head': current, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    code, reason = policy()._recorded_gates(root, current, records, '9')
+    assert code == 1
+    assert current in reason and 'security' in reason
+    assert 'quality' not in reason
+
+
+def test_pr_gate_accepts_nonblocking_delta_residual(gates):
+    from wuwei import state
+    root, fake, decisions = gates
+    new_head = 'c' * 40
+    fake.results['head'] = Result(0, {'sha': new_head})
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(BASE) if role != 'quality' else
+            evidence(BASE, 'FIX') + '- P2 | cli/example.py:12 | fails when empty | blocks: yes\n')
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial',
+            'verdict': 'FIX' if role == 'quality' else 'PASS', 'head': BASE,
+            'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head, 'PASS') +
+        '- P3 | cli/example.py:12 | fails when empty | blocks: no\n')
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+
+
+@pytest.mark.parametrize('kind,code,hint', [
+    ('missing', 1, 'security'), ('stale', 1, 'security'),
+    ('fix', 1, 'security'), ('short', 0, ''),
+    ('duplicate', 2, 'security'), ('comment', 2, 'security'),
+    ('fenced', 2, 'security'), ('blocking', 2, 'security'),
+    ('unreadable', 2, 'security'), ('other-item', 1, 'security'),
+])
+def test_verdict_evidence(gates, kind, code, hint):
+    root, _, decisions = gates
+    path = decisions / 'gate-9-security.md'
+    if kind == 'missing':
+        path.unlink()
+        (workspace.day_dir(root) / 'state.json').write_text(json.dumps({
+            'gates': {gate: {'sha': SHA, 'verdict': 'PASS'}
+                      for gate in ('arch', 'quality', 'security')}}))
+    elif kind == 'stale':
+        path.write_text(evidence(BASE))
+    elif kind == 'fix':
+        path.write_text(evidence(verdict='FIX'))
+    elif kind == 'short':
+        path.write_text(evidence(SHA[:7]))
+    elif kind == 'duplicate':
+        path.write_text(evidence() + f'Head: {BASE}\n')
+    elif kind == 'comment':
+        path.write_text('<!--\n' + evidence() + '-->')
+    elif kind == 'fenced':
+        path.write_text('```\n' + evidence() + '```')
+    elif kind == 'blocking':
+        path.write_text(evidence() + '- P1 cli/example.py:1 blocks: yes; fails when changed\n')
+    elif kind == 'unreadable':
+        path.write_bytes(b'\xff')
+    elif kind == 'other-item':
+        path.rename(decisions / 'gate-10-security.md')
+    result = gated(root)
+    assert result[0] == code, result
+    assert hint in result[1]
+
+
+@pytest.mark.parametrize('operation,result', [
+    ('head', Result(2, {'sha': SHA}, 'offline')),
+    ('head', Result(0, {})), ('head', Result(0, {'sha': 'bad'})),
+    ('resolve', Result(2, {'sha': SHA}, 'ambiguous')),
+])
+def test_port_errors(gates, operation, result):
+    root, fake, decisions = gates
+    fake.results[operation] = result
+    (decisions / 'gate-9-security.md').write_text(evidence(SHA[:7]))
+    code, reason = gated(root)
+    assert code == 2 and reason
+
+
+LIGHT = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
+
+
+def test_pr_gate_accepts_quality_only_for_a_light_item(gates):
+    from wuwei import state
+    root, _, decisions = gates
+    path = decisions / 'gate-9-quality.md'
+    state._write_state(lambda data: data.update(gate_verdicts={'9:quality:initial': {
+        'item': '9', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS', 'head': SHA,
+        'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}}), root, reserved=False)
+    config = workspace.load_config(root)
+    code, reason = policy().gate_check(root, root / 'repo', config, item='9')
+    assert code == 1 and 'arch, security' in reason
+    state._write_state(lambda data: data['items'].update({'9': {'gates': LIGHT}}), root, reserved=False)
+    assert policy().gate_check(root, root / 'repo', config, item='9') == (0, '')
+    state._write_state(lambda data: data['items']['9'].update(gates={**LIGHT, 'roles': ['arch']}),
+                       root, reserved=False)
+    with pytest.raises(ValueError, match='invalid recorded gate set'):
+        policy().gate_check(root, root / 'repo', config, item='9')
+
+
+def second_opinion_records(root, decisions, text=None):
+    items = {'9': {'gates': {'tier': 'standard', 'roles': ['arch', 'quality', 'security'],
+                             'second_opinion': {'role': 'quality', 'runtime': 'codex', 'model': 'm1'}}}}
+    records = {}
+    for gate in ('arch', 'quality', 'security', 'quality@codex'):
+        path = decisions / f'gate-9-{gate.replace("@", "-")}.md'
+        if gate == 'quality@codex':
+            path.write_text(text or evidence())
+        records[f'9:{gate}:initial'] = {
+            'item': '9', 'role': gate, 'round': 'initial', 'verdict': 'PASS', 'head': SHA,
+            'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    return records, items
+
+
+def test_recorded_second_opinion_is_a_required_gate(gates):
+    root, _, decisions = gates
+    records, items = second_opinion_records(root, decisions)
+    assert policy()._recorded_gates(root, SHA, records, '9', items) == (0, '')
+    missing = {key: value for key, value in records.items() if '@' not in key}
+    code, reason = policy()._recorded_gates(root, SHA, missing, '9', items)
+    assert code == 1 and 'quality@codex' in reason
+    fix = evidence(SHA, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n'
+    (decisions / 'gate-9-quality-codex-delta.md').write_text(fix)
+    records, items = second_opinion_records(root, decisions, fix)
+    records['9:quality@codex:initial'].update(verdict='FIX', blocks=True)
+    records['9:quality@codex:delta'] = {
+        'item': '9', 'role': 'quality@codex', 'round': 'delta', 'verdict': 'FIX', 'head': SHA,
+        'file': str((decisions / 'gate-9-quality-codex-delta.md').relative_to(root)),
+        'blocks': True, 'notes': []}
+    code, reason = policy()._recorded_gates(root, SHA, records, '9', items)
+    assert code == 1 and 'quality@codex' in reason
+
+
+def test_second_opinion_verdict_is_linted_as_quality(gates):
+    root, _, decisions = gates
+    records, items = second_opinion_records(
+        root, decisions, evidence().replace('Simplicity: checked\nDesign: checked\n', ''))
+    with pytest.raises(ValueError, match='quality@codex verdict'):
+        policy()._recorded_gates(root, SHA, records, '9', items)
+
+
+def test_recorded_gates_after_more_than_one_fix_round(gates):
+    # #623: a later round moves a gate's delta record to initial; only round-one heads must agree.
+    root, _, decisions = gates
+
+    def row(role, round_name, verdict, head, name=None):
+        path = decisions / f'gate-9-{name or role}.md'
+        path.write_text(evidence(head, verdict))
+        return {'item': '9', 'role': role, 'round': round_name, 'verdict': verdict, 'head': head,
+                'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    records = {'9:arch:initial': row('arch', 'initial', 'PASS', BASE),
+               '9:security:initial': row('security', 'initial', 'PASS', BASE),
+               '9:quality:round1': row('quality', 'initial', 'FIX', BASE, 'quality-1'),
+               '9:quality:initial': row('quality', 'delta', 'FIX', 'd' * 40, 'quality-2'),
+               '9:quality:delta': row('quality', 'delta', 'PASS', SHA)}
+    assert policy()._recorded_gates(root, SHA, records, '9') == (0, '')
+    moved = {f'9:{role}:{key}': row(role, 'delta', verdict, head, f'{role}-{key}')
+             for role, head in (('arch', 'd' * 40), ('quality', 'e' * 40), ('security', 'f' * 40))
+             for key, verdict, head in (('initial', 'FIX', head), ('delta', 'PASS', SHA))}
+    assert policy()._recorded_gates(root, SHA, moved, '9') == (0, '')
+    records['9:quality:initial'] = row('quality', 'initial', 'FIX', 'd' * 40, 'quality-2')
+    with pytest.raises(ValueError, match='initial gate verdicts disagree on HEAD'):
+        policy()._recorded_gates(root, SHA, records, '9')
+
+
+def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
+    # #723: every gate passed at BASE, the polish round moved HEAD and quality re-checked it.
+    from wuwei import state
+    root, fake, decisions = gates
+    new_head = 'c' * 40
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(BASE))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial', 'verdict': 'PASS',
+            'head': BASE, 'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    reason = policy()._recorded_gates(root, new_head, records, '9')[1]
+    assert all(role in reason for role in ('arch', 'quality', 'security'))
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head))
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    fake.results['head'] = Result(0, {'sha': new_head})
+    assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+    code, reason = policy()._recorded_gates(root, 'd' * 40, records, '9')
+    assert code == 1 and 'quality' in reason and 'arch' not in reason and 'security' not in reason
+

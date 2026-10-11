@@ -168,12 +168,13 @@ def reads_honeytoken(payload, root, data):
         raise ValueError(f'invalid shell tool input; {DAMAGED}')
     readers = ('cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'sed', 'awk', 'cp', 'dd',
                'base64', 'strings', 'od', 'xxd', 'hexdump')
-    if not shell.mentions(script, (*readers, target.name)):
+    words = r'(?<![\w.-])(?:' + '|'.join(map(re.escape, (*readers, target.name))) + r')(?![\w.-])'
+    if not re.search(words, re.sub(r'''['"\\]''', '', script)):
         return False
     try:
         commands = shell.normalize(script, protected=readers)
     except shell.ParseError:
-        if shell.mentions(script, (target.name,)):
+        if target.name in script:
             raise ValueError('cannot inspect honeytoken read; run the read as a plain command with a literal path') from None
         return False
     # ponytail: flattened shell groups retain possible directories conservatively.

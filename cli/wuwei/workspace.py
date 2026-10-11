@@ -801,7 +801,7 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
 
 def adopt_worktree(root, item, path, vcs):
     """Register an existing clean linked worktree of a configured repository as the item's (#510)."""
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     from wuwei.registry import data
     from wuwei import sessions, state
 

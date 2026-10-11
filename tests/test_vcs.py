@@ -495,7 +495,7 @@ def test_invariant_push_identity_reads_only_unpublished_commits(tmp_path, monkey
     # #616 (proposed design 9.2 I25): a commit any remote-tracking ref reaches is already
     # published, so the push identity check reads only the commits no remote has.
     import os
-    from wuwei.guards.commit_push import push_check
+    from wuwei.commit_push import push_check
     for key in list(os.environ):
         if key.startswith('GIT_'):
             monkeypatch.delenv(key)

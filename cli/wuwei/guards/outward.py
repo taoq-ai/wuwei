@@ -1,4 +1,4 @@
-"""Outward sends: an exact tool allowlist, the owner's own surfaces and the lint (#838)."""
+"""Outward sends: the MCP resolution guards/edges.check_send shares, and the lint (#838)."""
 
 import json
 import os
@@ -131,10 +131,6 @@ def refusal(tool, channel, inputs, config):
     return NOT_ALLOWED.format(tool=tool, surface=surface)
 
 
-def check_send(payload):
-    return _check(payload, send=True)
-
-
 def check_lint(payload):
     return _check(payload, send=False)
 
@@ -155,7 +151,7 @@ def _check(payload, send):
                         commands = shell.normalize(payload['tool_input']['command'])
                     except shell.ParseError:
                         pass
-                # Only scripts entirely parsed as gh are covered by the PR guard.
+                # Only scripts entirely parsed as gh are covered by the edges gh body scan.
                 if not commands or not all(command.argv and Path(command.argv[0]).name == 'gh'
                                            for command in commands):
                     code, reason = security.outbound(payload.get('tool_input'), scope)
@@ -225,5 +221,4 @@ def _check(payload, send):
         return UNRUN, outward.UNREADABLE
 
 
-GUARDS = [Guard('PreToolUse', None, check_send),
-          Guard('PreToolUse', None, check_lint, profile_relaxable=True)]
+GUARDS = [Guard('PreToolUse', None, check_lint, profile_relaxable=True)]

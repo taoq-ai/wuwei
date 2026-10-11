@@ -17,7 +17,8 @@ pytest is a development dependency only. External tools (`git`, `gh`, `ziran`, `
 Every guard, sweep and adapter call returns `0` clean, `1` findings, `2` could not run.
 Exit 2 blocks exactly like exit 1 and prints why. An error inside a guard is exit 2. An
 absent adapter or scanner reports "unmeasured" and is never counted as clean. A read that
-returns an error body is never parsed as data.
+returns an error body is never parsed as data. A Bash call a guard cannot read is the one exit 2 that is
+logged, not blocked (#839).
 
 ### III. One behaviour, one function, one test
 
@@ -107,4 +108,4 @@ recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 2.2.1 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11
+**Version**: 2.3.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11

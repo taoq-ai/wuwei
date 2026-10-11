@@ -102,7 +102,7 @@ def _signature(failures):
 def _repo(root, tree, config):
     repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
     if repo is None:
-        from wuwei.guards.commit_push import context
+        from wuwei.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
     return repo  # #600, #832: no fast checks is a state; CI and the gates are the evidence
 

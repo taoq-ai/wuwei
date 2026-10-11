@@ -56,10 +56,10 @@ def test_launcher_and_irrelevant_script_pass(workspace, where, monkeypatch, caps
 
 
 @pytest.mark.parametrize('where', ['.', 'worktrees/ITEM-1'])
-def test_force_push_script_is_refused(workspace, where, monkeypatch, capsys):
+def test_force_push_script_is_not_read(workspace, where, monkeypatch, capsys):
+    # #839: a script's text is a ceiling the code host's protected refs hold (design 9.1).
     root, _ = workspace
     cwd = root / where
     (cwd / 'push.sh').write_text('git push --force origin main\n')
     (cwd / 'push.sh').chmod(0o755)
-    code, output = hook(cwd, './push.sh', monkeypatch, capsys)
-    assert code == 2 and output['permissionDecision'] == 'deny'
+    assert hook(cwd, './push.sh', monkeypatch, capsys)[0] == 0

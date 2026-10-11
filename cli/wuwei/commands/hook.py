@@ -114,13 +114,16 @@ def run(args):
             refusals.append((guard.check, message, code))
         elif message:
             context.append(message)
-    # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
+    # #362: the most specific refusal first: a finding before a could-not-run.
     if args.event != 'SessionStart':
-        refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
+        refusals.sort(key=lambda row: row[2])
     enforced, warned = [(module(check), message, code) for check, message, code in refusals], []
-    if (refusals and args.event != 'SessionStart'
-            and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = enforce(payload, refusals, root, warned)
+    if refusals and args.event != 'SessionStart':
+        if payload.get('session_id') != HEARTBEAT_SESSION:
+            enforced = enforce(payload, refusals, root, warned)
+        else:  # #839: the probes measure walls; a call a guard could not read is never one
+            from wuwei.shell import UNPARSED
+            enforced = [row for row in enforced if row[1] != UNPARSED]
     reasons = [message for _, message, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
@@ -130,15 +133,6 @@ def run(args):
         if reasons:
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
-    if reasons and args.event == 'PreToolUse' and payload.get('tool_name') == 'Bash':
-        from wuwei.shell import constructed  # #671: only once a Bash call is refused
-        inputs = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
-        try:
-            runs = constructed(str(inputs.get('command', '')))
-        except Exception:  # the refusal stands without the name
-            runs = ''
-        if runs:
-            reasons[0] += f'\nresolved: {runs}'
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
@@ -271,10 +265,6 @@ def module(check):
     return check.__module__.rsplit('.', 1)[-1]
 
 
-# Modules whose could-not-run on an opaque Bash call naming no publish target only warns (#530).
-PUBLISH = ('commit_push', 'deploy', 'pr', 'stop')
-
-
 def enforce(payload, refusals, root, warned=None):
     """#837: per refusal, block when guards.enforce is on (unless the B5 lead call keeps it
     logging) or the refusal is on the floor; else record guard.would_refuse and let the call
@@ -289,36 +279,17 @@ def enforce(payload, refusals, root, warned=None):
         on = config['guards']['enforce']
     except BaseException:
         return [(module(check), reason, code) for check, reason, code in refusals]
-    from wuwei.shell import UNKNOWN_GIT, UNPARSED, WORKSPACE_ROOT
-    enforced, shown, seen, opaque = [], None, set(), None
-
-    def opaque_reason():
-        """#530: what the guards could not read in a call naming no publish target, else ''."""
-        try:
-            from wuwei import shell
-            from wuwei.guards import deploy
-            command, cwd = payload['tool_input']['command'], payload['cwd']
-            what = shell.unreadable(command, cwd)
-            if not what or deploy.floor_named(command + '\n' + (shell.script_text(command, cwd) or ''), config):
-                return ''
-            return f'opaque: {what}; the guards could not read it, so it ran with this warning'
-        except Exception:  # fail closed: the refusal stands
-            return ''
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    enforced, shown, seen = [], None, set()
     for check, reason, code in refusals:
         guard = module(check)
         blocks = floor(check, reason) or on and not logs(check, reason)
-        # #347, #470: decided by the reason; only deploy says unknown git
-        if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
+        # #347, #839: a call a guard could not read is logged once, never refused.
+        if reason in (UNPARSED, WORKSPACE_ROOT):
             if reason in seen:
                 continue
             seen.add(reason)
             blocks = False
-        elif (guard in PUBLISH and code == UNRUN and payload.get('tool_name') == 'Bash'
-              and (opaque := opaque_reason() if opaque is None else opaque)):
-            if opaque in seen or UNPARSED in seen:
-                continue
-            seen.update((opaque, UNPARSED))
-            reason, blocks = opaque, False
         if blocks:
             enforced.append((guard, reason, code))
             continue

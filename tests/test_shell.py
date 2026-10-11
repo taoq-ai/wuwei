@@ -47,42 +47,6 @@ def test_parse_error(script):
         normalize(script)
 
 
-@pytest.mark.parametrize('script,opaque', [
-    ('''python -c 'import os; os.system("git push")' ''', True),
-    ('''python3 -c 'run("gh pr merge 1")' ''', True),
-    ('''python3 -c 'print("gh pr merge 1")' ''', True),  # #671: a gh word keeps #643's reader opaque
-    ('''/usr/bin/python3 -I -c 'run("git push")' ''', True),
-    ('''node -e 'run("git push")' ''', True),
-    ('''perl -e 'system("gh pr merge")' ''', True),
-    ('''ruby -e 'system("git push")' ''', True),
-    ('''env X=y bash -c 'python3 -c "run(\\\"git push\\\")"' ''', True),
-    ('''python -c 'print("legit text")' ''', False),
-    ('''python3 -c 'print("github")' ''', False),
-    ('''echo 'python -c git push' ''', False),  # #671: an echo argument is text
-    ('git push', False),
-])
-def test_opaque_interpreter(script, opaque):
-    from wuwei.shell import ParseError, is_opaque, normalize
-    if opaque:
-        with pytest.raises(ParseError):
-            normalize(script)
-    else:
-        assert not any(is_opaque(item.argv) for item in normalize(script))
-
-
-@pytest.mark.parametrize('argv', [
-    ['python3', '-cimport os; os.system("git push")'],
-    ['python3', '-Ic', 'run("gh pr merge")'],
-    ['node', '--eval', 'run("git push")'],
-    ['node', '-e', 'safe()', '-e', 'run("git push")'],
-    ['perl', '-we', 'system("git push")'],
-    ['ruby', '-esystem("gh pr merge")'],
-])
-def test_opaque_attached_combined_and_repeated_options(argv):
-    from wuwei.shell import is_opaque
-    assert is_opaque(argv)
-
-
 @pytest.mark.parametrize('script', [
     '''X='; git push'; bash -c "echo $X"''',
     '''env X='; git push' bash -c "echo ${X}"''',
@@ -151,16 +115,6 @@ def test_dynamic_launcher_fails_closed(script):
         normalize(script)
 
 
-@pytest.mark.parametrize('argv', [
-    ['watch', 'git', 'push', '-f'], ['parallel', 'git', 'push', ':::', '1'],
-    ['unknown-launcher', '/usr/bin/gh', 'pr', 'merge'],
-    ['git', '-c', 'x=y', 'git'],
-])
-def test_later_guarded_word_is_opaque(argv):
-    from wuwei.shell import is_opaque
-    assert is_opaque(argv)
-
-
 @pytest.mark.parametrize('script,envs', [
     ('env VAR=x git status', [{'VAR': 'x'}]),
     ("A=outer env B=two sh -c 'A=inner git status; git push' | cat",
@@ -193,22 +147,6 @@ def test_argument_expansion_fails_closed(script):
 def test_literal_dollar_is_not_expansion(script, word):
     from wuwei.shell import normalize
     assert normalize(script)[0].argv[-1] == word
-
-
-@pytest.mark.parametrize('script', [
-    """python3 -c "subprocess.run(['git','push','-f'])" """,
-    """perl -e 'system("git","push")' """,
-    """python3 -c "os.system('git\tpush')" """,
-    """python3.12 -c 'run("git")' """, """pypy3.11 -c 'run("gh")' """,
-    """perl -E 'system("git")' """, """node -p 'run("git")' """,
-    """php -r 'run("git")' """, """lua -e 'run("git")' """,
-])
-def test_opaque_interpreter_variants(script):
-    import shlex
-    from wuwei.shell import ParseError, is_opaque, normalize
-    assert is_opaque(shlex.split(script))
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('script', [
@@ -268,13 +206,6 @@ def test_background_command_has_subshell_scope():
         (['cd', '/tmp'], True), (['git', 'push'], False)]
 
 
-def test_opaque_combined_node_eval_print():
-    from wuwei.shell import ParseError, is_opaque, normalize
-    assert is_opaque(["node", "-pe", 'run("git")'])
-    with pytest.raises(ParseError):
-        normalize("""node -pe 'run("git")'""")
-
-
 @pytest.mark.parametrize('script', [
     # D1: expansions anywhere in guarded words, including the program word.
     'git {push,status}', 'gh pr {merge,list}', 'git p*sh -f', 'git p?sh -f',
@@ -308,20 +239,6 @@ def test_unaccounted_guarded_mentions_fail_closed(script):
         normalize(script)
 
 
-@pytest.mark.parametrize('argv,expected', [
-    (['python3'], True), (['python3', '-I'], True), (['python3', '-'], True),
-    (['node'], True), (['perl', '-w'], True), (['ruby', '-'], True),
-    (['php'], True), (['lua', '-'], True),
-    (['python3', '-m', 'pytest', '-q'], True), (['node', '-v'], True),
-    (['python3', '--version'], True),
-    (['python3', 'script.py'], False), (['node', 'script.js'], False),
-    (['python3', '-c', 'print(1)'], False), (['node', '-e', 'safe()'], False),
-])
-def test_interpreter_stdin_is_opaque(argv, expected):
-    from wuwei.shell import is_opaque
-    assert is_opaque(argv) is expected
-
-
 @pytest.mark.parametrize('script,word', [
     ("git commit -m '{git gh} * ? [ $ `literal`'", '{git gh} * ? [ $ `literal`'),
     ('gh pr list --search "{git gh} * ? ["', '{git gh} * ? ['),
@@ -342,15 +259,6 @@ def test_unwrap_cannot_discard_mentions(script):
     from wuwei.shell import ParseError, normalize
     with pytest.raises(ParseError):
         normalize(script)
-
-
-@pytest.mark.parametrize('argv', [
-    ['python3', '-', 'argument'], ['python3', '-W', 'ignore'],
-    ['python3', '-Werror'], ['node', '--require', 'module'],
-])
-def test_interpreter_options_do_not_imply_a_script(argv):
-    from wuwei.shell import is_opaque
-    assert is_opaque(argv)
 
 
 @pytest.mark.parametrize('script', [
@@ -503,219 +411,6 @@ def test_writer_globs_are_left_for_guard_expansion(script):
     assert normalize(script)[0].argv == script.split()
 
 
-@pytest.mark.parametrize('kind', ['binary', 'large', 'directory', 'fifo', 'missing', 'unreadable'])
-def test_script_text_skips_unreadable_or_non_script_files(tmp_path, monkeypatch, kind):
-    import os
-    from pathlib import Path
-    from wuwei.shell import script_text
-
-    path = tmp_path / 'run.sh'
-    if kind == 'directory':
-        path.mkdir()
-    elif kind == 'fifo':
-        os.mkfifo(path)
-    elif kind != 'missing':
-        path.write_bytes(b'\xff\x00' if kind == 'binary' else b'x' * (65537 if kind == 'large' else 1))
-    if kind == 'unreadable':
-        def denied(*args, **kwargs):
-            raise PermissionError('unreadable script')
-        monkeypatch.setattr(Path, 'open', denied)
-    assert script_text('./run.sh', tmp_path) is None
-
-
-LAUNCHER = __import__('pathlib').Path(__file__).resolve().parents[1] / 'bin/wuwei'
-
-
-@pytest.mark.parametrize('text,expected', [
-    ('x=$(pwd)\n', False), (LAUNCHER.read_text(), False),
-    ('git push --force origin main\n', True), ('g"i"t push', True), ('\\git push', True),
-    ('echo `git push`', True), ("$'\\x67it' push", False),
-])
-def test_script_mentions_judges_literal_tokens(text, expected):
-    from wuwei.shell import mentions
-    assert mentions(text, {'git', 'gh'}, script=True) is expected
-
-
-@pytest.mark.parametrize('text, expected', [
-    ('x=$(pwd)', False),
-    ('x=$(pwd); echo $x', False),
-    ('x="$(pwd)"; echo "$x"', False),
-    ('x=$y', False),
-    ('X=$(pwd) make test', False),
-    ('x=$(pwd); $x push', True),
-    ('x=$(pwd) $cmd', True),
-    ('a=gi; x=$(pwd) ${a}t push', True),
-    ('x=$(git rev-parse HEAD)', True),
-    ('x=$(pwd) && git push', True),
-    ('$DEST push', True),
-])
-def test_command_mentions_skips_assignment_words(text, expected):
-    from wuwei.shell import mentions
-    assert mentions(text, {'git', 'gh'}) is expected
-
-
-def test_command_mentions_skips_assignment_for_any_names():
-    from wuwei.shell import mentions
-    assert mentions('x=$(pwd); echo $x', {'push', 'commit'}) is False
-
-
-@pytest.mark.parametrize('text, expected', [
-    ('for r in a b; do git -C $r remote get-url origin; done', False),
-    ('git -C "$r" status', False),
-    ('git -C$r status', False),
-    ('gh -R $r issue list', False),
-    ('gh --repo $r issue list', False),
-    ('gh --repo=$r issue list', False),
-    ('git --git-dir $d log -1', False),
-    ('git --work-tree=$w status', False),
-    ('git -C "$(cat repo.txt)" log -1 | head -5', False),
-    ('git "$VERB" origin main', True),
-    ('git -C $r $VERB', True),
-    ('git -C "a b" "$VERB" origin main', True),
-    ('git -c "x.y=a;b" "$VERB" origin main', True),
-    ('git -c $cfg status', True),
-    ('git log $ref', True),
-    ('git p* -f origin main', True),
-    ("sh -c 'git $VERB origin main'", True),
-    ('git status; sh -c "$CMD"', True),
-    ('for r in */; do git -C $r status; done', True),
-    ('read v < f; git -C -C $v origin main', True),
-    ('read v < f; git --work-tree -C $v origin main', True),
-    ('read v < f; git --git-dir -C $v origin main', True),
-    ('git -C a -C $r status', False),
-])
-def test_command_mentions_ignores_directory_values(text, expected):
-    from wuwei.shell import mentions
-    assert mentions(text, {'push', 'commit'}) is expected
-
-
-def test_is_opaque_stdin():
-    from wuwei.shell import is_opaque
-    assert is_opaque(['python3', '-m', 'pytest', '-q']) is True
-    assert is_opaque(['python3']) is True
-    assert is_opaque(['python3', '-m', 'pytest', '-q'], stdin=False) is False
-    assert is_opaque(['python3'], stdin=False) is False
-    assert is_opaque(['python3', '-c', 'import os; os.system("git push")'], stdin=False)
-    assert is_opaque(['xargs', 'git', 'push'], stdin=False)
-    assert is_opaque(['node', '-e', 'run("gh pr merge 1")'], stdin=False)
-
-
-def _launcher_workspace(tmp_path, monkeypatch, record=True):
-    import shutil
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    root = tmp_path / 'workspace'
-    (root / '.wuwei').mkdir(parents=True)
-    (root / 'worktrees/ITEM-1').mkdir(parents=True)
-    recorded = tmp_path / 'previous-plugin/bin/wuwei'
-    other = tmp_path / 'other/bin/wuwei'
-    for copy in (recorded, other):
-        copy.parent.mkdir(parents=True)
-        shutil.copy(LAUNCHER, copy)
-    if record:
-        (root / '.wuwei/executable').write_text(f'{recorded}\n')
-    return root, recorded, other
-
-
-@pytest.mark.parametrize('where', ['.', 'worktrees/ITEM-1'])
-def test_script_path_treats_launcher_as_cli(tmp_path, monkeypatch, where):
-    from wuwei.shell import script_path
-    root, recorded, other = _launcher_workspace(tmp_path, monkeypatch)
-    cwd = root / where
-    for raw in (f'{LAUNCHER} state get', f'sh {LAUNCHER} state get', f'{recorded} build check ITEM-1'):
-        assert script_path(raw, cwd) is None, raw
-    assert script_path(f'{other} state get', cwd) == other
-
-
-def test_script_path_without_pointer_reads_copy(tmp_path, monkeypatch):
-    from wuwei.shell import script_path
-    root, recorded, _ = _launcher_workspace(tmp_path, monkeypatch, record=False)
-    assert script_path(f'{recorded} state get', root) == recorded
-
-
-# Issue #347: (readonly, publishes, inline, written names .wuwei).
-CLASSIFY = [
-    ('cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done', (True, False, False, False)),
-    ('ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml', (True, False, False, False)),
-    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check',
-     (False, False, False, False)),
-    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
-     'print(open("config.toml").read())\'', (False, False, True, False)),
-    ('mkdir -p ../scratch && cd ../scratch && ls', (False, False, False, False)),
-    ('for r in a b; do git -C $r push origin main; done', (False, True, False, False)),
-    ('x=$(git push origin main)', (False, True, False, False)),
-    ('G=git; $G push origin main', (False, True, False, False)),
-    ('G=git; $G config core.hooksPath x', (False, True, False, False)),
-    ('W=cat; for W in gh; do $W pr merge 1; done', (False, True, False, False)),
-    ('echo x > .wuwei/days/d/state.json', (False, False, False, True)),
-    ('for r in a; do echo x > .wuwei/days/d/state.json; done', (False, False, False, True)),
-    ('echo x > .wuwei/days/$(date +%F)/state.json', (False, False, False, True)),
-    ('echo x | tee $(ls -d .wuwei/days/d)/state.json', (False, False, False, True)),
-    ('T="tee .wuwei/days/d/state.json"; echo x | $T', (False, False, False, True)),
-    ('python3 -c \'open(".wuwei/days/d/state.json", "w")\'', (False, False, True, True)),
-    ('$x push origin main', (False, True, False, False)),
-    ('${TOOL} ${VERB} -f', (False, True, False, False)),
-    ('$DEPLOY apply', (False, True, False, False)),
-    ('timeout 5 git push origin main', (False, True, False, False)),
-    (r'find . -exec git push \;',(False, True, False, False)),
-    ("sh -c 'for r in a; do git push; done'", (False, True, False, False)),
-    ('for r in a b; do git -C $r log -1; done', (False, False, False, False)),
-    ('for r in a b; do git -C $r config core.hooksPath x; done', (False, True, False, False)),
-    ('for r in a b; do git -C $r p; done', (False, True, False, False)),
-    ('echo "unterminated', (False, True, False, False)),
-    ('for f in *.py; do wc -l $f; done', (True, False, False, False)),
-    ('sed -n 1,40p x', (True, False, False, False)),
-    ('sed -i s/a/b/ x', (False, False, False, False)),
-    ('cat cmds.txt | xargs git', (False, True, False, False)),
-    ('echo "gh pr merge 17"', (True, False, False, False)),
-    ('grep -n "git push" notes.md', (True, False, False, False)),
-    ('git show HEAD:d.py | python3', (False, True, False, False)),
-    ("python3 - <<'PYEOF'\nimport subprocess\nsubprocess.run(['gh', 'pr', 'merge'])\nPYEOF\n",
-     (False, True, True, False)),
-    ("cat <<'EOF' | bash\nls\nEOF\n", (False, True, False, False)),
-    ('cat <<EOF\n$(git push)\nEOF\n', (False, True, False, False)),
-    ('cat x | sh', (False, True, False, False)),
-    ('eval ls', (False, True, False, False)),
-    ('cat `ls`', (True, False, False, False)),
-    ('find . -name x -delete', (False, False, False, False)),
-    # #616: checksum tools only read their operands and print digests.
-    *((f'{tool} .wuwei/days/d/decisions/gate-a-quality.md', (True, False, False, False))
-      for tool in ('shasum -a 256', 'sha1sum', 'sha256sum', 'sha512sum', 'md5sum', 'cksum')),
-    ('shasum x > .wuwei/days/d/state.json', (False, False, False, True)),
-]
-
-
-@pytest.mark.parametrize('command, expected', CLASSIFY)
-def test_classify_table(command, expected):
-    from wuwei.shell import classify
-    shape = classify(command)
-    assert (shape.readonly, shape.publishes, shape.inline, '.wuwei' in shape.written) == expected
-
-
-def test_classify_deploy_publishers():
-    from wuwei.shell import classify
-    assert classify('for r in a; do kubectl apply -f $r; done', ('kubectl',)).publishes
-    assert not classify('for r in a; do kubectl apply -f $r; done').publishes
-
-
-@pytest.mark.parametrize('command, readonly', [
-    ('cd .wuwei; for f in days/d/decisions/D-*.md; do echo "### $f"; cat $f; done; '
-     'cat days/d/state.json', True),
-    ('for f in a; do echo $f; done | grep x', True),
-    ('for f in a; do cat .wuwei/days/d/state.json | python3 -m json.tool; done', True),
-    ("echo 'echo x > .wuwei/days/d/state.json' | sh", False),
-    ("for i in 1; do echo 'echo x > .wuwei/days/d/state.json'; done | sh", False),
-    ('echo .wuwei/config.toml | bash -s', False),
-])
-def test_issue_470_echo_and_pipes(command, readonly):
-    # #470: echo is a read word; text piped into a non-read command counts as written.
-    from wuwei.shell import classify, unread
-    shape = classify(command)
-    if readonly:
-        assert shape.readonly and unread(command) == (0, '')
-    else:
-        assert not shape.readonly and '.wuwei' in shape.written
-
-
 def _git_kind_cases():
     from wuwei import shell
     forms = [(['branch'], 'read'), (['tag'], 'read'), (['remote'], 'read'),
@@ -774,34 +469,6 @@ def test_issue_470_git_tables():
     assert [verb for verb in deploy_main if git_kind([verb]) == 'unknown'] == []
 
 
-@pytest.mark.parametrize('command, expected', [
-    ('ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml', (0, '')),
-    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
-    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
-     'print(open("config.toml").read())\'', 'unparsed'),
-    ('for r in a b; do git -C $r push origin main; done', None),
-    ('python3 -m pytest -q && git status', None),
-])
-def test_unread_table(command, expected):
-    from wuwei.shell import UNPARSED, unread
-    assert unread(command) == ((2, UNPARSED) if expected == 'unparsed' else expected)
-
-
-@pytest.mark.parametrize('command,expected', [
-    ('bash loop.sh', 'script loop.sh'), ('./loop.sh', 'script loop.sh'),
-    ('gh pr view $(git rev-parse --abbrev-ref HEAD)', 'command substitution is unsupported'),
-    ("python3 -c 'print(1)'", 'inline interpreter code'),
-    ('''python3 -c "print(['gh','pr','view'])"''', 'inline interpreter code'),
-    ("python3 - <<'EOF'\nprint(1)\nEOF", 'inline interpreter code'),
-    ('cat x | python3', 'python3 code from input'),
-    ('gh pr view 7', ''), ('git status', ''), ('npm test', ''),
-])
-def test_unreadable_names_what_a_guard_cannot_read(tmp_path, command, expected):
-    # #530: the opaque warning names what the guards could not read.
-    from wuwei import shell
-    assert shell.unreadable(command, tmp_path) == expected
-
-
 @pytest.mark.parametrize('script', [
     'git</dev/null push origin main', 'git>/tmp/x push origin main',
     'gh</dev/null pr merge 1 --admin', 'git;/bin/true', '/usr/bin/git push', 'git-push',
@@ -857,16 +524,6 @@ _READ_643 = "import json,sys; print(json.load(open('.wuwei/state.json'))['day'])
 def test_issue_643_snippet_write(argv, expected):
     from wuwei import shell
     assert shell.snippet_write(argv) == expected
-@pytest.mark.parametrize('raw,names,expected', [
-    ('gi\\\nt push', ('git',), True), ('g\\\nh pr merge 5', ('gh',), True),
-    ('sh -c "g\\\nit push"', ('git',), True), ('echo hi', ('git',), False),
-])
-def test_mentions_joins_line_continuations(raw, names, expected):
-    # #671: the shell joins backslash-newline before it reads the program name.
-    from wuwei.shell import mentions
-    assert mentions(raw, names) is expected
-
-
 @pytest.mark.parametrize('script,expected', [
     ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
      "Raise the PR with gh pr create; then git push.\nEOF", [['cat']]),
@@ -918,31 +575,6 @@ def test_split_word_in_eval_or_shell_is_its_value(script):
     assert [item.argv for item in normalize(script)] == [['echo', 'github']]
 
 
-@pytest.mark.parametrize('script,expected', [
-    ('g""it push', 'git push'), ('sh -c "gi""t push"', 'git push'),
-    ('x=git; $x push', 'git push'), ('x=gi; ${x}t push', 'git push'),
-    ('g\\\nh pr merge 5 --admin', 'gh pr merge'),
-    ('git push', ''), ('/usr/bin/git push', ''), ('echo "git push"', ''),
-    ('$(printf git) push', ''), ('ls', ''),
-])
-def test_constructed_names_the_command(script, expected):
-    # #671: the git or gh command a call builds without spelling it; never a variable's value.
-    from wuwei.shell import constructed
-    assert constructed(script) == expected
-
-
-def test_constructed_variable_takes_one_value_per_call():
-    # #671 review F1: a repeated variable is one value, and the enumeration is capped.
-    import time
-    from wuwei.shell import constructed
-    assert constructed('x=gi; x=t; $x$x push') == ''
-    start = time.monotonic()
-    constructed('c=x; c=y; c=z; c=; a=gi; b=t; ' + '$c' * 30 + '$a$b push')
-    constructed('a=1; a=2; b=1; b=2; c=1; c=2; d=1; d=2; e=1; e=2; f=1; f=2; g=1; g=2; '
-                + '$a$b$c$d$e$f$g push')
-    assert time.monotonic() - start < 1
-
-
 @pytest.mark.parametrize('script', [
     "echo '[alias] x = !git push' >> .git/config",
     "cat > .git/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
@@ -953,12 +585,6 @@ def test_reader_text_written_under_git_dir_is_not_data(script):
     from wuwei.shell import ParseError, normalize
     with pytest.raises(ParseError):
         normalize(script)
-
-
-def test_named_command_is_not_unreadable():
-    from wuwei.shell import unreadable
-    assert unreadable('x=git; $x push') == ''
-    assert unreadable('$(printf git) push') != ''
 
 
 @pytest.mark.parametrize('text, expected', [
@@ -1001,29 +627,6 @@ def test_issue_730_refusal_names_the_word_and_stage():
     with pytest.raises(shell.ParseError) as error:
         shell.normalize('$y foo')
     assert '$y' in str(error.value) and 'in stage $y foo' in str(error.value)
-
-
-def test_issue_730_mentions_judges_a_resolved_variable_by_its_value():
-    from wuwei.shell import mentions
-    assert not mentions('x=bin/wuwei; $x state set a b', ('git', 'gh', 'rm'))
-    assert mentions('G=git; $G push origin main', ('git', 'gh'))
-    assert mentions('$x push', ('git',))
-    assert mentions('ls; x=bin/wuwei; $x push', ('git',))
-
-
-@pytest.mark.parametrize('command', [
-    'x=gi; x+=t; $x push origin main', 'x=ls; read x < f; $x push origin main',
-    'x=ls; getopts g x; $x push origin main',
-    # A name built by expansion is no bare word; a later variable-writing builtin makes x opaque.
-    'x=ls; n=xx; read ${n%?} < f; $x push origin main',
-    'x=ls; n=xx; v=gi; printf -v ${n%?} %st $v; $x push origin main',
-    'x=ls; n=xx; mapfile -t ${n%?} < f; $x push origin main',
-    'c=read x=ls n=xx; $c ${n%?} < f; $x push origin main', 'x=ls; . ./f; $x push origin main'])
-def test_issue_730_a_variable_changed_after_its_assignment_is_not_resolved(command):
-    from wuwei import shell
-    assert shell.mentions(command, ('git',))
-    with pytest.raises(shell.ParseError):
-        shell.normalize(command)
 
 
 def test_reads_knows_no_cli_command():
