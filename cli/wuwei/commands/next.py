@@ -401,6 +401,11 @@ def resolve(row, root):
                         action['command'], item=item)  # #732: the command that answers it
         if action['action'] == 'raise':
             return _shepherd(root, item, action['notes'], row['why'])
+        if action['action'] == 'polish':  # #723
+            return _row('polish', f"{item}: every gate passed with {len(action['notes'])} review "
+                        'note(s); one polish round fixes them before the PR.', action['command'],
+                        item=item, then=f"Run the command, or run {action['skip']} instead when the "
+                        'notes are not small fixes inside the item; then run wuwei next.')
         return {**keep, **action, 'why': row['why'], 'then': THEN['set']}
     if name == 'dispatch':
         from wuwei import dispatch

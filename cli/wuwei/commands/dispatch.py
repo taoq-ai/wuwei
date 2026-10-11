@@ -19,6 +19,8 @@ def register(subparsers):
     receive.add_argument('name')
     receive.add_argument('--round', choices=('initial', 'delta'), default='initial')
     actions.add_parser('opinion').add_argument('item')
+    actions.add_parser('polish').add_argument('item')  # #723
+    actions.add_parser('skip-polish').add_argument('item')
     discovery = actions.add_parser('discovery')
     discovery.add_argument('trigger', choices=('sweep', 'seat-free'))
     parser.set_defaults(func=run)
@@ -39,6 +41,10 @@ def run(args):
             value = dispatch.next_step(args.item)
         elif args.action == 'opinion':
             value = dispatch.opinion(args.item)
+        elif args.action == 'polish':
+            value = dispatch.polish(args.item)
+        elif args.action == 'skip-polish':
+            value = dispatch.skip_polish(args.item)
         elif args.action == 'receive':
             value = dispatch.receive(args.item, args.role, args.name, args.round)
         else:

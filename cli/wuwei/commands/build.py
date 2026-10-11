@@ -273,8 +273,9 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     return action
 
 
-def open_fix(item, feedback, *, root):
-    """Resume the linked builder once with measured gate or PR feedback."""
+def open_fix(item, feedback, *, root, polish=None):
+    """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
+    item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
     from wuwei.security import agent_path
     if not isinstance(feedback, str) or not feedback.strip():
@@ -327,6 +328,10 @@ def open_fix(item, feedback, *, root):
             raise ValueError(f'build changed before fix round; run bin/wuwei build next {item} again')
         if phase == 'delta':
             dispatch.rotate(fresh, item, used)
+        if polish:
+            if fresh['items'][item].get('polish'):
+                raise ValueError(f'polish round already recorded for {item}; run bin/wuwei dispatch next {item}')
+            fresh['items'][item]['polish'] = polish
         fresh['items'][item]['phase'] = 'fix'
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
@@ -335,7 +340,8 @@ def open_fix(item, feedback, *, root):
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
     state._write_state(update, root, reserved=False, kind='build.fix_opened',
-                       payload={'item': item, 'round': used + 1, 'cap': cap})
+                       payload={'item': item, 'round': used + 1, 'cap': cap,
+                                **({'polish': True} if polish else {})})
     return next_action(item, brief, record['worktree'], root=root)
 
 

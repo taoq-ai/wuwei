@@ -262,3 +262,12 @@ def test_reader_inventory_detects_widened_allowlist(root, capsys, monkeypatch, s
         expected = 'seat launched'
     with pytest.raises(AssertionError, match=expected):
         test_reader_inventory_cannot_be_written_generically(root, capsys)
+
+
+def test_polish_record_and_skip_event_are_reserved(root):
+    # #723: the polish record names the re-check gate, so only dispatch writes it.
+    from wuwei.commands import event
+    assert event.EVENT_PRODUCERS['polish.skipped'] == 'wuwei dispatch skip-polish'
+    with pytest.raises(state.StateError,
+                       match='reserved; written by wuwei dispatch polish or wuwei dispatch skip-polish'):
+        state.set_state('items.A.polish', '{"status": "opened", "gate": "arch"}', root)

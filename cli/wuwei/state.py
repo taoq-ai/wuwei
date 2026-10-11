@@ -359,6 +359,7 @@ def _producer_error(parts):
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
                     'approved_as': 'wuwei plan approve or wuwei plan add',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
+                    'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
                     'docs': 'wuwei plan set or wuwei docs page',
                     'assumption': 'wuwei decision route --external or wuwei sweep',
                     'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(

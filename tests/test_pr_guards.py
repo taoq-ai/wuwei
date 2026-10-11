@@ -898,3 +898,29 @@ def test_continued_gh_name_is_judged_as_plain(case):
     # #671: a line continuation inside the program name cannot hide an admin merge.
     code, reason = guard().check(payload(case[0], 'g\\\nh pr merge 9 --admin'))
     assert (code, 'admin' in reason) == (1, True)
+
+
+def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(case):
+    # #723: every gate passed at OLD, the polish round moved HEAD and quality re-checked it.
+    from wuwei import state
+    root, fake, decisions = case
+    new_head = 'c' * 40
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(OLD))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial', 'verdict': 'PASS',
+            'head': OLD, 'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    reason = guard()._recorded_gates(root, new_head, records, '9')[1]
+    assert all(role in reason for role in ('arch', 'quality', 'security'))
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head))
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    fake.results['head'] = Result(0, {'sha': new_head})
+    assert guard().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+    code, reason = guard()._recorded_gates(root, 'd' * 40, records, '9')
+    assert code == 1 and 'quality' in reason and 'arch' not in reason and 'security' not in reason
