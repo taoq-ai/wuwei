@@ -552,3 +552,22 @@ def test_carried_item_shows_its_approval_once(root, capsys):
     write_state(root, {'items': {'old': {'goal': 'g', 'approved_as': 'owner: "a"'}}})
     state.append_event('state.import', {'items': ['old'], 'approved_items': []}, directory=day_of(root))
     assert why(capsys, 'old')[1].count('approved as: owner: "a"') == 1
+
+
+def test_item_chain_shows_the_planner_note_and_unbriefed_seats(root, capsys):
+    # #660: a launch's planner note, and an unbriefed seat's prompt, are part of the item's chain.
+    merged_item(root)
+    path = day_of(root) / 'state.json'
+    data = json.loads(path.read_text())
+    data['seats'] = {
+        'gate': {'role': 'sentinel-arch', 'item': 'fix-login', 'status': 'stopped',
+                 'planner_note': 'Planner note: watch the cache.'},
+        'plain': {'role': 'builder', 'item': 'fix-login', 'status': 'stopped'},
+        'adhoc-1': {'role': 'adhoc', 'item': 'fix-login', 'type': 'wuwei:sentinel-arch',
+                    'label': 'sentinel-arch', 'prompt': 'Review the login gate', 'status': 'running'}}
+    path.write_text(json.dumps(data))
+    for name in ('gate', 'plain', 'adhoc-1'):
+        state.append_event('seat launched', {'name': name, 'item': 'fix-login'}, directory=day_of(root))
+    expected = [BRIEF[0], 'seat gate (sentinel-arch): planner note: Planner note: watch the cache.',
+                'seat adhoc-1 (wuwei:sentinel-arch, unbriefed): prompt: Review the login gate', *BRIEF[1:]]
+    assert why(capsys, 'fix-login') == (0, expected, '')
