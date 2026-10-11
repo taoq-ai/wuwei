@@ -520,28 +520,8 @@ line (`wuwei status --line`, which names the running seats by role; `wuwei statu
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
-Pace (owner, 2026-10-08, #579). A day runs at one pace, chosen on the morning gate card and
-recorded in day state (`pace`); `wuwei plan set pace=<p>` changes it during the day for items
-tiered afterwards. The pace sets the inputs that tiers (#280), process depth (#567) and CAP
-(#528) already read; it never adds a second tier or depth table:
-
-| | careful | steady (default) | fast |
-| --- | --- | --- | --- |
-| Tier | light rises to standard; guard code or trust paths run full | the computed tier | the computed tier; guard code or trust paths run full; a standard item with a measured diff, no guard code, trust path, lead flag or FULL track runs at light depth |
-| Fix rounds | follow the depth (#567) | as today | follow the depth: light depth is re-read by the same sentinel |
-| Checks | the fast checks and `repos.tests` before the PR | the fast checks; CI runs the suite | `repos.tests` on the test files the diff changes; CI is the gate |
-| Seats | CAP minus one | CAP | CAP; every launch waits while the load average is at or over the core count |
-| Cards | as the classes say | as the classes say | as the classes say |
-
-`wuwei plan propose` advises the pace from three inputs and names the one that binds: the
-queue (predicted tiers, items whose `paths` touch guard code, expected cycle minutes from the
-#567 medians against the envelope end, the nearest goal date), the host (cores, load average,
-the last `repos.tests` duration) and the token budget (items the budget reaches at that
-pace). When inputs disagree the advice takes the slower pace and says what unlocks the faster
-one; the budget only advises against a pace. The owner's default (`[pace] default`) is shown
-in one line and never overridden. The pace never moves a floor: records, publish grants,
-strict refusals, trust-boundary findings, merge only at the gated head with green required
-checks, and decision routing hold at every pace.
+Process depth (owner, 2026-10-11, #811): the tier alone sets it (#280, #567) and CAP alone sets
+the seats (#528); no day value adjusts either.
 
 ### 5.3 Rules
 
@@ -715,11 +695,6 @@ beside the owner's baseline:
   the targets light under 60 and standard under 180 minutes on the fixture day. The report
   shows them under `## Cycle time`; the retro names the tier whose median moved most week
   over week. A missed target is a reading, never a refusal.
-- per pace (owner, 2026-10-08, #579): `by_pace`, per pace the days, items merged, cycle
-  minutes per tier, escaped defects (the measure above) and cards asked; a day counts at its
-  final pace. The report and the retro show them under `## Pace` and name a pace that costs
-  escaped defects. After ten days at two paces the steward proposes `pace.default` on one
-  config card, at most once per ten days.
 - DORA keys (owner, 2026-10-08, #586): `wuwei dora [--window 28]` prints five rows, each with
   its source or the reason it is unmeasured. Lead time to merge is the median
   `cycle_minutes` of items merged in the window; change failure rate is the escaped share

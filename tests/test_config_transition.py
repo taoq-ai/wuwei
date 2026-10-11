@@ -366,10 +366,15 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
     path = tmp_path / '.wuwei/config.toml'
     clean = path.read_text()
-    path.write_text(clean.replace('[brief]\n', '[brief]\nlead_minutes = 30\nstyle.length = "concise"\n', 1))
+    repo = '[[repos]]\nname = "{0}"\npath = "/{0}"\ndefault_branch = "main"\n'
+    repos = repo.format('a') + repo.format('b')
+    path.write_text(clean.replace('[brief]\n', '[brief]\nlead_minutes = 30\nstyle.length = "concise"\n', 1)
+                    + '[pace]\ndefault = "fast"\n' + repos
+                    + 'tests = "pytest"\n')  # repos.1.tests has a near key (repos.1.gates)
+    clean += repos
     capsys.readouterr()
     init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False))
     out = capsys.readouterr().out
-    for key in ('brief.lead_minutes', 'brief.style'):
+    for key in ('brief.lead_minutes', 'brief.style', 'pace', 'repos.1.tests'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)

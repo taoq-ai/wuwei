@@ -903,12 +903,9 @@ def test_fast_evidence_is_its_own_check(item_case):
 
 
 
-@pytest.mark.parametrize('pace', ['steady', 'careful', 'fast'])
-def test_fast_evidence_passes_with_no_fast_checks(item_case, pace):
-    from wuwei import state
+def test_fast_evidence_passes_with_no_fast_checks(item_case):
     root, _, tree = item_case
     set_fast_checks(root, {})
-    state._write_state(lambda data: data.update(pace=pace), root, reserved=False)
     repo = {'name': 'example/project', 'fast_checks': []}
     assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
 

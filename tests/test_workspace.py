@@ -174,6 +174,17 @@ def test_checks_table(tmp_path):
     assert found and 'unknown key checks.pyhton' in found[0]
 
 
+def test_retired_pace_keys_only_warn(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '[pace]\ndefault = "fast"\n[[repos]]\nname = "app"\npath = "app"\n'
+                           'default_branch = "main"\ntests = "pytest"\n')
+    found = []
+    config = workspace.load_config(tmp_path, warnings=found)
+    assert 'pace' not in config and 'tests' not in config['repos'][0]
+    assert any('unknown key pace' in text for text in found)
+    assert any('unknown key repos.0.tests' in text for text in found)
+
+
 def test_check_timeout_seconds(tmp_path):  # #724
     from wuwei import workspace
     repo = '[[repos]]\nname = "app"\npath = "/a"\ndefault_branch = "main"\n'
@@ -221,7 +232,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'dm': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
-        'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'pace': {'default': 'steady'}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},

@@ -107,10 +107,7 @@ Outcome: pending
         f"- {ident}: {row['scope']} ("
         + (f"item {data['items'][ident]['phase']}" if ident in data['items'] else 'not added') + ')'
         for ident, row in sorted(data.get('seat_findings', {}).items())] or ['none'])]
-    from wuwei import decision, report
-    card = data.get('pace_card', {}).get('id')  # #579
-    lines += ['', '## Pace', *report.pace_lines(root, data),
-              *([f'Pace proposal: {card}'] if card and decision.answered(data, card) is None else [])]
+    from wuwei import report
     lines += ['', *report.dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Gate verdicts', '| Record | Verdict |', '| --- | --- |']
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))

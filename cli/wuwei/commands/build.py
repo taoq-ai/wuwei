@@ -257,8 +257,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
-    from wuwei import fast_checks  # #600: no fast checks still runs repos.tests at careful pace
-    commands = repo['fast_checks'] or fast_checks.commands(root, config, repo, tree)
+    commands = list(repo['fast_checks'])
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
@@ -530,10 +529,10 @@ def check(item, *, root=None):
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
                          'for its current step')
     _busy(item, record)
-    from wuwei import fast_checks  # #579: complete on the checks the day's pace runs
+    from wuwei import fast_checks  # complete on the configured fast checks
     config = workspace.load_config(root)
     repo = next((row for row in config['repos'] if row['name'] == record['repo']), None)
-    commands = fast_checks.commands(root, config, repo, record['worktree']) if repo else record['commands']
+    commands = repo['fast_checks'] if repo else record['commands']
     marked = {**record, 'commands': commands,
               'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
     _save(item, marked, root, 'build.check_started', record)

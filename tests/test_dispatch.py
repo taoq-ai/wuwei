@@ -2774,3 +2774,15 @@ def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypa
     [continued] = [call for call in runtime.calls if call[0] == 'continue']
     assert continued[2].startswith('Polish re-check:') and 'gate-q-1-codex.md' in continued[2]
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': []}
+
+
+def test_a_day_value_never_changes_the_tier(root, monkeypatch):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('cli/wuwei/report.py', 3, 1)], floor='standard')
+    tier = lambda: dispatch.tier(root, workspace.load_config(root), state.read_state(root)['items']['A'])
+    before = tier()
+    state._write_state(lambda data: data.update(pace='fast'), root, reserved=False)
+    after = tier()
+    assert before == after and 'depth' not in after
+    assert not any(reason.startswith('pace') for reason in after['reasons'])

@@ -52,18 +52,6 @@ def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
     return f'Depth: {value}; step zero: run' + (f' ({reason})' if reason else '')
 
 
-def checks_line(pace, tests):
-    """#579: what the day's pace checks locally; None at steady (today's brief)."""
-    if pace == 'careful':
-        return ('Checks: careful; the fast checks and ' + (f'{tests} before the PR' if tests else
-                'the full suite, which is not configured locally (repos.tests); CI runs it')
-                + '; bin/wuwei build check runs them')
-    if pace == 'fast' and tests:
-        return (f'Checks: fast; {tests} on the test files your diff changes, never the full suite; '
-                'CI is the gate; bin/wuwei build check runs them')
-    return None
-
-
 # #733: the conclusions pr_actions._fix reports as red (everything but success, neutral, skipped)
 RED = ('failure', 'error', 'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure')
 
@@ -570,7 +558,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                      (repo or {}).get('gates', {}).get('trust_paths', []) if tree else [],
                                      current.get('flags')))
         if role == 'builder' and tree and repo:
-            from wuwei import fast_checks, pace  # #520: the builder never improvises an interpreter
+            from wuwei import fast_checks  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
                 found = fast_checks.interpreter(command, tree, repo, root, config)
                 if found and found[1] == 'missing':
@@ -578,13 +566,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                   'the main worktree; report it, do not build one')
                 elif found:
                     header.append(f'Check interpreter: {command} runs with {found[0]} ({found[1]})')
-            speed, tests = pace.current(data, config), repo.get('tests', '')
-            # #600: nothing runs locally; fast pace with repos.tests runs the tests the diff touches
-            if not fast_checks.commands(root, config, repo, tree) and not (speed == 'fast' and tests):
+            if not repo.get('fast_checks'):  # #600: nothing runs locally
                 header.append(f'{fast_checks.NONE[0].upper()}{fast_checks.NONE[1:]}. '
                               'Write "checks: none configured" in the PR body.')
-            elif line := checks_line(speed, tests):
-                header.append(line)
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
         if gate:

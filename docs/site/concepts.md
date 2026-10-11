@@ -49,11 +49,6 @@ Work admitted during the day must fit the remaining build hours.
 Review tier: light (one reviewer agent) or standard and full (three), set per change from its diff: a docs-only change gets one reviewer, code or a trust surface gets three. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
-### Pace
-
-How hard the day pushes: `careful`, `steady` (the default) or `fast`, picked on the morning gate card and changed with `wuwei plan set pace=<p>`.
-Careful lifts light items to standard and keeps one seat free. Fast runs plain standard items at light depth with only the tests the diff changes, and CI is the gate. Guard code runs full at both. No pace moves a floor or changes who decides; `wuwei pace` shows the advice.
-
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
@@ -385,7 +380,7 @@ it may be config. Agent instruction files never count as documents: `AGENTS.md`,
 `.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
 The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as
 `lead tier full overridden: docs-only`. A lead flag, track FULL, a trust, never-auto,
-FULL-pattern or binary path, `floor = "full"` or pace careful keeps the three gates. A
+FULL-pattern or binary path or `floor = "full"` keeps the three gates. A
 repository that keeps code under `docs/` or `specs/` lists those paths in
 `repos.gates.trust_paths`. The report lists the reviewer seats per item with its tier reason. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
@@ -443,7 +438,7 @@ Error budget. One unlucky reversal no longer drops a class. Each class may spend
 `budget_window_days` (14) on undos, reversals, weekly samples answered differently and
 escaped defects. The budget is spent with more events than that and at least two; the class
 then runs one level lower until the window refills, and gets no raise card meanwhile. A
-fast burn (`burn_warn`, the last 48 hours against the window's pace) writes a `cruise.burn` event naming
+fast burn (`burn_warn`, the last 48 hours against the window's rate) writes a `cruise.burn` event naming
 the events first. `bin/wuwei cruise budget` prints the table.
 
 Calibration. A record's `Confidence:` is checked against what happened. Each taken record

@@ -253,3 +253,20 @@ def test_launch_guard_compares_with_the_cap_derived_at_launch(day, policy, refus
     code, reason = guard(day, brief(day, 'D'))
     assert (code == 1 and 'CAP 3' in reason) if refused else code == 0, reason
     assert day.data['cap'] == 4
+
+
+def test_a_day_value_never_changes_cap_or_holds_a_launch(day):
+    import os
+    from wuwei import state
+    approved(day)
+    state._write_state(lambda data: data.update(pace='careful'), day.root, reserved=False)
+    entries, _ = launch_set(day)
+    assert entries == [('A', 'start'), ('B', 'start'), ('C', 'start'), ('D', 'start')]
+    day.patch.setattr(os, 'getloadavg', lambda: (34.0, 30.0, 20.0))
+    day.patch.setattr(os, 'cpu_count', lambda: 10)
+    state._write_state(lambda data: data.update(pace='fast'), day.root, reserved=False)
+    entries, _ = launch_set(day)
+    assert all(action != 'wait' for _, action in entries)
+    assert day.data['cap_bound'] != 'load'
+    line = day.run('status', '--line')
+    assert 'pace' not in line and 'held by load' not in line

@@ -512,7 +512,10 @@ def no_checks(root, posture):
 def test_empty_fast_checks_launch_below_strict(seat, posture):
     root, _, _, day, _ = seat
     no_checks(root, posture)
+    config = root / '.wuwei/config.toml'  # a stale tests key and day value change nothing
+    config.write_text(config.read_text().replace('fast_checks=[]\n', 'fast_checks=[]\ntests="pytest"\n'))
     phase(root, 'planned')
+    state._write_state(lambda data: data.update(pace='careful'), root, reserved=False)
     assert build.next_action('A', root=root)['action'] == 'launch'
     assert state.read_state(root)['builds']['A']['commands'] == []
     started = [e for e in events(day) if e['kind'] == 'build.started']
@@ -520,18 +523,6 @@ def test_empty_fast_checks_launch_below_strict(seat, posture):
 
 
 
-def test_empty_fast_checks_at_careful_pace_still_run_the_tests(seat):
-    root, _, _, day, _ = seat
-    no_checks(root, 'observe')
-    config = root / '.wuwei/config.toml'
-    config.write_text(config.read_text().replace('fast_checks=[]\n', 'fast_checks=[]\ntests="pytest"\n'))
-    phase(root, 'planned')
-    path = workspace.day_dir(root) / 'state.json'
-    path.write_text(json.dumps({**json.loads(path.read_text()), 'pace': 'careful'}))
-    build.next_action('A', root=root)
-    assert state.read_state(root)['builds']['A']['commands'] == ['pytest']
-    started = [e for e in events(day) if e['kind'] == 'build.started']
-    assert 'checks' not in (started[-1]['payload'] or {})
 
 def test_empty_fast_checks_check_completes_to_gate(seat):
     root, _, _, _, _ = seat

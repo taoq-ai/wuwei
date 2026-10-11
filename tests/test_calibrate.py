@@ -1136,12 +1136,11 @@ def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
     (workspace_root / '.wuwei/config.toml').write_text('')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
-    monkeypatch.setattr(os, 'getloadavg', lambda: (1.0, 1.0, 1.0))
     memory = lambda mib: ports['host'].results.update(free_memory=registry.Result(0, mib * 2**20))
     memory(8192)
     assert calibrate.host(workspace_root, config, policy=PROCESS) == {
         'cores': 4, 'free_mib': 8192, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4,
-        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores', 'load': 1.0,
+        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores',
         'reading': 4}
     memory(3072)
     # the derived seat ceiling always holds one three-role gate, so a gate never deadlocks
@@ -1370,14 +1369,14 @@ def test_runtime_rule(workspace_root):
 
 
 def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
-    from wuwei import pace, registry, workspace
+    from wuwei import registry, workspace
     (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 6\n')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 10)
     for mib in (9216, 5120, 7168, 9216, 3072):
         ports['host'].results['free_memory'] = registry.Result(0, mib * 2**20)
         limits = calibrate.host(workspace_root, config, policy={})
-        assert pace.seats('steady', limits) == (6, 'host.seats', None)
+        assert (limits['cap'], limits['bound']) == (6, 'host.seats') and 'load' not in limits
         assert limits['text'] == 'cap 6 (host.seats): subagent runtime, free memory not read'
         assert calibrate.host(workspace_root, config)['cap'] == 6
     assert not [call for call in ports['host'].calls if call[0] == 'free_memory']

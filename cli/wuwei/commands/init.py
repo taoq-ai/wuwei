@@ -282,8 +282,8 @@ def _unread_keys(raw, warnings):
     paths, removed, kept = [], [], []
     for warning in warnings:
         match = re.match(r'config\.toml: unknown key (.+?)(?: at line \d+)?; (?:did you mean (.+)\?)?', warning)
-        retired = match and any(match.group(1) == key or match.group(1).startswith(key + '.')
-                                for key in workspace.RETIRED)
+        name = re.sub(r'\.\d+(?=\.|$)', '', match.group(1)) if match else ''  # repos.0.tests is repos.tests
+        retired = match and any(name == key or name.startswith(key + '.') for key in workspace.RETIRED)
         if match and match.group(2) and not retired:
             kept.append((match.group(1), match.group(2)))
         elif match:

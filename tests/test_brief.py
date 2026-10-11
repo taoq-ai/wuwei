@@ -667,27 +667,21 @@ NONE_LINE = ('Fast checks: none configured; CI and the gates are the evidence. '
              'Write "checks: none configured" in the PR body.')
 
 
-@pytest.mark.parametrize('checks,tests,pace,none,careful', [
-    ('[]', '', 'steady', True, False), ('[]', '', 'careful', True, False),
-    ('[]', '', 'fast', True, False), ('[]', 'pytest', 'careful', False, True),
-    ('["make test"]', '', 'steady', False, False), ('["make test"]', '', 'careful', False, True),
-])
-def test_builder_brief_names_no_fast_checks(day, monkeypatch, checks, tests, pace, none, careful):
+@pytest.mark.parametrize('checks,none', [('[]', True), ('["make test"]', False)])
+def test_builder_brief_names_no_fast_checks(day, monkeypatch, checks, none):
     # #600: an empty fast-check list is a state; the builder writes it in the PR body.
     root = day[0]
     (root / '.wuwei/config.toml').write_text(
-        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = {checks}\n'
-        + (f'tests = "{tests}"\n' if tests else ''))
+        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = {checks}\n')
     (root / 'app/.git').mkdir(parents=True)
     (root / 'worktrees/X').mkdir(parents=True)
-    state._write_state(lambda data: data.update(pace=pace), root, reserved=False)
+    state._write_state(lambda data: data.update(pace='careful'), root, reserved=False)
     day[2].results['repo_context'] = registry.Result(0, {
         'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
     assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b', '--worktree', 'worktrees/X') == 0
     text = (day[1] / 'briefs/b.md').read_text()
     assert (NONE_LINE in text) == none
-    assert ('Checks: careful' in text) == careful
-    assert 'Checks: fast' not in text
+    assert 'Checks:' not in text
 
 
 def test_each_seat_gets_its_own_scratch_directory(day, monkeypatch, capsys):

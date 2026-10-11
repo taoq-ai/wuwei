@@ -234,7 +234,6 @@ def snapshot(directory, line=False):
         live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
             data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
     result = {'pages': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
-              'pace': data.get('pace'),
               'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
@@ -385,10 +384,6 @@ def _groups(data, shown=None):
     attention = [f'pages {data["pages"]}']
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
-    if data.get('pace') not in (None, 'steady'):  # #579
-        attention.append(f'pace {data["pace"]}')
-    if data.get('cap_bound') == 'load':
-        attention.append('held by load')
     return [now, work, attention]
 
 

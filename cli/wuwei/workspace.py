@@ -54,7 +54,8 @@ TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
-RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style')
+# A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
+RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -71,7 +72,6 @@ SCHEMA = {
                             **{name: (str, "", ("", *LEVELS)) for name in SURFACES}}},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
-               "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
                "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
@@ -97,7 +97,6 @@ SCHEMA = {
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
-    "pace": {"default": (str, "steady", ("careful", "steady", "fast"))},  # #579
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},

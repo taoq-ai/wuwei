@@ -118,30 +118,6 @@ def cycle_lines(root):
               f"{gates(row['gate_minutes'])}" for row in rows)]
 
 
-def costly(table):
-    """#579: the paces with more escaped defects per merged item than another pace."""
-    rate = {pace: row['escaped'] / row['merged'] for pace, row in table.items() if row['merged']}
-    return [pace for pace in rate if rate[pace] > min(rate.values())]
-
-
-def pace_lines(root, data):
-    """#579: the day's pace (chosen, recommended, binding), then one line per pace measured."""
-    path = workspace.day_dir(root) / 'proposal.json'
-    proposal = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
-    lines = [f"Pace: {data.get('pace') or 'steady'} (recommended {proposal.get('pace', 'unmeasured')}, "
-             f"binding {proposal.get('pace_advice', {}).get('binding', 'unmeasured')})"]
-    table = metrics.by_pace(root)
-    if table == metrics.UNMEASURED:
-        return lines + ['- per pace: unmeasured']
-    for pace, row in table.items():
-        tiers = row['cycle_by_tier'] if row['cycle_by_tier'] != metrics.UNMEASURED else {}
-        lines.append(f"- {pace}: {row['days']} days, {row['merged']} merged, " + ''.join(
-            f"{tier} median {value['median_minutes']:.0f}, " for tier, value in tiers.items())
-            + f"{row['escaped']} escaped, {row['cards']} cards")
-    return lines + [f"- {pace} costs escaped defects: {table[pace]['escaped']} of {table[pace]['merged']} merged"
-                    for pace in costly(table)]
-
-
 def dora_lines(rows):
     """#586: the DORA table, one row per key in metrics.DORA order."""
     def cells(label, form, row):
@@ -193,7 +169,6 @@ def build(root=None):
     if lines[-1] == '## Merged':
         lines.append('none')
     lines += ['', '## Cycle time', *cycle_lines(root)]
-    lines += ['', '## Pace', *pace_lines(root, data)]
     lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())

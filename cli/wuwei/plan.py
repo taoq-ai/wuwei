@@ -265,9 +265,6 @@ def propose(data, root=None):
                 item['repo'] = found[0]
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
-    from wuwei import pace  # #579: the recommended pace, its reasoning and the binding input
-    advice = pace.advise(root, config, data, goal_list, limits, workspace.now())
-    data.update(pace=advice['pace'], pace_reasoning=advice['lines'], pace_advice=advice)
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
@@ -275,7 +272,6 @@ def propose(data, root=None):
     planned = grants.plan(root, workspace.load_config(root), data['candidates'])
     from wuwei import cruise
     cruise.propose(root, workspace.load_config(root))  # #283: raise and weekly sample cards
-    pace.propose_default(root, workspace.load_config(root))  # #579: once ten days ran two paces
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
@@ -308,8 +304,7 @@ def propose(data, root=None):
               '## Gate proposal', f'CAP: {data["capacity"]["text"]}; host.seats {data["capacity"]["seats"]}',
               'Seats per goal: ' + seats_text(data['seats'], data['cap']),
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
-              'Envelope: ' + json.dumps(data['envelope'], sort_keys=True),
-              f'Pace: {data["pace"]} (recommended)', *data['pace_reasoning'], '']
+              'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(directory / 'proposal.json', json.dumps(data, allow_nan=False, indent=2) + '\n')
     if provisional:
@@ -343,21 +338,16 @@ def gate_widget(root=None, *, import_yesterday=False):
         'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
         *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
-    from wuwei import pace
-    advised = data.get('pace')  # #579: the pace is option rows on the one card, advice first
-    paces = [('Approve', f'{approves}. Pace {advised}. ' + ' '.join(data.get('pace_reasoning', [])))] + [
-        (f'Approve at {other}', f'{approves}. Pace {other}.') for other in pace.PACES if other != advised]
     return decision.widget(
         decision.gate(root) + "Approve today's plan as proposed?",
         'Goals' if provisional else 'Plan',
-        [*(paces if advised else [('Approve', approves + '.')]),
+        [('Approve', approves + '.'),
          ('Change something', 'Ask the separate questions on goals, queue, tickets, seat policy, '
                               'CAP and seats per goal, envelope and carry-over. CAP is derived. '
                               'A changed CAP is recorded as config cap. Name any item you merge '
                               'yourself; the planner records it with wuwei plan set <item> owner_merge=true.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
-                  *(['--import-yesterday'] if import_yesterday else []),
-                  *(['--pace "<label>"'] if advised else [])]))
+                  *(['--import-yesterday'] if import_yesterday else [])]))
 
 
 def _approval(scope, note):
@@ -366,7 +356,7 @@ def _approval(scope, note):
     return '; '.join(part for part in (' '.join(scope.split()), note and f'owner: "{note}"') if part)
 
 
-def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None, note=None):
+def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, note=None):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
     if not goals_confirmed:
@@ -385,10 +375,6 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')), text, framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError(f'approved items must be a unique list; {PLAN_JSON}')
-    from wuwei import pace  # #579: the owner's pick on the gate card, recorded as given
-    wish = config['pace']['default']
-    recommended = data.get('pace') or wish
-    chosen = recommended if pace_label is None else pace.label(pace_label, recommended)
     adopted = {row['id']: row for row in data.get('adopt', [])}  # #510: claimed after the gate
     claims, items = [name for name in items if name in adopted], [name for name in items if name not in adopted]
     candidates = {item['id']: item for item in data['candidates']}
@@ -463,14 +449,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
                        seat_policy=data['seat_policy'], goal_seats=_seats(data),
                        envelope=data['envelope'], goals=data['goals'],
-                       approved_items=items, gate_approved=True, pace=chosen)
+                       approved_items=items, gate_approved=True)
 
     kind = 'state.import' if import_yesterday else 'plan.approved'
     written = state._write_state(update, root, reserved=False, kind=kind,
                                  payload={'items': sorted(imported) if import_yesterday else items,
                                           'approved_items': items,
-                                          'flags': {name: candidates[name]['flags'] for name in items},
-                                          'pace': chosen, 'recommended': recommended, 'wish': wish})
+                                          'flags': {name: candidates[name]['flags'] for name in items}})
     for name in skipped:
         state.append_event('tracker.skipped', _skipped(name, candidates[name]), root)
     from wuwei import shepherd
@@ -665,21 +650,6 @@ def set_owner_merge(item, value, root=None):
             raise OSError(f'{item}: owner_merge {value} recorded; PR label not updated: {exc}; '
                           f'rerun bin/wuwei plan set {item} owner_merge={value}') from exc
     return f'{item}: owner_merge {value}'
-
-
-def set_pace(value, root=None):
-    """#579: plan set pace=<p>: the day's pace from now on; items tiered already keep theirs."""
-    from wuwei import pace
-    root = workspace.find_workspace(root)
-    if value not in pace.PACES:
-        raise ValueError(f'unknown pace {value!r}; run bin/wuwei plan set pace=<p> with one of careful, steady or fast')
-    payload = {'pace': value}
-
-    def update(data):
-        payload['previous'] = pace.current(data, workspace.load_config(root))
-        data['pace'] = value
-    state._write_state(update, root, reserved=False, kind='pace.set', payload=payload)
-    return f"pace {value} (was {payload['previous']})"
 
 
 def set_ticket(item, ticket, root=None):

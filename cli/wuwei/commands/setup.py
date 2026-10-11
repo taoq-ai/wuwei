@@ -161,7 +161,7 @@ def merged(config, parts, value, add=False):
 
 def _choice(parts, value):
     """#579: a bare word is the string it names when the key is a string with fixed choices
-    (pace.default = fast), since a decision title cannot carry a quote."""
+    (prioritisation.framework = rice), since a decision title cannot carry a quote."""
     node = configtext.declared(parts)
     return ({'value': value} if isinstance(node, tuple) and node[0] is str and len(node) > 2
             and value in node[2] else None)

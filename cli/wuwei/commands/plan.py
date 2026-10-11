@@ -25,7 +25,6 @@ def register(subparsers):
     approve.add_argument('--items', nargs='*', required=True)
     approve.add_argument('--goals-confirmed', action='store_true')
     approve.add_argument('--import-yesterday', action='store_true')
-    approve.add_argument('--pace', help='The gate card answer: Approve or Approve at careful|steady|fast')
     approve.add_argument('--note', help="The owner's own words on the gate card; recorded on each approved "
                                         'item and quoted in its briefs as Approved as:')
     add = actions.add_parser('add', help='Admit an item after the morning gate: a discovery candidate, '
@@ -45,11 +44,10 @@ def register(subparsers):
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false; '
-                                            'or the day: pace=<p>')
-    assign.add_argument('item', help='The item id, or pace=careful|steady|fast for the day')
-    assign.add_argument('assignment', nargs='?', help='spec=required|skipped, docs=<page>|new|none, '
-                                                      'ticket=<id> or owner_merge=true|false')
+                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false')
+    assign.add_argument('item', help='The item id')
+    assign.add_argument('assignment', help='spec=required|skipped, docs=<page>|new|none, '
+                                           'ticket=<id> or owner_merge=true|false')
     assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
     parser.set_defaults(func=run)
 
@@ -87,10 +85,8 @@ def run(args):
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
                                       title=args.title, ticket=args.ticket, note=args.note,
                                       source='finding' if args.from_finding else None)))
-        elif args.action == 'set' and args.assignment is None and args.item.startswith('pace='):
-            print(plan.set_pace(args.item.partition('=')[2]))
         elif args.action == 'set':
-            key, _, value = (args.assignment or '').partition('=')
+            key, _, value = args.assignment.partition('=')
             if key == 'spec':
                 print(plan.set_spec(args.item, args.assignment, args.reason))
             elif key == 'docs' and value:
@@ -103,14 +99,14 @@ def run(args):
             else:
                 raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
                                  f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '
-                                 'ticket=<id> or owner_merge=true|false, or bin/wuwei plan set pace=careful|steady|fast. '
+                                 'ticket=<id> or owner_merge=true|false. '
                                  'Pass --reason "<why>" with spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
-                         import_yesterday=args.import_yesterday, pace_label=args.pace, note=args.note)
+                         import_yesterday=args.import_yesterday, note=args.note)
         return CLEAN
     except state.StateError as exc:
         print(f'wuwei plan: {exc}', file=sys.stderr)
