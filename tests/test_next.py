@@ -190,9 +190,6 @@ def test_cards_after_the_gate_come_once(root, capsys):
     (workspace.day_dir(root) / 'decisions').mkdir()
     (workspace.day_dir(root) / 'decisions/D-1.md').write_text(VALID.replace('Decided-by: seat', 'Decided-by: owner'))
     found = row(capsys)[1]
-    assert found['command'] == 'wuwei goals edit --file .wuwei/days/2026-09-30/goals.md'
-    ran(root, found['command'])
-    found = row(capsys)[1]
     assert (found["state"], found["action"], found.get("item")) == ("decision", "card", "D-1"), found
     passed = [json.loads(line)['payload'] for line in
               (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
@@ -405,19 +402,18 @@ def test_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
     assert reference < 30 and lines.index('Active constraints:') == reference + 1
 
 
-def test_constraints_precede_a_long_week_digest(root, monkeypatch, capsys):
+def test_constraints_precede_a_long_spine(root, monkeypatch, capsys):
     calibrated(root)
     memory = root / '.wuwei/memory'
-    (memory / 'notes').mkdir(parents=True)
-    (memory / 'digests').mkdir()
-    (memory / 'digests/2026-W40.md').write_text('# Week 2026-W40\n' + '- line\n' * 40)
-    for name in ('spine.md', 'index.md', 'goals.md'):
+    memory.mkdir(parents=True, exist_ok=True)
+    for name in ('index.md', 'goals.md'):
         (memory / name).write_text('')
+    (memory / 'spine.md').write_text('# Spine\n' + '- line\n' * 40)
     capsys.readouterr()
     hook(monkeypatch, root)
     lines = context(capsys).splitlines()
     assert lines.index('Active constraints:') < 25
-    assert lines.index('Active constraints:') < lines.index('Digests:')
+    assert lines.index('Active constraints:') < lines.index('Rules:')
 
 
 def test_orientation_precedes_integrity_line(root, monkeypatch, capsys):

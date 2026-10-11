@@ -187,7 +187,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei telemetry send`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -213,9 +213,9 @@ For example, a seat writes "I will ship it tomorrow". To a client channel it is 
 
 ## Memory
 
-`wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. Goals and voice are yours: the lead proposes, the morning gate confirms and the planner records them, and you can edit them later; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.
+`wuwei init` creates `.wuwei/memory/` with a spine, index, goals and changelog. Day records live under `.wuwei/days/`. Settled facts belong in the spine; procedure belongs in charters. The CLI provides `index`, `payload` and `promote` commands. Goals are yours: the lead proposes, the morning gate confirms and `wuwei plan approve` records them, and you can edit `memory/goals.md` later. The index is generated: one line per past day.
 
-Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`consolidation.archive_after_days`); then `wuwei consolidate` packs it into a tarball under `archive/<year>/`, which `wuwei memory show <date>` still reads. Week and month digests under `memory/digests/` stand for the archived days: decisions, lessons, metrics, incidents and items in one fixed shape, rebuilt from the records. A session loads the latest month and week digest, then the rules (spine, notes), then today, within `memory.budget_tokens`. Rules live only in charters and notes. Forgetting is proposed, never automatic: consolidate lists unreferenced notes, duplicates and superseded or contradicted charter rules, and nothing changes until you answer `wuwei memory forget F-n apply` in a host terminal; the before text stays under `memory/archive/`. `wuwei memory export --claude` writes the charter rules and the week's lessons into a marked block in `CLAUDE.md`, so the harness memory sees them; the records stay the one source and nothing reads the block back.
+A session loads the spine, then the past-day lines of the index and the last promote line, within `memory.budget_tokens`; over it today is left out first. Rules live only in charters: the retro writes charter proposals and `wuwei promote` lands them. `wuwei memory export --claude` writes the charter rules into a marked block in `CLAUDE.md`, so the harness memory sees them; the records stay the one source and nothing reads the block back.
 
 ## Day flow
 
@@ -444,8 +444,8 @@ plan approval to merge. Lead time to deploy adds the hours from each merge to th
 deployment after it. Deployment frequency counts the code host's deployments, or its
 published releases when a repository never deployed. Change failure rate is the share of
 merged items that a later fix brief names. Time to restore waits for on-call incidents. A
-key without evidence says `unmeasured` and why, never zero. The report, the retro and the
-week digest show the same table.
+key without evidence says `unmeasured` and why, never zero. The report and the retro show
+the same table.
 
 ## Sessions
 

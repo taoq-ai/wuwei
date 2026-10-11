@@ -57,8 +57,8 @@ fast ones.
 
 Any other value is one `wuwei config set <key> <value>`, on its card too. Credentials go in
 `.wuwei/env`; `bin/wuwei config check` names each variable the selected adapters still need.
-You do not write goals by hand: the lead proposes them at the first morning plan and the
-planner records the ones you approve. You can change them later with `bin/wuwei goals edit`.
+You do not write goals by hand: the lead proposes them at the first morning plan and
+`wuwei plan approve` records the ones you approve. You can edit `.wuwei/memory/goals.md` later.
 [Configuration](configuration.md) lists every key.
 
 Then run `bin/wuwei doctor`. A missing calibration warns `never applied` with the fix
@@ -109,10 +109,9 @@ Run `/wuwei plan` in Claude Code. The planner registers its session
 the separate questions on goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
 [envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answer. While `memory/goals.md` has no goals,
 the lead proposes them, `plan.md` shows them as provisional and the approval question shows the
-blocks. On approval the planner records them with
-`wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
-refuses that call and prints the command for a host terminal. It then records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`.
+blocks. On approval the planner records the gate with
+`wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`, which also writes
+the approved goals to `memory/goals.md`.
 
 When an item in the plan needs a deploy, a release or a merge you decide, the lead lists it and
 the plan shows it as an `Owner-only: <action> <target> (owner step)` line. The gate does not
@@ -126,14 +125,12 @@ and `wuwei why <item>` shows them. A candidate the discovery sweep found goes th
 `wuwei plan add <item>` and the intraday start policy.
 
 The planner asks the morning gate as question cards. After you approve, it records the goals
-and the plan, and you can run the last two commands yourself. A clean first plan with one
+and the plan, and you can run the last command yourself. A clean first plan with one
 goal and one item looks like this:
 
 ```text
 $ wuwei plan propose .wuwei/days/<date>/lead.json
 <project>/.wuwei/days/<date>/plan.md
-$ wuwei goals edit --file .wuwei/days/<date>/goals.md
-goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
 WUWEI 1 planned · seats 0/1 | pages 0 · observe
@@ -141,7 +138,7 @@ $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
 
-It worked when `goals edit` says `saved`, the status line shows `1 planned` and
+It worked when `memory/goals.md` holds your goal, the status line shows `1 planned` and
 `bin/wuwei next` names the first item. `plan approve` prints nothing when it succeeds, and
 `meeting unmeasured` only means no calendar is set up. It did not work when the status line
 has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see

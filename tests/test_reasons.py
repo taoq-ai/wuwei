@@ -263,8 +263,7 @@ def test_before_plan_decision_show(fresh, capsys):
 
 def test_before_plan_goals(fresh, capsys):
     code, text = run(capsys, 'goals')
-    assert (code, text) == (0, 'No goals yet: run /wuwei:wuwei-plan and approve the proposed goals, '
-                               'or bin/wuwei goals edit.\n')
+    assert (code, text) == (0, 'No goals yet: run /wuwei:wuwei-plan and approve the proposed goals.\n')
     (fresh / '.wuwei/memory/goals.md').write_text(
         '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n'
         '## G-2\noutcome: Learn\nmeasure: notes\ntarget: 3\ndate: 2026-11-30\npriority: 2\n')
@@ -273,7 +272,7 @@ def test_before_plan_goals(fresh, capsys):
         'G-1 (priority 1): Ship; measure: shipped; target: 1 by 2026-10-30',
         'G-2 (priority 2): Learn; measure: notes; target: 3 by 2026-11-30']
     with pytest.raises(SystemExit) as exc:
-        main(['goals', 'edit', '--help'])
+        main(['goals', '--help'])
     assert exc.value.code == 0
 
 
@@ -321,9 +320,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('commands/next.py', 'show that line to the owner for a host terminal', 13),
-    ('commands/memory.py', 'forgetting proposal (host terminal)', 13),
-    ('consolidation.py', '_host_confirm', 13),
     ('decision.py', 'at the host terminal', 14),
     ('decision.py', 'decide {identifier} {option} in a host terminal', 14),
     ('commands/decision.py', 'Record an owner choice from the host terminal', 14),

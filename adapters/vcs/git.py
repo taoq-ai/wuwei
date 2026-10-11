@@ -844,8 +844,8 @@ def workspace_commit(repo, paths, root=None):
 
 @_operation
 def workspace_owner_commit(repo, paths, root=None):
-    if paths not in (['memory/goals.md'], ['memory/voice.md']):
-        raise ValueError('owner edit must name goals or voice')
+    if paths != ['memory/goals.md']:
+        raise ValueError('owner edit must name goals')
     return _commit_workspace(repo, paths, _OWNER_EDIT_MESSAGE)
 
 

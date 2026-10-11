@@ -293,8 +293,8 @@ def propose(data, root=None):
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
              '## Goals to confirm',
-             *([f'Provisional: proposed by the lead; the planner records days/{directory.name}/'
-                'goals.md on approval.'] if provisional else []),
+             *([f'Provisional: proposed by the lead; plan approve records days/{directory.name}/'
+                'goals.md.'] if provisional else []),
              *[line for goal in data['goals'] for line in (
                  [f'- {goal} (provisional)', *(f'  {key}: {goal_list[goal][key]}'
                                                for key in goals.FIELDS)]
@@ -386,7 +386,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     config = workspace.load_config(root)
     framework = config['prioritisation']['framework']
     text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-    if not goals.defined(text) and (directory / 'goals.md').is_file():
+    provisional = not goals.defined(text) and (directory / 'goals.md').is_file()
+    if provisional:
         text = (directory / 'goals.md').read_text(encoding='utf-8')  # #603: the provisional goals the gate card showed
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')), text, framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
@@ -431,6 +432,9 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
         raise state.StateError('\n'.join(reasons))
+    if provisional and not current.get('gate_approved'):
+        from wuwei import promotion
+        promotion.save_goals(root, text)  # #833: the approval records the goals the gate showed
 
     def update(current):
         if current.get('gate_approved'):

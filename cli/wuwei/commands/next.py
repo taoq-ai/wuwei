@@ -59,8 +59,6 @@ THEN = {
              '<label> replaced by the chosen label; on Change '
              'something ask the owner what to change, edit {days}/lead.json and run wuwei plan propose '
              '{days}/lead.json again; then run wuwei next.'),
-    'goals': ('Under strict the hook refuses and prints the command: show that line to the owner for '
-              'a host terminal; then run wuwei next.'),
     'pr': ('Run it and do any action it prints; when it prints nothing the PR waits on people: end '
            'the turn with wuwei status --line, the watch wakes you when it changes.'),
     'merge': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion. On Yes run it '
@@ -202,9 +200,6 @@ def step(root, ran=()):
         return _row('gate', f'Morning gate open: the plan in {days}/plan.md is approved only on '
                     'your answer.', 'wuwei plan gate' + (' --import-yesterday' if _carry(root, directory) else ''),
                     'card', THEN['gate'].format(days=days))
-    if (directory / 'goals.md').is_file() and ('goals', '') not in returned:
-        return _row('goals', 'Record the goals you approved at the gate.',
-                    f'wuwei goals edit --file {days}/goals.md', then=THEN['goals'])
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')

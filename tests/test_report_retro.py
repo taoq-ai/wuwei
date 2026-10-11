@@ -53,6 +53,33 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert json.loads(proposals[0].read_text())['evidence'] == evidence.relative_to(root).as_posix()
 
 
+def test_retro_proposal_lands_through_promote(tmp_path, monkeypatch):
+    """#833 SC-003: the retro to charter loop, end to end."""
+    from wuwei import promotion, retro
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    day = workspace.day_dir(root)
+    (day / 'retro').mkdir(parents=True)
+    record = {'agent_id': 'builder-1', 'agent_type': 'builder',
+              'fields': {'Blocked': 'none', 'Gap': 'Review lag', 'Change': 'Check review timing'},
+              'missing': [], 'invalid': []}
+    (day / 'retro/role.json').write_text(json.dumps(record))
+    state.append_event('retro.captured', {**record, 'evidence': f'.wuwei/days/{day.name}/retro/role.json'}, root)
+    retro.compile(root)
+    commits = []
+    monkeypatch.setattr(registry, 'load', lambda *a: SimpleNamespace(
+        workspace_changes=lambda *a, **kw: registry.Result(0, []),
+        workspace_commit=lambda repo, paths, **kw: commits.append(paths) or registry.Result(0)))
+    [landed] = promotion.promote(root)
+    assert (landed['status'], landed['target']) == ('landed', '.wuwei/charters/builder.md'), landed
+    assert (root / '.wuwei/charters/builder.md').read_text().endswith('- Check review timing\n')
+    assert '2026-09-29 builder.md: Review lag' in (root / '.wuwei/memory/CHANGELOG.md').read_text()
+    assert commits == [['charters/builder.md', 'memory/CHANGELOG.md', 'memory/ledger.jsonl']]
+
+
 def test_hard_rule_change_is_decision_only(tmp_path, monkeypatch):
     root = tmp_path
     (root / '.wuwei').mkdir()

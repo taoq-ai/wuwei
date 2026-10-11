@@ -150,7 +150,7 @@ def test_configuration_names_every_config_section():
 
 def test_skills_use_the_recorded_executable_directly():
     # #348: a session reads the pointer once and runs the absolute path as a plain command.
-    for name in ('wuwei-plan', 'wuwei-report', 'wuwei-retro', 'wuwei-consolidate'):
+    for name in ('wuwei-plan', 'wuwei-report', 'wuwei-retro'):
         text = (ROOT / 'skills' / name / 'SKILL.md').read_text()
         assert '$(' not in text and 'executable recorded in' not in text, name
         for phrase in ('read `.wuwei/executable` once with the Read tool', 'first word of a plain command'):

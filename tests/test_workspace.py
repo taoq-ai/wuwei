@@ -65,7 +65,7 @@ def test_init_layout(tmp_path, explicit):
     assert result.returncode == 0, result.stderr
     workspace = target / '.wuwei'
     for name in ('config.toml', 'memory/spine.md', 'memory/index.md',
-                 'memory/CHANGELOG.md', 'memory/voice.md'):
+                 'memory/CHANGELOG.md'):
         assert (workspace / name).is_file()
     for name in ('charters', 'memory/notes', 'days', 'archive'):
         assert (workspace / name).is_dir()
@@ -204,12 +204,6 @@ def test_initialized_config_checks(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_initialized_memory_lint(tmp_path):
-    assert cli(tmp_path, 'init').returncode == 0
-    result = cli(tmp_path, 'memory', 'lint')
-    assert result.returncode == 0, result.stderr
-
-
 def test_config_defaults_and_independence(tmp_path):
     from wuwei import workspace
     from wuwei.workspace import load_config
@@ -247,11 +241,8 @@ def test_config_defaults_and_independence(tmp_path):
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
                  'rate_limit_wait_seconds': 120}, 'profile': 'strict',
-            'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3,
-                       'digest': 'week', 'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
+            'memory': {'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
             'metrics': {'transcripts': '~/.claude/projects', 'band_margin': 0.2},
-            'consolidation': {'archive_after_days': 30, 'similarity_threshold': 0.85},
-            'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
@@ -746,7 +737,7 @@ def test_upgrade_previous_workspace(tmp_path):
     assert '# Owner comment stays.' in raw
     assert config['cap'] == 3 and config['owner']['name'] == 'Pat'
     assert config['host']['free_memory_mb'] == 2048
-    assert config['memory']['max_notes'] == 60
+    assert config['memory']['budget_tokens'] == 6000
     assert config['host']['reservation_timeout_seconds'] == 14400
     assert '# Report stale reservations' in raw
     assert config['adapters']['checks'] == 'local'
@@ -1525,13 +1516,13 @@ def test_memory_tier_keys_default_and_validate(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
     memory = load_config(tmp_path)['memory']
-    assert (memory['digest'], memory['budget_tokens'], memory['export_to']) == ('week', 6000, 'CLAUDE.md')
-    for text in ('digest = "month"', 'budget_tokens = 0'):
+    assert (memory['budget_tokens'], memory['export_to']) == (6000, 'CLAUDE.md')
+    for text in ('budget_tokens = 0', 'export_to = 1'):
         write_config(tmp_path, '[memory]\n' + text + '\n')
         with pytest.raises(ConfigError):
             load_config(tmp_path)
     shipped = (ROOT / 'templates/workspace/config.toml').read_text()
-    assert all(f'\n{key} = ' in shipped for key in ('digest', 'budget_tokens', 'export_to'))
+    assert all(f'\n{key} = ' in shipped for key in ('budget_tokens', 'export_to'))
     write_config(tmp_path, shipped)
     assert load_config(tmp_path)['memory']['budget_tokens'] == 6000
 
@@ -1626,13 +1617,13 @@ def test_upgrade_builds_the_register_once(modeled, capsys):
     config = workspace.load_config(modeled)
     assert graph.drift(register, config) == []
     for node in ('person:slack:U01', 'person:github:dev', 'channel:C04', 'connector:acme', 'address:dev@example.test',
-                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'voice:client', 'repo:fixture-org/app'):
+                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'repo:fixture-org/app'):
         assert node in register['nodes'], node
     after = tomllib.loads(raw)
-    for key in ('owner', 'outbound', 'shepherd', 'voice', 'outward'):
+    for key in ('owner', 'outbound', 'shepherd', 'outward'):
         for name, value in before[key].items():
             assert after[key][name] == value, (key, name)
-    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]', '[voice.sources]',
+    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]',
                    '[outward.servers]'):
         assert raw.count(f'{graph.COMMENT}\n{header}\n') == 1, header
     assert main(['init', '--upgrade']) == 0

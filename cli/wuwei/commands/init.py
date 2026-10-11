@@ -95,7 +95,7 @@ def run(args):
 
 
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
-                 'memory/cruise.json')  # #814, #815: init --upgrade removes them
+                 'memory/cruise.json', 'memory/forget.json')  # #814, #815, #833: init --upgrade removes them
 # #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
 

@@ -76,11 +76,6 @@ rate_limit_wait_seconds = 120 # Wait this long at most for a GitHub rate limit t
 # tokens_per_day = 0 # Input plus output tokens a day; it bounds CAP with the per-seat cost. 0 is no budget.
 
 [memory]
-max_notes = 60
-note_line_cap = 80
-probation_days = 10
-state_entry_cap = 3
-digest = "week" # "week" writes a week digest at close; "off" writes none.
 budget_tokens = 6000 # SessionStart memory payload budget; today is left out first.
 export_to = "CLAUDE.md" # Workspace-relative file that receives the generated rules block.
 
@@ -92,10 +87,6 @@ changelog = ".wuwei/memory/CHANGELOG.md"
 [metrics]
 transcripts = "~/.claude/projects" # Claude Code project transcripts for this workspace.
 band_margin = 0.2 # FIX-rate lead a band needs over every other band before the retro names it.
-
-[consolidation]
-archive_after_days = 30
-similarity_threshold = 0.85
 
 [build]
 max_iterations = 8
@@ -148,14 +139,6 @@ user_file = "~/.claude.json"
 # block = ["critical"]
 # Seconds for each server's watch-registry call.
 timeout_seconds = 60
-
-[voice]
-# Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
-# review_prs = ["org/repo#123"] # PR comments use the review audience.
-review_prs = []
-# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
-[voice.sources]
-# internal = ["C123"] # Map an audience to sent chat channel IDs.
 
 [calendar]
 # url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.

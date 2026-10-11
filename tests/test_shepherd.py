@@ -784,17 +784,6 @@ def test_unverified_reviewer_login_refuses_request(case):
     assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
 
 
-def test_raise_body_obeys_review_voice(case, monkeypatch):
-    from wuwei import shepherd
-    root, host, _, _, vcs = case
-    (root / '.wuwei/memory').mkdir()
-    (root / '.wuwei/memory/voice.md').write_text('## review\n- never: Body\n')
-    vcs.responses['head'] = Result(0, {'sha': SHA})
-    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
-    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
-    assert not any(name == 'create_pr' for name, _, _ in host.calls)
-
-
 def test_new_port_adapters_parse_recorded_output(tmp_path, monkeypatch):
     from adapters.code_host import github
     from adapters.vcs import git

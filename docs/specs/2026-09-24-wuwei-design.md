@@ -26,7 +26,7 @@ that engagement ships in this repository.
   are checked for dangerous tool sequences, and items that build agents are gated by an
   agent security scanner (ZIRAN by default).
 - G4. Memory that outlives the session: episodes, procedure and settled facts, each with one
-  home, one writer and a consolidation cadence.
+  home and one writer.
 - G5. Works with only `git`, `gh` and `python3`. Every other integration is an optional
   adapter.
 
@@ -77,7 +77,7 @@ wuwei/
   .claude-plugin/plugin.json
   .claude-plugin/marketplace.json
   agents/            9 role agents, generated from charters/, each with a tool allowlist
-  skills/            wuwei-init, wuwei-plan, wuwei-report, wuwei-retro, wuwei-consolidate
+  skills/            wuwei-init, wuwei-plan, wuwei-report, wuwei-retro
   hooks/hooks.json   shims that call the CLI and nothing else
   charters/          _common.md, _common-authoring.md, one file per role
   cli/wuwei/         stdlib Python package, entry point `wuwei`
@@ -121,11 +121,10 @@ Code repos receive only worktrees, branches and pull requests.
   charters/            local overrides layered over the plugin charters
   memory/
     spine.md           the structural model, loaded in full every session
-    goals.md           the owner's goals (5.7); edited only by the owner
-    voice.md           the owner's voice per audience (4.8); edited only by the owner
-    index.md           generated; one line per note and per past day
-    notes/*.md         settled facts with frontmatter
-    archive/           retired notes; moving one back revives it
+    goals.md           the owner's goals (5.7); plan approve or the owner writes it
+    index.md           generated; one line per past day
+    notes/baseline.md  the owner's baseline (5.6)
+    archive/           dropped charter rules
     ledger.jsonl       append-only: every promoted or rejected change, with evidence
     CHANGELOG.md       every dated rule change, verbatim; never loaded by seats
   days/YYYY-MM-DD/
@@ -245,9 +244,7 @@ deadline, so the owner never checks PRs one by one.
 
 Configured in `config.toml`: the owner's name and pronouns (never used in third person in
 text sent as the owner), patterns that reveal the routine's internal state (drafts pending,
-queues, which agent wrote what), banned characters, and a maximum length per channel. The
-lint also applies the mechanical checks of the owner's voice for the message's audience
-(4.8).
+queues, which agent wrote what), banned characters, and a maximum length per channel.
 
 The internal-state patterns (`outward.patterns`, empty by default) apply by kind and
 audience (#533). Tracker, docs and code-host writes are the team's records and never read
@@ -388,42 +385,13 @@ standing line, seat, default or hook answers for the owner.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
-Everything sent as the owner (chat posts, PR comments and replies, tracker comments, digests,
-responder drafts) is written in one voice, so the owner reads as one consistent person.
-
-Home. `memory/voice.md`, owned by the owner like `goals.md`: seats and the steward propose
-changes (6.8) and the owner approves them at the morning gate. One profile per audience
-(`internal`, `external`, `review`, `tracker`, plus any named channel from config), each with
-register, length target, structure (for example answer first, one ask per message), phrases
-the owner uses, phrases the owner never uses, and 5 to 10 exemplars of the owner's real
-messages with personal data redacted. A shared `never` list holds machine tells (stock
-openers and closers, hedging preambles, summary sign-offs, filler praise). The profile stays
-in the workspace, never in this repository.
-
-Learning. `wuwei voice learn` reads only the owner's own sent messages and PR comments
-through the chat and tracker adapters, read-only, and writes a proposal for each audience.
-Every draft the owner edits before sending is recorded as a before and after pair; the
-steward turns repeated edits into voice proposals, so the profile converges on the owner.
-
-Enforcement. Seats that write outward text (shepherd, planner digests, responder) load the
-profile for the audience. The outward-text lint (4.3) checks what is mechanical: length,
-`never` phrases, required structure, banned characters. Tone cannot be linted, so under
-`strict` every message that is not mechanical stays a draft the owner approves (the
-approved-draft rule), and the draft shows which profile it was written against.
-
-Disclosure. `voice.disclosure = "none" | "footer" | "per-channel"` (default `per-channel`:
-`none` on internal channels, a short footer marking agent-sent messages on external ones).
-Substantive claims, disagreement and scope statements are always the owner's own, through the
-approved-draft rule, whatever the disclosure setting.
-
-Metrics (steward): share of drafts sent without edit, and the size of the owner's edits to the
-rest, per audience. Both should rise as the voice converges; a fall is a steward finding.
+Retired by #789 (owner, 2026-10-11, #833).
 
 ### 4.9 Outbound approval tiers (owner, 2026-09-28)
 
 Every message sent as the owner is either auto-sent or drafted for approval. The tier is
 decided by one CLI function (`wuwei outbound tier`) from the channel, the audience and the
-message, before the outward-text lint and the voice checks (4.3, 4.8) run.
+message, before the outward-text lint (4.3) runs.
 
 - Auto-send: channels the owner marks as work channels in config (for example PR and review
   channels, the team engineering channel) and code-host threads on the owner's team's pull
@@ -686,20 +654,18 @@ beside the owner's baseline:
   of those items (the measure above); deployment frequency and lead time to deploy read the
   code host's deployments, or its published releases when a repository never deployed;
   time to restore stays unmeasured until on-call incidents exist (#415). The report and the
-  retro show the table under `## DORA (last 28 days)`, the week digest ends its Metrics with
-  it, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
+  retro show the table under `## DORA (last 28 days)`, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
   refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
-`memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
+`memory/notes/baseline.md`, never in this repository. A metric that
 cannot be computed reports "unmeasured", never zero.
 
 ### 5.7 Goals, discovery and prioritisation (owner, 2026-09-28)
 
 Goals. `memory/goals.md` holds the owner's goals, one block each: id (`G-n`), outcome, measure,
 target, date, priority. While it has none, the lead proposes goals in its JSON, the morning
-gate shows them and the planner records the approved blocks with `wuwei goals edit --file`
-(5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
+gate shows them and `wuwei plan approve` records the approved blocks (5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
 Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
@@ -1485,55 +1451,17 @@ an item's unmet obligation.
 
 ### 5.14 Memory over time (owner, 2026-10-03, #443)
 
-Records grow every day; what a session loads must not. Memory has three tiers by age and
-use, one producer per tier, and a token budget for what SessionStart loads.
-
-- `raw`: a day's records under `days/<date>/`, complete and never edited. A day older than
-  `consolidation.archive_after_days` (default 30) moves, at `wuwei consolidate`, into
-  `archive/<year>/<date>.tar.gz`; `wuwei memory show <date>` prints it from either place.
-  An archived day leaves `memory/index.md`; its month digest stands for it.
-- `digest`: one Markdown record per ISO week (`memory/digests/<year>-W<week>.md`) and per
-  month (`memory/digests/<year>-<month>.md`), rebuilt from the day records in a fixed
-  shape: `## Decisions` (id, question, outcome), `## Lessons` (ledger lines landed or
-  rejected), `## Metrics` (the report's outcome lines; the #421 effectiveness metrics join
-  when #422 lands), `## Incidents` (page-tier events by kind), `## Items` (closed and
-  carried). `wuwei close` rebuilds the current week; `wuwei consolidate` rebuilds the
-  weeks and months of the days it archives plus the current ones. Free text in a line
-  passes the outward lint (owner-addressed) and carries no path; a line that fails keeps
-  only its structured fields (date, id, outcome label, target name, counts). `[memory]
-  digest = "week"` (or `"off"`, no digests).
-- `rules`: the local charter overrides and the spine and notes. Promoted rules live only in
-  charters (6.8); a digest records that a lesson landed, never the rule text.
-
-Budget. `[memory] budget_tokens` (default 6000) caps the SessionStart payload, built in
-priority order: digests (latest month, then current week), rules (spine, note lines of
-the index), today (raw day lines of the index, the promote line). When the whole would
-exceed the budget, SessionStart loads digests and rules only and says so in one line. The
-orientation block and `Active constraints:` (#358) precede the payload and are not part
-of it. `doctor` warns when a raw day is older than the archive window, which means
-`consolidate` has not run.
-
-Forgetting. `consolidate` proposes, with one evidence line each, to archive a note no
-brief, decision or retro under `days/` or the archive has named in 60 days; to fold one of
-two near-duplicate notes into the other; to drop a charter rule superseded by a later
-near-duplicate line in the same charter; and to drop a charter rule a later answered
-decision contradicts. Proposals sit in `memory/forget.json` as `F-n`; `wuwei consolidate
---widget` asks them (#359) and `wuwei memory forget F-n apply|keep` is a host terminal owner
-action. `apply` asks y/N, then lands the change through `wuwei promote`'s own landing,
-which keeps the before text under `memory/archive/` and appends the ledger, and records a
-`memory.folded` event. Nothing is removed without that record; `keep` declines and the
-proposal is not asked again.
+Records grow every day; what a session loads must not. Budget. `[memory] budget_tokens`
+(default 6000) caps the SessionStart payload, built in priority order: the spine, then the
+past-day lines of the index, then the promote line. When the whole would exceed the budget,
+SessionStart leaves today out and says so in one line. The orientation block and
+`Active constraints:` (#358) precede the payload and are not part of it.
 
 No duplicate memory. The harness has its own memory (CLAUDE.md, auto-memory, rules
 files). WUWEI's records stay the source and nothing is read back from the harness. `wuwei
-memory export --claude`, run by `consolidate` and by `promote` when a proposal landed,
-writes the charters' rule lines and the current week's lessons as one block between
-markers it owns into the workspace's `CLAUDE.md` (or `[memory] export_to`), idempotent.
-Harness rules files (#441) get the same export when that item lands.
-
-Digests, `forget.json` and the archive are producer-only records under the records guard
-(9.1). `wuwei memory status` prints sizes and tokens per tier, the payload against the
-budget, the last consolidate and the pending proposals.
+memory export --claude`, run by `promote` when a proposal landed, writes the charters' rule
+lines as one block between markers it owns into the workspace's `CLAUDE.md` (or
+`[memory] export_to`), idempotent.
 
 ## 6. Memory
 
@@ -1544,42 +1472,23 @@ budget, the last consolidate and the pending proposals.
 | Working | `days/<date>/state.json`, `events.jsonl` | on demand by the planner | CLI |
 | Episodic | `days/<date>/` | by summary line in the index | planner, steward |
 | Procedural | charters, `memory/CHANGELOG.md`, `memory/ledger.jsonl`, guards | charter as system prompt; changelog and ledger never | `wuwei promote`, from steward proposals |
-| Semantic | `memory/spine.md`, `memory/notes/` | spine in full, notes by index | any seat: `wuwei note` creates, `wuwei promote` changes |
-
-### 6.2 Frontmatter contract
-
-Every note declares `type` (hub, reference, decision, person, question), `summary` (one line,
-present tense, current state), `aliases`, `status` (active, archived). The summary is the
-only thing loaded by default.
+| Semantic | `memory/spine.md` | in full | the owner |
 
 ### 6.3 Index and payload
 
-`wuwei index` writes `memory/index.md`: one line per note with summary and estimated token
-cost, one line per past day. Session start loads spine, index and today's state, and prints
-the payload size.
-
-### 6.4 Memory lint (session start)
-
-- summary older than the newest date in its own body
-- note over its line cap
-- state note accumulating dated entries (turning into a log)
-- raw intake with nothing routed out of it
-- a note past probation that was never loaded (archive candidate, section 6.8)
+`wuwei index` writes `memory/index.md`: one line per past day. Session start loads the spine,
+the index and today's state, and prints the payload size.
 
 ### 6.5 Routing
 
-A decision goes to a decision note only if someone will later ask why the system is shaped
-this way. A world fact goes to the spine or a note, never only to a ticket. A lesson about
+A decision goes to a decision record only if someone will later ask why the system is shaped
+this way. A world fact goes to the spine, never only to a ticket. A lesson about
 how to work goes to a charter through a steward proposal and `wuwei promote`, never to a log.
 
 ### 6.6 Consolidation
 
 Daily: the steward folds the retro into charter proposals at close, `wuwei promote` lands
-them, and the Stop guard verifies they landed. Weekly: `/wuwei consolidate` as a scheduled
-task finds contradictions, near-duplicates and stale summaries across notes and local
-charter rules, folds duplicates under one survivor, and archives days older than 30. It
-snapshots `memory/` and `charters/` before it starts, since a fold is the one change a
-rename cannot undo.
+them, and the Stop guard verifies they landed.
 
 ### 6.7 Claude's own memory
 
@@ -1589,27 +1498,21 @@ nothing mixes across workspaces.
 ### 6.8 Self-maintaining procedure (owner, 2026-09-28)
 
 Mechanisms adapted from autoharness (tigerless-labs/autoharness, MIT), applied to charters
-and notes rather than to Claude skills, so procedure keeps one home.
+rather than to Claude skills, so procedure keeps one home.
 
-- Propose, then promote. Seats and the steward never edit a charter override or an
-  existing note directly; they write a proposal to `days/<date>/proposals/` (target, action
-  `add`, `patch`, `fold` or `archive`, the new text or delta, reason, evidence path).
+- Propose, then promote. Seats and the steward never edit a charter override directly;
+  they write a proposal to `days/<date>/proposals/` (target, action `add` or `patch`, the
+  new text or delta, reason, evidence path).
   `wuwei promote` is the single writer: it lints the proposal and lands it by atomic
   rename, or rejects it with the reason.
-- Promote lint: the target is WUWEI-authored (a local override in `.wuwei/charters/`, a
-  note), never a plugin charter or a user file; a rule body
-  stays under its line cap; the evidence path exists; an `add` that duplicates an existing
-  rule is rejected in favour of a `patch` of that rule; a lesson that contradicts an
-  existing rule must rewrite that rule in the same proposal; a `fold` names a live survivor.
+- Promote lint: the target is a local charter override in `.wuwei/charters/`, never a
+  plugin charter or a user file; a rule body stays under its line cap; the evidence path
+  exists; an `add` that duplicates an existing rule is rejected in favour of a `patch` of
+  that rule; a lesson that contradicts an existing rule must rewrite that rule in the same
+  proposal.
 - Ledger. Every landed or rejected proposal appends one line to `memory/ledger.jsonl`:
   target, action, reason, evidence, date. `memory/CHANGELOG.md` stays the human-readable
   record; the ledger traces a rule back to the day that taught it.
-- Adherence, not age. A note's loads are counted from `traces.jsonl` (a seat read it); a
-  guard-backed rule's use is its refusals. A new note or rule is in probation for
-  `memory.probation_days` working days (default 10) and cannot be archived. After
-  probation, one never loaded and never fired is an archive candidate for the next
-  consolidate. The index is bounded by `memory.max_notes` (default 60); past it, the lowest
-  load rates are archived first. Archive moves to `memory/archive/`, never deletes.
 - Visible outcome. The SessionStart payload carries one line for the last promote run: what
   landed and what was rejected, with the reason, so a lost lesson is never silent.
 
@@ -1658,8 +1561,8 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   until the owner reinstalls or re-confirms on the host.
 - Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
-  memory, goals or voice that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
-  a `page` for charter overrides and the voice.
+  memory or goals that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
+  a `page` for charter overrides.
 - Prompt canary. `wuwei init` generates a random canary token per workspace, embedded in
   every charter and skill the seats load. The canary appearing in outbound text, a PR or
   tracker comment, or content fetched from outside means instructions leaked or were echoed

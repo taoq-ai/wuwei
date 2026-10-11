@@ -354,11 +354,26 @@ def test_repropose_on_confirmed_goals_removes_draft(empty):
 
 
 def test_approve_reads_the_proposed_goals(empty):
-    # #603: the gate-confirmed draft approves; memory stays written only by goals edit.
+    # #603, #833: the gate-confirmed draft approves and the approval records it in memory.
+    assert registry.load('vcs', {'adapters': {'vcs': 'git'}}).workspace_init(empty / '.wuwei').exit == 0
     plan.propose(lead(), empty)
-    before = (empty / '.wuwei/memory/goals.md').read_bytes()
     plan.approve(['A'], empty, goals_confirmed=True)
     assert state.read_state(empty)['goals'] == ['G-1', 'G-2']
+    assert (empty / '.wuwei/memory/goals.md').read_text() == (
+        empty / '.wuwei/days/2026-09-28/goals.md').read_text()
+
+
+def test_approve_refused_when_the_goals_commit_fails(empty, monkeypatch):
+    """#833: the goals are recorded before the approval; a failed owner commit leaves the day unapproved."""
+    from types import SimpleNamespace
+    load = registry.load
+    refused = SimpleNamespace(workspace_owner_commit=lambda *args, **kwargs: registry.Result(1, reason='commit refused'))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: refused if kind == 'vcs' else load(kind, config))
+    plan.propose(lead(), empty)
+    before = (empty / '.wuwei/memory/goals.md').read_bytes()
+    with pytest.raises(OSError, match='commit refused'):
+        plan.approve(['A'], empty, goals_confirmed=True)
+    assert not state.read_state(empty).get('gate_approved')
     assert (empty / '.wuwei/memory/goals.md').read_bytes() == before
 
 

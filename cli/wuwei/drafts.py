@@ -5,7 +5,7 @@ import os
 import re
 from uuid import uuid4
 
-from wuwei import outward, state, voice, workspace
+from wuwei import outward, state, workspace
 from wuwei.exits import RACE, DAMAGED
 
 
@@ -77,7 +77,8 @@ def create(root, config, channel, operation, adapter, inputs, reason, tool=None)
     texts, destinations = outward._text(inputs)
     nested = inputs.get('draft', {})
     target = destination(inputs, channel, operation)
-    audience = voice.audience(target if destinations or operation == 'dm' else channel, config)
+    audience = target if destinations or operation == 'dm' else channel
+    audience = 'review' if audience == 'code_host' else audience
     draft_id = 'draft-' + uuid4().hex
     row = {'id': draft_id, 'channel': channel, 'operation': operation,
            'adapter': adapter, 'destination': target, 'inputs': inputs,

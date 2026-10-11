@@ -74,11 +74,8 @@ def session_start(payload):
         budget = config['memory']['budget_tokens']
         if tokens > budget:
             code = max(code, 1)
-            lines.append(f'memory: digests and rules exceed memory.budget_tokens ({tokens} > {budget}); '
-                         'run wuwei consolidate')
-        findings = memory.lint(root)
-        code = max(code, int(bool(findings)))
-        lines.extend(findings)
+            lines.append(f'memory: the payload exceeds memory.budget_tokens ({tokens} > {budget}); '
+                         'shorten .wuwei/memory/spine.md')
     except ERRORS as exc:
         code = 2
         lines.append(f'memory unmeasured: {exc}')

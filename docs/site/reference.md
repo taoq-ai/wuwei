@@ -13,7 +13,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` show a diff and ask on a card in the session. | [Configuration](configuration.md#calibration) |
-| `bin/wuwei consolidate` | Reviews memory, packs old days into tarballs, rebuilds digests and proposes forgetting; `consolidate --widget` asks each pending proposal. | [Configuration](configuration.md#host-build-and-memory) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>] [--card <hash>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records your answer. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
@@ -27,7 +26,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
-| `bin/wuwei goals` | Shows or edits your goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
+| `bin/wuwei goals` | Shows your goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
 | `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
@@ -36,12 +35,11 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei lint` | Plumbing: `lint tone <path>...` reports each file's average and longest sentence, its sentences over 35 words and its nominalisations. It exits 1 when a file is over the plain tone rule. | |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
-| `bin/wuwei memory` | `lint` checks workspace memory; `memory show <date>` prints a raw or archived day; `memory status` sizes every tier; `memory export --claude` writes the rules block into `memory.export_to`; `memory forget F-n apply` or `keep` is your answer to a forgetting proposal. | [Concepts](concepts.md#memory) |
+| `bin/wuwei memory` | `memory export --claude` writes the charter rules block into `memory.export_to`. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics, including `cycle_minutes` and `gate_minutes` per merged item and `cycle_by_tier` (median minutes, items and target per tier). A ticket whose tracker lookup could not run is named with its reason under `lead_time.unmeasured`, and the others still measure. `metrics --week [<week>]` prints a week's telemetry aggregate, computing it when absent. | [Telemetry](configuration.md#telemetry) |
 | `bin/wuwei next` | Prints where the day stands and the one next action; `--json` prints `{state, action, command or prompt and agent_type, why, then}`. Runnable work comes first and an open PR, which waits on people, comes last; a day with more than one item row adds `rows` (`{state, item, command}` in that order) and text mode prints a `Queue:` line. The planner loops on it: run `wuwei next --json`, do the one action, run it again when the result or a completion notification arrives. | [What the session knows](agent.md) |
-| `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
-| `bin/wuwei note` | Manages workspace notes; `--fix "<title>"` records a small fix a seat found, and `next` proposes it. | [Concepts](concepts.md#memory) |
+| `bin/wuwei note` | `--fix "<title>"` records a small fix a seat found, and `next` proposes it. | [Concepts](concepts.md#memory) |
 | `bin/wuwei outbound` | Inspects the outbound approval policy; `bin/wuwei outbound tiers` prints the effective tier table, `bin/wuwei outbound explain <draft id>` the rows a draft passed and the row that held it (both read-only), and `learn --tool <tool>` proposes an unknown connector, its channels with their class and its people on one card (planner session). | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `add <id> --from-finding` admits a seat's finding as a light item that starts without a ticket; `carry` and `park` record an open item's disposition at close; `set <item> ticket=<id>` records an existing ticket once the tracker confirms it (the planner's below strict, yours under strict), and `set <item> spec=skipped --reason <why>` skips the spec for one item. | [Lead plan JSON](#lead-plan-json) |
@@ -64,7 +62,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei sweep` | Plumbing: checks day obligations; `sweep obligations --headless` runs one `shepherd` sweep. `sweep classes <worktree>` lists the builder's sweep classes the item's diff touches: `Depth: light; no class sweep` at light, every class at full. It is read-only and exits 2 when no item has that worktree or the diff cannot be read. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei tracker` | `create <item>` opens the item's ticket from its record, the planner's below strict and yours under strict. `plan approve` runs it for the tickets the plan proposed. `create --bug, --triage or --follow-up <subject> "<title>" --evidence "<file:line>" [--seat <role>]` opens a linked ticket, recording the seat that filed it; `log` writes today's decisions, progress, verdicts, pull request and close as ticket comments; `done <item>` moves the ticket to done. `move <item> in_review` (or `done`) re-runs a lifecycle move and handles a missing in-review label as `pr raise` does. | [Tickets and comments](concepts.md#tickets-and-comments) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
-| `bin/wuwei voice` | Shows or edits your voice profile. | [Owner voice](configuration.md#owner-voice) |
 | `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
 | `bin/wuwei who` | Shows a person, channel, connector or login from `.wuwei/graph.json`: its edges and the tier a routine message there gets. | [People, channels and tools](configuration.md#people-channels-and-tools) |
@@ -124,7 +121,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | Command | Effect |
 | --- | --- |
 | `bin/wuwei drafts` | List today's pending drafts with text, destination, audience and tier reason. |
-| `bin/wuwei drafts approve <id>` | Run security, outward, voice and humanize lint (the tells show in the prompt), then send the stored text once through its original adapter operation. |
+| `bin/wuwei drafts approve <id>` | Run security, outward and humanize lint (the tells show in the prompt), then send the stored text once through its original adapter operation. |
 | `bin/wuwei drafts approve <id> --always` | Send as above and add the card's tier row to `outbound.tiers`: `send` for the person a row asked about, or `ask` for the destination channel. |
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
@@ -135,7 +132,7 @@ Single-field replies edit as plain text. Multi-field tracker drafts edit as a JS
 
 A successful send closes the draft. Repeated or competing approvals cannot send it again. Lint or editor failure leaves it pending. A send attempt with a failed or interrupted outcome remains `failed` or `sending` and cannot be retried through approval; inspect the destination before taking further action. Changing the configured adapter or DM destination also refuses replay. Cross-day browsing and transport reconciliation are deferred.
 
-`bin/wuwei metrics` includes `voice_drafts`, grouped by the draft's voice audience: `sent`, `share_sent_unedited`, and `edit_sizes` for edited successful sends. Edit size counts changed characters using matched spans, with a replacement counted as the larger removed or inserted span. Dropped, pending, failed and interrupted drafts are excluded. No successful sends reports `unmeasured`. No new configuration keys are needed.
+`bin/wuwei metrics` includes `voice_drafts`, grouped by the draft's audience (its channel, `review` for the code host): `sent`, `share_sent_unedited`, and `edit_sizes` for edited successful sends. Edit size counts changed characters using matched spans, with a replacement counted as the larger removed or inserted span. Dropped, pending, failed and interrupted drafts are excluded. No successful sends reports `unmeasured`. No new configuration keys are needed.
 
 ## Item worktrees
 
@@ -215,7 +212,7 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 in seven sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
-`fast_checks`, calibration, posture and its observe days, and `memory tiers`, which warns when raw days are older than `consolidation.archive_after_days`), Gates and adapters
+`fast_checks`, calibration, posture and its observe days), Gates and adapters
 (`config check`, the MCP gate and each server in today's registry record), PR flow (the
 settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.authors`,
 `shepherd.review_channel` when chat is set, and the tracker, chat and review-bot adapters; an
@@ -427,15 +424,13 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
-| `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |
 | `bin/wuwei watch uninstall` | no |
 | `bin/wuwei config promote` | yes |
 | `bin/wuwei config set <key> <value>` | yes |
 | `bin/wuwei config add-repo --name --path --branch` | yes |
-| `bin/wuwei memory forget F-<n> apply` and `memory forget F-<n> keep` (apply asks) | yes |
 | `bin/wuwei telemetry send [<week>]` | yes |
 
-A command that asks y/N shows what it confirms and reads the answer from `/dev/tty`; anything but y or yes declines. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or put `--workspace <path>` first, as in `bin/wuwei --workspace <path> decide D-1 A`. From a repository checkout the workspace configures, WUWEI finds the workspace through `~/.config/wuwei/workspaces.json`, which config edits and `init --upgrade` write, and the `decide` and `drafts` commands WUWEI prints already carry `--workspace`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
+A command that asks y/N shows what it confirms and reads the answer from `/dev/tty`; anything but y or yes declines. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or put `--workspace <path>` first, as in `bin/wuwei --workspace <path> decide D-1 A`. From a repository checkout the workspace configures, WUWEI finds the workspace through `~/.config/wuwei/workspaces.json`, which config edits and `init --upgrade` write, and the `decide` and `drafts` commands WUWEI prints already carry `--workspace`. `drafts approve --edit` opens `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 
 ## Hook latency budget
 

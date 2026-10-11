@@ -855,7 +855,7 @@ _GOALS = '.wuwei/memory/goals.md'
     ('Write', _STATE, 'wuwei state set'), ('Bash', f'echo x >> {_STATE}', 'wuwei state set'),
     ('Write', _EVENTS, 'wuwei event'), ('Bash', f'echo x >> {_EVENTS}', 'wuwei event'),
     ('Edit', _REPORT, 'wuwei mcp decide'), ('Bash', f'echo x >> {_REPORT}', 'wuwei mcp decide'),
-    ('Edit', _GOALS, 'wuwei goals edit --file'), ('Bash', f'cp /dev/null {_GOALS}', 'wuwei goals edit --file'),
+    ('Edit', _GOALS, 'plan approve records the goals'), ('Bash', f'cp /dev/null {_GOALS}', 'plan approve records the goals'),
     ('Write', '.wuwei/integrity/verdict.json', 'wuwei integrity reconfirm'),
     ('Write', '.wuwei/charters/a.md', 'use the wuwei CLI'),
     ('Write', 'credentials', 'use the wuwei CLI'), ('Bash', 'credentials', 'use the wuwei CLI'),
@@ -940,17 +940,6 @@ def test_issue_349_interpreter_operands_stay_refused(records, posture, command, 
     assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
 
 
-@pytest.mark.parametrize('path', ['.wuwei/memory/digests/2026-W40.md', '.wuwei/memory/forget.json'])
-def test_memory_tier_records_are_producer_only(workspace, path):
-    from wuwei.guards.protect_state import check_bash, check_file
-    assert check_file(payload(workspace, 'Write', file_path=path))[0] == 1
-    for command in (f'cp other {path}', f'mv other {path}', f'rm {path}'):
-        assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
-    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] == 1
-    assert check_bash(payload(workspace, 'Bash', command=f'cat {path}')) == (0, '')
-    assert check_bash(payload(workspace, 'Bash', command='rm -rf .wuwei/memory/digests'))[0] == 1
-
-
 @pytest.mark.parametrize('target', ['.wuwei/metrics/2026-W40.json', '.wuwei/metrics/token'])
 def test_telemetry_records_are_protected(workspace, target):
     # #422: the week files and the token are written by the CLI only.
@@ -1027,7 +1016,7 @@ def test_scratch_scripts_run_but_climbing_out_is_refused(records, monkeypatch, c
 
 @pytest.mark.parametrize('command', [
     'bin/wuwei decide D-1 A', 'bin/wuwei watch uninstall', 'bin/wuwei tracker create A',
-    'bin/wuwei plan set pace=fast', 'python3 -P -m wuwei goals edit --file g.md',
+    'bin/wuwei plan set pace=fast', 'python3 -P -m wuwei goals',
     'W=watch; bin/wuwei $W uninstall'])
 def test_any_wuwei_command_passes(workspace, command):
     """#800: the state guard no longer reads a wuwei group or verb."""

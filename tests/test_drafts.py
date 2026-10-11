@@ -21,8 +21,7 @@ def root(tmp_path, monkeypatch):
     private.mkdir()
     (private / 'config.toml').write_text(
         '[owner]\nname = "Pat Example"\npronouns = "they/them"\n'
-        '[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n'
-        '[voice.sources]\nexternal = ["C2"]\n')
+        '[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n')
     return tmp_path
 
 
@@ -52,7 +51,7 @@ def test_approve_tier_is_stored_and_listed_without_send(root, sink, capsys):
     assert row['destination'] == 'C2'
     assert row['inputs'] == {'channel': 'C2', 'text': row['text'], 'thread': '123.456'}
     assert row['created'] == workspace.now().isoformat()
-    assert row['tier_reason'] and row['audience'] == 'external'
+    assert row['tier_reason'] and row['audience'] == 'C2'
     assert row['item'] is None
     assert main(['drafts']) == 0
     out = capsys.readouterr().out
@@ -304,7 +303,7 @@ def test_edit_outside_strict_still_asks_the_owner(root, port, monkeypatch):
     assert len(prompts) == 2 and port[1][0]['text'] == 'attacker text'
 
 
-@pytest.mark.parametrize('failure,code', [('outward', 1), ('voice', 1), ('security', 1),
+@pytest.mark.parametrize('failure,code', [('outward', 1), ('security', 1),
                                          ('editor', 2), ('adapter-change', 2)])
 def test_presend_failures_leave_pending(root, port, monkeypatch, failure, code):
     row = queued(root)
@@ -312,10 +311,6 @@ def test_presend_failures_leave_pending(root, port, monkeypatch, failure, code):
     if failure == 'outward':
         edit_to(monkeypatch, 'Pat wrote this.')
         args += ['--edit']
-    elif failure == 'voice':
-        memory = root / '.wuwei/memory'
-        memory.mkdir()
-        (memory / 'voice.md').write_text('## external\n- never: tomorrow\n')
     elif failure == 'security':
         from wuwei import security
         marker = security.initialize(root / '.wuwei')['canary']
@@ -391,7 +386,7 @@ def test_voice_metrics_use_successful_sends_per_audience(root, port, monkeypatch
     queued(root)
     result = metrics.collect(root)['voice_drafts']
     size = state.read_state(root)['drafts'][second['id']]['edit_size']
-    assert result == {'external': {'sent': 2, 'share_sent_unedited': .5,
+    assert result == {'C2': {'sent': 2, 'share_sent_unedited': .5,
                                    'edit_sizes': [size]}}
 
 
@@ -423,21 +418,6 @@ def test_multifield_edit_preserves_destination(root, monkeypatch):
     assert main(['drafts', 'approve', row['id'], '--edit']) == 2
     assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
     assert calls == []
-
-
-def test_dm_approval_uses_destination_voice_profile(root, port, monkeypatch):
-    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D123')
-    path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('external = ["C2"]', 'external = ["C2", "D123"]'))
-    memory = root / '.wuwei/memory'
-    memory.mkdir()
-    (memory / 'voice.md').write_text('## external\n- never: tomorrow\n')
-    assert port[0].dm('I can deliver this tomorrow.', root=root).exit == 1
-    row, = state.read_state(root)['drafts'].values()
-    assert row['audience'] == 'external'
-    assert main(['drafts', 'approve', row['id']]) == 1
-    assert port[1] == []
-    assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
 
 
 def test_draft_style_finding_is_recorded_and_never_blocks(root, port, monkeypatch):

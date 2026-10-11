@@ -24,10 +24,6 @@ name = "fixture-org/lib"
 path = "lib"
 default_branch = "main"
 
-[voice.sources]
-internal = ["C01", "C02"]
-client = ["C03"]
-
 [outward.servers]
 acme = "slack"
 Mailer = "mail"
@@ -83,7 +79,7 @@ def test_views_of_build_are_the_sections(config):
     for node in ('person:slack:U01', 'person:slack:U9', 'person:github:dev', 'person:email:Client@Outside.test',
                  'channel:C01', 'channel:c01', 'channel:C04', 'connector:acme', 'connector:Mailer',
                  'address:dev@example.test', 'login:dev', 'person:slack:U02', 'person:owner',
-                 'login:pat-dev', 'channel:D0OWNER', 'voice:internal', 'repo:fixture-org/app', 'login:rev-one'):
+                 'login:pat-dev', 'channel:D0OWNER', 'repo:fixture-org/app', 'login:rev-one'):
         assert node in nodes, node
     assert all(edge['from'] in nodes and (':' not in edge['to'] or edge['to'] in nodes)
                for edge in register['edges'])

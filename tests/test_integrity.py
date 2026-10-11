@@ -367,7 +367,7 @@ def test_workspace_history_stub_and_allowlist(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('changed,severity', [('charters/builder.md', 'page'),
-    ('memory/voice.md', 'page'), ('memory/goals.md', 'warn'), ('memory/notes/a.md', 'warn')])
+    ('memory/goals.md', 'warn'), ('memory/notes/a.md', 'warn')])
 def test_workspace_integrity_severity(tmp_path, monkeypatch, changed, severity):
     api = core()
     root = workspace_root(tmp_path)

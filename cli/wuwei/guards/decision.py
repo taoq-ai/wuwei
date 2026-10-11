@@ -120,7 +120,7 @@ def gate_question(question, root):
                         for citation in citations))
 
 
-TOPICS = {'goals', 'voice'}
+TOPICS = {'goals'}
 DRAFT_ID = r'(?<![\w-])draft-[0-9a-f]{32}(?![\w-])'
 
 
@@ -153,8 +153,8 @@ def _answer(payload, text):
 
 
 def record_gate(payload):
-    """PostToolUse: note on the planner's session row which records (goals, voice) its
-    answered morning gate questions asked, by header `Goals` or `Voice` only, and which
+    """PostToolUse: note on the planner's session row which records (goals) its
+    answered morning gate questions asked, by header `Goals` only, and which
     decisions it asked, by header `D-n` citing today's record (#354); the record commands read
     them through sessions.gate_topics."""
     from wuwei.decision import DECISION_ID, today_path

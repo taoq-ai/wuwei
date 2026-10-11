@@ -299,11 +299,16 @@ class Reached(Exception):
 
 
 def test_fresh_day_goals_reach_an_approved_plan(day):
-    # #603: a fresh day's proposed goals approve at the gate, then the goals row records them.
+    # #603, #833: a fresh day's proposed goals approve at the gate, and the approval records them.
     from test_plan import LEAD_GOALS, TEMPLATE
+    from wuwei import registry
+    from wuwei.registry import Result
     (day.root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     propose = day.proposal
     day.proposal = lambda *args, **kwargs: {**propose(*args, **kwargs), 'goals': LEAD_GOALS}
+    # The owner commit is the VCS boundary; the fixture workspace memory is not a repository.
+    day.patch.setattr(registry.load('vcs', None), 'workspace_owner_commit', lambda *args, **kwargs: Result(0),
+                      raising=False)
 
     def card(day, action):
         for widget in action['widget']:
@@ -314,16 +319,9 @@ def test_fresh_day_goals_reach_an_approved_plan(day):
             raise Reached
     with pytest.raises(Reached):
         walk(day, card, after)
-    action = json.loads(bash(day, 'wuwei next --json'))
-    assert (action['state'], action['command']) == (
-        'goals', f'wuwei goals edit --file .wuwei/days/{day.directory.name}/goals.md'), action
-    from wuwei import registry
-    from wuwei.registry import Result
-    # The owner commit is the VCS boundary; the fixture workspace memory is not a repository.
-    day.patch.setattr(registry.load('vcs', None), 'workspace_owner_commit', lambda *args, **kwargs: Result(0),
-                      raising=False)
-    bash(day, action['command'])
     assert '## G-2' in (day.root / '.wuwei/memory/goals.md').read_text()
+    action = json.loads(bash(day, 'wuwei next --json'))
+    assert action['state'] != 'goals', action
 
 
 def test_multi_repository_dispatch_runs(day):

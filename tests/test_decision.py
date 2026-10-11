@@ -1400,15 +1400,6 @@ def test_record_gate_ignores_seats_and_others(planner):
     assert 'gate.asked' not in [e['kind'] for e in events(planner)]
 
 
-def test_record_gate_voice_topic(planner):
-    from wuwei import state
-    from wuwei.guards.decision import record_gate
-    payload = gate(planner, header='Voice')
-    payload['tool_input']['questions'][0]['question'] = payload['tool_input']['questions'][0]['question'].replace('goals G-1 and G-2', 'these lines')
-    assert record_gate(payload) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['voice']
-
-
 def test_set_outcome_rewrites_first_outcome():
     from wuwei import decision
     text = 'Question: Q?\n## Outcome: pending\nNotes: kept\nOutcome: pending\n'

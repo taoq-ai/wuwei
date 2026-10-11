@@ -22,15 +22,7 @@ REF = 'example/project#7'
 def case(tmp_path, monkeypatch):
     from fakes.integrity import measured
     measured(monkeypatch)
-    (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
-    from wuwei import memory
-    if not hasattr(memory, 'lint'):
-        # Until rebased onto the memory-lint feature, match its list[str] contract.
-        def lint(root):
-            if not (root / '.wuwei/memory/notes').is_dir():
-                raise ValueError('memory notes directory missing')
-            return []
-        monkeypatch.setattr(memory, 'lint', lint, raising=False)
+    (tmp_path / '.wuwei/memory').mkdir(parents=True)
     (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
     (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["owner"]\n'
@@ -460,15 +452,6 @@ def test_watch_config_invalid(case, field, value):
     assert main(['watch', '--once']) == 2
 
 
-def test_memory_lint_when_available(case, monkeypatch):
-    from wuwei import memory
-    root, _, _, _ = case
-    state.append_event('watch: clock', {}, root)
-    monkeypatch.setattr(memory, 'lint', lambda root: ['memory lint finding'], raising=False)
-    code, message = lifecycle_module().session_start({'cwd': str(root)})
-    assert code == 1 and 'memory lint finding' in message
-
-
 def test_poll_in_place_edit_and_unordered_evidence(case):
     root, host, _, _ = case
     watch = watch_module()
@@ -573,14 +556,6 @@ def test_successful_empty_discovery_after_pr_gone_is_measured(case):
     assert summary['prs'] == 0
     assert summary['unreadable'] == 1  # Steward runtime remains unmeasured.
     assert summary['scanner'] == 'no sessions'
-
-
-def test_missing_notes_lint_is_unmeasured(case):
-    root, _, _, _ = case
-    (root / '.wuwei/memory/notes').rmdir()
-    code, message = lifecycle_module().session_start({'cwd': str(root)})
-    assert code == 2
-    assert 'memory unmeasured:' in message and 'notes directory' in message
 
 
 def test_session_payload_omits_watch_state(case):

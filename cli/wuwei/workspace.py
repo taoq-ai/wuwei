@@ -57,7 +57,8 @@ TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
 RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
            'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
-           'decisions.cruise', 'grants', 'merge.default_tier')
+           'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
+           'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -122,14 +123,8 @@ SCHEMA = {
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
              "reservation_timeout_seconds": (int, 14400, 1),
              "rate_limit_wait_seconds": (int, 120, 0)},
-    "consolidation": {"archive_after_days": (int, 30, 0),
-                      "similarity_threshold": (float, 0.85)},
-    "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
-               "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1),
-               "digest": (str, "week", ("week", "off")), "budget_tokens": (int, 6000, 1),
-               "export_to": (str, "CLAUDE.md")},
+    "memory": {"budget_tokens": (int, 6000, 1), "export_to": (str, "CLAUDE.md")},
     "metrics": {"transcripts": (str, "~/.claude/projects"), "band_margin": (float, 0.2)},
-    "voice": {"sources": {"*": [(str, None)]}, "review_prs": [(str, None)]},
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},

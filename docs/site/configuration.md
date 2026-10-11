@@ -9,9 +9,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
-| `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[autonomy]`, `[decisions]`, `[decisions.lenses]` | [Decisions](#decisions) |
@@ -131,11 +130,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit to reset before one retry; beyond it the reason names the reset time. `0` never waits. |
-| `memory.max_notes` | `60` | Index note limit. |
-| `memory.note_line_cap` | `80` | Maximum lines in a note. |
-| `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
-| `memory.state_entry_cap` | `3` | State entries included in memory payload. |
-| `memory.digest` | `"week"` | `"week"` writes the week digest at close and consolidate writes week and month digests; `"off"` writes none. |
 | `memory.budget_tokens` | `6000` | SessionStart memory payload budget in estimated tokens; over it today's lines are left out first. |
 | `memory.export_to` | `"CLAUDE.md"` | Workspace-relative file that receives the generated rules block (`init`, `init --upgrade`; `init --upgrade` also removes the guide block an older version wrote); never under `.wuwei/`. |
 | `retro.repo` | `"."` | Repository used for retro evidence. |
@@ -143,8 +137,6 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
 | `metrics.band_margin` | `0.2` | The retro names a worst hour or session-age band only when its gate FIX rate over the last 7 days exceeds every other measured band by at least this much. |
-| `consolidation.archive_after_days` | `30` | Pack older day directories into `archive/<year>/<date>.tar.gz`; read them with `wuwei memory show <date>`. |
-| `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
 | `build.stuck_after` | `3` | Repeated progress limit. |
 | `build.poll_interval_seconds` | `5` | Runtime job poll interval. |
@@ -278,13 +270,6 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `docs.auto` | `[]` | Page kinds (`page`, `report`, `retro`) written at once; any other kind is stored as a draft for `bin/wuwei drafts approve <id>`. Sensitive text drafts anyway. |
 | `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
 
-## Owner voice
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `voice.review_prs` | `[]` | PR references whose owner comments teach the review audience voice. |
-| `voice.sources.internal` | Not set | Example internal audience mapped to sent chat channel IDs. See [People, channels and tools](#people-channels-and-tools). |
-
 ## Boundaries and deployment
 
 | Key | Default | Meaning |
@@ -374,7 +359,6 @@ What WUWEI learns about your workspace is relational. A person belongs to channe
 | `owner.handles` | `person:owner` maps to each handle: a Slack user id as `person:slack:<id>`, any other as `login:<handle>`. |
 | `outward.servers`, `outward.modes`, `outward.classes` | `connector:<server>` sends through its channel kind, has its mode and its default class. |
 | `shepherd.authors` | `address:<email>` maps to its `login:` and its `person:slack:` mention. |
-| `voice.sources` | `channel:<id>` is a member of `voice:<audience>`. |
 | `repos.<n>.shepherd.reviewers` | `login:<login>` reviews `repo:<name>`. |
 
 Each view edge names its config key. The register also keeps what no key can hold: the names an approved `bin/wuwei outbound learn` card gave a channel or a person, and that a thread's participants are members of its channel, each naming the card. The guards keep reading `config.toml`; the register decides nothing.
@@ -387,9 +371,7 @@ A hand edit of a modeled key is drift: `bin/wuwei doctor` warns on its `register
 
 ## Goals and discovery
 
-While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and after you approve them in the morning gate the planner records that file with `wuwei goals edit --file`. Under the strict posture the hook refuses the planner's call and prints the command for a host terminal. Later you can run `bin/wuwei goals edit` to open `$EDITOR`, or `bin/wuwei goals edit --file goals.md` to use a prepared file. The command validates and commits the change in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
-
-You use `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md` for the same validated history flow. Seat proposals still go through `wuwei promote`.
+While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and when you approve them in the morning gate, `wuwei plan approve` validates that file, writes it to `memory/goals.md` and commits it in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Later you edit `.wuwei/memory/goals.md` yourself; agent tools cannot write it. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`. It reads the tracker backlog of every configured repository, and `--repo <org>/<name>` narrows it to one.
 
 After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
 

@@ -141,11 +141,6 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         return FINDINGS, 'outward: banned character; remove the banned character (outward.banned_characters lists them) and send again'
     if channel in limits and len(text) > limits[channel]:
         return FINDINGS, 'outward: channel length exceeded; split the message or shorten it to the channel limit (outward.max_length)'
-    if root is not None:
-        from wuwei.voice import lint as voice_lint
-        code, reason = voice_lint(text, channel, config, root)
-        if code:
-            return code, reason
     return CLEAN, ''
 
 
@@ -623,9 +618,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         return FINDINGS, 'draft'
 
     def tier(name, evidence):
-        from wuwei import voice
-        return held(f'approval tier {name} for '
-                    f'{voice.audience(destinations[0] if destinations else kind, config)}: {evidence}')
+        audience = destinations[0] if destinations else kind
+        return held(f"approval tier {name} for {'review' if audience == 'code_host' else audience}: {evidence}")
 
     try:
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':

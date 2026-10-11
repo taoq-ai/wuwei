@@ -75,7 +75,7 @@ Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](
 
 ## What is inside
 
-- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md), [wuwei-retro](skills/wuwei-retro/SKILL.md) and [wuwei-consolidate](skills/wuwei-consolidate/SKILL.md).
+- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md) and [wuwei-retro](skills/wuwei-retro/SKILL.md).
 - Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four [sentinels](docs/site/concepts.md#sentinel): [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
 - Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes). PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note. SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
 - Adapters by port ([adapters and ports](docs/site/adapters.md)); the [documentation site](docs/site/index.md) covers the rest:

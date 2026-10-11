@@ -372,7 +372,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'discovery.unmeasured': 'warn', 'steward.notes': 'warn',
                 'steward.run': 'silent', 'steward.due': 'warn',
                 'steward.acknowledged': 'silent',
-                'memory.folded': 'silent', 'memory.consolidated': 'silent',
                 'calibration.drift': 'warn',
                 'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
                 'negotiation.loop': 'warn',
