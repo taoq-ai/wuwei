@@ -106,9 +106,9 @@ A seat prompt's mandate block comes from `autonomy.mode` alone.
 - Day events may hold `cruise.carded`, `cruise.burn`, `decision.shadow` and
   `decision.notified` rows. Their kinds leave `signal.SILENT` and the producer table, so on
   the upgrade day an old row may classify as a nudge.
-- A record already written `Decided-by: cruise <class>@L<n>` today, before the upgrade, no
-  longer passes `decision.evaluate`. `wuwei close` then reports it as unmeasured. Only a
-  workspace upgraded mid-day after a cruise answer hits this (see Risks in plan.md).
+- A record already written `Decided-by: cruise <class>@L<n>` before the upgrade reads as
+  `mandate` on every read path (`wuwei close`, `decision show --widget`, the pending question),
+  so `wuwei close` measures it. Lint, `decision.write` and the scanner refuse the form.
 - `memory/cruise.json` stays on disk until removed. Nothing reads it, and it is no longer a
   protected record. Removal is listed for the lead with the retired files of part 10.
 - `wuwei undo D-n` and `wuwei decision undo D-n` keep working on a mandate-taken record
@@ -129,7 +129,8 @@ A seat prompt's mandate block comes from `autonomy.mode` alone.
   owner. Under supervised: record none; every class to the owner.
 - **FR-004**: `decision.CLASSES` MUST be a tuple of the fourteen class names in today's
   order. Class validation, `telemetry.CLASSES` and `undo.KIND` keep reading it.
-- **FR-005**: `Decided-by` MUST accept `seat`, `owner` and `mandate` only.
+- **FR-005**: `Decided-by` MUST accept `seat`, `owner` and `mandate` only on a write; a stored
+  `cruise <class>@L<n>` reads as `mandate`.
 - **FR-006**: `decision undo` MUST NOT read a window. It reverts a mandate-taken row after
   the owner's confirmation, as `wuwei undo D-n` does. `decision show --widget` MUST return
   `[]` for a mandate-taken row.
@@ -201,8 +202,8 @@ Open questions answered with the recommendation (strict, non-interactive):
    reached the owner stops reaching the owner.
 7. `decisions.cruise.enabled = false` was the kill switch. With no levels, there is nothing to
    switch. Supervised mode stays the owner's way to take every record.
-8. `Decided-by: cruise ...` is no longer accepted. Old records of earlier days are read only
-   by readers that skip invalid records. The upgrade-day case is an edge case.
+8. A stored `Decided-by: cruise ...` reads as `mandate`; lint and writes refuse it, so no new
+   record carries it.
 9. The README principle about cruise is rewritten here into its end state for this batch. It
    also drops the novelty and undo text, so part 10 does not edit it again.
 10. The design spec edits are part of the owner-approved #789 pass.

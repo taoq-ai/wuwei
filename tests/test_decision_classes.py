@@ -280,3 +280,13 @@ def test_close_measures_a_cruise_record_written_before_the_upgrade(ws, capsys):
         ws, reserved=False)
     _, findings = closing.unresolved(ws, [])
     assert 'D-3' not in findings and 'DIV-1 is still open' not in findings, findings
+
+
+def test_show_widget_reads_a_legacy_cruise_record_as_mandate(ws, capsys):
+    # #814 review F3: every read path, the widget included, reads a stored cruise answer as mandate.
+    from wuwei.__main__ import main
+    path = save(ws, record(cls='park'))
+    assert route(ws, capsys) == (0, 'mandate')
+    path.write_text(path.read_text().replace('Decided-by: mandate', 'Decided-by: cruise park@L2'))
+    assert main(['decision', 'show', 'D-3', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out) == []

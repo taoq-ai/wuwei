@@ -92,9 +92,10 @@ def _scored(fields):
     return rows, passing, wants, scores
 
 
-def evaluate(text, lenses=None):
+def evaluate(text, lenses=None, write=False):
     """Return validated fields and recomputed scores, or a content finding. lenses (the
-    effective lens table) turns on the #475 new-record checks; history readers leave it None."""
+    effective lens table) turns on the #475 new-record checks; history readers leave it None.
+    write (lint, write, the scanner) refuses a #814 legacy cruise answer that a read takes as mandate."""
     fields, current = {}, None
     for line in active_text(text).splitlines():
         match = re.match(r'^(?:#{1,6} )?(' + '|'.join(map(re.escape, FIELDS + OPTIONAL)) + r'):\s*(.*)$', line)
@@ -115,8 +116,8 @@ def evaluate(text, lenses=None):
                 'Class', 'Reasoning', 'Role', 'Previous'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
-    if lenses is None and re.fullmatch(r'cruise [a-z-]+@L[23]', fields['Decided-by']):
-        fields['Decided-by'] = 'mandate'  # #814: a record written before the upgrade; new writes refuse it
+    if not write and re.fullmatch(r'cruise [a-z-]+@L[23]', fields['Decided-by']):
+        fields['Decided-by'] = 'mandate'  # #814: a record written before the upgrade
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
                          ('Decided-by', ('seat', 'owner', 'mandate'))):
@@ -284,7 +285,7 @@ def option_id(fields, label):
 
 def lint(text, lenses=LENSES, root=None):
     try:
-        fields, scores = evaluate(text, lenses)
+        fields, scores = evaluate(text, lenses, write=True)
         option = fields['Recommendation']
         found = outward.tells(text)
         said = ''
@@ -552,7 +553,7 @@ def owner_record(text, option, where, note=None):
 
 def write(text, root):
     """Validate and allocate a numbered decision without replacing an existing record."""
-    evaluate(text, lens_table(workspace.load_config(root)))
+    evaluate(text, lens_table(workspace.load_config(root)), write=True)
     directory = workspace.day_dir(root) / 'decisions'
     directory.mkdir(parents=True, exist_ok=True)
     used = [int(path.stem[2:]) for path in directory.glob('D-*.md')

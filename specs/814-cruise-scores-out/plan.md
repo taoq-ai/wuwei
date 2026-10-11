@@ -370,7 +370,8 @@ No (b) check is lost.
 - `tests/test_decision.py`:
   - delete `test_class_levels` (964-976);
   - add `test_classes_are_the_fixed_list` (the 14-name tuple);
-  - add `test_cruise_decided_by_is_refused` (`Decided-by: cruise park@L2` fails `evaluate`);
+  - add `test_cruise_decided_by_reads_as_mandate_and_is_refused_on_write` (a stored
+    `Decided-by: cruise park@L2` reads as `mandate`; lint refuses it);
   - add the Role lint assertion from `test_calibration_scores.py:65`.
 - `tests/test_brief.py`:
   - delete `test_mandate_follows_class_levels` (454-459);
@@ -455,9 +456,9 @@ specs/815-undo-novelty-out/plan.md).
 
 ## Risks for the builder
 
-- Upgrade-day records: a record written `Decided-by: cruise ...` today before the upgrade
-  fails `evaluate`, and `wuwei close` reports it unmeasured (`closing.py:187-197`). Say in the
-  PR body: upgrade at the start of a day.
+- Upgrade-day records: a stored `Decided-by: cruise ...` reads as `mandate` on every read
+  path, so `wuwei close` measures it; lint, `decision.write` and the scanner pass
+  `write=True` and refuse it.
 - `tests/test_brief.py::test_builder_prompt_carries_the_mandate` pins the default lists. The
   fixed rule must reproduce them exactly, `approach` first in the supervised owner list.
 - Telemetry: `telemetry.CLASSES` must equal `decision.CLASSES`

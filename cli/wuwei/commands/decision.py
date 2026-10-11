@@ -239,7 +239,7 @@ def owner_outcome(args, note=None, *, root=None):
 
 def undo(args, *, root=None, where=None):
     """Revert an answer the mandate took, after the owner's Undo, and ask the owner; where is
-    given only by the DM listener."""
+    given by a caller that already holds the owner's confirmation."""
     from wuwei import sessions
     root = workspace.find_workspace(root)
     path = today_path(args.id, root)

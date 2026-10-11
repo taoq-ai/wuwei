@@ -21,8 +21,8 @@ code. "Skip if already gone" marks code batches 1 and 2 delete.
 - [X] T002 [US1] In `tests/test_decision.py`:
   - add `test_classes_are_the_fixed_list`, which asserts `decision.CLASSES` is the 14-name
     tuple in order;
-  - add `test_cruise_decided_by_is_refused`: `Decided-by: cruise park@L2` makes `evaluate`
-    raise `ValueError` naming `Decided-by`;
+  - add `test_cruise_decided_by_reads_as_mandate_and_is_refused_on_write`: a stored
+    `Decided-by: cruise park@L2` reads as `mandate`, and lint refuses it naming `Decided-by`;
   - add the Role lint lines of `tests/test_calibration_scores.py:65-72` as
     `test_role_is_an_optional_validated_field`;
   - delete `test_class_levels` (964-976).
