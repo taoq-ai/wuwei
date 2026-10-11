@@ -313,6 +313,11 @@ def test_tracker_none_is_silent_but_tracker_failure_warns():
     from wuwei.signal import classify
     event = {'kind': 'tracker.call', 'payload': {'exit': 2, 'reason': 'tracker adapter is none'}}
     assert classify(event, {})[0] == 'silent'
+    event['payload']['reason'] = ('tracker adapter is none, so tracker updates are skipped; to reach '
+                                  'the tracker, the owner sets adapters.tracker with bin/wuwei config set')
+    assert classify(event, {})[0] == 'silent'
+    assert {classify({'kind': f'duty.{step}', 'payload': {}}, {})[0]
+            for step in ('due', 'done', 'skipped')} == {'silent'}
     event['payload']['reason'] = 'tracker call unmeasured: OSError'
     assert classify(event, {})[0] == 'warn'
 
@@ -358,7 +363,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'discovery.intake': 'silent', 'plan.added': 'silent', 'finding.noted': 'silent',
                 'plan.proposed': 'warn', 'build.requested': 'warn',
                 'tracker.call': 'warn',
-                'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',
+                'tracker.created': 'silent', 'tracker.folded': 'silent', 'duty.due': 'silent',
+                'duty.done': 'silent', 'duty.skipped': 'silent',
                 'tracker.logged': 'silent', 'plan.set': 'silent',
                 'discovery.unmeasured': 'warn', 'steward.run': 'silent',
                 'plan.disposed': 'silent', 'plan.resumed': 'silent',

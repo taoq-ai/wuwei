@@ -403,6 +403,10 @@ def claim_pr(root, ref, item=None, goal=None):
             plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
         state.record_pr(root, item, ref, raised=False, head=pr['head'])
         print(ref)
+        from wuwei import dispatch
+        moved = dispatch.tracker_call(item, 'in_review', root)  # #842: the duty, as on pr raise
+        if config['adapters']['tracker'] != 'none' and moved.exit:
+            print(f'tracker: {moved.reason}', file=sys.stderr)
         if not state.read_state(root)['items'][item].get('worktree'):
             vcs = registry.load('vcs', config)
             path = workspace.branch_worktree(vcs, (root / Path(repo['path']).expanduser()).resolve(),

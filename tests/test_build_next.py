@@ -422,22 +422,38 @@ def test_build_done_hands_item_to_next_phase(seat, start, end):
     assert 'fix_rounds' not in state.read_state(root)['builds']['A']
 
 
-def test_build_next_needs_a_ticket_and_claims_it(seat, monkeypatch, capsys):
+def tracked(seat, monkeypatch):
     from fakes.tracker import Fake
-    root, _, _, _, _ = seat
+    root = seat[0]
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('[adapters]\n', '[adapters]\ntracker="linear"\n'))
     fake = Fake({'claim': registry.Result(0, {})})
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
                         else load(kind, config))
-    assert main(['build', 'next', 'A']) == 1
-    assert "A has no ticket: the planner proposes one on the item's card" in capsys.readouterr().err
-    assert 'builds' not in state.read_state(root)
+    return fake
+
+
+def test_build_next_needs_no_ticket(seat, monkeypatch):
+    root, _, _, day, _ = seat
+    fake = tracked(seat, monkeypatch)
+    assert main(['build', 'next', 'A']) == 0
+    assert 'A' in state.read_state(root)['builds']
+    assert not [e for e in events(day) if e['kind'].startswith('duty.')]
+
+
+def test_build_next_claims_a_recorded_ticket_as_a_duty(seat, monkeypatch):
+    root, _, _, day, _ = seat
+    fake = tracked(seat, monkeypatch)
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
                        root, reserved=False)
     assert build.next_action('A', root=root)['action'] == 'launch'
     assert [call[:2] for call in fake.calls] == [('claim', ('ENG-7',))]
+    duties = [(e['kind'], e['payload']) for e in events(day) if e['kind'].startswith('duty.')]
+    assert duties == [('duty.due', {'item': 'A', 'duty': 'tracker.claim', 'ticket': 'ENG-7',
+                                    'command': 'wuwei tracker move A claim'}),
+                      ('duty.done', {'item': 'A', 'duty': 'tracker.claim', 'ticket': 'ENG-7',
+                                     'pr': None})]
 
 
 def test_checked_event_counts_passed_and_failed(seat):

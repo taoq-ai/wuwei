@@ -258,10 +258,11 @@ Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host 
 next pass then follows the normal merge policy. If you merge it by hand instead, the item
 moves to `merged` with the flag still set, so the record shows which way it went.
 
-With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
-per item and Approve opens or links them. An item still without one stops with a line naming
-its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. `wuwei next` and the loop DM show the
-ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
+With a tracker set up, an item can carry a [ticket](concepts.md#ticket); the plan links an
+open one when it is the item's work, and no item waits for one. `wuwei next` shows the ticket
+id beside the item. The ticket's claim, in-review and done updates are duties: one that is
+due shows as a `duty` row in `wuwei next`, and close waits on it. One the tracker refused
+is listed in the day report.
 
 A message to other people through an MCP tool goes out only when that tool is on
 `outward.allow`. Otherwise the refusal names one line, `bin/wuwei config set outward.allow

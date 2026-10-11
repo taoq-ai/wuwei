@@ -227,21 +227,12 @@ def test_plan_add_copies_candidate_tier(root):
     assert state.read_state(root)['items']['NEW']['tier'] == 'full'
 
 
-def test_plan_add_needs_a_ticket(root, monkeypatch, capsys):
-    from wuwei.__main__ import main
+def test_plan_add_needs_no_ticket(root, monkeypatch):
     (root / '.wuwei/config.toml').write_text(
         '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
-    monkeypatch.setattr(discovery, 'discover', lambda path: {
-        'sources': {}, 'candidates': [candidate(), {**candidate('ENG-5'), 'source': 'tracker'}]})
-    result = discovery.intake(root, trigger='sweep')
-    assert result['owner'] == ['NEW'] and result['started'] == ['ENG-5']
-    day = state.read_state(root)
-    assert "the planner proposes one on the item's card" in day['intraday_proposals']['NEW']['reason']
-    assert day['tickets'] == {'ENG-5': {'id': 'ENG-5', 'source': 'tracker'}}
     save_candidate(root, candidate('OTHER'))
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['plan', 'add', 'OTHER']) == 1
-    assert 'OTHER has no ticket' in capsys.readouterr().err
+    assert plan.add('OTHER', root)['action'] == 'build next'
+    assert 'OTHER' not in state.read_state(root).get('tickets', {})
     save_candidate(root, {**candidate('LATER'), 'ticket': 'ENG-6'})
     assert plan.add('LATER', root)['action'] == 'build next'
     assert state.read_state(root)['tickets']['LATER'] == {'id': 'ENG-6', 'source': 'candidate'}
@@ -344,22 +335,17 @@ def test_owner_named_bare_ticket_without_a_repository_is_refused(root, monkeypat
     assert main(['plan', 'add', 'OWN-4', '--goal', 'G-1', '--ticket', '24']) == 2
 
 
-def test_owner_named_item_opens_its_ticket(root, monkeypatch):
-    """#636, #838: plan add opens the owner item's ticket through the tracker port."""
-    from fakes.tracker import Fake, ported
+def test_owner_named_item_opens_no_ticket(root, monkeypatch):
+    """#842: plan add admits the owner's item with no ticket and creates none."""
+    from fakes.tracker import Fake
     from wuwei import registry
     (root / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\n[discovery]\nautostart = "goal"\n'
         '[adapters]\ntracker = "linear"\n')
-    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})})
-    port = ported(fake)
-    load = registry.load
-    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
-                        else load(kind, config))
+    fake = Fake({})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
     assert plan.add('OWN-3', root, goal='G-1', title='Fix the export')['action'] == 'build next'
-    (_, (ticket,), _), = fake.calls
-    assert ticket['title'] == 'Fix the export' and ticket['item'] == 'OWN-3'
-    assert state.read_state(root)['tickets']['OWN-3']['source'] == 'create'
+    assert fake.calls == [] and 'OWN-3' not in state.read_state(root).get('tickets', {})
 
 
 def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():
@@ -398,7 +384,7 @@ def test_plan_add_backfills_missing_risk_evidence_once(root):
 def test_plan_add_from_a_seat_finding(root, monkeypatch, capsys):
     """#646: a seat's finding joins as a small item with no ticket, even with a tracker required."""
     from fakes.tracker import Fake, ported
-    from wuwei import registry, tracker, workspace
+    from wuwei import registry
     from wuwei.__main__ import main
     (root / '.wuwei/config.toml').write_text(
         '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
@@ -424,6 +410,4 @@ def test_plan_add_from_a_seat_finding(root, monkeypatch, capsys):
     assert not any(row['flags'].values()) and 'fix-pin-ruff-in-ci' in day['approved_items']
     assert fake.calls == [] and not day.get('tickets')
     assert added_events(root)[-1]['source'] == 'finding'
-    config = workspace.load_config(root)
-    assert tracker.check(day, config, 'fix-pin-ruff-in-ci', row) == ('later', '')
 

@@ -92,15 +92,18 @@ def test_two_authors_selected_and_named(case):
     assert state.read_state(root)['channel_posts'][0]['reviewers'] == reviewers
 
 
-def test_claim_links_existing_pr_for_ownership_and_metrics(case):
+def test_claim_links_existing_pr_for_ownership_and_metrics(case, monkeypatch):
     from wuwei.__main__ import main
-    from wuwei import metrics
+    from wuwei import dispatch, metrics
     root, host, _, _, _ = case
+    moves = []
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: moves.append(args) or Result(0))
     claimed = 'acme/widget#8'
     host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
     state._write_state(lambda data: (data['items'].update(A={}),
                       data['approved_items'].append('A')), root, reserved=False)
     assert main(['pr', 'claim', claimed, '--item', 'A']) == 0
+    assert moves == [('A', 'in_review', root)]  # #842: the in-review duty, as on pr raise
     data = state.read_state(root)
     assert data['items']['A']['pr'] == claimed
     assert data['claimed_prs'] == [claimed]

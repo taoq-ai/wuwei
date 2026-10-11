@@ -306,7 +306,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('tracker.py', 'init --upgrade in a host terminal', 20),
     ('watch.py', 'install in a host terminal', 23),
 )
 

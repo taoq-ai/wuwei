@@ -1,4 +1,4 @@
-"""Tracker hygiene (5.11): the ticket rule, creation and the comment writer, offline."""
+"""Tracker hygiene (5.11): creation, the duties and the comment writer, offline."""
 
 import json
 
@@ -9,55 +9,23 @@ from wuwei import registry, state, tracker, workspace
 from wuwei.__main__ import main
 
 
-def config(adapter='linear', required=True, skip=()):
-    return {'adapters': {'tracker': adapter},
-            'tracker': {'required': required, 'skip_tiers': list(skip)}}
-
-
-MISSING = ("item-1 has no ticket: the planner proposes one on the item's card (an existing "
-           "ticket or a new one from its record) and records the owner's answer")
-
-
-def test_missing_reason_names_the_card():
-    """#636: the reason names the card, never a terminal command."""
-    assert tracker.check({}, config(), 'item-1') == ('missing', MISSING)
-    assert 'bin/wuwei' not in MISSING
-
-
-def test_owners_none_is_skipped():
-    data = {'tickets': {'item-1': {'id': None, 'source': 'none'}}}
-    assert tracker.check(data, config(), 'item-1') == ('skipped', '')
-
-
-@pytest.mark.parametrize('settings,data,row,expected', [
-    (config('none'), {}, {}, ('off', '')),
-    (config(required=False), {}, {}, ('off', '')),
-    (config(), {'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}}, {}, ('ticket', '')),
-    (config(skip=['light']), {}, {'tier': 'light'}, ('skipped', '')),
-    (config(skip=['light']), {}, {'gates': {'tier': 'light'}}, ('skipped', '')),
-    (config(skip=['light']), {}, {}, ('missing', MISSING)),
-    (config(skip=['light']), {}, None, ('missing', MISSING)),
-    (config(skip=['light']), {}, {'tier': 'light', 'gates': {'tier': 'standard'}},
-     ('missing', MISSING)),
-])
-def test_check(settings, data, row, expected):
-    assert tracker.check(data, settings, 'item-1', row) == expected
-
-
-def test_small_item_reads_later():
-    """#646: an unticketed light item starts now; its ticket comes at the gate or after it ships."""
-    settings = config()
-    missing = tracker.check({}, settings, 'item-1')
-    assert missing[0] == 'missing'
-    assert tracker.check({}, settings, 'item-1', {'tier': 'light'}) == ('later', '')
-    assert tracker.check({}, settings, 'item-1', {'gates': {'tier': 'light'}}) == ('later', '')
-    assert tracker.check({}, settings, 'item-1',
-                         {'tier': 'light', 'gates': {'tier': 'standard'}}) == missing
-    assert tracker.check({}, settings, 'item-1', {'tier': 'standard'}) == missing
-    ticketed = {'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}}
-    assert tracker.check(ticketed, settings, 'item-1', {'tier': 'light'}) == ('ticket', '')
-    assert tracker.check({}, config(skip=['light']), 'item-1',
-                         {'tier': 'light'}) == ('skipped', '')
+def test_open_duties():
+    """#842: a due duty is open until a later done or skipped for the same pair, in due order."""
+    def row(kind, item, duty):
+        payload = {'item': item, 'duty': duty, 'ticket': 'ENG-1'}
+        if kind == 'duty.due':
+            payload['command'] = f'wuwei tracker move {item} {duty[8:]}'
+        return {'kind': kind, 'payload': payload}
+    rows = [row('duty.due', 'B', 'tracker.done'), row('duty.due', 'A', 'tracker.claim'),
+            row('duty.done', 'A', 'tracker.claim'), row('duty.due', 'A', 'tracker.in_review'),
+            row('duty.due', 'C', 'tracker.claim'), row('duty.skipped', 'C', 'tracker.claim'),
+            row('duty.due', 'A', 'tracker.in_review'), {'kind': 'tracker.call', 'payload': {}}]
+    assert tracker.open_duties(rows) == [
+        ('B', 'tracker.done', 'wuwei tracker move B done'),
+        ('A', 'tracker.in_review', 'wuwei tracker move A in_review')]
+    assert tracker.skipped_duties(rows) == [{'item': 'C', 'duty': 'tracker.claim', 'ticket': 'ENG-1'}]
+    rows.append(row('duty.done', 'B', 'tracker.done'))
+    assert [entry[0] for entry in tracker.open_duties(rows)] == ['A']
 
 
 def test_ticket():
@@ -142,7 +110,6 @@ def outbound(root, text):
 def test_bug_in_auto_creates_once(ws, capsys):
     root, fake = ws
     seed_ticket(root)
-    settings(root, 'auto = ["bugs"]')
     assert main(BUG) == 0
     assert 'ENG-9' in capsys.readouterr().out
     created, = [row['payload'] for row in day_events(root, 'tracker.created')]
@@ -168,7 +135,6 @@ def test_creation_refusals(ws, capsys):
 
 def test_item_ticket_from_the_proposal(ws, capsys):
     root, fake = ws
-    settings(root, 'auto = ["items"]')
     assert main(['tracker', 'create', 'item-1']) == 0
     (_, (draft,), _), = fake.calls
     assert draft == {'title': 'Add the export button', 'item': 'item-1', 'category': 'items',
@@ -181,7 +147,6 @@ def test_item_ticket_from_the_proposal(ws, capsys):
 def test_item_ticket_from_a_seat_finding(ws):
     """#646: a finding item's ticket opens from the finding and the day item's goal."""
     root, fake = ws
-    settings(root, 'auto = ["items"]')
     state._write_state(lambda data: data.update(
         items={'fix-pin-ruff-in-ci': {'phase': 'merged', 'goal': 'G-1', 'track': 'SLICE'}},
         seat_findings={'fix-pin-ruff-in-ci': {'scope': 'Pin ruff in CI', 'evidence': 'seat finding',
@@ -211,13 +176,7 @@ def comments(fake):
 
 
 def story(root):
-    """A decision outcome, a phase change and a gate verdict, as their producers write them."""
-    decisions = workspace.day_dir(root) / 'decisions'
-    decisions.mkdir()
-    (decisions / 'D-1.md').write_text('Question: Ship item-1 now?\nOutcome: yes\n')
-    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(
-        {'D-1': {'option': 'yes', 'decided_by': 'owner'}}), root, reserved=False,
-        kind='decision.decided', payload={'id': 'D-1', 'option': 'yes', 'decided_by': 'owner'})
+    """A phase change and a gate verdict, as their producers write them."""
     state.transition('item-1', 'gate', root)
     state._write_state(lambda data: data['gate_verdicts'].update({'item-1:quality:initial': {
         'verdict': 'FIX', 'findings': ['- P1 | cli/x.py:1 | empty | blocks: yes',
@@ -234,18 +193,17 @@ def test_log_writes_the_story_once(ws):
     assert main(['tracker', 'log']) == 0
     # #838: every kind the tracker logs goes out through the port; nothing is held.
     assert sorted(comments(fake)) == [
-        ('ENG-1', '[2026-09-29 item-1] Decision D-1: Ship item-1 now? Outcome: yes.', 'decisions'),
         ('ENG-1', '[2026-09-29 item-1] Phase: gate.', 'progress'),
         ('ENG-1', '[2026-09-29 item-1] Review quality (initial): FIX, 1 blocking findings.', 'verdicts')]
     log = state.read_state(root)['tracker_log']
-    assert [entry['outcome'] for entry in log.values()] == ['written'] * 3
+    assert [entry['outcome'] for entry in log.values()] == ['written'] * 2
     before = (workspace.day_dir(root) / 'events.jsonl').read_text()
     assert main(['tracker', 'log']) == 0
-    assert len(fake.calls) == 3
+    assert len(fake.calls) == 2
     assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
 
 
-def test_log_pr_merge_and_carry(ws):
+def test_log_leaves_the_pr_link_and_merge_to_the_duties(ws):
     root, fake = ws
     approved(root, phase='gate')
     seed_ticket(root)
@@ -253,8 +211,7 @@ def test_log_pr_merge_and_carry(ws):
     state.transition('item-1', 'merged', root)
     assert main(['tracker', 'log']) == 0
     texts = [text for _, text, _ in comments(fake)]
-    assert texts == ['[2026-09-29 item-1] Phase: raised.', '[2026-09-29 item-1] Pull request: acme/app#1.',
-                     '[2026-09-29 item-1] Merged in acme/app#1.']
+    assert texts == ['[2026-09-29 item-1] Phase: raised.']
 
 
 def test_log_carry_is_a_close_entry(ws):
@@ -386,6 +343,8 @@ def test_tracker_move_runs_the_shared_move(ws, monkeypatch, capsys):
     assert calls == [('A', 'in_review', root)] and capsys.readouterr().out == 'A: ticket in_review\n'
     assert main(['tracker', 'done', 'A']) == 0
     assert calls[-1] == ('A', 'done', root) and capsys.readouterr().out == 'A: ticket done\n'
+    assert main(['tracker', 'move', 'A', 'claim']) == 0
+    assert calls[-1] == ('A', 'claim', root) and capsys.readouterr().out == 'A: ticket claim\n'
     answer[0] = registry.Result(1, reason='A not moved to In Review: missing')
     assert main(['tracker', 'move', 'A', 'in_review']) == 1
     assert capsys.readouterr().err == 'wuwei tracker: A not moved to In Review: missing\n'
@@ -398,11 +357,9 @@ def test_log_never_sends_an_absolute_path(ws):
     root, fake = ws
     approved(root)
     seed_ticket(root)
-    settings(root, 'auto = ["decisions"]')
-    decisions = workspace.day_dir(root) / 'decisions'
-    decisions.mkdir()
-    (decisions / 'D-1.md').write_text('Question: Keep /srv/x/notes.txt for item-1?\n')
-    state.append_event('decision.decided', {'id': 'D-1', 'option': 'yes'}, root)
+    from wuwei import plan
+    settings(root, 'log = ["close"]')
+    plan.dispose('item-1', 'parked', 'waits on /srv/x/notes.txt', root=root)
     assert main(['tracker', 'log']) == 1
     assert fake.calls == []
     entry, = state.read_state(root)['tracker_log'].values()

@@ -501,12 +501,12 @@ def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):
     assert json.loads(capsys.readouterr().out)['action'] == 'launch'
 
 
-def test_adopted_fix_round_needs_the_ticket(case, capsys):
+def test_adopted_fix_round_needs_no_ticket(case, capsys):
     root, host, _, _ = adopted(case, 'fast_checks = ["python -m pytest -q"]\n', worktree=True,
                                extra='[adapters]\ntracker = "linear"\n')
     host.results['checks'] = Result(0, RED)
     assert main(['pr', 'act', REF]) == 1
-    assert 'ticket' in capsys.readouterr().out
+    assert json.loads(capsys.readouterr().out)['action'] == 'launch'
 
 
 def test_latest_finds_the_last_comment_of_a_bot_thread():

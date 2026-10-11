@@ -952,7 +952,7 @@ def test_tracker_row(ws):
     found = row(doctor.diagnose(), 'tracker')
     assert found['status'] == 'fail' and 'LINEAR_API_KEY' in found['value']
     assert 'LINEAR_API_KEY' in found['fix']
-    assert 'bin/wuwei config set tracker.required false' in found['fix']
+    assert 'bin/wuwei config set adapters.tracker \'"none"\'' in found['fix']
     tracker.results['backlog'] = Result(0, [])
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
 
@@ -1005,17 +1005,13 @@ def test_tracker_labels_row(ws):
     tracker.results['labels'] = Result(2, reason='github.labels: could not run: offline')
     found = row(doctor.diagnose(), 'tracker labels')
     assert (found['status'], found['value']) == ('unmeasured', 'github.labels: could not run: offline')
-    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n')
-           + '\n[tracker]\nrequired = false\n')
-    found = row(doctor.diagnose(), 'tracker labels')
-    assert (found['status'], found['value']) == ('ok', 'unmeasured, tickets optional')
 
 
 @pytest.mark.parametrize('auth, fix', [
     ('', 'set GITHUB_TRACKER_TOKEN in .wuwei/env, or bin/wuwei config set tracker.auth \'"gh"\' to use '
-         'your gh login, or bin/wuwei config set tracker.required false'),
+         'your gh login, or bin/wuwei config set adapters.tracker \'"none"\''),
     ('[tracker]\nauth = "gh"\n', 'run gh auth status (with tracker.board: gh auth refresh -s project), '
-                                 'or bin/wuwei config set tracker.required false')])
+                                 'or bin/wuwei config set adapters.tracker \'"none"\'')])
 def test_github_tracker_row_names_the_auth_fix(ws, auth, fix):
     from fakes.tracker import Fake
     config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n') + auth)

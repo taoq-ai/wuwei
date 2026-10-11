@@ -168,7 +168,7 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11). An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
 | PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); identity, the default branch and the fast checks stay with the native Git hooks |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
 | PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
@@ -1081,11 +1081,11 @@ running as the owner can forge `.wuwei/metrics/` (9.1); the payload rules bound 
 forgery can carry out to numbers in the schema.
 ### 5.11 Tracker hygiene (owner, 2026-10-03, #416)
 
-Every work item lives in a ticket in the team's tracker, and the ticket carries the item's
-story: its decisions, progress, verdicts, pull request and close. The tracker port (section
-8) already reads the backlog and moves states (claim, in review, done, 4.6); this section
-makes the ticket required, lets the day open tickets for what it finds, and writes the story
-as comments.
+An item's ticket in the team's tracker carries the item's story: its progress, verdicts,
+pull request and close. The tracker port (section 8) reads the backlog and moves states
+(claim, in review, done, 4.6); this section makes those moves duties the loop follows (#842),
+lets the day open tickets for what it finds, and writes the story as comments. A missing
+ticket never refuses a launch, a gate, a raise or a close (owner, 2026-10-11, #789).
 
 Configuration. `adapters.tracker` is `linear`, `jira`, `github` (issues, plus Projects v2
 when a board is set) or `none`. The schema default stays `none`, so a first day works on
@@ -1093,19 +1093,15 @@ defaults. `[tracker]` in `config.toml`:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `required` | `true` | every item needs a ticket; in force only when `adapters.tracker` is not `none` |
-| `skip_tiers` | `[]` | tiers (`light`, `standard`, `full`, as in `repos.gates.floor`) whose items need no ticket |
-| `strict_close` | `true` | day close refuses a merged item whose ticket did not reach the done state |
 | `create` | `["bugs", "triage", "follow-ups"]` | the classes seats may open tickets for |
 | `log` | `["decisions", "progress", "verdicts", "pr", "close"]` | the comment kinds written to an item's ticket |
-| `auto` | `["progress", "pr", "close"]` | the kind a folded comment is filed under; every kind is sent after the lint (#838) |
 | `max_per_item_per_day` | `10` | comments per ticket per day, the fold included |
 | `project` | `""` | where tickets are created: a Linear team id (empty: `backlog_filter`), a Jira project key, or a GitHub `owner/repo` (empty: the first configured repository) |
 | `board` | `""` | GitHub only: a Projects v2 board as `<owner>/<number>`; empty uses labels |
 
 `backlog_filter`, `states.in_review` and `states.done` keep their meaning for every adapter.
-`auto` accepts the comment kinds and the creation classes plus `items`. The config check
-refuses an unknown value in `create`, `log`, `auto` or `skip_tiers`.
+The config check refuses an unknown value in `create` or `log`. `required`, `skip_tiers`,
+`strict_close` and `auto` are retired (#842); `init --upgrade` removes them.
 
 Ticket of an item. `tickets` in `state.json` maps an item id to its ticket id and source,
 written only by the CLI: `plan approve` and `plan add` record the candidate's `ticket` field
@@ -1114,32 +1110,29 @@ candidate discovered from the tracker backlog, the candidate id itself; `wuwei t
 create <item>` records the ticket it opens; `wuwei plan set <item> ticket=<id>` records an
 existing ticket once the adapter's `created(item)` confirms it exists. `plan approve
 --import-yesterday` carries yesterday's tickets with the items. Every tracker operation on an
-item (claim, transitions, comments, history for lead time) uses its ticket id; only while
-`required` is not in force does an item without one fall back to its own id, as before.
+item (claim, transitions, comments, history for lead time) uses its ticket id; an item
+without one falls back to its own id and gets no duty.
 
-Enforcement. While `required` is in force, an item whose tier is not in `skip_tiers` and that
-has no ticket is refused by one CLI function, `tracker.check`, with one reason: `<item> has no
-ticket: bin/wuwei tracker create <item> (opens one from the item's record) or bin/wuwei plan
-set <item> ticket=<id>`. The refusal points:
+Duties (#842). An item with a recorded ticket gets three tracker duties while
+`adapters.tracker` is not `none`; an item without one gets none.
 
-- `plan approve`: one refusal lists every approved item without a ticket; nothing is approved;
-- `plan add` (intraday intake, 5.7): the candidate becomes an owner proposal with the reason;
-- `build next`, before the claim, and `dispatch next`, before the gates;
-- PreToolUse `Agent` launch for a brief whose item has none (4.1), part of the seat launch
-  contract and so under the `seats` area (9.1).
+| Duty | Due when | Done when | Command `next` names |
+| --- | --- | --- | --- |
+| `tracker.claim` | the item's first build starts (`build next`) | the claim (assign, in progress) returns 0 | `wuwei tracker move <item> claim` |
+| `tracker.in_review` | the PR is raised (`pr raise`) or claimed (`pr claim`) | the move to `states.in_review` and the `Pull request: <pr>.` comment both return 0 | `wuwei tracker move <item> in_review` |
+| `tracker.done` | the PR merges (the watch's `merge.completed`, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
 
-The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
-and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
-ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
-admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
-the ticket exists.
-
-Close. While `required` is in force and `strict_close` is on, `wuwei close` refuses while an
-item merged today has no successful done transition (the `tracker.call` event that the merge
-path writes, 4.6), naming `bin/wuwei tracker done <item>`, which runs the same transition
-again. Carried and parked items keep their tickets open. With `strict_close = false` the same
-line is printed and does not refuse.
+`dispatch.tracker_call` performs each duty. It appends `duty.due {item, duty, ticket,
+command}` before the tracker call and `duty.done {item, duty, ticket, pr}` when every step
+returned 0. When a step fails after the adapter's own retry (unreachable, credentials, a
+rate limit past its wait) it appends `duty.skipped {item, duty, ticket, error}`. It never
+raises and still records `tracker.call` with the exit and reason. A duty is open while its
+last event for the `(item, duty)` pair is `duty.due`. `wuwei next` returns a `duty` row for
+each open duty, beside the build launches and also for a terminal item; `wuwei close` exits 1
+while one is open, naming the item, the duty and the command. Close accepts a skipped duty,
+and the day report lists each one under Skipped duties with its retry command, so a duty is
+never dropped silently and never holds the close forever. Duties live only in events; carried
+and parked items keep their tickets open.
 
 Creation. `wuwei tracker create <item>` opens the item's own ticket (class `items`) from its
 record: the title from the candidate's scope, the description from its evidence, goal and
@@ -1167,11 +1160,13 @@ retried.
 
 | Kind | From (CLI events) | Comment |
 |---|---|---|
-| `decisions` | `decision.decided` for a record naming the item | `Decision D-<n>: <question>. Outcome: <outcome>.` |
 | `progress` | phase changes, builder and gate starts and stops, fast-check results, a park | one line each, such as `Phase: implement.` or `Fast checks: 3 passed, 1 failed.` |
 | `verdicts` | `gate.received` | `Review <role> (<round>): <verdict>, <n> blocking findings.` |
-| `pr` | `pr.raised`, `pr.claimed` | `Pull request: <url>.` |
-| `close` | `wuwei close`, `plan carry` or `plan park` | `Merged in <pr>.`, `Carried to <date>.` or `Parked: <reason>.` |
+| `close` | `plan carry` or `plan park` | `Carried to <date>.` or `Parked: <reason>.` |
+
+The PR link (`Pull request: <pr>.`) and the merged note (`Merged in <pr>.`) are the
+in-review and done duties' own comments, so `tracker log` never writes them; the `pr` kind in
+`log` produces no entry. A fold is filed under the first folded kind.
 
 Sending. Comments and creations are external writes sent as the owner, so they go through
 the tracker port's text-bearing operations, which run the canary check and the outward lint
@@ -1202,18 +1197,17 @@ returns state changes in one shape for lead time (5.6).
 | `github` | `owner/repo#123` | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only | GraphQL: open issues of `project`, `backlog_filter` as a label; create an issue; add a comment; with `board`, the Projects v2 Status option with the configured name, otherwise a label for `in_review` and closing the issue for `done` |
 
 Health. `doctor`
-fails the tracker row when `required` is in force and the adapter cannot read the backlog,
-naming the missing credentials or `bin/wuwei config set tracker.required false`.
-`init --upgrade` from a host terminal creates the lifecycle labels the tracker port needs (today only the GitHub
+fails the tracker row when a configured adapter cannot read the backlog, naming the missing
+credentials or `bin/wuwei config set adapters.tracker '"none"'`.
+`init --upgrade` creates the lifecycle labels the tracker port needs (today only the GitHub
 `in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
 failed in-review move creates the label on the owner's tracker and moves again,
 or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
 
 Owner-facing. `wuwei next` and the DM show an item's ticket id beside its name.
 The documentation adds a `[tracker]` section to configuration.md, glossary entries (ticket,
-tracker hygiene, fold), one paragraph in daily.md ("every item has a ticket; you see the
-ticket id in `wuwei next` and in the DM") and reference rows for `tracker create`, `tracker
-log`, `tracker done` and `plan set`.
+tracker hygiene, fold), one paragraph in daily.md (the ticket id in `wuwei next`, the duty
+rows) and reference rows for `tracker create`, `tracker log`, `tracker move` and `plan set`.
 ### 5.12 Documentation system (owner, 2026-10-03, #418) (retired: owner, 2026-10-11, #789)
 
 Retired with the docs obligation, the page writer, the day page publisher and the docs adapters (#841). What stays: the quality sentinel reviews a change to documented behaviour as code under the `DOC` class, and a docs-only diff gets one reviewer, the goal sentinel.
@@ -1432,7 +1426,7 @@ default still blocks (the floor, the force push and default-branch edges, day cl
 and so do two process checks: a seat launch that matches no logged brief
 at an unchanged head, and a bare `gh pr create` for a recorded item. What only warned stays a
 logged `guard.would_refuse`: the outward lint and unknown MCP tool names, another item's scratch
-directory and the CAP, host seat, free memory and ticket checks at launch. The unparsed command
+directory and the CAP, host seat and free memory checks at launch. The unparsed command
 and the workspace root `cd` are logged once per call either way. Plugin integrity is a
 SessionStart warning and refuses no tool call (#839). The traces recorder never refuses: a slow, unreadable or unwritten record
 is a warning and a `traces.slow` or `traces.gap` event.

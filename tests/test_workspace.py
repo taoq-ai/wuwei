@@ -226,10 +226,9 @@ def test_config_defaults_and_independence(tmp_path):
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
-                    'required': True, 'skip_tiers': [], 'strict_close': True,
                     'create': ['bugs', 'triage', 'follow-ups'],
                     'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
-                    'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+                    'max_per_item_per_day': 10,
                     'project': '', 'board': '', 'auth': 'token'},
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400,
@@ -1517,19 +1516,18 @@ def test_tracker_hygiene_keys(tmp_path):
     assert config['adapters']['tracker'] == 'none'
     assert config['tracker'] == {
         'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
-        'required': True, 'skip_tiers': [], 'strict_close': True,
         'create': ['bugs', 'triage', 'follow-ups'],
         'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
-        'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+        'max_per_item_per_day': 10,
         'project': '', 'board': '', 'auth': 'token'}
-    for text in ('skip_tiers = ["LIGHT"]', 'auto = ["merge"]', 'log = ["items"]',
+    for text in ('log = ["items"]',
                  'create = ["items"]', 'max_per_item_per_day = 0'):
         write_config(tmp_path, f'[tracker]\n{text}\n')
         with pytest.raises(workspace.ConfigError, match='tracker'):
             workspace.load_config(tmp_path)
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
-    assert workspace.load_config(tmp_path)['tracker']['required'] is True
+    assert 'required' not in workspace.load_config(tmp_path)['tracker']
 
 
 def test_template_derives_cap_and_seats(tmp_path):

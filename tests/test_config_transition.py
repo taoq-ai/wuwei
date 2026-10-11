@@ -365,6 +365,8 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     path.write_text(clean.replace('[brief]\n', '[brief]\nlead_minutes = 30\nstyle.length = "concise"\n', 1)
                     .replace('[adapters]\n', '[adapters]\ninbound = "slack"\n', 1)
                     .replace('[shepherd]\n', '[shepherd]\nautostart = false\n', 1)
+                    .replace('[tracker]\n', '[tracker]\nrequired = true\nskip_tiers = ["light"]\n'
+                             'strict_close = true\nauto = ["progress"]\n', 1)
                     .replace('[owner.verbosity]\n', '[owner.verbosity]\ndm = "full"\n', 1)
                     .replace('[scanner.mcp]\n', '[scanner.mcp]\nproject_file = ".mcp.json"\n'
                              'user_file = "~/.claude.json"\ntimeout_seconds = 60\nblock = ["critical"]\n', 1)
@@ -379,7 +381,8 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     for key in ('brief.lead_minutes', 'brief.style', 'pace', 'repos.1.tests', 'listen', 'responder',
                 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
                 'grants', 'scanner.mcp.project_file', 'scanner.mcp.user_file',
-                'scanner.mcp.timeout_seconds', 'scanner.mcp.block'):
+                'scanner.mcp.timeout_seconds', 'scanner.mcp.block', 'tracker.required',
+                'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 

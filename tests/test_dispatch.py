@@ -1488,32 +1488,64 @@ TRACKED = '[adapters]\ntracker = "linear"\n'
 NO_SPEC = '[spec]\nengine = "none"\n'
 
 
-def test_dispatch_refuses_an_item_without_a_ticket(root, monkeypatch, capsys):
-    from wuwei.__main__ import main
+def duty_events(root):
+    return [(e['kind'], e['payload']) for e in map(json.loads, (
+        workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+        if e['kind'].startswith('duty.')]
 
-    (root / '.wuwei/config.toml').write_text(NO_SPEC + TRACKED)
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['dispatch', 'next', 'A']) == 1
-    err = capsys.readouterr().err
-    assert "A has no ticket: the planner proposes one on the item's card" in err
-    assert 'bin/wuwei' not in err.split('has no ticket')[1]
-    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+
+def ticketed(root, monkeypatch, results, tracker='linear'):
+    from fakes.tracker import Fake
+    from wuwei import registry
+
+    (root / '.wuwei/config.toml').write_text(NO_SPEC + f'[adapters]\ntracker = "{tracker}"\n')
+    fake = Fake(results)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    state._write_state(lambda data: (data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
+                                     data['items']['A'].update(pr='acme/app#5')),
                        root, reserved=False)
-    assert main(['dispatch', 'next', 'A']) == 0
-    assert json.loads(capsys.readouterr().out)['action'] == 'gates'
+    return fake
 
 
-def test_light_item_skips_the_ticket_until_its_tier_rises(root, monkeypatch):
-    from wuwei import dispatch
+@pytest.mark.parametrize('action,text,category', [
+    ('in_review', 'Pull request: acme/app#5.', 'pr'), ('done', 'Merged in acme/app#5.', 'close')])
+def test_tracker_call_records_the_duty_with_its_comment(root, monkeypatch, action, text, category):
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {}),
+                                        'comment': registry.Result(0, {})})
+    assert dispatch.tracker_call('A', action, root).exit == 0
+    day = workspace.day_dir(root).name
+    states = {'in_review': 'In Review', 'done': 'Done'}
+    assert [call[:2] for call in fake.calls] == [
+        ('transition', ('ENG-7', states[action])), ('comment', ('ENG-7', f'[{day} A] {text}', category))]
+    duty = f'tracker.{action}'
+    assert duty_events(root) == [
+        ('duty.due', {'item': 'A', 'duty': duty, 'ticket': 'ENG-7',
+                      'command': f'wuwei tracker move A {action}'}),
+        ('duty.done', {'item': 'A', 'duty': duty, 'ticket': 'ENG-7', 'pr': 'acme/app#5'})]
 
-    extra = TRACKED + '[tracker]\nskip_tiers = ["light"]\n'
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=extra)
-    assert dispatch.next_step('A', root)['tier']['tier'] == 'light'
-    state._write_state(lambda data: data['items']['A'].update(gates={}), root, reserved=False)
-    tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)], lead='light', extra=extra)
-    with pytest.raises(dispatch.Refused, match='A has no ticket'):
-        dispatch.next_step('A', root)
-    assert state.read_state(root)['items']['A']['gates']['tier'] == 'standard'
+
+@pytest.mark.parametrize('results', [
+    {'transition': (2, 'linear.transition: rate limited; retry later')},
+    {'transition': (0, ''), 'comment': (1, 'linear.comment: refused')}])
+def test_a_failed_duty_is_recorded_skipped(root, monkeypatch, results):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {name: registry.Result(code, reason=reason)
+                                 for name, (code, reason) in results.items()})
+    result = dispatch.tracker_call('A', 'done', root)
+    error = [reason for code, reason in results.values() if code][0]
+    assert result.exit and result.reason == error
+    assert duty_events(root)[1:] == [('duty.skipped', {'item': 'A', 'duty': 'tracker.done',
+                                                       'ticket': 'ENG-7', 'error': error})]
+
+
+def test_no_duty_without_a_ticket_or_a_tracker(root, monkeypatch):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {'claim': registry.Result(0, {})})
+    dispatch.tracker_call('B', 'claim', root)
+    (root / '.wuwei/config.toml').write_text(NO_SPEC)
+    dispatch.tracker_call('A', 'claim', root)
+    assert duty_events(root) == []
 
 
 def test_tracker_call_uses_the_ticket(root, monkeypatch):
@@ -1534,9 +1566,8 @@ def test_tracker_call_uses_the_ticket(root, monkeypatch):
             if e['kind'] == 'tracker.call'] == [('A', 'ENG-7'), ('B', 'B')]
 
 
-LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing; the owner '
-                 'runs bin/wuwei init --upgrade in a host terminal, which creates it, then '
-                 'bin/wuwei tracker move A in_review')
+LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing; run '
+                 'bin/wuwei init --upgrade, which creates it, then bin/wuwei tracker move A in_review')
 
 
 def moves(root, monkeypatch, labels, orgs='"acme"'):
@@ -1601,13 +1632,13 @@ def test_done_never_reads_labels(root, monkeypatch):
     assert [call[0] for call in fake.calls] == ['transition']
 
 
-def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
+def test_issue_acceptance_dispatch_then_ticket(root, monkeypatch, capsys):
     from fakes.tracker import Fake, ported
     from wuwei import registry
     from wuwei.__main__ import main
 
     (root / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED + '[tracker]\nauto = ["items"]\n')
+        '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED)
     (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
         {'id': 'A', 'scope': 'Add the export button', 'evidence': 'issue 12', 'goal': 'G-1',
          'track': 'SLICE'}]}))
@@ -1617,8 +1648,8 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
                         else load(kind, config))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    assert main(['dispatch', 'next', 'A']) == 1
-    assert "A has no ticket: the planner proposes one on the item's card" in capsys.readouterr().err
+    assert main(['dispatch', 'next', 'A']) == 0
+    capsys.readouterr()
     assert main(['tracker', 'create', 'A']) == 0
     assert state.read_state(root)['tickets'] == {'A': {'id': 'ENG-7', 'source': 'create'}}
     capsys.readouterr()

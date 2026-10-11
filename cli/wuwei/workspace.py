@@ -53,7 +53,8 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'outbound.commitment_patterns', 'outbound.disagreement_patterns',
            'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
            'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
-           'scanner.mcp.block', 'docs', 'adapters.docs')
+           'scanner.mcp.block', 'docs', 'adapters.docs',
+           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -90,13 +91,9 @@ SCHEMA = {
                   "autostart": (str, "strict", ("off", "strict", "goal"))},
     "tracker": {"backlog_filter": (str, ""),
                 "states": {"in_review": (str, "In Review"), "done": (str, "Done")},
-                "required": (bool, True),
-                "skip_tiers": [(str, None, ("light", "standard", "full")), []],
-                "strict_close": (bool, True),
                 "create": [(str, None, ("bugs", "triage", "follow-ups")),
                            ["bugs", "triage", "follow-ups"]],
                 "log": [(str, None, TRACKER_KINDS), list(TRACKER_KINDS)],
-                "auto": [(str, None, (*TRACKER_CLASSES, *TRACKER_KINDS)), ["progress", "pr", "close"]],
                 "max_per_item_per_day": (int, 10, 1),
                 "project": (str, ""), "board": (str, ""),
                 "auth": (str, "token", ("token", "gh"))},
@@ -600,7 +597,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 20  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 21  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

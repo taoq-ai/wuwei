@@ -537,3 +537,21 @@ def test_retro_lists_seat_findings(tmp_path, monkeypatch):
     text = retro.compile(root).read_text()
     assert '## Seat findings\n- fix-a: A (item merged)\n- fix-b: B (not added)\n' in text
     assert text.count('## Seat findings') == 1
+
+
+def test_report_lists_skipped_duties(tmp_path, monkeypatch):
+    """#842: a duty the tracker could not take is listed for the owner, never dropped."""
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root, reserved=False)
+    from wuwei import report
+    assert '## Skipped duties' not in report.build(root)
+    duty = {'item': 'A', 'duty': 'tracker.done', 'ticket': 'ENG-7'}
+    state.append_event('duty.due', {**duty, 'command': 'wuwei tracker move A done'}, root)
+    state.append_event('duty.skipped', {**duty, 'error': 'linear: rate limited'}, root)
+    assert ('## Skipped duties\n- A: tracker.done on ENG-7: linear: rate limited; '
+            'retry: bin/wuwei tracker move A done\n') in report.build(root)

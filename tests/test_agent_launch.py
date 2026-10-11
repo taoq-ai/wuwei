@@ -7,7 +7,7 @@ import os
 import pytest
 
 from test_brief import day, brief, set_seats
-from wuwei import registry, state
+from wuwei import registry, state, workspace
 
 
 @pytest.fixture
@@ -586,12 +586,12 @@ def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
     assert check(payload) == (0, '')
 
 
-@pytest.mark.parametrize('settings,ticket,code', [
-    ('[adapters]\ntracker = "linear"\n', None, 1),
-    ('[adapters]\ntracker = "linear"\n', 'ENG-1', 0),
-    ('', None, 0),
+@pytest.mark.parametrize('settings,ticket', [
+    ('[adapters]\ntracker = "linear"\n', None),
+    ('[adapters]\ntracker = "linear"\n', 'ENG-1'),
+    ('', None),
 ])
-def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, code):
+def test_launch_needs_no_ticket(launch, monkeypatch, settings, ticket):
     day, payload = launch
     root = day[0]
     from wuwei.guards import agent_launch
@@ -601,10 +601,9 @@ def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, cod
     if ticket:
         state._write_state(lambda data: data.update(tickets={'X': {'id': ticket, 'source': 'set'}}),
                            root, reserved=False)
-    actual, message = check(payload)
-    assert actual == code, message
-    assert ('X has no ticket' in message) == (code == 1)
-    assert bool(state.read_state(root)['seats']) == (code == 0)
+    assert check(payload) == (0, '')
+    assert state.read_state(root)['seats']
+    assert 'has no ticket' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 
 def test_seat_launched_records_free_mib_and_running(launch, monkeypatch):

@@ -1,4 +1,4 @@
-"""Tracker hygiene (5.11): the ticket rule, the one ticket creator and the one comment writer.
+"""Tracker hygiene (5.11): the lifecycle duties, the one ticket creator and the one comment writer.
 
 Hook paths import this lazily; keep top-level imports to what they already load.
 """
@@ -68,25 +68,28 @@ def upgrade(root, config, write=True):
     return lines
 
 
-def in_force(config):
-    return config['adapters']['tracker'] != 'none' and config['tracker']['required']
+def _duties(rows):
+    """{(item, duty): (last duty kind, its payload)} over event rows, in first due order."""
+    last = {}
+    for row in rows:
+        if row.get('kind') in ('duty.due', 'duty.done', 'duty.skipped'):
+            payload = row['payload']
+            key = (payload.get('item'), payload.get('duty'))
+            if key in last or row['kind'] == 'duty.due':
+                last[key] = (row['kind'], payload)
+    return last
 
 
-def check(data, config, item, row=None):
-    """The 5.11 rule, pure: (off|ticket|skipped|later|missing, reason)."""
-    if not in_force(config):
-        return 'off', ''
-    if ticket(data, item):
-        return 'ticket', ''
-    row = row or {}
-    tier = row.get('gates', {}).get('tier') or row.get('tier')
-    if (tier in config['tracker']['skip_tiers']
-            or data.get('tickets', {}).get(item, {}).get('source') == 'none'):  # #636: the owner's none
-        return 'skipped', ''
-    if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
-        return 'later', ''
-    return 'missing', (f"{item} has no ticket: the planner proposes one on the item's card (an "
-                       "existing ticket or a new one from its record) and records the owner's answer")
+def open_duties(rows):
+    """#842, pure: the (item, duty, command) of each duty.due with no later duty.done or
+    duty.skipped for the same pair, in due order."""
+    return [(item, duty, payload.get('command', ''))
+            for (item, duty), (kind, payload) in _duties(rows).items() if kind == 'duty.due']
+
+
+def skipped_duties(rows):
+    """#842, pure: the duty.skipped payloads still standing, for the report."""
+    return [payload for kind, payload in _duties(rows).values() if kind == 'duty.skipped']
 
 
 def _key(category, subject, title):
@@ -171,32 +174,19 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
 def _entries(day, data, kinds):
     """Today's comment entries (key, item, kind, text) for items with a ticket, in event order."""
     from datetime import date, timedelta
-    from wuwei import decision, verdict, watch
+    from wuwei import verdict, watch
     items = [name for name in data['items'] if ticket(data, name)]
-    named = decision.naming(day, items)
     after = (date.fromisoformat(day.name) + timedelta(days=1)).isoformat()
     entries = []
     for n, row in enumerate(watch.records(day / 'events.jsonl'), 1):
         kind, payload, found = row['kind'], row['payload'], []
         for item, phase in payload.get('phase_changes', {}).items():
-            if phase == 'merged':
-                found.append((item, 'close', f'Merged in {data["items"][item].get("pr")}.'))
-            else:
+            if phase != 'merged':  # #842: the done duty writes the merged note
                 found.append((item, 'progress', f'Phase: {phase}.'))
         if kind == 'plan.disposed':
             reason = payload.get('reason')
             found.append((payload.get('item'), 'close', f'Carried to {after}.' if payload.get('outcome') == 'carried'
                           else f'Parked: {reason}.' if reason else 'Parked.'))
-        elif kind == 'decision.decided':
-            path = day / 'decisions' / f'{payload.get("id")}.md'
-            if path.is_file():
-                text = (verdict.rows(verdict.active_text(path.read_text(encoding='utf-8')), 'Question')
-                        or ['not recorded'])[0].strip()
-                text += '' if text.endswith(('.', '?', '!')) else '.'
-                found.extend((item, 'decisions',
-                              f'Decision {payload.get("id")}: {text} Outcome: {payload.get("option")}.')
-                             for item in {payload.get('item'), *named.get(payload.get('id'), [])}
-                             if item)
         elif kind in ('seat launched', 'seat stopped'):
             seat = data['seats'].get(payload.get('name'), {})
             role = str(seat.get('role', ''))
@@ -215,8 +205,6 @@ def _entries(day, data, kinds):
                            for finding in record.get('findings', []))
             found.append((item, 'verdicts', f'Review {role} ({round_name}): '
                           f'{payload.get("verdict")}, {blocking} blocking findings.'))
-        elif kind in ('pr.raised', 'pr.claimed'):
-            found.append((payload.get('item'), 'pr', f'Pull request: {payload.get("pr")}.'))
         seen = {}
         for item, entry_kind, text in found:
             if item in items and entry_kind in kinds:
@@ -264,8 +252,7 @@ def log(root):
             summary = ', '.join(f'{kind} {count}' for kind, count in counts.items())
             sends.append((f'fold:{number}:{folded[0][0]}', 'fold',
                           f'[{day.name} {folded[0][1]}] Folded {len(folded)} updates: {summary}.',
-                          next((kind for kind in counts if kind not in settings['auto']),
-                               next(iter(counts))),
+                          next(iter(counts)),
                           [key for key, *_ in folded]))
         for key, kind, text, category, keys in sends:
             if ABSOLUTE.search(text):
@@ -308,7 +295,7 @@ def log(root):
 
 def creates_labels(config):
     """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker;
-    init --upgrade from a host terminal creates on any tracker."""
+    init --upgrade creates on any tracker."""
     from wuwei import outward
     return not outward._external_tracker(config)
 
@@ -343,8 +330,8 @@ def relabel(port, root, config, item, ticket, failed):
     if found.data['missing']:
         quoted = ', '.join(f'"{label}"' for label in found.data['missing'])
         return registry.Result(1, reason=(
-            f'{item} not moved to {name}: the tracker label {quoted} is missing; the owner runs '
-            'bin/wuwei init --upgrade in a host terminal, which creates it, then bin/wuwei '
+            f'{item} not moved to {name}: the tracker label {quoted} is missing; run '
+            'bin/wuwei init --upgrade, which creates it, then bin/wuwei '
             f'tracker move {item} in_review'))
     return failed
 

@@ -216,7 +216,7 @@ def test_two_tables():
     assert configtext.misplaced(raw) == [
         'code_host_orgs is set in [outbound] (line 2) and [outward] (line 4); '
         '[outward] does not take it, remove line 4']
-    raw = '[tracker]\nauto = []\n[[repos]]\nname = "acme/widget"\n[repos.merge]\nauto = false\n'
+    raw = '[shepherd]\nreviewers = []\n[[repos]]\nname = "acme/widget"\n[repos.shepherd]\nreviewers = []\n'
     assert configtext.misplaced(raw) == []
 
 

@@ -29,12 +29,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
-| `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one. Below strict the reason names the item's card, where the planner proposes the ticket; under strict it names `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>` for a host terminal. |
-| `tracker.skip_tiers` | `[]` | Gate tiers that need no ticket, for example `["light"]`. The recorded gate tier decides, else the lead's tier. |
-| `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
 | `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`; a seat adds `--seat <role>`, which the retro shows. |
-| `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. |
-| `tracker.auto` | `["progress", "pr", "close"]` | Every class and kind goes out through the tracker port after the outward lint (#838). This list only picks the kind a folded comment is filed under. |
+| `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. The PR link and the merged note are written by the in-review and done [duties](concepts.md#tickets-and-comments). |
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
 | `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
 | `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |

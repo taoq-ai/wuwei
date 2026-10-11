@@ -26,7 +26,8 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off',
-          'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'tracker.created', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'duty.due', 'duty.done', 'duty.skipped',  # #842: tracker.call carries the warning
           'cap.derived')
 
 
@@ -49,7 +50,7 @@ def classify(event, state):
         return 'warn', lane
     if kind == 'tracker.call':
         return ('silent' if payload.get('exit') == 0
-                or payload.get('reason') == 'tracker adapter is none' else 'warn'), lane
+                or str(payload.get('reason')).startswith('tracker adapter is none') else 'warn'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
         return (tier if tier in ('silent', 'warn', 'page') else 'warn'), lane

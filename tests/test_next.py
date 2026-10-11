@@ -813,3 +813,34 @@ def test_finding_row(root, capsys):
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)
     assert coarse(root) == before
+
+
+def due(root, item, action, then=None):
+    payload = {'item': item, 'duty': f'tracker.{action}', 'ticket': 'ENG-7'}
+    state.append_event('duty.due', {**payload, 'command': f'wuwei tracker move {item} {action}'}, root)
+    if then:
+        state.append_event(then, {**payload, **({'pr': None} if then == 'duty.done' else {'error': 'x'})}, root)
+
+
+def test_an_open_tracker_duty_is_a_row_beside_the_launches(root):
+    """#842: a due tracker update is a runnable row, also for a merged item, and holds close."""
+    (root / '.wuwei/config.toml').write_text(
+        '[adapters]\ntracker = "linear"\n[[repos]]\nname = "example/project"\npath = "project"\n'
+        'default_branch = "main"\n')
+    (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
+    day(root, gate_approved=True, approved_items=['A', 'M'], cap=2, planner_session_id='S',
+        items={'A': {'phase': 'fix'}, 'M': {'phase': 'merged', 'pr': 'example/project#7'}},
+        tickets={'M': {'id': 'ENG-7', 'source': 'set'}})
+    due(root, 'M', 'done')
+    due(root, 'A', 'claim', 'duty.done')
+    due(root, 'M', 'in_review', 'duty.skipped')
+    found = coarse(root)
+    assert [(r['state'], r['item'], r['command']) for r in found['rows']] == [
+        ('build', 'A', 'wuwei build next A'), ('duty', 'M', 'wuwei tracker move M done')]
+    day(root, items={'M': {'phase': 'merged', 'pr': 'example/project#7'}}, approved_items=['M'])
+    found = coarse(root)
+    assert (found['state'], found['item'], found['command']) == ('duty', 'M', 'wuwei tracker move M done')
+    assert 'M (ENG-7)' in found['why'] and found['then'] == next_command.THEN['run']
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('tracker = "linear"', 'tracker = "none"'))
+    assert coarse(root)['state'] == 'close'

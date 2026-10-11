@@ -532,10 +532,10 @@ def _day(root, config, probes):
 
 
 def _tracker(root, config):
-    """5.11: with tickets required, the tracker must answer a backlog read."""
+    """5.11: a configured tracker must answer a backlog read; #842: its duties need it."""
     name = config['adapters']['tracker']
-    if name == 'none' or not config['tracker']['required']:
-        return _row('day', 'tracker', 'ok', name if name == 'none' else f'{name}, tickets optional')
+    if name == 'none':
+        return _row('day', 'tracker', 'ok', name)
     from wuwei.commands.config import requirements
     names = ', '.join(key for keys in requirements(config).get(('tracker', name), ()) for key in keys)
     try:
@@ -551,15 +551,13 @@ def _tracker(root, config):
     if name == 'github':  # #602: the token, or the owner's gh login under tracker.auth = "gh"
         fix = (f'{fix}bin/wuwei config set tracker.auth \'"gh"\' to use your gh login, or ' if names else
                'run gh auth status (with tracker.board: gh auth refresh -s project), or ')
-    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set tracker.required false')
+    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set adapters.tracker \'"none"\'')
 
 
 def _tracker_labels(root, config):
     """#670: the lifecycle labels the tracker lacks; doctor reads, init --upgrade creates."""
     from wuwei import tracker
     result = tracker.labels(root, config, False)
-    if result.exit and not config['tracker']['required']:
-        return _row('day', 'tracker labels', 'ok', 'unmeasured, tickets optional')
     if result.exit:
         return _row('day', 'tracker labels', 'unmeasured', result.reason,
                     'fix the tracker row, then run wuwei doctor')

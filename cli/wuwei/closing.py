@@ -5,7 +5,6 @@ import io
 import json
 from pathlib import Path
 import re
-import sys
 
 from wuwei import obligations, registry, state, verdict, watch, workspace
 from wuwei.promotion import safe_path
@@ -166,10 +165,10 @@ def unresolved(root, rows, open_items=None, notes=None):
         config = workspace.load_config(root)
         prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
         owned = data['raised_prs'] + data['claimed_prs']
-        from wuwei import tracker
-        done = ({row['payload'].get('item') for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-                 if row['kind'] == 'tracker.call' and row['payload'].get('action') == 'done'
-                 and row['payload'].get('exit') == 0} if tracker.in_force(config) else set())
+        if config['adapters']['tracker'] != 'none':  # #842: a due duty holds close; a skipped one does not
+            from wuwei import tracker
+            findings.extend(f'{item}: {duty} not recorded: bin/{command}' for item, duty, command in
+                            tracker.open_duties(watch.records(workspace.day_dir(root) / 'events.jsonl')))
         for name in data['approved_items']:
             try:
                 item = data['items'][name]
@@ -187,18 +186,6 @@ def unresolved(root, rows, open_items=None, notes=None):
                                     'Keep working: finish it, then run bin/wuwei close again.')
                     if open_items is not None:
                         open_items.append(name)
-                number = tracker.ticket(data, name)
-                line = None
-                if tracker.in_force(config) and item['phase'] == 'merged':
-                    if number and name not in done:
-                        line = f'{name}: ticket {number} is not done: bin/wuwei tracker done {name}'
-                    elif tracker.check(data, config, name, item)[0] == 'later':  # #646
-                        line = f'{name}: shipped without a ticket: bin/wuwei tracker create {name}'
-                if line:
-                    if config['tracker']['strict_close']:
-                        findings.append(line)
-                    else:
-                        print(line, file=sys.stderr)
                 tree = item.get('worktree')
                 if tree is not None and ref not in owned:
                     if not isinstance(tree, str) or not tree:

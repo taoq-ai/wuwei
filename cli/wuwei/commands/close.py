@@ -67,7 +67,7 @@ def run(args):
             code, reason = closing.check(root)
             if code == 0:
                 from wuwei import tracker
-                try:  # Comments are hygiene; strict_close is the close rule.
+                try:  # Comments are hygiene; open duties are the close rule (#842).
                     if tracker.log(root):
                         print('tracker log: some comments were not written; run bin/wuwei tracker log '
                               'to see why', file=sys.stderr)

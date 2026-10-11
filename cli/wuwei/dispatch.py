@@ -359,25 +359,37 @@ def step_zero(value, paths, trust_paths, flags=None):
 
 
 def tracker_call(item, action, root=None):
-    """Record the tracker measurement without blocking the local build loop."""
+    """Perform one tracker lifecycle update without blocking the local build loop. #842: with a
+    recorded ticket it is a duty: duty.due before the call, then duty.done when every step
+    returned 0, or duty.skipped with the error (the adapter already retried)."""
     from wuwei.tracker import relabel, ticket as recorded
     root = workspace.find_workspace(root)
-    ticket = item
+    ticket, duty = item, None
     try:
         config = workspace.load_config(root)
-        ticket = recorded(state.read_state(root), item) or item
+        data = state.read_state(root)
+        ticket = recorded(data, item) or item
         if config['adapters']['tracker'] == 'none':
             result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set')
         else:
+            if action not in ('claim', 'in_review', 'done'):
+                raise ValueError('unknown tracker action; pass claim, in_review or done')
             tracker = registry.load('tracker', config)
+            pr = data['items'].get(item, {}).get('pr')
+            if recorded(data, item):
+                duty = {'item': item, 'duty': f'tracker.{action}', 'ticket': ticket}
+                state.append_event('duty.due', {**duty, 'command': f'wuwei tracker move {item} {action}'}, root)
             if action == 'claim':
                 result = tracker.claim(ticket, root=root)
-            elif action in ('in_review', 'done'):
+            else:
                 result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
                 if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
                     result = relabel(tracker, root, config, item, ticket, result)  # #670
-            else:
-                raise ValueError('unknown tracker action; pass claim, in_review or done')
+                if isinstance(result, registry.Result) and result.exit == 0 and duty and pr:
+                    day = workspace.day_dir(root).name
+                    text = f'Pull request: {pr}.' if action == 'in_review' else f'Merged in {pr}.'
+                    result = tracker.comment(ticket, f'[{day} {item}] {text}',
+                                             'pr' if action == 'in_review' else 'close', root=root)
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
                 raise ValueError(f'invalid tracker result; {ADAPTER_DATA}')
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -385,6 +397,10 @@ def tracker_call(item, action, root=None):
     try:
         state.append_event('tracker.call', {'item': item, 'ticket': ticket, 'action': action,
                            'exit': result.exit, 'reason': result.reason or ''}, root)
+        if duty and result.exit == 0:
+            state.append_event('duty.done', {**duty, 'pr': pr}, root)
+        elif duty:
+            state.append_event('duty.skipped', {**duty, 'error': result.reason or 'failed'}, root)
     except (OSError, ValueError) as exc:
         print(f'tracker call unmeasured: could not record result: {type(exc).__name__}; run bin/wuwei doctor, which tests the tracker adapter', file=sys.stderr)
     return result
@@ -512,10 +528,6 @@ def next_step(item, root=None):
                                       if row.get('worktree') else None, build=True, where='dispatch')
         if code:
             raise Refused(reason)
-    from wuwei import tracker
-    status, reason = tracker.check(data, config, item, row)
-    if status == 'missing':
-        raise Refused(reason)
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):

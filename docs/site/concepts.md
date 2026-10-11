@@ -118,12 +118,13 @@ The tool each non-trivial item is specified with before it is built: spec-kit (d
 ### Ticket
 
 The tracker issue an item is built under: a Linear, Jira or GitHub id such as `ENG-12`.
-With a tracker set, no item is built, reviewed or launched without one.
+An item needs none to start, build, pass its gates or raise its PR.
 
 ### Tracker hygiene
 
-The rule that every item has a ticket, bugs found midway become linked tickets,
-and the item's decisions, progress, verdicts, pull request and close land on its ticket.
+An item's ticket follows its lifecycle as duties (claim, in review with the PR link, done
+with the merged note), bugs found midway become linked tickets, and the item's progress,
+verdicts and carried or parked notes land on its ticket.
 
 ### Fold
 
@@ -195,17 +196,21 @@ The day starts in parallel. WUWEI derives CAP from the host, by one of two rules
 
 ## Tickets and comments
 
-With `adapters.tracker` set and `tracker.required` on, one rule decides whether an item may
-run: it has a ticket, or its tier is in `tracker.skip_tiers`. `plan approve`, `plan add`,
-`build next`, `dispatch next` and the seat launch all ask it and give the same reason. A
-candidate's `ticket` field, an item discovered from the tracker backlog,
+A missing ticket never stops an item: no launch, gate, raise or close refuses over one.
+A candidate's `ticket` field, an item discovered from the tracker backlog,
 `bin/wuwei tracker create <item>` and `bin/wuwei plan set <item> ticket=<id>` record one.
-The lead proposes a ticket per item: an open one from the backlog, or a new one from the
-item's record. The plan shows it on a `Ticket:` line and the gate card lists it. Below
-strict, Approve opens the tickets the plan proposed and records the links, so no item waits
-on a terminal command; `plan add` opens an owner-named item's ticket.
-Under strict the commands are printed for a host terminal. A seat never opens an item
-ticket: the planner does after your card answer.
+The lead links an open backlog ticket when one is the item's work; the plan shows it on a
+`Ticket:` line and the gate card lists it.
+
+An item with a ticket gets three tracker duties while `adapters.tracker` is not `none`:
+`tracker.claim` at its first build (assign, in progress), `tracker.in_review` when its PR is
+raised or claimed (the move and a `Pull request: <pr>.` comment) and `tracker.done` when the
+PR merges (the move and a `Merged in <pr>.` comment). Each writes `duty.due` before the
+tracker call and `duty.done` when every step returned 0. When the adapter call fails after
+its retry the duty is recorded `duty.skipped` with the error; close accepts it and the day
+report lists it under Skipped duties with its `bin/wuwei tracker move <item> <duty>` retry.
+A duty still due is a `duty` row in `wuwei next`, beside the build launches and also for a
+merged item, and `wuwei close` waits on it. With `adapters.tracker = "none"` no duty counts.
 Builders and sentinels open a linked bug with
 `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <role>` instead
 of widening the item; the planner opens retro follow-ups with `--follow-up`. The finder files it.
@@ -214,11 +219,11 @@ once per day and writes one `tracker.created` event naming the seat; the retro's
 seats filed section lists who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
-decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
-request and the close outcome. The watch sweep and `wuwei close` run it. Each goes out
-through the tracker port after the outward lint. After `tracker.max_per_item_per_day`
-comments the last one is a fold. `wuwei close` refuses while an item merged today has a
-ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
+progress (phases, seat starts and stops, fast checks), gate verdicts and the carried or
+parked note; the PR link and the merged note are the duties' own comments. The watch sweep
+and `wuwei close` run it. Each goes out through the tracker port after the outward lint.
+After `tracker.max_per_item_per_day` comments the last one is a fold, filed under the first
+folded kind.
 
 ## PR ownership
 

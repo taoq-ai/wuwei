@@ -647,99 +647,43 @@ def ticket_lines(root):
 
 
 def test_plan_and_gate_card_show_each_ticket(root):
-    """#636: the plan and the Approve description name an existing ticket or a new one."""
+    """#636, #842: the plan and the Approve description name each linked ticket; no new one."""
     tracked(root)
-    plan.propose(three(A={'ticket': 'ENG-1'}, B={'ticket': 'ENG-2'}), root)
-    assert ticket_lines(root) == ['Ticket: ENG-1 (existing)', 'Ticket: ENG-2 (existing)',
-                                  'Ticket: new Add the export button']
+    plan.propose(three(A={'ticket': 'ENG-1'}, B={'ticket': 'ENG-2'}, C={'tier': 'light'}), root)
+    assert ticket_lines(root) == ['Ticket: ENG-1 (existing)', 'Ticket: ENG-2 (existing)']
     widget = plan.gate_widget(root)
-    assert ('Tickets A ENG-1 (existing), B ENG-2 (existing), C new Add the export button'
-            in widget['options'][0]['description'])
+    assert 'Tickets A ENG-1 (existing), B ENG-2 (existing)' in widget['options'][0]['description']
     assert 'tickets' in widget['options'][-1]['description']
     plan.propose(three(A={'ticket': None}), root)
-    assert ticket_lines(root)[0] == 'Ticket: none'
-    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
-    plan.propose(three(A={'tier': 'light'}), root)
-    assert len(ticket_lines(root)) == 2
+    assert ticket_lines(root) == ['Ticket: none']
     (root / '.wuwei/config.toml').write_text('')
-    plan.propose(three(), root)
+    plan.propose(three(A={'ticket': 'ENG-1'}), root)
     assert ticket_lines(root) == []
     assert 'Tickets' not in plan.gate_widget(root)['options'][0]['description']
 
 
-def opening(root, monkeypatch, enforce='true', created=None, **extra):
-    """#636: A and B link existing tickets, C gets a new one; the fake tracker opens it."""
-    from fakes.tracker import Fake, ported
+def opening(root, monkeypatch, enforce='true'):
+    """A and B link existing tickets, C has none."""
+    from fakes.tracker import Fake
     tracked(root, f'[owner]\nname = "Pat Example"\n[guards]\nenforce = {enforce}\n')
-    plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}, **extra}), root)
-    fake = Fake({'create': created or registry.Result(0, {'id': 'ENG-9',
-                                                           'url': 'https://example.test/ENG-9'})})
-    port = ported(fake)
+    plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}}), root)
+    fake = Fake({})
     load = registry.load
-    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
                         else load(kind, config))
     return fake
 
 
 @pytest.mark.parametrize('posture', ['false', 'true'])
-def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture):
-    """#636 acceptance 1: two links and one new ticket, no terminal command."""
-    from wuwei import tracker
+def test_approve_links_the_proposed_tickets_and_opens_none(root, monkeypatch, posture):
+    """#842: A and B link their tickets; C is approved with no ticket and none is created."""
     fake = opening(root, monkeypatch, posture)
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     day = state.read_state(root)
     assert day['tickets'] == {'A': {'id': 'ENG-1', 'source': 'candidate'},
-                              'B': {'id': 'ENG-2', 'source': 'candidate'},
-                              'C': {'id': 'ENG-9', 'source': 'create'}}
-    assert [call[0] for call in fake.calls] == ['create']
-    assert fake.calls[0][1][0]['item'] == 'C'
-    config = workspace.load_config(root)
-    assert all(tracker.check(day, config, name)[0] == 'ticket' for name in 'ABC')
-    with pytest.raises(state.StateError, match='already approved'):
-        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert len(fake.calls) == 1
-
-
-def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
-    fake = opening(root, monkeypatch, 'true', A={'ticket': None}, C={'ticket': 'ENG-3'})
-    plan.approve(['A'], root, goals_confirmed=True)
-    assert fake.calls == []
-    assert state.read_state(root)['tickets'] == {'A': {'id': None, 'source': 'none'}}
-    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
-    assert skipped == [{'item': 'A', 'ticket': 'none'}]
-
-
-def test_a_failed_open_refuses_the_approval(root, monkeypatch):
-    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'))
-    with pytest.raises(state.StateError, match='C: linear: unreachable'):
-        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert not state.read_state(root)['approved_items']
-
-
-
-def test_a_small_item_is_approved_without_its_ticket(root, monkeypatch):
-    """#646: the gate opens a light item's ticket, and a failed open does not hold the gate."""
-    fake = opening(root, monkeypatch, 'true', C={'tier': 'light'})
-    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    assert [call[0] for call in fake.calls] == ['create']
-    assert state.read_state(root)['tickets']['C'] == {'id': 'ENG-9', 'source': 'create'}
-
-
-def test_a_failed_open_does_not_hold_a_small_item(root, monkeypatch):
-    opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'),
-            C={'tier': 'light'})
-    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
-    day = state.read_state(root)
-    assert 'C' in day['approved_items'] and 'C' not in day['tickets']
-
-
-def test_light_candidate_is_approved_without_a_ticket(root):
-    plan.propose(two(A={'tier': 'light'}, B={'ticket': 'ENG-4'}), root)
-    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
-    plan.approve(['A', 'B'], root, goals_confirmed=True)
-    assert state.read_state(root)['tickets'] == {'B': {'id': 'ENG-4', 'source': 'candidate'}}
-    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
-    assert skipped == [{'item': 'A', 'tier': 'light'}]
+                              'B': {'id': 'ENG-2', 'source': 'candidate'}}
+    assert day['approved_items'] == ['A', 'B', 'C'] and fake.calls == []
+    assert not [event for event in events(root) if event['kind'].startswith('tracker.')]
 
 
 def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
@@ -796,7 +740,7 @@ def test_proposed_bare_ticket_is_stored_in_full(root):
     with pytest.raises(ValueError, match='owner/repo#24'):
         plan.propose(two(B={'ticket': '24'}), root)
     assert not (root / '.wuwei/days/2026-09-28/proposal.json').exists()
-    (root / '.wuwei/config.toml').write_text(GITHUB + REPO + '[tracker]\nskip_tiers = ["light"]\n')
+    (root / '.wuwei/config.toml').write_text(GITHUB + REPO)
     plan.propose(two(A={'tier': 'light'}, B={'ticket': '24'}), root)
     written = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())
     assert {row['id']: row.get('ticket') for row in written['candidates']}['B'] == 'acme/app#24'
