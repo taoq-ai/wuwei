@@ -206,7 +206,7 @@ def test_a_review_comment_at_night_is_queued_never_answered(night):
     assert row['evidence'] == ['thread T17 by bob on src/app.py: Why this name?']
     assert not {'comment', 'request_reviewers', 'merge'} & {call[0] for call in host.calls}
     data = state.read_state(directory=root / '.wuwei/days' / DAY)
-    assert not data.get('drafts') and not data.get('pr_action_decisions') and not data.get('builds')
+    assert not data.get('pr_action_decisions') and not data.get('builds')
     assert not list((root / '.wuwei/days' / DAY / 'decisions').glob('D-*.md'))
     assert not vcs.calls
 
@@ -256,10 +256,10 @@ def stale(root):
 
 @pytest.mark.parametrize('code, text, outcome, exit', [
     (0, '', 'pinged', 0),
-    (1, 'outward: draft D1 held for the owner', 'queued', 1),
+    (1, 'outward: banned character; remove it and send again', 'queued', 1),
     (2, 'review post unmeasured: timeout', 'unmeasured', 2),
 ])
-def test_a_stale_review_is_pinged_under_the_tiers(night, monkeypatch, code, text, outcome, exit):
+def test_a_stale_review_is_pinged_after_the_lint(night, monkeypatch, code, text, outcome, exit):
     root, _, _, calls = night
     stale(root)
     def ping(root, ref):

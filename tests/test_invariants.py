@@ -11,17 +11,15 @@ from test_reasons import CLI, reasons
 # A wall: the only way out is the owner acting outside the session, and no card is named.
 WALL = re.compile(r'no setting lowers it|host terminal|ask the owner to|only the owner|by hand'
                   r'|leave \w+ to the owner')
-CARD = re.compile(r'bin/wuwei drafts show draft-')
 
 
 def wall(reason, line):
-    return not CARD.search(reason) and bool(WALL.search(reason + '\n' + line))
+    return bool(WALL.search(reason + '\n' + line))
 
 
 # Reasons the guards return from helpers outside guards/: (file, functions, guard checks).
-CALLED = [('security.py', ('outbound', 'gh_outbound'), ('outward.check_tier', 'pr.check')),
-          ('drafts.py', ('reason',), ('outward.check_tier',)),
-          ('outward.py', ('check_tier', 'blocked'), ('outward.check_tier',)),
+CALLED = [('security.py', ('outbound', 'gh_outbound'), ('outward.check_send', 'pr.check')),
+          ('outward.py', ('check_lint', 'humanize_lint', 'lint'), ('outward.check_lint',)),
           ('integrity.py', ('measure',), ('integrity.check',)),
           ('shell.py', ('_text', '_cwd', '_cd_target'), ('protect_state.check_bash',))]
 # Walls a later item removes; the note on each row is its rationale: (file, substring, note).

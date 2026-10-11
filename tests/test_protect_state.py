@@ -947,19 +947,6 @@ def test_telemetry_records_are_protected(workspace, target):
     assert code == 1 and reason
 
 
-@pytest.mark.parametrize('posture', ['false', 'true'])
-def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
-    # #552: the register of people, channels and tools is written only by the CLI.
-    from wuwei.guards.protect_state import check_file
-    _enforce(records, posture)
-    target = '.wuwei/graph.json'
-    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
-                        ('Bash', {'command': f'echo {{}} > {target}'})]:
-        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
-    code, reason = check_file(payload(records, 'Write', file_path=target))
-    assert code == 1 and 'bin/wuwei config set' in reason and 'init --upgrade' in reason and 'bin/wuwei who' in reason
-
-
 def _scratch_seat(root, monkeypatch):
     """#647: items A and B, builder seat b-a on A, and its subagent transcript (agent x)."""
     from wuwei import state
@@ -1027,7 +1014,7 @@ def test_state_protection_unchanged(workspace):
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
     for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei status > .wuwei/config.toml'):
         assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
-    assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W drafts approve x')) == (
+    assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W state recover')) == (
         2, UNPARSED)
     assert check_bash(payload(workspace, 'Bash', command='cd ..')) == (1, WORKSPACE_ROOT)
 

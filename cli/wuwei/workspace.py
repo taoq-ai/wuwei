@@ -37,8 +37,6 @@ MERGE_SCHEMA = {
 LEVELS = ("brief", "standard", "full")
 SURFACES = ("decisions", "report")
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
-AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
-TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
@@ -48,7 +46,12 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
            'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest',
            'autonomy', 'decisions', 'steward', 'owner.verbosity.digest',
-           'security.posture', 'security.areas', 'guards.mode', 'guards.shadow_days', 'guards.shadow_since')
+           'security.posture', 'security.areas', 'guards.mode', 'guards.shadow_days', 'guards.shadow_since',
+           'outbound.tiers', 'outbound.default_tier', 'outbound.learn', 'outbound.people',
+           'outbound.channel_classes', 'outbound.work_channels', 'outbound.external_channels',
+           'outbound.company_domains', 'outbound.sensitive_keywords', 'outbound.sensitive_patterns',
+           'outbound.commitment_patterns', 'outbound.disagreement_patterns',
+           'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -149,51 +152,21 @@ SCHEMA = {
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
     "outbound": {
-        "work_channels": [(str, None)], "external_channels": [(str, None)],
-        "company_domains": [(str, None)], "code_host_orgs": [(str, None)],
-        "people": {"*": {"email": (str, ""), "org": (str, ""), "class": (str, "", ("", *AUDIENCES))}},
-        # #496: any class for a channel id, over work_channels (team) and external_channels (client).
-        "channel_classes": {"*": (str, None, AUDIENCES)},
-        # #496: the owner's tier rows, before the defaults; the first match wins.
-        "tiers": [{"tool": (str, ""), "person": (str, ""), "channel": (str, ""),
-                   "audience": (str, "", ("", *AUDIENCES)), "topic": (str, "", ("", *TOPICS)),
-                   "tier": (str, None, ("send", "ask", "block"))}, []],
+        "code_host_orgs": [(str, None)],  # part 20 decides it with tracker label creation
+        # #838: the owner's identity per surface; a write whose every destination is the owner's is local.
         "owner": {"slack": {"user": (str, ""), "dm": (str, "")}, "mail": (str, ""),
-                  "code_host": (str, "")},
+                  "code_host": (str, ""), "pages": [(str, None), []]},
         "owner_channel": (str, "session", ("session", "dm")),
-        "sensitive_keywords": [(str, None), [
-            "performance", "feedback", "compensation", "salary", "pay", "bonus",
-            "hiring", "interview", "firing", "personal", "health", "medical",
-            "conflict", "legal", "hr", "harassment", "promotion", "illness",
-        ]],
-        "sensitive_patterns": [(str, None), [r"\bmental\s+health\b"]],
-        "commitment_patterns": [(str, None), [
-            r"\b(?:i|we)\s*(?:['\u2019]ll|will|shall|can|promise|commit)\b",
-            r"\b(?:by|before|after)\s+(?:\w+day|tomorrow|noon|\d)",
-            r"\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\b",
-        ]],
-        "disagreement_patterns": [(str, None), [
-            r"\bdisagree\b", r"\b(?:you|that)\s*(?:are|['\u2019]re|is)\s+wrong\b",
-            r"\b(?:i|we)\s+(?:object|oppose)\b",
-        ]],
-        # #492: card asks the owner, auto writes under observe and guarded, off never learns.
-        "learn": (str, "card", ("card", "auto", "off")),
-        # #527: the umbrella. What no narrower row holds gets this tier (chat, code host, mail,
-        # other); docs and tracker writes keep docs.auto and tracker.auto. With send, the broad
-        # default rows (commitment, disagreement, company) drop out and the owner's rows narrow.
-        "default_tier": (str, "send", ("send", "ask", "block")),
     },
     "outward": {
-        # #533 (owner, 2026-10-05): no built-in internal-state words; real messages say "agents" and
-        # "phase". An owner who wants the old list adds it; the matched word is named in the reason.
-        "patterns": [(str, ""), []],
+        # #838: exact MCP tool names that may send to other people; an unlisted write is refused.
+        "allow": [(str, None), []],
         "banned_characters": [(str, ""), ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"]],
         "max_length": {"*": (int, 1, 1)},
         "humanize": (bool, True),
         "humanize_kinds": [(str, None, ("dm", "tracker", "docs", "pr", "review")),
                            ["dm", "tracker", "docs", "pr", "review"]],
         "humanize_strict": (bool, False),
-        "draft_ttl": (int, 3600, 60),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
             # #492: the brand anywhere in the name, so mcp__<uuid>__slack_send_message matches.
             {"pattern": r"mcp__(?=.*slack).*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
@@ -204,10 +177,6 @@ SCHEMA = {
         ]],
         # #492: the owner's alias of an MCP server id to its channel.
         "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other", "local"))},
-        # #492: the owner's approval mode of an MCP server id; absent is the class default.
-        "modes": {"*": (str, None, ("send", "draft", "refuse"))},
-        # #496: a connector's default audience class for what it has not seen, by server id.
-        "classes": {"*": (str, None, AUDIENCES)},
     },
     "telemetry": {"enabled": (bool, True),
                   "share": (str, "", ("", "off", "anonymous", "attributed")),
@@ -732,14 +701,10 @@ def load_config(root=None, *, raw=None, warnings=None):
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
                 raise ConfigError('deploy.deny: start each pattern with a literal executable name')
-        if bad := next((text for text in unknown if text.startswith('unknown key outbound.tiers.')), None):
-            raise ConfigError(bad)  # #496: a typo would widen the row to match everything.
-        for index, row in enumerate(config['outbound']['tiers']):
-            try:
-                re.compile(row['tool'])
-            except re.error:
-                raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
-                                  'with bin/wuwei config set') from None
+        for index, tool in enumerate(config['outward']['allow']):
+            if not re.fullmatch(r'mcp__[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+', tool):
+                raise ConfigError(f'outward.allow.{index}: not an MCP tool name; the owner fixes it '
+                                  'with bin/wuwei config set outward.allow')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)

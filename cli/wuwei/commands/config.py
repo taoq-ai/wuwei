@@ -99,7 +99,7 @@ def run(args):
     # Reported, not a finding (#837): one switch.
     enforce = config['guards']['enforce']
     print('Guards: enforce (guards.enforce = true)' if enforce else
-          'Guards: log only (guards.enforce = false); records, merges, deploys and held sends still refuse')
+          'Guards: log only (guards.enforce = false); records, merges, deploys and unlisted outward sends still refuse')
     block = config['scanner']['mcp']['block']
     if block:  # Reported, not a finding (#351).
         print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
@@ -231,11 +231,6 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None,
     if path.read_text(encoding='utf-8') != raw:
         raise ValueError('config.toml changed during confirmation; nothing written, run it again')
     if text != raw:
-        from wuwei import graph  # #552: the register first, from the same validated text
-        try:
-            graph.sync(root, workspace.load_config(root, raw=text))
-        except (OSError, ValueError) as exc:  # A13: an explanation record never stops a write
-            graph.warn(label, exc)
         workspace.atomic_write(path, text)
         try:
             workspace.index(root, workspace.load_config(root, raw=text))  # #735: checkouts find it
@@ -408,9 +403,9 @@ def set_value(args, confirm=None):
         add = getattr(args, 'add', False)  # only --add reads the current values
         return _settle(raw, merged(load_config(root, raw=raw) if add else None, parts, parsed['value'], add))
 
-    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value])
-    return _edit('config set', 'change', confirm, change, keys=[args.key], add=getattr(args, 'add', False),
-                 command=command)
+    add = getattr(args, 'add', False)
+    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value, *(['--add'] if add else [])])
+    return _edit('config set', 'change', confirm, change, keys=[args.key], add=add, command=command)
 
 
 def repo_tables(raw, repos):

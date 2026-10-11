@@ -1,9 +1,9 @@
-"""The D-n record library the learning cards and the MCP registry cards still use (parts 16, 18)."""
+"""The D-n record library the MCP registry cards still use (part 18)."""
 
 from pathlib import Path
 import re
 
-from wuwei import state, workspace
+from wuwei import workspace
 from wuwei.verdict import active_text
 from wuwei.exits import DAMAGED
 
@@ -225,17 +225,6 @@ def today_path(decision_id, root):
     if path.resolve() != path:
         raise ValueError(f'decision {decision_id}: record must belong to today; write the record in today\'s decisions folder')
     return path
-
-
-def route_owner(identifier, fields, root):
-    """Record an owner route once; a repeat route is a no-op."""
-    if identifier in state.read_state(root).get('decision_routes', {}):
-        return
-    extra = {'class': fields.get('Class'), 'at': workspace.now().isoformat()}
-    data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'], **extra}
-    state._write_state(lambda data: data.setdefault('decision_routes', {}).setdefault(identifier, data_row),
-                       root, reserved=False, kind='decision.routed',
-                       payload={'id': identifier, 'reversibility': fields['Reversibility'], **extra})
 
 
 def naming(directory, items):

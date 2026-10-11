@@ -9,7 +9,7 @@ from wuwei.exits import FINDINGS, UNRUN
 def register(subparsers):
     parser = subparsers.add_parser('docs', help="Write an item's docs page or publish the day's page")
     actions = parser.add_subparsers(dest='action', required=True)
-    page = actions.add_parser('page', help="Write or draft the item's page from its records")
+    page = actions.add_parser('page', help="Write the item's page from its records")
     page.add_argument('item')
     publish = actions.add_parser('publish', help="Publish today's report or retro once")
     publish.add_argument('kind', choices=('report', 'retro'))

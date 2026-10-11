@@ -5,9 +5,7 @@ import json
 import pytest
 from types import SimpleNamespace
 
-import pytest
-
-from wuwei import drafts, pr_actions, registry, state, workspace
+from wuwei import pr_actions, registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
 from test_stop import case, own, REF
@@ -87,7 +85,6 @@ def test_unanswered_thread_needs_composed_reply(case, capsys):
     assert main(['pr', 'act', REF]) == 1
     action = json.loads(capsys.readouterr().out)
     assert action['action'] == 'reply' and action['question'] == 'Please explain'
-    assert not drafts.read(state.read_state(root))
 
 
 def test_review_fix_request_opens_fix_round(case, capsys):
@@ -201,95 +198,34 @@ def test_answered_scope_card_routes_by_answer(case, capsys, reply):
         assert SCOPE in action['prompt']
 
 
-def test_allowed_tier_sends_thread_reply(case, monkeypatch):
+def explained(case):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    monkeypatch.setattr('wuwei.outward.classify', lambda *args, **kwargs: (0, 'send'))
+    return root, host
+
+
+def test_reply_posts_through_obligations(case, monkeypatch):
+    # #838: pr act --reply posts through obligations.reply and the code-host port; no tier, no draft.
+    root, host = explained(case)
     sent = []
     monkeypatch.setattr('wuwei.obligations.reply', lambda *args: sent.append(args) or 0)
     assert main(['pr', 'act', REF]) == 1
     assert sent == []
     assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 0
-    assert sent[0][:3] == (REF, 'thread', 3)
-    assert sent[0][3] == 'The change removes a race.'
+    assert sent[0][:4] == (REF, 'thread', 3, 'The change removes a race.')
 
 
-def test_unmeasured_outward_tier_keeps_draft_and_exits_two(case, monkeypatch, capsys):
-    root, host, _, _ = linked(case)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    monkeypatch.setattr('wuwei.outward.classify', lambda *args, **kwargs: (2, 'draft'))
-    assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 2
-    assert [row['status'] for row in drafts.read(state.read_state(root)).values()] == ['pending']
-    assert 'unmeasured' in capsys.readouterr().out
-
-
-
-def test_blocked_reply_prints_the_row_and_creates_no_draft(case, monkeypatch, capsys):
-    # #496: a reply the tier table blocks exits 1 with the row named, and no draft.
-    root, host, _, _ = linked(case)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    fragment = 'block by rule 3 (audience=client topic=commitment) for X: X is client'
-    monkeypatch.setattr('wuwei.outward.classify',
-                        lambda *args, why=None, **kwargs: why.append(fragment) or (1, 'block'))
-    assert main(['pr', 'act', REF, '--reply', 'I will ship it tomorrow.']) == 1
-    assert capsys.readouterr().err.strip() == f'outward: {fragment}; the owner decides: bin/wuwei outbound tiers'
-    assert drafts.read(state.read_state(root)) == {}
-
-def test_draft_is_stable_and_not_duplicated(case, capsys):
-    root, host, _, _ = linked(case)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 1
-    capsys.readouterr()
-    assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 1
-    assert len(drafts.read(state.read_state(root))) == 1
-
-
-def test_reply_draft_reaches_owner_queue(case, capsys):
-    root, host, _, _ = linked(case)
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    text = 'The change removes a race.'
-    assert main(['pr', 'act', REF, '--reply', text]) == 1
-    action = json.loads(capsys.readouterr().out)
-    assert action['action'] == 'draft_reply' and action['draft'].startswith('draft-')
-    assert main(['drafts']) == 0
-    row, = json.loads(capsys.readouterr().out)
-    assert row['id'] == action['draft'] and row['status'] == 'pending'
-    assert (row['channel'], row['operation'], row['destination']) == ('code_host', 'comment', REF)
-    assert row['inputs'] == {'ref': REF, 'text': text, 'thread': 3} and row['item'] == 'A'
-    assert 'pr_reply_drafts' not in state.read_state(root)
-
-
-@pytest.mark.parametrize('strict', [True, False])
-def test_reply_draft_is_humanized(case, capsys, strict):
-    root, host, _, _ = linked(case)
-    if strict:
-        with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write('\n[outward]\nhumanize_strict = true\n')
-    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
-        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
-            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
-    assert main(['pr', 'act', REF, '--reply', 'We delve into the race.']) == 1
-    output = capsys.readouterr()
-    assert 'stock-word' in (output.out if strict else output.err)
-    rows = drafts.read(state.read_state(root))
-    events = [json.loads(line) for line in
-              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    found = [row['payload'] for row in events if row['kind'] == 'outward.ai_tells']
-    if strict:
-        assert rows == {} and found == []
-    else:
-        assert len(rows) == 1
-        assert found == [{'kind': 'pr', 'tells': ['stock-word'], 'draft': True}]
+def test_reply_the_lint_refuses_exits_one(case, monkeypatch, capsys):
+    root, host = explained(case)
+    (root / '.wuwei/config.toml').write_text('[owner]\nname = "Pat Example"\nhandles=["builder"]\n'
+                                             '[spec]\nengine = "none"\n')
+    monkeypatch.setattr(host, 'comment', registry.outward_operation('code_host')(
+        lambda ref, text, thread, root=None: pytest.fail('posted')))
+    assert main(['pr', 'act', REF, '--reply', 'Pat asked for this race fix.']) == 1
+    assert 'third-person owner reference' in capsys.readouterr().out
+    assert not state.read_state(root).get('reply_acks')
 
 
 def test_repeated_act_keeps_first_unanswered_thread(case, capsys):
@@ -511,8 +447,6 @@ def test_pr_act_shepherds_without_a_worktree(case, monkeypatch, capsys):
             'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
     assert main(['pr', 'act', REF]) == 1
     assert json.loads(capsys.readouterr().out)['action'] == 'reply'
-    assert main(['pr', 'act', REF, '--reply', 'It keeps the option stable.']) == 1
-    assert json.loads(capsys.readouterr().out)['action'] == 'draft_reply'
     assert main(['pr', 'state', REF]) == 1
     assert json.loads(capsys.readouterr().out)[0]['state'] == 'threads_unanswered'
 

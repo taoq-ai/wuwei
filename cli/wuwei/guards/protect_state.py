@@ -68,7 +68,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',), ('graph.json',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
             return True
@@ -111,9 +111,6 @@ def _hint(path):
     if tail == ('memory', 'goals.md'):
         return ('goals.md is protected: plan approve records the goals the morning gate approved; '
                 "other edits are the owner's, outside agent tools.")
-    if tail == ('graph.json',):
-        return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
-                'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')
     if tail[:1] == ('integrity',):
         return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
                 'on its Owner step card.')

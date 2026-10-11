@@ -87,6 +87,9 @@ def run(args):
     return _finish(destination.parent)
 
 
+# #838: the register comment init --upgrade wrote above config sections; removed on upgrade.
+GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
+                 'bin/wuwei who walks it.')
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
                  'memory/cruise.json', 'memory/forget.json')  # #814, #815, #833: init --upgrade removes them
 # #800: the guide block an older init wrote into the memory.export_to file.
@@ -390,16 +393,11 @@ def upgrade(args):
         retired += today
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
-        from wuwei import graph  # #552: the register the modeled sections are views of
-        annotated = graph.annotate(migrated)
-        named, migrated = annotated.count(graph.COMMENT) - migrated.count(graph.COMMENT), annotated
-        try:
-            previous = graph.load(destination.parent)
-            register = graph.build(workspace.load_config(destination.parent, raw=migrated), previous)
-        except ValueError as exc:  # A13: the register decides nothing, so it never stops the upgrade.
-            graph.warn('init', exc)
-            previous = register = None
-        graph_changed = register != previous
+        uncommented = ''.join(line for line in migrated.splitlines(keepends=True)
+                              if line.rstrip('\r\n') != GRAPH_COMMENT)  # #838: the register is gone
+        graph_comments, migrated = uncommented != migrated, uncommented
+        graph = destination / 'graph.json'
+        graph_stale = graph.is_file() and not graph.is_symlink()
         executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -429,8 +427,8 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
-            if graph_changed:
-                graph.save(destination.parent, register)
+            if graph_stale:
+                graph.unlink()
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             try:  # #735: the checkouts find the workspace from anywhere
@@ -457,11 +455,10 @@ def upgrade(args):
             print(f'{prefix} config.toml: {line}')
         if stamp_changed:
             print(f'{prefix} config.toml: template_version {integrity.version()}')
-        if named:
-            print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
-        if graph_changed:
-            print(f"{prefix} .wuwei/{graph.NAME}: {len(register['nodes'])} nodes and "
-                  f"{len(register['edges'])} edges from config.toml")
+        if graph_comments:
+            print(f'{prefix} config.toml: remove the graph comments')
+        if graph_stale:
+            print(f'{prefix} .wuwei/graph.json: remove (no longer read)')
         if pointer_changed:
             print(f'{prefix} executable pointer')
         for name in stale:
@@ -491,7 +488,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not stale and not named and not graph_changed and text == raw
+                and not guide_changed and not stale and not graph_comments and not graph_stale and text == raw
                 and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:

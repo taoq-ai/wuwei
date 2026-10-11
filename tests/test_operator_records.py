@@ -40,8 +40,6 @@ def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
             ('verdict.rejected', {'item': 'DIVIDE-1'}),
             ('tracker.call', {'item': 'DIVIDE-1', 'action': 'claim', 'exit': 2,
                               'reason': 'tracker adapter is none'}),
-            ('draft.created', {'id': 'draft-1', 'channel': 'code_host'}),
-            ('draft.sent', {'id': 'draft-1', 'exit': 0}),
             ('merge.policy_blocked', {'pr': 'org/repo#1', 'exit': 1}),
             ('pr.action', {'pr': 'org/repo#1', 'tier': 'silent', 'state': 'merged'})):
         state.append_event(kind, payload, root)

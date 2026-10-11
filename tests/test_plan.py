@@ -693,7 +693,6 @@ def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture
                               'C': {'id': 'ENG-9', 'source': 'create'}}
     assert [call[0] for call in fake.calls] == ['create']
     assert fake.calls[0][1][0]['item'] == 'C'
-    assert [row['status'] for row in day.get('drafts', {}).values()] in ([], ['sent'])
     config = workspace.load_config(root)
     assert all(tracker.check(day, config, name)[0] == 'ticket' for name in 'ABC')
     with pytest.raises(state.StateError, match='already approved'):
@@ -712,7 +711,7 @@ def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
 
 def test_a_failed_open_refuses_the_approval(root, monkeypatch):
     opening(root, monkeypatch, 'true', created=registry.Result(2, reason='linear: unreachable'))
-    with pytest.raises(state.StateError, match='C: drafts: adapter did not confirm send'):
+    with pytest.raises(state.StateError, match='C: linear: unreachable'):
         plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     assert not state.read_state(root)['approved_items']
 

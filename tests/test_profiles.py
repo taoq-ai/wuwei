@@ -24,9 +24,8 @@ def configured(tmp_path, monkeypatch):
 [owner]
 name = "Pat Example"
 pronouns = "they/them"
-[outbound]
-default_tier = "ask"
-work_channels = ["Cwork"]
+[outward]
+allow = ["mcp__slack__post_message"]
 [outward.max_length]
 slack = 3
 chat = 3
@@ -103,22 +102,22 @@ def test_only_outward_lint_is_relaxable():
 
 
 @pytest.mark.parametrize('profile', [None, 'strict', 'standard'])
-@pytest.mark.parametrize('text,channel,invalid', [
-    ('Ack', 'Cwork', False),
-    ('Thanks', 'Cwork', False),
-    ('Thanks', 'Cclient', False),
-    ('Thanks', 'Cwork', True),
+@pytest.mark.parametrize('text,tool,invalid', [
+    ('Ack', 'mcp__slack__post_message', False),
+    ('Thanks', 'mcp__slack__post_message', False),
+    ('Thanks', 'mcp__slack__slack_schedule_message', False),
+    ('Thanks', 'mcp__slack__post_message', True),
 ])
-def test_outward_hook_profiles(configured, monkeypatch, capsys, profile, text, channel, invalid):
+def test_outward_hook_profiles(configured, monkeypatch, capsys, profile, text, tool, invalid):
     set_profile(configured, profile)
-    if invalid:
-        with (configured / '.wuwei/config.toml').open('a') as stream:
-            stream.write('\n[outward]\npatterns = ["["]\n')
-    result, out, err = replay(configured, monkeypatch, capsys,
-                              inputs={'text': text, 'channel': channel})
-    # #837: a held send (the tier) blocks; the outward lint, and a lint that could not read its
+    if invalid:  # a lint that cannot run: no owner name
+        path = configured / '.wuwei/config.toml'
+        path.write_text(path.read_text().replace('name = "Pat Example"\n', ''))
+    result, out, err = replay(configured, monkeypatch, capsys, tool=tool,
+                              inputs={'text': text, 'channel': 'Cwork'})
+    # #837, #838: an unlisted send blocks; the outward lint, and a lint that could not read its
     # policy, is logged with guards.enforce on, as under the old guarded default.
-    blocked = channel == 'Cclient'
+    blocked = tool != 'mcp__slack__post_message'
     logged = not blocked and (invalid or text == 'Thanks' and profile != 'standard')
     assert result == (2 if blocked else 0)
     assert text not in err
@@ -158,8 +157,7 @@ def test_standard_outward_warning_records_tool_and_reason(configured, monkeypatc
 
 
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
-@pytest.mark.parametrize('channel', ['Cwork', 'Cclient'])
-def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys, profile, channel):
+def test_direct_port_preserves_profile(configured, monkeypatch, capsys, profile):
     from wuwei import registry
     set_profile(configured, profile)
     performed = []
@@ -169,8 +167,8 @@ def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys
         performed.append(text)
         return registry.Result(0)
 
-    result = post(channel, 'Thanks', root=configured)
-    allowed = profile == 'standard' and channel == 'Cwork'
+    result = post('Cwork', 'Thanks', root=configured)
+    allowed = profile == 'standard'
     assert result.exit == (0 if allowed else 1)
     assert performed == (['Thanks'] if allowed else [])
     assert ('warning:' in capsys.readouterr().err) == allowed
@@ -179,11 +177,6 @@ def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys
         record, = [json.loads(line) for line in events[0].read_text().splitlines()
                    if json.loads(line)['kind'] == 'hook.warning']
         assert record['payload'] == {'reason': CHANNEL_LENGTH, 'tool': 'chat'}
-    elif channel == 'Cclient':
-        record, = [json.loads(line) for line in events[0].read_text().splitlines()]
-        assert record['kind'] == 'draft.created'
-        assert record['payload']['channel'] == 'chat'
-        assert 'Thanks' not in events[0].read_text()
     else:
         assert not events
 

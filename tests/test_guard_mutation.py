@@ -25,7 +25,7 @@ PROBES = {
     ('lifecycle', 'SessionStart', None, 'session_start'): ('Bash', {}, 2),
     ('lifecycle', 'Stop', None, 'stop'): ('Bash', {}, 'message'),
     ('lifecycle', 'SubagentStop', None, 'subagent_stop'): ('Bash', {}, 'message'),
-    ('outward', 'PreToolUse', None, 'check_tier'): ('mcp__slack__post_message', [], 2),
+    ('outward', 'PreToolUse', None, 'check_send'): ('mcp__slack__post_message', [], 2),
     ('outward', 'PreToolUse', None, 'check_lint'): ('mcp__slack__post_message', [], 2),
     ('pr', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'gh pr review --approve'}, 1),
     ('protect_state', 'PreToolUse', 'Bash', 'check_bash'):

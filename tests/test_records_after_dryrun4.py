@@ -175,7 +175,3 @@ def test_init_says_where_output_goes(tmp_path):
     assert lines[index + 1:index + 3] == ['.wuwei/', '.claude/']
 
 
-def test_reference_lists_drafts_approve_digest():
-    reference = (ROOT / 'docs/site/reference.md').read_text()
-    assert '| `bin/wuwei drafts approve <id>` | yes |' in reference
-    assert '| `bin/wuwei drafts drop <id>` | no |' in reference

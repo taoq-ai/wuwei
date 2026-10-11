@@ -33,12 +33,12 @@ MODULES = {
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
 # #837: one switch, guards.enforce. The floor blocks whatever it says (constitution VII):
-# records written by the workflow and the owner's merge, approve, admin, deploy and held-send
+# records written by the workflow and the owner's merge, approve, admin, deploy and outward send
 # edges. Keys are modules or 'module.function'; a LOG_ONLY function is not on its module's floor.
 FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'deploy', 'pr', 'protect_state',
-                   'outward.check_tier'})
+                   'outward.check_send'})
 # B5 lead call (#837): no new walls. With guards.enforce on these still only log, as under the
-# old guarded default: the outward lint and unknown tool, another item's scratch directory,
+# old guarded default: the outward lint, another item's scratch directory,
 # the traces recorder (it never refuses, even when it raises) and the launch capacity and
 # ticket refusals (next never offers a launch past CAP).
 LOG_ONLY = frozenset({'outward', 'protect_state.check_scratch', 'traces'})

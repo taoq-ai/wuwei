@@ -285,7 +285,7 @@ def _workspace(root, config, error, found):
         rows.append(_row('workspace', 'config', 'fail', error, f'edit .wuwei/config.toml: {error}'))
     code, text = _capture(init.upgrade, Namespace(path=str(root), dry_run=True))
     lines = text.splitlines()
-    upgrades = [line for line in lines if line.startswith('Would upgrade') and 'graph.json' not in line]
+    upgrades = [line for line in lines if line.startswith('Would upgrade')]
     charters = [line for line in lines if line.startswith('Charter override needs review')]
     if code:
         rows.append(_row('workspace', 'template', 'unmeasured', f'init --upgrade --dry-run exit {code}',
@@ -373,48 +373,8 @@ def _workspace(root, config, error, found):
                     _row('workspace', f'{name} spec', 'unmeasured',
                          f"{config['scanner']['mcp']['plugins_file']} is unreadable",
                          f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
-    rows += _outbound(config)
-    rows.append(_register(root, config))
     rows += _calibration(root, config)
     return rows
-
-
-def _outbound(config):
-    """#496: people without a class and owner send rows for a client or public audience;
-    information, nothing refuses on them."""
-    from wuwei import outward
-    bare = [key for key, entry in config['outbound']['people'].items() if not entry['class']]
-    rows = [_row('workspace', 'outbound classes', 'warn', f'{len(bare)} people without a class',
-                 'nothing changes until you choose: the bin/wuwei outbound learn card asks the class of '
-                 'each person it adds',
-                 detail=[f'{key}: team while internal by outbound.company_domains or outbound.code_host_orgs, '
-                         'else the connector default class' for key in bare])
-            if bare else _row('workspace', 'outbound classes', 'ok', 'every person has a class')]
-    sends = [f'rule {number} can send to a client or public audience'
-             for number, (row, source, _) in enumerate(outward.table(config), 1)
-             if source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)]
-    rows.append(_row('workspace', 'outbound tiers', 'warn', f'{len(sends)} send rows for a client or public audience',
-                     'make the row ask, or remove it', detail=sends) if sends
-                else _row('workspace', 'outbound tiers', 'ok', 'no send row for a client or public audience'))
-    return rows
-
-
-def _register(root, config):
-    """#552: the register against its config views; warn at most, it decides nothing (A13)."""
-    from wuwei import graph
-    try:
-        register = graph.load(root)
-    except ValueError as exc:
-        return _row('workspace', 'register', 'warn', str(exc), f'{graph.FIX.replace("bin/wuwei", "wuwei")}')
-    if register is None:
-        return _row('workspace', 'register', 'warn', 'no .wuwei/graph.json', 'wuwei init --upgrade',
-                    apply='init-upgrade')
-    drifted = graph.drift(register, config)
-    if drifted:
-        return _row('workspace', 'register', 'warn', f'config.toml differs from graph.json in {len(drifted)} keys',
-                    'wuwei init --upgrade', apply='init-upgrade', detail=drifted)
-    return _row('workspace', 'register', 'ok',
-                f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
 
 
 def _calibration(root, config):
@@ -674,15 +634,12 @@ def _tracker_labels(root, config):
 
 def _unrecorded(root):
     """#661: cards the owner answered whose record command never ran."""
-    from wuwei import decision, drafts, state
+    from wuwei import decision, state
     data = state.read_state(root)
     topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
-    queue = drafts.read(data)
-    found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-             and decision.answered(data, ident := topic.split('=')[0]) is None and not _owner_on_file(ident, root)}
-    found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
-              and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
-    return sorted(found)
+    return sorted({ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
+                   and decision.answered(data, ident := topic.split('=')[0]) is None
+                   and not _owner_on_file(ident, root)})
 
 
 def _owner_on_file(ident, root):

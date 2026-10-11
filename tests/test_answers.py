@@ -1,6 +1,5 @@
 """The owner's answers recorded by the PostToolUse AskUserQuestion hook (guards/answers.py)."""
 
-from hashlib import sha256
 import json
 
 import pytest
@@ -53,44 +52,6 @@ def test_record_gate_notes_asked_decisions(planner):
     assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
     assert record_gate(asked(planner, 'D-3', 'D-3: Which option?')) == (0, '')
     assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['D-3']
-
-
-def pending_draft(root):
-    """A pending port draft today (#493)."""
-    from wuwei import drafts, outward, workspace
-    return drafts.create(root, workspace.load_config(root), 'chat', 'post', 'none',
-                         {'channel': 'C2', 'text': 'Thanks'},
-                         outward.APPROVAL_REQUIRED + ': unknown destination C2: not in outbound.work_channels')
-
-
-def draft_question(root, draft_id, header='Draft', session='planner-1', answer=None, **extra):
-    text = f'{draft_id}: send this to C2 through none?'
-    if answer is not None:
-        extra['tool_response'] = {'answers': {text: answer}}
-    return asked(root, header, text, session, **extra)
-
-
-def test_record_gate_notes_asked_drafts(planner):
-    draft_id = pending_draft(planner)
-    for payload in (draft_question(planner, draft_id, header='Pick'),
-                    draft_question(planner, draft_id, agent_id='a1'),
-                    draft_question(planner, draft_id, session='other'),
-                    draft_question(planner, 'draft-' + '0' * 32)):
-        assert record_gate(payload) == (0, '')
-    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
-    assert record_gate(draft_question(planner, draft_id)) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == [draft_id]
-
-
-@pytest.mark.parametrize('answer,extra', [
-    ('Send now (Recommended)', ':send'), ('Send with an edit', ':edit'), ('Keep as draft', None),
-    ('Drop', None), (' See you then \n', ':text:' + sha256(b'See you then').hexdigest())])
-def test_record_gate_notes_the_owner_draft_answer(planner, answer, extra):
-    """Only the owner's Send answer unlocks approve, and only a typed text unlocks that text (#493)."""
-    draft_id = pending_draft(planner)
-    assert record_gate(draft_question(planner, draft_id, answer=answer)) == (0, '')
-    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == sorted(
-        {draft_id} | ({draft_id + extra} if extra else set()))
 
 
 def test_owner_step_answer_is_recorded_from_any_main_session(planner):

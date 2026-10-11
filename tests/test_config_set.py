@@ -240,31 +240,31 @@ def test_deploy_list_line_says_added(workspace, capsys):
 
 
 def test_list_set_add_once(workspace, capsys):
-    before = load_config(workspace)['outbound']['work_channels']
-    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
+    before = load_config(workspace)['outbound']['code_host_orgs']
+    assert config_set('outbound.code_host_orgs', '["C1"]', Confirm(), add=True) == 0
     line = [row for row in capsys.readouterr().out.splitlines() if row.startswith('added: ')]
-    assert len(line) == 1 and line[0].startswith('added: outbound.work_channels = ')
+    assert len(line) == 1 and line[0].startswith('added: outbound.code_host_orgs = ')
     assert line[0].endswith(f'(was {json.dumps(before)})')
-    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
+    assert config_set('outbound.code_host_orgs', '["C1"]', Confirm(), add=True) == 0
     assert 'No config.toml changes' in capsys.readouterr().out
-    assert config_set('outbound.work_channels', '[]', Confirm(), add=True) == 0
+    assert config_set('outbound.code_host_orgs', '[]', Confirm(), add=True) == 0
     assert 'No config.toml changes' in capsys.readouterr().out
-    assert load_config(workspace)['outbound']['work_channels'] == [*before, 'C1']
+    assert load_config(workspace)['outbound']['code_host_orgs'] == [*before, 'C1']
 
 
 def test_add_and_replace_exclude_each_other(workspace):
     from wuwei.__main__ import main
     with pytest.raises(SystemExit) as exc:
-        main(['config', 'set', 'outbound.work_channels', '["C1"]', '--add', '--replace'])
+        main(['config', 'set', 'outbound.code_host_orgs', '["C1"]', '--add', '--replace'])
     assert exc.value.code == 2
 
 
 # #492: with --add a list key keeps its effective items, a named-entry table keeps its entries.
 def test_list_set_appends(workspace):
     from wuwei.workspace import SCHEMA
-    before = load_config(workspace)['outbound']['work_channels']
-    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
-    assert load_config(workspace)['outbound']['work_channels'] == [*before, 'C1']
+    before = load_config(workspace)['outbound']['code_host_orgs']
+    assert config_set('outbound.code_host_orgs', '["C1"]', Confirm(), add=True) == 0
+    assert load_config(workspace)['outbound']['code_host_orgs'] == [*before, 'C1']
     rule = '[{pattern = "mcp__acme__send", channel = "slack"}]'
     assert config_set('outward.tool_patterns', rule, Confirm(), add=True) == 0
     assert load_config(workspace)['outward']['tool_patterns'] == [
@@ -279,17 +279,15 @@ def test_empty_list_set_writes_empty(workspace, capsys):
 
 
 def test_list_set_replace(workspace):
-    assert config_set('outbound.sensitive_keywords', '["C1"]', Confirm(), replace=True) == 0
-    assert load_config(workspace)['outbound']['sensitive_keywords'] == ['C1']
+    assert config_set('shepherd.source_exclude', '["C1"]', Confirm(), replace=True) == 0
+    assert load_config(workspace)['shepherd']['source_exclude'] == ['C1']
 
 
 def test_table_set_adds_entries(workspace):
-    assert config_set('outbound.people', '{"slack:U01" = {email = "ada@example.com"}}', Confirm(), add=True) == 0
-    assert config_set('outbound.people', '{"slack:U02" = {org = "acme"}}', Confirm(), add=True) == 0
-    assert load_config(workspace)['outbound']['people'] == {
-        'slack:U01': {'email': 'ada@example.com', 'org': '', 'class': ''},
-        'slack:U02': {'email': '', 'org': 'acme', 'class': ''}}
-    assert '"slack:U02" = {org = "acme"}' in (workspace / '.wuwei/config.toml').read_text()
+    assert config_set('outward.servers', '{acme = "slack"}', Confirm(), add=True) == 0
+    assert config_set('outward.servers', '{other = "local"}', Confirm(), add=True) == 0
+    assert load_config(workspace)['outward']['servers'] == {'acme': 'slack', 'other': 'local'}
+    assert 'other = "local"' in (workspace / '.wuwei/config.toml').read_text()
 
 
 def test_add_refused_on_scalar(workspace, capsys):
@@ -309,7 +307,16 @@ def test_config_show_tags(workspace, capsys):
     assert main(['config', 'show', 'outward.tool_patterns']) == 0
     rows = capsys.readouterr().out.splitlines()
     assert len(rows) == 6 and [row.rsplit(' ', 1)[1] for row in rows] == ['default'] * 5 + ['owner']
-    assert main(['config', 'show', 'outbound.learn']) == 0
-    assert capsys.readouterr().out.splitlines() == ['"card"  default']
+    assert main(['config', 'show', 'outbound.owner_channel']) == 0
+    assert capsys.readouterr().out.splitlines() == ['"session"  default']
     assert main(['config', 'show', 'outbound.nonsense']) == 1
     assert 'unknown key outbound.nonsense' in capsys.readouterr().err
+
+
+def test_card_command_names_add(workspace, monkeypatch):
+    # #838: the outward refusal names the --add line; its card shows that exact command.
+    from wuwei import sessions
+    seen = []
+    monkeypatch.setattr(sessions, 'needs_owner', lambda root, command, *rest: seen.append(command) or 'Owner step')
+    config_set('outward.allow', '["mcp__slack__send"]', None, add=True)
+    assert seen == ["bin/wuwei config set outward.allow '[\"mcp__slack__send\"]' --add"]

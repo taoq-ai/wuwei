@@ -66,20 +66,6 @@ def test_ticket():
                           'item-1') == 'ENG-1'
 
 
-def test_pending_items_draft_names_approval():
-    row = {'id': 'draft-1', 'status': 'pending', 'channel': 'tracker', 'operation': 'create',
-           'inputs': {'draft': {'title': 'x', 'item': 'item-1', 'category': 'items'}}}
-    other = {**row, 'id': 'draft-2', 'inputs': {'draft': {'title': 'x', 'item': 'item-1',
-                                                          'category': 'bugs'}}}
-    data = {'drafts': {'draft-2': other, 'draft-1': row}}
-    assert tracker.pending(data, 'item-1') == 'draft-1'
-    assert tracker.check(data, config(), 'item-1') == (
-        'missing', 'item-1 has no ticket: draft draft-1 opens it once the owner answers Send '
-                   'on its card (bin/wuwei drafts show draft-1 --widget)')
-    row['status'] = 'sent'
-    assert tracker.pending(data, 'item-1') is None
-
-
 CREATED = registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
 
 
@@ -130,13 +116,12 @@ BUG = ['tracker', 'create', '--bug', 'item-1', 'Export fails on empty rows',
 @pytest.mark.parametrize('flag,seat,category', [('--bug', 'builder', 'bugs'),
                                                 ('--triage', 'sentinel-quality', 'triage')])
 def test_bug_from_a_seat_creates_under_send(ws, capsys, flag, seat, category):
-    """#644: the finder files in the owner's own tracker; no draft under the send umbrella."""
+    """#644: the finder files in the owner's own tracker."""
     root, fake = ws
     seed_ticket(root)
     command = ['tracker', 'create', flag, *BUG[3:], '--seat', seat]
     assert main(command) == 0
     assert 'ENG-9' in capsys.readouterr().out
-    assert state.read_state(root).get('drafts', {}) == {}
     created, = [row['payload'] for row in day_events(root, 'tracker.created')]
     assert (created['class'], created['subject'], created['seat']) == (category, 'item-1', seat)
     assert main(command) == 0
@@ -153,53 +138,6 @@ def test_seat_is_a_closed_list(ws):
 def outbound(root, text):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write(text + '\n')
-
-
-def test_bug_held_under_ask_names_the_card(ws, capsys):
-    root, fake = ws
-    seed_ticket(root)
-    outbound(root, '[outbound]\ndefault_tier = "ask"')
-    assert main(BUG) == 1
-    out = capsys.readouterr().out
-    row, = state.read_state(root)['drafts'].values()
-    assert f'bin/wuwei drafts show {row["id"]} --widget' in out and 'category not in tracker.auto' in out
-    assert 'drafts approve' not in out
-    assert row['inputs']['draft'] == {'title': 'Export fails on empty rows', 'description': 'Evidence: cli/x.py:12',
-                                      'item': 'item-1', 'category': 'bugs', 'parent': 'ENG-1'}
-    before = (workspace.day_dir(root) / 'events.jsonl').read_text()
-    assert main(BUG) == 1
-    assert capsys.readouterr().out == out
-    assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
-    assert fake.calls == []
-
-
-def test_bug_owner_row_holds(ws, capsys):
-    root, fake = ws
-    seed_ticket(root)
-    outbound(root, '[outbound]\ntiers = [{ tool = "tracker", audience = "owner", tier = "ask" }]')
-    assert main(BUG) == 1
-    out = capsys.readouterr().out
-    assert 'rule 1' in out and 'tool=tracker audience=owner' in out
-    assert day_events(root, 'draft.created') and fake.calls == []
-
-
-def test_bug_blocked_under_block(ws, capsys):
-    root, fake = ws
-    seed_ticket(root)
-    outbound(root, '[outbound]\ndefault_tier = "block"')
-    assert main(BUG) == 1
-    assert 'outbound.default_tier' in capsys.readouterr().err
-    assert not state.read_state(root).get('drafts') and fake.calls == []
-
-
-def test_bug_in_client_tracker_keeps_outward_rules(ws, capsys):
-    root, fake = ws
-    seed_ticket(root)
-    text = (root / '.wuwei/config.toml').read_text().replace('tracker = "linear"', 'tracker = "github"')
-    (root / '.wuwei/config.toml').write_text(text + '[tracker]\nproject = "outside-org/repo"\n')
-    assert main(BUG) == 1
-    assert 'audience=client' in capsys.readouterr().out
-    assert fake.calls == []
 
 
 def test_bug_in_auto_creates_once(ws, capsys):
@@ -239,7 +177,6 @@ def test_item_ticket_from_the_proposal(ws, capsys):
     assert state.read_state(root)['tickets'] == {'item-1': {'id': 'ENG-9', 'source': 'create'}}
     assert main(['tracker', 'create', 'item-1']) == 0
     assert len(fake.calls) == 1
-
 
 
 def test_item_ticket_from_a_seat_finding(ws):
@@ -296,15 +233,16 @@ def test_log_writes_the_story_once(ws):
     seed_ticket(root)
     story(root)
     assert main(['tracker', 'log']) == 0
-    assert comments(fake) == [('ENG-1', '[2026-09-29 item-1] Phase: gate.', 'progress')]
-    drafted = sorted(row['text'] for row in state.read_state(root)['drafts'].values())
-    assert drafted == ['[2026-09-29 item-1] Decision D-1: Ship item-1 now? Outcome: yes.',
-                       '[2026-09-29 item-1] Review quality (initial): FIX, 1 blocking findings.']
+    # #838: every kind the tracker logs goes out through the port; nothing is held.
+    assert sorted(comments(fake)) == [
+        ('ENG-1', '[2026-09-29 item-1] Decision D-1: Ship item-1 now? Outcome: yes.', 'decisions'),
+        ('ENG-1', '[2026-09-29 item-1] Phase: gate.', 'progress'),
+        ('ENG-1', '[2026-09-29 item-1] Review quality (initial): FIX, 1 blocking findings.', 'verdicts')]
     log = state.read_state(root)['tracker_log']
-    assert sorted(entry['outcome'] for entry in log.values()) == ['drafted', 'drafted', 'written']
+    assert [entry['outcome'] for entry in log.values()] == ['written'] * 3
     before = (workspace.day_dir(root) / 'events.jsonl').read_text()
     assert main(['tracker', 'log']) == 0
-    assert len(fake.calls) == 1
+    assert len(fake.calls) == 3
     assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
 
 
@@ -388,18 +326,6 @@ def test_log_refusal_unrun_and_fold_category(ws):
     fake.results['comment'] = registry.Result(0, {'id': 'c-2'})
     assert main(['tracker', 'log']) == 0
     assert comments(fake)[-1][1] == '[2026-09-29 item-1] Phase: parked.'
-
-
-def test_fold_holding_a_decision_drafts(ws):
-    root, fake = ws
-    approved(root)
-    seed_ticket(root)
-    settings(root, 'max_per_item_per_day = 1')
-    story(root)
-    assert main(['tracker', 'log']) == 0
-    row, = state.read_state(root)['drafts'].values()
-    assert row['inputs']['category'] == 'decisions'
-    assert row['text'].endswith('Folded 3 updates: decisions 1, progress 1, verdicts 1.')
 
 
 def github(root, orgs=('acme',), adapter='github'):

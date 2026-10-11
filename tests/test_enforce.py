@@ -61,7 +61,7 @@ TABLE = [
     (fixed('protect_state', 1, 'another item scratch', 'check_scratch'), False, False),
     (fixed('traces', 2, 'RuntimeError: could not run PostToolUse guard'), False, False),
     (fixed('outward', 1, 'outward lint', 'check_lint'), False, False),
-    (fixed('outward', 1, 'held send', 'check_tier'), True, True),
+    (fixed('outward', 1, 'unlisted send', 'check_send'), True, True),
     (fixed('outward', 1, CANARY, 'check_lint'), True, True),
     (fixed('agent_launch', 1, MISMATCH), True, False),
     (fixed('agent_launch', 2, MISSING), True, True),

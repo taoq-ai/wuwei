@@ -8,7 +8,7 @@ from wuwei.commands import watch as service
 
 QUESTION = ('Schedule the overnight shepherd on this machine? Every 15 minutes while no planner '
             'is live it checks approved PRs against the merge policy, sends due review pings '
-            'under the outbound tiers and queues the rest for your morning plan. No model runs.')
+            'after the outward lint and leaves the rest for your morning plan. No model runs.')
 RECORD = 'bin/wuwei shepherd schedule --yes'
 
 

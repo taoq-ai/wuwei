@@ -31,11 +31,8 @@ LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is star
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
          'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
-# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, draft
-# closures and wake).
-SKIP = frozenset(SILENT) - {
-    'watch: clock', 'heartbeat: clock', 'draft.sending', 'draft.sent', 'draft.dropped',
-    'session: wake-seen'}
+# Silent kinds scan drops with no action; the rest of SILENT is read (clocks and wake).
+SKIP = frozenset(SILENT) - {'watch: clock', 'heartbeat: clock', 'session: wake-seen'}
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
@@ -99,9 +96,6 @@ def scan(directory, classified_state=None):
                 if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
                     current.pop(('pr.action', payload.get('pr')), None)
                     continue
-                if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
-                        and isinstance(payload, dict):
-                    current.pop(('draft.created', payload.get('id')), None)
                 if (kind == 'pr.action' and isinstance(payload, dict)
                         and payload.get('state') in ('merged', 'closed')):
                     current.pop(('merge.policy_blocked', payload.get('pr')), None)
@@ -135,8 +129,6 @@ def scan(directory, classified_state=None):
                 key = (kind, '')
             elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
-            elif kind == 'draft.created' and isinstance(payload, dict):
-                key = (kind, payload.get('id', number))
             elif tier == 'page':
                 key = (kind, number)
             else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it

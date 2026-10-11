@@ -1458,35 +1458,6 @@ def test_unparsed_and_workspace_root_warn_by_reason(plugin, value):
         forget_guards()
 
 
-@pytest.mark.parametrize('channel,held', [('C1', False), ('C9', True), ('D01', False), ('C2', False)])
-def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
-    # #493, #346: a call classify sends imports neither the draft queue nor hashlib.
-    # #495: a send to the owner's own DM is such a call. #496: so is a call the table blocks (C2,
-    # through the owner's own block row: no default row blocks since 2026-10-04).
-    from fakes.integrity import seed
-    (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n'
-        'external_channels = ["C2"]\n'
-        'tiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n'
-        '[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
-    seed(tmp_path)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
-    env['WUWEI_WORKSPACE'] = str(tmp_path)
-    payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(tmp_path),
-               'tool_name': 'mcp__slack__post_message',
-               'tool_input': {'channel': channel, 'text': 'I will ship it' if channel == 'C2' else 'Thanks'}}
-    out = tmp_path / 'modules.json'
-    result = subprocess.run([sys.executable, '-I', '-P', '-c', LAUNCHER_MODULES, str(ROOT / 'cli'), str(ROOT),
-                             str(out), 'hook', 'PreToolUse'],
-                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path, env=env)
-    assert result.returncode == (2 if held or channel == 'C2' else 0), result.stderr
-    assert channel != 'C2' or 'outward: block by rule 1 ' in result.stderr  # the owner's row comes first
-    modules = set(json.loads(out.read_text()))
-    assert ('wuwei.drafts' in modules) is held
-    assert held or 'hashlib' not in modules
-
-
 def test_terminal_as_bash(tmp_path):
     # #727: a terminal tab's command is the Bash call it types, in the tab's cwd.
     from wuwei.commands.hook import as_bash

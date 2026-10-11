@@ -78,10 +78,11 @@ def test_owner_routing_counts_once_and_separately_from_seat_decisions(root, monk
     path = workspace.day_dir(root) / 'decisions/D-3.md'
     path.parent.mkdir(parents=True)
     path.write_text(VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
-    from wuwei import decision
-    fields = decision.evaluate(path.read_text())[0]
-    decision.route_owner('D-3', fields, root)
-    decision.route_owner('D-3', fields, root)
+    # A past day's owner route, as the learning cards recorded it before #838.
+    row = {'reversibility': 'one-way', 'recommendation': 'A', 'class': None, 'at': '2026-09-29T09:00:00Z'}
+    state._write_state(lambda data: data.setdefault('decision_routes', {}).setdefault('D-3', row),
+                       root, reserved=False, kind='decision.routed',
+                       payload={'id': 'D-3', 'reversibility': 'one-way', 'class': None, 'at': row['at']})
     value = metrics.collect(root)
     assert value['decisions_per_day'] == 1
     assert value['owner_decisions_per_day'] == 1

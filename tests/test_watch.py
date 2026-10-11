@@ -572,14 +572,13 @@ def test_fresh_day_before_the_plan_is_clean(case, capsys):
 
 
 def test_session_payload_carries_no_drafts(case):
-    from wuwei import drafts, memory
+    from wuwei import memory
     root, _, _, _ = case
     text = 'A private reply body'
     row = {'id': 'DR-1', 'status': 'pending', 'channel': 'chat', 'operation': 'post',
            'adapter': 'slack', 'destination': 'C2', 'text': text, 'created': workspace.now().isoformat(),
            'tier_reason': 'external', 'audience': 'external', 'inputs': {'channel': 'C2', 'text': text}}
     state._write_state(lambda data: data.update(drafts={'DR-1': row}), root, reserved=False)
-    assert drafts.read(state.read_state(root))
     content = memory.session_payload(root)[0]
     assert text not in content and '"inputs"' not in content and 'C2' not in content
 

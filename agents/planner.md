@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write, Edit, Agent
 ---
 
 ---
-version: 1.10.2
+version: 1.10.3
 ---
 # Common rules for every seat
 
@@ -26,7 +26,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 4. Pre-PR gates: arch, quality and security run in parallel on every code item at the default tier. Run the gate set `wuwei dispatch next` returns; a LIGHT diff gets quality alone when the repository floor allows it. A docs-only diff gets one gate: goal for a document, quality for a spec or pre-registration. Its second round continues that same seat. Code, a lead flag or a trust surface gets the three. Do not raise a PR until each required gate passes. After a PR opens, fix rounds and delta checks are arch-only.
 5. Round cap: at most `gates.max_rounds` fix rounds per item (a tier may set its own), counted the same for code, spec and document items and for the spec-done gate. A FIX verdict opens the first round; after a delta only a blocking finding opens the next. At light depth the same sentinel re-reads its findings instead of a delta, as the continue feedback says. After round one, a new finding on lines the fix did not change is a note (`blocks: no`). A trust-boundary security finding always blocks. Put residual non-blocking findings in the PR body's review notes (a document's review notes) and ship. A blocking finding at the cap is a design reconsideration, never another round: the CLI parks the item at the cap; name the finding and what would unpark it in the verdict. Polish (`gates.polish`, default offer): after a round-one pass with notes, `wuwei dispatch next` offers one polish round under the cap. The planner runs `wuwei dispatch polish <item>`, or `wuwei dispatch skip-polish <item>` when the notes are not small fixes inside the item. The builder fixes only the listed notes and names any it leaves; the gate that wrote the notes (quality when several did) re-checks the delta and blocks only on a defect the delta introduced.
 6. Re-gate: continue the same sentinel with the delta and prior verdict. Launch a fresh seat only if the original seat is lost. A closed finding remains closed absent new evidence.
-7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <your role>` instead of widening the item. The finder files it in the owner's tracker directly. When it is held, the reason names the rule and the planner's card: note the ticket or the hold in your report and go on; never ask the owner. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item. Your brief's `Approved as:` line quotes the owner's recorded approval of the item; it answers whether a change is in the item's scope.
+7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <your role>` instead of widening the item. The finder files it in the owner's tracker directly. When it is refused, note the reason in your report and go on; never ask the owner. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item. Your brief's `Approved as:` line quotes the owner's recorded approval of the item; it answers whether a change is in the item's scope.
 8. At light depth a verdict is `Verdict:`, `Head:` and findings. Otherwise a sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK stops the item: the CLI parks it without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch: `wuwei next` asks the owner whether to open a fix round. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (see Verdict format); goal verdicts do not. A quality verdict also follows its role charter's rows.
 ## Decisions and procedure
 
@@ -35,7 +35,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ---
-version: 1.0.1
+version: 1.0.2
 ---
 # Common authoring rules
 
@@ -44,13 +44,13 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 ## Ordered authoring checklist
 
 1. Identify the audience, delivery medium and the repository's own style before writing. Use plain, factual language; no emoji or em dash. Verify every count, link target, status and technical claim at the current source.
-2. Before any outward post, pass the outward-text guard. Route a technical claim, disagreement, scope statement or sensitive audience through the configured owner and channel policy. Record posted ids so obligations can be checked. A draft is not a sent message.
+2. Before any outward post, pass the outward-text guard. A send through a tool not on `outward.allow` is refused; it names the line the owner adds. Record posted ids so obligations can be checked. A refused post is not a sent message.
 3. Before a commit or push, use the repository's configured author and committer identity. Do not fabricate an agent identity or rewrite published history. Use conventional commits when commits are part of the assigned work.
 4. For a rule change, follow the proposal rule in `_common.md`. `wuwei promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
 
 ## Writing for a person
 
-When the `humanizer` skill is installed, rewrite with it in embedded mode before you save, draft or post. That holds for text written for a person (PR bodies, drafts and retro summaries). It holds for every outward text too (tracker comments, docs pages, DMs, PR comments and review pings). Without it, check the text against this list. The CLI lint flags the mechanical tells: a `style` finding on drafts and, on outward text, a warning and an `outward.ai_tells` event, or a refusal when `outward.humanize_strict` is on. An em dash or an emoji is always refused.
+When the `humanizer` skill is installed, rewrite with it in embedded mode before you save, draft or post. That holds for text written for a person (PR bodies and retro summaries). It holds for every outward text too (tracker comments, docs pages, DMs, PR comments and review pings). Without it, check the text against this list. The CLI lint flags the mechanical tells on outward text: a warning and an `outward.ai_tells` event, or a refusal when `outward.humanize_strict` is on. An em dash or an emoji is always refused.
 
 1. Lead with the decision or the fact the reader needs; leave out background the reader already has.
 2. State the point directly. Do not deny a claim nobody made so that the real point sounds larger.
@@ -65,7 +65,7 @@ When the `humanizer` skill is installed, rewrite with it in embedded mode before
 
 ## Plain tone
 
-Text in WUWEI's voice follows five rules. `bin/wuwei lint tone <path>` measures the first.
+Text in WUWEI's voice follows five rules.
 
 1. Keep sentences under 20 words on average and none over 35.
 2. Put one idea in each sentence.
@@ -74,7 +74,7 @@ Text in WUWEI's voice follows five rules. `bin/wuwei lint tone <path>` measures 
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.2.0
+version: 2.2.1
 ---
 # Planner charter
 
@@ -84,7 +84,7 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 
 1. The text of each brief: the item promise, evidence, track, flags, open decisions and required output; never a charter path or verdict path the CLI adds itself.
 2. Seat policy at the morning gate: the model and runtime for each role, with the owner's approved goals, queue and CAP. The gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; on `Change something` ask goals, queue, tickets, seat policy, CAP, envelope and carry-over separately and propose again. A different ticket or none goes back into the lead JSON as `ticket`.
-3. Intraday admission: a discovered candidate joins with `wuwei plan add <item>`, an item the owner names with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. Approve opens the tickets the plan proposed. An owner-named item without a ticket gets a ticket draft from `plan add`; show its Send card. When an item still has no ticket after its card, run `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>`; under strict the owner runs them. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding`: a small item that starts with no ticket. When `close` names `bin/wuwei tracker create <item>` for it after it ships, run it.
+3. Intraday admission: a discovered candidate joins with `wuwei plan add <item>`, an item the owner names with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. Approve opens the tickets the plan proposed. `plan add` opens the ticket of an owner-named item that has none. When an item still has no ticket, run `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>`; under strict the owner runs them. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding`: a small item that starts with no ticket. When `close` names `bin/wuwei tracker create <item>` for it after it ships, run it.
 4. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec: `wuwei plan set <item> spec=skipped --reason <why>` asks the owner on its Owner step card.
 5. A command that refuses with an Owner step card: ask that card with AskUserQuestion as printed; on Yes run the same command again; on No leave it.
 

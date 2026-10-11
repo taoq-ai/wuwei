@@ -9,11 +9,9 @@ from wuwei.state import append_event
 
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
-    **{f'draft.{action}': 'wuwei drafts and outward adapters'
-       for action in ('created', 'sending', 'approved', 'sent', 'failed', 'dropped')},
     'outward.ai_tells': 'the outward port and hook (wuwei.outward.humanize_lint)',
     'outward.lint': 'the outward port and hook (wuwei.outward.check_lint)',
-    'outward.to_owner': 'the outward port and hook (wuwei.outward.check_tier)',
+    'outward.to_owner': 'the outward port and hook (wuwei.outward.to_owner)',
     'worktree.hooks_skipped': 'wuwei worktree add, wuwei worktree adopt or wuwei init --upgrade',
     'worktree.adopted': 'wuwei worktree adopt, wuwei worktree add --branch or wuwei pr claim',
     'worktree.created': 'wuwei worktree add',
@@ -50,15 +48,12 @@ EVENT_PRODUCERS = {
     'traces.slow': 'wuwei hook PostToolUse',
     'seat stood down': 'wuwei hook SubagentStop',
     'seat adhoc': 'wuwei seat start', 'subagent.untraced': 'wuwei hook SubagentStop',
-    'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',
-    'reply: thread_posted': 'wuwei reply',
-    'decision.decided': 'wuwei outbound answer', 'watch: sweep': 'wuwei sweep',
+    'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei pr act',
+    'reply: thread_posted': 'wuwei pr act', 'watch: sweep': 'wuwei sweep',
     'heartbeat: clock': 'wuwei watch',
-    'decision.routed': 'wuwei outbound learn',
     'scanner.finding': 'wuwei scanner or security recorder',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
     'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',
-    'pr.reply.drafted': 'wuwei pr act',
     'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
     'pr.claimed': 'wuwei pr claim',
     'pr.reviewers_selected': 'wuwei pr ping',
@@ -68,7 +63,7 @@ EVENT_PRODUCERS = {
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
     'discovery.intake': 'wuwei dispatch discovery',
     'tracker.call': 'wuwei tracker lifecycle',
-    'tracker.created': 'wuwei tracker create, wuwei drafts approve or wuwei plan approve',
+    'tracker.created': 'wuwei tracker create or wuwei plan approve',
     'tracker.skipped': 'wuwei plan approve or add', 'tracker.folded': 'wuwei tracker log',
     'tracker.logged': 'wuwei tracker log', 'plan.set': 'wuwei plan set or wuwei init --upgrade',
     'steward.run': 'wuwei steward run',
@@ -80,9 +75,7 @@ EVENT_PRODUCERS = {
     **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
        for action in ('skipped', 'unsent', 'shared', 'ready', 'off')},
     'docs.set': 'wuwei plan set or wuwei docs page',
-    'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
-    'outbound.learned': 'wuwei outbound learn or wuwei outbound answer', 'outbound.proposed': 'wuwei outbound learn',
-    'outbound.thread': 'wuwei outbound learn',
+    'docs.written': 'wuwei docs', 'docs.exempt': 'wuwei dispatch next',
 }
 
 

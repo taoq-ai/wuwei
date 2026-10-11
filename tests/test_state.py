@@ -780,7 +780,7 @@ def test_stop_seat_records_when_it_stopped(workspace, monkeypatch):
     assert seat['status'] == 'stopped' and seat['stopped_at'] == '2026-09-28T12:05:00+00:00'
 
 
-@pytest.mark.parametrize('kind,producer', [('docs.written', 'wuwei docs or wuwei drafts approve'),
+@pytest.mark.parametrize('kind,producer', [('docs.written', 'wuwei docs'),
                                            ('docs.exempt', 'wuwei dispatch next'),
                                            ('docs.set', 'wuwei plan set or wuwei docs page')])
 def test_docs_events_and_field_are_reserved(workspace, capsys, kind, producer):

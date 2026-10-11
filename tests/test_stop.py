@@ -31,7 +31,7 @@ def module(name):
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/.git').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["builder"]\n[spec]\nengine = "none"\n[outbound]\ndefault_tier = "ask"\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["builder"]\n[spec]\nengine = "none"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+00:00')
     state.write_state(lambda data: None, tmp_path)
@@ -499,7 +499,7 @@ def test_agents_cannot_send_owner_disposition_markers(case, kind, profile):
     config['outbound']['code_host_orgs'] = ['acme']
     code, reason = outward.check_call({'ref': REF, 'text':
         f'WUWEI {kind} {REF} D-1 {DAY} ' + 'a' * 64}, root, config, {'code_host'})
-    assert code in (1, 2) and 'draft' in reason
+    assert (code, reason) == (1, 'owner disposition markers must be posted by the owner')
 
 
 def test_planner_handoff_does_not_exempt_original_session(case, monkeypatch):

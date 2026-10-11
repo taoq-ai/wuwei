@@ -119,13 +119,13 @@ def test_config_check_reports_two_tables(ws, monkeypatch, capsys):
     real = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, cfg: code_host if kind == 'code_host' else real(kind, cfg))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    text = TEMPLATE.replace('[outward]\n', '[outward]\nwork_channels = ["C1"]\n')
+    text = TEMPLATE.replace('[outward]\n', '[outward]\ncode_host_orgs = ["acme"]\n')
     write(ws, text)
     lines = text.splitlines()
-    good, bad = lines.index('work_channels = []') + 1, lines.index('work_channels = ["C1"]') + 1
+    good, bad = lines.index('code_host_orgs = []') + 1, lines.index('code_host_orgs = ["acme"]') + 1
     assert config.run(SimpleNamespace()) == 1
     err = capsys.readouterr().err
-    assert (f'wuwei config check: work_channels is set in [outbound] (line {good}) and [outward] '
+    assert (f'wuwei config check: code_host_orgs is set in [outbound] (line {good}) and [outward] '
             f'(line {bad})') in err
 
 
@@ -498,3 +498,55 @@ def test_upgrade_maps_observe_to_enforce_false(tmp_path, monkeypatch, capsys, dr
     else:
         assert workspace.load_config(tmp_path)['guards'] == {'enforce': False}
         assert 'posture' not in tomllib.loads(path.read_text())['security']
+
+
+GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
+                 'bin/wuwei who walks it.')
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+def test_upgrade_retires_the_outward_tiers_and_the_register(tmp_path, monkeypatch, capsys, dry_run):
+    # #838: the tier, class, learn and register keys, the graph comments and graph.json go.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    clean = path.read_text()
+    assert GRAPH_COMMENT not in clean and not (tmp_path / '.wuwei/graph.json').exists()
+    old = (clean.replace('[outbound]\n', f'{GRAPH_COMMENT}\n[outbound]\ndefault_tier = "ask"\nlearn = "off"\n'
+                         'work_channels = ["C1"]\ncompany_domains = ["example.test"]\n'
+                         'tiers = [{ audience = "team", tier = "send" }]\n', 1)
+           .replace('allow = []\n', 'allow = []\npatterns = []\ndraft_ttl = 60\n', 1)
+           + '[outbound.people]\n"slack:U1" = {class = "team"}\n[outward.modes]\nacme = "draft"\n'
+           '[outward.classes]\nacme = "team"\n')
+    path.write_text(old)
+    graph = tmp_path / '.wuwei/graph.json'
+    graph.write_text('{}')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=dry_run)) == 0
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    for key in ('outbound.default_tier', 'outbound.learn', 'outbound.work_channels',
+                'outbound.company_domains', 'outbound.tiers', 'outbound.people', 'outward.patterns',
+                'outward.draft_ttl', 'outward.modes', 'outward.classes'):
+        assert f'{prefix} config.toml: remove {key} (no longer read)' in out, out
+    assert f'{prefix} config.toml: remove the graph comments' in out
+    assert f'{prefix} .wuwei/graph.json: remove (no longer read)' in out
+    if dry_run:
+        assert path.read_text() == old and graph.exists()
+    else:
+        assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+        assert GRAPH_COMMENT not in path.read_text() and not graph.exists()
+
+
+def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    target = tmp_path / 'elsewhere.json'
+    target.write_text('{}')
+    (tmp_path / '.wuwei/graph.json').symlink_to(target)
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert 'graph.json' not in capsys.readouterr().out and target.exists()

@@ -426,14 +426,11 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             raise OSError(f'{exc}; the goals are not recorded and the day stays unapproved; '
                           'run bin/wuwei doctor, then plan approve again') from exc
     if tracker.in_force(config) and not current.get('gate_approved'):
-        from wuwei import drafts
         for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
             status = tracker.check(current, config, name, candidates[name])[0]
             if proposed(candidates[name], found) is not None or status not in ('missing', 'later'):
                 continue
             result = tracker.create(root, name)
-            if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
-                result = drafts.approve(root, result.data['draft'], answered=True)
             if result.exit and status == 'missing':  # #646: a small item is approved without it
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
@@ -539,14 +536,12 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
                                    config, item, candidate)
     if status == 'missing' and owner_item:
-        # #636: draft the owner item's ticket for its Send card; a seat can reach plan add, so never send here.
+        # #636, #838: the owner named the item, so its ticket opens through the tracker port.
         opened = tracker.create(root, item, row={'scope': candidate['title'], 'goal': goal,
                                                  'track': candidate['track'],
                                                  'evidence': 'named by the owner'})
         if opened.exit == 0:
             status = 'ticket'
-        elif isinstance(opened.data, dict):
-            reason = tracker.check(state.read_state(root), config, item, candidate)[1]
         else:
             reason = opened.reason
     if status == 'missing':

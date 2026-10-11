@@ -238,7 +238,6 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 # Only these root settings are tunable, and only before morning approval.
 OWNER_FIELDS = frozenset({'cap', 'seat_policy'})
 STATE_PRODUCERS = {
-    'drafts': 'wuwei drafts and outward adapters',
     'mcp': 'wuwei mcp check or owner host decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
@@ -250,13 +249,13 @@ STATE_PRODUCERS = {
     'planner_session_id': 'wuwei plan session',
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
-    'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei outbound answer',
-    'decision_routes': 'wuwei outbound learn',
+    'reply_acks': 'wuwei pr act', 'decision_outcomes': 'none since #838; read for past days',
+    'decision_routes': 'none since #838; read for past days',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
     'author_logins': 'wuwei pr raise, ping or reviewers',
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
-    'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
+    'pr_action_done': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
     'discovery_candidates': 'wuwei dispatch discovery',
@@ -264,10 +263,8 @@ STATE_PRODUCERS = {
     'seat_findings': 'wuwei note --fix',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
-    'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
+    'tickets': 'wuwei plan approve, add or set or wuwei tracker create',
     'tracker_log': 'wuwei tracker create or log',
-    'outbound_learn': 'wuwei outbound learn or wuwei outbound answer',
-    'outbound_threads': 'wuwei outbound learn',
     'main_broken': 'wuwei build',
 }
 

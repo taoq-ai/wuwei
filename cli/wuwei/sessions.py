@@ -47,7 +47,7 @@ def gate_topics(root, session_id):
 
 
 def card_topic(card, answer):
-    """#529: the gate topic of the owner's answer to a card, hashed as #493 hashes drafts."""
+    """#529: the gate topic of the owner's answer to a card, hashed."""
     from hashlib import sha256
     text = answer.strip().removesuffix(' (Recommended)').strip()
     return f'{card}={sha256(text.encode()).hexdigest()}'

@@ -314,8 +314,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
     ('decision.py', 'at the host terminal', 18),
-    ('drafts.py', 'host terminal', 16),
-    ('commands/drafts.py', 'from the owner host terminal', 16),
     ('mcp.py', 'host terminal', 18),
     ('commands/doctor.py', 'mcp.pending(root))} in a host terminal', 18),
     ('guards/protect_state.py', 'wuwei mcp decide in a host terminal', 18),

@@ -344,8 +344,7 @@ Outcome: pending
 
 def test_record_widget(ws):
     from wuwei import decision
-    from wuwei.commands.outbound import RECORD
-    from wuwei.workspace import owner_cli
+    from wuwei.mcp import RECORD  # #838: the MCP card is the record widget's one user
     save(ws)
     built = decision.record_widget('D-3', decision.evaluate(VALID)[0], RECORD, root=ws)
     assert built['question'] == 'D-3: Which fix? Correctness decided it.' and built['header'] == 'D-3'
@@ -355,8 +354,7 @@ def test_record_widget(ws):
         'Passes every must and scores 8 on Correctness.', 'The failure is fixed today.',
         'SOLID: Keeps single responsibility.', 'twelve-factor: No new config.',
         'YAGNI: Builds only the fix.', 'ponytail: Smallest diff that works.']
-    fields = decision.evaluate(VALID)[0]
-    assert built['record'] == f'{owner_cli(ws)} outbound answer D-3 "<label>" --card {decision.card_hash("D-3", fields)}'
+    assert built['record'] == 'wuwei mcp decide D-3 "<label>"'
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
     built = decision.record_widget('D-3', decision.evaluate(swapped)[0], RECORD, root=ws)
     assert [o['label'] for o in built['options']] == ['Defer until tomorrow (Recommended)', 'Implement fix']

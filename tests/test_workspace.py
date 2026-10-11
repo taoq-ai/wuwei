@@ -197,6 +197,22 @@ def test_check_timeout_seconds(tmp_path):  # #724
         workspace.load_config(tmp_path)
 
 
+def test_outward_allow_and_owner_pages(tmp_path):  # #838
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    config = workspace.load_config(tmp_path)
+    assert config['outward']['allow'] == [] and config['outbound']['owner']['pages'] == []
+    write_config(tmp_path, '[outward]\nallow = ["mcp__slack__slack_send_message"]\n'
+                           '[outbound.owner]\npages = ["F1"]\n')
+    config = workspace.load_config(tmp_path)
+    assert config['outward']['allow'] == ['mcp__slack__slack_send_message']
+    assert config['outbound']['owner']['pages'] == ['F1']
+    for bad in ('Bash', 'mcp__slack', 'mcp__slack__send message', 'mcp__slack__.*'):
+        write_config(tmp_path, f'[outward]\nallow = [{json.dumps(bad)}]\n')
+        with pytest.raises(workspace.ConfigError, match='outward.allow.0: not an MCP tool name'):
+            workspace.load_config(tmp_path)
+
+
 def test_initialized_config_checks(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     result = cli(tmp_path, 'config', 'check')
@@ -210,10 +226,9 @@ def test_config_defaults_and_independence(tmp_path):
     config = load_config(tmp_path)
     config.pop('telemetry')  # pinned in test_telemetry_config
     outbound = config.pop('outbound')
-    assert outbound['work_channels'] == outbound['company_domains'] == []
-    assert outbound['people'] == {} and outbound['sensitive_keywords']
+    assert outbound['code_host_orgs'] == outbound['owner']['pages'] == []
     outward = config.pop('outward')
-    assert outward['patterns'] == [] and outward['tool_patterns']
+    assert outward['allow'] == [] and outward['tool_patterns']
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config == {
@@ -273,8 +288,8 @@ def test_config_defaults_and_independence(tmp_path):
                      'transcripts': 'none', 'redactor': 'builtin',
                      'docs': 'none'},
     }
-    outward['patterns'].append('changed')
-    assert 'changed' not in load_config(tmp_path)['outward']['patterns']
+    outward['allow'].append('changed')
+    assert 'changed' not in load_config(tmp_path)['outward']['allow']
 
 
 def test_all_config_fields(tmp_path):
@@ -375,7 +390,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[host]\nfree_memory_mb = -1', 'host.free_memory_mb'),
     ('[host]\nseats = -1', 'host.seats'),
     ('[host]\nrate_limit_wait_seconds = -1', 'host.rate_limit_wait_seconds'),
-    ('[outward]\npatterns = [false]', 'outward.patterns.0'),
+    ('[outward]\nallow = [false]', 'outward.allow.0'),
     ('[outward]\nbanned_characters = 1', 'outward.banned_characters'),
     ('[outward.max_length]\nchat = 0', 'outward.max_length.chat'),
     ('[boundary]\napi = {}', 'boundary.api'),
@@ -736,7 +751,7 @@ def test_upgrade_previous_workspace(tmp_path):
     assert config['host']['reservation_timeout_seconds'] == 14400
     assert '# Report stale reservations' in raw
     assert config['adapters']['checks'] == 'local'
-    assert config['outward']['patterns'] == []
+    assert config['outward']['allow'] == []
     assert (directory / 'executable').read_text() == str(ROOT / 'bin/wuwei') + '\n'
     assert 'builder.md' in result.stdout and '0.9.0' in result.stdout
     assert (directory / 'charters/builder.md').read_text().endswith('Local builder\n')
@@ -1483,12 +1498,12 @@ def test_load_config_returns_independent_copies(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["owner"]\n')
     first = workspace.load_config(tmp_path)
     first['owner']['handles'].append('intruder')
-    first['outbound']['sensitive_keywords'].clear()
+    first['outward']['tool_patterns'].clear()
     first['repos'].append({})
     second = workspace.load_config(tmp_path)
     assert second['owner']['handles'] == ['owner'] and second['repos'] == []
-    assert second['outbound']['sensitive_keywords'] == workspace.SCHEMA['outbound']['sensitive_keywords'][1]
-    assert workspace.SCHEMA['outbound']['sensitive_keywords'][1]
+    assert second['outward']['tool_patterns'] == workspace.SCHEMA['outward']['tool_patterns'][1]
+    assert workspace.SCHEMA['outward']['tool_patterns'][1]
     data = state.read_state(directory=tmp_path / 'day')
     data['items']['x'] = {}
     data['goals'].append('G-1')
@@ -1559,71 +1574,6 @@ def test_template_derives_cap_and_seats(tmp_path):
     write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
     config = load_config(tmp_path)
     assert (config['cap'], config['host']['seats'], config['budget']['tokens_per_day']) == (0, 0, 0)
-
-
-@pytest.fixture
-def modeled(tmp_path, monkeypatch, capsys):
-    # #552: a workspace whose config.toml sets every key the register models.
-    from test_graph import CONFIG
-    from wuwei.__main__ import main
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    monkeypatch.chdir(tmp_path)
-    assert main(['init']) == 0
-    (tmp_path / '.wuwei/graph.json').unlink()
-    (tmp_path / '.wuwei/config.toml').write_text(CONFIG)
-    capsys.readouterr()
-    return tmp_path
-
-
-def test_a_fresh_init_has_the_empty_register(tmp_path, monkeypatch):
-    from wuwei import graph
-    from wuwei.__main__ import main
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    monkeypatch.chdir(tmp_path)
-    assert main(['init']) == 0
-    assert graph.load(tmp_path) == {'version': 1, 'nodes': {}, 'edges': []}
-
-
-def test_upgrade_builds_the_register_once(modeled, capsys):
-    import tomllib
-    from wuwei import graph, workspace
-    from wuwei.__main__ import main
-    before = tomllib.loads((modeled / '.wuwei/config.toml').read_text())
-    assert main(['init', '--upgrade', '--dry-run']) == 0
-    assert 'Would upgrade .wuwei/graph.json: ' in capsys.readouterr().out
-    assert not (modeled / '.wuwei/graph.json').exists()
-    assert main(['init', '--upgrade']) == 0
-    out = capsys.readouterr().out
-    register = graph.load(modeled)
-    assert (f"Upgraded .wuwei/graph.json: {len(register['nodes'])} nodes and {len(register['edges'])} edges "
-            'from config.toml') in out
-    raw = (modeled / '.wuwei/config.toml').read_text()
-    config = workspace.load_config(modeled)
-    assert graph.drift(register, config) == []
-    for node in ('person:slack:U01', 'person:github:dev', 'channel:C04', 'connector:acme', 'address:dev@example.test',
-                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'repo:fixture-org/app'):
-        assert node in register['nodes'], node
-    after = tomllib.loads(raw)
-    for key in ('owner', 'outbound', 'shepherd', 'outward'):
-        for name, value in before[key].items():
-            assert after[key][name] == value, (key, name)
-    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]',
-                   '[outward.servers]'):
-        assert raw.count(f'{graph.COMMENT}\n{header}\n') == 1, header
-    assert main(['init', '--upgrade']) == 0
-    out = capsys.readouterr().out
-    assert 'graph.json' not in out and 'No workspace changes needed' in out
-
-
-def test_upgrade_warns_on_a_damaged_register_and_goes_on(modeled, capsys):
-    from wuwei.__main__ import main
-    (modeled / '.wuwei/graph.json').write_text('not json')
-    assert main(['init', '--upgrade']) == 0
-    captured = capsys.readouterr()
-    assert 'wuwei init: warning: .wuwei/graph.json not updated' in captured.err
-    assert 'init --upgrade' in captured.err
-    assert 'template_version' in captured.out
-    assert (modeled / '.wuwei/graph.json').read_text() == 'not json'
 
 
 def repos(*paths):
