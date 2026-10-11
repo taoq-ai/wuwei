@@ -581,8 +581,9 @@ def test_build_rows_return_the_build_loop_action(root, capsys, monkeypatch):
 @pytest.mark.parametrize('answer,expected', [
     ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']},
      ('verdicts', 'gates', None)),
-    ({'action': 'escalate', 'reason': 'fix round already used'},
-     ('verdicts', 'run', "wuwei plan park A --reason 'fix round already used'")),
+    ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'decision': 'D-7',
+      'command': 'wuwei decision route D-7'},  # #732: the answer's command, never plan park
+     ('verdicts', 'run', 'wuwei decision route D-7')),
     ({'action': 'raise', 'notes': ['n1']}, ('raise', 'run', None)),
 ])
 def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, expected):
@@ -593,6 +594,8 @@ def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, 
     assert (found['state'], found['action']) == expected[:2]
     if expected[2]:
         assert found['command'] == expected[2]
+    if answer['action'] == 'escalate':
+        assert 'D-7' in found['why']
     if answer['action'] == 'gates':
         assert found['then'] == next_command.THEN['set']
         assert 'wuwei brief arch A arch-A' in last_event(root)['payload']['named']

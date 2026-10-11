@@ -734,7 +734,7 @@ def dispose(item, outcome, reason=None, root=None):
         outcome_record = decision.seat_outcome(*decision.evaluate(text))
         data.setdefault('decision_outcomes', {})[path.stem] = outcome_record
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
-            record.update(phase='parked', status='blocked')
+            record.update(phase='parked', status='blocked', decision=path.stem)
         payload.update(id=path.stem, **outcome_record)
     state._write_state(update, root, reserved=False, kind='decision.decided', payload=payload)
     return payload['id']

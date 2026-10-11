@@ -109,6 +109,15 @@ def built(root):
     return tree
 
 
+def round_used(root):
+    from wuwei import dispatch
+    assert dispatch.next_step('A', root) == {  # #732: the item parks with its record
+        'action': 'escalate', 'reason': 'fix round already used', 'decision': 'D-1',
+        'command': 'wuwei decision show D-1 --widget'}
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['decision']) == ('parked', 'D-1')
+
+
 def test_fix_pass_then_only_quality_delta(root):
     from wuwei import dispatch
 
@@ -128,8 +137,7 @@ def test_fix_pass_then_only_quality_delta(root):
     found = dispatch.next_step('A', root)
     assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
     state.transition('A', 'fix', root)
-    assert dispatch.next_step('A', root) == {
-        'action': 'escalate', 'reason': 'fix round already used'}
+    round_used(root)
 
 
 def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
@@ -144,9 +152,11 @@ def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
     state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
     record(root, 'security', 'security-2', FIX, 'delta')
-    assert dispatch.next_step('A', root)['reason'].startswith('round cap 1 reached: security still blocks:')
     with pytest.raises(dispatch.Refused, match='already received'):
         record(root, 'security', 'security-3', FIX, 'delta')
+    found = dispatch.next_step('A', root)
+    assert found['reason'].startswith('round cap 1 reached: security still blocks:')
+    assert (found['decision'], state.read_state(root)['items']['A']['phase']) == ('D-1', 'parked')
 
 
 def test_invalid_verdict_does_not_enter_trusted_state(root):
@@ -198,8 +208,7 @@ def test_delta_nonblocking_residual_becomes_review_note(root):
     assert 'cli/example.py:12' in outcome['notes'][0]
     assert 'Review note: ' in outcome['commands'][0]
     state.transition('A', 'fix', root)
-    assert dispatch.next_step('A', root) == {
-        'action': 'escalate', 'reason': 'fix round already used'}
+    round_used(root)
 
 
 def test_delta_refuses_role_that_already_passed(root):
@@ -776,7 +785,10 @@ def test_fix_with_park_or_missing_gate_stays_in_gate(root):
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['security'], 'seats': []}
     record(root, 'security', 'security-1', FIX.replace('Verdict: FIX', 'Verdict: PARK'))
     assert state.read_state(root)['items']['A']['phase'] == 'gate'
-    assert dispatch.next_step('A', root)['action'] == 'escalate'
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['decision'], found['command']) == (
+        'escalate', 'D-1', 'wuwei decision route D-1')
+    assert found['reason'].startswith('gate security PARK: ')
 
 
 LIGHT = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
@@ -1971,9 +1983,10 @@ def _fix_action(roles):
 TRUST = FIX.replace('fails when empty', 'tool output across the trust boundary fails when it reaches the shell unchecked')
 
 
-def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root):
-    import shlex
-    from wuwei import dispatch, plan
+def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    from wuwei.commands import decision as decision_command
     from wuwei.commands import next as next_command
     built(root)
     record(root, 'arch', 'arch-1', PASS)
@@ -1990,13 +2003,22 @@ def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root):
     reason = outcome['reason']
     assert reason.startswith('round cap 2 reached: security still blocks: - P1 | cli/example.py:12 | tool output')
     assert 'unpark after a design change' in reason
+    assert (outcome['decision'], outcome['command']) == ('D-1', 'wuwei decision show D-1 --widget')
     assert len(fix_events(root)) == 2
-    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
-    assert found['command'] == 'wuwei plan park A --reason ' + shlex.quote(reason)
-    name = plan.dispose('A', 'parked', reason, root=root)
-    text = (workspace.day_dir(root) / 'decisions' / f'{name}.md').read_text()
+    row = state.read_state(root)['items']['A']  # #732: parked with its record, not a plan park to run
+    assert (row['phase'], row['decision']) == ('parked', 'D-1')
+    text = (workspace.day_dir(root) / 'decisions' / 'D-1.md').read_text()
     assert 'across the trust boundary' in text.split('Context:', 1)[1].splitlines()[0]
-    assert state.read_state(root)['items']['A']['phase'] == 'parked'
+    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
+    assert 'plan park' not in str(found)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    state._write_state(lambda data: data['builds']['A'].update(status='done', action={'action': 'done'}),
+                       root, reserved=False)  # the last round's builder finished
+    assert build_next(capsys, root)[:2] == (1, cli(capsys, 'dispatch', 'next', 'A')[1])
+    assert cli(capsys, 'dispatch', 'next', 'A')[1]['decision'] == 'D-1'
+    monkeypatch.setattr(decision_command, 'owner_confirm', lambda *args: 'at the host terminal')
+    assert main(['decide', 'D-1', 'keep']) == 0
+    assert state.read_state(root)['items']['A']['phase'] == 'delta'
 
 
 def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
@@ -2010,6 +2032,8 @@ def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'escalate' and outcome['reason'].startswith('round cap 1 reached: quality still blocks:')
     assert len(fix_events(root)) == 1
+    row = state.read_state(root)['items']['A']  # #732: parked with its record
+    assert (outcome['decision'], row['phase'], row['decision']) == ('D-1', 'parked', 'D-1')
 
 
 MANIFEST = ('pilot/manifest.json', 4800, 0)
@@ -2153,6 +2177,7 @@ def test_issue_acceptance_build_next_and_dispatch_next_agree_on_a_gate_fix(root,
     assert 'gate-quality-1.md' in action['feedback']
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
     assert len(fix_events(root)) == 1
+    assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))  # #732: no card
 
 
 def test_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypatch, capsys):
@@ -2325,3 +2350,113 @@ def test_delta_continuation_carries_the_ci_steps(root, monkeypatch):
     launch = brief.seat_action('sentinel-quality', workspace.day_dir(root) / 'briefs/quality-1.md', tree, root)
     assert action['feedback'].endswith('\n' + CI_BLOCK)
     assert action['prompt'] == launch['prompt'] + '\n\n' + action['feedback']
+# #732: a blocking verdict is a fix round or a card; every escalate names its record and command
+
+
+ESCALATE = FIX.replace('Verdict: FIX', 'Verdict: ESCALATE') + 'Simplicity: none\nDesign: none\n'
+PARKS = FIX.replace('Verdict: FIX', 'Verdict: PARK') + 'Simplicity: none\nDesign: none\n'
+
+
+def blocked(root, monkeypatch, quality=ESCALATE, strict=False):
+    built(root)
+    if strict:
+        path = root / '.wuwei/config.toml'
+        path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'security', 'security-1', PASS)
+    record(root, 'quality', 'quality-1', quality)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+
+
+def cards(root):
+    return sorted(path.name for path in (workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+
+
+def card_fields(root, ident='D-1'):
+    from wuwei import decision
+    return decision.evaluate((workspace.day_dir(root) / 'decisions' / f'{ident}.md').read_text())[0]
+
+
+def waiting(ident, command):
+    return {'action': 'escalate', 'decision': ident, 'command': f'wuwei decision {command} {ident}'
+            + (' --widget' if command == 'show' else '')}
+
+
+def test_issue_acceptance_escalate_writes_the_card_both_commands_name(root, monkeypatch, capsys):
+    blocked(root, monkeypatch)
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert code == 1 and found['reason'].startswith('gate quality ESCALATE: - P1 | cli/example.py:12')
+    assert {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'route')
+    assert build_next(capsys, root)[:2] == (1, found)
+    assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (1, found)
+    assert cards(root) == ['D-1.md']
+    fields = card_fields(root)
+    assert (fields['Class'], fields['Recommendation'], fields['Decided-by']) == ('park', 'fix', 'seat')
+    assert 'gate-quality-1.md' in fields['Context'] and 'fails when empty' not in fields['Context']
+    assert state.read_state(root)['gate_verdicts']['A:quality:initial']['decision'] == 'D-1'
+    assert [{key: row[key] for key in ('item', 'role', 'round', 'decision')}
+            for row in events_of(root, 'gate.card')] == [
+        {'item': 'A', 'role': 'quality', 'round': 'initial', 'decision': 'D-1'}]
+
+
+def test_under_strict_the_card_is_the_owners_and_routed_to_the_owner(root, monkeypatch, capsys):
+    blocked(root, monkeypatch, strict=True)
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert code == 1 and {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'show')
+    assert build_next(capsys, root)[:2] == (1, found)
+    assert card_fields(root)['Decided-by'] == 'owner'
+    assert 'D-1' in state.read_state(root)['decision_routes']
+    assert cards(root) == ['D-1.md']
+
+
+def test_card_answered_fix_opens_the_round_and_regates_the_asking_gate(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    blocked(root, monkeypatch)
+    dispatch.next_step('A', root)
+    assert main(['decision', 'route', 'D-1']) == 0
+    assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (0, _fix_action(['quality']))
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'fix'
+    assert 'Gate quality ESCALATE' in data['builds']['A']['action']['feedback']
+    assert 'gate-quality-1.md' in data['builds']['A']['action']['feedback']
+    state.transition('A', 'delta', root)
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['roles']) == ('gates', ['quality'])
+    assert record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')['verdict'] == 'PASS'
+    import shlex
+    tree = state.read_state(root)['items']['A'].get('worktree') or str(root)
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [], 'seats': [], 'commands': [
+        f'wuwei brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
+        '--body ' + shlex.quote(dispatch.SHEPHERD_BODY.format(item='A'))]}
+
+
+def test_card_answered_park_parks_the_item_and_both_commands_name_it(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    blocked(root, monkeypatch, quality=PARKS)
+    dispatch.next_step('A', root)
+    assert card_fields(root)['Recommendation'] == 'park'
+    assert main(['decision', 'route', 'D-1']) == 0
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert code == 1 and {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'show')
+    assert build_next(capsys, root)[:2] == (1, found)
+    assert cli(capsys, 'dispatch', 'next', 'A')[:2] == (1, found)
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['status'], row['decision'], row['resume_phase']) == ('parked', 'blocked', 'D-1', 'gate')
+
+
+def test_a_park_verdict_waits_for_the_other_gates_before_its_card(root):
+    from wuwei import dispatch
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'quality', 'quality-1', PARKS)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['security'], 'seats': []}
+    assert cards(root) == []
+    record(root, 'security', 'security-1', PASS)
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'decision', 'command')} == waiting('D-1', 'route')
+
+
+def test_gate_card_is_reserved_to_dispatch_next():
+    from wuwei.commands.event import EVENT_PRODUCERS
+    assert EVENT_PRODUCERS['gate.card'] == 'wuwei dispatch next'

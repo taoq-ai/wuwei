@@ -27,6 +27,12 @@ def day(root, monkeypatch, park=ITEMS, open_item=None, vcs=None):
     return calls
 
 
+def test_a_park_links_its_record_on_the_item(case, monkeypatch):
+    root, _, _ = case  # #732: the owner's answer on the record resumes the item
+    day(root, monkeypatch, park=('DIV-1',))
+    assert state.read_state(root)['items']['DIV-1']['decision'] == 'D-1'
+
+
 def test_parked_items_with_missing_worktrees_do_not_gate(case, monkeypatch):
     root, _, vcs = case
     day(root, monkeypatch)

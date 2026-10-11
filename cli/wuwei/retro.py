@@ -125,6 +125,7 @@ Outcome: pending
     if not gates:
         lines.append('| none | unmeasured |')
     lines += _second_opinion(data['gate_verdicts'])
+    lines += _blocks(data)
     path = day / 'retro' / (day.name + '.md')
     window = watch.days(root)[:7]
     quality = metrics.bands(root, window)
@@ -163,6 +164,26 @@ Outcome: pending
               '## Proposed', *(['- `' + p + '`' for p in targets([*pending, *rejected])] or ['none']), '']
     workspace.atomic_write(path, '\n'.join(lines))
     return path
+
+
+def _blocks(data):
+    """#732: each non-PASS verdict and what followed it: its card's answer, a park or a fix round."""
+    lines = ['', '## Blocks', '| Item | Gate | Verdict | Followed |', '| --- | --- | --- | --- |']
+    for _, record in sorted(data['gate_verdicts'].items()):
+        if record.get('verdict') == 'PASS':
+            continue
+        item = data['items'].get(record.get('item'), {})
+        rounds = (data.get('builds', {}).get(record.get('item')) or {}).get('fix_rounds', 0)
+        if record.get('decision'):
+            answer = (data.get('decision_outcomes', {}).get(record['decision']) or {}).get('option')
+            followed = f"card {record['decision']}: {answer or 'open'}"
+        elif item.get('phase') in ('parked', 'escalated'):
+            followed = f"parked: {item.get('decision') or 'no record'}"
+        else:
+            followed = f'fix round {rounds}' if rounds else 'none yet'
+        lines.append(f"| {record.get('item')} | {record.get('role')} {record.get('round')} | "
+                     f"{record.get('verdict')} | {followed} |")
+    return lines if len(lines) > 4 else [*lines, '| none | | | |']
 
 
 def _second_opinion(records):

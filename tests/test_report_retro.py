@@ -415,6 +415,37 @@ def test_retro_pairs_a_moved_second_opinion_with_round_one(tmp_path, monkeypatch
     assert '| A | quality | none |' in section
 
 
+def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
+    # #732: every non-PASS verdict and what followed it: a fix round, a card answer or a park.
+    from wuwei import retro
+    root = tmp_path
+    banded_day(monkeypatch, root)
+    captured(root)
+    assert '## Blocks\n| Item | Gate | Verdict | Followed |\n| --- | --- | --- | --- |\n| none | | | |' in (
+        retro.compile(root).read_text())
+    names = ('A', 'B', 'C')
+    state._write_state(lambda data: data.update(items={name: {'phase': 'planned'} for name in names}),
+                       root, reserved=False)
+    for phase in ('implement', 'gate', 'parked'):
+        state.transition('C', phase, root)
+
+    def seed(data):
+        data['items']['C']['decision'] = 'D-2'
+        data['builds'] = {'A': {'fix_rounds': 1}}
+        data['decision_outcomes'] = {'D-1': {'option': 'fix'}}
+        data['gate_verdicts'].update({
+            'A:quality:initial': {'item': 'A', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX'},
+            'A:arch:initial': {'item': 'A', 'role': 'arch', 'round': 'initial', 'verdict': 'PASS'},
+            'B:quality:initial': {'item': 'B', 'role': 'quality', 'round': 'initial',
+                                  'verdict': 'ESCALATE', 'decision': 'D-1'},
+            'C:security:initial': {'item': 'C', 'role': 'security', 'round': 'initial', 'verdict': 'PARK'}})
+    state._write_state(seed, root, reserved=False)
+    section = retro.compile(root).read_text().split('## Blocks\n', 1)[1].split('\n\n', 1)[0]
+    assert section.splitlines()[2:] == ['| A | quality initial | FIX | fix round 1 |',
+                                        '| B | quality initial | ESCALATE | card D-1: fix |',
+                                        '| C | security initial | PARK | parked: D-2 |']
+
+
 def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     root = tmp_path
     (root / '.wuwei').mkdir()

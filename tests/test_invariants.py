@@ -1588,6 +1588,50 @@ def i51(case, rules):
         return None
     return rules.memo(('word position', case[0]), lambda: compute(case[0]))
 
+def i59(case, rules):
+    """#732: a blocking gate verdict never ends in a bare escalate: a PARK or ESCALATE verdict
+    is one card, for the planner below strict and routed to the owner under strict."""
+    posture = case[0]
+
+    def compute():
+        from wuwei import dispatch, state
+        root = rules.root / f'gate-card-{posture}'  # its own workspace: the walk's items stay untouched
+        (root / '.wuwei').mkdir(parents=True, exist_ok=True)
+        (root / '.wuwei/config.toml').write_text(
+            f'[spec]\nengine = "none"\n[security]\nposture = "{posture}"\n')
+        state._write_state(lambda data: data.update(
+            gate_approved=True, approved_items=['R56'],
+            items={'R56': {'phase': 'planned', 'status': 'queued'}}), root, reserved=False)
+        state.transition('R56', 'implement', root)
+        state.transition('R56', 'gate', root)
+
+        def seed(data):
+            data['items']['R56']['gates'] = {'tier': 'light', 'roles': ['quality']}
+            data['seats']['builder-R56'] = {'item': 'R56', 'role': 'builder', 'status': 'stopped'}
+            data['gate_verdicts']['R56:quality:initial'] = {
+                'verdict': 'ESCALATE', 'blocks': True, 'notes': [], 'head': 'abc1234',
+                'findings': ['- P1 | cli/x.py:1 | fails when empty | blocks: yes'],
+                'file': 'decisions/gate-quality-R56.md'}
+        state._write_state(seed, root, reserved=False)
+        walked = os.environ.get('WUWEI_WORKSPACE')
+        os.environ['WUWEI_WORKSPACE'] = str(root)  # next_step finds the workspace by it first
+        try:
+            found = [dispatch.next_step('R56', root) for _ in range(2)]
+        finally:
+            os.environ.pop('WUWEI_WORKSPACE')
+            if walked is not None:
+                os.environ['WUWEI_WORKSPACE'] = walked
+        command = ('wuwei decision show D-1 --widget' if posture == 'strict'
+                   else 'wuwei decision route D-1')
+        if found[0] != found[1] or (found[0].get('decision'), found[0].get('command')) != ('D-1', command):
+            return f'next_step answered {found}'
+        cards = sorted(path.name for path in root.rglob('D-*.md'))
+        if cards != ['D-1.md']:
+            return f'cards written: {cards}'
+        if (posture == 'strict') != ('D-1' in state.read_state(root).get('decision_routes', {})):
+            return 'the card is routed to the owner only under strict'
+        return None
+    return rules.memo(('gate card', posture), compute)
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
@@ -1615,7 +1659,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I41': i41,
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56,
               'I51': i51,
-              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60}
+              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60,
+              'I36': i36, 'I37': i37, 'I41': i41, 'I59': i59}
 
 
 def project(case):
@@ -1656,7 +1701,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I41': (),
          'I52': (0,), 'I56': (0,),
          'I51': (0,),
-         'I52': (0,), 'I56': (0,), 'I60': ()}
+         'I52': (0,), 'I56': (0,), 'I60': (),
+         'I41': (), 'I59': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
