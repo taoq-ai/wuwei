@@ -13,7 +13,7 @@ def register(subparsers):
     parser = subparsers.add_parser('telemetry', help='weekly usage counts: preview, off, send')
     actions = parser.add_subparsers(dest='action', required=True)
     for name, text in (('preview', 'print exactly what each sharing mode would send'),
-                       ('send', 'open the attributed issue for a final week (owner, host terminal)')):
+                       ('send', 'open the attributed issue for a final week (owner, asks on a card)')):
         action = actions.add_parser(name, help=text)
         action.add_argument('week', nargs='?')
     actions.add_parser('off', help='stop sharing: set telemetry.share to "off"')
@@ -71,7 +71,7 @@ def _off(root, config, args):
 
 
 def _send(root, config, args):
-    from wuwei import integrity, registry, security
+    from wuwei import registry, security, sessions
     tele = config['telemetry']
     try:
         if tele['share'] != 'attributed':
@@ -88,9 +88,11 @@ def _send(root, config, args):
     if code:
         print(reason, file=sys.stderr)
         return code
-    if not integrity._host_confirm(sha256(f'{title}\n{body}'.encode()).hexdigest(), prompt=(
-            f"Open this issue on {tele['repository']} from your gh account (it shows your login):\n{title}\n{body}")):
-        print('wuwei telemetry send: declined; nothing sent', file=sys.stderr)
+    if owner := sessions.needs_owner(  # #831: the owner's answer on the Owner step card
+            root, f"bin/wuwei telemetry send {found['week']}",
+            f"Open this issue on {tele['repository']} from your gh account (it shows your login):\n{title}\n{body}",
+            sha256(f'{title}\n{body}'.encode()).hexdigest()[:12]):
+        print(owner, file=sys.stderr)
         return FINDINGS
     result = registry.load('code_host', config).issue(tele['repository'], title, body, root=root)
     if result.exit:

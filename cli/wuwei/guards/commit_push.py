@@ -116,7 +116,7 @@ def _context(cwd, settings, env, root, config, vcs, identity):
         configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
-    raise ValueError('repository is not configured in this workspace; work in a configured repository. Or the owner adds this one with bin/wuwei config add-repo in a host terminal')
+    raise ValueError('repository is not configured in this workspace; work in a configured repository. Or the owner adds this one with bin/wuwei config add-repo')
 
 
 def push_check(repo, actual, push, root, vcs):
@@ -139,7 +139,7 @@ def push_check(repo, actual, push, root, vcs):
     if not isinstance(updates, list) or not updates:
         raise ValueError(f'push destinations are unmeasured; run git push origin HEAD:refs/heads/{branch}')
     if not repo['default_branch'].strip():
-        raise ValueError('missing default branch; the owner sets repos.<n>.default_branch with bin/wuwei config set in a host terminal')
+        raise ValueError('missing default branch; the owner sets repos.<n>.default_branch with bin/wuwei config set')
     config = workspace.load_config(root)
     for update in updates:
         destination = update['destination']
@@ -182,7 +182,7 @@ def fast_evidence(repo, sha, path, root):
         raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
     for check in repo['fast_checks']:
         if not check.strip():
-            raise ValueError('empty configured fast check; the owner removes the empty entry with bin/wuwei config set repos.<n>.fast_checks in a host terminal')
+            raise ValueError('empty configured fast check; the owner removes the empty entry with bin/wuwei config set repos.<n>.fast_checks')
         record = evidence.get(repo['name'], {}).get(check)
         if record is None:
             return 1, f'fast check "{check}" has not passed for HEAD {sha[:12]}; run {checks}'

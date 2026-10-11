@@ -467,7 +467,7 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei calibrate',
                          apply='calibrate') if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
-        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
         rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
@@ -616,13 +616,13 @@ def _day(root, config, probes):
     from wuwei import watch
     from wuwei.commands import status
     rows = [_row('day', 'state', PROBE[probes['state']['result']], probes['state']['value'],
-                 'wuwei state recover in a host terminal'),
+                 'wuwei state recover'),
             _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
                  'wuwei plan session <session id> --take-over from the live session')]
     try:
         found, health, beat, _ = status.scan(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover in a host terminal')]
+        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover')]
     if health == 'alive':
         rows.append(_row('day', 'watch', 'ok', 'alive'))
     elif health == 'off':
@@ -641,7 +641,7 @@ def _day(root, config, probes):
             'runs only in a session; bin/wuwei shepherd schedule runs it overnight'
             + (f'; last headless sweep {last}' if last else ''))))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover'))
     rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
                      beat or 'none today', 'wuwei heartbeat names the failed probe'))
     try:  # #601: one credential reader; the heartbeat row reports a broken saved beat
@@ -683,13 +683,13 @@ def _day(root, config, probes):
                          'WUWEI_SESSION_ID; record commands for asked cards confirm through the planner in state',
                          'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
     except watch.ERRORS as exc:
-        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         if ids := _legacy_traces(root):
             rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
                              'wuwei doctor --fix', apply='trace-decisions'))
     except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         ids = _unrecorded(root)
         rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
@@ -697,7 +697,7 @@ def _day(root, config, probes):
                          "the planner runs each card's record command (wuwei decision show <id> --widget "
                          'names it); under strict you run it in a host terminal'))
     except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
 
 
@@ -1017,7 +1017,7 @@ def fix(rows, confirm=None, only=None, widget=False):
         plan = workspace.day_dir(root) / 'plan.md' if root else None
         if batch and not (plan and plan.is_file() and plan.resolve() == plan):
             print('wuwei doctor: no plan today for the question to cite; '
-                  'run wuwei doctor --fix in a host terminal', file=sys.stderr)
+                  'run wuwei doctor --fix, which asks on its Owner step card', file=sys.stderr)
             return 1
         print(notes, end='', file=sys.stderr)
         print(json.dumps(widgets(root, batch), indent=2))
@@ -1027,14 +1027,14 @@ def fix(rows, confirm=None, only=None, widget=False):
         return outcome(rows)
     text = ''.join(f'[{name}] {FIXES[name][0]}\n{preview.rstrip()}\n' for name, preview, _ in batch) + notes
     print(text, end='')
-    try:
-        accepted = (confirm or (lambda value: integrity._host_confirm(
-            value, prompt='Apply the fixes above.')))(
-            hashlib.sha256(text.encode()).hexdigest()[:12])
-    except OSError as exc:
-        print(f'wuwei doctor: {exc}', file=sys.stderr)
-        return 2
-    if not accepted:
+    digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    if confirm is None:  # #831: the owner's answer on the Owner step card
+        from wuwei import sessions
+        command = 'bin/wuwei doctor --fix' + (f" --apply {','.join(sorted(only))}" if only is not None else '')
+        if owner := sessions.needs_owner(root, command, text, digest):
+            print(owner, file=sys.stderr)
+            return 1
+    elif not confirm(digest):
         print('wuwei doctor: declined; nothing applied; run bin/wuwei doctor --fix again when you are ready', file=sys.stderr)
         return 1
     for name, _, token in batch:

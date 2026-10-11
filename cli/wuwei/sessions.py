@@ -1,6 +1,7 @@
 """Session registry: every Claude Code session in the workspace, with one planner."""
 
 from datetime import datetime, time
+import json
 import os
 from pathlib import Path
 import shlex
@@ -57,6 +58,27 @@ def card_topic(card, answer):
 def card_answered(root, card, answer):
     """The calling planner session recorded this answer on that card; never under strict."""
     return card_topic(card, answer) in gate_topics(root, caller(root))[0]
+
+
+OWNER_STEP = 'Owner step'
+
+
+def needs_owner(root, command, detail, token=''):
+    """#831: None when the owner answered Yes on this step's card today (recorded by the hook),
+    else the refusal naming the card to ask."""
+    question = f'{OWNER_STEP}: {command}' + (f' ({token})' if token else '')
+    topic = card_topic(OWNER_STEP, f'{question}\nYes')
+    path = workspace.day_dir(root) / 'events.jsonl'
+    rows = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
+    if any('"gate.asked"' in line and topic in json.loads(line)['payload'].get('topics', ())
+           for line in rows):
+        return None
+    card = {'question': question, 'header': OWNER_STEP, 'multiSelect': False,
+            'options': [{'label': 'Yes', 'description': detail},
+                        {'label': 'No', 'description': 'Nothing changes.'}],
+            'record': command}
+    return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
+            f'then run the command again on Yes: {json.dumps(card)}')
 
 
 def stale_seconds(root):

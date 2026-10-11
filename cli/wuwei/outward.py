@@ -114,7 +114,7 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         owner = config['owner']
         names = _normalize(owner['name']).split()
         if not names and not to_owner:
-            return UNRUN, 'outward: owner name must be configured; the owner sets owner.name with bin/wuwei config set in a host terminal'
+            return UNRUN, 'outward: owner name must be configured; the owner sets owner.name with bin/wuwei config set'
         names.extend(_normalize(handle) for handle in owner.get('handles', []))
         pronouns = set(re.split(r'[/,\s]+', _normalize(owner['pronouns']))) - {''}
         for family in PRONOUNS:

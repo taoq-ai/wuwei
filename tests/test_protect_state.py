@@ -258,7 +258,7 @@ def test_config_is_protected(workspace, tool, target):
     check = check_bash if tool == 'Bash' else check_file
     code, reason = check(payload(workspace, tool, **fields))
     assert code == 1
-    assert 'owner' in reason and 'outside agent tools' in reason
+    assert 'run wuwei config set <key> <value>' in reason and 'Owner step card' in reason
 
 
 @pytest.mark.parametrize('tool', ['Write', 'Bash'])
@@ -1088,3 +1088,16 @@ def test_cd_helpers_live_in_shell():
     from wuwei.shell import _cd_target, _cwd, _text  # noqa: F401
     with pytest.raises(ValueError):
         _cwd({'cwd': 'relative'})
+
+
+@pytest.mark.parametrize('command,code', [
+    ('bin/wuwei hook PostToolUse < payload.json', 2),
+    ('wuwei hook SubagentStop', 2),
+    ('python3 -P -m wuwei hook PreToolUse', 2),
+    ('bin/wuwei next', 0),
+])
+def test_a_tool_call_never_runs_the_hook(workspace, command, code):
+    """#831: a session cannot feed the hook a forged owner answer."""
+    from wuwei.guards.protect_state import check_bash
+    result, reason = check_bash(payload(workspace, 'Bash', command=command))
+    assert result == code and (not code or 'never from a tool call' in reason)

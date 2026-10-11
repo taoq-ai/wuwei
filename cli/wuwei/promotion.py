@@ -62,7 +62,7 @@ def _target(root, raw):
             raise ValueError(f'invalid charter target; {DAMAGED}')
     elif path.parent == root / '.wuwei/memory/notes':
         if path.stem in OWNER_NOTES:
-            raise ValueError('baseline is maintained by the owner outside agent tools; write the change as a proposal; the owner edits the baseline in a host terminal')
+            raise ValueError('baseline is maintained by the owner outside agent tools; write the change as a proposal; the owner edits the baseline')
         if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
             raise ValueError(f'invalid note target; {DAMAGED}')
     elif path == root / '.wuwei/memory/voice.md':
@@ -89,7 +89,7 @@ def _ensure_clean(root, target):
     if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
         raise OSError('workspace integrity evidence unreadable; run bin/wuwei doctor, which tests the workspace history')
     if target.relative_to(root / '.wuwei').as_posix() in result.data:
-        raise ValueError('target has unpromoted changes; the owner reviews the workspace history. Then the owner runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
+        raise ValueError('target has unpromoted changes; the owner reviews the workspace history. Then the owner runs bin/wuwei goals edit or bin/wuwei voice edit')
 
 
 def _changelog(root):

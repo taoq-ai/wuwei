@@ -315,3 +315,68 @@ def test_before_plan_approve(fresh, capsys):
 
 def test_bool_tuple_is_not_an_exit_reason():
     assert reasons("def f():\n    return True, 'a b'\n") == []
+
+
+# #831: the owner answers in the session; no text sends the owner to a terminal. LEFT names the
+# texts in code a later #789 part deletes, with that part; the part deletes its rows.
+TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
+LEFT = (
+    ('undo.py', 'in a host terminal and answer y', 10),
+    ('commands/decision.py', 'decision undo {args.id} in a host terminal', 10),
+    ('grants.py', 'host terminal', 11),
+    ('commands/grants.py', '(owner, host terminal)', 11),
+    ('merge.py', 'ask the owner to merge it in a host terminal', 11),
+    ('merge.py', 'or merges it in a host terminal', 11),
+    ('merge.py', "owner_command(ref, head, method)} in a host terminal", 11),
+    ('merge.py', 'owner_command(ref, head, result.data[\'method\'])} in a host terminal', 11),
+    ('commands/setup.py', '(owner, host terminal)', 12),
+    ('commands/setup.py', 'watch install in a host terminal', 12),
+    ('interview.py', 'bin/wuwei setup in a host terminal', 12),
+    ('commands/calibrate.py', 'host terminal', 12),
+    ('commands/next.py', 'show the owner that line for a host terminal', 12),
+    ('commands/next.py', 'in a host terminal in the project directory', 12),
+    ('commands/next.py', 'calibration still need you in a host terminal', 12),
+    ('commands/next.py', 'show that line to the owner for a host terminal', 13),
+    ('commands/memory.py', 'forgetting proposal (host terminal)', 13),
+    ('decision.py', 'at the host terminal', 14),
+    ('decision.py', 'decide {identifier} {option} in a host terminal', 14),
+    ('commands/decision.py', 'Record an owner choice from the host terminal', 14),
+    ('commands/decision.py', 'decide <id> <option> in a host terminal and answer y', 14),
+    ('commands/doctor.py', 'under strict you run it in a host terminal', 14),
+    ('drafts.py', 'host terminal', 16),
+    ('commands/drafts.py', 'from the owner host terminal', 16),
+    ('commands/outbound.py', 'outward.servers in a host terminal', 16),
+    ('tracker.py', 'drafts approve {draft} in a host terminal', 16),
+    ('tracker.py', 'ticket=<id> in a host terminal', 16),
+    ('tracker.py', 'drafts approve {draft_id} in a host terminal', 16),
+    ('mcp.py', 'host terminal', 18),
+    ('commands/doctor.py', 'mcp.pending(root))} in a host terminal', 18),
+    ('guards/protect_state.py', 'wuwei mcp decide in a host terminal', 18),
+    ('integrity.py', 'run it in a host terminal', 18),
+    ('integrity.py', '/dev/tty', 18),
+    ('tracker.py', 'init --upgrade in a host terminal', 20),
+    ('watch.py', 'install in a host terminal', 23),
+)
+
+
+def _texts():
+    """(file, text) for every string constant under cli/wuwei except docstrings; an f-string is
+    its source, so a LEFT row can name the expression next to its terminal words."""
+    for rel, source in _sources():
+        tree = ast.parse(source)
+        skip = _docstrings(tree) | {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr)
+                                    for part in node.values}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr):
+                yield rel, ast.unparse(node)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
+                yield rel, node.value
+
+
+def test_no_text_sends_the_owner_to_a_terminal():
+    texts = [(rel, text) for rel, text in _texts() if TERMINAL.search(text)]
+    found = [f'{rel}: {text[:120]!r}' for rel, text in texts
+             if not any(rel == file and part in text for file, part, _ in LEFT)]
+    assert not found, 'name the command, which asks its own Owner step card:\n' + '\n'.join(found)
+    stale = [row for row in LEFT if not any(rel == row[0] and row[1] in text for rel, text in texts)]
+    assert not stale, f'delete the LEFT rows whose text is gone: {stale}'

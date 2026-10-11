@@ -326,7 +326,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
-            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
+            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set')
         result = vcs.rebase(str(tree), base_sha, root=root)
         if isinstance(result, registry.Result) and result.exit == 1:
             print(result.reason or 'rebase did not complete')

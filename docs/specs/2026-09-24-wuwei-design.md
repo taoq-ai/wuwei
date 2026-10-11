@@ -1843,6 +1843,17 @@ Floors no posture and no override lowers:
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
 
+Owner answers (owner, 2026-10-11, #831). Nothing runs in a terminal. An owner step (a spec
+skip, an owner merge hold release, a config write, an integrity confirmation, a state recovery,
+a seat stop under strict, a doctor fix, a telemetry send) refuses until the owner answers Yes
+on its Owner step card: the refusal prints the card (header `Owner step`, the exact command and
+a digest of what it changes), the planner asks it with AskUserQuestion, the PostToolUse hook
+records the owner's reply from a main session as a hashed `gate.asked` topic, and the same
+command reads it from today's event log and proceeds. A seat's question never counts, and a
+Bash call that runs `wuwei hook` is refused, so a session cannot feed the hook an answer. The
+card counts under every posture. The boundary is the one the terminal prompt had: friction
+against the planner and seats, not proof against a process running as the owner's user.
+
 ### 9.2 Process edges (owner, 2026-10-11, #789)
 
 An edge is an action WUWEI cannot take back: it changes what others see or leaves the

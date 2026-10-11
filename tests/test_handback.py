@@ -351,7 +351,8 @@ def test_seat_stop_unmeasured_parks_builder(seat, monkeypatch, capsys):
 
 
 def test_seat_stop_refusals(seat, monkeypatch, capsys):
-    from wuwei import integrity, workspace
+    from fakes import owner
+    from wuwei import workspace
     root, report = stuck_builder(seat, monkeypatch)
     add_seat(root, 'done', 'sentinel-arch', status='stopped')
     before = (state.workspace.day_dir(root) / 'state.json').read_text()
@@ -365,15 +366,14 @@ def test_seat_stop_refusals(seat, monkeypatch, capsys):
     assert code == 1 and 'planner session' in out.err
     monkeypatch.delenv('WUWEI_SESSION_ID')
     monkeypatch.setattr(workspace, 'posture', lambda config: ('strict', {}))
-
-    def no_terminal(name, prompt=None):
-        raise OSError(integrity.HOST_TERMINAL)
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    # #831: under strict the owner's Yes on the Owner step card stops the seat; no terminal.
     code, out = seat_stop(capsys, 'builder', '--unmeasured', 'x')
-    assert code == 2 and 'host terminal' in out.err
-    monkeypatch.setattr(integrity, '_host_confirm', lambda name, prompt=None: False)
+    assert code == 1 and 'Owner step: bin/wuwei seat stop builder' in out.err and 'host terminal' not in out.err
+    owner.answer(root, 'bin/wuwei seat stop builder', reply='No')
     assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 1
     assert (state.workspace.day_dir(root) / 'state.json').read_text() == before
+    owner.answer(root, 'bin/wuwei seat stop builder')
+    assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 0
 
 
 def test_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):

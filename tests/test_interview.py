@@ -512,15 +512,16 @@ CHARTERS = 'bin/wuwei promote for the charter and voice proposals.'
 
 def test_answer_next_line_names_its_keys(offline, capsys, monkeypatch):
     # #604: the Next line names only this answer's keys, and the promote it prints touches only them.
-    from wuwei import integrity
+    from fakes import owner
 
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
     assert main('calibrate', '--answer', 'verbosity=Full') == 0
     capsys.readouterr()
     assert main('calibrate', '--answer', 'autonomy=Autonomous') == 0
     out = capsys.readouterr().out
     assert out.splitlines()[-1] == PROMOTE_KEYS + '.' and out.count('Next:') == 1
     before = tomllib.loads((offline / '.wuwei/config.toml').read_text())
+    assert main('config', 'promote', '--keys', *AUTONOMY_KEYS) == 1  # #831: its Owner step card
+    owner.answer_card(offline, capsys.readouterr().err)
     assert main('config', 'promote', '--keys', *AUTONOMY_KEYS) == 0, capsys.readouterr().err
     after = tomllib.loads((offline / '.wuwei/config.toml').read_text())
     assert after['autonomy'] == {'mode': 'autonomous'} and after['outbound']['default_tier'] == 'send'
@@ -546,6 +547,7 @@ def test_carded_answer_has_no_next_line(root, capsys, monkeypatch):
 
 
 def test_promote_keys_reports_unknown_and_nothing(offline, capsys, monkeypatch):
+    from fakes import owner
     from wuwei import integrity
 
     def ask(*a, **k):
@@ -556,10 +558,11 @@ def test_promote_keys_reports_unknown_and_nothing(offline, capsys, monkeypatch):
     assert ("Not in today's answers: owner.name; use a key listed under Interview answers, or answer its "
             'question first: bin/wuwei calibrate --questions\n') in capsys.readouterr().out
     assert (offline / '.wuwei/config.toml').read_text() == raw
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
     assert main('calibrate', '--answer', 'verbosity=Full') == 0
+    capsys.readouterr()
+    assert main('config', 'promote', '--keys', 'owner.verbosity.default') == 1  # #831: its Owner step card
+    owner.answer_card(offline, capsys.readouterr().err)
     assert main('config', 'promote', '--keys', 'owner.verbosity.default') == 0
-    monkeypatch.setattr(integrity, '_host_confirm', ask)
     capsys.readouterr()
     assert main('config', 'promote', '--keys', 'owner.verbosity.default') == 0
     assert capsys.readouterr().out.startswith('No config.toml changes\n')

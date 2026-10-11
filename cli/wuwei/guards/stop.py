@@ -32,7 +32,7 @@ def check(payload):
         if payload.get('session_id') not in planners:
             return 0, ''
         if not (workspace.day_dir(root) / 'state.json').is_file():
-            raise ValueError('day state missing for registered planner; run bin/wuwei state recover in a host terminal (the owner), or start the day with /wuwei:wuwei-plan')
+            raise ValueError('day state missing for registered planner; run bin/wuwei state recover; it asks the owner on its card, or start the day with /wuwei:wuwei-plan')
         if type(payload.get('stop_hook_active', False)) is not bool:
             raise ValueError(f'stop_hook_active must be boolean; {PAYLOAD}')
         return closing.check(root) if requested else pr_actions.check(root)

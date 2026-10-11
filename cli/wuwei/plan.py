@@ -578,19 +578,11 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     return {'action': 'build next', 'item': item}
 
 
-def _owner_confirm(command, prompt):
-    """#800: the owner's y/N at the host terminal; an agent's Bash has no terminal, so it fails
-    closed whatever its environment says."""
-    from hashlib import sha256
-    from wuwei import integrity
-    try:
-        confirmed = integrity._host_confirm(sha256(command.encode()).hexdigest(), prompt=prompt)
-    except OSError:
-        raise state.StateError(f'{integrity.HOST_TERMINAL}; the owner runs bin/wuwei plan set {command} '
-                               'in a host terminal') from None
-    if not confirmed:
-        raise state.StateError(f'owner confirmation declined; rerun bin/wuwei plan set {command} in a host '
-                               'terminal and answer y')
+def _owner_confirm(root, argv, detail):
+    """#800, #831: only the owner's Yes on this step's Owner step card lets it run."""
+    import shlex
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'set', *argv]), detail):
+        raise state.StateError(reason)
 
 
 def set_spec(item, assignment, reason=None, root=None):
@@ -604,7 +596,7 @@ def set_spec(item, assignment, reason=None, root=None):
     if value == 'skipped' and not reason:
         raise ValueError(f'spec=skipped needs a reason; run bin/wuwei plan set {item} spec=skipped --reason <why>')
     if value == 'skipped':  # #800: spec before gates; only the owner skips it
-        _owner_confirm(f'{item} spec=skipped --reason <why>', f'Skip the spec for {item}: {reason}')
+        _owner_confirm(root, [item, 'spec=skipped', '--reason', reason], f'Skip the spec for {item}: {reason}')
 
     def update(data):
         if item not in data['items']:
@@ -625,7 +617,7 @@ def set_owner_merge(item, value, root=None):
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
     if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
-        _owner_confirm(f'{item} owner_merge=false', f'Release the owner merge hold on {item}')
+        _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}')
     linked = []
 
     def update(data):

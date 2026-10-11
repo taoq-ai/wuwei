@@ -209,7 +209,7 @@ def bot_evidence(config, policy, discussion, ref, head, root):
         return None
     login = policy['bot_login']
     if not login:
-        raise ValueError('merge.bot_login required for a configured review bot; the owner sets merge.bot_login with bin/wuwei config set in a host terminal')
+        raise ValueError('merge.bot_login required for a configured review bot; the owner sets merge.bot_login with bin/wuwei config set')
     bot = registry.load('review_bot', config)
     score = read(bot.score, ref, root=root)
     integer(score)
@@ -303,7 +303,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         index = config['repos'].index(settings)  # #799: a typo here would loosen the policy unseen
         typo = next((text for text in found if re.match(rf'config\.toml: unknown key (merge\.|repos\.{index}\.merge)', text)), None)
         from wuwei import integrity  # a newer plugin's keys are unknown here, not typos
-        require(typo is None or integrity.newer_template(config), f'{typo}; the owner fixes it in a host terminal (bin/wuwei config check validates)')
+        require(typo is None or integrity.newer_template(config), f'{typo}; the owner fixes it in config.toml (bin/wuwei config check validates)')
         policy = settings['merge']
         require(granted or policy['auto'], 'merge.auto is off')
         require(settings['merge_deploys'] is False, 'explicit merge_deploys = false is required')
@@ -642,7 +642,7 @@ def baseline(root):
     text = (root / '.wuwei/memory/notes/baseline.md').read_text(encoding='utf-8')
     values = re.findall(r'^Escaped-defect-rate: *([0-9]+(?:\.[0-9]+)?) *$', text, re.M)
     if len(values) != 1 or not 0 <= float(values[0]) <= 1:
-        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1; ask the owner to add that line to the baseline in a host terminal')
+        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1; ask the owner to add that line to the baseline')
     return float(values[0])
 
 

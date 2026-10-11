@@ -532,7 +532,7 @@ def host(root, config, running=0, free=None, policy=None):
             free = free_memory(config, root) // 2**20
         cores = os.cpu_count()
         if not cores:
-            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again on the host')
+            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again')
     except (OSError, ValueError) as exc:
         cap = owner_cap or 1
         return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
@@ -718,7 +718,7 @@ def survey(root, config, selected, *, style=True, measure=False):
     for index, repo in selected:
         checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
         if not checkout.is_dir():
-            raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set in a host terminal")
+            raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set")
         result = {'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)}
         measure_checks(root, config, result, runner)
         results.append(result)
@@ -831,7 +831,7 @@ def propose_checks(root, config, selected):
                     raw, [(('repos', index), 'fast_checks', commands)]), [key], ident)
             if code:
                 raise ValueError(f'{ident} was taken under mandate but {key} was not written; the owner '
-                                 f'sets it with bin/wuwei config set {key} in a host terminal')
+                                 f'sets it with bin/wuwei config set {key}')
         lines.append(f'calibrate: {ident} taken under mandate ({record["cisr"]}): '
                      f'{key} = {configtext.dumps(commands, inline=True)}')
     return widgets, lines
@@ -972,7 +972,7 @@ def report(results, diff, edits, written, error=None, host=None, config=None):
     lines += ['## Charter proposals', ''] + [f'- {path}' for path in written] + (
         [] if written else ['- none']) + ['']
     lines += ['## Next step', '',
-              '- Review this report, then run `bin/wuwei config promote` in a host terminal to apply '
+              '- Review this report, then run `bin/wuwei config promote` to apply '
               'the config proposal and record the approved calibration.',
               '- Run `bin/wuwei promote` to land the charter proposals.', '']
     return '\n'.join(lines)
@@ -1007,7 +1007,7 @@ def drift(root):
         checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
         try:
             if not checkout.is_dir():
-                raise OSError('checkout is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set in a host terminal')
+                raise OSError('checkout is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set')
             current = drift_facts(profile(checkout, repo)['facts'])
             changed = [key for key in DRIFT if current[key] != snapshot[repo['name']].get(key)]
         except OSError:

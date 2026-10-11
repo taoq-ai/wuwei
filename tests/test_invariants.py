@@ -26,12 +26,7 @@ CALLED = [('grants.py', ('gate', 'evidence'), ('deploy.check', 'commit_push.chec
           ('integrity.py', ('measure',), ('integrity.check',)),
           ('shell.py', ('_text', '_cwd', '_cd_target'), ('protect_state.check_bash',))]
 # Walls a later item removes; the note on each row is its rationale: (file, substring, note).
-LATER = 'follow-up, specs/530-posture-day Deferred'
-OWNED = [('guards/commit_push.py', 'config add-repo', LATER),
-         ('guards/commit_push.py', 'default_branch', LATER),
-         ('guards/commit_push.py', 'empty configured fast check', LATER),
-         ('guards/pr.py', 'API repository default branch is unmeasured', LATER),
-         ('integrity.py', 'page: plugin integrity', LATER)]
+OWNED = []  # #831: the config and integrity commands ask their own Owner step card
 # Refusals that are not walls the workflow puts up; the note on each row is its rationale.
 MERGES = "merge family: bin/wuwei merge is the path (#524); approval and override stay the owner's"
 EXEMPT = [('grants.py', '{} {}; ask the owner to run it in a host terminal', 'heartbeat probe'),

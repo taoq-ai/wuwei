@@ -775,7 +775,7 @@ def test_signed_install_passes_without_confirmation_or_vcs(tmp_path, monkeypatch
 
 def test_checkout_reasons_name_reconfirm_line(checkout):
     api, root, base, fake = checkout
-    line = 'run wuwei integrity reconfirm on the host'
+    line = 'run wuwei integrity reconfirm'
     result = api.check(root)
     assert result.exit == 1 and result.reason.endswith(line) and '\n' not in result.reason
     assert api.cached(root) == registry.Result(2, reason=result.reason)
@@ -861,7 +861,7 @@ def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys)
     assert len(lines) == 1
     assert pre_tool_use(monkeypatch, root) == 2
     reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
-    assert 'run wuwei integrity reconfirm on the host' in reason and 'Errno' not in reason
+    assert 'run wuwei integrity reconfirm' in reason and 'Errno' not in reason
 
 
 def no_terminal(monkeypatch, tmp_path, mode):
@@ -888,17 +888,23 @@ def test_host_confirmation_without_a_terminal_names_the_owner_action(tmp_path, m
     assert str(raised.value) == 'this is an owner action: run it in a host terminal'
 
 
-def test_reconfirm_without_a_terminal_cannot_run(tmp_path, monkeypatch):
+def test_reconfirm_asks_the_owner_step_card(tmp_path, monkeypatch):
+    """#831: no terminal; the owner's Yes on the Owner step card confirms this fingerprint."""
+    from fakes import owner
     api = core()
     root = workspace_root(tmp_path)
     from fakes.integrity import seed
     seed(root)
+    (root / '.wuwei/config.toml').write_text('')
     monkeypatch.setattr(api, 'PLUGIN', plugin(tmp_path))
     monkeypatch.setattr(api, 'measure', lambda **kw: registry.Result(1, 'b' * 64, 'page: changed'))
     no_terminal(monkeypatch, tmp_path, 'missing')
     result = api.reconfirm(root)
-    assert result.exit == 2
-    assert 'run it in a host terminal' in result.reason and 'Errno' not in result.reason
+    assert result.exit == 1 and 'Owner step: bin/wuwei integrity reconfirm (bbbbbbbbbbbb)' in result.reason
+    assert 'host terminal' not in result.reason and not (root / '.wuwei/integrity/confirmation.json').exists()
+    owner.answer(root, 'bin/wuwei integrity reconfirm', 'b' * 12)
+    assert api.reconfirm(root).exit == 0
+    assert json.loads((root / '.wuwei/integrity/confirmation.json').read_text())['fingerprint'] == 'b' * 64
 
 
 @pytest.fixture
@@ -1112,7 +1118,7 @@ def test_both_paths_cached(tmp_path, monkeypatch):
     result = api.cached(root)
     assert result.exit == 2
     for text in (f'confirmed the plugin at {copy_a}', f'runs {copy_b}', f'claude --plugin-dir {copy_a}',
-                 'bin/wuwei integrity reconfirm in a host terminal'):
+                 'bin/wuwei integrity reconfirm to confirm this one'):
         assert text in result.reason, text
     monkeypatch.setattr(api, 'PLUGIN', copy_a)
     assert 'confirmed the plugin at' not in api.cached(root).reason

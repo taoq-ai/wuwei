@@ -613,36 +613,32 @@ def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     assert (workspace_root / '.wuwei/config.toml').read_text() == config
 
 
-def test_config_promote_declined_or_without_terminal(workspace_root, capsys):
-    from wuwei import integrity
-
+def test_config_promote_declined_or_without_an_answer(workspace_root, capsys):
     raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
-
-    def refuse(digest, **kw):
-        raise OSError(integrity.HOST_TERMINAL)
 
     def edit(digest, **kw):
         (workspace_root / '.wuwei/config.toml').write_text(raw + '\ncap = 2\n')
         return True
     assert promote(workspace_root, lambda digest, **kw: False) == 1
-    assert promote(workspace_root, refuse) == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert promote(workspace_root, None) == 1  # #831: no answer on its Owner step card
+    assert 'Owner step: bin/wuwei config promote (' in capsys.readouterr().err
     assert (workspace_root / '.wuwei/config.toml').read_text() == raw
     assert promote(workspace_root, edit) == 2
     assert 'cap = 2' in (workspace_root / '.wuwei/config.toml').read_text()
     assert not (workspace_root / '.wuwei/calibration.json').exists()
 
 
-def test_config_promote_through_cli_needs_a_host_terminal(workspace_root, monkeypatch, capsys):
+def test_config_promote_through_cli_asks_the_owner_step_card(workspace_root, monkeypatch, capsys):
     import builtins
-    from wuwei import integrity
+    from fakes import owner
 
     configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
     real = builtins.open
-    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: (_ for _ in ()).throw(OSError('no tty'))
+    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: pytest.fail('opened the terminal')
                         if path == '/dev/tty' else real(path, *a, **k))
-    assert main('config', 'promote') == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert main('config', 'promote') == 1
+    owner.answer_card(workspace_root, capsys.readouterr().err)
+    assert main('config', 'promote') == 0, capsys.readouterr().err
 
 
 def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
@@ -666,10 +662,11 @@ def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
     ports['checks'] = SimpleNamespace(run=lambda *a, **k: pytest.fail('ran a repository command'))
     assert promote(workspace_root, lambda digest, **kw: True) == 0
     real = builtins.open
-    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: (_ for _ in ()).throw(OSError('no tty'))
+    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: pytest.fail('opened the terminal')
                         if path == '/dev/tty' else real(path, *a, **k))
     measured(monkeypatch, ports, [0.0, 3.0])
-    assert main('config', 'promote', '--measure') == 2
+    assert main('config', 'promote', '--measure') == 1  # #831: its Owner step card
+    assert 'Owner step: bin/wuwei config promote --measure (' in capsys.readouterr().err
 
 
 def drift_events(root):

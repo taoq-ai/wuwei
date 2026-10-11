@@ -166,7 +166,7 @@ def git(args, env, config):
         return 0, ''
     if override:  # -c, --git-dir, --work-tree or GIT_*: the override can define the alias
         unknown('unknown git command or alias')
-    return 2, f'{UNKNOWN_GIT}{action}; if it publishes, run it as a plain literal command from a host terminal'
+    return 2, f'{UNKNOWN_GIT}{action}; if it publishes, run it as a plain literal command'
 
 
 def api(args, config, root):

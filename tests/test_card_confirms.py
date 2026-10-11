@@ -369,56 +369,52 @@ def test_widget_of_a_config_record_prints_the_config_command(ws, capsys):
         f'{workspace.owner_cli(ws)} decide D-2 "<label>" --card {card}')
 
 
-# Phase 4: strict keeps the host terminal.
+# Phase 4 (#831): config set asks its own Owner step card, under every posture.
 
-def test_strict_session_names_the_host_terminal(ws, monkeypatch, capsys):
+def test_strict_from_card_asks_the_owner_step_card(ws, monkeypatch, capsys):
+    from fakes import owner
     no_terminal(monkeypatch)
     config_card(ws)
     strict(ws)
     before = (ws / '.wuwei/config.toml').read_text()
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     capsys.readouterr()
+    assert main('config', 'set', '--from-card', 'D-1') == 1
+    assert 'bin/wuwei config set <key> <value>' in capsys.readouterr().err
     assert set_from_card() == 1
-    assert 'bin/wuwei config set cap 5' in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert 'Owner step: bin/wuwei config set cap 5 (' in err and 'host terminal' not in err
     assert (ws / '.wuwei/config.toml').read_text() == before
-
-
-def test_strict_host_terminal_ignores_the_card_and_prompts(ws, monkeypatch):
-    from wuwei.commands.setup import set_value
-    config_card(ws)
-    strict(ws)
-    calls = []
-    args = Namespace(key='cap', value='5', replace=False, from_card='D-1')
-    assert set_value(args, confirm=lambda digest, **kwargs: calls.append(digest) or True) == 0
-    assert len(calls) == 1 and config(ws)['cap'] == 5
+    owner.answer_card(ws, err)
+    assert set_from_card() == 0 and config(ws)['cap'] == 5
     assert not state.read_state(ws).get('decision_outcomes')
 
 
 # Phase 5: no empty answer in a session.
 
-@pytest.mark.parametrize('posture,key,value,named', [
-    ('guarded', 'cap', '5', 'bin/wuwei calibrate --questions cap'),
-    ('guarded', 'owner.name', '"Pat"', '--from-card D-n'),
-    ('strict', 'cap', '5', 'bin/wuwei config set cap 5'),
-])
-def test_config_set_in_a_session_without_a_card_names_the_card(ws, monkeypatch, capsys, posture, key, value, named):
+@pytest.mark.parametrize('posture', ['guarded', 'strict'])
+@pytest.mark.parametrize('session', ['planner-1', None])
+@pytest.mark.parametrize('key,value,read', [('cap', '5', 5), ('owner.name', '"Pat"', 'Pat')])
+def test_config_set_without_an_answer_names_the_owner_step_card(ws, monkeypatch, capsys, posture, session,
+                                                                 key, value, read):
+    from fakes import owner
     no_terminal(monkeypatch)
     if posture == 'strict':
         strict(ws)
+    if session:
+        monkeypatch.setenv('WUWEI_SESSION_ID', session)
     before = (ws / '.wuwei/config.toml').read_text()
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     assert main('config', 'set', key, value) == 1
     err = capsys.readouterr().err
-    assert named in err and 'empty answer' not in err and 'run it again' not in err
+    assert f'Owner step: bin/wuwei config set {key} ' in err and f'"record": "bin/wuwei config set {key} ' in err
+    assert 'host terminal' not in err and 'empty answer' not in err
     assert (ws / '.wuwei/config.toml').read_text() == before
-
-
-def test_config_set_in_a_host_terminal_prompts_as_today(ws):
-    from wuwei.commands.setup import set_value
-    calls = []
-    args = Namespace(key='cap', value='5', replace=False)
-    assert set_value(args, confirm=lambda digest, **kwargs: calls.append(digest) or True) == 0
-    assert len(calls) == 1 and config(ws)['cap'] == 5
+    owner.answer_card(ws, err, reply='No')
+    assert main('config', 'set', key, value) == 1
+    owner.answer_card(ws, capsys.readouterr().err)
+    assert main('config', 'set', key, value) == 0
+    loaded = workspace.load_config(ws)
+    assert (loaded['owner']['name'] if key == 'owner.name' else loaded['cap']) == read
 
 
 # Phase 4: the hook lets the planner run the card's record command.
@@ -502,15 +498,6 @@ def test_widget_of_a_value_card_prints_the_config_command(ws, capsys):
     capsys.readouterr()
     assert main('decision', 'show', 'D-1', '--widget') == 0
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
-
-
-def test_session_hint_names_value_rows_and_the_previous_line(ws, monkeypatch, capsys):
-    no_terminal(monkeypatch)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
-    assert main('config', 'set', 'owner.name', '"Pat"') == 1
-    err = capsys.readouterr().err
-    assert 'Value:' in err and 'Previous: owner.name = ""' in err
-    assert 'bin/wuwei config set --from-card D-n' in err
 
 
 # #600: calibrate --questions proposes the fast checks of a repository with none configured.
@@ -650,3 +637,60 @@ def test_decide_with_card_never_prompts(ws, monkeypatch, capsys, case):
     assert code == 1 and 'Outcome: pending' in record_text(ws)
     assert 'bin/wuwei decision show D-1 --widget' in err
     assert (f'{workspace.owner_cli(ws)} decide D-1 A in a host terminal' in err) is (case == 'strict')
+
+
+# #831: the Owner step card replaces the host terminal.
+
+OWNER_MERGE = 'bin/wuwei plan set A owner_merge=false'
+
+
+def test_needs_owner_names_the_card(ws):
+    reason = sessions.needs_owner(ws, OWNER_MERGE, 'Release the owner merge hold on A')
+    assert f'Owner step: {OWNER_MERGE}' in reason and 'host terminal' not in reason
+    card = json.loads(reason[reason.index('{'):])
+    assert card['header'] == 'Owner step' and card['record'] == OWNER_MERGE
+    assert [option['label'] for option in card['options']] == ['Yes', 'No']
+
+
+def test_needs_owner_reads_the_recorded_yes(ws):
+    from fakes import owner
+    assert owner.answer(ws, OWNER_MERGE, reply='No') == (0, '')
+    assert owner.answer(ws, 'bin/wuwei plan set B owner_merge=false') == (0, '')
+    assert owner.answer(ws, OWNER_MERGE, token='abc') == (0, '')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+    assert owner.answer(ws, OWNER_MERGE) == (0, '')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x', token='abc') is None
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x', token='abd') is not None
+
+
+def test_a_seat_answer_records_nothing(ws):
+    from fakes import owner
+    assert owner.answer(ws, OWNER_MERGE, agent='a1') == (0, '')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+
+
+def test_owner_answer_records_without_reading_state(ws):
+    from fakes import owner
+    path = workspace.day_dir(ws) / 'state.json'
+    path.chmod(0o644)
+    path.write_text('{')
+    assert owner.answer(ws, 'bin/wuwei state recover', token='abc', session='any') == (0, '')
+    assert sessions.needs_owner(ws, 'bin/wuwei state recover', 'x', token='abc') is None
+
+
+def test_owner_answer_counts_under_strict(ws):
+    from fakes import owner
+    strict(ws)
+    assert owner.answer(ws, OWNER_MERGE) == (0, '')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+
+
+def test_gate_asked_is_reserved(ws):
+    assert main('event', 'gate.asked', '{}') == 1
+
+
+def test_owner_step_question_needs_no_citation(ws):
+    from wuwei.guards.decision import check_question
+    assert check_question({'cwd': str(ws), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
+        {'header': 'Owner step', 'question': f'Owner step: {OWNER_MERGE}'}]}}) == (0, '')

@@ -84,10 +84,10 @@ def learn(root=None):
         root = workspace.find_workspace() if root is None else Path(root)
         config = workspace.load_config(root)
         if config['adapters']['chat'] == 'none':
-            raise ValueError('chat adapter is none; the owner sets adapters.chat with bin/wuwei config set in a host terminal')
+            raise ValueError('chat adapter is none; the owner sets adapters.chat with bin/wuwei config set')
         owners = set(config['owner']['handles'])
         if not owners:
-            raise ValueError('owner.handles is empty; the owner sets owner.handles with bin/wuwei config set in a host terminal')
+            raise ValueError('owner.handles is empty; the owner sets owner.handles with bin/wuwei config set')
         sources = config['voice']['sources']
         if any(not AUDIENCE.fullmatch(name) for name in sources):
             raise ValueError(f'invalid voice audience; {DAMAGED}')

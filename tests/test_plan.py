@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from wuwei import discovery, integrity, plan, registry, state, workspace
+from fakes import owner
+from wuwei import discovery, plan, registry, state, workspace
 
 
 @pytest.fixture
@@ -481,10 +482,6 @@ def test_gate_widget_is_the_one_approval_question(root):
     assert plan.gate_widget(root)['header'] == 'Goals'
 
 
-def no_terminal(*args, **kwargs):
-    raise OSError(integrity.HOST_TERMINAL)  # an agent's Bash has no /dev/tty
-
-
 def test_plan_set_spec_override(root, capsys, monkeypatch):
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -501,20 +498,20 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
     assert main(['plan', 'set', 'A', 'tier=light']) == 2
     assert main(['plan', 'set', 'Z', 'spec=required']) == 1
     assert 'spec' not in state.read_state(root)['items']['A']
-    # #800: skipping the spec is the owner's y/N at the host; without a terminal it is refused,
-    # whatever the environment says, and the item is unchanged.
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    # #800, #831: skipping the spec is the owner's Yes on its Owner step card; without it the
+    # step is refused, whatever the environment says, and the item is unchanged.
     for name, value in (('WUWEI_SESSION_ID', ''), ('WUWEI_SESSION_ID', 'planner-1')):
         monkeypatch.setenv(name, value)
         capsys.readouterr()
         assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'x']) == 1
-        assert 'the owner runs bin/wuwei plan set A spec=skipped' in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert 'Owner step: bin/wuwei plan set A spec=skipped --reason x' in err and 'host terminal' not in err
         assert 'spec' not in state.read_state(root)['items']['A']
     monkeypatch.delenv('WUWEI_SESSION_ID')
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: False)
+    owner.answer(root, 'bin/wuwei plan set A spec=skipped --reason x', reply='No')
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'x']) == 1
     assert 'spec' not in state.read_state(root)['items']['A']
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    owner.answer(root, "bin/wuwei plan set A spec=skipped --reason 'typo fix'")
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'typo\nfix']) == 0
     assert 'A: spec skipped' in capsys.readouterr().out
     assert state.read_state(root)['items']['A']['spec'] == {'value': 'skipped', 'reason': 'typo fix'}
@@ -545,21 +542,20 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     assert 'A: owner_merge true' in capsys.readouterr().out
     at = '2026-09-28T09:00:00+02:00'
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': True, 'by': 'owner', 'at': at}
-    # #800: releasing the hold is the owner's y/N at the host; without a terminal it is refused
-    # with or without a session id in the environment.
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    # #800, #831: releasing the hold is the owner's Yes on its Owner step card; without it the
+    # step is refused with or without a session id in the environment.
     for session in ('', 'planner-1'):
         monkeypatch.setenv('WUWEI_SESSION_ID', session)
         capsys.readouterr()
         assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
-        assert 'the owner runs bin/wuwei plan set A owner_merge=false' in capsys.readouterr().err
+        assert 'Owner step: bin/wuwei plan set A owner_merge=false' in capsys.readouterr().err
         assert state.read_state(root)['items']['A']['owner_merge'] == {'value': True, 'by': 'owner', 'at': at}
     monkeypatch.setenv('WUWEI_SEAT_ROLE', 'builder')
     assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
     assert state.read_state(root)['items']['A']['owner_merge']['by'] == 'builder'
     monkeypatch.delenv('WUWEI_SESSION_ID')
     monkeypatch.delenv('WUWEI_SEAT_ROLE')
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    owner.answer(root, 'bin/wuwei plan set A owner_merge=false')
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 0
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': False, 'by': 'owner', 'at': at}
     assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set'] == [

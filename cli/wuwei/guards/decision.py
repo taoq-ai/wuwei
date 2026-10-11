@@ -164,12 +164,22 @@ def record_gate(payload):
             return 0, ''
         root, _ = context
         from wuwei import state
+        from wuwei.sessions import OWNER_STEP, card_topic
         session = payload.get('session_id')
+        questions = payload['tool_input']['questions']
+        # #831: the owner's reply to an Owner step card, from any main session, before state.
+        owner = [question for question in questions if question.get('header') == OWNER_STEP
+                 and required_text(question, 'question').startswith(f'{OWNER_STEP}: ')]
+        found = {card_topic(OWNER_STEP, f"{question['question']}\n{reply}") for question in owner
+                 if (reply := _answer(payload, question['question']))}
+        if found:
+            state.append_event('gate.asked', {'session_id': session, 'topics': sorted(found)}, root)
+        if len(owner) == len(questions):
+            return 0, ''
         if not session or session != state.read_state(root).get('planner_session_id'):
             return 0, ''
-        from wuwei.sessions import card_topic
         topics = set()
-        for question in payload['tool_input']['questions']:
+        for question in questions:
             header = question.get('header')
             topic = header.strip().lower() if isinstance(header, str) else None
             card = None
@@ -211,6 +221,7 @@ def check_question(payload):
     hint = ('Cite a decision D-n or clarification C-n whose record exists today and passes lint, '
             'or mark Morning gate and cite today\'s plan file.')
     from wuwei.decision import lint_file, today_path
+    from wuwei.sessions import OWNER_STEP
     try:
         context = scope(Path(required_text(payload, 'cwd')).resolve())
         if context is None:
@@ -230,7 +241,7 @@ def check_question(payload):
             if not isinstance(question, dict):
                 raise ValueError(f'invalid question; {DAMAGED}')
             text = required_text(question, 'question')
-            if gate_question(question, root):
+            if gate_question(question, root) or question.get('header') == OWNER_STEP:
                 continue
             ids = re.findall(r'(?<![\w-])[DC]-[1-9][0-9]*(?![\w-])', text)
             cited = [] if ids else re.findall(DRAFT_ID, text)

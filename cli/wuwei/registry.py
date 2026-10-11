@@ -99,7 +99,7 @@ def validate(kind, name, *, for_config=False):
     names = known(kind)
     if name not in names:
         raise ValueError((f'adapters.{kind}: unknown adapter {name!r}; '
-                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set in a host terminal'))
+                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set'))
 
 
 def load(kind, config):

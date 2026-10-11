@@ -255,6 +255,9 @@ def test_grants_command(root, answer, capsys, monkeypatch):
     assert '(D-1, 2026-10-04) (ignored under strict)' in capsys.readouterr().out
     assert cli('revoke', '2') == 1
     assert 'no standing grant 2' in capsys.readouterr().err
+    assert cli('revoke', '1') == 1  # #831: the owner's Yes on its Owner step card
+    from fakes import owner
+    owner.answer_card(root, capsys.readouterr().err)
     assert cli('revoke', '1') == 0
     assert config(root)['grants']['standing'] == []
     assert events(root, 'grant.revoked') == [{'decision': 'D-1', 'action': 'deploy',

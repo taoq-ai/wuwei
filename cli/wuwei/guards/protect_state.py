@@ -102,8 +102,8 @@ def _hint(path):
     parts = tuple(part.casefold() for part in path.parts)
     tail = parts[len(parts) - parts[::-1].index('.wuwei'):] if '.wuwei' in parts else ()
     if tail == ('config.toml',):
-        return ('config.toml is protected: the owner runs wuwei config set <key> <value> '
-                'in a host terminal, outside agent tools.')
+        return ('config.toml is protected: run wuwei config set <key> <value>; it asks the owner '
+                'on its Owner step card.')
     if tail[:1] == ('days',) and tail[-1:] in (('state.json',), ('state.snapshot.json',)):
         return ('Day state is protected: change it with the wuwei CLI, wuwei state set '
                 '<path> <value> or wuwei state transition <item> <phase>.')
@@ -126,8 +126,8 @@ def _hint(path):
         return ('targets.json is the seen set (design 5.8.1 Novelty): the CLI writes it from owner '
                 'answers, drafts approve and init --upgrade.')
     if tail[:1] == ('integrity',):
-        return ('Integrity records are protected: the owner runs wuwei integrity reconfirm '
-                'in a host terminal, outside agent tools.')
+        return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
+                'on its Owner step card.')
     return _STATE_HINT
 
 
@@ -343,6 +343,9 @@ def check_bash(payload):
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
+            if root is not None and (_wuwei_action(command.argv) or [''])[0] == 'hook':  # #831
+                return 2, ('wuwei hook runs only from Claude Code hooks, never from a tool call; '
+                           'run the command the hook guards instead')
             # #349: a script run with no state operand passes; -m json.tool with one file reads.
             # #643: so does a python -c snippet with no write-like token; a refusal names it.
             if (re.fullmatch(_INTERPRETER, program)

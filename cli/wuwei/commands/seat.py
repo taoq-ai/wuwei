@@ -3,7 +3,7 @@ record an ad-hoc seat's prompt before its launch (#676)."""
 
 import sys
 
-from wuwei import brief, integrity, sessions, state, workspace
+from wuwei import brief, sessions, state, workspace
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
@@ -57,14 +57,11 @@ def run(args):
     reason = args.unmeasured
     if reason is not None and (not reason.strip() or '\n' in reason):
         return refuse(UNRUN, 'pass a one-line reason to --unmeasured')
-    if workspace.posture(workspace.load_config(root))[0] == 'strict':
-        try:
-            if not integrity._host_confirm(name, prompt=f'Stop seat {name}.'):
-                return refuse(FINDINGS, 'seat stop declined; rerun it in a host terminal and answer y')
-        except OSError as exc:
-            return refuse(UNRUN, f'{exc}; rerun wuwei seat stop there')
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':  # #831: the owner's card answer
+        if owner := sessions.needs_owner(root, f'bin/wuwei seat stop {name}', f'Stop seat {name}.'):
+            return refuse(FINDINGS, owner)
     elif sessions.current() not in (None, data.get('planner_session_id')):
-        return refuse(FINDINGS, 'seat stop runs from the planner session or a host terminal; run it there')
+        return refuse(FINDINGS, 'seat stop runs from the planner session; run it there')
     if reason is not None:
         state.stop_seat(name, root, reason=reason.strip(), by='owner')
         record = data.get('builds', {}).get(seat['item'])

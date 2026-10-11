@@ -30,7 +30,8 @@ def run(args):
         from wuwei.commands import setup
         line = lines[args.n - 1]
         code = setup._edit('grants revoke', 'standing grant', None, lambda _, raw: setup.write_value(
-            raw, 'grants.standing', lines[:args.n - 1] + lines[args.n:]), root)
+            raw, 'grants.standing', lines[:args.n - 1] + lines[args.n:]), root,
+            command=f'bin/wuwei grants revoke {args.n}')  # #831: its Owner step card
         if code == CLEAN:
             state.append_event('grant.revoked', {key: line[key] for key in ('decision', 'action', 'target')}, root)
         return code

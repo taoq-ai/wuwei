@@ -306,7 +306,7 @@ def api_check(args, cwd, root, config):
             return 1, 'push to an environment branch is refused; deploying is an owner action; run git push origin HEAD:refs/heads/<branch>'
         repo = next((repo for repo in config['repos'] if repo['name'].casefold() == match[1].casefold()), None)
         if repo is None:
-            raise ValueError('API repository default branch is unmeasured; the owner adds the repository with bin/wuwei config add-repo in a host terminal')
+            raise ValueError('API repository default branch is unmeasured; the owner adds the repository with bin/wuwei config add-repo')
         if match[2] == repo['default_branch']:
             return 1, 'push to the default branch is refused; use git push origin HEAD:refs/heads/<branch> for the item branch'
     if re.fullmatch(r'repos/[^/]+/[^/]+/pulls/\d+/reviews(?:/.*)?', endpoint, re.I):

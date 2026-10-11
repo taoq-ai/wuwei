@@ -467,7 +467,7 @@ def zone(config):
     try:
         return ZoneInfo(name)
     except (KeyError, ValueError):
-        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone in a host terminal') from None
+        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone') from None
 
 
 def verbosity(config, surface):
@@ -576,11 +576,11 @@ def _validate(value, schema, path, raw, unknown=None):
         line = _key_line(raw, path) or _key_line(raw, path[:-1])
         location = f' at line {line}' if line is not None else ''
         key = _dotted(path)
-        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value> in a host terminal')
+        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value>')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value>")
     if isinstance(schema, dict):
         for name in value:
             if name not in schema and "*" not in schema:
@@ -614,7 +614,7 @@ def _validate(value, schema, path, raw, unknown=None):
         else:
             return value
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value>")
     return value
 
 
@@ -770,7 +770,7 @@ def load_config(root=None, *, raw=None, warnings=None):
                 re.compile(row['tool'])
             except re.error:
                 raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
-                                  'with bin/wuwei config set in a host terminal') from None
+                                  'with bin/wuwei config set') from None
         since = config['guards']['shadow_since']
         if since:
             try:
@@ -778,7 +778,7 @@ def load_config(root=None, *, raw=None, warnings=None):
                     raise ValueError
                 date.fromisoformat(since)
             except ValueError:
-                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since in a host terminal') from None
+                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since') from None
         for area, floor in FLOORS.items():
             value = config['security']['areas'][area]
             if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
@@ -786,14 +786,14 @@ def load_config(root=None, *, raw=None, warnings=None):
                                   f'{area} always blocks, remove the override')
         for name in config['decisions']['lenses']:
             if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
-                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set in a host terminal')
+                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set')
         for index, line in enumerate(config['grants']['standing']):
             if not (re.fullmatch(r'repo:[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+', line['target'])
                     and re.fullmatch(r'D-[1-9][0-9]*', line['decision'])
                     and re.fullmatch(r'\d{4}-\d{2}-\d{2}', line['date'])):
                 raise ConfigError(f'grants.standing.{index}: expected target repo:<org>/<name>, decision '
                                   f'D-n and date YYYY-MM-DD; the owner fixes it with bin/wuwei grants '
-                                  f'revoke {index + 1} in a host terminal')
+                                  f'revoke {index + 1}')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
@@ -808,7 +808,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if repo['name'] in repo_names:
                 line = _key_line(raw, ('repos', index, 'name'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_names.add(repo['name'])
             try:
                 resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
@@ -817,7 +817,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if resolved in repo_paths:
                 line = _key_line(raw, ('repos', index, 'path'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_paths.add(resolved)
 
         for kind, name in config['adapters'].items():

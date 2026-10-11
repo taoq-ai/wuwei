@@ -442,22 +442,28 @@ def test_off_needs_no_confirmation(ws, capsys):
 @pytest.fixture
 def host(ws, monkeypatch):
     from fakes.code_host import Fake
-    from wuwei import integrity, registry
+    from wuwei import registry
     from wuwei.registry import Result
-    fake, answers = Fake({'issue': Result(0, {'number': 5, 'url': 'https://example.test/issues/5'})}), []
+    fake = Fake({'issue': Result(0, {'number': 5, 'url': 'https://example.test/issues/5'})})
     monkeypatch.setattr(registry, 'load', lambda kind, cfg: fake)
-    monkeypatch.setattr(integrity, '_host_confirm', lambda digest, prompt=None: answers.pop(0))
-    return fake, answers
+    return fake
 
 
-def test_send_is_attributed_only_and_confirmed_on_the_host(ws, host, capsys, monkeypatch):
+def test_send_is_attributed_only_and_confirmed_by_the_owner(ws, host, capsys, monkeypatch):
+    from hashlib import sha256
+    from fakes import owner
     from wuwei import security
-    fake, answers = host
+    fake = host
     final_week(ws, **VERSIONS)
     assert main(['telemetry', 'send']) == 1
     assert 'not "attributed"' in capsys.readouterr().err
     config(ws, '[telemetry]\nshare = "attributed"\n')
-    answers.append(False)
+    assert main(['telemetry', 'send']) == 1 and fake.calls == []  # #831: no answer, nothing sent
+    err = capsys.readouterr().err
+    assert 'Owner step: bin/wuwei telemetry send 2026-W39 (' in err and 'host terminal' not in err
+    title, body = telemetry.issue(telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'))))
+    token = sha256(f'{title}\n{body}'.encode()).hexdigest()[:12]
+    owner.answer(ws, 'bin/wuwei telemetry send 2026-W39', token, reply='No')
     assert main(['telemetry', 'send']) == 1 and fake.calls == []
     security.initialize(ws / '.wuwei')
     canary = json.loads((ws / '.wuwei/security.json').read_text())['canary']
@@ -466,7 +472,7 @@ def test_send_is_attributed_only_and_confirmed_on_the_host(ws, host, capsys, mon
     monkeypatch.setattr(command.telemetry, 'issue', lambda found: (real(found)[0], real(found)[1] + canary))
     assert main(['telemetry', 'send']) == 1 and fake.calls == []
     monkeypatch.setattr(command.telemetry, 'issue', real)
-    answers.append(True)
+    owner.answer(ws, 'bin/wuwei telemetry send 2026-W39', token)
     assert main(['telemetry', 'send']) == 0
     (operation, (repo, title, body), _), = fake.calls
     assert (operation, repo) == ('issue', 'taoq-ai/wuwei')
@@ -566,14 +572,17 @@ def test_otlp_posts_on_every_sweep_and_resends_failed_metrics(ws, service):
 
 def test_week_stored_with_an_inbound_adapter_still_validates_previews_and_sends(ws, host, capsys):
     # A week recorded before #810 names adapters.inbound; it stays valid and shareable.
-    fake, answers = host
+    from hashlib import sha256
+    from fakes import owner
+    fake = host
     old = {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
            'adapters': {'tracker': 'none', 'code_host': 'github', 'inbound': 'slack'}}
     final_week(ws, config=old, **VERSIONS)
     telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))
     config(ws, '[telemetry]\nshare = "attributed"\n')
     assert main(['telemetry', 'preview']) == 0 and 'inbound' in capsys.readouterr().out
-    answers.append(True)
+    title, body = telemetry.issue(telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'))))
+    owner.answer(ws, 'bin/wuwei telemetry send 2026-W39', sha256(f'{title}\n{body}'.encode()).hexdigest()[:12])
     assert main(['telemetry', 'send']) == 0 and len(fake.calls) == 1
 
 
