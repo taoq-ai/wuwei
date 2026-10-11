@@ -2190,3 +2190,80 @@ def test_keyword_pattern_matches_the_per_word_search(text, words):
     misses = outward._keyword_pattern.cache_info().misses
     outward._topics(normalized, rules)
     assert outward._keyword_pattern.cache_info().misses == misses
+
+
+LOCAL_TOOLS = ['mcp__terminal__run_in_terminal', 'mcp__terminal__open_terminal_tab',
+               'mcp__terminal__stop_terminal_tab', 'mcp__Claude_Code_iOS_Simulator__control',
+               'mcp__Claude_Preview__preview_start', 'mcp__Claude_Browser__preview_start',
+               'mcp__computer-use__open_application']
+
+
+def local_call(root, tool, command='sleep 600'):
+    call = payload(root, tool=tool)
+    call['tool_input'] = {'command': command}
+    return call
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('tool', LOCAL_TOOLS)
+def test_local_tools_pass(configured, posture, tool):
+    # #727: a tool that acts only on the owner's machine is never drafted or blocked.
+    from wuwei import state
+    from wuwei.guards.outward import check_lint, check_tier, resolve
+    root = configured[0]
+    set_posture(root, posture)
+    call = local_call(root, tool)
+    assert check_tier(call) == check_lint(call) == (0, '')
+    assert not state.read_state(root).get('drafts')
+    assert not unknown_events(root)
+    assert resolve(tool, workspace.load_config(root)) == {'local'}
+
+
+def test_local_shapes_are_exact(configured):
+    from wuwei.guards.outward import check_tier, resolve
+    root, config = configured
+    code, reason = check_tier(local_call(root, 'mcp__plugin_x_terminal__run_job'))
+    assert code == 2 and 'bin/wuwei outbound learn' in reason
+    assert resolve('mcp__Claude_Browser__navigate', config) != {'local'}
+    assert check_tier(local_call(root, 'mcp__terminal__read_terminal')) == (0, '')
+    assert resolve('mcp__terminal__read_terminal', config) == set()
+
+
+def test_local_alias(configured):
+    from wuwei.guards.outward import check_lint, check_tier, resolve
+    from wuwei import state
+    root = configured[0]
+    set_posture(root, 'strict')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[outward.servers]\nacme = "local"\nterminal = "mail"\n')
+    call = payload(root, 'A technical claim.', tool='mcp__acme__send_message')
+    assert check_tier(call) == check_lint(call) == (0, '')
+    assert not state.read_state(root).get('drafts')
+    assert resolve('mcp__terminal__run_in_terminal', workspace.load_config(root)) == {'mail'}
+
+
+def test_local_keeps_canary_floor(configured):
+    from wuwei import security
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    canary = (security.load(root) or security.initialize(root / '.wuwei'))['canary']
+    call = local_call(root, 'mcp__terminal__open_terminal_tab', f'echo {canary}')
+    code, reason = check_tier(call)
+    assert code == 1 and reason.startswith('outward: security.')
+    assert check_lint(call) == (0, '')
+
+
+def test_terminal_hook_judges_the_command(configured, monkeypatch, capsys):
+    # #727: through the hook the terminal's command meets the Bash guards, as the same Bash call.
+    root = configured[0]
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, local_call(root, 'mcp__terminal__run_in_terminal')) == 0
+    day = (workspace.day_dir(root) / 'state.json').relative_to(root)
+    write = f"python3 -c 'open(\"{day}\", \"w\")'"
+    found = []
+    for tool in ('Bash', 'mcp__terminal__run_in_terminal'):
+        capsys.readouterr()
+        code = run_hook(monkeypatch, local_call(root, tool, write))
+        found.append((code, capsys.readouterr().err.splitlines()[:1]))
+    assert found[0][0] == 2 and found[0] == found[1]
+    assert run_hook(monkeypatch, local_call(root, 'mcp__terminal__run_in_terminal', 3)) == 2

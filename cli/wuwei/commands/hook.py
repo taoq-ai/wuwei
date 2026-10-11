@@ -34,6 +34,7 @@ def run(args):
         return refuse(args.event, reason, malformed=True)
     try:
         validate(payload, args.event)
+        payload = as_bash(payload)
     except BaseException as exc:
         return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}',
                       malformed=True)
@@ -373,6 +374,22 @@ def validate(payload, event):
             raise ValueError(f'missing or invalid {field}; {DAMAGED}')
     if payload['hook_event_name'] != event:
         raise ValueError(f'hook_event_name does not match command event; {PAYLOAD}')
+
+
+TERMINAL = 'mcp__terminal__run_in_terminal'  # #727: types one shell command line
+
+
+def as_bash(payload):
+    """#727: a terminal tab's command is judged as the Bash call it types, in the tab's cwd."""
+    if payload.get('tool_name') != TERMINAL or payload['hook_event_name'] != 'PreToolUse':
+        return payload
+    inputs = payload.get('tool_input')
+    if (not isinstance(inputs, dict) or not isinstance(inputs.get('command'), str)
+            or not isinstance(inputs.get('cwd', ''), str)):
+        raise ValueError(f'terminal command and cwd must be strings; {PAYLOAD}')
+    cwd = Path(payload['cwd']) / Path(inputs.get('cwd') or '.').expanduser()
+    return {**payload, 'tool_name': 'Bash', 'tool_input': {'command': inputs['command']},
+            'cwd': str(cwd)}
 
 
 def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=(), payload=None):
