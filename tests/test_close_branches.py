@@ -360,7 +360,7 @@ def test_close_check_table(case, change, expected):
     code, reason = module('closing').check(root)
     assert code == expected, reason
     if change == 'owed_thread':
-        assert REF in reason and 'threads_unanswered' in reason
+        assert REF in reason and 'thread:T17' in reason and 'triage review threads' in reason
 
 
 def test_close_command_retries(case, monkeypatch, capsys):

@@ -460,12 +460,10 @@ def git(path, *args):
     return subprocess.run(['git', '-C', str(path), *args], capture_output=True, text=True)
 
 
-@pytest.mark.parametrize('dry_run', [False, True])
-def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, capsys, dry_run):
-    # #847: init --upgrade unsets WUWEI's core.hooksPath (the shims and the chain) in every item
-    # worktree, keeps the owner's own value and the anchor, removes the managed hooks, the
-    # watch and shepherd files and the [watch], [sessions] and [worktree] settings.
-    import tomllib
+def hooked_trees(tmp_path, monkeypatch):
+    """A workspace with one configured repository and four linked worktrees: the managed shims,
+    the chain, the owner's own hooks under worktrees/, and an adopted worktree on the shims
+    outside worktrees/ (#847 F2)."""
     from wuwei.commands import init
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     for key in list(os.environ):
@@ -482,39 +480,53 @@ def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, 
     shims.mkdir()
     (shims / 'pre-push').write_text('#!/bin/sh\n')
     trees = {}
-    for name in ('shim', 'chain', 'own'):
-        tree = root / 'worktrees' / name
-        assert git(repo, 'worktree', 'add', '-q', '-b', name, str(tree)).returncode == 0
+    for name in ('worktrees/shim', 'worktrees/chain', 'worktrees/own', 'house/adopted'):
+        tree = root / name
+        assert git(repo, 'worktree', 'add', '-q', '-b', name.split('/')[1], str(tree)).returncode == 0
         git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
         (git_dir / 'wuwei-workspace').write_text(str(root) + '\n')
-        value = {'shim': shims, 'chain': git_dir / 'wuwei-hooks', 'own': root / 'own-hooks'}[name]
-        if name == 'chain':
+        value = {'worktrees/chain': git_dir / 'wuwei-hooks', 'worktrees/own': root / 'own-hooks'}.get(name, shims)
+        if name == 'worktrees/chain':
             value.mkdir()
             (value / 'pre-commit').write_text('#!/bin/sh\n')
         git(tree, 'config', '--worktree', 'core.hooksPath', str(value))
         trees[name] = (tree, git_dir, value)
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text() + '\n[watch]\nsweep_seconds = 900\n[sessions]\nstale_seconds = 600\n'
-                    '[worktree]\ngit_hooks = "chain"\n')
+                    '[worktree]\ngit_hooks = "chain"\n'
+                    '[[repos]]\nname = "acme/repo"\npath = "repo"\ndefault_branch = "main"\n')
     for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock', 'shepherd.stderr.log'):
         (root / '.wuwei' / name).write_text('')
+    return root, shims, trees, path
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, capsys, dry_run):
+    # #847: init --upgrade unsets WUWEI's core.hooksPath (the shims and the chain) in every
+    # linked worktree of a configured repository, keeps the owner's own value and the anchor,
+    # removes the managed hooks, the watch and shepherd files and the [watch], [sessions] and
+    # [worktree] settings.
+    import tomllib
+    from wuwei.commands import init
+    root, shims, trees, path = hooked_trees(tmp_path, monkeypatch)
     before = path.read_text()
     capsys.readouterr()
     init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=dry_run))
     out = capsys.readouterr().out.splitlines()
     prefix = 'Would upgrade' if dry_run else 'Upgraded'
-    for name in ('shim', 'chain'):
+    for name in ('worktrees/shim', 'worktrees/chain', 'house/adopted'):
         assert f'{prefix} worktree {name}: unset core.hooksPath' in out, out
-    assert not any('worktree own' in line for line in out)
+    assert not any('worktree worktrees/own' in line for line in out)
     hooks = {name: git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip()
              for name, (tree, _, _) in trees.items()}
     if dry_run:
         assert hooks == {name: str(value) for name, (_, _, value) in trees.items()}
-        assert shims.is_dir() and trees['chain'][2].is_dir() and path.read_text() == before
+        assert shims.is_dir() and trees['worktrees/chain'][2].is_dir() and path.read_text() == before
         assert (root / '.wuwei/watch.lock').exists()
         return
-    assert hooks == {'shim': '', 'chain': '', 'own': str(root / 'own-hooks')}
-    assert not shims.exists() and not trees['chain'][2].exists()
+    assert hooks == {'worktrees/shim': '', 'worktrees/chain': '', 'worktrees/own': str(root / 'own-hooks'),
+                     'house/adopted': ''}
+    assert not shims.exists() and not trees['worktrees/chain'][2].exists()
     assert all((git_dir / 'wuwei-workspace').read_text().strip() == str(root) for _, git_dir, _ in trees.values())
     config = tomllib.loads(path.read_text())
     assert not {'watch', 'sessions', 'worktree'} & set(config)
@@ -522,6 +534,31 @@ def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, 
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
     assert not [name for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock',
                                   'shepherd.stderr.log') if (root / '.wuwei' / name).exists()]
+
+
+def test_upgrade_keeps_the_shims_a_worktree_still_points_at(tmp_path, monkeypatch, capsys):
+    # #847 F2: a worktree whose hooks path could not be unset keeps .wuwei/git-hooks, named.
+    from wuwei import registry
+    from wuwei.commands import init
+    from wuwei.registry import Result
+    root, shims, trees, _ = hooked_trees(tmp_path, monkeypatch)
+    failing, real_load = str(trees['house/adopted'][0]), registry.load
+
+    def load(kind, config):
+        module = real_load(kind, config)
+        if kind == 'vcs':
+            real = module.unhook
+            module.unhook = lambda repo, write, root=None: (
+                Result(2, None, 'git.unhook: could not run: locked') if repo == failing
+                else real(repo, write, root=root))
+        return module
+    monkeypatch.setattr(registry, 'load', load)
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=False))
+    out = capsys.readouterr().out
+    assert shims.is_dir()
+    assert 'left .wuwei/git-hooks: worktree house/adopted may still point at it' in out, out
+    assert git(trees['worktrees/shim'][0], 'config', '--worktree', '--get', 'core.hooksPath').stdout == ''
 
 
 def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):

@@ -357,11 +357,6 @@ def _git_edge(args, cwd, root, config):
         return 1, ('force-push is refused; commit the change on top and run '
                    f'git push origin HEAD:refs/heads/{_branch(cwd, root)[1]}')
     defaults = {repo['default_branch'] for repo in config['repos']}
-    # Review F3: skipping the native pre-push hook skips its default-branch refusal.
-    configs = [value for option, value in zip(args, args[1:]) if option == '-c']
-    configs += [word[2:] for word in args[:len(args) - len(rest)] if word.startswith('-c') and len(word) > 2]
-    if '--no-verify' in rest or any(value.lower().startswith('core.hookspath') for value in configs):
-        return _default(' or '.join(sorted(defaults)) or '<default>', cwd, root)
     # ponytail: a bare git push or HEAD follows the checked-out branch, unread here; the
     # protected base branch holds it (design 9.1).
     name = next((name for name in _pushed(rest) if name in defaults), None)

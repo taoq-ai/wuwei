@@ -202,26 +202,52 @@ def _finish(root):
     return 0
 
 
-def _unhook(root, dry_run):
-    """#847: unset the core.hooksPath WUWEI set in every item worktree (an owner's own value
-    stays), rewrite its anchor and remove the managed hooks; the repository's hooks run natively.
-    True when it changed (or, dry, would change) something."""
+def _linked_worktrees(root, vcs, config):
+    """Every linked worktree of each configured repository, and any under worktrees/."""
+    from wuwei import brief
+    trees = {tree.resolve() for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file()}
+    for repo in config['repos']:
+        path = (root / Path(repo['path']).expanduser()).resolve()
+        try:
+            rows = brief.read(vcs.worktrees, str(path), root=root)
+            if not isinstance(rows, list) or not all(isinstance(row, dict) and isinstance(row.get('path'), str)
+                                                     for row in rows):
+                raise ValueError(f'invalid worktree list; {DAMAGED}')
+        except ValueError as exc:
+            print(f"wuwei init warning: {repo['name']}: worktrees unread: {exc}", file=sys.stderr)
+            continue
+        trees |= {Path(row['path']).resolve() for row in rows if (Path(row['path']) / '.git').is_file()}
+    return sorted(trees)
+
+
+def _unhook(root, dry_run, config):
+    """#847: unset the core.hooksPath WUWEI set in every linked worktree of each configured
+    repository (an owner's own value stays), rewrite its anchor and remove the managed hooks
+    once no worktree may still point at them; the repository's hooks run natively. True when
+    it changed (or, dry, would change) something."""
     from wuwei import registry
-    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
-    vcs = registry.load('vcs', workspace.load_config(root)) if trees else None
-    changed = False
-    for tree in trees:
+    vcs = registry.load('vcs', config)
+    root = root.resolve()
+    changed, stuck = False, []
+    for tree in _linked_worktrees(root, vcs, config):
+        name = tree.relative_to(root).as_posix() if tree.is_relative_to(root) else str(tree)
         try:
             found = registry.data(vcs.unhook(str(tree), not dry_run, root=root))
             if found['unset']:
                 changed = True
-                print(f"{'Would upgrade' if dry_run else 'Upgraded'} worktree {tree.name}: unset core.hooksPath")
-            if not dry_run:
-                workspace.atomic_write(Path(found['git_dir']) / 'wuwei-workspace', str(root.resolve()) + '\n')
+                print(f"{'Would upgrade' if dry_run else 'Upgraded'} worktree {name}: unset core.hooksPath")
+            anchor = Path(found['git_dir']) / 'wuwei-workspace'
+            if not dry_run and (anchor.is_file() or tree.parent == root / 'worktrees'):
+                workspace.atomic_write(anchor, str(root) + '\n')
         except ValueError as exc:
-            print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
+            stuck.append(name)
+            print(f'wuwei init warning: {name}: {exc}', file=sys.stderr)
     shims = root / '.wuwei/git-hooks'
     if shims.is_dir() and not shims.is_symlink():
+        if stuck:
+            for name in stuck:
+                print(f'left .wuwei/git-hooks: worktree {name} may still point at it')
+            return changed
         changed = True
         if dry_run:
             print('Would upgrade .wuwei/git-hooks: remove (no longer installed)')
@@ -545,7 +571,8 @@ def upgrade(args):
             else:
                 _remove_unit(workspace.watch_unit(destination.parent, name=name)[1], name)
                 print(f'Removed the {name} service (no longer shipped)')
-        unhooked = _unhook(destination.parent, args.dry_run)
+        unhooked = _unhook(destination.parent, args.dry_run,
+                           workspace.load_config(destination.parent, raw=migrated))
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,

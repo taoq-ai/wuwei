@@ -104,6 +104,14 @@ def journals(root):
     return entries, breakers
 
 
+def supervised(root):
+    """#847: the merge journal's refs poll still supervises: not failed, and unmerged or merged
+    under 28 days ago."""
+    now = workspace.now()
+    return [ref for _, ref, entry in journals(root)[0] if entry['status'] != 'failed'
+            and (not entry.get('merged_at') or now - obligations._time(entry['merged_at']) < timedelta(days=28))]
+
+
 def checked_pr(host, ref, root):
     pr = read(host.pr, ref, root=root)
     if f'{pr["repo"]}#{pr["number"]}' != ref:

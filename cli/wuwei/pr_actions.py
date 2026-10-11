@@ -64,7 +64,9 @@ def check(root, *, closing=False, rows=None):
             findings.append(f'{row["pr"]} {row["state"]}: overdue action: {row["action"]}')
         if closing:
             code = max(code, 1)
-            findings.append(f'{row["pr"]} {row["state"]}: must be merged, parked or carried to tomorrow')
+            owed = f' ({", ".join(row["owed"])})' if row.get('owed') else ''
+            todo = f'{row["action"]}{owed}; ' if row.get('action') else ''
+            findings.append(f'{row["pr"]} {row["state"]}: {todo}must be merged, parked or carried to tomorrow')
     return code, '\n'.join(findings)
 
 
@@ -136,7 +138,8 @@ def _base_red(host, ref, measured, root):
 def observe(root, host, ref, config, measured):
     """Produce an episode under the shared writer lock from a fresh port read."""
     data = state.read_state(root)
-    current = classify(measured, obligations._owner_login(config), obligations._ledger(data).get(ref, {}))
+    me, acks = obligations._owner_login(config), obligations._ledger(data).get(ref, {})
+    current = classify(measured, me, acks)
     reason = _base_red(host, ref, measured, root) if current == 'ci_red' else None
     current = 'base_red' if reason else current
     dispositions = data.get('pr_dispositions', {})
@@ -148,6 +151,8 @@ def observe(root, host, ref, config, measured):
            'draft': measured['pr']['draft'] is True}
     if reason:
         row['reason'] = reason
+    if current in ('changes_requested', 'threads_unanswered'):  # #847: close names what is owed
+        row['owed'] = obligations._replies(measured['reviews'], measured['threads'], me, acks)
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent', 'state': current}
     merged = []

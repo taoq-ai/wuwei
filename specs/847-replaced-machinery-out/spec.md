@@ -29,8 +29,8 @@ is now dead weight or a second source of truth:
 - commands that only fed the above or let a model hand-edit records: `event`, `state`,
   `git-hook`, `fast-checks`, `runtime`, `watch`, `heartbeat`, `shepherd`, `sessions`, and the
   `obligations` and `watch` subcommands of `sweep`;
-- in `state.py`: the `state.json` cache write, the snapshot, `recover`, the generic state
-  writer with its producer table, and the phase transition check;
+- in `state.py`: the snapshot, `recover`, the generic state writer with its producer table,
+  and the phase transition check (the `state.json` cache stays, lead call B9(a));
 - guards: the Stop guard, the PreCompact and Stop hook branches, the state-file hint of the
   records guard.
 
@@ -83,7 +83,8 @@ deleted.
 **Acceptance Scenarios**:
 
 1. **Given** any state write, **When** it completes, **Then** `events.jsonl` holds the patch and
-   no `state.json` or `state.snapshot.json` is written.
+   no `state.snapshot.json` is written; `state.json` stays the cache of the log (fingerprint,
+   log identity and size), so no hook folds the whole day log (lead call B9(a)).
 2. **Given** a day log whose last line is torn, **When** any command reads state, **Then** the
    torn line is skipped and the records before it are read (batch 8 F4).
 3. **Given** a day from before #844 (a `state.json` and no patch in its log), **When** a reader
@@ -153,9 +154,9 @@ deleted.
   `stale_seconds`, `COUNTED` and `count` go, with every claim write and read.
 - **FR-005**: `obligations.evaluate` and `obligations.sweep` MUST go; `closing.check` MUST NOT
   call them. The PR-thread helpers the merge policy and `pr act --reply` read stay.
-- **FR-006**: `state.py` MUST write no `state.json` and no snapshot; MUST fold the log alone,
-  skipping an unparsable last line; MUST read a pre-#844 day's `state.json` read-only when its
-  log holds no patch; MUST drop `SNAPSHOT`, `_load`, `recover`, `write_state`, `set_state`,
+- **FR-006**: `state.py` MUST write no snapshot and MUST keep the `state.json` cache of the log
+  with batch 8's fingerprint, log identity and size checks (F4 to F8, lead call B9(a)); MUST
+  read a pre-#844 day's `state.json` when its log holds no patch; MUST drop `SNAPSHOT`, `_load`, `recover`, `write_state`, `set_state`,
   `get_state`, `_parts`, `_generic_allowed`, `_protected`, `_producer_error`,
   `STATE_PRODUCERS`, `OWNER_FIELDS`, the `reserved` branch of `_write_state` and
   `_check_transition`. `transition` stays as a phase write without the check.
@@ -201,11 +202,10 @@ deleted.
 
 Open questions answered with the recommendation (strict, non-interactive):
 
-1. The `state.json` cache goes, as the issue says. A read folds the day log; a day writes a
-   few hundred patches, so a fold is a few milliseconds. `# ponytail:` comment in `_fold`: the
-   ceiling is a very long day log on the hook path; the upgrade is a size-keyed cache. This
-   also retires the batch 8 fix round's cache identity and digest (F6 to F8): the builder
-   deletes them with the cache and keeps F4 (skip a torn line).
+1. Superseded by lead call B9(a) (2026-10-12): the `state.json` cache stays, with batch 8's
+   fingerprint, log identity and size (F4 to F8), so a hook reads the cache and folds only the
+   log tail past its size, never the whole day log. Only the snapshot, `recover` and the
+   `state.json` existence checks go.
 2. `closing.py` stays as `close`'s library (open items, duties, pushed branches, scanner hold,
    retro landing); only its call to `obligations.evaluate` goes. Moving its 250 lines into
    `commands/close.py` would be churn, not deletion.

@@ -417,6 +417,23 @@ def orientation(row, enforce, spec=None, session=None):
     ])
 
 
+def _supervise(root, config, refreshed):
+    """#847: merge.poll (red base revert, 5.6 outcomes) with each listing refresh, and while the
+    merge journal holds a merge in its window, at most once per pr.poll_seconds."""
+    from contextlib import redirect_stdout
+    from datetime import datetime
+    from wuwei import merge, watch
+    if not refreshed:
+        polled = watch.saved(root).get('merge_polled_at')
+        if polled and (workspace.now() - datetime.fromisoformat(polled)).total_seconds() < config['pr']['poll_seconds']:
+            return
+        if not merge.supervised(root):
+            return
+    with redirect_stdout(sys.stderr):  # supervision lines never reach next's row
+        merge.poll(root)
+    watch.save(root, {'merge_polled_at': workspace.now().isoformat()})
+
+
 def run(args):
     code = CLEAN
     try:
@@ -428,15 +445,13 @@ def run(args):
         if root is not None and state.day_started(workspace.day_dir(root)):
             from wuwei import derive
             config = workspace.load_config(root)
-            if derive.stale(root, config, state.read_state(root)):
+            refreshed = derive.stale(root, config, state.read_state(root))
+            if refreshed:
                 failed = derive.refresh(root, config)  # a failed refresh keeps the old listing
                 if failed:
                     print(f'wuwei next: PR listing not refreshed ({failed}); the last listing stays; run '
                           'bin/wuwei doctor, which tests the code host adapter', file=sys.stderr)
-                from contextlib import redirect_stdout
-                from wuwei import merge
-                with redirect_stdout(sys.stderr):  # #847: supervision lines never reach next's row
-                    merge.poll(root)
+            _supervise(root, config, refreshed)
         row = step(root, map(tuple, ran))
         if root is not None:
             from wuwei import dispatch

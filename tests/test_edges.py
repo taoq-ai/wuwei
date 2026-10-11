@@ -182,12 +182,20 @@ def test_loop_default_branch_push_refused(root):
     assert code == 1 and reason.startswith('push to the default branch main'), reason
 
 
-# Review F3: skipping the native pre-push hook skips its default-branch refusal.
+# #847 F4: WUWEI installs no Git hook, so skipping hooks skips nothing of WUWEI's; a push to
+# the default branch stays refused in every form.
 @pytest.mark.parametrize('command', [
-    'git push --no-verify origin x', 'git -c core.hooksPath=/dev/null push origin x',
-    'git -c core.hookspath=x push origin x', 'git -ccore.hooksPath=x push origin x',
+    'git push --no-verify origin HEAD:refs/heads/a', 'git -c core.hooksPath=/dev/null push origin a',
+    'git -ccore.hooksPath=x push origin HEAD:refs/heads/a',
 ])
-def test_hook_skipping_push_refused(root, command):
+def test_hook_skipping_item_push_passes(root, command):
+    assert check(root, command) == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'git push --no-verify origin HEAD:main', 'git -c core.hooksPath=/dev/null push origin main',
+])
+def test_hook_skipping_default_branch_push_refused(root, command):
     code, reason = check(root, command)
     assert code == 1 and reason.startswith('push to the default branch'), reason
 

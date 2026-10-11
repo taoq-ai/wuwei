@@ -618,6 +618,31 @@ def test_next_and_report_run_merge_poll(case, monkeypatch, capsys):
     assert calls == [root, root]
 
 
+def test_next_polls_an_open_merge_journal_without_a_listing_refresh(case, monkeypatch, capsys):
+    # #847 F6: a merge in its 28-day window is supervised even when no item today has a PR;
+    # next throttles it to pr.poll_seconds.
+    from argparse import Namespace
+    from datetime import datetime, timedelta
+    from wuwei import derive
+    from wuwei.commands import next as next_command
+    root, _ = merged(case)
+    assert policy().poll(root) == 0  # records the merge time the window counts from
+    calls = []
+    monkeypatch.setattr(policy(), 'poll', lambda r: calls.append(r) or 0)
+    monkeypatch.setattr(derive, 'stale', lambda *a: False)
+    next_command.run(Namespace(json=True))
+    assert calls == [root]
+    next_command.run(Namespace(json=True))
+    assert calls == [root]
+    monkeypatch.setenv('WUWEI_NOW', (datetime.fromisoformat(os.environ['WUWEI_NOW'].replace('Z', '+00:00'))
+                                     + timedelta(seconds=121)).isoformat())
+    next_command.run(Namespace(json=True))
+    assert calls == [root, root]
+    assert policy().supervised(root) == ['example/project#7']
+    monkeypatch.setenv('WUWEI_NOW', '2026-11-30T12:00:00+00:00')  # past the 28-day window
+    assert policy().supervised(root) == []
+
+
 def test_daily_cap_counts_pending_intents(case):
     root, host = case
     config_change(root, 'auto = true', 'auto = true\nmax_per_day = 1')

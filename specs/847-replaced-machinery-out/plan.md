@@ -9,7 +9,8 @@ parallel; locate code by function name where it moves (see "Batch 8 fix round").
 
 Delete the background watch, the heartbeat, the headless shepherd, the session registry, the
 obligations sweep and close gate, nine commands, the Stop guard, the PreCompact and Stop hooks,
-the managed Git hooks and `state.py`'s cache, snapshot, recover, generic writer and phase check.
+the managed Git hooks and `state.py`'s snapshot, recover, generic writer and phase check (the
+`state.json` cache stays, lead call B9(a)).
 Move the four jobs the watch carried that stay (merge supervision and 5.6 outcomes, the trace
 sweep, the telemetry week, the tracker log) to the commands that already run each day.
 
@@ -52,7 +53,7 @@ runs the suite.
 | `obligations.evaluate` as close gate, `obligations.sweep` | (a) | `ping` and `shepherd` duties in `next` and `close` |
 | PR-thread helpers (`_ledger`, `_replies`, `_visibility`, `reply`) | (b) a merge with an unanswered thread is refused | kept in `obligations.py` |
 | `wuwei event`, `wuwei state get/set/transition/recover`, `STATE_PRODUCERS` | (a) the model hand-edits or repairs records | records are written by the workflow's commands only |
-| `state.json` cache, `SNAPSHOT`, `recover` | (a) a second copy of the records | the log; a torn tail is skipped (F4) |
+| `SNAPSHOT`, `recover` | (a) a second copy of the records | the log, with `state.json` kept as its fingerprinted cache (lead call B9(a)); a torn tail is skipped (F4) |
 | `_check_transition` | (b) stopped a writer jumping phases | the derived `next` never offers an out-of-order step; `pr raise --item` and `merge.check` refuse (#844 table) |
 | Records guard on `days/*/state.json`, `events.jsonl`, `traces.jsonl`, plan files, goals | (b) records floor | kept; only `state.snapshot.json` and the hint naming deleted commands go |
 | Stop guard (`guards/stop.py`) | (a) held the planner's turn on close and PR actions | `close` refuses until duties land; `next` names the step |
@@ -69,9 +70,8 @@ No (b) check is lost.
 
 - F4 (skip a torn line in the fold): kept and becomes the only damaged-log recovery; the hint
   names `bin/wuwei doctor`.
-- F6, F7, F8 (legacy-branch rule, digest, log identity on `state.json`): exist only for the
-  cache. Delete them with the cache; keep F6's rule as the legacy read ("a day whose log holds
-  no patch line reads its `state.json`").
+- F6, F7, F8 (legacy-branch rule, digest, log identity on `state.json`): kept with the cache
+  (lead call B9(a)).
 - F1, F2, F3, F5, F9, G1 to G9: untouched here; if the fix round adds tests to
   `tests/test_loop.py`, keep them.
 - If the fix round has not landed when this part is built, build on 71d3f06b and rebase onto
@@ -118,11 +118,9 @@ Tests (whole files; move the named survivors first):
 
 - `cli/wuwei/state.py`:
   - `_write_state` (295-335): drop the `reserved` parameter and branch (312-319; all 51
-    callers pass `reserved=False`: drop the argument at each), the `state.json` and `SNAPSHOT`
-    writes (330-334), the `legacy` second fold. The event with its patch is the write.
-  - `_fold` (162-200): read the log alone; skip an unparsable last line (F4); when the log holds
-    no patch and `state.json` exists, return that file (legacy, read-only). Drop `cache` and
-    the `log_size` handling. `# ponytail:` note (Assumption 1).
+    callers pass `reserved=False`: drop the argument at each) and the `SNAPSHOT` write; the
+    `state.json` cache write stays (lead call B9(a)).
+  - `_fold` (162-200): unchanged; the cache with its fingerprint, log identity and size stays.
   - `day_started` (203-210): a patch in the log, or a legacy `state.json`.
   - `read_state` (213-222): the error names `bin/wuwei doctor`, not `state recover`.
   - Delete `SNAPSHOT` (111), `_load` (114-120), `OWNER_FIELDS` and `STATE_PRODUCERS`
@@ -263,9 +261,8 @@ Tests (whole files; move the named survivors first):
   `test_transition_cli_rejects_implement_to_done`, `test_retry_transition_*`,
   `test_delete_recreate_cannot_bypass_lifecycle`, `test_dedicated_event_kinds_reserved`,
   `test_invalid_event_input`); add the red tests of T002.
-- `tests/test_loop.py`: delete `test_deleting_state_json_between_two_calls_changes_no_answer`,
-  `test_deleting_state_json_between_any_two_next_calls_changes_no_answer` and the pair
-  materialisation in `results`; `materialise` writes no `state.json`.
+- `tests/test_loop.py`: unchanged; the state.json deletion tests stay with the cache (lead
+  call B9(a)).
 - `tests/test_hooks.py`: delete PreCompact, Stop-hook, heartbeat and `watch` cases
   (`test_heartbeat_refusals_are_not_recorded`, `test_no_hook_path_imports_heartbeat`,
   `test_heartbeat_latency`, `test_enforce_off_does_not_log_the_heartbeat`,
