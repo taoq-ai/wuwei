@@ -954,28 +954,14 @@ FIXES = {
 }
 
 
-def widgets(root, batch):
-    """The batch as multi-select widgets of at most four fixes; one fix gets a Skip option."""
-    from wuwei import decision
-    options = [(name, f'{FIXES[name][0]}: {(text.strip().splitlines() or [""])[0]}')
-               for name, text, _ in batch]
-    count = -(-len(options) // 4)
-    return [decision.widget(decision.gate(root) + 'Apply these doctor fixes'
-                            + (f' ({i + 1} of {count})' if count > 1 else '') + '?', 'Fixes',
-                            options[i::count] + [('Skip', 'Apply nothing now; doctor lists it again.')]
-                            * (len(options[i::count]) == 1),
-                            'wuwei doctor --fix --apply <labels>', multi=True)
-            for i in range(count)]
-
-
 def fix(rows, confirm=None, only=None, widget=False):
     """Preview the allow-listed fixes, ask for one digest, apply each bound to its preview, re-diagnose.
-    only narrows the batch to those fix ids; widget prints the batch as widgets and applies nothing."""
+    only narrows the batch to those fix ids; widget prints the batch's Owner step card and applies nothing."""
     import hashlib
     from wuwei import state
     wanted = {row['apply'] for row in rows if row.get('apply') in FIXES}
     if only is not None:
-        only = set(only) - {'Skip'}  # the widget's Skip option picked alongside fixes
+        only = set(only)
         unknown = sorted(only - set(FIXES))
         if unknown:
             print(f'wuwei doctor: unknown fix {", ".join(unknown)}; use one of: {", ".join(FIXES)}',
@@ -995,24 +981,20 @@ def fix(rows, confirm=None, only=None, widget=False):
             continue
         batch.append((name, text, token))
     notes = 'Not applied:\n' + ''.join(f'  {line}\n' for line in held) if held else ''
-    if widget:
-        plan = workspace.day_dir(root) / 'plan.md' if root else None
-        if batch and not (plan and plan.is_file() and plan.resolve() == plan):
-            print('wuwei doctor: no plan today for the question to cite; '
-                  'run wuwei doctor --fix, which asks on its Owner step card', file=sys.stderr)
-            return 1
-        print(notes, end='', file=sys.stderr)
-        print(json.dumps(widgets(root, batch), indent=2))
-        return outcome(rows)
     if not batch:
-        print(notes + 'Nothing to apply')
+        print(notes + 'Nothing to apply', file=sys.stderr if widget else sys.stdout)
+        if widget:
+            print('[]')
         return outcome(rows)
+    from wuwei import sessions
     text = ''.join(f'[{name}] {FIXES[name][0]}\n{preview.rstrip()}\n' for name, preview, _ in batch) + notes
-    print(text, end='')
     digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    command = 'bin/wuwei doctor --fix' + (f" --apply {','.join(sorted(only))}" if only is not None else '')
+    if widget:  # #831: one card per batch, the Owner step card the fix itself asks
+        print(json.dumps([sessions.owner_card(command, text, digest)], indent=2))
+        return outcome(rows)
+    print(text, end='')
     if confirm is None:  # #831: the owner's answer on the Owner step card
-        from wuwei import sessions
-        command = 'bin/wuwei doctor --fix' + (f" --apply {','.join(sorted(only))}" if only is not None else '')
         if owner := sessions.needs_owner(root, command, text, digest):
             print(owner, file=sys.stderr)
             return 1
@@ -1063,7 +1045,7 @@ def register(subparsers):
     mode.add_argument('--fix', action='store_true', help='apply the allow-listed fixes after one host confirmation')
     mode.add_argument('--json', action='store_true', help='print {"exit", "rows"} as JSON')
     parser.add_argument('--widget', action='store_true',
-                        help='with --fix: print the batch as AskUserQuestion widgets; apply nothing')
+                        help='with --fix: print the batch as its Owner step card for AskUserQuestion; apply nothing')
     parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
     parser.add_argument('--section', choices=['pr-flow'], help='print one section only')
     parser.set_defaults(func=run)

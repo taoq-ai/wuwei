@@ -369,10 +369,10 @@ def test_seat_stop_refusals(seat, monkeypatch, capsys):
     # #831: under strict the owner's Yes on the Owner step card stops the seat; no terminal.
     code, out = seat_stop(capsys, 'builder', '--unmeasured', 'x')
     assert code == 1 and 'Owner step: bin/wuwei seat stop builder' in out.err and 'host terminal' not in out.err
-    owner.answer(root, 'bin/wuwei seat stop builder', reply='No')
+    owner.answer(root, 'bin/wuwei seat stop builder', reply='No', detail='Stop seat builder.')
     assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 1
     assert (state.workspace.day_dir(root) / 'state.json').read_text() == before
-    owner.answer(root, 'bin/wuwei seat stop builder')
+    owner.answer(root, 'bin/wuwei seat stop builder', detail='Stop seat builder.')
     assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 0
 
 

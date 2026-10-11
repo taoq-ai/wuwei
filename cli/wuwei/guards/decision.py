@@ -159,19 +159,32 @@ def record_gate(payload):
     them through sessions.gate_topics."""
     from wuwei.decision import DECISION_ID, today_path
     try:
-        context = scope(Path(required_text(payload, 'cwd')).resolve())
-        if context is None or 'agent_id' in payload:
+        cwd = Path(required_text(payload, 'cwd')).resolve()
+        if 'agent_id' in payload:
+            return 0, ''
+        try:
+            context = scope(cwd)
+        except workspace.ConfigError:  # #831: an Owner step answer repairs a config that does not load
+            context = (workspace.find_workspace(cwd, use_environment=False), None)
+        if context is None:
             return 0, ''
         root, _ = context
         from wuwei import state
-        from wuwei.sessions import OWNER_STEP, card_topic
+        from wuwei.sessions import OWNER_STEP, card_topic, owner_topic
         session = payload.get('session_id')
         questions = payload['tool_input']['questions']
-        # #831: the owner's reply to an Owner step card, from any main session, before state.
+        # #831: the owner's reply to an Owner step card, from any main session, before state:
+        # the asked topic and the answer bound to the options as asked.
         owner = [question for question in questions if question.get('header') == OWNER_STEP
                  and required_text(question, 'question').startswith(f'{OWNER_STEP}: ')]
-        found = {card_topic(OWNER_STEP, f"{question['question']}\n{reply}") for question in owner
-                 if (reply := _answer(payload, question['question']))}
+        found = set()
+        for question in owner:
+            if reply := _answer(payload, question['question']):
+                found.add(owner_topic(question['question'], (), ''))
+                try:
+                    found.add(owner_topic(question['question'], question['options'], reply))
+                except (KeyError, TypeError):
+                    pass  # options not as printed: only the asked topic, which counts as no
         if found:
             state.append_event('gate.asked', {'session_id': session, 'topics': sorted(found)}, root)
         if len(owner) == len(questions):
@@ -241,7 +254,8 @@ def check_question(payload):
             if not isinstance(question, dict):
                 raise ValueError(f'invalid question; {DAMAGED}')
             text = required_text(question, 'question')
-            if gate_question(question, root) or question.get('header') == OWNER_STEP:
+            if gate_question(question, root) or (question.get('header') == OWNER_STEP
+                                                 and text.startswith(f'{OWNER_STEP}: ')):
                 continue
             ids = re.findall(r'(?<![\w-])[DC]-[1-9][0-9]*(?![\w-])', text)
             cited = [] if ids else re.findall(DRAFT_ID, text)

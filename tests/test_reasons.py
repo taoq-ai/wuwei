@@ -336,6 +336,7 @@ LEFT = (
     ('commands/next.py', 'calibration still need you in a host terminal', 12),
     ('commands/next.py', 'show that line to the owner for a host terminal', 13),
     ('commands/memory.py', 'forgetting proposal (host terminal)', 13),
+    ('consolidation.py', '_host_confirm', 13),
     ('decision.py', 'at the host terminal', 14),
     ('decision.py', 'decide {identifier} {option} in a host terminal', 14),
     ('commands/decision.py', 'Record an owner choice from the host terminal', 14),
@@ -376,5 +377,9 @@ def test_no_text_sends_the_owner_to_a_terminal():
     found = [f'{rel}: {text[:120]!r}' for rel, text in texts
              if not any(rel == file and part in text for file, part, _ in LEFT)]
     assert not found, 'name the command, which asks its own Owner step card:\n' + '\n'.join(found)
+    # The terminal prompt itself: only modules a later part deletes still call it.
+    prompts = {rel for rel, source in _sources() if '_host_confirm' in source and rel != 'integrity.py'}
+    assert prompts <= {file for file, _, _ in LEFT}, f'use sessions.needs_owner in {prompts - {r[0] for r in LEFT}}'
+    texts += [(rel, '_host_confirm') for rel in prompts]
     stale = [row for row in LEFT if not any(rel == row[0] and row[1] in text for rel, text in texts)]
     assert not stale, f'delete the LEFT rows whose text is gone: {stale}'

@@ -578,10 +578,10 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     return {'action': 'build next', 'item': item}
 
 
-def _owner_confirm(root, argv, detail):
+def _owner_confirm(root, argv, detail, token=''):
     """#800, #831: only the owner's Yes on this step's Owner step card lets it run."""
     import shlex
-    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'set', *argv]), detail):
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'set', *argv]), detail, token):
         raise state.StateError(reason)
 
 
@@ -617,7 +617,10 @@ def set_owner_merge(item, value, root=None):
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
     if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
-        _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}')
+        from wuwei.watch import records  # #831: the answer is bound to this hold, the item's nth plan.set today
+        held = sum(row['kind'] == 'plan.set' and row['payload'].get('item') == item
+                   for row in records(workspace.day_dir(root) / 'events.jsonl'))
+        _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}', f'hold {held}')
     linked = []
 
     def update(data):

@@ -189,12 +189,14 @@ def newer_template(root, payload, config):
 
 def config_failure(event, payload, reason):
     """A config.toml that does not load (#326): Stop prints it and lets the turn end;
-    PreToolUse lets ToolSearch and reads of the config and charters through so the session
-    can show the line, and refuses everything else with the error."""
+    PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
+    Owner step card through so the session can show and repair the line, and refuses
+    everything else with the error."""
     if event == 'Stop':
         print(reason, file=sys.stderr)
         return CLEAN
-    if repair_read(payload):
+    from wuwei.sessions import owner_step_call
+    if repair_read(payload) or owner_step_call(payload, ('config', 'set')):  # #831: repaired in the session
         return CLEAN
     return refuse(event, reason, cwd=payload.get('cwd'),
                   record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)

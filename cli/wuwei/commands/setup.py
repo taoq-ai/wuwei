@@ -50,7 +50,10 @@ def _edit(label, what, confirm, change, root=None, keys=(), add=False, command=N
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
     try:
-        before = load_config(root, raw=raw)
+        try:
+            before = load_config(root, raw=raw)
+        except ValueError:
+            before = None  # #831: a config that does not load is repaired here; the new text must load
         text = change(root, raw)
         if text == raw:
             print('No config.toml changes')
@@ -237,8 +240,8 @@ def set_value(args, confirm=None):
                 raise ValueError(f"{args.key}: {args.value!r} is not TOML; pass {kind}, for example '{example}'") from None
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
-        return _settle(raw, merged(load_config(root, raw=raw), parts, parsed['value'],
-                                   getattr(args, 'add', False)))
+        add = getattr(args, 'add', False)  # only --add reads the current values
+        return _settle(raw, merged(load_config(root, raw=raw) if add else None, parts, parsed['value'], add))
 
     card = getattr(args, 'from_card', None)
     given = [part for part in (args.key, args.value) if part is not None]
@@ -290,7 +293,9 @@ def add_repo(args, confirm=None):
             repo['identity'] = {'name': found[1], 'email': found[2]}
         return repo_tables(raw, [repo])
 
-    return _edit('config add-repo', 'repository', confirm, change)
+    command = shlex.join(['bin/wuwei', 'config', 'add-repo', '--name', args.name, '--path', args.path,
+                          '--branch', args.branch, *(['--identity', args.identity] if args.identity is not None else [])])
+    return _edit('config add-repo', 'repository', confirm, change, command=command)
 
 
 def _yes(question, default):
@@ -528,8 +533,12 @@ def _setup(args, confirm):
     if text == raw and snapshot_path.exists():
         print('Nothing to propose')
     else:
+        posture, repos = getattr(args, 'posture', None), getattr(args, 'repos', None)
+        command = shlex.join(['bin/wuwei', 'setup', *(['--shadow'] if getattr(args, 'shadow', False) else []),
+                              *(['--posture', posture] if posture else []),
+                              *(['--repos', *repos] if repos else [])])  # #831: the card's record
         if config.offer(root, raw, text, summary, label='setup', what='setup', confirm=confirm,
-                        snapshot=snapshot):
+                        snapshot=snapshot, command=command):
             return FINDINGS
         calibrate_command.record(root, results, diff, edits, None)
     optional = []

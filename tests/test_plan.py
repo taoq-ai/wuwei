@@ -508,10 +508,10 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
         assert 'Owner step: bin/wuwei plan set A spec=skipped --reason x' in err and 'host terminal' not in err
         assert 'spec' not in state.read_state(root)['items']['A']
     monkeypatch.delenv('WUWEI_SESSION_ID')
-    owner.answer(root, 'bin/wuwei plan set A spec=skipped --reason x', reply='No')
+    owner.answer(root, 'bin/wuwei plan set A spec=skipped --reason x', reply='No', detail='Skip the spec for A: x')
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'x']) == 1
     assert 'spec' not in state.read_state(root)['items']['A']
-    owner.answer(root, "bin/wuwei plan set A spec=skipped --reason 'typo fix'")
+    owner.answer(root, "bin/wuwei plan set A spec=skipped --reason 'typo fix'", detail='Skip the spec for A: typo fix')
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'typo\nfix']) == 0
     assert 'A: spec skipped' in capsys.readouterr().out
     assert state.read_state(root)['items']['A']['spec'] == {'value': 'skipped', 'reason': 'typo fix'}
@@ -555,12 +555,19 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     assert state.read_state(root)['items']['A']['owner_merge']['by'] == 'builder'
     monkeypatch.delenv('WUWEI_SESSION_ID')
     monkeypatch.delenv('WUWEI_SEAT_ROLE')
-    owner.answer(root, 'bin/wuwei plan set A owner_merge=false')
+    capsys.readouterr()
+    assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
+    card = capsys.readouterr().err
+    owner.answer_card(root, card)
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 0
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': False, 'by': 'owner', 'at': at}
+    # #831 F4: the answer is bound to the hold it released; a new hold needs a new answer.
+    assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
+    assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
+    assert state.read_state(root)['items']['A']['owner_merge']['value'] is True
     assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set'] == [
         {'item': 'A', 'owner_merge': value, 'by': by, 'prs_seen': False}
-        for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'))]
+        for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'), (True, 'owner'))]
     with pytest.raises(state.StateError, match='reserved; written by wuwei plan set'):
         state.set_state('items.A.owner_merge', '{"value": false}', root)
 

@@ -278,11 +278,10 @@ Decisions stay printed under `Not applied`: `mcp decide`, `security.posture`, `s
 repository identity and anything that touches the code host. `--fix` and `--json` together
 are a usage error.
 
-`bin/wuwei doctor --fix --widget` previews the same batch and prints it as a JSON list of
-multi-select AskUserQuestion widgets of at most four fixes each (one fix gets a `Skip` option),
-each with `record` set to `wuwei doctor --fix --apply <labels>`. It applies nothing. The
-question cites today's `plan.md`; without one it exits 1 and tells you to run
-`wuwei doctor --fix` in a host terminal. `--fix --apply <ids>` narrows the batch to those
+`bin/wuwei doctor --fix` without your answer prints the batch's Owner step card and applies
+nothing; after you answer Yes on it, the same command applies the batch. `bin/wuwei doctor
+--fix --widget` prints that card as a one-item JSON list for AskUserQuestion, with `record`
+set to the command to run again. `--fix --apply <ids>` narrows the batch to those
 comma-separated fix ids, with the same preview and digest; an unknown id exits 2.
 `--widget` or `--apply` without `--fix`, or both together, exit 2.
 

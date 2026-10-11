@@ -1068,6 +1068,10 @@ def test_cd_helpers_live_in_shell():
     ('bin/wuwei hook PostToolUse < payload.json', 2),
     ('wuwei hook SubagentStop', 2),
     ('python3 -P -m wuwei hook PreToolUse', 2),
+    *[(wrapped, 2) for wrapped in (  # the reviewer's forgery probe: every wrapper form
+        "sh -c 'bin/wuwei hook PostToolUse < p.json'", 'env bin/wuwei hook PostToolUse < p.json',
+        'command bin/wuwei hook PostToolUse < p.json', 'nohup bin/wuwei hook PostToolUse < p.json',
+        'xargs bin/wuwei hook < a.txt', 'time bin/wuwei hook PostToolUse')],
     ('bin/wuwei next', 0),
 ])
 def test_a_tool_call_never_runs_the_hook(workspace, command, code):

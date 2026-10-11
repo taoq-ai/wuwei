@@ -694,3 +694,128 @@ def test_owner_step_question_needs_no_citation(ws):
     from wuwei.guards.decision import check_question
     assert check_question({'cwd': str(ws), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
         {'header': 'Owner step', 'question': f'Owner step: {OWNER_MERGE}'}]}}) == (0, '')
+
+
+def test_only_a_recorded_gate_asked_row_counts(ws):
+    """#831 F1: a note whose payload names gate.asked, or a damaged row, is not an answer."""
+    question = f'Owner step: {OWNER_MERGE}'
+    card = sessions.owner_card(OWNER_MERGE, 'x')
+    topic = sessions.owner_topic(question, card['options'], 'Yes')
+    assert main('event', 'note', json.dumps({'via': 'gate.asked', 'topics': [topic]})) == 0
+    path = workspace.day_dir(ws) / 'events.jsonl'
+    path.chmod(0o644)
+    with path.open('a') as stream:
+        stream.write(json.dumps({'kind': 'gate.asked', 'payload': {'topics': topic}}) + '\n')
+        stream.write(json.dumps({'kind': 'gate.asked', 'payload': None}) + '\n' + '{"kind": "gate.asked"\n')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+
+
+def test_the_latest_answer_decides(ws):
+    """#831 F4: a later No revokes an earlier Yes on the same card."""
+    from fakes import owner
+    owner.answer(ws, OWNER_MERGE)
+    owner.answer(ws, OWNER_MERGE, reply='No')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+    owner.answer(ws, OWNER_MERGE)
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+
+
+def test_a_swapped_description_does_not_count(ws):
+    """#831 F6: the answer binds the options the card printed, not only the question."""
+    from fakes import owner
+    owner.answer(ws, OWNER_MERGE, detail='something harmless')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+    owner.answer(ws, OWNER_MERGE, detail='x')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+
+
+def test_only_an_owner_step_question_skips_the_citation(ws):
+    from wuwei.guards.decision import check_question
+    code, _ = check_question({'cwd': str(ws), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
+        {'header': 'Owner step', 'question': 'Shall I merge everything?'}]}})
+    assert code == 1
+
+
+def hook_call(monkeypatch, event, root, tool, inputs, **extra):
+    import io
+    from types import SimpleNamespace
+    from wuwei.commands import hook
+    payload = {'session_id': 'planner-1', 'transcript_path': '/dev/null', 'cwd': str(root),
+               'hook_event_name': event, 'tool_name': tool, 'tool_input': inputs, **extra}
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))
+    return hook.run(SimpleNamespace(event=event, command='hook'))
+
+
+def owner_question(command):
+    return {'questions': [{key: value for key, value in sessions.owner_card(command, 'x').items() if key != 'record'}]}
+
+
+def test_a_failed_integrity_verdict_leaves_the_reconfirm_card_reachable(ws, monkeypatch, capsys):
+    """#831 F2: the integrity gate lets its own Owner step card and command through."""
+    (ws / '.wuwei/integrity').mkdir(exist_ok=True)
+    (ws / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 1, 'reason': 'page: plugin integrity: dirty development checkout', 'plugin': None}))
+    reconfirm = 'bin/wuwei integrity reconfirm (abc)'
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question(reconfirm)) == 0
+    for command in ('bin/wuwei integrity reconfirm', 'bin/wuwei doctor --fix --apply integrity-reconfirm'):
+        assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0, command
+    for command in ('ls', 'bin/wuwei integrity reconfirm; ls', 'bin/wuwei doctor --fix'):
+        assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 2, command
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', owner_question('bin/wuwei state recover')) == 2
+
+
+def test_a_config_that_does_not_load_is_repaired_in_the_session(ws, monkeypatch, capsys):
+    """#831 F3: with a broken config.toml, config set and its Owner step card still run."""
+    import tomllib
+    from fakes.integrity import seed
+    seed(ws)
+    (ws / '.wuwei/config.toml').write_text('cap = "five"\n[security]\nposture = "guarded"\n')
+    command = 'bin/wuwei config set cap 5'
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': 'ls'}) == 2
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'Bash', {'command': command}) == 0
+    capsys.readouterr()
+    assert main('config', 'set', 'cap', '5') == 1
+    err = capsys.readouterr().err
+    card, _ = json.JSONDecoder().raw_decode(err[err.index('{"question"'):])
+    asked = {'questions': [{key: value for key, value in card.items() if key != 'record'}]}
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', asked) == 0
+    assert hook_call(monkeypatch, 'PostToolUse', ws, 'AskUserQuestion', asked,
+                     tool_response={'answers': {card['question']: 'Yes'}}) in (0, 2)
+    assert main('config', 'set', 'cap', '5') == 0, capsys.readouterr().err
+    assert tomllib.loads((ws / '.wuwei/config.toml').read_text())['cap'] == 5
+
+
+def test_add_repo_card_names_the_full_command(ws, capsys):
+    """#831 F8: the card's record is the exact command to run again."""
+    from fakes import owner
+    args = ['config', 'add-repo', '--name', 'acme/x', '--path', 'x', '--branch', 'main', '--identity', 'A B <a@b.c>']
+    assert main(*args) == 1
+    err = capsys.readouterr().err
+    record = "bin/wuwei config add-repo --name acme/x --path x --branch main --identity 'A B <a@b.c>'"
+    assert json.dumps(record) in err
+    owner.answer_card(ws, err)
+    assert main(*args) == 0 and config(ws)['repos'][0]['name'] == 'acme/x'
+
+
+def test_state_recover_card_runs_through_the_hooks_with_state_unreadable(ws, monkeypatch, capsys):
+    """The reviewer's probe: with today's state.json broken, the card is asked and recorded."""
+    from fakes.integrity import seed
+    seed(ws)
+    path = workspace.day_dir(ws) / 'state.json'
+    path.chmod(0o644)
+    path.write_text('{broken')
+    asked = owner_question('bin/wuwei state recover (abc)')
+    card = asked['questions'][0]
+    assert hook_call(monkeypatch, 'PreToolUse', ws, 'AskUserQuestion', asked) == 0
+    hook_call(monkeypatch, 'PostToolUse', ws, 'AskUserQuestion', asked,
+              tool_response={'answers': {card['question']: 'Yes'}})
+    assert sessions.needs_owner(ws, 'bin/wuwei state recover', 'x', 'abc') is None
+
+
+def test_a_forged_note_never_answers_for_the_owner(ws):
+    """The reviewer's probe: wuwei event note with the answer's topic is not an answer."""
+    command = 'bin/wuwei plan set A-1 owner_merge=false'
+    card = sessions.owner_card(command, 'x')
+    topic = sessions.owner_topic(card['question'], card['options'], 'Yes')
+    assert main('event', 'note', json.dumps({'via': 'gate.asked', 'topics': [topic]})) == 0
+    assert sessions.needs_owner(ws, command, 'x') is not None

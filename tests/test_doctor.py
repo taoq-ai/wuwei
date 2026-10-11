@@ -1075,38 +1075,23 @@ def widget_args(**changes):
     return Namespace(**{'fix': True, 'json': False, 'widget': True, 'apply': None, 'section': None, **changes})
 
 
-def test_fix_widget_needs_todays_plan(ws, monkeypatch, capsys):
-    from wuwei.guards.decision import check_question
+def test_fix_widget_prints_the_owner_step_card(ws, monkeypatch, capsys):
+    """#831 F5: one card per fix batch: the widget is the Owner step card the fix asks."""
+    from fakes import owner
     applied, asked = two_fixes(ws, monkeypatch), []
-    assert doctor.run(widget_args(), confirm=asked.append) == 1
-    assert 'run wuwei doctor --fix, which asks on its Owner step card' in capsys.readouterr().err
-    assert not asked and not applied
-    plan = workspace.day_dir(ws.root) / 'plan.md'
-    plan.parent.mkdir(parents=True, exist_ok=True)
-    plan.write_text('# Plan\n')
-    assert doctor.run(widget_args(), confirm=asked.append) == 1
+    assert doctor.run(widget_args(), confirm=asked.append) in (0, 1)
     (built,) = json.loads(capsys.readouterr().out)
-    assert built['header'] == 'Fixes' and built['multiSelect'] is True
-    assert [o['label'] for o in built['options']] == ['init-upgrade', 'calibrate']
-    assert built['options'][0]['description'].startswith('wuwei init --upgrade')
-    assert built['options'][1]['description'].startswith('wuwei calibrate')
-    assert built['record'] == 'wuwei doctor --fix --apply <labels>'
-    assert built['question'].startswith(f'Morning gate (days/{TODAY}/plan.md): ')
-    assert check_question({'cwd': str(ws.root), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
-        {key: built[key] for key in ('question', 'header', 'options', 'multiSelect')}]}}) == (0, '')
+    assert built['header'] == 'Owner step' and built['multiSelect'] is False
+    assert built['question'].startswith('Owner step: bin/wuwei doctor --fix (')
+    assert built['record'] == 'bin/wuwei doctor --fix'
+    assert '[calibrate] wuwei calibrate' in built['options'][0]['description']
     assert not asked and not applied and not events(ws.root, 'doctor.fixed')
-
-
-def test_widgets_split_and_skip(ws):
-    names = list(doctor.FIXES)
-    def sizes(count):
-        batch = [(names[i], 'text\n', None) for i in range(count)]
-        return [len(w['options']) for w in doctor.widgets(ws.root, batch)]
-    assert sizes(0) == [] and sizes(4) == [4] and sizes(5) == [3, 2] and sizes(6) == [3, 3]
-    split = doctor.widgets(ws.root, [(names[i], 'text\n', None) for i in range(5)])
-    assert [w['question'][-22:] for w in split] == ['doctor fixes (1 of 2)?', 'doctor fixes (2 of 2)?']
-    (single,) = doctor.widgets(ws.root, [(names[0], 'text\n', None)])
-    assert [o['label'] for o in single['options']] == [names[0], 'Skip']
+    assert doctor.run(widget_args(widget=False)) == 1
+    refusal = capsys.readouterr().err
+    assert json.dumps(built) in refusal
+    owner.answer_card(ws.root, refusal)
+    doctor.run(widget_args(widget=False))
+    assert sorted(applied) == ['calibrate', 'init-upgrade']
 
 
 def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
@@ -1117,7 +1102,7 @@ def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     assert applied == ['calibrate'] and len(events(ws.root, 'doctor.fixed')) == 1
     assert doctor.run(widget_args(widget=False, apply='nope'), confirm=lambda digest: True) == 2
     assert 'nope' in capsys.readouterr().err and applied == ['calibrate']
-    assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) in (0, 1)
+    assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) == 2
     assert applied == ['calibrate']
     for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'calibrate'}, {'apply': 'calibrate'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2

@@ -902,7 +902,7 @@ def test_reconfirm_asks_the_owner_step_card(tmp_path, monkeypatch):
     result = api.reconfirm(root)
     assert result.exit == 1 and 'Owner step: bin/wuwei integrity reconfirm (bbbbbbbbbbbb)' in result.reason
     assert 'host terminal' not in result.reason and not (root / '.wuwei/integrity/confirmation.json').exists()
-    owner.answer(root, 'bin/wuwei integrity reconfirm', 'b' * 12)
+    owner.answer(root, 'bin/wuwei integrity reconfirm', 'b' * 12, detail=f"Confirm plugin installation {'b' * 12} on this host.")
     assert api.reconfirm(root).exit == 0
     assert json.loads((root / '.wuwei/integrity/confirmation.json').read_text())['fingerprint'] == 'b' * 64
 

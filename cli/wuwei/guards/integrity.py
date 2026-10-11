@@ -10,6 +10,11 @@ def check(payload):
         if root is None:
             return 0, ''
         result = integrity.cached(root)
+        if result.exit:  # #831: the reconfirm card and its command stay reachable in the session
+            from wuwei.sessions import owner_step_call
+            if owner_step_call(payload, ('integrity', 'reconfirm'),
+                               ('doctor', '--fix', '--apply', 'integrity-reconfirm')):
+                return 0, ''
         return result.exit, result.reason
     except (OSError, ValueError, TypeError) as exc:
         return 2, str(exc) if isinstance(exc, workspace.ConfigError) else f'integrity unmeasured: {exc}; run bin/wuwei doctor'

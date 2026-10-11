@@ -661,7 +661,8 @@ def test_recover_command_exits(workspace, monkeypatch, capsys, case, expected):
     elif case in ('confirmed', 'answered No'):  # #831: the owner's answer on the Owner step card
         (workspace / '.wuwei/config.toml').write_text('')
         token = sha256(snapshot.read_bytes()).hexdigest()[:12]
-        owner.answer(workspace, 'bin/wuwei state recover', token, 'Yes' if case == 'confirmed' else 'No')
+        owner.answer(workspace, 'bin/wuwei state recover', token, 'Yes' if case == 'confirmed' else 'No',
+                     detail="Restore today's state from its snapshot.")
     assert main(['state', 'recover']) == expected
     if expected == 0:
         assert 'state recovered from snapshot' in capsys.readouterr().out

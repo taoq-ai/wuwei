@@ -63,22 +63,67 @@ def card_answered(root, card, answer):
 OWNER_STEP = 'Owner step'
 
 
-def needs_owner(root, command, detail, token=''):
-    """#831: None when the owner answered Yes on this step's card today (recorded by the hook),
-    else the refusal naming the card to ask."""
-    question = f'{OWNER_STEP}: {command}' + (f' ({token})' if token else '')
-    topic = card_topic(OWNER_STEP, f'{question}\nYes')
-    path = workspace.day_dir(root) / 'events.jsonl'
-    rows = path.read_text(encoding='utf-8').splitlines() if path.is_file() else []
-    if any('"gate.asked"' in line and topic in json.loads(line)['payload'].get('topics', ())
-           for line in rows):
-        return None
-    card = {'question': question, 'header': OWNER_STEP, 'multiSelect': False,
-            'options': [{'label': 'Yes', 'description': detail},
-                        {'label': 'No', 'description': 'Nothing changes.'}],
+def owner_card(command, detail, token=''):
+    """#831: the Owner step card of one command; record is the command to run again on Yes."""
+    return {'question': f'{OWNER_STEP}: {command}' + (f' ({token})' if token else ''), 'header': OWNER_STEP,
+            'multiSelect': False, 'options': [{'label': 'Yes', 'description': detail},
+                                              {'label': 'No', 'description': 'Nothing changes.'}],
             'record': command}
+
+
+def owner_topic(question, options, reply):
+    """The hashed answer to an Owner step question: the question, every option as asked, the
+    reply. An empty reply is the asked topic every answer carries, so the latest one decides."""
+    text = '\n'.join([question, *(f"{option['label']}: {option['description']}" for option in options), reply])
+    return card_topic(OWNER_STEP, text if reply else question)
+
+
+def needs_owner(root, command, detail, token=''):
+    """#831: None when the owner's latest answer on this step's card today (recorded by the
+    hook) is Yes, else the refusal naming the card to ask."""
+    card = owner_card(command, detail, token)
+    asked, yes = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes'))
+    path = workspace.day_dir(root) / 'events.jsonl'
+    answered = False
+    for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
+        try:
+            row = json.loads(line)
+            topics = row['payload']['topics'] if row['kind'] == 'gate.asked' else None
+        except (ValueError, TypeError, KeyError):
+            continue  # a damaged row is no answer
+        if isinstance(topics, list) and asked in topics:
+            answered = yes in topics
+    if answered:
+        return None
     return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
             f'then run the command again on Yes: {json.dumps(card)}')
+
+
+def owner_step_call(payload, *actions):
+    """#831: an AskUserQuestion of only Owner step cards for these actions (wuwei argv
+    prefixes), or a Bash call whose one command is one of them; the gates that refuse every
+    tool call let these through so the owner can still answer in the session."""
+    tool, inputs = payload.get('tool_name'), payload.get('tool_input')
+    if not isinstance(inputs, dict):
+        return False
+    if tool == 'AskUserQuestion':
+        prefixes = [f"{OWNER_STEP}: bin/wuwei {' '.join(action)}" for action in actions]
+        questions = inputs.get('questions')
+        return isinstance(questions, list) and bool(questions) and all(
+            isinstance(question, dict) and question.get('header') == OWNER_STEP
+            and isinstance(text := question.get('question'), str)
+            and any(text == prefix or text.startswith(prefix + ' ') for prefix in prefixes)
+            for question in questions)
+    if tool != 'Bash' or not isinstance(inputs.get('command'), str):
+        return False
+    from wuwei.guards.protect_state import _wuwei_action
+    from wuwei.shell import ParseError, normalize
+    try:
+        commands = normalize(inputs['command'])
+    except ParseError:
+        return False
+    return len(commands) == 1 and any(
+        (_wuwei_action(commands[0].argv) or [])[:len(action)] == list(action) for action in actions)
 
 
 def stale_seconds(root):

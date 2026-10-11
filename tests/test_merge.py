@@ -1348,7 +1348,8 @@ def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
     assert plan.set_owner_merge('item-7', 'true', root) == 'item-7: owner_merge true'
     host.results['label'] = Result(0, {'labels': []})
     from fakes import owner
-    owner.answer(root, 'bin/wuwei plan set item-7 owner_merge=false')  # #800, #831: the owner's Yes
+    owner.answer(root, 'bin/wuwei plan set item-7 owner_merge=false', 'hold 1',  # #800, #831: the owner's Yes
+                 detail='Release the owner merge hold on item-7')
     plan.set_owner_merge('item-7', 'false', root)
     assert [c[1] for c in host.calls if c[0] == 'label'] == [
         (REF, 'owner-merge', True), (REF, 'owner-merge', False)]
