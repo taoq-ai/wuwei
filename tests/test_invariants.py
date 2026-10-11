@@ -1524,6 +1524,31 @@ def i49(case, rules):
                 return f'code_host_orgs {orgs}: creates labels {tracker.creates_labels(config)}'
         return None
     return rules.memo(('tracker labels', case[0]), compute)
+def i57(case, rules):
+    """#648: a fast-check failure holds an item only when every failure names lint locations
+    only on files the item did not change."""
+    def compute():
+        import tempfile
+        from pathlib import Path
+        from wuwei.fast_checks import unchanged
+        with tempfile.TemporaryDirectory() as tree:
+            for name in ('cli/untouched.py', 'cli/own.py'):
+                (Path(tree) / name).parent.mkdir(parents=True, exist_ok=True)
+                (Path(tree) / name).write_text('')
+            lint = 'cli/untouched.py:3:1: F401'
+            if unchanged([('lint', {'error': lint})], {'cli/own.py'}, tree) != [('lint', 'cli/untouched.py')]:
+                return 'a lint location on an unchanged file is not held'
+            for failures in ([('lint', {'error': 'cli/own.py:3:1: F401'})],
+                             [('lint', {'error': 'cli/missing.py:3:1: F401'})],
+                             [('lint', {'error': '../cli/untouched.py:3:1: F401'})],
+                             [('lint', {'test_ids': ['t'], 'error': lint})],
+                             [('lint', {'error': 'ERROR tests/test_x.py\n' + lint})],
+                             [('lint', {'error': 'broken'})],
+                             [('a', {'error': lint}), ('b', {'error': 'cli/own.py:1:1: E1'})]):
+                if unchanged(failures, {'cli/own.py'}, tree):
+                    return f'{failures} is held'
+        return None
+    return rules.memo(('main broken',), compute)
 
 
 def i61(case, rules):
@@ -1660,7 +1685,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56,
               'I51': i51,
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60,
-              'I36': i36, 'I37': i37, 'I41': i41, 'I59': i59}
+              'I36': i36, 'I37': i37, 'I41': i41, 'I59': i59,
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I57': i57}
 
 
 def project(case):
@@ -1702,7 +1728,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,), 'I56': (0,),
          'I51': (0,),
          'I52': (0,), 'I56': (0,), 'I60': (),
-         'I41': (), 'I59': (0,)}
+         'I41': (), 'I59': (0,),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I57': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
