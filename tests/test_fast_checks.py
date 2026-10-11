@@ -320,3 +320,17 @@ def test_worktree_interpreter_runs_the_command_unchanged(workspace_case, monkeyp
     assert calls == [VENV]
     row = state.read_state(root)['fast_checks']['example/project'][VENV]
     assert row['interpreter'] == (str(tree.resolve() / '.venv/bin/python') if present else None)
+
+
+def test_record_reads_the_repository_context_at_call_time(tmp_path, monkeypatch):
+    # #844 D1: a from-import bound commit_push.context once, so a test that patched it while
+    # this module first loaded leaked its stand-in into later days in the same worker.
+    from wuwei import commit_push, fast_checks
+
+    def stand_in(*args, **kwargs):
+        raise ValueError('the patched context')
+    (tmp_path / '.wuwei').mkdir()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setattr(commit_push, 'context', stand_in)
+    with pytest.raises(ValueError, match='the patched context'):
+        fast_checks.record(tmp_path)

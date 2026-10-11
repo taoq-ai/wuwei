@@ -544,7 +544,7 @@ def test_729_a_pr_merged_on_the_host_is_merged(run):
     root, _ = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', duties={'ping': True})]})
     listing = workspace.day_dir(root) / 'prs.json'
     listing.write_text(listing.read_text().replace('"open"', '"merged"'))
-    assert ('pr', 'item-1') not in answer(root)
+    assert answer(root) == [('tracker', 'item-1')]  # no launch at all; its tracker duty comes due
 
 
 def test_734_a_verdict_citing_scratch_older_than_its_brief_is_named(tmp_path):
@@ -751,3 +751,20 @@ def test_g5_next_records_the_park_of_a_park_verdict(run, capsys):
     assert offers == []
     assert main(['next', '--json']) in (0, 1)
     assert state.read_state(root)['items']['item-1']['phase'] == 'parked'
+
+
+def test_the_owners_resume_at_the_cap_grants_one_re_read_of_a_moved_pr_head(run):
+    """D3: at the round cap a moved PR head parks; the owner's Yes on plan resume grants one
+    re-read round, as for PARK and ESCALATE, never the same park again."""
+    from fakes import owner
+    from wuwei import plan
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', rounds=CAP_ROUNDS,
+                                                 duties={'ping': True}, moved=True)]})
+    assert offers == [('owner', 'item-1')]
+    assert dispatch.next_step('item-1', root)['action'] == 'escalate'
+    reason = state.read_state(root)['items']['item-1']['disposition']['reason']
+    owner.answer(root, 'bin/wuwei plan resume item-1', plan.resume_token(root, 'item-1'), 'Yes',
+                 detail=f'Resume item-1: {reason}')
+    plan.resume('item-1', root)
+    assert answer(root) == [('fix', 'item-1')]
+    assert dispatch.next_step('item-1', root)['action'] == 'fix'

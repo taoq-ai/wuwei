@@ -524,13 +524,15 @@ def next_step(item, root=None):
         pull = derive.listing(workspace.day_dir(root))['pulls'].get(row['pr']) or {}
         if moved := derive.moved(root, data, item, pull.get('head')):
             cap = max_rounds(workspace.load_config(root), row)
-            if rounds_used(data, item) >= cap:
+            granted = _resumed(root, item)  # D3: the owner's Yes on plan resume grants one re-read round
+            if rounds_used(data, item) >= cap and not granted:
                 return _parked(root, item, f"round cap {cap} reached: PR {row['pr']} head moved to "
                                f'{moved[:12]} past its verdicts')
             from wuwei.commands import build
             build.open_fix(item, f'The PR head moved to {moved[:12]} outside a fix round (a rebase or a '
                            'push). Bring the worktree to that head, rerun the fast checks there and change '
-                           'nothing else unless they fail; every gate then re-reads it.', root=root, start=moved)
+                           'nothing else unless they fail; every gate then re-reads it.', root=root, start=moved,
+                           granted=granted)
             return _fix(item, [])
     if phase in ('gate', 'delta') and (tree := derive.gone(root, row)):  # F5
         raise Refused(f'{item} worktree {tree} is gone or its HEAD unreadable; no verdict counts there; '

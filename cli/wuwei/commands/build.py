@@ -260,7 +260,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     return action
 
 
-def open_fix(item, feedback, *, root, polish=None, start=None):
+def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
     """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
     item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
@@ -285,7 +285,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None):
     from wuwei import dispatch
     cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
     used = dispatch.rounds_used(data, item)
-    if used >= cap:  # #623: one round cap for gate and PR fixes alike
+    if used >= cap and not granted:  # #623: one round cap for gate and PR fixes alike; granted: the owner's resume
         raise ValueError(f'round cap {cap} reached (gates.max_rounds); park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised', 'delta'):

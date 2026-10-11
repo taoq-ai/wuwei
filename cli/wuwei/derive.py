@@ -312,7 +312,8 @@ def offers(data, root, config, merges=None):
             blocked, held = merges.get(pr) or (None, None)
             fetched = when(listing_at) if listing_at else None
             if pull is not None and moved(root, data, name, pull.get('head')):  # F1: re-read first
-                if dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+                if (dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row)
+                        and not dispatch._resumed(root, name)):  # D3: the owner's resume grants one round
                     ask(name, f'PR {pr} head moved past its verdicts at the round cap.', f'wuwei dispatch next {name}')
                 else:
                     launch('fix', name, f'wuwei dispatch next {name}',
