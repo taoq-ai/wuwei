@@ -2504,6 +2504,11 @@ def test_running_unbriefed_seat_makes_its_item_busy(root):
 NOTE_A = '- P3 | cli/example.py:3 | fails when the file is empty | blocks: no\n'
 NOTE_Q = '- P3 | cli/other.py:7 | fails when the name is long | blocks: no\n'
 NOTES = [NOTE_A.strip(), NOTE_Q.strip()]
+
+
+def _raised(found):
+    """The raise action's verdict part; its shepherd launch is #792's."""
+    return {key: found[key] for key in ('action', 'notes')}
 OFFER = {'action': 'polish', 'gate': 'quality', 'notes': NOTES,
          'command': 'wuwei dispatch polish A', 'skip': 'wuwei dispatch skip-polish A'}
 
@@ -2588,7 +2593,7 @@ def test_issue_acceptance_polish_never_raises_at_once_with_the_notes(root):
     from wuwei import dispatch
 
     polish_ready(root, 'never')
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
 
 
 def test_polish_always_opens_the_round_itself(root):
@@ -2606,7 +2611,7 @@ def test_pass_without_notes_raises_in_every_mode(root, mode):
     from wuwei import dispatch
 
     polish_ready(root, mode, arch='', quality='')
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': []}
 
 
 def test_polish_takes_the_offer_as_a_fix_round(root):
@@ -2647,11 +2652,11 @@ def test_skip_polish_records_the_skip_and_raises(root):
     from wuwei import dispatch
 
     polish_ready(root)
-    assert dispatch.skip_polish('A', root) == {'action': 'raise', 'notes': NOTES}
+    assert _raised(dispatch.skip_polish('A', root)) == {'action': 'raise', 'notes': NOTES}
     row = state.read_state(root)['items']['A']
     assert row['phase'] == 'gate' and row['polish']['status'] == 'skipped'
     assert events_of(root, 'polish.skipped')[-1]['item'] == 'A'
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
     for call in (dispatch.polish, dispatch.skip_polish):
         with pytest.raises(dispatch.Refused, match='dispatch next'):
             call('A', root)
@@ -2717,7 +2722,7 @@ def test_issue_acceptance_one_gate_rechecks_the_polish_and_the_pr_is_raised(root
     with pytest.raises(dispatch.Refused, match='did not need a delta'):
         record(root, 'arch', 'arch-2', PASS, 'delta')
     record(root, 'quality', 'quality-2', noted(QUALITY_PASS, NOTE_Q), 'delta')
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [NOTE_Q.strip()]}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': [NOTE_Q.strip()]}
     assert dispatch.next_step('A', root)['action'] == 'raise'
 
 
@@ -2750,7 +2755,7 @@ def test_polish_at_the_cap_raises_with_the_notes(root):
 
     polish_ready(root)
     state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
 
 
 def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypatch):
@@ -2771,4 +2776,4 @@ def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypa
     assert dispatch.opinion('A', root)['round'] == 'delta'
     [continued] = [call for call in runtime.calls if call[0] == 'continue']
     assert continued[2].startswith('Polish re-check:') and 'gate-q-1-codex.md' in continued[2]
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': []}
