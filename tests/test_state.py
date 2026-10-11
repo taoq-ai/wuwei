@@ -238,6 +238,13 @@ def test_pause_returns_only_to_previous_phase(workspace, start, pause):
     assert 'resume_phase' not in state.get_state('items.A')
 
 
+def test_approved_as_is_reserved_for_its_producers(workspace):
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={}), reserved=False)
+    with pytest.raises(state.StateError, match='reserved; written by wuwei plan approve or wuwei plan add'):
+        state.set_state('items.A.approved_as', 'x')
+
+
 @pytest.mark.parametrize('replacement', ['path', 'item', 'items', 'writer'])
 def test_set_and_writer_cannot_skip_phases(workspace, replacement):
     from wuwei import state

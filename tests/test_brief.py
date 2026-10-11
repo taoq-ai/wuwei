@@ -582,6 +582,50 @@ def test_builder_and_gate_briefs_name_the_live_read(day, monkeypatch, role, coun
     assert sum(line.startswith('Live: run bin/wuwei why X --json') for line in lines) == count
 
 
+APPROVED = 'Approved as: owner: "only the annotator change"'
+
+
+def brief_header(path):
+    return path.read_text().split('\n\n', 1)[0].splitlines()
+
+
+@pytest.mark.parametrize('role,count', [('builder', 1), ('arch', 1), ('quality', 1), ('security', 1),
+                                        ('goal', 1), ('steward', 0)])
+def test_builder_and_gate_briefs_quote_the_approval(day, monkeypatch, role, count):
+    # #731: the owner's recorded approval settles the scope question, so every builder and gate brief quotes it.
+    from wuwei import brief as writer
+    state._write_state(lambda data: data['items']['X'].update(approved_as='owner: "only the annotator change"'),
+                       day[0], reserved=False)
+    if role == 'steward':
+        writer.write('steward', 'X', 'l', 'body', root=day[0])
+    else:
+        docs_brief(day, monkeypatch, role, name='l')
+    assert brief_header(day[1] / 'briefs/l.md').count(APPROVED) == count
+    if count and role != 'builder':
+        assert brief(monkeypatch, 'Delta.', role, 'X', 'l2', '--gate', '--worktree', 'tree') == 0
+        assert APPROVED in brief_header(day[1] / 'briefs/l2.md')
+
+
+def test_no_approval_line_without_the_record(day, monkeypatch):
+    docs_brief(day, monkeypatch, 'arch', name='l')
+    assert not any(line.startswith('Approved as:') for line in (day[1] / 'briefs/l.md').read_text().splitlines())
+
+
+def test_item_added_with_a_note_has_it_in_every_gate_brief(day, monkeypatch):
+    # #731 acceptance: an item approved with a note has the note under Approved as: in every gate brief.
+    from wuwei import plan
+    root = day[0]
+    state._write_state(lambda data: data.update(gate_approved=True, goals=['G-1'], approved_items=[]),
+                       root, reserved=False)
+    plan.add('Y', root, goal='G-1', note='only the annotator change')
+    state.transition('Y', 'implement', root)
+    state.transition('Y', 'gate', root)
+    state._write_state(lambda data: data['items']['Y'].update(gates={'tier': 'standard'}), root, reserved=False)
+    for role in ('arch', 'quality', 'security'):
+        assert brief(monkeypatch, 'Review it.', role, 'Y', f'g-{role}', '--gate', '--worktree', 'tree') == 0
+        assert APPROVED in brief_header(day[1] / f'briefs/g-{role}.md')
+
+
 def test_builder_brief_has_the_docs_rule(day, monkeypatch):
     line, = docs_brief(day, monkeypatch, 'builder')
     assert line.startswith('Docs: notion;') and 'bin/wuwei plan set X docs=' in line
@@ -609,8 +653,11 @@ def test_builder_brief_names_the_check_interpreter(day, monkeypatch, check, args
     (root / 'worktrees/X').mkdir(parents=True)
     day[2].results['repo_context'] = registry.Result(0, {
         'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
+    state._write_state(lambda data: data['items']['X'].update(approved_as='owner: "only the annotator change"'),
+                       root, reserved=False)  # #731: read after the per-repo checks, still the item record
     assert brief(monkeypatch, 'Review it.', *args, '--worktree', 'worktrees/X') == 0
     text = (day[1] / 'briefs/b.md').read_text()
+    assert APPROVED in text
     expected = f'Check interpreter: {check} runs with {python.resolve()} (main worktree)'
     assert (expected in text) == line
     assert text.count('Check interpreter:') == int(line)

@@ -13,7 +13,7 @@ NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
 DRAFT = r'draft-[0-9a-f]{32}'
-GROUPS = ('queued', 'worktree', 'tier', 'gate', 'decision', 'phase', 'merge')
+GROUPS = ('queued', 'approved', 'worktree', 'tier', 'gate', 'decision', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
 
 
@@ -209,6 +209,8 @@ def item(root, name):
                                        [rel(day / 'decisions' / f'{ident}.md')]))
     day, data = days[-1]
     row = data['items'][name]
+    if row.get('approved_as'):  # #731: the owner's recorded approval, once, from the latest day
+        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'state.json')]))
     steps = [step for group in GROUPS for step in groups[group] or (
         [(f'{REQUIRED[group]}: {NOT}', None, [])]
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]

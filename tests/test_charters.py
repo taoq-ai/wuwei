@@ -346,3 +346,10 @@ def test_gate_copies_start_empty_and_match_the_tree():
     assert all(common.count(anchor) == 1 for anchor in anchors)
     for agent in (ROOT / "agents").glob("sentinel-*.md"):
         assert all(anchor in agent.read_text(encoding="utf-8") for anchor in anchors), agent.name
+def test_approval_wording_reaches_every_gate_and_the_planner():  # #731
+    for role in ("sentinel-arch", "sentinel-quality", "sentinel-security", "sentinel-goal"):
+        text = (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8")
+        assert "Approved as:" in text and "scope" in text, role
+    assert "--note" in (ROOT / "agents/planner.md").read_text(encoding="utf-8")
+    assert "--note" in (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert "Approved as:" in (ROOT / "docs/site/daily.md").read_text(encoding="utf-8")

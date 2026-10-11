@@ -205,7 +205,7 @@ the lead proposes them, `plan.md` shows them as provisional and the approval que
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>"`.
+`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>" [--note "<your words>"]`.
 
 The gate card also carries the day's [pace](concepts.md#pace). `Approve` takes the
 recommended pace; `Approve at careful`, `Approve at steady` or `Approve at fast` approves the
@@ -232,9 +232,10 @@ leaves the command to you. A deploy nobody planned stops on its own card, the
 [grant](concepts.md#grants) question.
 
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
-serves; the planner runs `wuwei plan add <item> --goal G-n` and the item joins today's plan. A
-candidate the discovery sweep found goes through `wuwei plan add <item>` and the intraday
-start policy.
+serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
+joins today's plan. Every builder and gate brief for it quotes your words under `Approved as:`,
+and `wuwei why <item>` shows them. A candidate the discovery sweep found goes through
+`wuwei plan add <item>` and the intraday start policy.
 
 The planner asks the morning gate as question cards. After you approve, it records the goals
 and the plan, and you can run the last two commands yourself. A clean first plan with one

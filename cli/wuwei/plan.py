@@ -360,7 +360,13 @@ def gate_widget(root=None, *, import_yesterday=False):
                   *(['--pace "<label>"'] if advised else [])]))
 
 
-def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None):
+def _approval(scope, note):
+    """#731: the item's recorded approval: the plan scope the owner approved, then the owner's words, on one line."""
+    note = ' '.join((note or '').split())
+    return '; '.join(part for part in (' '.join(scope.split()), note and f'owner: "{note}"') if part)
+
+
+def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None, note=None):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
     if not goals_confirmed:
@@ -451,7 +457,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                        'budget_size': candidates[name]['score'][
                                            'job_size' if framework == 'wsjf' else 'effort'],
                                        **{key: candidates[name][key] for key in ('tier', 'governed_by')
-                                          if key in candidates[name]}}
+                                          if key in candidates[name]},
+                                       'approved_as': _approval(candidates[name]['scope'], note)}
                                  for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
                        seat_policy=data['seat_policy'], goal_seats=_seats(data),
@@ -472,13 +479,16 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     return written
 
 
-def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None):
+def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None):
     """Admit one item after the gate: a discovered candidate through the intraday
     policy, or an item the owner names under a goal (the owner naming it is the decision)."""
     root = workspace.find_workspace(root)
     day = state.read_state(root)
     if not day['gate_approved']:
         raise state.StateError('morning gate has not been approved; run the morning gate first (/wuwei:wuwei-plan)')
+    if item in day['items'] and _approval('', note):  # #731: the approval is recorded once, at admission
+        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; record the "
+                               "owner's new words as a scope decision: bin/wuwei decision template")
     if item in day['items']:  # #615: an item admitted without risk evidence records it once
         from wuwei.merge import risk_evidence
         if risk_evidence(root, item):
@@ -572,7 +582,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
                                   **{key: candidate[key] for key in ('tier', 'governed_by') if key in candidate},
-                                  **({'source': source, 'title': candidate['title']} if source else {})}
+                                  **({'source': source, 'title': candidate['title']} if source else {}),
+                                  **({'approved_as': text} if (text := _approval('', note)) else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
