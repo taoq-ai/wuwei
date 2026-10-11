@@ -24,7 +24,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
-    state._write_state(lambda data: None, tmp_path, reserved=False)
+    state._write_state(lambda data: None, tmp_path)
     return tmp_path
 
 
@@ -183,18 +183,11 @@ def test_morning_path(root, capsys, monkeypatch):
 
 def test_next_records_only_with_day_state(root, capsys):
     calibrated(root)
-    for name in ('state.json', 'state.snapshot.json'):
+    for name in ('state.json',):
         (workspace.day_dir(root) / name).unlink(missing_ok=True)
     found = row(capsys)[1]
     assert found['state'] == 'session', found
     assert 'next.action' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
-
-
-@pytest.mark.parametrize('kind,producer', [('next.action', 'wuwei next'), ('day.closed', 'wuwei close')])
-def test_path_events_are_reserved(root, capsys, kind, producer):
-    capsys.readouterr()
-    assert main(['event', kind, '{}']) == 1
-    assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
 
 
 def test_no_decision_row(root, capsys):
@@ -441,7 +434,7 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     text = context(capsys)
     assert len(text.encode('utf-8')) <= BUDGET
     for phrase in ('Next: set: ', 'build ITEM-2: wuwei build next ITEM-2', 'Goals: ', 'Plan: ',
-                   'Full day state: wuwei state get'):
+                   'Full day state: wuwei why <item>'):
         assert phrase in text
     for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
         assert phrase not in text
@@ -701,13 +694,6 @@ def test_gate_imports_yesterday_when_it_left_unfinished_items(root, capsys):
     assert coarse(root)['command'] == 'wuwei plan gate'  # the lead proposed it again: no import
 
 
-@pytest.mark.parametrize('kind,producer', [('seat adhoc', 'wuwei seat start'),
-                                           ('subagent.untraced', 'wuwei hook SubagentStop')])
-def test_adhoc_seat_events_are_reserved(root, capsys, kind, producer):
-    # #676: the launch guard trusts seat adhoc; doctor counts subagent.untraced.
-    capsys.readouterr()
-    assert main(['event', kind, '{}']) == 1
-    assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
 # #666: a PR waiting on people never hides work that can run now
 
 

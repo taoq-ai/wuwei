@@ -91,9 +91,31 @@ def run(args):
 GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
                  'bin/wuwei who walks it.')
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
-                 'memory/cruise.json', 'memory/forget.json')  # #814, #815, #833: init --upgrade removes them
+                 'memory/cruise.json', 'memory/forget.json',  # #814, #815, #833: init --upgrade removes them
+                 *(f'{name}.{suffix}' for name in ('watch', 'shepherd')  # #847
+                   for suffix in ('lock', 'stdout.log', 'stderr.log')))
+RETIRED_UNITS = ('listen', 'watch', 'shepherd')  # #810, #847: user services no longer shipped
 # #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
+
+
+def _remove_unit(path, name):
+    """Stop a retired user service and delete its unit; service failures are warnings."""
+    from wuwei import registry
+    service = registry.watch_service()
+
+    def call(argv):
+        try:
+            service.call(argv)
+        except (OSError, ValueError) as exc:
+            print(f'wuwei init: {name} service: warning: {exc}; run bin/wuwei doctor', file=sys.stderr)
+    if sys.platform == 'darwin':
+        call(['launchctl', 'bootout', f'gui/{os.getuid()}', str(path)])
+    else:
+        call(['systemctl', '--user', 'disable', '--now', path.name])
+    path.unlink(missing_ok=True)
+    if sys.platform == 'linux':
+        call(['systemctl', '--user', 'daemon-reload'])
 
 
 def _guide(root, **kwargs):
@@ -135,19 +157,33 @@ def _finish(root):
     return 0
 
 
-def _worktree_hooks(root):
-    """Rewrite every item worktree's git hooks; the scripts follow the repository's hooks (#472)."""
-    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
-    if not trees:
-        return
+def _unhook(root, dry_run):
+    """#847: unset the core.hooksPath WUWEI set in every item worktree (an owner's own value
+    stays), rewrite its anchor and remove the managed hooks; the repository's hooks run natively.
+    True when it changed (or, dry, would change) something."""
     from wuwei import registry
-    from wuwei.commands.git_hook import install
-    vcs = registry.load('vcs', workspace.load_config(root))
+    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
+    vcs = registry.load('vcs', workspace.load_config(root)) if trees else None
+    changed = False
     for tree in trees:
         try:
-            install(tree, root, vcs)
+            found = registry.data(vcs.unhook(str(tree), not dry_run, root=root))
+            if found['unset']:
+                changed = True
+                print(f"{'Would upgrade' if dry_run else 'Upgraded'} worktree {tree.name}: unset core.hooksPath")
+            if not dry_run:
+                workspace.atomic_write(Path(found['git_dir']) / 'wuwei-workspace', str(root.resolve()) + '\n')
         except ValueError as exc:
             print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
+    shims = root / '.wuwei/git-hooks'
+    if shims.is_dir() and not shims.is_symlink():
+        changed = True
+        if dry_run:
+            print('Would upgrade .wuwei/git-hooks: remove (no longer installed)')
+        else:
+            shutil.rmtree(shims)
+            print('Upgraded .wuwei/git-hooks: remove (no longer installed)')
+    return changed
 
 
 def _sections(raw):
@@ -405,7 +441,8 @@ def upgrade(args):
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
         memory_dir = destination / 'memory'  # #815: never clean through a symlinked or outside memory dir
-        inside = not memory_dir.is_symlink() and memory_dir.resolve().is_relative_to(destination.resolve())
+        inside = (not destination.is_symlink() and not memory_dir.is_symlink()
+                  and memory_dir.resolve().is_relative_to(destination.resolve()))
         stale = [name for name in RETIRED_FILES if inside and (destination / name).is_file()
                  and not (destination / name).is_symlink()]  # #815: no longer read
         for name in [] if args.dry_run else stale:
@@ -458,15 +495,15 @@ def upgrade(args):
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
-        listener = workspace.watch_unit(destination.parent, name='listen')[1]  # #810: no longer shipped
-        listener = sys.platform in ('darwin', 'linux') and listener.exists() and listener
-        if listener and args.dry_run:
-            print('Would remove the listener service (no longer shipped)')
-        elif listener:
-            from wuwei import registry
-            from wuwei.commands.watch import _remove
-            _remove(listener, sys.platform, registry.watch_service(), 'listen')
-            print('Removed the listener service (no longer shipped)')
+        units = [name for name in RETIRED_UNITS if sys.platform in ('darwin', 'linux')
+                 and workspace.watch_unit(destination.parent, name=name)[1].exists()]
+        for name in units:
+            if args.dry_run:
+                print(f'Would remove the {name} service (no longer shipped)')
+            else:
+                _remove_unit(workspace.watch_unit(destination.parent, name=name)[1], name)
+                print(f'Removed the {name} service (no longer shipped)')
+        unhooked = _unhook(destination.parent, args.dry_run)
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,
@@ -480,11 +517,10 @@ def upgrade(args):
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
                 and not guide_changed and not stale and not graph_comments and not graph_stale and text == raw
-                and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
+                and not tickets and not units and not unhooked and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
-        _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
         if integrity.other_versions():  # #353: another version's hooks still run
             print(integrity.RESTART)

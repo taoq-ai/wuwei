@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from wuwei import pr_actions, registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
-from test_stop import case, own, REF
+from test_close_branches import case, own, REF
 
 
 def linked(case):
@@ -20,7 +20,7 @@ def linked(case):
         data['items']['A'] = {**state.ITEM_DEFAULTS, 'phase': 'planned',
                               'worktree': str(tree), 'pr': REF}
         data['approved_items'] = ['A']
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     for phase in ('implement', 'gate', 'raised'):
         state.transition('A', phase, root)
     return root, host, vcs, tree
@@ -34,7 +34,7 @@ def completed_build(root, tree):
         'brief': str(brief.relative_to(root)), 'worktree': str(tree),
         'runtime': 'claude', 'repo': 'acme/widget', 'commands': ['test'],
         'iteration': 1, 'repeats': 0, 'signature': None, 'status': 'done',
-        'agent_id': 'old-builder', 'action': {'action': 'done'}}), root, reserved=False)
+        'agent_id': 'old-builder', 'action': {'action': 'done'}}), root)
 
 
 def test_conflict_step_and_done(case, monkeypatch, capsys):
@@ -82,7 +82,7 @@ def test_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
     # plan resume's Owner step card, never a refusal with no owner path.
     root, host, _, tree = linked(case)
     completed_build(root, tree)
-    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root)
     host.results['checks'] = Result(0, [{'name': 'tests', 'sha': 'a' * 40,
         'state': 'completed', 'conclusion': 'failure', 'url': 'https://example.test/check'}])
     assert main(['pr', 'act', REF]) == 1
@@ -307,7 +307,7 @@ def test_conflict_complete_push_is_checked_with_identity(case, monkeypatch):
                                 'updates': [{'source': 'b' * 40, 'destination': 'refs/heads/feature'}]}))
     monkeypatch.setattr('wuwei.fast_checks.record', lambda path: 0)
     state._write_state(lambda data: data.update(fast_checks={
-        'acme/widget': {'test': {'sha': 'b' * 40, 'exit': 0}}}), root, reserved=False)
+        'acme/widget': {'test': {'sha': 'b' * 40, 'exit': 0}}}), root)
     assert main(['pr', 'act', REF, '--complete']) == 0
     assert any(call[0] == 'push' for call in vcs.calls)
 
@@ -333,7 +333,7 @@ def test_fix_round_returns_to_delta_gate(case):
     assert action['action'] == 'continue'
     record = state.read_state(root)['builds']['A']
     state._write_state(lambda data: data['builds']['A'].update(status='check'),
-                       root, reserved=False)
+                       root)
     assert build.complete_checks('A', [Result(0)], root=root) == 0
     assert state.read_state(root)['items']['A']['phase'] == 'delta'
 
@@ -354,7 +354,7 @@ def test_ready_claimed_build_can_become_fix_round(case):
     completed_build(root, tree)
     state._write_state(lambda data: (data['builds']['A'].update(status='ready'),
                                      data['builds']['A'].pop('agent_id')),
-                       root, reserved=False)
+                       root)
     assert build.open_fix('A', 'review failure', root=root)['action'] == 'launch'
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
 
@@ -366,7 +366,7 @@ def test_new_codex_fix_launch_uses_feedback_brief(case, monkeypatch):
     def change(data):
         data['builds']['A'].update(runtime='codex', status='ready')
         data['builds']['A'].pop('agent_id')
-    state._write_state(change, root, reserved=False)
+    state._write_state(change, root)
     def write(role, item, name, body, **kwargs):
         path = workspace.day_dir(root) / 'briefs' / (name + '.md')
         path.write_text(body)
@@ -384,47 +384,10 @@ def test_existing_codex_job_gets_fix_feedback(case):
     def change(data):
         data['builds']['A'].update(runtime='codex', job={'id': 'prior'})
         data['builds']['A'].pop('agent_id')
-    state._write_state(change, root, reserved=False)
+    state._write_state(change, root)
     action = build.open_fix('A', 'tests failed', root=root)
     assert action['action'] == 'continue'
     assert action['feedback'] == 'tests failed'
-
-
-def watched(root, **changes):
-    from test_stop import own
-    own(root)
-    now = workspace.now()
-    record = {'measured_at': now.isoformat(), 'prs': {REF: {}}, 'actions': {REF: {
-        'state': 'approved', 'action': pr_actions.ACTIONS['approved'][0],
-        'created_at': now.isoformat(), 'deadline': now.replace(hour=13).isoformat()}}}
-    record.update(changes)
-    state._write_state(lambda data: data.update(watch=record), root, reserved=False)
-
-
-def test_stop_trusts_fresh_clean_watch_record(case, monkeypatch):
-    root, _, _ = case
-    watched(root)
-    monkeypatch.setattr(pr_actions, 'evaluate', lambda *args: (_ for _ in ()).throw(AssertionError('live read')))
-    assert pr_actions.check(root) == (0, '')
-
-
-@pytest.mark.parametrize('change', [
-    {'measured_at': None}, {'measured_at': '2026-09-28T11:55:59+00:00'},
-    {'measured_at': '2026-09-28T12:00:01+00:00'}, {'prs': {}},
-    {'actions': {REF: {'deadline': '2026-09-28T11:59:59+00:00'}}},
-    'no_prs', 'closing',
-])
-def test_stop_reads_live_unless_watch_proves_clean(case, monkeypatch, change):
-    root, _, _ = case
-    if change == 'no_prs':
-        state._write_state(lambda data: data.update(watch={'measured_at': workspace.now().isoformat(),
-                                                             'prs': {}}), root, reserved=False)
-    else:
-        watched(root, **({} if change == 'closing' else change))
-    called = []
-    monkeypatch.setattr(pr_actions, 'evaluate', lambda *args: called.append(1) or (0, []))
-    pr_actions.check(root, closing=change == 'closing')
-    assert called == [1]
 
 
 def adopted(case, fast_checks='', worktree=False, extra=''):
@@ -441,7 +404,7 @@ def adopted(case, fast_checks='', worktree=False, extra=''):
                               **({'worktree': str(tree)} if worktree else {})}
         data['approved_items'] = ['A']
         data['gate_approved'] = True
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     state.transition('A', 'raised', root)
     vcs.results['worktrees'] = Result(0, [])
     for name, value in (('status', []), ('head', {'sha': 'a' * 40}), ('merge_base', {'sha': 'b' * 40}),
@@ -558,7 +521,7 @@ def draft(case, flag=None):
     host.ready = ready
     if flag is not None:
         state._write_state(lambda data: data['items']['A'].update(owner_merge={
-            'value': flag, 'by': 'owner', 'at': '2026-09-28T08:00:00+00:00'}), root, reserved=False)
+            'value': flag, 'by': 'owner', 'at': '2026-09-28T08:00:00+00:00'}), root)
     return root, host, calls
 
 
@@ -603,7 +566,7 @@ def test_ready_that_does_not_take_fails_closed(case, capsys, failure):
 
 def test_malformed_owner_merge_never_readies(case):
     root, host, calls = draft(case)
-    state._write_state(lambda data: data['items']['A'].update(owner_merge={'value': 'no'}), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(owner_merge={'value': 'no'}), root)
     assert main(['pr', 'act', REF]) == 2
     assert calls == []
 

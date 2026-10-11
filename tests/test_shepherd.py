@@ -72,7 +72,7 @@ review_gate_check = "Review Gate"
     ]))
     ports = {'code_host': host, 'review_bot': bot, 'chat': chat, 'vcs': vcs}
     monkeypatch.setattr(registry, 'load', lambda kind, config: ports[kind])
-    state._write_state(lambda data: data.update(raised_prs=[REF]), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(raised_prs=[REF]), tmp_path)
     return tmp_path, host, bot, chat, vcs
 
 
@@ -101,7 +101,7 @@ def test_claim_links_existing_pr_for_ownership_and_metrics(case, monkeypatch):
     claimed = 'acme/widget#8'
     host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
     state._write_state(lambda data: (data['items'].update(A={}),
-                      data['approved_items'].append('A')), root, reserved=False)
+                      data['approved_items'].append('A')), root)
     assert main(['pr', 'claim', claimed, '--item', 'A']) == 0
     assert moves == [('A', 'in_review', root)]  # #842: the in-review duty, as on pr raise
     data = state.read_state(root)
@@ -113,7 +113,7 @@ def test_claim_links_existing_pr_for_ownership_and_metrics(case, monkeypatch):
 
 
 def adopted_day(root, goals):
-    state._write_state(lambda data: data.update(gate_approved=True, goals=goals), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True, goals=goals), root)
 
 
 def test_claim_creates_an_adopted_item(case, capsys):
@@ -173,7 +173,7 @@ def test_claim_refuses_pr_already_raised_today(case):
     from wuwei.__main__ import main
     root, _, _, _, _ = case
     state._write_state(lambda data: (data['items'].update(A={'pr': REF}),
-                      data['approved_items'].append('A')), root, reserved=False)
+                      data['approved_items'].append('A')), root)
     before = state.read_state(root)
     assert main(['pr', 'claim', REF, '--item', 'A']) == 1
     assert state.read_state(root) == before
@@ -182,9 +182,9 @@ def test_claim_refuses_pr_already_raised_today(case):
 def test_claim_refuses_unapproved_item_and_unreadable_pr(case):
     from wuwei.__main__ import main
     root, host, _, _, _ = case
-    state._write_state(lambda data: data['items'].update(A={}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update(A={}), root)
     assert main(['pr', 'claim', REF, '--item', 'A']) == 1
-    state._write_state(lambda data: data['approved_items'].append('A'), root, reserved=False)
+    state._write_state(lambda data: data['approved_items'].append('A'), root)
     host.results['pr'] = Result(2, reason='offline')
     assert main(['pr', 'claim', REF, '--item', 'A']) == 2
     assert 'pr' not in state.read_state(root)['items']['A']
@@ -194,11 +194,11 @@ def test_claim_refuses_conflicting_link_without_state_change(case):
     from wuwei.__main__ import main
     root, host, _, _, _ = case
     state._write_state(lambda data: (data['items'].update(A={'pr': 'acme/widget#8'}, B={}),
-                      data['approved_items'].extend(['A', 'B'])), root, reserved=False)
+                      data['approved_items'].extend(['A', 'B'])), root)
     before = state.read_state(root)
     assert main(['pr', 'claim', REF, '--item', 'A']) == 1
     assert state.read_state(root) == before
-    state._write_state(lambda data: data['items']['A'].update(pr=REF), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(pr=REF), root)
     before = state.read_state(root)
     assert main(['pr', 'claim', REF, '--item', 'B']) == 1
     assert state.read_state(root) == before
@@ -289,7 +289,7 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
         host.results['request_reviewers'] = Result(0, {'requested': ['lead']})
     monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (0, ''))
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
-                      data['approved_items'].extend(['ITEM-1'] if approved else [])), root, reserved=False)
+                      data['approved_items'].extend(['ITEM-1'] if approved else [])), root)
     if not approved:
         assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
         assert not any(name == 'create_pr' for name, _, _ in host.calls)
@@ -328,7 +328,7 @@ def solo_raise(case, monkeypatch, minimum=0):
     host.results['request_reviewers'] = Result(2, reason='empty reviewer list')
     monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (0, ''))
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
-                      data['approved_items'].append('ITEM-1')), root, reserved=False)
+                      data['approved_items'].append('ITEM-1')), root)
     return root, host
 
 
@@ -405,7 +405,7 @@ def test_solo_ping_requests_and_posts_nothing(case, capsys):
     host.results['threads'].data['comments'] = [{'id': 1, 'author': 'review-bot', 'is_bot': True,
         'body': 'Confidence Score: 5/5 /commit/' + SHA,
         'created_at': '2026-09-29T10:00:00Z', 'updated_at': '2026-09-29T10:00:00Z'}]
-    state._write_state(lambda data: data.update(pr_reviewers={REF: []}), root, reserved=False)
+    state._write_state(lambda data: data.update(pr_reviewers={REF: []}), root)
     assert shepherd.post_review_request(root, REF) == 0
     assert 'reviewers: none (solo)' in capsys.readouterr().out
     assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
@@ -417,7 +417,7 @@ def test_raise_refuses_item_already_linked_before_creating_pr(case):
     from wuwei import shepherd
     root, host, _, _, _ = case
     state._write_state(lambda data: (data['items'].update(A={'pr': 'acme/widget#8'}),
-                      data['approved_items'].append('A')), root, reserved=False)
+                      data['approved_items'].append('A')), root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'A') == 1
     assert not any(name == 'create_pr' for name, _, _ in host.calls)
 
@@ -437,7 +437,7 @@ def test_raise_checks_item_worktree_head(case, monkeypatch):
     tree = root / 'item-tree'
     tree.mkdir()
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
-                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+                       data['approved_items'].append('ITEM-1')), root)
     vcs.responses['repo_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
     vcs.responses['head'] = Result(0, {'sha': SHA})
     observed = []
@@ -454,7 +454,7 @@ def test_raise_refuses_worktree_from_another_repository(case, capsys):
     tree = root / 'other-repo'
     tree.mkdir()
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
-                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+                       data['approved_items'].append('ITEM-1')), root)
     vcs.responses['repo_context'] = lambda path, *_: Result(0, {
         'common_dir': str(root / ('other.git' if path == str(tree) else 'repo.git'))})
 
@@ -673,7 +673,7 @@ def test_raise_none_code_host_has_actionable_error(case, capsys):
     config_path.write_text(config_path.read_text().replace('[adapters]',
                                                  '[adapters]\ncode_host = "none"'))
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(root / 'repo')}}),
-                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+                       data['approved_items'].append('ITEM-1')), root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
     assert 'code_host adapter is none; configure github' in capsys.readouterr().out
 
@@ -682,7 +682,7 @@ def test_raise_unmeasured_names_vcs_adapter(case, capsys):
     from wuwei import shepherd
     root, _, _, _, vcs = case
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(root / 'repo')}}),
-                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+                       data['approved_items'].append('ITEM-1')), root)
     vcs.responses['head'] = Result(2, reason='unavailable')
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
     assert 'adapters.vcs' in capsys.readouterr().out
@@ -833,7 +833,7 @@ def test_review_post_restarts_stale_window(case, monkeypatch):
     state._write_state(lambda data: data.update(channel_posts=[{
         'pr': REF, 'status': 'posted', 'head': SHA,
         'url': 'https://slack.com/archives/CREVIEW/p11', 'reviewers': ['alice', 'bob'],
-        'posted_at': '2026-09-29T14:01:00+00:00'}]), root, reserved=False)
+        'posted_at': '2026-09-29T14:01:00+00:00'}]), root)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T14:02:00Z')
     assert pr_actions.evaluate(root, [REF])[1][0]['state'] == 'waiting'
 
@@ -897,7 +897,7 @@ def test_stacked_base_uses_default_branch_required_checks(case):
 def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch)
-    state._write_state(lambda data: data['items']['ITEM-1'].update(gates=gates), root, reserved=False)
+    state._write_state(lambda data: data['items']['ITEM-1'].update(gates=gates), root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
     assert args[0]['body'] == body
@@ -911,7 +911,7 @@ def test_raise_records_owner_merge_on_the_pr(case, monkeypatch):
     host.results['label'] = Result(0, {'labels': ['owner-merge']})
     host.results['pr'].data['draft'] = True  # #726: and it opens as a draft
     state._write_state(lambda data: data['items']['ITEM-1'].update(owner_merge={
-        'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root, reserved=False)
+        'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
     assert args[0]['body'] == ('Body\n\nOwner merges: owner_merge set by planner on 2026-09-29'
@@ -928,7 +928,7 @@ def test_raise_body_names_no_checks_once_and_only_when_none(case, monkeypatch):
     assert args[0]['body'] == 'Body\n\nchecks: none configured'
     config_path = root / '.wuwei/config.toml'
     config_path.write_text(config_path.read_text().replace('path = "repo"', 'path = "repo"\nfast_checks = ["make lint"]'))
-    state._write_state(lambda data: data['items']['ITEM-1'].update(pr=None), root, reserved=False)
+    state._write_state(lambda data: data['items']['ITEM-1'].update(pr=None), root)
     host.calls.clear()
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
@@ -1009,7 +1009,7 @@ def test_raise_opens_a_draft_with_ranked_reviewers(case, monkeypatch, capsys, fl
     host.results['label'] = Result(0, {'labels': ['owner-merge']})
     if flag == 'owner_merge':
         state._write_state(lambda data: data['items']['ITEM-1'].update(owner_merge={
-            'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root, reserved=False)
+            'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1',
                              draft=flag == 'draft') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']

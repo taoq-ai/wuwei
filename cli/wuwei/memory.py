@@ -92,10 +92,10 @@ def session_payload(root=None):
     days = [line for line in index if re.match(r'\d{4}-\d{2}-\d{2} \|', line)]
     kept = f'Rules:\nSpine:\n{spine.rstrip()}\n\n'
     content = kept + ('Today:\n' + ''.join(f'{line}\n' for line in days)
-                      + f'Full day state: wuwei state get\n{promote_line}\n')
+                      + f'Full day state: wuwei why <item>\n{promote_line}\n')
     if estimated_tokens(content) > budget:
         content = (kept + f'Memory budget: {estimated_tokens(content)} of {budget} estimated tokens; '
-                   'today left out (wuwei state get).\n')
+                   'today left out (wuwei why <item>).\n')
     return content, len(content.encode('utf-8')), estimated_tokens(content)
 
 

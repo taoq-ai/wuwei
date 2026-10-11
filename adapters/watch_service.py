@@ -1,4 +1,4 @@
-"""Allowlisted local process and network calls for the watch: service manager, heartbeat probes, the dead-man ping and telemetry posts."""
+"""Allowlisted local process and network calls: retired service removal (init --upgrade), doctor's hook probes and telemetry posts."""
 
 from pathlib import Path
 import subprocess
@@ -6,14 +6,13 @@ import threading
 import time
 
 LAUNCHER = Path(__file__).resolve().parents[1] / 'bin/wuwei'
-PROBE_ARGS = (('hook', 'PreToolUse'), ('status', '--line'))
+PROBE_ARGS = (('hook', 'PreToolUse'),)
 
 
 def call(argv):
     allowed = (['systemctl', '--user', 'daemon-reload'],
-               ['systemctl', '--user', 'enable', '--now'],
                ['systemctl', '--user', 'disable', '--now'],
-               ['launchctl', 'bootstrap'], ['launchctl', 'bootout'])
+               ['launchctl', 'bootout'])
     if not any(argv[:len(prefix)] == prefix for prefix in allowed):
         raise ValueError('unsupported watch service command')
     try:
@@ -68,15 +67,6 @@ def probe(calls, cwd, during=lambda: None, timeout=10):
             if process.poll() is None:
                 process.kill()
                 process.wait()
-
-
-def ping(url, timeout=5):
-    """GET an https check URL; raise OSError or ValueError on any failure."""
-    import urllib.request
-    if not url.startswith('https://'):
-        raise ValueError('ping URL must be https')
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        response.read(1024)
 
 
 def post(url, body, headers=None, timeout=5):

@@ -63,7 +63,7 @@ auto = true
     state._write_state(lambda d: d.update(items={'item-7': {'pr': REF, 'flags': flags}},
         raised_prs=[REF], gate_approved=True, approved_items=['item-7'],
         channel_posts=[{'pr': REF, 'status': 'posted', 'url': 'https://chat.test/thread/1',
-                        'reviewers': ['reviewer']}]), root, reserved=False,
+                        'reviewers': ['reviewer']}]), root,
         kind='plan.approved', payload={'flags': {'item-7': flags}, 'approved_items': ['item-7']})
     host = Fake({
         'pr': Result(0, {'repo': 'example/project', 'number': 7, 'head': SHA,
@@ -132,7 +132,7 @@ def delta_record(root, fixed, first='FIX'):
         'head': SHA, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     state._write_state(lambda data: (data.update(gate_verdicts=records),  # #844: the fix round BASE..SHA
                                      data['items']['item-7'].update(fix_heads=[[BASE, SHA]])),
-                       root, reserved=False)
+                       root)
 
 
 @pytest.mark.parametrize('first', ['FIX', 'PASS'])  # #723: PASS is a polish re-check
@@ -399,7 +399,7 @@ def test_policy_preconditions(case, change, hint):
     elif change == 'stale-approval': host.results['reviews'].data[0]['sha'] = BASE
     elif change == 'changes-requested': host.results['reviews'].data[0]['state'] = 'changes_requested'
     elif change == 'visibility':
-        state._write_state(lambda d: d.update(channel_posts=[]), root, reserved=False)
+        state._write_state(lambda d: d.update(channel_posts=[]), root)
         with (root / '.wuwei/config.toml').open('a') as f:
             f.write('\n[adapters]\nchat = "slack"\n')
     elif change == 'reply': host.results['threads'].data['comments'] = [
@@ -409,13 +409,13 @@ def test_policy_preconditions(case, change, hint):
         {'id': 't1', 'resolved': False, 'outdated': False, 'comments': [
             {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please fix',
              'created_at': '2026-09-29T10:00:00Z'}]}]
-    elif change == 'risk': state._write_state(lambda data: data['items']['item-7']['flags'].update(agent_surface=True), root, reserved=False)
+    elif change == 'risk': state._write_state(lambda data: data['items']['item-7']['flags'].update(agent_surface=True), root)
     elif change == 'forged-flags': state.append_event('plan.approved', {
         'flags': {'item-7': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': True}},
         'approved_items': ['item-7']}, root)
     elif change == 'cycle':
         for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
-    elif change == 'unlinked': state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'), root, reserved=False)
+    elif change == 'unlinked': state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'), root)
     elif change == 'gate': (workspace.day_dir(root) / 'decisions/gate-item-7-security.md').unlink()
     answer = check(case)
     assert answer.exit == (2 if change == 'stale-check' else 1) and hint in answer.reason, answer
@@ -493,19 +493,6 @@ def test_cli_check_and_numeric_merge(case, monkeypatch, capsys):
     assert 'head' in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('key', ['merges', 'merge_breakers'])
-def test_generic_state_cannot_forge_merge_evidence(case, key):
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state(key, {}, case[0])
-
-
-@pytest.mark.parametrize('kind', ['merge.auto', 'merge.intent', 'merge.breaker', 'base.red'])
-def test_generic_event_cannot_forge_merge_evidence(case, kind):
-    from argparse import Namespace
-    from wuwei.commands.event import run
-    assert run(Namespace(kind=kind, payload='{}')) == 1
-
-
 @pytest.mark.parametrize('command,code', [
     ('gh pr merge 7', 1), ('env X=1 gh pr merge 7 --squash', 1),
     ('gh pr merge 7 --admin', 1), ('gh api repos/example/project/pulls/7/merge -X PUT', 1),
@@ -539,26 +526,14 @@ def merged(case):
     return root, host
 
 
-def test_merge_done_uses_item_from_merge_day(case, monkeypatch):
+def test_merge_makes_no_tracker_call(case, monkeypatch):
+    # #847: the tracker duty in next records a merge; merge supervision never calls the tracker.
     root, _ = merged(case)
     from wuwei import dispatch
     calls = []
     monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: calls.append(args))
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
-    assert state.read_state(root)['items'] == {}
     assert policy().poll(root) == 0
-    assert calls == [('item-7', 'done', root)]
-
-
-def test_merge_without_linked_item_records_tracker_miss(case):
-    root, _ = merged(case)
-    state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'),
-                       root, reserved=False)
-    assert policy().poll(root) == 0
-    assert any(event['kind'] == 'tracker.call' and event['payload']['action'] == 'done'
-               and event['payload']['exit'] == 2
-               and event['payload']['reason'] == 'no item linked to merged PR'
-               for event in events(root))
+    assert calls == [] and not [e for e in events(root) if e['kind'] == 'tracker.call']
 
 
 def test_red_base_check_reverts_pages_and_disables_across_days(case, monkeypatch):
@@ -569,7 +544,7 @@ def test_red_base_check_reverts_pages_and_disables_across_days(case, monkeypatch
     host.results['checks'].data[0]['conclusion'] = 'failure'
     result = policy().poll(root)
     assert result == 1
-    assert tracker_calls == [('item-7', 'done', root)]
+    assert tracker_calls == []
     assert ('checks', (REF, MERGED), root) in host.calls
     assert ('revert_pr', (REF,), root) in host.calls
     assert state.read_state(root)['merges'][REF]['revert_pr'].endswith('/8')
@@ -613,22 +588,41 @@ def test_missing_base_checks_are_unmeasured_and_keep_monitoring(case):
     assert state.read_state(root)['merges'][REF]['status'] == 'merged'
 
 
-def test_watch_scheduler_runs_merge_poll(case, monkeypatch):
-    from wuwei import watch
-    root, host = case
+def test_next_and_report_run_merge_poll(case, monkeypatch, capsys):
+    # #847: merge supervision (red base, 5.6 outcomes) runs when next refreshes the PR listing and
+    # once in the report; its exit never changes theirs, and next's stdout stays one JSON row.
+    from argparse import Namespace
+    from wuwei import derive, report
+    from wuwei.commands import next as next_command, report as report_command
+    root, _ = case
     calls = []
-    monkeypatch.setattr(policy(), 'poll', lambda r: calls.append(r) or 1)
-    monkeypatch.setattr(watch, 'poll', lambda r: 0)
-    monkeypatch.setattr(watch, 'sweep', lambda *a, **k: 0)
-    assert watch.tick(root) == 1
+    def poll(r):
+        calls.append(r)
+        print('merge watch unmeasured: probe')
+        return 2
+    monkeypatch.setattr(policy(), 'poll', poll)
+    monkeypatch.setattr(derive, 'stale', lambda *a: False)
+    next_command.run(Namespace(json=True))
+    assert calls == []
+    monkeypatch.setattr(derive, 'stale', lambda *a: True)
+    monkeypatch.setattr(derive, 'refresh', lambda *a: None)
+    capsys.readouterr()
+    next_command.run(Namespace(json=True))
     assert calls == [root]
+    out, err = capsys.readouterr()
+    json.loads(out)
+    assert 'merge watch unmeasured: probe' in err
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(report, 'write', lambda *a, **k: root / '.wuwei/config.toml')
+    assert report_command.run(Namespace()) == 0
+    assert calls == [root, root]
 
 
 def test_daily_cap_counts_pending_intents(case):
     root, host = case
     config_change(root, 'auto = true', 'auto = true\nmax_per_day = 1')
     state._write_state(lambda d: d.update(merges={'example/project#6': {
-        'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root, reserved=False)
+        'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root)
     result = check(case)
     assert result.exit == 1 and 'cap' in result.reason
 
@@ -972,7 +966,7 @@ def test_light_item_merge_evidence_lists_quality_only(case):
     def update(data):
         data['gate_verdicts']['item-7:quality:initial'] = record
         data['items']['item-7']['gates'] = light
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     result = check(case)
     assert result.exit == 0, result
     assert [row['path'] for row in result.data['verdicts']] == [record['file']]
@@ -1013,10 +1007,10 @@ def auto_only(root, host, name):
     elif name == 'cap':
         config_change(root, 'auto = true', 'auto = true\nmax_per_day = 1')
         state._write_state(lambda d: d.update(merges={'example/project#6': {
-            'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root, reserved=False)
+            'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root)
     elif name == 'quiet': config_change(root, 'auto = true', 'auto = true\nquiet_hours = ["11:00-13:00"]')
-    elif name == 'plan': state._write_state(lambda d: d.update(approved_items=[]), root, reserved=False)
-    elif name == 'risk': state._write_state(lambda d: d['items']['item-7']['flags'].update(agent_surface=True), root, reserved=False)
+    elif name == 'plan': state._write_state(lambda d: d.update(approved_items=[]), root)
+    elif name == 'risk': state._write_state(lambda d: d['items']['item-7']['flags'].update(agent_surface=True), root)
     elif name == 'cycle':
         for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
     elif name == 'size': config_change(root, 'auto = true', 'auto = true\nmax_changed_lines = 5')
@@ -1101,7 +1095,7 @@ def test_a_refusal_that_never_clears_is_named_refused(case, monkeypatch, change,
     if change == 'deploys':
         config_change(root, 'merge_deploys = false', 'merge_deploys = true')
     elif change == 'item':
-        state._write_state(lambda d: d['items']['item-7'].update(pr=None), root, reserved=False)
+        state._write_state(lambda d: d['items']['item-7'].update(pr=None), root)
     else:
         config_change(root, 'auto = true', 'auto = true\nnever_auto_path = ["x"]')
     monkeypatch.chdir(root / 'repo')
@@ -1193,7 +1187,7 @@ def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, pat
 
 
 def flag_item(root, record):
-    state._write_state(lambda d: d['items']['item-7'].update(owner_merge=record), root, reserved=False)
+    state._write_state(lambda d: d['items']['item-7'].update(owner_merge=record), root)
 
 
 HOLD = {'value': True, 'by': 'owner', 'at': '2026-09-29T11:00:00+00:00'}
@@ -1263,12 +1257,11 @@ def test_merge_waits_on_gates_at_a_moved_head(case):
     assert merged_calls(host) == []
 
 
-@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'overnight shepherd'])
+@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act'])
 def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
-    # Former 9.2 I37 (#678): the command paths and the daemon path read one hold.
-    from wuwei import plan, pr_actions, shepherd
+    # Former 9.2 I37 (#678): every command path reads one hold (#847: no daemon path).
+    from wuwei import plan, pr_actions
     from wuwei.__main__ import main
-    from wuwei.watch import records
     root, host = case
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
@@ -1283,15 +1276,9 @@ def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
     elif path == 'wuwei merge':
         code = main(['merge', '7'])
         text = capsys.readouterr().out
-    elif path == 'pr act':
+    else:
         code = pr_actions.act(root, REF)
         text = capsys.readouterr().out
-    else:
-        shepherd.overnight(root)
-        capsys.readouterr()
-        [event] = [row['payload'] for row in records(workspace.day_dir(root) / 'events.jsonl')
-                   if row['kind'] == 'shepherd.overnight']
-        code, text = (1 if event['outcome'] == 'queued' else 0), event['reason']
     assert code == 1, (path, code, text)
     assert 'owner merges: owner_merge set by owner on 2026-09-29' in text, (path, text)
     assert merged_calls(host) == [], (path, text)
@@ -1369,7 +1356,7 @@ def flag(root, name='trust_surface', row=True):
     """#675: one risk flag on item-7 in a plan.approved event and, with row, on the item row."""
     flags = {key: key == name for key in state.ITEM_DEFAULTS['flags']}
     if row:
-        state._write_state(lambda d: d['items']['item-7']['flags'].update(flags), root, reserved=False)
+        state._write_state(lambda d: d['items']['item-7']['flags'].update(flags), root)
     state.append_event('plan.approved', {'flags': {'item-7': flags}, 'approved_items': ['item-7']}, root)
 
 
@@ -1392,7 +1379,7 @@ def test_trust_surface_without_the_security_gate_is_refused(case, row):
     root = case[0]
     flag(root, row=row)
     state._write_state(lambda d: d['items']['item-7'].update(
-        gates={'tier': 'light', 'roles': ['quality']}), root, reserved=False)
+        gates={'tier': 'light', 'roles': ['quality']}), root)
     result = check(case)
     assert result.exit == 1 and 'trust_surface needs the security gate' in result.reason, result
 
@@ -1545,7 +1532,7 @@ def test_pr_gate_accepts_quality_only_delta_after_fix(gates):
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     state._write_state(lambda data: data.update(gate_verdicts=records, items={'9': {  # #844: the fix round
-        'fix_heads': [[BASE, new_head]]}}), root, reserved=False)
+        'fix_heads': [[BASE, new_head]]}}), root)
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
 
 
@@ -1564,7 +1551,7 @@ def test_recorded_gate_refusal_names_only_unpassed_gate_at_head(gates):
     delta.write_text(evidence(current))
     records['9:quality:delta'] = {'item': '9', 'role': 'quality', 'round': 'delta',
         'verdict': 'PASS', 'head': current, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
-    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_verdicts=records), root)
     code, reason = policy()._recorded_gates(root, current, records, '9')
     assert code == 1
     assert current in reason and 'security' in reason
@@ -1592,7 +1579,7 @@ def test_pr_gate_accepts_nonblocking_delta_residual(gates):
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     state._write_state(lambda data: data.update(gate_verdicts=records, items={'9': {  # #844: the fix round
-        'fix_heads': [[BASE, new_head]]}}), root, reserved=False)
+        'fix_heads': [[BASE, new_head]]}}), root)
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
 
 
@@ -1656,14 +1643,14 @@ def test_pr_gate_accepts_quality_only_for_a_light_item(gates):
     path = decisions / 'gate-9-quality.md'
     state._write_state(lambda data: data.update(gate_verdicts={'9:quality:initial': {
         'item': '9', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS', 'head': SHA,
-        'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}}), root, reserved=False)
+        'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}}), root)
     config = workspace.load_config(root)
     code, reason = policy().gate_check(root, root / 'repo', config, item='9')
     assert code == 1 and 'arch, security' in reason
-    state._write_state(lambda data: data['items'].update({'9': {'gates': LIGHT}}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update({'9': {'gates': LIGHT}}), root)
     assert policy().gate_check(root, root / 'repo', config, item='9') == (0, '')
     state._write_state(lambda data: data['items']['9'].update(gates={**LIGHT, 'roles': ['arch']}),
-                       root, reserved=False)
+                       root)
     with pytest.raises(ValueError, match='invalid recorded gate set'):
         policy().gate_check(root, root / 'repo', config, item='9')
 
@@ -1755,7 +1742,7 @@ def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
         'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     rounds = {'9': {'fix_heads': [[BASE, new_head]]}}  # #844: the polish round BASE..new_head
-    state._write_state(lambda data: data.update(gate_verdicts=records, items=rounds), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_verdicts=records, items=rounds), root)
     fake.results['head'] = Result(0, {'sha': new_head})
     assert policy().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
     code, reason = policy()._recorded_gates(root, 'd' * 40, records, '9', rounds)

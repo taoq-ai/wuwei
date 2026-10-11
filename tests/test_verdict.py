@@ -606,7 +606,7 @@ def registered_stop(tmp_path):
     relative = (directory / 'briefs/review-1.md').relative_to(tmp_path).as_posix()
     state._write_state(lambda data: data.update(seats={'review-1': {
         'id': 'review-1', 'role': 'sentinel-quality', 'item': 'X',
-        'brief': relative, 'status': 'stopped'}}), tmp_path, reserved=False)
+        'brief': relative, 'status': 'stopped'}}), tmp_path)
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': [{'type': 'text', 'text': 'WUWEI brief: ' + relative}]}}) + '\n')
@@ -649,7 +649,7 @@ def test_stop_lints_only_registered_seat(registered_stop, tmp_path, monkeypatch,
     if case == 'bad-transcript':
         Path(payload['agent_transcript_path']).write_text('{}\n{broken')
     if case == 'no-reservation':
-        state._write_state(lambda data: data.update(seats={}), tmp_path, reserved=False)
+        state._write_state(lambda data: data.update(seats={}), tmp_path)
     if case == 'wrong-role':
         payload['agent_type'] = 'sentinel-security'
     if case == 'next-day':
@@ -775,7 +775,7 @@ def test_lint_file_takes_no_docs_value(tmp_path, monkeypatch):
         items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'},
                      'docs': {'value': 'docs/a.md', 'reason': ''}}},
         seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
-        tmp_path, reserved=False)
+        tmp_path)
     path = workspace.day_dir(tmp_path) / 'decisions/gate-quality-1.md'
     path.parent.mkdir()
     path.write_text(QUALITY_FIX.replace('fails when input is empty', 'the docs value is missing; fails when input is empty'))
@@ -930,7 +930,7 @@ def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
         items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'},
                      'worktree': str(tree)}},
         seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
-        tmp_path, reserved=False)
+        tmp_path)
     decisions = workspace.day_dir(tmp_path) / 'decisions'
     decisions.mkdir()
     path, unknown = decisions / 'gate-quality-1.md', decisions / 'gate-unknown-1.md'
@@ -938,7 +938,7 @@ def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
         file.write_text(PASS + 'Simplicity: none\nDesign: none\n' + ROW1)
     lint = lambda file: verdict.lint_file(file, role='sentinel-quality', root=tmp_path)
     assert lint(path)[0] == 0
-    state._write_state(lambda data: data['items']['A'].update(ci_jobs=[LINT_REF]), tmp_path, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(ci_jobs=[LINT_REF]), tmp_path)
     code, message = lint(path)
     assert code == 1 and 'CI step 2 (lint / Types)' in message
     assert lint(unknown)[0] == 0

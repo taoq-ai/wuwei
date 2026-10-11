@@ -28,8 +28,8 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
 GUARDS = ('agent_launch', 'answers', 'edges', 'integrity', 'lifecycle', 'outward', 'protect_state',
-          'spec', 'stop', 'traces', 'verdict')
-RETIRED_GUARDS = ('commit_push', 'deploy', 'pr')  # stored weeks (#839)
+          'spec', 'traces', 'verdict')
+RETIRED_GUARDS = ('commit_push', 'deploy', 'pr', 'stop')  # stored weeks (#839, #847)
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
@@ -48,9 +48,9 @@ ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 's
 INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat',
                    'cruise'))  # cruise: weeks stored before #814
-OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',
+OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',  # state.recovered: days before #847
                'draft.sending', 'draft.dropped')
-PROBES = ('refused', 'allowed', 'state_write', 'read_loop')
+PROBES = ('refused', 'allowed', 'state_write', 'read_loop')  # heartbeat rows of days before #847
 SPAN_EVENTS = ('decision.routed', 'decision.decided', 'decision.reversed', 'negotiation.loop', 'gate.received',
                *OWNER_KINDS)
 VERSION = re.compile(r'\d+\.\d+(\.\d+)?')

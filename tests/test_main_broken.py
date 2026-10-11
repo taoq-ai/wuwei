@@ -120,7 +120,7 @@ def test_an_items_own_failure_goes_back_to_its_builder(held_day, monkeypatch, ca
         monkeypatch.setattr(registry.load('vcs', {}), 'status',
                             lambda *a, **kw: registry.Result(0, [{'path': 'cli/untouched.py'}]))
     elif case == 'mixed':
-        state._write_state(lambda data: data['builds']['A'].update(commands=['one', 'two']), root, reserved=False)
+        state._write_state(lambda data: data['builds']['A'].update(commands=['one', 'two']), root)
         results = [lint(), lint('cli/a.py:1:1: E1')]
     elif case == 'unreadable':
         monkeypatch.setattr(dispatch, '_changes', lambda *a: (_ for _ in ()).throw(ValueError('no remote')))
@@ -194,7 +194,7 @@ def test_no_hold_when_the_fix_item_cannot_be_admitted(held_day):
 def test_launch_set_gives_a_held_item_no_seat(day_set, monkeypatch):
     root, _ = day_set
     state._write_state(lambda data: data.update(builds={'B': {'status': 'ready', 'action': {
-        'action': 'wait', 'fix': 'P1', 'reason': 'main is broken: fix item P1'}}}), root, reserved=False)
+        'action': 'wait', 'fix': 'P1', 'reason': 'main is broken: fix item P1'}}}), root)
     monkeypatch.setattr(build, 'next_action', lambda item, root=None: state.read_state(root)['builds'][item]['action'])
     value = dispatch.launch_set(root)
     assert value['building'] == 0
@@ -207,7 +207,7 @@ def test_the_fix_items_brief_reads_main_broken(day_set):
     root, _ = day_set
     state._write_state(lambda data: data.update(main_broken={'P3': {
         'repo': 'app', 'scope': 'Fix main: cli/untouched.py fails ruff', 'evidence': 'ruff fails there'}}),
-        root, reserved=False)
+        root)
     assert dispatch.candidate(root, 'P3')['repo'] == 'app'
     assert dispatch._start(root, 'P3', [])[-1].endswith(
         "'Implement P3: Fix main: cli/untouched.py fails ruff. Evidence: ruff fails there.'")
@@ -233,12 +233,8 @@ def test_builder_charter_says_a_broken_main_is_not_fixed_in_the_branch():
 
 
 @pytest.mark.parametrize('kind', ['build.held', 'build.released'])
-def test_hold_events_are_reserved_and_silent(root, capsys, kind):
+def test_hold_events_are_silent(kind):
     from wuwei import signal
-    from wuwei.__main__ import main
-    capsys.readouterr()
-    assert main(['event', kind, '{}']) == 1
-    assert f'{kind}: reserved; written by wuwei build' in capsys.readouterr().err
     assert signal.classify({'kind': kind, 'payload': {}}, {})[0] == 'silent'
 
 

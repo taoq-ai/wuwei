@@ -11,7 +11,7 @@ template_version = "" # Plugin version that last wrote this file; init and init 
 # default_branch = "main" # Required for each configured repository.
 # identity = {name = "Builder", email = "builder@example.test"} # Commit guards compare commits against it; wuwei worktree add writes it to each item worktree's Git config.
 # merge_deploys = false # Explicitly declare that merges do not deploy.
-# fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
+# fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei build check <item>.
 # [repos.merge]
 # auto = false # Enable only after review, check, soak and path rules are configured.
 # size_exclude = ["results/*.json"] # Generated files max_changed_lines does not count; never-auto paths still apply.
@@ -42,7 +42,7 @@ done = "Done"
 name = ""
 pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
-# timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
+# timezone = "Europe/Amsterdam" # IANA zone for quality hour bands; empty is this machine's zone.
 [owner.verbosity]
 default = "brief" # brief, standard or full: how much cards and the report say to you.
 # report = "" # Per surface: decisions or report. Empty uses default.
@@ -156,18 +156,6 @@ code_host_orgs = []
 # owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login", pages = ["F123", "<notion page id>"]}
 # Where the planner posts the day report: "session" or "dm" (your own Slack DM).
 # owner_channel = "dm"
-
-[watch]
-clock_seconds = 600
-dead_seconds = 1200
-stale_seconds = 900
-sweep_seconds = 7200
-# https check URL of a hosted cron monitor, pinged by each healthy heartbeat; keep it private.
-# ping_url = ""
-
-[sessions]
-stale_seconds = 3600
-# rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
 
 [duties]
 # Outward duties wuwei next lists until each is recorded, each while its channel is configured:

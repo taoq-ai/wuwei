@@ -55,7 +55,7 @@ def test_payload_content_size_and_missing_source(tmp_path):
     assert result.returncode == 0, result.stderr
     assert '# Spine' in result.stdout
     assert '2026-09-27 | Summary' in result.stdout
-    assert 'Full day state: wuwei state get' in result.stdout and '"cap": 2' not in result.stdout
+    assert 'Full day state: wuwei why <item>' in result.stdout and '"cap": 2' not in result.stdout
     content, size = result.stdout.rsplit('Size: ', 1)
     assert size == f'{len(content.encode())} bytes, {(len(content) + 3) // 4} estimated tokens\n'
     (root / '.wuwei/memory/index.md').unlink()
@@ -164,7 +164,7 @@ def test_payload_opens_with_active_constraints(tmp_path, monkeypatch, case):
                             'ITEM-4': {'status': 'merged', 'brief': 'c4.md'}},
                     decision_routes={'D-1': {}, 'D-2': {}},
                     decision_outcomes={'D-2': {'option': 'A', 'decided_by': 'owner'}})
-    state._write_state(seed, root, reserved=False)
+    state._write_state(seed, root)
     content, size, _ = memory.session_payload(root)
     assert content.startswith('Rules:\nSpine:') and 'Active constraints:' not in content
     assert size == len(content.encode('utf-8'))
@@ -198,7 +198,7 @@ def test_payload_loads_rules_then_today(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     content, _, _ = memory.session_payload(tiered(tmp_path))
     assert content == ('Rules:\nSpine:\n# Spine\n\n'
-                       'Today:\n2026-09-27 | # Report one\nFull day state: wuwei state get\nLast promote: none\n')
+                       'Today:\n2026-09-27 | # Report one\nFull day state: wuwei why <item>\nLast promote: none\n')
 
 
 def test_payload_over_budget_leaves_today_out(tmp_path, monkeypatch):
@@ -207,7 +207,7 @@ def test_payload_over_budget_leaves_today_out(tmp_path, monkeypatch):
     content, size, tokens = memory.session_payload(tiered(tmp_path, budget=20))
     assert 'Today:' not in content and '2026-09-27 |' not in content and 'retry |' not in content
     assert content == ('Rules:\nSpine:\n# Spine\n\nMemory budget: 27 of 20 estimated tokens; '
-                       'today left out (wuwei state get).\n')
+                       'today left out (wuwei why <item>).\n')
     assert size == len(content.encode()) and tokens == memory.estimated_tokens(content)
 
 

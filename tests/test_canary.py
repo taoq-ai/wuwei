@@ -129,7 +129,7 @@ def test_custom_decoy_protected(secured):
 def test_brief_points_at_private_charters(secured, monkeypatch):
     from wuwei import brief, state
     monkeypatch.setenv('WUWEI_WORKSPACE', str(secured))
-    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured, reserved=False)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured)
     brief.write('builder', 'X', 'example', 'Implement the change.')
     content = (workspace.day_dir(secured) / 'briefs/example.md').read_text()
     assert str(secured / '.wuwei/generated/charters/builder.md') in content
@@ -144,7 +144,7 @@ def test_refresh_generated_charter_override(secured, action):
                       + '\nFollow the updated local instruction.\n')
     before = material(secured)
     if action == 'brief':
-        state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured, reserved=False)
+        state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured)
         brief.write('builder', 'X', 'example', 'Implement the change.')
     else:
         args = SimpleNamespace(path=str(secured), upgrade=True, dry_run=True)
@@ -250,18 +250,6 @@ def test_port_security_finding_does_not_return_leaked_draft(secured):
     result = post('C1', material(secured)['canary'], root=secured)
     assert result.exit == 1 and result.data is None
     assert 'security.canary' in result.reason
-
-
-@pytest.mark.parametrize('kind', ['security.canary', 'security.honeytoken', 'scanner.finding'])
-def test_security_event_kinds_are_reserved(secured, kind):
-    from wuwei.commands.event import run
-    assert run(SimpleNamespace(kind=kind, payload='{}')) == 1
-
-
-def test_security_state_namespace_reserved(secured):
-    from wuwei import state
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('security.canary', 'forged', root=secured)
 
 
 @pytest.mark.parametrize('failure', ['missing', 'malformed', 'symlink', 'event_write'])

@@ -124,7 +124,3 @@ def test_outside_cwd_reads_the_config_and_runs_unrelated_bash(ws, tmp_path, monk
     assert code == 0
 
 
-def test_stop_prints_the_error_once_and_ends_the_turn(ws, monkeypatch, capsys):
-    code, out, err = replay(monkeypatch, capsys, ws, 'Stop')
-    assert (code, out) == (0, '')
-    assert HINT in err and err.count('config.toml:') == 1

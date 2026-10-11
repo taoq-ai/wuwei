@@ -67,7 +67,7 @@ def settings(root, text):
 
 def seed_ticket(root, item='item-1', ticket='ENG-1'):
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
-        {item: {'id': ticket, 'source': 'set'}}), root, reserved=False)
+        {item: {'id': ticket, 'source': 'set'}}), root)
 
 
 def day_events(root, kind=None):
@@ -151,7 +151,7 @@ def test_item_ticket_from_a_seat_finding(ws):
         items={'fix-pin-ruff-in-ci': {'phase': 'merged', 'goal': 'G-1', 'track': 'SLICE'}},
         seat_findings={'fix-pin-ruff-in-ci': {'scope': 'Pin ruff in CI', 'evidence': 'seat finding',
                                               'track': 'SLICE', 'at': '2026-09-29T12:00:00Z'}}),
-        root, reserved=False)
+        root)
     assert main(['tracker', 'create', 'fix-pin-ruff-in-ci']) == 0
     (_, (draft,), _), = fake.calls
     assert draft['title'] == 'Pin ruff in CI'
@@ -168,7 +168,7 @@ def test_create_without_adapter_cannot_run(ws, monkeypatch, capsys):
 def approved(root, item='item-1', phase='implement'):
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=[item],
-        items={item: {'phase': phase, 'status': 'queued'}}), root, reserved=False)
+        items={item: {'phase': phase, 'status': 'queued'}}), root)
 
 
 def comments(fake):
@@ -181,7 +181,7 @@ def story(root):
     state._write_state(lambda data: data['gate_verdicts'].update({'item-1:quality:initial': {
         'verdict': 'FIX', 'findings': ['- P1 | cli/x.py:1 | empty | blocks: yes',
                                        '- P3 | cli/x.py:2 | naming | blocks: no']}}),
-        root, reserved=False, kind='gate.received',
+        root, kind='gate.received',
         payload={'item': 'item-1', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX'})
 
 
@@ -403,8 +403,7 @@ def test_full_id_refuses_without_a_repository(tmp_path, settings):
 
 def stored(directory, tickets):
     directory.parent.mkdir(parents=True, exist_ok=True)
-    state._write_state(lambda data: data.setdefault('tickets', {}).update(tickets),
-                       reserved=False, directory=directory)
+    state._write_state(lambda data: data.setdefault('tickets', {}).update(tickets), directory=directory)
 
 
 def test_upgrade_normalises_the_latest_days_bare_tickets(tmp_path, monkeypatch):

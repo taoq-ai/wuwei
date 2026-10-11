@@ -11,18 +11,14 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei agents` | Plumbing: builds or checks the generated role agents. | [Concepts](concepts.md#roles) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
+| `bin/wuwei close` | Refuses day close until every outward duty is recorded; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` show a diff and ask on a card in the session. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei discover` | Discovers candidate work for the morning plan. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei dispatch` | Decides planner gate work; `dispatch opinion <item>` runs the second-opinion gate; `dispatch polish <item>` and `dispatch skip-polish <item>` take or decline a polish round. | [Review tiers](concepts.md#review-tiers) |
 | `bin/wuwei dora` | Prints the DORA keys over the last 28 days (`--window <days>` changes that). Lead time to merge and to deploy, deployment frequency, change failure rate and time to restore, each with its source or why it is unmeasured. Read-only; exits 2 when the code host could not run. | [DORA keys](concepts.md#dora-keys) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei duty` | `<item> <duty> --evidence <link>` records an outward duty `wuwei next` lists (`ping`, `shepherd`, `tracker`, or `day summary`) as done. Refuses a duty that is not due. | [Configuration](configuration.md#host-build-and-memory) |
-| `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
-| `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
 | `bin/wuwei goals` | Shows your goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
-| `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
 | `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
 | `bin/wuwei init` | Creates or upgrades a workspace; `--shadow` writes `guards.enforce = false`, so guards log what they would refuse. | [Daily path](daily.md) |
@@ -38,19 +34,14 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
 | `bin/wuwei report` | Shows your report. | [Day close](concepts.md#day-close) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
-| `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
 | `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. Records an ad-hoc seat before its Agent launch. | [Stuck seats](#stuck-seats) |
-| `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei spec` | Plumbing: `spec analysis <item>` saves the spec-kit analyze report as `analysis.md`. A Claude Code subagent cannot write that file itself. The report comes on stdin or with `--file PATH`. It goes to the one spec directory of the item worktree, which must hold `spec.md`. The command prints the path, and the builder commits the file. It exits 2 and writes nothing for an unknown item, no worktree, no or two spec directories, no `spec.md`, a symlink, an empty report, or a governed item's report without the `## Governing` table. | [Configuration](configuration.md#specification-mode) |
-| `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
-| `bin/wuwei shepherd` | Sweeps owned PRs every 15 minutes while no planner is live. It checks approved PRs with `wuwei merge check`; the merge itself waits for the morning until #524. It sends due review pings after the outward lint and queues the rest, with evidence, at the top of the next morning plan. No model runs. `schedule [--dry-run]` and `unschedule` install or remove it as a user service; in a session `schedule` returns the Shepherd card and its answer runs `schedule --yes` (under strict, you run both in a host terminal). | [Doctor](#doctor) |
 | `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
 | `bin/wuwei steward` | Runs a steward review at a sweep or at close. | [Steward](#steward) |
 | `bin/wuwei telemetry` | `preview [<week>]` prints exactly what each sharing mode would send; `off` stops sharing; `send [<week>]` opens the attributed issue (owner, host terminal). | [Telemetry](configuration.md#telemetry) |
-| `bin/wuwei sweep` | Plumbing: checks day obligations; `sweep obligations --headless` runs one `shepherd` sweep. `sweep classes <worktree>` lists the builder's sweep classes the item's diff touches: `Depth: light; no class sweep` at light, every class at full. It is read-only and exits 2 when no item has that worktree or the diff cannot be read. | [Concepts](concepts.md#day-flow) |
+| `bin/wuwei sweep` | Plumbing: `sweep classes <worktree>` lists the builder's sweep classes the item's diff touches: `Depth: light; no class sweep` at light, every class at full. It is read-only and exits 2 when no item has that worktree or the diff cannot be read. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei tracker` | `create <item>` opens the item's ticket from its record on demand. `create --bug, --triage or --follow-up <subject> "<title>" --evidence "<file:line>" [--seat <role>]` opens a linked ticket, recording the seat that filed it; `log` writes today's progress, verdicts and carried or parked notes as ticket comments; `done <item>` runs the done duty. `move <item> claim`, `in_review` or `done` runs that duty again (the one a `duty` row in `wuwei next` names) and handles a missing in-review label as `pr raise` does. | [Tickets and comments](concepts.md#tickets-and-comments) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
-| `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item or a refusal is where it is. | [Why](#why) |
 | `bin/wuwei worktree` | Creates or adopts an anchored item worktree. | [Item worktrees](#item-worktrees) |
 

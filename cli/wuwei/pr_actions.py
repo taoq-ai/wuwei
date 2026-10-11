@@ -42,32 +42,13 @@ def record_disposition(root, ref, kind, comment_id):
     _verify(root, host, ref, record, config)
     def update(data):
         data.setdefault('pr_dispositions', {})[ref] = record
-    state._write_state(update, root, reserved=False, kind='pr.disposition',
+    state._write_state(update, root, kind='pr.disposition',
                        payload={'pr': ref, **record})
     return 0
 
 
-def _watched(root):
-    """True only when the watch read every owned PR recently and no episode is overdue."""
-    try:
-        data = state.read_state(root)
-        refs = {pull_request(ref) for ref in data['raised_prs'] + data['claimed_prs']}
-        record = data.get('watch', {})
-        age = (workspace.now() - obligations._time(record['measured_at'])).total_seconds()
-        limit = 2 * workspace.load_config(root)['pr']['poll_seconds']
-        actions = record.get('actions', {})
-        return (bool(refs) and 0 <= age <= limit and refs <= record['prs'].keys()
-                and all(ref not in actions
-                        or obligations._time(actions[ref]['deadline']) >= workspace.now()
-                        for ref in refs))
-    except watch.ERRORS:
-        return False
-
-
 def check(root, *, closing=False, rows=None):
-    """Stop checks fresh states, enforcing only overdue actions and day close."""
-    if rows is None and not closing and _watched(root):
-        return 0, ''
+    """Check fresh states, enforcing only overdue actions and day close."""
     if rows is None:
         _, rows = evaluate(root)
     findings, code = [], 0
@@ -236,7 +217,7 @@ def observe(root, host, ref, config, measured):
                 if item.get('pr') == ref and item['phase'] in ('raised', 'fix', 'delta'):
                     state._move(data, name, 'merged')
                     merged.append(name)
-    state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
+    state._write_state(update, root, kind='pr.action', payload=event)
     import shutil
     for name in merged:  # #647: the item's scratch goes with the confirmed merge
         # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
@@ -353,7 +334,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
               'created_at': episode['created_at'],
               'item': item}
     state._write_state(lambda data: data.setdefault('pr_action_done', {}).update({ref: record}),
-                       root, reserved=False, kind='pr.action.done', payload={'pr': ref, **record})
+                       root, kind='pr.action.done', payload={'pr': ref, **record})
     print(json.dumps({'action': 'done', 'pr': ref, 'item': item, 'head': head}))
     return 0
 

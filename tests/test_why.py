@@ -90,8 +90,8 @@ BRIEF = [
     'gate arch initial: PASS',
     'gate quality initial: FIX, blocking: - P1 src/login.py:12 the token is logged in plain text',
     'gate security initial: PASS',
-    'phase implement by wuwei state transition',
-    'phase gate by wuwei state transition',
+    'phase implement by wuwei build next',
+    'phase gate by wuwei build next',
     'phase raised by wuwei pr raise',
     'phase merged by wuwei pr state',
     'merge acme/app#7: cleared by the merge policy at head abcdef123456, checks test success, approvals alice',
@@ -342,7 +342,7 @@ def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
             'label': 'reviewer', 'launcher': 'planner', 'prompt': 'Review PR 16',
             'prompt_sha256': 'f' * 64, 'status': 'running', 'trace_sessions': ['P:a1']}
     state._write_state(lambda data: data['seats'].update({'adhoc-1': seat, 'b': {
-        'role': 'builder', 'item': 'X', 'status': 'running'}}), root, reserved=False)
+        'role': 'builder', 'item': 'X', 'status': 'running'}}), root)
     assert main(['why', 'adhoc']) == 0
     line, = capsys.readouterr().out.splitlines()
     assert line == ('adhoc seat adhoc-1: general-purpose as reviewer, launched by planner, running; '
@@ -376,7 +376,7 @@ def test_why_json_reads_the_record_at_call_time(root, capsys):
 
     def update(data):
         data['tickets'] = {'X': {'id': 'acme/w#5'}}
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     assert live(capsys)['ticket'] == 'acme/w#5'
 
 
@@ -394,7 +394,7 @@ def test_why_json_reads_an_item_only(root, capsys):
 
     def update(data):
         data['tickets'] = {'X': {'id': f'leaked {TOKEN}'}}
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     out = live(capsys)
     assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['ticket']
 

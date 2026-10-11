@@ -5,7 +5,6 @@ import io
 import json
 import os
 from pathlib import Path
-import plistlib
 import shlex
 import subprocess
 import sys
@@ -250,24 +249,13 @@ def test_init_and_upgrade_provision_private_env(tmp_path, monkeypatch):
     assert '/owner-file' in ignore.read_text()
 
 
-@pytest.mark.parametrize('entry', ['bin', 'module', 'watch'])
-def test_entry_paths(case, entry, monkeypatch):
+@pytest.mark.parametrize('entry', ['bin', 'module'])
+def test_entry_paths(case, entry):
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     environment = {**os.environ, 'PYTHONPATH': str(ROOT / 'cli')}
     command = [str(ROOT / 'bin/wuwei')]
     if entry == 'module':
         command = [sys.executable, '-P', '-m', 'wuwei']
-    if entry == 'watch':
-        from wuwei.commands import watch
-        monkeypatch.setattr(watch, 'service_platform', lambda: 'darwin')
-        monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=lambda args: None))
-        assert watch.run(Namespace(watch_action='install', once=False, dry_run=False)) == 0
-        path = next((Path.home() / 'Library/LaunchAgents').glob('*.plist'))
-        data = plistlib.loads(path.read_bytes())
-        assert data['ProgramArguments'][1:] == ['watch']
-        assert KEY not in path.read_text()
-        command = data['ProgramArguments'][:1]
-        environment.update(data['EnvironmentVariables'])
     result = subprocess.run([*command, 'config', 'check'], cwd=case, env=environment,
                             text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
@@ -401,15 +389,6 @@ def test_env_is_loaded_before_argument_errors(case, capsys):
     with pytest.raises(SystemExit):
         main(['config', KEY])
     assert KEY not in str(capsys.readouterr())
-
-
-def test_watch_command_loads_before_tick(case, monkeypatch):
-    from wuwei import watch
-    write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
-    observed = []
-    monkeypatch.setattr(watch, 'tick', lambda root: observed.append(os.environ.get('LINEAR_API_KEY')) or 0)
-    assert main(['watch', '--once']) == 0
-    assert observed == [KEY]
 
 
 def test_output_redacts_values_split_across_writes(case, monkeypatch, capsys):

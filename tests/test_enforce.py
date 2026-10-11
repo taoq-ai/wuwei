@@ -93,7 +93,7 @@ def test_hook_table(tmp_path, monkeypatch, enforce, check, on, off):
         assert not logged
     else:
         [event] = logged
-        assert set(event) == {'guard', 'reason', 'exit', 'target', 'session', 'item'}
+        assert set(event) == {'guard', 'reason', 'exit', 'target', 'session'}
         assert event['reason'] == reason and event['exit'] == code
 
 

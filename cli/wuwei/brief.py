@@ -604,12 +604,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     fresh['items'][item]['depth'] = depth
                 if refs and item in fresh['items']:
                     fresh['items'][item]['ci_jobs'] = refs
-                if role == 'builder':
-                    sessions.claim(fresh, item, session, workspace.now(),
-                                   config['sessions']['stale_seconds'], cwd=str(Path.cwd()))
                 workspace.atomic_write(output, text, replace=False)
                 created = True
-            state._write_state(update, root, reserved=False, kind='brief written', payload=payload)
+            state._write_state(update, root, kind='brief written', payload=payload)
         except BaseException:
             if created:
                 output.unlink()

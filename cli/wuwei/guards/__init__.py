@@ -10,7 +10,7 @@ import sys
 from wuwei.exits import CLEAN, FINDINGS, PAYLOAD
 
 
-EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompact', 'Stop')
+EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart')
 # Each built-in guard module's events and, per event, the tools its matchers select
 # (None: any tool). discover() skips a module the hook's event and tool cannot run;
 # a module missing here is imported for every event. tests/test_hooks.py pins this
@@ -20,12 +20,10 @@ MODULES = {
     'answers': {'PostToolUse': 'AskUserQuestion'},
     'edges': {'PreToolUse': None},
     'integrity': {'SessionStart': None},
-    'lifecycle': {'SessionStart': None, 'PreCompact': None, 'Stop': None,
-                  'SubagentStop': None},
+    'lifecycle': {'SessionStart': None},
     'outward': {'PreToolUse': None},
     'protect_state': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash'},
     'spec': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
-    'stop': {'Stop': None},
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }

@@ -79,10 +79,10 @@ def depth_day(day, diff, floor='light', trust=None, gates=None, flags=None):
         repo_context=registry.Result(0, {'path': str(root / 'tree'), 'common_dir': str(root / 'tree/.git')}),
         diff_stat=registry.Result(0, [{'path': p, 'additions': 3, 'deletions': 1} for p in diff]))
     if gates:
-        state._write_state(lambda data: data['items']['X'].update(gates={'tier': gates}), root, reserved=False)
+        state._write_state(lambda data: data['items']['X'].update(gates={'tier': gates}), root)
     if flags:
         state._write_state(lambda data: data['items']['X'].setdefault('flags', {}).update(flags),
-                           root, reserved=False)
+                           root)
     return root, directory
 
 
@@ -104,11 +104,6 @@ def test_builder_brief_names_its_depth(day, monkeypatch):
     assert line == (f'Depth: standard; before handoff run wuwei sweep classes {root / "tree"} '
                     'and report one CLASS line per class it lists')
     assert state.read_state(root)['items']['X']['depth'] == 'standard'
-
-
-def test_depth_is_written_only_by_the_brief(day):
-    with pytest.raises(state.StateError, match='wuwei brief'):
-        state.set_state('items.X.depth', 'light', day[0])
 
 
 @pytest.mark.parametrize('diff,tier,trust,expected', [
@@ -163,7 +158,7 @@ def test_flagged_item_gets_the_security_reviewer(root, monkeypatch):
 
 def test_gate_brief_ignores_the_builder_prediction(day, monkeypatch):
     root, directory = depth_day(day, ['cli/wuwei/report.py'])
-    state._write_state(lambda data: data['items']['X'].update(depth='light'), root, reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(depth='light'), root)
     assert brief(monkeypatch, 'Review it.', 'quality', 'X', 'g', '--gate', '--worktree', 'tree') == 0
     assert depth_line(directory, 'g')[0].startswith('Depth: standard; step zero: skip')
 
@@ -219,7 +214,7 @@ def gate_file(root, tier=None, depth=None, seat='quality-1'):
             data['items']['A']['gates'] = {'tier': tier}
         if depth:
             data['items']['A']['depth'] = depth
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     return path
 
 
@@ -288,7 +283,7 @@ def test_light_seat_without_a_retro_note_records_none(seat, tier, text, kind, co
     state._write_state(lambda data: data.update(
         items={'A': {'phase': 'planned', 'gates': {'tier': tier}}},
         seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'running',
-                             'agent_id': 'seat-one'}}), root, reserved=False)
+                             'agent_id': 'seat-one'}}), root)
     seat.update(agent_type='wuwei:sentinel-quality', last_assistant_message=text)
     assert check_retro(seat)[0] == code
     event = retro_events(seat)[-1]
@@ -306,12 +301,12 @@ def test_light_fix_is_re_read_by_the_same_seat(root, light, monkeypatch):
     if light:
         state._write_state(lambda data: data['items']['A'].update(
             gates={'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}),
-            root, reserved=False)
+            root)
         record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     else:
         gate_fix(root)
     state._write_state(lambda data: data['seats']['quality-1'].update(
-        agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
+        agent_id='agent-quality-1', head='abc1234' + '0' * 33), root)
     dispatch.next_step('A', root)
     live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
@@ -352,7 +347,7 @@ def cycle_day(monkeypatch, root, day='2026-09-29', start=('plan.approved', {'ite
     merged_day = merged_day or day
     monkeypatch.setenv('WUWEI_NOW', f'{merged_day}T10:00:00+00:00')
     state._write_state(lambda data: data.update(items={'A': {'phase': 'planned', 'gates': {'tier': tier}}}),
-                       root, reserved=False)
+                       root)
     at(monkeypatch, root, f'{merged_day}T10:00:00+00:00', 'state.transition',
        {'item': 'A', 'phase': 'merged', 'phase_changes': {'A': 'merged'}})
 
@@ -443,7 +438,7 @@ def test_builder_retro_follows_the_live_diff_not_the_prediction(seat, monkeypatc
     state._write_state(lambda data: data.update(
         items={'A': {'phase': 'implement', 'depth': 'light', 'worktree': 'tree'}},
         seats={'b-1': {'item': 'A', 'role': 'builder', 'status': 'running',
-                       'agent_id': 'seat-one'}}), root, reserved=False)
+                       'agent_id': 'seat-one'}}), root)
     seat.update(agent_type='wuwei:builder', last_assistant_message='done')
     check_retro(seat)
     assert retro_events(seat)[-1]['kind'] == kind

@@ -64,7 +64,7 @@ def test_linear_transition_resolves_name_starting_with_state(monkeypatch):
 def test_discovery_tracker_candidates_and_none(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n')
-    state._write_state(lambda day: day['items'].update({'ABC-1': {}}), tmp_path, reserved=False)
+    state._write_state(lambda day: day['items'].update({'ABC-1': {}}), tmp_path)
     tracker = Fake({'backlog': registry.Result(0, [
         {'id': 'ABC-1', 'title': 'Already planned'},
         {'id': 'ABC-2', 'title': 'Candidate'}])})

@@ -8,8 +8,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]` | [Host, build and memory](#host-build-and-memory) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outbound]` | [Outward sends](#outward-sends) |
@@ -36,7 +36,6 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.enforce` | `true` | `true` blocks a guard refusal. `false` records it as `guard.would_refuse` and lets the call through; records, merges, approvals, admin merges, deploys and held outward sends still refuse. `init --shadow` writes `false`, and `init --upgrade` maps `security.posture = "observe"` or `guards.mode = "shadow"` to `false`. The outward lint and unknown tool names, another item's scratch directory and the seat capacity checks at launch are logged either way. `config check` and `doctor` print the setting. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `worktree.git_hooks` | `"chain"` | How `worktree add` installs the git hooks. `chain` runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own `core.hooksPath` or real hooks in `.git/hooks`: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses `.wuwei/git-hooks`. `skip` installs none, warns and records `worktree.hooks_skipped`. `replace` uses `.wuwei/git-hooks` and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, `core.bare` or `core.worktree` set), `worktree add` still creates the worktree, warns and records `worktree.hooks_skipped`. The Claude Code PreToolUse guard checks `git commit` and `git push` either way. `doctor` shows a `git hooks` row per repository; `init --upgrade` rewrites the scripts. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
@@ -60,7 +59,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles the outward lint treats as your name. |
-| `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
+| `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands. Empty uses this machine's zone. |
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a card shows each option's first sentence and the report leads with up to three outcome numbers that changed. `standard` shows each option in full and keeps the earlier report. `full` adds every field. |
 | `owner.verbosity.decisions` | `""` | Level for decision cards. No command reads it since #789 part 18. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
@@ -149,18 +148,11 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
 | `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. |
-| `watch.clock_seconds` | `600` | Interval between watch clock events. |
-| `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
-| `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
-| `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
-| `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
-| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner pages through the heartbeat. |
-| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 
 
 ## Telemetry
 
-Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. The watch sweep aggregates them at most once a day into `.wuwei/metrics/<week>.json`, never in a hook; `bin/wuwei metrics --week [<week>]` prints a week on demand.
+Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. `bin/wuwei report` aggregates them at most once a day into `.wuwei/metrics/<week>.json`, never in a hook; `bin/wuwei metrics --week [<week>]` prints a week on demand.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -216,7 +208,7 @@ The gate evaluates these validated findings locally. No `ziran ci` command is us
 Each external command has a 60-second timeout. Missing or incompatible tools, command
 errors, malformed reports and timeouts report unmeasured (exit 2).
 
-At each watch sweep, nonempty daily traces are scanned with
+When a gate verdict is received and at day close, nonempty daily traces are scanned with
 `ziran analyze-traces --source otel --input DAY/traces.jsonl --out OUTPUT --format json`.
 The adapter reads `OUTPUT/trace_analysis.json` from a temporary directory and discards it
 after validation. Exit 0 means measured with no critical chain, 1 means critical chains,

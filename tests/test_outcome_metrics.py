@@ -106,7 +106,7 @@ def test_escaped_defects_only_full_window(root, monkeypatch):
                                   {'sha': 'late', 'at': '2026-10-16T10:00:00Z'}], 'fixes': ['b']}},
         'example/project#2': {'status': 'merged', 'merged_at': '2026-10-15T10:00:00Z',
                               'outcome': {'escaped': False, 'reverts': [], 'fixes': []}},
-    }), root, reserved=False)
+    }), root)
     assert metrics.collect(root)['escaped_defects'] == {
         'rate': 1.0, 'prs': 1, 'raw_count': 2, 'reverts': 1, 'fixes': 1}
 
@@ -115,7 +115,7 @@ def test_review_rework_counts_human_threads_followed_by_commit(root, monkeypatch
     from wuwei.registry import Result
     from wuwei import registry
 
-    state._write_state(lambda data: data.update(raised_prs=['example/project#1']), root, reserved=False)
+    state._write_state(lambda data: data.update(raised_prs=['example/project#1']), root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -144,7 +144,7 @@ def test_tracker_lead_time_and_secondary_durations(root, monkeypatch):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[adapters]\ntracker = "linear"\n')
     state._write_state(lambda data: data.update(items={'ISSUE-1': {'pr': 'example/project#1'}}),
-                       root, reserved=False)
+                       root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -182,7 +182,7 @@ def two_tickets(root, monkeypatch, created):
     state._write_state(lambda data: data.update(items={
         'a': {'pr': 'example/project#1'}, 'b': {'pr': 'example/project#2'}}, tickets={
         'a': {'id': 'acme/app#1', 'source': 'set'}, 'b': {'id': 'acme/app#2', 'source': 'set'}}),
-        root, reserved=False)
+        root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -247,7 +247,7 @@ def test_no_tracker_with_item_stays_unmeasured(root):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[adapters]\ncode_host = "none"\n')
     state._write_state(lambda data: data.update(items={'ISSUE-1': {'pr': 'example/project#1'}}),
-                       root, reserved=False)
+                       root)
     assert metrics.collect(root)['lead_time'] == 'unmeasured'
 
 
@@ -260,7 +260,7 @@ def test_report_shows_measured_outcome_beside_workspace_baseline(root, monkeypat
     (root / '.wuwei/memory/notes/baseline.md').write_text('Escaped-defect-rate: 0.25\n')
     state._write_state(lambda data: data.update(merges={'example/project#1': {
         'status': 'merged', 'merged_at': '2026-09-29T10:00:00Z',
-        'outcome': {'escaped': True, 'reverts': [], 'fixes': ['f']}}}), root, reserved=False)
+        'outcome': {'escaped': True, 'reverts': [], 'fixes': ['f']}}}), root)
     text = report.build(root)
     assert '"rate": 1.0' in text
     assert 'baseline: 0.25' in text
@@ -293,7 +293,7 @@ def test_missing_code_host_does_not_bias_defect_denominator(root, monkeypatch):
         raised_prs=['example/project#2'],
         merges={'example/project#1': {'status': 'merged',
             'merged_at': '2026-09-29T10:00:00Z',
-            'outcome': {'escaped': False, 'reverts': [], 'fixes': []}}}), root, reserved=False)
+            'outcome': {'escaped': False, 'reverts': [], 'fixes': []}}}), root)
     assert metrics.collect(root)['escaped_defects'] == 'unmeasured'
 
 
@@ -305,7 +305,7 @@ def test_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
     config.write_text(config.read_text() + '\n[adapters]\ntracker = "linear"\n')
     state._write_state(lambda data: data.update(items={'item-1': {'pr': 'example/project#1'}},
                                                 tickets={'item-1': {'id': 'ENG-1', 'source': 'set'}}),
-                       root, reserved=False)
+                       root)
     calls = []
 
     class Host:

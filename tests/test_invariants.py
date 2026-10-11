@@ -26,8 +26,7 @@ OWNED = []  # #831: the config and integrity commands ask their own Owner step c
 # Refusals that are not walls the workflow puts up; the note on each row is its rationale.
 MERGES = "merge family: bin/wuwei merge is the path (#524); approval and override stay the owner's"
 EXEMPT = [*[('guards/edges.py', part, MERGES) for part in (
-              'merge policy', 'admin merge', 'PR approval', 'branch protection')],
-          ('guards/stop.py', 'day state missing for registered planner', 'records: state recovery')]
+              'merge policy', 'admin merge', 'PR approval', 'branch protection')]]
 
 
 def _functions(tree):
@@ -76,7 +75,9 @@ def test_reason_corpus_has_no_wall(tmp_path, monkeypatch):
     rows, walls = corpus(), []
     # #839 (part 17): the parser guards' reasons went with their code; the floor is the count measured after.
     # Batch 7: the floor was re-measured at 153; the drop came from an earlier part in this batch.
-    assert len(rows) >= 153
+    # #789 part 23 (#847): the Stop guard, the records guard's state hint and the session claims went;
+    # re-measured at 144.
+    assert len(rows) >= 144
     stale = [row for row in OWNED + EXEMPT if not any(r[0] == row[0] and row[1] in r[3] for r in rows)]
     assert not stale, stale
     for enforce in ('true', 'false'):

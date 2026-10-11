@@ -113,7 +113,7 @@ def test_dirty_gate_brief_names_paths(workspace, monkeypatch):
     from wuwei.registry import Result
     day = paths.day_dir(workspace)
     day.mkdir(parents=True)
-    state._write_state(lambda data: data['items'].update({'X': {'phase': 'gate'}}), workspace, reserved=False)
+    state._write_state(lambda data: data['items'].update({'X': {'phase': 'gate'}}), workspace)
     class Vcs:
         def status(self, *args, **kwargs):
             return Result(0, [{'path': 'src/dirty.py'}])

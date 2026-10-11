@@ -57,7 +57,7 @@ def run(args):
         if not state.day_started(workspace.day_dir(root)):
             print('Nothing to close today: no day has started. Start one with /wuwei:wuwei-plan.')
             return 0
-        state._write_state(lambda data: data.update(close_requested=True), root, reserved=False,
+        state._write_state(lambda data: data.update(close_requested=True), root,
                            kind='day.close_requested')
         # ponytail: owned PRs are read again by closing.check; close runs a few times a day.
         names, notes = [], []

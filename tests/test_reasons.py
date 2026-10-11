@@ -276,7 +276,7 @@ def test_before_plan_build_check_names_the_status(fresh, monkeypatch):
     from wuwei import state
     from wuwei.commands import build
     state._write_state(lambda data: data.setdefault('builds', {}).update(
-        {'DIV-1': {'status': 'ready'}}), fresh, reserved=False)
+        {'DIV-1': {'status': 'ready'}}), fresh)
     with pytest.raises(ValueError, match=r'DIV-1 is not waiting for checks \(build ready\)'):
         build.check('DIV-1', root=fresh)
 
@@ -287,7 +287,7 @@ def test_before_plan_dispatch_next(fresh, capsys):
     assert code == 1 and '/wuwei:wuwei-plan' in text and 'DIV-1' in text
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['DIV-1'],
-        items={'DIV-1': {'phase': 'implement', 'status': 'running'}}), fresh, reserved=False)
+        items={'DIV-1': {'phase': 'implement', 'status': 'running'}}), fresh)
     with pytest.raises(dispatch.Refused, match='implement') as exc:
         dispatch.next_step('DIV-1', fresh)
     assert 'bin/wuwei build next DIV-1' in str(exc.value)
@@ -306,7 +306,6 @@ def test_bool_tuple_is_not_an_exit_reason():
 # texts in code a later #789 part deletes, with that part; the part deletes its rows.
 TERMINAL = re.compile(r'host terminal|/dev/tty|\bon the host\b')
 LEFT = (
-    ('watch.py', 'install in a host terminal', 23),
 )
 
 

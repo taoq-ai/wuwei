@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 from wuwei import registry, state, workspace
 from wuwei.__main__ import main
-from wuwei.guards.stop import check as stop_check
 
 
 def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
@@ -17,7 +16,7 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
     state._write_state(lambda data: data.update(items={'A': {'phase': 'merged', 'status': 'done'}}),
-                       root, reserved=False)
+                       root)
     day = workspace.day_dir(root)
     (day / 'retro').mkdir()
     (day / 'decisions').mkdir()
@@ -119,7 +118,7 @@ def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
         'open': {'phase': 'implement', 'status': 'running'},
         'park': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked',
                  'disposition': {'kind': 'parked', 'reason': 'gate quality PARK: P1'}},
-        'held': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked'}}), root, reserved=False)
+        'held': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked'}}), root)
     assert main(['report']) == 0
     text = capsys.readouterr().out
     assert all(section in text for section in ('## Outcome', '## Open at close', '## Parked', '## Carry'))
@@ -144,7 +143,7 @@ def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
     vcs = registry.load('vcs', workspace.load_config(root))
     assert vcs.workspace_init(base).exit == 0
     state._write_state(lambda data: data.update(planner_session_id='planner', close_requested=True),
-                       root, reserved=False)
+                       root)
     day = workspace.day_dir(root)
     (day / 'retro').mkdir()
     (day / 'decisions').mkdir()
@@ -171,11 +170,10 @@ def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
                           capture_output=True, text=True, check=True).stdout
     assert 'Promoted-by: wuwei' in show
     assert '- 2026-09-29 ' in (base / 'memory/CHANGELOG.md').read_text()
-    monkeypatch.setattr('wuwei.closing.obligations.evaluate', lambda root: {'exit': 0})
     from wuwei import pr_actions
     monkeypatch.setattr(pr_actions, 'check', lambda root, closing=False, rows=None: (0, ''))
-    assert stop_check({'cwd': str(root), 'session_id': 'planner',
-                       'stop_hook_active': False}) == (0, '')
+    monkeypatch.setattr(closing, 'unresolved', lambda *a, **k: (0, ''))
+    assert closing.check(root) == (0, '')
 
 
 def test_report_rejects_malformed_baseline(tmp_path, monkeypatch, capsys):
@@ -185,7 +183,7 @@ def test_report_rejects_malformed_baseline(tmp_path, monkeypatch, capsys):
     (root / '.wuwei/memory/notes/baseline.md').write_text('Escaped-defect-rate: bogus\n')
     monkeypatch.chdir(root)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: None, root, reserved=False)
+    state._write_state(lambda data: None, root)
     assert main(['report']) == 2
     assert 'baseline' in capsys.readouterr().err
 
@@ -214,7 +212,7 @@ def test_report_lists_merged_items(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
         'A': {**state.ITEM_DEFAULTS, 'phase': 'merged', 'pr': 'org/repo#1'},
-        'B': {**state.ITEM_DEFAULTS, 'phase': 'delta'}}), root, reserved=False)
+        'B': {**state.ITEM_DEFAULTS, 'phase': 'delta'}}), root)
     from wuwei import report
     text = report.build(root)
     merged = text.split('## Merged\n')[1].split('\n\n')[0]
@@ -231,7 +229,7 @@ def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
-    state._write_state(lambda data: None, root, reserved=False)
+    state._write_state(lambda data: None, root)
     state.append_event('verdict.rejected', {'file': 'decisions/gate-a.md', 'reason': 'bad'}, root)
     assert main(['report']) == 0
     lines = capsys.readouterr().out.splitlines()
@@ -254,7 +252,7 @@ def banded_day(monkeypatch, root):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+00:00')
     monkeypatch.chdir(root)
-    state._write_state(lambda data: None, root, reserved=False)
+    state._write_state(lambda data: None, root)
     gates(monkeypatch, root, '2026-09-29', [(9, 'PASS'), (12, 'FIX')])
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:00:00+00:00')
 
@@ -263,7 +261,7 @@ def test_issue_acceptance_report_shows_quality_bands(tmp_path, monkeypatch, caps
     banded_day(monkeypatch, tmp_path)
     assert main(['report']) == 0
     text = capsys.readouterr().out
-    assert '## Quality by band' in text and '| Hour |' in text and '| Session age |' in text
+    assert '## Quality by band' in text and '| Hour |' in text and 'Session age' not in text
     assert '| midday | 1 | 1.00 |' in text and '| morning | 1 | 0.00 |' in text
     assert text.index('## Quality by band') < text.index('## Process metrics')
 
@@ -292,11 +290,11 @@ def test_issue_acceptance_retro_names_worst_band(tmp_path, monkeypatch):
     text = path.read_text()
     assert '## Quality by band (last 7 days)' in text
     assert 'Worst hour band: evening (FIX rate 0.75; others at most 0.50)' in text
-    assert 'Worst session age band: none' in text
+    assert 'session age' not in text
     proposal = day / 'proposals/quality-hour-evening.json'
     record = json.loads(proposal.read_text())
     assert (record['target'], record['action']) == ('.wuwei/charters/planner.md', 'add')
-    assert 'sessions.rotate_after' in record['text']
+    assert 'start a fresh planner session before it' in record['text']
     assert record['evidence'] == path.relative_to(root).as_posix()
     assert '## Proposed\n- `.wuwei/charters/planner.md`' in text
     retro.compile(root)
@@ -318,7 +316,7 @@ def test_retro_balanced_window_names_no_band(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:00:00+00:00')
     captured(root)
     text = retro.compile(root).read_text()
-    assert 'Worst hour band: none' in text and 'Worst session age band: none' in text
+    assert 'Worst hour band: none' in text
     assert not list((workspace.day_dir(root) / 'proposals').glob('quality-*'))
 
 
@@ -330,7 +328,7 @@ def test_report_levels(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
-        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root, reserved=False)
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root)
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
     assert sections == ['## Changed', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close',
@@ -357,7 +355,7 @@ def test_report_shadow_section(tmp_path, monkeypatch):
     (root / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: data.update(items={}), root, reserved=False)
+    state._write_state(lambda data: data.update(items={}), root)
     before = report.build(root)
     assert '## Shadow' not in before
     state.append_event('hook.warning', {'reason': 'x', 'tool': 'Bash'}, root)
@@ -390,7 +388,7 @@ def test_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
              'runtime': 'codex', 'model': 'm1'}
     state._write_state(lambda data: data['gate_verdicts'].update({
         'A:quality:initial': first, 'A:quality@codex:initial': second,
-        'B:quality:initial': old, 'B:quality@codex:initial': other}), root, reserved=False)
+        'B:quality:initial': old, 'B:quality@codex:initial': other}), root)
     text = retro.compile(root).read_text()
     section = text[text.index('## Second opinion'):]
     assert '| A | quality@codex m1 | - P2 / cli/c.py:3 / only second fails when empty / blocks: no |' in section
@@ -418,7 +416,7 @@ def test_retro_pairs_a_moved_second_opinion_with_round_one(tmp_path, monkeypatch
     moved = {**second, 'round': 'delta', 'findings': []}
     state._write_state(lambda data: data['gate_verdicts'].update({
         'A:quality:round1': first, 'A:quality:initial': later,
-        'A:quality@codex:round1': second, 'A:quality@codex:initial': moved}), root, reserved=False)
+        'A:quality@codex:round1': second, 'A:quality@codex:initial': moved}), root)
     section = retro.compile(root).read_text().split('## Second opinion', 1)[1]
     assert 'cli/z.py:9' not in section and 'cli/a.py:1' not in section
     assert '| A | quality | none |' in section
@@ -434,7 +432,7 @@ def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
         retro.compile(root).read_text())
     names = ('A', 'B', 'C')
     state._write_state(lambda data: data.update(items={name: {'phase': 'planned'} for name in names}),
-                       root, reserved=False)
+                       root)
     for phase in ('implement', 'gate', 'parked'):
         state.transition('C', phase, root)
 
@@ -447,7 +445,7 @@ def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
             'B:quality:initial': {'item': 'B', 'role': 'quality', 'round': 'initial',
                                   'verdict': 'ESCALATE'},
             'C:security:initial': {'item': 'C', 'role': 'security', 'round': 'initial', 'verdict': 'PARK'}})
-    state._write_state(seed, root, reserved=False)
+    state._write_state(seed, root)
     section = retro.compile(root).read_text().split('## Blocks\n', 1)[1].split('\n\n', 1)[0]
     assert section.splitlines()[2:] == ['| A | quality initial | FIX | fix round 1 |',
                                         '| B | quality initial | ESCALATE | none yet |',
@@ -461,7 +459,7 @@ def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
-        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root, reserved=False)
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root)
     from wuwei import report
     assert '## Spec warnings' not in report.build(root)
     state.append_event('spec.warned', {'item': 'A', 'engine': 'speckit', 'step': 'plan', 'where': 'edit'}, root)
@@ -477,7 +475,7 @@ def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
         'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}, 'B': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}),
-        root, reserved=False)
+        root)
     from wuwei import report
     assert '## Review seats' not in report.build(root)
 
@@ -490,7 +488,7 @@ def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):
                          'g-A': {'item': 'A', 'role': 'sentinel-goal', 'status': 'stopped'},
                          **{f'{role}-B': {'item': 'B', 'role': 'sentinel-' + role, 'status': 'stopped'}
                             for role in ('arch', 'quality', 'security')}}
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     assert ('## Review seats\n- A: 1 reviewer seat (goal); tier light: docs-only: 1 reviewer (goal)\n'
             '- B: 3 reviewer seats (arch, quality, security); tier standard: '
             '4 changed lines within light_max_lines 100; floor standard\n') in report.build(root)
@@ -504,7 +502,7 @@ def test_report_counts_fix_rounds_and_names_the_cap(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
-        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root, reserved=False)
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root)
     from wuwei import report
     assert '## Rounds' not in report.build(root)
     for item, number in (('A', 1), ('B', 1), ('A', 2)):
@@ -522,7 +520,7 @@ def test_retro_lists_seat_findings(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
     state._write_state(lambda data: data.update(items={'fix-a': {'phase': 'merged', 'status': 'done'}}),
-                       root, reserved=False)
+                       root)
     (workspace.day_dir(root) / 'retro').mkdir()
     note = {'agent_id': 'builder-1', 'agent_type': 'builder', 'missing': [], 'invalid': [],
             'fields': {'Blocked': 'none', 'Gap': 'none', 'Change': 'none'}}
@@ -533,7 +531,7 @@ def test_retro_lists_seat_findings(tmp_path, monkeypatch):
     found = {'evidence': 'seat finding', 'track': 'SLICE', 'at': '2026-09-29T11:00:00Z'}
     state._write_state(lambda data: data.update(
         seat_findings={'fix-b': {**found, 'scope': 'B'}, 'fix-a': {**found, 'scope': 'A'}}),
-        root, reserved=False)
+        root)
     text = retro.compile(root).read_text()
     assert '## Seat findings\n- fix-a: A (item merged)\n- fix-b: B (not added)\n' in text
     assert text.count('## Seat findings') == 1
@@ -547,7 +545,7 @@ def test_report_lists_skipped_duties(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
-        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root, reserved=False)
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root)
     from wuwei import report
     assert '## Skipped duties' not in report.build(root)
     duty = {'item': 'A', 'duty': 'tracker.done', 'ticket': 'ENG-7'}
@@ -564,7 +562,7 @@ def test_report_names_the_create_retry(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
-        'A': {**state.ITEM_DEFAULTS, 'phase': 'planned'}}), root, reserved=False)
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'planned'}}), root)
     from wuwei import report
     duty = {'item': 'A', 'duty': 'tracker.create', 'ticket': None}
     state.append_event('duty.due', {**duty, 'command': 'wuwei tracker create A'}, root)

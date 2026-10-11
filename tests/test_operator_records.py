@@ -31,10 +31,10 @@ def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
     for args in (('lead', 'DISCOVERY', 'lead-1'), ('steward', 'day', 'steward-1')):
         assert main(['brief', *args, '--body', 'body']) == 0
     for phase in ('implement', 'gate', 'raised'):
-        assert main(['state', 'transition', 'DIVIDE-1', phase]) == 0
+        state.transition('DIVIDE-1', phase, root)
     state._write_state(lambda data: data['items']['DIVIDE-1'].update(pr='org/repo#1'),
-                       root, reserved=False)
-    assert main(['state', 'transition', 'DIVIDE-1', 'merged']) == 0
+                       root)
+    state.transition('DIVIDE-1', 'merged', root)
     for kind, payload in (
             ('build.started', {'item': 'DIVIDE-1'}), ('build.checked', {'item': 'DIVIDE-1'}),
             ('verdict.rejected', {'item': 'DIVIDE-1'}),

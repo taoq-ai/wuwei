@@ -26,13 +26,12 @@ def _alternation(words):
 
 
 WIDTH = 100  # status --line columns unless --width says otherwise (#521)
-LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is start-up and printing
 # #641: what the line calls each phase, in this order; CAP is shown on seats only.
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
          'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
-# Silent kinds scan drops with no action; the rest of SILENT is read (clocks and wake).
-SKIP = frozenset(SILENT) - {'watch: clock', 'heartbeat: clock', 'session: wake-seen'}
+# Silent kinds the scan drops with no action.
+SKIP = frozenset(SILENT)
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
@@ -50,16 +49,11 @@ def register(subparsers):
 
 
 def attention(directory, classified_state=None):
-    """Current page and warning causes from the day's event stream."""
-    return scan(directory, classified_state)[0]
-
-
-def scan(directory, classified_state=None):
-    """Attention rows, watch state (alive, off, dead, unmeasured) and heartbeat health from one read of the day."""
+    """Current page and warning causes from one read of the day's event stream."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks, beat = {}, {'watch': []}, None
+    current = {}
     path = directory / 'events.jsonl'
     if path.exists():
         # read_text's universal newlines without its second full-size copy of the day (#346).
@@ -84,10 +78,6 @@ def scan(directory, classified_state=None):
                 stamp = event.get('ts')
                 if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                     continue
-                if kind == 'watch: clock':
-                    clocks['watch'].append(stamp)
-                if kind == 'heartbeat: clock':
-                    beat = payload
                 if kind in ('state.transition', 'item.escalated'):
                     continue
                 if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
@@ -96,35 +86,12 @@ def scan(directory, classified_state=None):
                 if (kind == 'pr.action' and isinstance(payload, dict)
                         and payload.get('state') in ('merged', 'closed')):
                     current.pop(('merge.policy_blocked', payload.get('pr')), None)
-                if kind == 'session: wake-seen':
-                    current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
                 if kind in SILENT:
                     continue
             else:
                 kind, payload, stamp = 'unreadable event', {}, None
-            if kind == 'watch: sweep' and isinstance(payload, dict):
-                current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
-                fields = (('reply_owed', 'reply', 'warn'),
-                          ('visibility_owed', 'visibility', 'warn'),
-                          ('stale_owed', 'stale', 'warn'),
-                          ('watch_dead', 'watch', 'page'),
-                          ('scanner_owed', 'scanner', 'page'),
-                          ('integrity_owed', 'integrity', 'page'),
-                          ('unreadable', 'unmeasured', 'warn'))
-                # Absent counts are 0 (the obligations sweep has fewer), but owed must be covered.
-                counts = [payload.get(field, 0) for field, _, _ in fields]
-                if all(type(count) is int and count >= 0 for count in counts) and not (
-                        type(payload.get('owed')) is int and payload['owed'] > sum(counts)):
-                    for field, source, level in fields:
-                        for index in range(payload.get(field, 0)):
-                            current[('watch: sweep', source, index)] = {
-                                'tier': level, 'source': f'watch: sweep:{source}',
-                                'lane': 'Work', 'reason': source}
-                    continue
             tier, lane = classify(event, classified_state)
-            if kind == 'watch: sweep':
-                key = (kind, '')
-            elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
+            if kind in ('pr.action', 'merge.policy_blocked') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
             elif tier == 'page':
                 key = (kind, number)
@@ -136,66 +103,34 @@ def scan(directory, classified_state=None):
                 current.pop(key, None)
             else:
                 reason = payload.get('reason', kind) if isinstance(payload, dict) else kind
-                if kind == 'pr.changed' and isinstance(payload, dict):
-                    reason = payload.get('summary') or (
-                        f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
                 current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason,
                                 'count': current.get(key, {}).get('count', 0) + 1,
                                 'ts': stamp if isinstance(stamp, str) else None}
-    # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
-    current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
-    health = {}
-    for name, stamps in clocks.items():
-        code, message = 0, ''
-        # No clock line today and no installed unit is off: skip the watch import.
-        if stamps or workspace.unit_installed(directory.parents[2], name=name):
-            from wuwei import watch
-            code, message = watch.health(directory.parents[2], stamps, name=name)
-        if code:
-            current[(f'{name}: health',)] = {'tier': 'page' if code == 1 else 'warn',
-                                             'source': f'{name}: health', 'lane': 'Work', 'reason': message}
-        health[name] = {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if stamps else 'off')
-    beat_health = None
-    if beat is not None:
-        beat_health = (beat['health'] if health['watch'] == 'alive' and isinstance(beat, dict)
-                       and beat.get('health') in ('ok', 'degraded', 'unmeasured')
-                       and isinstance(beat.get('page'), str) else 'unmeasured')
-        if beat_health == 'degraded' and beat['page']:
-            current[('heartbeat',)] = {'tier': 'page', 'source': 'heartbeat', 'lane': 'Work',
-                                       'reason': beat['page']}
     for name, item in classified_state['items'].items():
         if item['phase'] == 'escalated':
             tier, lane = classify({'kind': 'item.escalated', 'payload': {'item': name}},
                                   classified_state)
             current[('item.escalated', name)] = {'tier': tier, 'source': 'item.escalated',
                                                  'lane': lane, 'reason': name}
-    rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
-    return rows, health['watch'], beat_health
+    return list(current.values())
 
 
 def snapshot(directory, line=False):
     """The day's figures; line=True skips the fields status --line never renders (#562)."""
     data = state.read_state(directory=directory)
-    live = 0
-    if data.get('sessions') and not line:
-        from wuwei import sessions
-        live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
-            data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
     result = {'pages': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
               'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
-              'next_reply_due': None, 'next_meeting': None, 'sessions': live,
+              'next_reply_due': None, 'next_meeting': None,
               'seats': {} if line else state.running_by_goal(data), 'running': state.in_flight(data)}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'], result['health'] = scan(
-        directory, classified_state)
+    active = attention(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
-    result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     result['plan'] = (directory / 'plan.md').is_file()
     for key, field, destination in () if line else (('reply_obligations', 'due', 'next_reply_due'),
@@ -245,40 +180,8 @@ def snapshot(directory, line=False):
     return result
 
 
-def _line_or_cache():
-    """The line's snapshot, or the heartbeat's cached line when the compute overruns its
-    budget (#659). With no cache it waits; a compute error is raised, never the cache."""
-    import threading
-    result = []
-
-    def compute():
-        try:
-            result.append((True, snapshot(workspace.day_dir(), line=True)))
-        except BaseException as exc:
-            result.append((False, exc))
-
-    worker = threading.Thread(target=compute, daemon=True)
-    worker.start()
-    worker.join(LINE_BUDGET_MS / 1000)
-    if worker.is_alive():
-        try:
-            cached = state.read_state(directory=workspace.day_dir()).get('watch', {}).get('status_line')
-        except Exception:
-            cached = None
-        if isinstance(cached, str):
-            return cached
-        worker.join()
-    ok, value = result[0]
-    if not ok:
-        raise value
-    return line(value, WIDTH)
-
-
 def run(args):
     try:
-        if args.line and not args.json and getattr(args, 'width', WIDTH) == WIDTH:
-            print(_line_or_cache())
-            return CLEAN
         data = snapshot(workspace.day_dir(), line=args.line and not args.json)
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
         if args.json:
@@ -353,20 +256,15 @@ def full(data):
     if split := state.goal_split(data.get('seats', {})):
         work.append(f'builders {split}')
     running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]
-    for shown, text in ((data.get('prs_changed'), f'prs {data.get("prs_changed")} changed'),
-                        (data.get('trace_gaps'), f'traces: {data.get("trace_gaps")} gaps')):
-        if shown:
-            attention.append(text)
+    if data.get('trace_gaps'):
+        attention.append(f'traces: {data.get("trace_gaps")} gaps')
     if data.get('solo'):
         from wuwei.obligations import SOLO
         attention.insert(-1 if data.get('trace_gaps') else len(attention), SOLO)
-    health = [f'watch {data["watch"]}']
-    health += [f'health {data["health"]}'] if data.get('health') else []
-    health.append(f'sessions {data["sessions"]}')
     calendar = [f'reply {data["next_reply_due"]}'] if data.get('next_reply_due') else []
     calendar.append(f'meeting {data["next_meeting"] or "unmeasured"}')
     versions = [f'plugin {data.get("plugin") or "unmeasured"}', f'template {data.get("template") or "none"}']
     from wuwei.fast_checks import NONE
     checks = [[f'{name} {NONE}'] for name in data.get('checks_none', [])]
     return 'WUWEI ' + '\n'.join(' · '.join(group) for group in (
-        now, work, *running, attention, health, calendar, *checks, versions) if group)
+        now, work, *running, attention, calendar, *checks, versions) if group)

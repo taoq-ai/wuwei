@@ -221,7 +221,7 @@ def test_config_defaults_and_independence(tmp_path):
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'report': ''}},
-        'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
+        'repos': [], 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -239,10 +239,6 @@ def test_config_defaults_and_independence(tmp_path):
         'codex': {'command': [], 'timeout_seconds': 300},
         'gates': {'second_opinion': 'off', 'second_opinion_role': 'quality', 'max_rounds': 2,
                   'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}, 'polish': 'offer'},
-            'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
-                      'sweep_seconds': 7200, 'ping_url': ''},
-        'sessions': {'stale_seconds': 3600,
-                     'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
         'duties': {'on': ['ping', 'shepherd', 'tracker', 'summary']},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
@@ -376,7 +372,6 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[environments]\nprod = 1', 'environments.prod'),
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
-    ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
     ('[scanner.mcp]\nplugins_file = 1', 'scanner.mcp.plugins_file'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
@@ -772,7 +767,7 @@ def test_upgrade_normalises_a_stored_bare_ticket(tmp_path):
     assert cli(tmp_path, 'init', '--upgrade', **now).returncode == 0
     day = tmp_path / '.wuwei/days/2026-09-29'
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
-        {'X': {'id': '24', 'source': 'candidate'}}), reserved=False, directory=day)
+        {'X': {'id': '24', 'source': 'candidate'}}), directory=day)
     before = (day / 'state.json').read_bytes()
     line = '2026-09-29/state.json: ticket X 24 to acme/app#24'
     preview = cli(tmp_path, 'init', '--upgrade', '--dry-run', **now)

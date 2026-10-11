@@ -128,7 +128,7 @@ Code repos receive only worktrees, branches and pull requests.
     ledger.jsonl       append-only: every promoted or rejected change, with evidence
     CHANGELOG.md       every dated rule change, verbatim; never loaded by seats
   days/YYYY-MM-DD/
-    plan.md  state.json  events.jsonl  traces.jsonl
+    plan.md  state.json (a cache of events.jsonl)  events.jsonl  traces.jsonl
     briefs/  decisions/  deliverables/  retro/  proposals/  report.md
   archive/             days older than 30, summary lines kept in the index
   metrics/             weekly telemetry aggregates and the workspace token (5.13)
@@ -169,31 +169,34 @@ WUWEI is built as ports and adapters (hexagonal).
 | Event | Trigger | Refuses when |
 |---|---|---|
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
-| PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); identity, the default branch and the fast checks stay with the native Git hooks |
+| PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); WUWEI installs no Git hook (#789 part 23): `pr raise` and `pr act` check every pushed commit's identity, and `build next` holds the hand-off until the fast checks pass at HEAD |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
 | PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
-| PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
+| PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; the workflow's commands write the day records |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
 | PostToolUse | `AskUserQuestion` | never refuses a well-formed card; records the owner's answer to an Owner step card for the command that asked it (#831) |
 | PostToolUse | Write, Edit, MultiEdit, NotebookEdit or Bash in an item worktree | never refuses; records each spec step whose artifact appeared (5.10) |
 | SubagentStop | a seat finishes | its three-line retro note is missing, or a builder's last message does not name its spec artifacts (5.10); otherwise records it |
-| SessionStart | new session | never refuses; prints the memory payload and its size, flags a dead watch process and orphans from the last close |
-| PreCompact | before summarising | never refuses; flushes pending state and events |
-| Stop | every planner turn end (4.2.1), and day close | any owned PR has an overdue action; at day close also reply or visibility obligations owed, or the retro did not land |
+| SessionStart | new session | never refuses; prints the orientation, the memory payload and its size and orphans from the last close |
+
+The PreCompact and Stop hooks are gone (owner, 2026-10-12, #789 part 23): `wuwei close`
+refuses until every outward duty is recorded and the retro landed, and `wuwei next` names the
+step; no hook holds a planner turn.
 
 ### 4.2 Sweeps
 
-Run by the watch process every two hours, written to `events.jsonl` as `watch: sweep`:
-reply obligations (every open PR, three comment surfaces, fail-closed acknowledgement
-ledger), PR visibility (reviewer requested, channel post logged with reviewer mentions,
-verdict recorded), staleness (no commit and no report for 15 minutes), and the scanner over
-the day's traces. The watch writes a clock line every 10 minutes; a missing clock line is a
-failure signal.
+Amended (owner, 2026-10-12, #789 part 23): no background process. The jobs the watch ran
+each run in a command that already runs each day: the scanner over the day's traces in
+`wuwei dispatch receive` and `wuwei close`; merge supervision (`merge.poll`, 4.6) whenever
+`wuwei next` refreshes the PR listing and in `wuwei report`; the telemetry week (5.13) in
+`wuwei report`; tracker comments in `wuwei close`. Reply obligations and PR visibility are
+the `shepherd` and `ping` duties `wuwei next` lists (#844); a stuck seat is read from the seat
+ledger. Days before part 23 keep their `watch: sweep` and clock events as history.
 
 #### 4.2.1 PR ownership loop (owner, 2026-09-28)
 
@@ -216,26 +219,11 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   - `approved`: `wuwei merge` when the policy clears it (4.6), otherwise a merge decision;
   - `merged`: done.
   An overdue action is a `warn` (owner, 2026-10-10, #789), then a `page` at twice the deadline (5.9).
-- Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
-  120; head, CI, mergeability, reviews, comments, threads) and, on a change with a part that
-  needs a planner action (`watch.ACTIONS`: merged, closed, new commits, conflicts, new
-  comments, reviews, a failed check), records a `pr.changed` event and wakes the planner
-  session (and, in M5, launches a headless shepherd run). Each part is delivered once
-  (`watch.delivered`) until its evidence changes; `updated_at` is evidence time only; a
-  SessionStart in the registered planner session consumes the wake; `wuwei watch why <pr>`
-  shows what fired and what was suppressed (#674). Nothing needs to be re-armed by a seat.
-- Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
-  (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
-  Shepherd card in a session) sweeps the
-  owning day: the newest day, today included, whose plan is approved. It does nothing while a
-  planner session is live. It checks an `approved` PR against the 4.6 policy and queues it;
-  until #524 lands the merge waits for the morning `wuwei pr act`. It sends a `review_stale` ping through 4.9, and
-  queues every other state with its evidence as `shepherd.overnight` events, which open the
-  next morning plan. It never replies, fixes, rebases, starts a seat or calls a model.
-- Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
-  action past its deadline and no park, naming the PR, its state and the
-  action. The day close additionally requires every owned PR merged, parked or explicitly
-  carried to the next day.
+- Read when the loop asks (owner, 2026-10-12, #789 part 23, replacing the watch's wake, the
+  overnight headless shepherd and the Stop anchor). `wuwei next` refreshes the cached PR
+  listing every `pr.poll_seconds` (default 120) and derives each PR's step from it (#844);
+  shepherding is the `shepherd` duty, launched as a normal seat. The day close requires
+  every owned PR merged, parked or explicitly carried to the next day.
 
 `wuwei next` shows one row per owned PR: state, last action, what it waits on and time to
 deadline, so the owner never checks PRs one by one.
@@ -280,9 +268,9 @@ What the normalisation guarantees depends on what the guard protects (9.1):
   can recognise, but the guarantee comes from the code host and the credential layout, not
   from the parser: a protected base branch with required checks, and no token in seat
   environments that can approve, release or deploy. `wuwei init` documents that layout and `wuwei config check` verifies
-  it for each configured repository. The `pre-push` git hook in WUWEI worktrees and the
-  `permissions.deny` rules `wuwei init` writes (approve, `--admin` merges, the deploy
-  commands in 4.7) are further local checks, not boundaries.
+  it for each configured repository. The `permissions.deny` rules `wuwei init` writes (approve, `--admin` merges, the deploy
+  commands in 4.7) are a further local check, not a boundary (WUWEI installs no Git hook
+  since #789 part 23).
 
 A narrow argv allowlist may be used for privileged publish actions only (for example the
 exact `gh pr merge --squash --match-head-commit <sha>` that `wuwei merge` issues, 4.6). A
@@ -328,7 +316,8 @@ so a push between the check and the merge makes it fail rather than merge unrevi
 Never `--admin`, never a change to branch protection, never an approval. At most
 `merge.max_per_day` auto-merges per repository (default 5); none during quiet hours.
 
-After the merge: the watch follows the base branch's checks for the merge commit. A red check
+After the merge: `merge.poll` follows the base branch's checks for the merge commit, run by
+`wuwei next` with each PR listing refresh and by `wuwei report` (#789 part 23). A red check
 opens a revert PR at once, pages the owner, and trips the breaker. Every merge is an event
 carrying the evidence (head sha, verdicts, checks, approvals).
 
@@ -430,7 +419,7 @@ were retired by #789 (owner, 2026-10-11, #838). Outward sending is one exact all
 | sentinel-security | per gate | one verdict file; runs the scanner when `agent_surface` is set |
 | sentinel-goal | per docs gate | one verdict file |
 | shepherd | per PR set | PR raise, reviewer requests, thread replies, obligation ledger |
-| steward | at each sweep and at close, fresh seat | the retro and charter proposals |
+| steward | at close, fresh seat (the sweep trigger had no caller after #789 part 23) | the retro and charter proposals |
 
 ### 5.2 Flow
 
@@ -439,7 +428,7 @@ were retired by #789 (owner, 2026-10-11, #838). Outward sending is one exact all
   -> per item: builder -> pre-PR gates in parallel (arch, quality, security; goal on docs)
   -> shepherd raises, requests reviewers, posts, and owns the PR until merged (4.2.1)
   -> fix round -> arch delta -> ... -> merge policy: auto-merge, or the user merges
-/wuwei report -> steward retro -> planner report -> Stop guard
+/wuwei report -> steward retro -> planner report -> wuwei close
 ```
 
 Briefs (amended 2026-10-01, #301; amended 2026-10-11, #789 part 14). Every seat brief carries a
@@ -629,8 +618,9 @@ the retro. Charter and note changes it only proposes; `wuwei promote` lands them
 (section 6.8). Never briefs a seat, never dispatches, never changes item state. A day on
 which the steward did not run is a finding in the next plan.
 
-The steward runs at each sweep and at close. It never gates a dispatch: the round cap (5.3)
-is the budget (owner, 2026-10-11, #789).
+The steward runs at close (the watch's sweep trigger went with the watch, owner, 2026-10-12,
+#789 part 23). It never gates a dispatch: the round cap (5.3) is the budget (owner,
+2026-10-11, #789).
 
 ### 5.6 Outcome metrics (owner, 2026-09-28)
 
@@ -763,8 +753,7 @@ Surfaces, all reading the same classification:
   seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
   cut at whole names; #658), then pages (owner, 2026-10-10, #789)
   and `observe` when `guards.enforce` is false. `wuwei status` prints the same groups one per line
-  with the detail: each running seat with role, item and start time, watch, listen,
-  sessions, the next person reply due, the next meeting and the plugin and template versions. It shares the hook latency
+  with the detail: each running seat with role, item and start time, the next person reply due, the next meeting and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
   default, messaging adapters in M5 (retired by #789, owner, 2026-10-10)), plus approvals.
@@ -919,11 +908,10 @@ step to any hook:
 - hook outcomes: each `refusals` row of `hook.refusal` and each `guard.would_refuse`
   gains `exit` (1 refused, 2 could not run); a `hook.refusal` without rows (a config that
   does not load, #326) counts as guard `config`, exit 2. Allowed calls are the PostToolUse
-  rows of `traces.jsonl`. Heartbeat probe calls record nothing, as before.
-- hook latency: the heartbeat (#287) already times its four hook probes (`refused`,
-  `allowed`, `state_write`, `read_loop`) on every clock tick; each of those probe rows
-  gains `ms`, the call's wall milliseconds including interpreter start: the hook as the
-  owner feels it. The 10.6 CPU budget stays the benchmark's.
+  rows of `traces.jsonl`. Doctor's probe calls record nothing, as the heartbeat's did.
+- hook latency: read from the heartbeat probe rows of days before #789 part 23 (each carried
+  `ms`, the call's wall milliseconds including interpreter start); a later week reports it
+  unmeasured. The 10.6 CPU budget stays the benchmark's.
 - seats: `seat launched`, `seat stopped`, `seat.usage` (its duration).
 - items: `plan.approved`, `state.import`, `plan.added`, the `phase_changes` of state
   writes, `gate.received`, `gate.tiered`, `build.parked`.
@@ -945,7 +933,7 @@ step to any hook:
 The vocabulary's version is `schema` in every aggregate and payload, starting at 1. Changing
 a key or a definition below raises it and amends this section.
 
-Aggregation. One step of the watch sweep (4.2), at most once per 24 hours (a `telemetry_at`
+Aggregation. One step of `wuwei report` (4.2, #789 part 23), at most once per 24 hours (a `telemetry_at`
 mark, like the steward's), never in a hook and never in a seat. It reads the day
 directories under `days/` whose date falls in an ISO week (`2026-W40`, in
 `owner.timezone`) and writes `.wuwei/metrics/<week>.json`, a generated record only the CLI
@@ -971,7 +959,7 @@ percentiles as in 5.6.
 | `refusal_rate` | refusals over tool calls plus refusals |
 | `unmeasured_rate` | unmeasured over refusals plus unmeasured plus warnings |
 | `first_hour_refusals` | refusals, unmeasured and warnings in the first hour after the first event of the workspace's earliest day; present only in that day's week |
-| `hook_latency_ms` | p50, p95 and max of the heartbeat hook probes' `ms` |
+| `hook_latency_ms` | p50, p95 and max of the heartbeat hook probes' `ms`, from days before #789 part 23 |
 | `seats_launched`, `seats_lost` | `seat launched` records; launches with no `seat stopped` by the end of their day |
 | `seat_minutes` | p50 and p90 of `seat.usage` durations |
 | `phase_entries` | per phase, moves into it |
@@ -1022,7 +1010,7 @@ never anything else in the file (owner, 2026-10-11, #789). Anonymisation, checke
 A payload that breaks a rule is not sent; the run records `telemetry.unsent` with the rule.
 
 - `anonymous`: the sweep posts the payload as JSON over HTTPS to `endpoint` (stdlib
-  `urllib` in the watch-service adapter, beside the heartbeat ping; 5 second timeout) with
+  `urllib` in the watch-service adapter; 5 second timeout) with
   `token`, 32 hex characters generated once per workspace with `secrets` and kept in
   `.wuwei/metrics/token`, the only identifier. No login and no secret in the plugin. The
   collector, like any web server, sees the sender's IP address and does not store it. No
@@ -1057,7 +1045,7 @@ config set`:
   headers as comma-separated `key=value` pairs; the value never enters config, events or
   output.
 
-While `enabled` and `endpoint` is set, each watch sweep posts the records appended since
+While `enabled` and `endpoint` is set, each telemetry step posts the records appended since
 the last export as OTLP/HTTP JSON to `<endpoint>/v1/traces`, and each newly finalised week
 to `<endpoint>/v1/metrics`, built with stdlib `json` and `urllib` in the watch-service
 adapter (no SDK, 5 second timeout, inside the 10-second budget above). An `otlp_at` mark
@@ -1135,7 +1123,7 @@ any day is not run again.
 | `tracker.create` | a new candidate is approved (`plan approve`) or an owner-named item is added (`plan add`) with no ticket | the ticket is created and recorded in `tickets` | `wuwei tracker create <item>` |
 | `tracker.claim` | the item's first build starts (`build next`) | the claim (assign, in progress) returns 0 | `wuwei tracker move <item> claim` |
 | `tracker.in_review` | the PR is raised (`pr raise`) or claimed (`pr claim`) | the move to `states.in_review` and the `Pull request: <pr>.` comment both return 0 | `wuwei tracker move <item> in_review` |
-| `tracker.done` | the PR merges (the watch's `merge.completed`, or `pr state` seeing the merge, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
+| `tracker.done` | the PR merges (`pr state` seeing the merge, 4.6; `wuwei next` lists the `tracker` duty) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
 
 `dispatch.tracker_call` performs each duty (amended, owner, 2026-10-11, #789 part 22: the
 configured duties of 5.2 use the same `duty.done` and `duty.skipped` events, and
@@ -1166,7 +1154,7 @@ idempotent per class, subject and title: a second call prints the existing ticke
 and writes nothing. Each ticket that exists records one `tracker.created` event (class,
 subject, ticket, parent).
 
-Comments. One CLI writer, `wuwei tracker log`, run by the watch sweep (4.2), by `wuwei close`
+Comments. One CLI writer, `wuwei tracker log`, run by `wuwei close`
 once the close passes, and on demand, turns the day's CLI events into comments on each
 item's ticket, once each. Every entry has a stable key (its kind and subject), kept in
 `tracker_log` in `state.json` with its outcome (written, refused, folded), so a
@@ -1268,7 +1256,7 @@ how to work goes to a charter through a steward proposal and `wuwei promote`, ne
 ### 6.6 Consolidation
 
 Daily: the steward folds the retro into charter proposals at close, `wuwei promote` lands
-them, and the Stop guard verifies they landed.
+them, and `wuwei close` verifies they landed.
 
 ### 6.7 Claude's own memory
 
@@ -1375,7 +1363,6 @@ that it did nothing and returns exit 2 where a measurement was expected.
   append-only.
 - A lost seat is relaunched from its persisted brief; recovery reads `git log` since the
   item's recorded head and never redoes committed work.
-- A dead watch process is detected by its missing clock line, not by its pid file.
 
 ### 9.1 Threat model and guard scope (owner, 2026-09-28; amended 2026-09-30, #237)
 
@@ -1402,8 +1389,8 @@ the owner's user account, and they hold when no hook runs:
 Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
 touch workspace state; this is a reason to route build seats there. Further hardening for
 Claude seats (Claude Code's Bash sandbox, or a separate OS user for seats) is a later option.
-Local checks that do not depend on parsing still raise the bar cheaply: pre-commit and
-pre-push hooks in WUWEI worktrees, state files at mode 0444 outside the writer, and
+Local checks that do not depend on parsing still raise the bar cheaply: the day records at
+mode 0444 outside the writer, and
 `permissions.deny` for unambiguous deploy verbs. They catch mistakes like the guards do;
 none of them is a boundary.
 
@@ -1726,5 +1713,5 @@ The listener routes messages from people, not only work.
   for a channel, the stricter rule wins, and every direct message, including an
   acknowledgement, is a draft for one-tap approval.
 - Reply obligations: each needs-you ask is owed until answered. It starts as a `warn` (owner, 2026-10-10, #789) and
-  becomes a `page` as its reply window closes. The Stop guard refuses day close while a reply
+  becomes a `page` as its reply window closes. `wuwei close` refuses while a reply
   is owed to a person.

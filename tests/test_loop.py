@@ -181,7 +181,7 @@ def materialise(root, day):
         data['items'][name] = entry
     (directory / 'plan.md').write_text('\n'.join(plan) + '\n')
     (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': pulls}))
-    state._write_state(lambda fresh: fresh.update(workspace.copy_data(data)), root, reserved=False,
+    state._write_state(lambda fresh: fresh.update(workspace.copy_data(data)), root,
                        kind='plan.approved', payload={'items': data['approved_items']})
     for kind, payload in events:
         state.append_event(kind, payload, root)
@@ -388,7 +388,7 @@ def run(tmp_path, monkeypatch):
 
 
 def seat_state(root, update):
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
 
 
 # Scheduler dead ends.
@@ -615,7 +615,7 @@ def test_open_duties_carry_across_days(run):
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['old-1'], raised_prs=[old],
         items={'old-1': {'phase': 'raised', 'status': 'running', 'pr': old}}),
-        directory=prior, reserved=False, kind='plan.approved')
+        directory=prior, kind='plan.approved')
     assert ('ping', 'old-1') in answer(root)
     code, reason = closing.unresolved(root, [])
     assert code == 1 and 'old-1: ping' in reason

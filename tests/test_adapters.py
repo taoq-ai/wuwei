@@ -72,8 +72,7 @@ CALLS = [
     ('vcs', 'repo_context', ('repo',), True),
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
-    ('vcs', 'hooks_path', ('repo', 'path', 'mode'), False),
-    ('vcs', 'hooks_target', ('repo',), True),
+    ('vcs', 'unhook', ('repo', 'write'), False),
     ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('vcs', 'recent_commits', ('repo',), True),
@@ -465,28 +464,19 @@ def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
     from wuwei.registry import watch_service
     module = watch_service()
     script = tmp_path / 'wuwei'
-    script.write_text('#!/bin/sh\ncat > /dev/null\n[ "$1" = status ] && exec sleep 5\n'
+    script.write_text('#!/bin/sh\nread -r payload\n[ "$payload" = slow ] && exec sleep 5\n'
                       'echo "first line" >&2\necho second >&2\nexit 3\n')
     script.chmod(0o755)
     module.LAUNCHER = script
     ran = []
     start = time.monotonic()
-    results, during = module.probe([(('status', '--line'), ''), (('hook', 'PreToolUse'), '{}')],
+    results, during = module.probe([(('hook', 'PreToolUse'), 'slow\n'), (('hook', 'PreToolUse'), '{}\n')],
                                    tmp_path, during=lambda: ran.append(1) or 'measured', timeout=1)
     assert time.monotonic() - start < 3
     assert ran == [1] and during == 'measured'
     (timed, reason, _), (code, line, ms) = results
     assert (timed, reason) == (None, 'timeout')
     assert (code, line) == (3, 'first line') and ms >= 0
-
-
-def test_watch_ping_requires_https(monkeypatch):
-    import urllib.request
-    from wuwei.registry import watch_service
-    module = watch_service()
-    monkeypatch.setattr(urllib.request, 'urlopen', lambda *a, **k: pytest.fail('opened a connection'))
-    with pytest.raises(ValueError, match='ping URL must be https'):
-        module.ping('http://example.test/x')
 
 
 def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):

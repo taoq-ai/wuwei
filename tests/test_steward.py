@@ -16,7 +16,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['A'],
-        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path, reserved=False)
+        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path)
     return tmp_path
 
 
@@ -53,7 +53,7 @@ def test_failed_steward_launch_leaves_no_brief(root):
 def test_steward_launch_uses_approved_role_runtime(root, monkeypatch):
     from wuwei import registry, steward
     state._write_state(lambda data: data.update(seat_policy={
-        'steward': {'runtime': 'codex', 'model': 'test'}}), root, reserved=False)
+        'steward': {'runtime': 'codex', 'model': 'test'}}), root)
     selected = []
     adapter = SimpleNamespace(dispatch=lambda *args, **kwargs:
                               registry.Result(0, {'id': 'one'}))
@@ -83,23 +83,23 @@ def test_plan_displays_prior_day_finding(root, monkeypatch):
                                                   'ts': '2026-09-28T09:00:00Z'}) + '\n')
     (root / '.wuwei/memory').mkdir()
     (root / '.wuwei/memory/goals.md').write_text('# Goals\n## G-1\noutcome: Ship a useful result\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n')
-    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=False), root)
     assert 'prior day had no steward run' in plan.propose(proposal(), root).read_text()
 
 
-def test_sweep_and_close_trigger_steward(root, monkeypatch):
-    from wuwei import steward, watch
+def test_close_triggers_steward(root, monkeypatch):
+    # #847: the watch's sweep trigger is gone; close runs the steward.
+    from wuwei import steward
     from wuwei.commands import close
 
     calls = []
     monkeypatch.setattr(steward, 'run', lambda _root, *, trigger: calls.append(trigger) or 0)
-    watch.sweep(root)
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
     monkeypatch.setattr(close.closing, 'check', lambda _root: (0, ''))
     monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))
     monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows, **_: (0, ''))
     assert close.run(SimpleNamespace(check=None)) == 0
-    assert calls == ['sweep', 'close']
+    assert calls == ['close']
 
 
 def test_close_retry_uses_existing_steward_run(root, monkeypatch):
@@ -169,12 +169,11 @@ def test_report_counts_steward_runs(root, verbosity):
     from wuwei import report
 
     (root / '.wuwei/config.toml').write_text(verbosity)
-    settings = 'Settings: watch.sweep_seconds = 7200'
-    assert f'## Steward runs\nnone\n{settings}' in report.build(root)
-    for trigger in ('sweep', 'sweep', 'close'):
+    assert '## Steward runs\nnone\n' in report.build(root)
+    for trigger in ('sweep', 'sweep', 'close'):  # sweep: days before #847
         state.append_event('steward.run', {'trigger': trigger, 'tool_calls': 0}, root)
-    assert (f'## Steward runs\n- close: 1\n- sweep: 2\n{settings}'
-            in report.build(root))
+    assert '## Steward runs\n- close: 1\n- sweep: 2\n' in report.build(root)
+    assert 'watch.sweep_seconds' not in report.build(root)
 
 
 

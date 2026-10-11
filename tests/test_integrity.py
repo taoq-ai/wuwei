@@ -270,31 +270,6 @@ def test_integrity_files_protected(tmp_path, name):
     assert check_bash(payload)[0] != 0
 
 
-def test_integrity_producer_only_state_and_events(tmp_path, monkeypatch):
-    from wuwei import state
-    from wuwei.commands import event
-    root = workspace_root(tmp_path)
-    monkeypatch.chdir(root)
-    for key in ('integrity', 'integrity_failed', 'integrity_confirmation'):
-        with pytest.raises(ValueError):
-            state.set_state(key, {}, root)
-        assert event.run(Namespace(kind=key, payload='{}')) == 1
-
-
-def test_every_sweep_measures_integrity(tmp_path, monkeypatch):
-    from wuwei import obligations, watch
-    api = core()
-    root = workspace_root(tmp_path)
-    calls = []
-    monkeypatch.setattr(api, 'check', lambda root: calls.append(root) or registry.Result(1, reason='page: changed'))
-    monkeypatch.setattr(obligations, 'evaluate', lambda root: dict(
-        exit=0, reply_owed=0, visibility_owed=0, unreadable=0))
-    assert obligations.sweep(root) == 1
-    assert calls == [root]
-    watch.sweep(root)
-    assert calls == [root, root]
-
-
 @pytest.mark.xdist_group('timing')
 def test_cached_check_latency(tmp_path):
     import time
@@ -531,19 +506,6 @@ def test_missing_ssh_is_unmeasured_even_with_invalid_pin(tmp_path, monkeypatch):
     (base / core().KEY).write_text('invalid\nmultiline pin')
     monkeypatch.setenv('PATH', str(tmp_path / 'absent'))
     assert adapter.verify(base / 'MANIFEST.sha256', base / 'MANIFEST.sha256.sig', base / core().KEY).exit == 2
-
-
-def test_sweep_summary_cannot_report_clean_when_integrity_failed(tmp_path, monkeypatch):
-    from wuwei import obligations, state
-    api = core()
-    root = workspace_root(tmp_path)
-    monkeypatch.setattr(api, 'check', lambda root: registry.Result(1, reason='page: changed'))
-    monkeypatch.setattr(obligations, 'evaluate', lambda root: dict(
-        exit=0, reply_owed=0, visibility_owed=0, unreadable=0))
-    records = []
-    monkeypatch.setattr(state, 'append_event', lambda kind, data, **kw: records.append(data))
-    assert obligations.sweep(root) == 1
-    assert records[0]['exit'] == 1 and records[0]['integrity_owed'] == 1
 
 
 def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsys):

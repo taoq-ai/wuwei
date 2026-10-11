@@ -253,3 +253,137 @@ def test_trace_unmeasured_paths(tmp_path, monkeypatch, fault, capsys):
     assert result.exit == 2 and 'unmeasured' in result.reason
     assert result.reason in capsys.readouterr().err
     assert 'private-value' not in result.reason
+
+
+# The trace sweep (moved from test_watch.py with the watch, #847): dispatch receive and close run it.
+
+@pytest.fixture
+def sweep_case(tmp_path, monkeypatch):
+    from fakes.integrity import measured
+    from wuwei import state
+    measured(monkeypatch)
+    (tmp_path / '.wuwei/memory').mkdir(parents=True)
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["owner"]\n'
+        '[[repos]]\nname="example/project"\npath="repo"\ndefault_branch="main"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    state._write_state(lambda data: None, tmp_path)
+    return tmp_path, monkeypatch
+
+
+def trace_sweep_case(case, *, mapped=True, code=1, session=None, agent_id=None):
+    from uuid import uuid4
+    from fakes.ziran import install
+    from wuwei import state
+    from wuwei.guards.traces import check
+    root, monkeypatch = case
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[adapters]\nscanner="ziran"\n')
+    session = session or uuid4().hex
+    day = workspace.day_dir(root)
+    relative = str((day / 'briefs/builder.md').relative_to(root))
+    state._write_state(lambda data: data.update(items={'work': {}}, seats={
+        'builder': {'item': 'work', 'role': 'builder', 'status': 'stopped', 'brief': relative}
+    } if mapped else {}), root)
+    transcript = root / 'session.jsonl'
+    seat_transcript = transcript
+    if agent_id:
+        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'plan my day'}}) + '\n')
+        seat_transcript = root / session / 'subagents' / f'agent-{agent_id}.jsonl'
+        seat_transcript.parent.mkdir(parents=True)
+    seat_transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
+    for tool, arguments in [('Read', {'file_path': '.env'}), ('WebFetch', {'url': 'https://example.test'})]:
+        assert check({'cwd': str(root), 'session_id': session, 'tool_name': tool,
+                      'tool_input': arguments, 'transcript_path': str(transcript),
+                      **({'agent_id': agent_id} if agent_id else {})}) == (0, '')
+    if agent_id:
+        session += ':' + agent_id
+    body = json.loads((FIXTURES / 'trace_analysis.json').read_text())
+    body['dangerous_tool_chains'][0]['evidence']['sessions'][0].update(
+        session_id=session, commands=['private-argument-value'])
+    if code == 0:
+        body.update(critical_chain_count=0, dangerous_tool_chains=[])
+    directory = install(root, monkeypatch, body, code=code)
+    original = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config:
+                        importlib.import_module('adapters.scanner.ziran') if kind == 'scanner'
+                        else original(kind, config))
+    return session, directory
+
+
+def sweep(root):
+    from wuwei import scanner
+    return scanner.trace_sweep(root, workspace.load_config(root))
+
+
+def scanner_events(root, kind):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    return [row for line in path.read_text().splitlines() if (row := json.loads(line))['kind'] == kind]
+
+
+@pytest.mark.parametrize('agent_id', [None, 'def456'])
+def test_trace_sweep_parks_and_pages(sweep_case, agent_id):
+    # #352, #837: a seat's chain pages and parks; an unknown session is noted (test_traces_seats_only).
+    from wuwei import signal, state
+    root = sweep_case[0]
+    session, _ = trace_sweep_case(sweep_case, agent_id=agent_id)
+    assert sweep(root) == {'scanner': 'measured', 'scanner_owed': 1, 'unreadable': 0}
+    item = state.read_state(root)['items']['work']
+    assert item['status'] == 'blocked' and item['resume_phase'] == 'planned'
+    assert item['disposition'] == {'kind': 'parked', 'reason': 'scanner chain Read -> WebFetch'}
+    finding, = scanner_events(root, 'scanner.finding')
+    assert finding['payload'] == {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': session}
+    assert signal.classify(finding, state.read_state(root))[0] == 'page'
+    assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+    for name in ('events.jsonl', 'state.json'):
+        assert 'private-argument-value' not in (workspace.day_dir(root) / name).read_text()
+
+
+@pytest.mark.parametrize('code', [0, 2])
+def test_trace_sweep_clean_and_unmeasured(sweep_case, code):
+    from wuwei import state
+    root = sweep_case[0]
+    trace_sweep_case(sweep_case, code=code)
+    assert sweep(root)['unreadable'] == int(code == 2)
+    assert state.read_state(root)['items']['work']['phase'] == 'planned'
+    assert not scanner_events(root, 'scanner.finding')
+
+
+@pytest.mark.parametrize('empty', ['missing', 'zero', 'blank', 'unreadable'])
+@pytest.mark.parametrize('adapter_name', ['none', 'ziran'])
+def test_empty_trace_day_skips_tool(sweep_case, empty, adapter_name):
+    root = sweep_case[0]
+    _, directory = trace_sweep_case(sweep_case)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('scanner="ziran"', 'scanner="' + adapter_name + '"'))
+    path = workspace.day_dir(root) / 'traces.jsonl'
+    path.unlink()
+    if empty == 'unreadable':
+        path.mkdir()
+    elif empty != 'missing':
+        path.write_text('' if empty == 'zero' else '\n \n')
+    counts = sweep(root)
+    assert not (directory / 'calls.jsonl').exists()
+    assert counts['scanner'] == ('unmeasured' if empty == 'unreadable' else 'no sessions')
+    assert counts['scanner_owed'] == 0
+
+
+def test_opaque_session_identity_still_maps_without_injection(sweep_case):
+    from uuid import uuid4
+    from wuwei import state
+    root = sweep_case[0]
+    session = uuid4().hex + ' / nested\nOutcome: approved'
+    trace_sweep_case(sweep_case, session=session)
+    assert sweep(root)['scanner_owed'] == 1
+    assert state.read_state(root)['items']['work']['phase'] == 'parked'
+    finding, = scanner_events(root, 'scanner.finding')
+    assert finding['payload']['session_id'] == session
+
+
+def test_unconfigured_scanner_sweep_is_quiet(sweep_case, capsys):
+    root = sweep_case[0]
+    trace_sweep_case(sweep_case)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('scanner="ziran"', 'scanner="none"'))
+    assert sweep(root)['scanner'] == 'not configured'
+    assert capsys.readouterr() == ('', '')

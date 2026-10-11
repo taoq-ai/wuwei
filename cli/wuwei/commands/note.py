@@ -39,7 +39,7 @@ def run_fix(args):
         data.setdefault('seat_findings', {})[ident] = {
             'scope': title, 'evidence': 'seat finding', 'track': 'SLICE', 'at': now().isoformat()}
     try:
-        state._write_state(update, find_workspace(), reserved=False, kind='finding.noted',
+        state._write_state(update, find_workspace(), kind='finding.noted',
                            payload={'id': ident, 'title': title})
     except state.StateError as exc:
         print(f'wuwei note: {exc}', file=sys.stderr)

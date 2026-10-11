@@ -16,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[1]
 TIMING = {
     ('test_traces.py', 'test_large_arguments_record_under_50ms_cpu'),
     ('test_integrity.py', 'test_cached_check_latency'),
-    ('test_heartbeat.py', 'test_stuck_state_lock_fails_the_state_probe'),
     ('test_adapters.py', 'test_watch_probe_runs_calls_together_and_times_out'),
     ('test_e2e_day.py', 'test_scripted_day'),
     ('test_path_day.py', 'test_the_day_closes_walking_only_next'),
@@ -24,7 +23,6 @@ TIMING = {
     ('test_hooks.py', 'test_hook_latency'),
     ('test_hooks.py', 'test_status_line_latency'),
     ('test_hooks.py', 'test_workspace_hook_latency'),
-    ('test_hooks.py', 'test_heartbeat_latency'),
 }
 
 

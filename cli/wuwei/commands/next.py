@@ -432,6 +432,10 @@ def run(args):
                 if failed:
                     print(f'wuwei next: PR listing not refreshed ({failed}); the last listing stays; run '
                           'bin/wuwei doctor, which tests the code host adapter', file=sys.stderr)
+                from contextlib import redirect_stdout
+                from wuwei import merge
+                with redirect_stdout(sys.stderr):  # #847: supervision lines never reach next's row
+                    merge.poll(root)
         row = step(root, map(tuple, ran))
         if root is not None:
             from wuwei import dispatch

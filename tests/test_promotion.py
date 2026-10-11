@@ -184,17 +184,6 @@ def test_patch_must_rewrite_existing_rule(tmp_path):
     assert (base / 'charters/builder.md').read_text() == 'Old rule.\n'
 
 
-def test_state_set_refuses_symlinked_wuwei(tmp_path):
-    outside = tmp_path / 'outside'
-    setup(outside)
-    root = tmp_path / 'workspace'
-    root.mkdir()
-    (root / '.wuwei').symlink_to(outside / '.wuwei', target_is_directory=True)
-    result = cli(root, 'state', 'set', 'probe', 'true')
-    assert result.returncode == 2
-    assert not (outside / '.wuwei/days' / DAY / 'state.json').exists()
-
-
 def test_memory_writes_are_reserved_for_dedicated_cli(tmp_path, monkeypatch):
     base = setup(tmp_path)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
@@ -204,13 +193,6 @@ def test_memory_writes_are_reserved_for_dedicated_cli(tmp_path, monkeypatch):
         payload = {'cwd': str(tmp_path), 'tool_input': {'file_path': path}}
         code, _ = check_file(payload)
         assert code == 1, path
-
-
-def test_guard_refusal_event_kind_cannot_be_forged(tmp_path):
-    setup(tmp_path)
-    result = cli(tmp_path, 'event', 'hook.refusal', '{}')
-    assert result.returncode == 1
-    assert not (tmp_path / '.wuwei/days' / DAY / 'events.jsonl').exists()
 
 
 def test_malformed_proposal_is_rejected_and_logged(tmp_path):

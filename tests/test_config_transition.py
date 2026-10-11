@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -201,7 +202,7 @@ def newer_events(root):
 
 def test_old_hook_passes_and_records_once_per_session(ws, installed, monkeypatch, capsys):
     write(ws, NEWER)
-    for session in ('one', 'one', 'two', 'wuwei-heartbeat'):
+    for session in ('one', 'one', 'two', 'wuwei-probe'):
         code, out = replay(monkeypatch, capsys, ws, session)
         assert code == 0 and 'deny' not in out, out
     assert newer_events(ws) == [{'plugin': '0.12.0', 'template': '0.13.0', 'session': 'one'},
@@ -213,11 +214,6 @@ def test_same_version_template_records_no_event(ws, installed, monkeypatch, caps
     code, out = replay(monkeypatch, capsys, ws)
     assert code == 0 and 'deny' not in out, out
     assert newer_events(ws) == []
-
-
-def test_newer_template_event_is_reserved(ws, monkeypatch, capsys):
-    from wuwei.commands import event
-    assert event.EVENT_PRODUCERS['config.newer_template'] == 'wuwei hook PreToolUse'
 
 
 @pytest.fixture
@@ -439,23 +435,93 @@ def test_upgrade_maps_the_today_merge_tier_to_merge_auto(tmp_path, monkeypatch, 
 
 
 @pytest.mark.parametrize('dry_run', [False, True])
-def test_upgrade_removes_an_installed_listener_unit(tmp_path, monkeypatch, capsys, dry_run):
+@pytest.mark.parametrize('name', ['listen', 'watch', 'shepherd'])
+def test_upgrade_removes_an_installed_retired_unit(tmp_path, monkeypatch, capsys, dry_run, name):
+    # #810, #847: the listener, watch and shepherd user services are no longer shipped.
     from wuwei import registry
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
     calls = []
     monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=calls.append))
-    unit = workspace.watch_unit(tmp_path, name='listen')[1]
+    unit = workspace.watch_unit(tmp_path, name=name)[1]
     unit.parent.mkdir(parents=True)
-    unit.write_text('old listener\n')
+    unit.write_text(f'old {name}\n')
     out = upgrade_output(tmp_path, monkeypatch, capsys, dry_run, [])
     if dry_run:
-        assert 'Would remove the listener service (no longer shipped)' in out
+        assert f'Would remove the {name} service (no longer shipped)' in out
         assert unit.exists() and calls == []
     else:
-        assert 'Removed the listener service (no longer shipped)' in out
+        assert f'Removed the {name} service (no longer shipped)' in out
         assert not unit.exists() and calls
+
+
+def git(path, *args):
+    return subprocess.run(['git', '-C', str(path), *args], capture_output=True, text=True)
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, capsys, dry_run):
+    # #847: init --upgrade unsets WUWEI's core.hooksPath (the shims and the chain) in every item
+    # worktree, keeps the owner's own value and the anchor, removes the managed hooks, the
+    # watch and shepherd files and the [watch], [sessions] and [worktree] settings.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            monkeypatch.delenv(key)
+    root = tmp_path.resolve()
+    assert init.run(SimpleNamespace(path=str(root), upgrade=False, dry_run=False)) == 0
+    repo = root / 'repo'
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+    assert git(repo, '-c', 'user.name=A', '-c', 'user.email=a@example.test', 'commit', '-q', '--allow-empty',
+               '-m', 'start').returncode == 0
+    git(repo, 'config', '--local', 'extensions.worktreeConfig', 'true')
+    shims = root / '.wuwei/git-hooks'
+    shims.mkdir()
+    (shims / 'pre-push').write_text('#!/bin/sh\n')
+    trees = {}
+    for name in ('shim', 'chain', 'own'):
+        tree = root / 'worktrees' / name
+        assert git(repo, 'worktree', 'add', '-q', '-b', name, str(tree)).returncode == 0
+        git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
+        (git_dir / 'wuwei-workspace').write_text(str(root) + '\n')
+        value = {'shim': shims, 'chain': git_dir / 'wuwei-hooks', 'own': root / 'own-hooks'}[name]
+        if name == 'chain':
+            value.mkdir()
+            (value / 'pre-commit').write_text('#!/bin/sh\n')
+        git(tree, 'config', '--worktree', 'core.hooksPath', str(value))
+        trees[name] = (tree, git_dir, value)
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '\n[watch]\nsweep_seconds = 900\n[sessions]\nstale_seconds = 600\n'
+                    '[worktree]\ngit_hooks = "chain"\n')
+    for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock', 'shepherd.stderr.log'):
+        (root / '.wuwei' / name).write_text('')
+    before = path.read_text()
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=dry_run))
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    for name in ('shim', 'chain'):
+        assert f'{prefix} worktree {name}: unset core.hooksPath' in out, out
+    assert not any('worktree own' in line for line in out)
+    hooks = {name: git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip()
+             for name, (tree, _, _) in trees.items()}
+    if dry_run:
+        assert hooks == {name: str(value) for name, (_, _, value) in trees.items()}
+        assert shims.is_dir() and trees['chain'][2].is_dir() and path.read_text() == before
+        assert (root / '.wuwei/watch.lock').exists()
+        return
+    assert hooks == {'shim': '', 'chain': '', 'own': str(root / 'own-hooks')}
+    assert not shims.exists() and not trees['chain'][2].exists()
+    assert all((git_dir / 'wuwei-workspace').read_text().strip() == str(root) for _, git_dir, _ in trees.values())
+    config = tomllib.loads(path.read_text())
+    assert not {'watch', 'sessions', 'worktree'} & set(config)
+    for key in ('watch', 'sessions', 'worktree'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert not [name for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock',
+                                  'shepherd.stderr.log') if (root / '.wuwei' / name).exists()]
 
 
 def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):

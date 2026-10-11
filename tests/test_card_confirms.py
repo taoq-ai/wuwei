@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from wuwei import sessions, workspace
+from wuwei import sessions, state, workspace
 
 
 @pytest.fixture
@@ -87,16 +87,12 @@ def test_owner_answer_counts_with_enforce_off(ws):
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
 
 
-def test_gate_asked_is_reserved(ws):
-    assert main('event', 'gate.asked', '{}') == 1
-
-
 def test_only_a_recorded_gate_asked_row_counts(ws):
     """#831 F1: a note whose payload names gate.asked, or a damaged row, is not an answer."""
     question = f'Owner step: {OWNER_MERGE}'
     card = sessions.owner_card(OWNER_MERGE, 'x')
     topic = sessions.owner_topic(question, card['options'], 'Yes')
-    assert main('event', 'note', json.dumps({'via': 'gate.asked', 'topics': [topic]})) == 0
+    state.append_event('note', {'via': 'gate.asked', 'topics': [topic]}, ws)
     path = workspace.day_dir(ws) / 'events.jsonl'
     path.chmod(0o644)
     with path.open('a') as stream:
@@ -228,9 +224,9 @@ def test_state_recover_card_runs_through_the_hooks_with_state_unreadable(ws, mon
 
 
 def test_a_forged_note_never_answers_for_the_owner(ws):
-    """The reviewer's probe: wuwei event note with the answer's topic is not an answer."""
+    """The reviewer's probe: a note with the answer's topic is not an answer."""
     command = 'bin/wuwei plan set A-1 owner_merge=false'
     card = sessions.owner_card(command, 'x')
     topic = sessions.owner_topic(card['question'], card['options'], 'Yes')
-    assert main('event', 'note', json.dumps({'via': 'gate.asked', 'topics': [topic]})) == 0
+    state.append_event('note', {'via': 'gate.asked', 'topics': [topic]}, ws)
     assert sessions.needs_owner(ws, command, 'x') is not None

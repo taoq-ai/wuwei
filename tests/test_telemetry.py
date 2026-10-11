@@ -591,3 +591,27 @@ def test_week_stored_with_a_cruise_count_still_validates_and_previews(ws, capsys
     telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))
     config(ws, '[telemetry]\nshare = "attributed"\n')
     assert main(['telemetry', 'preview']) == 0 and '"cruise": 1' in capsys.readouterr().out
+
+
+def test_report_steps_the_telemetry_week(tmp_path, monkeypatch, capsys):
+    # #847: the report records a finished week (the watch used to); a failure is one stderr line.
+    from argparse import Namespace
+    from wuwei import merge, report, state, telemetry
+    from wuwei.commands import report as report_command
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-03T18:00:00+02:00')
+    monkeypatch.chdir(tmp_path)
+    state._write_state(lambda data: None, tmp_path)
+    monkeypatch.setattr(report, 'write', lambda *a, **k: tmp_path / '.wuwei/config.toml')
+    monkeypatch.setattr(merge, 'poll', lambda root: 0)
+    calls = []
+    monkeypatch.setattr(telemetry, 'step', lambda root, config: calls.append(root) or '2026-W40')
+    assert report_command.run(Namespace()) == 0
+    assert calls == [tmp_path]
+    def broken(root, config):
+        raise OSError('disk full')
+    monkeypatch.setattr(telemetry, 'step', broken)
+    assert report_command.run(Namespace()) == 0
+    assert 'telemetry unmeasured: disk full' in capsys.readouterr().err

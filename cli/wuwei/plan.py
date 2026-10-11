@@ -29,7 +29,7 @@ def session(session_id, root=None, *, take_over=False):
         data['planner_session_id'] = session_id
         sessions.record(data, session_id, hook='plan session', cwd=str(Path.cwd()))
 
-    return state._write_state(update, root, reserved=False, kind='plan.session',
+    return state._write_state(update, root, kind='plan.session',
                               payload={'session_id': session_id,
                                        **({'previous': previous} if previous else {})})
 
@@ -225,7 +225,6 @@ def propose(data, root=None):
     if provisional:
         data = {**data, 'goals': list(goal_list)}
     found = discovery.discover(root)
-    day = workspace.day_dir(root)
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
@@ -259,10 +258,8 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if state.day_started(directory) and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import shepherd
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
-             *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
              '## Goals to confirm',
              *([f'Provisional: proposed by the lead; plan approve records days/{directory.name}/'
                 'goals.md.'] if provisional else []),
@@ -424,7 +421,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                        approved_items=items, gate_approved=True)
 
     kind = 'state.import' if import_yesterday else 'plan.approved'
-    written = state._write_state(update, root, reserved=False, kind=kind,
+    written = state._write_state(update, root, kind=kind,
                                  payload={'items': sorted(imported) if import_yesterday else items,
                                           'approved_items': items,
                                           'flags': {name: candidates[name]['flags'] for name in items}})
@@ -491,7 +488,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
-    state._write_state(admit, root, reserved=False, kind='plan.added',
+    state._write_state(admit, root, kind='plan.added',
                        payload={'item': item, 'source': candidate['source'],
                                 'flags': {item: candidate['flags']}})
     if not chosen and config['adapters']['tracker'] != 'none':  # #842: best effort, never a wall
@@ -527,7 +524,7 @@ def set_spec(item, assignment, reason=None, root=None):
             raise state.StateError(f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
         data['items'][item]['spec'] = {'value': value, 'reason': reason}
-    state._write_state(update, root, reserved=False, kind='spec.override',
+    state._write_state(update, root, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
 
@@ -554,7 +551,7 @@ def set_owner_merge(item, value, root=None):
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
         data['items'][item]['owner_merge'] = {'value': on, 'by': by, 'at': workspace.now().isoformat()}
         linked.append(data['items'][item].get('pr'))
-    state._write_state(update, root, reserved=False, kind='plan.set',
+    state._write_state(update, root, kind='plan.set',
                        payload={'item': item, 'owner_merge': on, 'by': by})
     config = workspace.load_config(root)
     if linked[-1] and config['adapters']['code_host'] != 'none':
@@ -593,7 +590,7 @@ def set_ticket(item, ticket, root=None):
             result.reason or f'tracker could not confirm {ticket}; check the id in the tracker, then '
                              f'run bin/wuwei plan set {item} ticket=<id> again')
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
-        {item: {'id': ticket, 'source': 'set'}}), root, reserved=False, kind='plan.set',
+        {item: {'id': ticket, 'source': 'set'}}), root, kind='plan.set',
         payload={'item': item, 'ticket': ticket})
     return ticket
 
@@ -612,7 +609,7 @@ def dispose(item, outcome, reason=None, root=None):
         record['disposition'] = {'kind': outcome, 'reason': reason}
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
             record.update(phase='parked', status='blocked')
-    state._write_state(update, root, reserved=False, kind='plan.disposed',
+    state._write_state(update, root, kind='plan.disposed',
                        payload={'item': item, 'outcome': outcome, 'reason': reason})
 
 
@@ -655,6 +652,6 @@ def resume(item, root=None):
         current.update(phase=current['resume_phase'], status='queued')
         current.pop('disposition', None)
         current.pop('decision', None)
-    state._write_state(update, root, reserved=False, kind='plan.resumed', payload={'item': item})
+    state._write_state(update, root, kind='plan.resumed', payload={'item': item})
     return f'{item}: resumed'
 

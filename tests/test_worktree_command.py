@@ -21,7 +21,8 @@ def git(repo, *args, env=None):
     return subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True, env=env)
 
 
-def test_worktree_add_anchors_pre_push_outside_claude(tmp_path, monkeypatch, capsys):
+def test_worktree_add_anchors_without_git_hooks(tmp_path, monkeypatch, capsys):
+    # #847: the anchor finds the workspace from the worktree; no managed Git hook is installed.
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     for key in list(os.environ):
         if key.startswith('GIT_'):
@@ -43,7 +44,7 @@ def test_worktree_add_anchors_pre_push_outside_claude(tmp_path, monkeypatch, cap
     stub.write_text(f'#!/bin/sh\necho "$* $WUWEI_WORKSPACE" >> "{record}"\nexit 1\n')
     stub.chmod(0o755)
     workspace.atomic_write(tmp_path / '.wuwei/executable', str(stub) + '\n')
-    state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True), tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(['worktree', 'add', 'X']) == 0
     tree = tmp_path / 'worktrees/X'
@@ -52,23 +53,28 @@ def test_worktree_add_anchors_pre_push_outside_claude(tmp_path, monkeypatch, cap
     (tree / 'new.txt').write_text('new\n')
     git(tree, 'add', 'new.txt')
     clean = {k: v for k, v in os.environ.items() if k != 'WUWEI_WORKSPACE' and not k.startswith('GIT_')}
-    assert git(tree, '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'new', env=clean).returncode == 0
-    assert git(tree, 'push', 'origin', 'x', env=clean).returncode != 0
-    seen = record.read_text()
-    assert 'git-hook pre-push' in seen and str(tmp_path) in seen
+    git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
+    assert (git_dir / 'wuwei-workspace').read_text().strip() == str(tmp_path)
+    assert workspace.worktree_workspace(tree) == tmp_path
+    assert git(tree, 'config', '--get', 'core.hooksPath').returncode == 1
+    assert not (tmp_path / '.wuwei/git-hooks').exists() and not (git_dir / 'wuwei-hooks').exists()
+    assert git(tree, 'commit', '-qm', 'new', env=clean).returncode == 0
+    assert git(tree, 'push', 'origin', 'x', env=clean).returncode == 0
+    assert not record.exists()
 
 
 @pytest.fixture
 def fake(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     (tmp_path / '.wuwei').mkdir()
-    state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True), tmp_path)
     vcs = VCS()
     vcs.results['worktree_add'] = registry.Result(0, {'branch': 'x', 'path': 'p', 'start': 'a' * 40})
     vcs.results['worktree_identity'] = registry.Result(0, {})
+    git_dir = tmp_path / 'git-dir'  # #847: the anchor lands in the worktree's Git directory
+    git_dir.mkdir()
+    vcs.results['repo_context'] = registry.Result(0, {'path': str(git_dir), 'common_dir': str(git_dir)})
     monkeypatch.setattr(registry, 'load', lambda kind, config: vcs)
-    import wuwei.commands.git_hook as git_hook
-    monkeypatch.setattr(git_hook, 'install', lambda path, root, vcs: None)
     return tmp_path, vcs
 
 
@@ -86,7 +92,7 @@ def adds(vcs):
 def test_gate_refusal_exits_1_without_vcs_call(fake, capsys):
     root, vcs = fake
     repos(root, 'app')
-    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=False), root)
     assert main(['worktree', 'add', 'X']) == 1
     assert 'gate' in capsys.readouterr().err and not vcs.calls
 
@@ -137,7 +143,7 @@ def test_worktree_add_writes_configured_identity(fake, capsys):
     root, vcs = fake
     repos(root, 'app', identity=True)
     assert main(['worktree', 'add', 'X']) == 0
-    assert [call[0] for call in vcs.calls][-2:] == ['worktree_add', 'worktree_identity']
+    assert [call[0] for call in vcs.calls][-3:] == ['worktree_add', 'repo_context', 'worktree_identity']
     assert identities(vcs) == [(str(root / 'worktrees/X'), 'App', 'app@example.test')]
     assert json.loads(capsys.readouterr().out) == {'branch': 'x', 'path': 'p', 'start': 'a' * 40}
 
@@ -195,7 +201,7 @@ def test_template_identity_lets_a_seat_commit(tmp_path, monkeypatch, capsys):
     (tmp_path / '.wuwei/config.toml').write_text(
         f'[[repos]]\nname = "app"\npath = "repo"\ndefault_branch = "main"\n{assignment}\n[brief]\nremote = "."\n')
     seed(tmp_path)
-    state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True), tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(['worktree', 'add', 'X']) == 0
     capsys.readouterr()
@@ -214,41 +220,9 @@ def test_template_identity_lets_a_seat_commit(tmp_path, monkeypatch, capsys):
     assert 'wuwei worktree add' in reason and 'git config user.email builder@example.test' in reason
 
 
-def claimed_events(root):
-    path = workspace.day_dir(root) / 'events.jsonl'
-    return [row for row in map(json.loads, path.read_text().splitlines())
-            if row['kind'] == 'item.claimed']
-
-
-def test_worktree_add_refuses_item_claimed_by_live_session(fake, monkeypatch, capsys):
-    root, vcs = fake
-    repos(root, 'app')
-    stamp = workspace.now().isoformat()
-    state._write_state(lambda data: data.update(
-        claims={'ITEM-1': 'A'}, sessions={'A': {'role': 'adhoc', 'started': stamp,
-                                                'last_seen': stamp, 'cwd': str(root)}}),
-        root, reserved=False)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
-    assert main(['worktree', 'add', 'ITEM-1']) == 2
-    assert 'claimed by live session A' in capsys.readouterr().err and adds(vcs) == []
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
-    assert main(['worktree', 'add', 'ITEM-1']) == 0
-    assert len(adds(vcs)) == 1
-    assert claimed_events(root)[-1]['payload'] == {'item': 'ITEM-1', 'session': 'A',
-                                                   'prs_seen': False}
-
-
-def test_gate_refusal_makes_no_claim(fake, monkeypatch):
-    root, vcs = fake
-    repos(root, 'app')
-    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
-    assert main(['worktree', 'add', 'X']) == 1
-    assert claimed_events(root) == []
-
-
 def hooked_workspace(tmp_path, monkeypatch, config=''):
-    """A fresh repository with a bare origin, a workspace and a recording stub CLI (#472)."""
+    """A fresh repository with a bare origin, a workspace and a recording stub CLI (#472): a
+    WUWEI Git hook would record its call there (#847: none is installed)."""
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     for key in list(os.environ):
         if key.startswith('GIT_'):
@@ -269,7 +243,7 @@ def hooked_workspace(tmp_path, monkeypatch, config=''):
     stub.write_text(f'#!/bin/sh\necho "$*" >> "{tmp_path / "record.txt"}"\n[ "$2" != pre-push ]\n')
     stub.chmod(0o755)
     workspace.atomic_write(tmp_path / '.wuwei/executable', str(stub) + '\n')
-    state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True), tmp_path)
     monkeypatch.chdir(tmp_path)
     return tmp_path, repo
 
@@ -288,63 +262,28 @@ def commit_and_push(tree):
     return (git(tree, 'commit', '-qm', 'new', env=clean), git(tree, 'push', 'origin', 'x', env=clean))
 
 
-def test_worktree_add_chains_repository_hooks_path(tmp_path, monkeypatch, capsys):
+def test_worktree_add_leaves_repository_hooks_path_native(tmp_path, monkeypatch, capsys):
+    # #847: no chain; the repository's own hooks run as they would without WUWEI.
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     marker_hooks(root / 'own', root / 'marker.txt', 'pre-commit', 'pre-push')
     git(repo, 'config', 'core.hooksPath', str(root / 'own'))
     assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
     committed, pushed = commit_and_push(root / 'worktrees/X')
     assert committed.returncode == 0, committed.stderr
-    assert pushed.returncode != 0
-    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
-    assert 'git-hook pre-push' in (root / 'record.txt').read_text()
-    assert (root / 'marker.txt').read_text().split() == ['pre-commit']
+    assert pushed.returncode == 0, pushed.stderr
+    assert not (root / 'record.txt').exists()
+    assert (root / 'marker.txt').read_text().split() == ['pre-commit', 'pre-push']
     assert git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.strip() == str(root / 'own')
 
 
-def test_worktree_add_chains_default_hooks(tmp_path, monkeypatch, capsys):
+def test_worktree_add_leaves_default_hooks_native(tmp_path, monkeypatch, capsys):
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     marker_hooks(repo / '.git/hooks', root / 'marker.txt', 'pre-commit')
     assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
     committed, _ = commit_and_push(root / 'worktrees/X')
     assert committed.returncode == 0, committed.stderr
-    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
+    assert not (root / 'record.txt').exists()
     assert (root / 'marker.txt').read_text().split() == ['pre-commit']
-
-
-def hooks_skipped(root):
-    path = workspace.day_dir(root) / 'events.jsonl'
-    return [row['payload'] for row in map(json.loads, path.read_text().splitlines())
-            if row['kind'] == 'worktree.hooks_skipped']
-
-
-def test_worktree_add_skips_unchainable_hooks(tmp_path, monkeypatch, capsys):
-    root, repo = hooked_workspace(tmp_path, monkeypatch)
-    (root / 'hooks-file').write_text('')
-    git(repo, 'config', 'core.hooksPath', str(root / 'hooks-file'))
-    assert main(['worktree', 'add', 'X']) == 0
-    tree = root / 'worktrees/X'
-    git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
-    assert (git_dir / 'wuwei-workspace').read_text().strip() == str(root)
-    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').returncode == 1
-    lines = [line for line in capsys.readouterr().err.splitlines() if 'git hooks skipped' in line]
-    assert len(lines) == 1 and 'not a directory' in lines[0] and 'PreToolUse' in lines[0]
-    events = hooks_skipped(root)
-    assert len(events) == 1 and events[0]['worktree'] == 'X' and 'not a directory' in events[0]['reason']
-
-
-def test_worktree_add_skip_mode_never_refuses(tmp_path, monkeypatch, capsys):
-    root, repo = hooked_workspace(tmp_path, monkeypatch, (
-        'identity = {name = "Builder", email = "builder@example.test"}\n'
-        '[worktree]\ngit_hooks = "skip"\n'))
-    assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
-    assert 'git hooks skipped' in capsys.readouterr().err
-    assert hooks_skipped(root)[0]['reason'] == 'worktree.git_hooks = "skip"'
-    tree = root / 'worktrees/X'
-    assert git(tree, 'config', '--worktree', '--get', 'user.email').stdout.strip() == 'builder@example.test'
-    assert git(repo, 'config', '--local', '--get', 'user.email').stdout.strip() == 'builder@example.test'
-    git(repo, 'config', '--local', '--unset', 'user.email')
-    assert git(tree, 'config', '--worktree', '--get', 'user.email').stdout.strip() == 'builder@example.test'
 
 
 def test_worktree_identity_skip_warns(fake, capsys):
@@ -354,13 +293,6 @@ def test_worktree_identity_skip_warns(fake, capsys):
         1, None, 'git.worktree_identity: extensions.worktreeConfig is off')
     assert main(['worktree', 'add', 'X']) == 0
     assert 'extensions.worktreeConfig is off' in capsys.readouterr().err
-
-
-def test_worktree_adopted_event_is_reserved(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    (tmp_path / '.wuwei').mkdir()
-    assert main(['event', 'worktree.adopted', '{}']) == 1
-    assert 'wuwei worktree adopt' in capsys.readouterr().err
 
 
 def adopt_workspace(tmp_path, monkeypatch, config=''):
@@ -377,7 +309,7 @@ def adopt_workspace(tmp_path, monkeypatch, config=''):
     tree = root / 'house/feature-x'
     assert git(repo, 'worktree', 'add', '-q', str(tree), 'feature-x').returncode == 0
     state._write_state(lambda data: data.update(items={'A': {}, 'B': {}},
-                                                approved_items=['A', 'B']), root, reserved=False)
+                                                approved_items=['A', 'B']), root)
     return root, repo, tree
 
 
@@ -385,7 +317,7 @@ def day_events(root):
     return [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
 
 
-def test_worktree_adopt_chains_hooks_and_anchors(tmp_path, monkeypatch, capsys):
+def test_worktree_adopt_anchors(tmp_path, monkeypatch, capsys):
     root, repo, tree = adopt_workspace(
         tmp_path, monkeypatch, 'identity = {name = "Builder", email = "builder@example.test"}\n')
     assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 0, capsys.readouterr().err
@@ -399,7 +331,7 @@ def test_worktree_adopt_chains_hooks_and_anchors(tmp_path, monkeypatch, capsys):
     assert git(tree, 'config', '--worktree', '--get', 'user.email').stdout.strip() == 'builder@example.test'
     committed, _ = commit_and_push(tree)
     assert committed.returncode == 0, committed.stderr
-    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
+    assert not (root / 'record.txt').exists()
     assert (root / 'marker.txt').read_text().split() == ['pre-commit']
 
 
@@ -431,7 +363,7 @@ def test_worktree_adopt_preconditions(tmp_path, monkeypatch, capsys):
     git(repo, 'worktree', 'add', '-q', '-b', 'z', str(root / 'house/z'))
     assert main(['worktree', 'adopt', str(root / 'house/z'), '--item', 'A']) == 1
     assert 'another worktree' in capsys.readouterr().err
-    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=False), root)
     assert main(['worktree', 'adopt', str(root / 'house/z'), '--item', 'B']) == 1
     assert 'gate' in capsys.readouterr().err
 
@@ -458,7 +390,7 @@ def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
     assert state.read_state(root)['items']['A']['worktree'] == str(tree)
     committed, _ = commit_and_push(tree)
     assert committed.returncode == 0, committed.stderr
-    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
+    assert not (root / 'record.txt').exists()
     assert main(['worktree', 'add', 'B']) == 0
     assert git(repo, 'branch', '--list', '--format=%(refname:short)', 'b').stdout.strip() == 'b'
     assert 'worktree' not in state.read_state(root)['items']['B']
@@ -474,7 +406,7 @@ def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
     git(repo, 'worktree', 'remove', str(house))
     git(repo, 'push', '-q', 'origin', 'main')
     git(repo, 'fetch', '-q', 'origin')
-    state._write_state(lambda data: data.update(goals=['G-1']), root, reserved=False)
+    state._write_state(lambda data: data.update(goals=['G-1']), root)
     host = Host()
     host.results['pr'].data.update(branch='feature-x', merged=False,
                                    head=git(repo, 'rev-parse', 'feature-x').stdout.strip())
@@ -513,7 +445,8 @@ def test_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):
     assert (root / 'count.txt').read_text() == 'run\n'
     assert (tree / '.venv/bin/python').exists()
     assert 'warning' not in capsys.readouterr().err
-    assert main(['fast-checks', str(tree)]) == 0
+    from wuwei import fast_checks
+    assert fast_checks.record(tree) == 0
     row = state.read_state(root)['fast_checks']['app']['.venv/bin/python -m pytest -q']
     assert row['exit'] == 0 and row['interpreter'] == str(tree / '.venv/bin/python')
 
@@ -542,7 +475,6 @@ def test_worktree_add_failed_bootstrap_warns(fake, monkeypatch, capsys, result, 
     assert json.loads(out.out) == {'branch': 'x', 'path': 'p', 'start': 'a' * 40}
     lines = out.err.splitlines()
     assert len(lines) == 1 and lines[0].startswith(line) and 'install output' not in out.err
-
 
 
 def test_worktree_bootstrap_uses_the_repository_timeout(fake, monkeypatch):  # #724
@@ -601,6 +533,3 @@ def test_worktree_add_refuses_when_the_fetch_fails(tmp_path, monkeypatch, capsys
     assert len(git(repo, 'worktree', 'list').stdout.splitlines()) == 1
 
 
-def test_worktree_created_event_is_reserved(fake, capsys):
-    assert main(['event', 'worktree.created', '{}']) == 1
-    assert 'wuwei worktree add' in capsys.readouterr().err

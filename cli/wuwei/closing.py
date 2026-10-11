@@ -1,7 +1,5 @@
 """Day-close evidence for obligations and the retro landing."""
 
-from contextlib import redirect_stdout
-import io
 import json
 from pathlib import Path
 import re
@@ -239,16 +237,11 @@ def check(root):
     _, rows = pr_actions.evaluate(root)
     results = [pr_actions.check(root, rows=rows), unresolved(root, rows)]
     try:
+        from wuwei import scanner
+        scanner.trace_sweep(root, workspace.load_config(root))
         results.append(scanner_hold(root))
     except watch.ERRORS as exc:
         results.append((2, f'scanner findings unmeasured: {exc}'))
-    output = io.StringIO()
-    try:
-        with redirect_stdout(output):
-            counts = obligations.evaluate(root)
-        results.append((counts['exit'], output.getvalue().strip()))
-    except watch.ERRORS as exc:
-        results.append((2, f'obligations unmeasured: {exc}'))
     results.extend([retro(root), pr_actions.check(root, closing=True, rows=rows)])
     return max(code for code, _ in results), '\n'.join(dict.fromkeys(
         message for code, message in results if code and message))

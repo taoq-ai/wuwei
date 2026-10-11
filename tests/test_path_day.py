@@ -119,10 +119,6 @@ def walk(day, card, after=None, looks=1):
             assert kind == 'wait', action
         if after:
             after(day, action)
-        # The turn ends; a Stop the close guard blocks is the guard doing its job.
-        call(day, ['hook', 'Stop'], json.dumps({
-            'session_id': 'planner', 'cwd': str(day.root), 'hook_event_name': 'Stop',
-            'transcript_path': str(day.root / 'planner.jsonl'), 'stop_hook_active': False}))
     pytest.fail(f'the day did not close: {action}')
 
 
@@ -146,7 +142,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
 
     def after(day, action):
         if launched(action, 'pr') and not merged:
-            # The code host merges; the watch records it with pr state.
+            # The code host merges; pr state records it.
             day.host.results['pr'].data.update(state='closed', merged=True,
                                                merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
             assert call(day, ['pr', 'state'])[0] == 0
@@ -161,7 +157,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
     value = metrics.collect(day.root)
     assert value['off_path'] == 0, metrics.path(metrics._events(day.directory),
                                                 metrics._traces(day.directory), 'planner')
-    assert value['planner_asks'] == len(asks) and value['planner_turns'] > 0
+    assert value['planner_asks'] == len(asks) and 'planner_turns' not in value
     assert value['cycle_minutes']['A'] >= 0
     assert value['cycle_by_tier'][tier]['median_minutes'] < metrics.CYCLE_TARGETS[tier]
     assert day.data['items']['A']['gates']['tier'] == tier

@@ -1,4 +1,4 @@
-"""Commit and push policy of the native Git hooks, pr act and dispatch."""
+"""Commit and push policy of pr act and dispatch."""
 
 from pathlib import Path
 import json
@@ -36,14 +36,6 @@ def unset_identity(identity, index='<n>', found=None):
     return (f'repos.{index}.identity is empty or malformed',
             f'bin/wuwei config set repos.{index}.identity '
             + shlex.quote(f'{{name = {name}, email = {email}}}'))
-
-
-def configured_identity(repo, root, found=None):
-    """Raise the shared reason and fix when the matched repository's identity is not valid."""
-    if unset_identity(repo['identity']):
-        from wuwei import workspace
-        index = workspace.load_config(root)['repos'].index(repo)
-        raise ValueError('; '.join(unset_identity(repo['identity'], index, found)))
 
 
 def identity_check(expected, actual, head=None):
@@ -156,28 +148,6 @@ def push_check(repo, actual, push, root, vcs):
             result = identity_check(repo['identity'], commit)
             if result[0]:
                 return result[0], 'pushed commit identity: ' + result[1]
-    return 0, ''
-
-
-def fast_evidence(repo, sha, path, root):
-    """#530: the configured fast checks recorded as passed at the pushed HEAD sha."""
-    from wuwei import state
-    item = _item(path, root)
-    checks = f'bin/wuwei build check {item}' if item else 'bin/wuwei fast-checks in this worktree'
-    evidence = state.read_state(root).get('fast_checks', {})
-    if not isinstance(evidence, dict) or not isinstance(evidence.get(repo['name'], {}), dict):
-        raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
-    for check in repo['fast_checks']:
-        if not check.strip():
-            raise ValueError('empty configured fast check; the owner removes the empty entry with bin/wuwei config set repos.<n>.fast_checks')
-        record = evidence.get(repo['name'], {}).get(check)
-        if record is None:
-            return 1, f'fast check "{check}" has not passed for HEAD {sha[:12]}; run {checks}'
-        if (not isinstance(record, dict) or not isinstance(record.get('sha'), str)
-                or type(record.get('exit')) is not int or record['exit'] not in (0, 1, 2)):
-            raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
-        if record['sha'] != sha or record['exit'] != 0:
-            return 1, f'fast check "{check}" has not passed for HEAD {sha[:12]}; run {checks}'
     return 0, ''
 
 

@@ -343,3 +343,14 @@ def test_grants_are_gone():
         with pytest.raises(SystemExit) as exc:
             main(argv)
         assert exc.value.code == 2
+
+
+@pytest.mark.parametrize('argv', [['watch'], ['heartbeat'], ['shepherd'], ['sessions'], ['event', 'note'],
+                                  ['state', 'get'], ['git-hook', 'pre-push'], ['fast-checks'], ['runtime'],
+                                  ['sweep', 'obligations'], ['sweep', 'watch']])
+def test_commands_the_derived_next_replaced_are_unknown(argv, capsys):
+    # #847: argparse refuses each as unknown (exit 2).
+    from wuwei.__main__ import main
+    with pytest.raises(SystemExit) as raised:
+        main(argv)
+    assert raised.value.code == 2

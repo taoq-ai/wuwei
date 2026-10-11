@@ -91,7 +91,7 @@ def _record(payload, root, findings=(), transcript_path=None):
             if any(seat.get('transcript') != str(transcript_path)
                    or payload['session_id'] not in seat.get('trace_sessions', ())
                    for seat in bound(state.read_state(root))):
-                state._write_state(bind, root, reserved=False)  # once per seat and session (#659)
+                state._write_state(bind, root)  # once per seat and session (#659)
     return 0, ''
 
 

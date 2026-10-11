@@ -131,8 +131,8 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
     data = json.loads(structured.stdout)
     # #562: the line skips these; status and --json keep them.
-    assert {'plugin', 'template', 'next_meeting', 'next_reply_due', 'sessions', 'seats'} <= data.keys()
-    assert 'sessions 0' in full.stdout and 'plugin ' in full.stdout
+    assert {'plugin', 'template', 'next_meeting', 'next_reply_due', 'seats'} <= data.keys()
+    assert 'sessions' not in data and 'plugin ' in full.stdout
     assert data['pages'] == 1 and not {'nudges', 'nudges_mode'} & data.keys()
     assert data['phases']['spec'] == 1 and data['cap'] == 2
     assert data['next_reply_due'] == '2026-09-28T13:00:00+02:00'
@@ -328,14 +328,12 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
     emitted.add('state.write')  # default writer kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
-    emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
+    emitted.add('watch: observation')  # watch.save's default kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
-    expected = {'worktree.hooks_skipped': 'warn',
-                'security.canary': 'page', 'security.honeytoken': 'page',
-                'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
+    expected = {'security.canary': 'page', 'security.honeytoken': 'page',
+                'scanner.finding': 'page', 'state.write': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
-                'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'warn',
@@ -351,10 +349,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.claimed': 'silent',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
                 'reviewer.unresolved': 'silent',
-                'watch: sweep': 'warn', 'watch: clock': 'silent', 'heartbeat: clock': 'silent',
-                'watch: heartbeat': 'silent', 'watch: observation': 'silent',
-                'watch: read-failed': 'warn', 'pr.changed': 'warn',
-                'session: compact': 'silent', 'session: wake-seen': 'silent',
+                'watch: observation': 'silent',
                 'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
                 'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
@@ -367,7 +362,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'steward.run': 'silent',
                 'plan.disposed': 'silent', 'plan.resumed': 'silent',
                 'calibration.drift': 'warn',
-                'shepherd.overnight': 'silent', 'shepherd.swept': 'silent',
                 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
@@ -393,19 +387,19 @@ def test_transition_to_escalated_uses_running_seat():
     assert classify(event, {'seats': {}}) == ('warn', 'Decisions')
 
 
-@pytest.mark.parametrize('page,spoof,exit_code', [
-    ('security.finding', 'security.resolved', 1),
-    ('base.red', 'base.green', 1),
-    ('dead_man.hit', 'dead_man.cleared', 1),
-    ('budget.cap', 'budget.cleared', 1),
-    ('day.blocked', 'day.unblocked', 1),
-    ('decision.one_way', 'decision.resolved', 1),
-    ('person.ask', 'person.answered', 1),
+@pytest.mark.parametrize('page,spoof', [
+    ('security.finding', 'security.resolved'),
+    ('base.red', 'base.green'),
+    ('dead_man.hit', 'dead_man.cleared'),
+    ('budget.cap', 'budget.cleared'),
+    ('day.blocked', 'day.unblocked'),
+    ('decision.one_way', 'decision.resolved'),
+    ('person.ask', 'person.answered'),
 ])
-def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof, exit_code):
+def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof):
     payload = {'id': 'same', 'blocking': True, 'due': NOW}
-    day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': page, 'payload': payload}])
-    assert cli(tmp_path, 'event', spoof, json.dumps({'id': 'same'})).returncode == exit_code
+    day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': page, 'payload': payload},
+                                             {'kind': spoof, 'payload': {'id': 'same'}}])
     result = cli(tmp_path, 'status', '--json')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)['pages'] == 1
@@ -472,11 +466,6 @@ def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['gates'] == {'A': light}
 
 
-def beat_line(health, page='', ts=NOW):
-    return {'kind': 'heartbeat: clock', 'ts': ts,
-            'payload': {'health': health, 'probes': {}, 'drift': [], 'page': page, 'ping': 'off'}}
-
-
 def status_of(tmp_path, monkeypatch, events):
     from wuwei.commands import status
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
@@ -487,71 +476,7 @@ def status_of(tmp_path, monkeypatch, events):
     return data, status.full(data), status.attention(directory)
 
 
-CLOCK = {'kind': 'watch: clock', 'payload': {}, 'ts': NOW}
-PAGE_TEXT = 'heartbeat integrity failed: page: plugin integrity: cli/x.py changed after the cached verdict'
-
-
-def test_heartbeat_health_on_the_status_line(tmp_path, monkeypatch):
-    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('ok')])
-    assert data['health'] == 'ok' and 'health ok' in line and 'pages 0' in line
-    assert not [row for row in rows if row['source'] == 'heartbeat']
-
-
-def test_degraded_heartbeat_pages_once_and_clears(tmp_path, monkeypatch):
-    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('degraded', PAGE_TEXT),
-                                                         beat_line('degraded', PAGE_TEXT)])
-    assert 'health degraded' in line and 'pages 1' in line
-    assert [(row['tier'], row['reason']) for row in rows if row['source'] == 'heartbeat'] == [
-        ('page', PAGE_TEXT)]
-
-
-def test_ok_heartbeat_clears_the_page(tmp_path, monkeypatch):
-    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('degraded', PAGE_TEXT),
-                                                         beat_line('ok')])
-    assert 'health ok' in line and 'pages 0' in line
-
-
-@pytest.mark.parametrize('events', [
-    [beat_line('degraded', PAGE_TEXT, ts='2026-09-28T09:00:00+02:00'),
-     {'kind': 'watch: clock', 'payload': {}, 'ts': '2026-09-28T09:00:00+02:00'}],
-    [CLOCK, beat_line('fine')],
-    [CLOCK, {'kind': 'heartbeat: clock', 'payload': 'broken', 'ts': NOW}],
-])
-def test_unmeasured_heartbeat_has_no_page(tmp_path, monkeypatch, events):
-    data, line, rows = status_of(tmp_path, monkeypatch, events)
-    assert data['health'] == 'unmeasured' and 'health unmeasured' in line
-    assert not [row for row in rows if row['source'] == 'heartbeat']
-
-
-def test_no_heartbeat_line_has_no_health_part(tmp_path, monkeypatch):
-    data, line, _ = status_of(tmp_path, monkeypatch, [CLOCK])
-    assert data['health'] is None and 'health' not in line
-
-
-def changed(summary=None, pr='example/project#7'):
-    payload = {'pr': pr, 'fields': ['checks']}
-    if summary:
-        payload['summary'] = summary
-    return {'kind': 'pr.changed', 'payload': payload, 'ts': NOW}
-
-
-def test_pr_changed_is_first_carries_the_summary_and_clears_at_wake_seen(tmp_path, monkeypatch):
-    events = [CLOCK, {'kind': 'build.parked', 'payload': {'reason': 'older'}, 'ts': NOW},
-              changed('PR example/project#7: check ci failed'),
-              changed('PR example/project#7: check ci passed')]
-    data, line, rows = status_of(tmp_path, monkeypatch, events)
-    assert (rows[0]['source'], rows[0]['reason']) == ('pr.changed', 'PR example/project#7: check ci passed')
-    assert sum(row['source'] == 'pr.changed' for row in rows) == 1
-    assert 'prs 1 changed' in line
-    seen = {'kind': 'session: wake-seen', 'payload': {'at': NOW}, 'ts': NOW}
-    data, line, rows = status_of(tmp_path / 'b', monkeypatch, [*events, seen])
-    assert [row['source'] for row in rows] == ['build.parked']
-    assert 'prs' not in line
-
-
-def test_old_pr_changed_without_summary_names_the_fields(tmp_path, monkeypatch):
-    _, _, rows = status_of(tmp_path, monkeypatch, [CLOCK, changed()])
-    assert rows[0]['reason'] == 'example/project#7 changed: checks'
+CLOCK = {'kind': 'watch: clock', 'payload': {}, 'ts': NOW}  # a day before #847: a silent row
 
 
 def test_restart_on_the_status_line(tmp_path, monkeypatch):
@@ -574,13 +499,13 @@ def test_scan_skips_silent_lines_undecoded(tmp_path, monkeypatch):
     directory = day(tmp_path, events=events)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    expected = status.scan(directory)
+    expected = status.attention(directory)
     seen = []
     monkeypatch.setattr(status, 'json', SimpleNamespace(
         loads=lambda line, **kw: seen.append(line) or json.loads(line, **kw), dumps=json.dumps))
-    rows, watch, *_ = status.scan(directory)
-    assert len(seen) == 2 and not any('state.write' in line for line in seen)
-    assert (rows, watch, *_) == expected
+    rows = status.attention(directory)
+    assert len(seen) == 1 and not any('state.write' in line for line in seen)
+    assert rows == expected
     assert any(row['source'] == 'hook.warning' and row['reason'] == 'lint finding' for row in rows)
 
 
@@ -590,7 +515,7 @@ def test_scan_decodes_torn_silent_line(tmp_path, monkeypatch):
     (directory / 'events.jsonl').write_text('{"kind": "state.write", "payload": {"a": 1}\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    rows, *_ = status.scan(directory)
+    rows = status.attention(directory)
     assert any(row['source'] == 'unreadable event' for row in rows)
 
 
@@ -620,12 +545,12 @@ def test_scan_reads_the_day_with_universal_newlines(tmp_path, monkeypatch):
     path.write_bytes(f'{silent}\r\n{warning}\r{warning}\n{silent}\r'.encode())
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    rows, *_ = status.scan(directory)
+    rows = status.attention(directory)
     assert sum(row['count'] for row in rows if row['source'] == 'hook.warning') == 2  # #786: folded
     assert not any(row['source'] == 'unreadable event' for row in rows)
     path.write_bytes(b'{"kind": "hook.warning", "payload": {"reason": "\xff"}, "ts": "' + NOW.encode() + b'"}\n')
     with pytest.raises(UnicodeDecodeError):
-        status.scan(directory)
+        status.attention(directory)
 
 
 def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
@@ -640,11 +565,11 @@ def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
                      + json.dumps(silent) + '\n{"kind": "hook.warning", "ts": "' + NOW + '"}')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    skipped = status.scan(directory)
+    skipped = status.attention(directory)
     monkeypatch.setattr(status, 'LINES', r'([^\n]*)\n?')
-    assert skipped == status.scan(directory)
-    assert sum(row['count'] for row in skipped[0] if row['source'] == 'hook.warning') == 3  # #786: folded
-    assert any(row['source'] == 'unreadable event' for row in skipped[0])
+    assert skipped == status.attention(directory)
+    assert sum(row['count'] for row in skipped if row['source'] == 'hook.warning') == 3  # #786: folded
+    assert any(row['source'] == 'unreadable event' for row in skipped)
 
 
 NONE_EVENT = {'kind': 'adapter: none', 'payload': {'adapter': 'none', 'kind': 'scanner', 'call': 'audit',
@@ -664,44 +589,20 @@ def test_issue_acceptance_adapter_none_is_silent(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out == 'WUWEI no plan yet | pages 0\n'
 
 
-def test_outward_ai_tells_is_silent_and_reserved(capsys):
+@pytest.mark.parametrize('kind', ['outward.ai_tells', 'outward.lint', 'outward.to_owner'])
+def test_outward_events_are_silent(kind):
     from wuwei.signal import classify
-    from wuwei.__main__ import main
-    assert classify({'kind': 'outward.ai_tells', 'payload': {}}, {})[0] == 'silent'
-    assert main(['event', 'outward.ai_tells', '{}']) == 1
-    assert 'humanize_lint' in capsys.readouterr().err
-
-
-def test_outward_lint_is_silent_and_reserved(capsys):
-    from wuwei.signal import classify
-    from wuwei.__main__ import main
-    assert classify({'kind': 'outward.lint', 'payload': {}}, {})[0] == 'silent'
-    assert main(['event', 'outward.lint', '{}']) == 1
-    assert 'check_lint' in capsys.readouterr().err
-
-
-def test_outward_to_owner_is_silent_and_reserved(capsys):
-    from wuwei.signal import classify
-    from wuwei.__main__ import main
-    assert classify({'kind': 'outward.to_owner', 'payload': {}}, {})[0] == 'silent'
-    assert main(['event', 'outward.to_owner', '{}']) == 1
-    assert 'wuwei.outward.to_owner' in capsys.readouterr().err
+    assert classify({'kind': kind, 'payload': {}}, {})[0] == 'silent'
 
 
 TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'off')
 
 
 @pytest.mark.parametrize('name', TELEMETRY)
-def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, name):
-    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all five.
-    from wuwei.__main__ import main
+def test_telemetry_events_are_quiet(name):
+    # #422, design 5.13: telemetry.ready is a warning, the rest are silent.
     from wuwei.signal import classify
     assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('warn' if name == 'ready' else 'silent')
-    day(tmp_path, {})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['event', f'telemetry.{name}', '{}']) == 1
-    assert 'written by wuwei telemetry or wuwei sweep' in capsys.readouterr().err
 
 
 def test_status_line_shows_running_seats_per_goal(tmp_path):
@@ -728,8 +629,8 @@ def test_status_json_names_plan_and_versions(tmp_path):
     assert (data['plan'], data['plugin'], data['template']) == (False, integrity.version(), '0.1.0')
     assert not {'nudges', 'nudges_mode', 'decisions', 'loops'} & set(data)
     assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
-            'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'health',
-            'trace_gaps', 'prs_changed', 'solo', 'enforce', 'restart'} <= set(data)
+            'next_meeting', 'seats', 'running', 'gates',
+            'trace_gaps', 'solo', 'enforce', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
     assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
 
@@ -870,16 +771,13 @@ def test_status_without_a_flag_fails_closed(tmp_path):
 def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = {**four_seats(tmp_path, monkeypatch), 'cap_bound': 'budget', 'seats': {'G-1': 2},
-            'watch': 'dead', 'health': 'ok', 'sessions': 2,
-            'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
+            'solo': True, 'trace_gaps': 2, 'pages': 1,
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
             'plugin': '0.16.0', 'template': '0.15.0', 'enforce': False}
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [
-        'pages 1 · observe · prs 3 changed · reviewers: none (solo)'
-        ' · traces: 2 gaps',
-        'watch dead · health ok · sessions 2',
+        'pages 1 · observe · reviewers: none (solo) · traces: 2 gaps',
         'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',
         'plugin 0.16.0 · template 0.15.0']
     assert status.full({**data, 'plugin': '', 'template': None})[-len('plugin unmeasured · template none'):] == (
@@ -975,3 +873,49 @@ def test_counts_that_read_rows_sum_count(tmp_path, monkeypatch):
     rows = {row['name']: row['value'] for row in doctor._day(tmp_path, workspace.load_config(tmp_path), probes)}
     assert rows['traces'] == '3 gaps today'
     assert rows['untraced subagents'] == '3 stopped with no seat today'
+
+
+# Attention rows (moved from test_quiet_sweeps.py with the watch, #847).
+
+@pytest.fixture
+def attention_root(tmp_path, monkeypatch):
+    from wuwei import state
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
+    state._write_state(lambda data: None, tmp_path)
+    return tmp_path
+
+
+def test_attention_shows_current_conditions(attention_root):
+    from wuwei import state, workspace
+    from wuwei.commands.status import attention
+    root = attention_root
+    state.append_event('decision.one_way', {'blocking': False}, root)
+    state.append_event('work.outside_goals', {}, root)
+    rows = attention(workspace.day_dir(root))
+    assert {row['source'] for row in rows} == {'decision.one_way', 'work.outside_goals'}
+
+
+def test_merge_policy_warning_is_per_pr_and_clears_on_merge(attention_root):
+    from wuwei import state, workspace
+    from wuwei.commands.status import attention
+    root = attention_root
+    directory = workspace.day_dir(root)
+    for _ in range(2):
+        state.append_event('merge.policy_blocked', {'pr': 'x/y#1'}, root)
+    assert len(attention(directory)) == 1
+    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'silent', 'state': 'approved'}, root)
+    assert len(attention(directory)) == 1
+    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'silent', 'state': 'merged'}, root)
+    assert attention(directory) == []
+
+
+def test_attention_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeypatch):
+    from wuwei import workspace
+    from wuwei.commands.status import attention
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    assert attention(workspace.day_dir(tmp_path)) == []

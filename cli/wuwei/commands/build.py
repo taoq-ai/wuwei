@@ -115,7 +115,7 @@ def _save(item, record, root, kind, expected, extra=None, also=None):
         builds[item] = record
         if also:
             also(data)
-    state._write_state(update, root, reserved=False, kind=kind, payload={'item': item, **(extra or {})})
+    state._write_state(update, root, kind=kind, payload={'item': item, **(extra or {})})
 
 
 def _continue(root, record, feedback):
@@ -329,7 +329,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
-    state._write_state(update, root, reserved=False, kind='build.fix_opened',
+    state._write_state(update, root, kind='build.fix_opened',
                        payload={'item': item, 'round': used + 1, 'cap': cap,
                                 **({'polish': True} if polish else {})})
     return next_action(item, brief, record['worktree'], root=root)
@@ -391,7 +391,7 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
                        result=result, action={'action': 'check',
                        'command': 'wuwei build check ' + shlex.quote(item),
                        'worktree': record['worktree'], 'checks': record['commands']})
-    updated = state._write_state(update, root, reserved=False, kind='seat.usage',
+    updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage})
     if agent_id is not None:
         state.append_event('seat stopped', {'name': record['seat']}, root)
@@ -463,12 +463,12 @@ def complete_checks(item, results, *, root, expected=None):
         raise ValueError(f'build is not awaiting checks; run bin/wuwei build next {item} for the current step')
     failures = []
     if len(results) != len(record['commands']):
-        raise ValueError('incomplete fast checks; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
+        raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}; if it repeats, run bin/wuwei doctor')
     for command, result in zip(record['commands'], results):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
             raise ValueError(f'invalid check result; {ADAPTER_DATA}')
         if result.exit == 2:
-            raise ValueError(result.reason or 'fast check could not run; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
+            raise ValueError(result.reason or f'fast check could not run; rerun bin/wuwei build check {item}; if it repeats, run bin/wuwei doctor')
         if result.exit == 1:
             if isinstance(result.data, dict) and 'environment' in result.data:
                 reason = result.data['environment']
@@ -516,7 +516,7 @@ def complete_checks(item, results, *, root, expected=None):
             if after == 'delta' and heads and heads[-1][1] is None:
                 heads[-1][1] = end  # #844: the head this fix round produced
             state._move(data, item, after)
-        state._write_state(move, root, reserved=False, kind='state.transition',
+        state._write_state(move, root, kind='state.transition',
                            payload={'item': item, 'phase': after})
     return 1 if failures else 0
 
@@ -540,7 +540,7 @@ def check(item, *, root=None):
     fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
     if any(command not in measured for command in record['commands']):
-        raise ValueError(f'incomplete fast checks; rerun bin/wuwei fast-checks in the worktree, then bin/wuwei build check {item}')
+        raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}')
     results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
                for row in (measured[command] for command in record['commands'])]
     return complete_checks(item, results, root=root, expected=marked)
@@ -553,7 +553,7 @@ def _park(root, item, record, reason, expected):
         record.update(status='parked', action={'action': 'park', 'reason': reason})
         data['builds'][item] = record
         data['items'][item].update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
-    state._write_state(update, root, reserved=False, kind='build.parked',
+    state._write_state(update, root, kind='build.parked',
                        payload={'item': item, 'iteration': record['iteration'], 'reason': reason})
 
 

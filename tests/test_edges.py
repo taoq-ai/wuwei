@@ -46,7 +46,7 @@ def root(tmp_path, monkeypatch):
     tree.mkdir(parents=True)
     (tree / '.git').write_text('gitdir: elsewhere\n')
     state._write_state(lambda data: data['items'].update({'DIV-1': {'worktree': 'worktrees/DIV-1'}}),
-                       root, reserved=False)
+                       root)
     context = Result(0, {'path': str(root / 'repo'), 'common_dir': str(root / 'repo/.git')})
     fake = Fake({'branch': Result(0, {'name': 'div-1'}), 'repo_context': context})
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
@@ -388,7 +388,7 @@ def test_pr_raise_allowed(root, command, where):
 
 def test_pr_raise_allowed_once_the_item_links_a_pr(root):
     state._write_state(lambda data: data['items']['DIV-1'].update(pr='example/project#5'),
-                       root, reserved=False)
+                       root)
     assert check(root, 'gh pr create -t t -b b', cwd=root / 'worktrees/DIV-1') == (0, '')
 
 
@@ -432,10 +432,10 @@ def test_enforce_off_outward_send_blocks(root, monkeypatch, capsys):
     assert code == 2
 
 
-def test_heartbeat_force_push_probe_is_refused(root, monkeypatch, capsys):
-    from wuwei.commands.hook import HEARTBEAT_SESSION, run
+def test_doctor_force_push_probe_is_refused(root, monkeypatch, capsys):
+    from wuwei.commands.hook import PROBE_SESSION, run
     (root / '.wuwei/config.toml').write_text(CONFIG + '[guards]\nenforce = false\n')
-    payload = {'session_id': HEARTBEAT_SESSION, 'transcript_path': str(root / 't.jsonl'),
+    payload = {'session_id': PROBE_SESSION, 'transcript_path': str(root / 't.jsonl'),
                'cwd': str(root / 'repo'), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
                'tool_input': {'command': 'git push --force origin main'}}
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))

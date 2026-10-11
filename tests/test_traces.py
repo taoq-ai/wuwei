@@ -557,7 +557,7 @@ def test_redacted_sessions_remain_distinct_and_bind_reservations(trace_workspace
     identities = ['ghp_' + uuid4().hex, 'ghp_' + uuid4().hex]
     relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
     state._write_state(lambda data: data.update(items={'work': {}}, seats={'builder': {
-        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': relative}}), root)
     transcript = root / 'session.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
     for identity in [*identities, identities[0]]:
@@ -572,7 +572,7 @@ def test_redacted_sessions_remain_distinct_and_bind_reservations(trace_workspace
 def test_unmatched_transcript_does_not_infer_item(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     state._write_state(lambda data: data.update(items={'work': {}}, seats={'builder': {
-        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': 'unrelated'}}), root, reserved=False)
+        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': 'unrelated'}}), root)
     transcript = root / 'session.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'ordinary request'}}) + '\n')
     assert recorder()({**call_payload, 'transcript_path': str(transcript)}) == (0, '')
@@ -615,7 +615,7 @@ def test_subagents_bind_separately_from_shared_planner_session(trace_workspace, 
         identities.append(payload['session_id'] + ':' + agent_id)
         relative = str((trace_workspace / 'briefs' / (name + '.md')).relative_to(root))
         seats[name] = {'item': name, 'role': name, 'status': 'running', 'brief': relative}
-        state._write_state(lambda data: data['seats'].update({name: seats[name]}), root, reserved=False)
+        state._write_state(lambda data: data['seats'].update({name: seats[name]}), root)
         transcript = main.parent / payload['session_id'] / 'subagents' / f'agent-{agent_id}.jsonl'
         transcript.parent.mkdir(parents=True, exist_ok=True)
         transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
@@ -639,7 +639,7 @@ def test_bind_records_seat_transcript(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
     state._write_state(lambda data: data['seats'].update({'builder': {
-        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root)
     main = root / 'session.jsonl'
     transcript = root / call_payload['session_id'] / 'subagents/agent-seat.jsonl'
     transcript.parent.mkdir(parents=True)
@@ -717,8 +717,7 @@ def test_body_keeps_command_words():
 
 def test_trace_gap_on_status_line_and_doctor(trace_workspace, call_payload, monkeypatch, capsys):
     # #473: a span that cannot be written is one traces.gap event, counted on the owner surfaces.
-    from wuwei.__main__ import main
-    from wuwei.commands import doctor, event, status
+    from wuwei.commands import doctor, status
 
     def broken(*args):
         raise OSError('disk full')
@@ -728,15 +727,15 @@ def test_trace_gap_on_status_line_and_doctor(trace_workspace, call_payload, monk
         code, _ = run_hook(call_payload, monkeypatch, capsys)
     assert code == 0
     assert [row['kind'] for row in error_events(trace_workspace)] == ['traces.gap']
-    state._write_state(lambda data: None, trace_workspace.parents[2], reserved=False)
+    state._write_state(lambda data: None, trace_workspace.parents[2])
     assert 'traces: 1 gaps' in status.full(status.snapshot(trace_workspace))
     probes = {'state': {'result': 'ok', 'value': 'ok'}, 'planner': {'result': 'ok', 'value': 'ok'},
               'seats': {'result': 'ok', 'value': 'none stuck'}}
     config = workspace.load_config(trace_workspace.parents[2])
     found, = [row for row in doctor._day(trace_workspace.parents[2], config, probes) if row['name'] == 'traces']
     assert (found['status'], found['value']) == ('warn', '1 gaps today')
-    assert 'traces.gap' in event.EVENT_PRODUCERS
-    assert main(['event', 'traces.gap', '{}']) == 1
+    from wuwei.commands.why import EVENT_PRODUCERS
+    assert 'traces.gap' in EVENT_PRODUCERS
 
 
 def test_subagent_transcript_and_seat_of(tmp_path):
@@ -768,7 +767,7 @@ def test_untyped_subagent_binds_to_its_adhoc_seat(trace_workspace, call_payload,
         seat = {'id': 'adhoc-1', 'role': 'adhoc', 'item': 'adhoc-1', 'type': 'general-purpose',
                 'status': 'running', 'prompt_sha256': brief.prompt_digest(
                     prompt if case == 'match' else 'another prompt')}
-        state._write_state(lambda data: data['seats'].update({'adhoc-1': seat}), root, reserved=False)
+        state._write_state(lambda data: data['seats'].update({'adhoc-1': seat}), root)
     before = {name: (trace_workspace / name).read_text()
               for name in ('state.json', 'events.jsonl') if (trace_workspace / name).exists()}
     main = root / 'session.jsonl'
@@ -868,13 +867,6 @@ def test_slow_record_gives_up_on_a_held_lock(trace_workspace, call_payload, monk
     assert code == 0 and 'could not log traces.slow' in output.err
 
 
-def test_trace_slow_is_reserved():
-    from wuwei.__main__ import main
-    from wuwei.commands import event
-    assert 'traces.slow' in event.EVENT_PRODUCERS
-    assert main(['event', 'traces.slow', '{}']) == 1
-
-
 def test_tool_calls_never_mark_the_steward_due(trace_workspace, call_payload):
     """Part 14: the steward runs at sweep and close; a traced call reads no events and writes none."""
     from wuwei import watch
@@ -895,7 +887,7 @@ def test_bound_seat_is_not_rewritten(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
     state._write_state(lambda data: data['seats'].update({'builder': {
-        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root)
     transcript = root / 'session.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
     before = len(error_events(trace_workspace))

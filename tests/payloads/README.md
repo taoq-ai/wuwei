@@ -2,7 +2,7 @@
 
 Authoritative reference supplied with issue #6: `hooks-doc.md`.
 Upstream reference: https://code.claude.com/docs/en/hooks . These fixtures follow the
-supplied local snapshot, including its newer PreCompact schema.
+supplied local snapshot.
 
 - `SessionStart/recorded.json`: live recording, reformatted with neutral session and path placeholders.
 - `PreToolUse/bash.json`: reference Common input fields example.
@@ -13,8 +13,6 @@ supplied local snapshot, including its newer PreCompact schema.
 - `SubagentStop/example.json`: reference SubagentStop input example.
 - `SubagentStop/handback.json`: `example.json` without `last_assistant_message`, as a background seat's stop arrives (#473).
 - `SubagentStop/handback-transcript.jsonl`: shape recorded from a background subagent transcript, neutralised: the SubagentHandback tool use and its tool result (#473).
-- `Stop/example.json`: reference Stop input example, including stop_hook_active=true.
-- `PreCompact/example.json`: reference PreCompact input example.
 
 Only SessionStart was recorded live. All other fixtures are doc-derived examples,
 not live recordings. Replace them with recordings when live capture is possible.

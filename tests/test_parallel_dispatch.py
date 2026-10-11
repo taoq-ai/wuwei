@@ -224,17 +224,6 @@ def test_token_budget_fitting_two_seats_starts_two(day):
     assert 'seats 0/2 by budget |' in day.run('status', '--line') and 'bound budget' not in day.run('status')
 
 
-def test_derived_cap_records_are_reserved(day, capsys):
-    from wuwei import signal, state
-    from wuwei.__main__ import main
-    approved(day)
-    assert main(['event', 'cap.derived', '{}']) == 1
-    assert 'wuwei dispatch next --all' in capsys.readouterr().err
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('cap_bound', 'host', day.root)
-    assert 'cap.derived' in signal.SILENT
-
-
 @pytest.mark.parametrize('policy, refused', [(CLAUDE, False), (PROCESS, True)])
 def test_launch_guard_compares_with_the_cap_derived_at_launch(day, policy, refused):
     # #528: the day's snapshot says 4; at D's launch, with free memory at the floor, process
@@ -257,12 +246,12 @@ def test_a_day_value_never_changes_cap_or_holds_a_launch(day):
     import os
     from wuwei import state
     approved(day)
-    state._write_state(lambda data: data.update(pace='careful'), day.root, reserved=False)
+    state._write_state(lambda data: data.update(pace='careful'), day.root)
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'start'), ('D', 'start')]
     day.patch.setattr(os, 'getloadavg', lambda: (34.0, 30.0, 20.0))
     day.patch.setattr(os, 'cpu_count', lambda: 10)
-    state._write_state(lambda data: data.update(pace='fast'), day.root, reserved=False)
+    state._write_state(lambda data: data.update(pace='fast'), day.root)
     entries, _ = launch_set(day)
     assert all(action != 'wait' for _, action in entries)
     assert day.data['cap_bound'] != 'load'

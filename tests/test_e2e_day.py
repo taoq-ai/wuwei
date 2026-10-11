@@ -63,21 +63,12 @@ def test_scripted_day(day):
     day.run('pr', 'ping', day.ref)
     assert day.data['channel_posts'][0]['status'] == 'posted'
     assert len(day.chat.calls) == 1
-    from wuwei import state
-    state.append_event('watch: clock', {}, day.root)
     day.patch.setenv('WUWEI_NOW', '2026-09-29T12:30:00Z')
-    from wuwei.commands.status import attention
-    pages = [row for row in attention(day.directory) if row['source'] == 'watch: health']
-    assert [row['tier'] for row in pages] == ['page']
-    state.append_event('watch: clock', {}, day.root)
-    assert not [row for row in attention(day.directory) if row['source'] == 'watch: health']
     # Part 14: the open PR holds the close; no decision record does.
     assert 'A is still open' in day.run('close', expected=1)
-    assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
-    day.hook('Stop', stop_hook_active=True)
     day.run('retro')
     day.run('close', '--check', 'retro')
-    assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
+    assert 'A is still open' in day.run('close', expected=1)
     # A replayed server-side merge is external evidence, not a forged local outcome.
     day.host.results['pr'].data.update(state='closed', merged=True,
         merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
@@ -87,7 +78,6 @@ def test_scripted_day(day):
     assert '## Decisions answered' not in (day.directory / 'report.md').read_text()
     assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002
     day.run('close')
-    day.hook('Stop')
     assert day.data['close_requested'] is True
     assert all(seat['status'] == 'stopped' for seat in day.data['seats'].values())
     events = day.events
@@ -175,7 +165,6 @@ def test_solo_daily_path(tmp_path, monkeypatch):
     day.run('retro')
     day.run('close', '--check', 'retro')
     day.run('close')
-    day.hook('Stop')
     transitions = [row['payload']['phase_changes']['A'] for row in day.events
                    if 'A' in row['payload'].get('phase_changes', {})]
     assert transitions == ['implement', 'gate', 'fix', 'delta', 'raised', 'merged']
@@ -192,20 +181,10 @@ def refuse_launcher(payload):
     return (2, 'opaque script command') if str(LAUNCHER) in payload['tool_input']['command'] else (0, '')
 
 
-def close_trap(payload):
-    from wuwei.guards import stop
-    return stop.check({**payload, 'stop_hook_active': False})
-
-
-@pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei plan propose'),
-                                            ('close_trap', "'stop_hook_active': True")])
-def test_day_names_the_reintroduced_bug(day, monkeypatch, mutation, match):
-    from wuwei.guards import Guard, edges, stop
-    if mutation == 'launcher':
-        monkeypatch.setattr(edges, 'GUARDS', [*edges.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
-    else:
-        monkeypatch.setattr(stop, 'GUARDS', [Guard('Stop', None, close_trap)])
-    with pytest.raises(AssertionError, match=match):
+def test_day_names_the_reintroduced_bug(day, monkeypatch):
+    from wuwei.guards import Guard, edges
+    monkeypatch.setattr(edges, 'GUARDS', [*edges.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
+    with pytest.raises(AssertionError, match='wuwei plan propose'):
         test_scripted_day(day)
 
 

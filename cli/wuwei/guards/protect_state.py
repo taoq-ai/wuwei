@@ -16,7 +16,7 @@ _STATE_HINT = ('State and config files are protected; use the wuwei CLI for stat
 # Pattern strings compile on first use (re's cache); most Bash calls never reach them.
 # #647: a seat's own scratch scripts are not state, unless the path climbs out with ..
 _SCRATCH = r'[\\/]scratch[\\/](?![^\s\x27"]*\.\.)'
-_STATE_MENTION = (r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|'
+_STATE_MENTION = (r'(?i)state\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|'
                   rf'\.wuwei(?!{_SCRATCH})')
 _STATE_GLOB = rf'(?i)\.w(?!uwei{_SCRATCH})[\w*?\[]'
 _WRITE_CONSTRUCT = (r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
@@ -80,7 +80,7 @@ def _protected_name(path, directories=False):
             return True
         if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True
@@ -98,11 +98,9 @@ def _hint(path):
     if tail == ('config.toml',):
         return ('config.toml is protected: run wuwei config set <key> <value>; it asks the owner '
                 'on its Owner step card.')
-    if tail[:1] == ('days',) and tail[-1:] in (('state.json',), ('state.snapshot.json',)):
-        return ('Day state is protected: change it with the wuwei CLI, wuwei state set '
-                '<path> <value> or wuwei state transition <item> <phase>.')
-    if tail[:1] == ('days',) and tail[-1:] == ('events.jsonl',):
-        return 'events.jsonl is protected: append with the wuwei CLI, wuwei event <kind> [payload].'
+    if tail[:1] == ('days',) and tail[-1:] in (('state.json',), ('events.jsonl',)):
+        return ("Day records are protected: the workflow's wuwei CLI commands write them; run wuwei next "
+                'for the step.')
     if tail == ('memory', 'goals.md'):
         return ('goals.md is protected: plan approve records the goals the morning gate approved; '
                 "other edits are the owner's, outside agent tools.")

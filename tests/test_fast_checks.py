@@ -6,31 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from wuwei import registry, state
+from wuwei import fast_checks, registry, state
 from wuwei.__main__ import main
 from wuwei.registry import Result
-from test_commit_push import SHA, OLD, push, workspace_case
-from test_git_hook import invoke
-from test_state import cli
+from test_commit_push import SHA, OLD, workspace_case  # noqa: F401  (fixture)
 
 
 def clear(root):
-    state._write_state(lambda data: data.pop('fast_checks', None), root, reserved=False)
-
-
-@pytest.mark.parametrize('anchor', ['bash', 'pre-push'])
-def test_only_forged_evidence_cannot_authorize_push(workspace_case, monkeypatch, anchor):
-    root, _ = workspace_case
-    clear(root)
-    forged = {'example/project': {'unit': {'sha': SHA, 'exit': 0}}}
-    result = cli('state', 'set', 'fast_checks', json.dumps(forged))
-    if anchor == 'bash':
-        code = push(root)[0]
-    else:  # #530, #837: the native hook warns on a missing check; the policy refuses it
-        code = 1 + invoke(workspace_case, monkeypatch, anchor,
-                          f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n')
-    assert code == 1
-    assert result.returncode == 1
+    state._write_state(lambda data: data.pop('fast_checks', None), root)
 
 
 @pytest.mark.parametrize('exit_code', [0, 1, 2])
@@ -45,7 +28,7 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
 
     monkeypatch.setattr(registry, 'load', lambda kind, config: (
         SimpleNamespace(run=run) if kind == 'checks' else vcs))
-    assert main(['fast-checks', str(root / 'repo')]) == exit_code
+    assert fast_checks.record(root / 'repo') == exit_code
     assert calls == [(str(root / 'repo'), 'unit')]
     recorded = state.read_state(root)['fast_checks']
     assert type(recorded['example/project']['unit'].pop('seconds')) is float  # #579
@@ -53,8 +36,6 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
         'example/project': {'unit': {'sha': SHA, 'exit': exit_code, 'data': None,
             'reason': 'check unavailable' if exit_code == 2 else '',
             'worktree': str(root / 'repo'), 'build': None, 'clean': False}}}
-    assert push(root)[0] == (0 if exit_code == 0 else 1)
-
 
 
 @pytest.mark.parametrize('line,timeout', [('', 300), ('\ncheck_timeout_seconds = 900', 900)])
@@ -65,7 +46,7 @@ def test_recorder_passes_the_repository_timeout(workspace_case, monkeypatch, lin
     seen = []
     port = SimpleNamespace(run=lambda path, command, timeout=None, root=None: seen.append(timeout) or Result(0))
     monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'checks' else vcs)
-    assert main(['fast-checks', str(root / 'repo')]) == 0
+    assert fast_checks.record(root / 'repo') == 0
     assert seen == [timeout]
     assert state.read_state(root)['fast_checks']['example/project']['unit']['exit'] == 0
 
@@ -89,7 +70,8 @@ def test_recorder_failure_cannot_leave_passing_evidence(workspace_case, monkeypa
         return SimpleNamespace(run=run) if kind == 'checks' else vcs
 
     monkeypatch.setattr(registry, 'load', load)
-    assert main(['fast-checks', str(root / 'repo')]) == 2
+    with pytest.raises((OSError, ValueError)):  # the CLI reported these as exit 2
+        fast_checks.record(root / 'repo')
     assert not state.read_state(root).get('fast_checks', {}).get('example/project')
 
 
@@ -187,28 +169,26 @@ def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_pa
 
 
 @pytest.mark.parametrize('exit_code,identity', [(0, True), (1, True), (2, True), (0, False)])
-def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monkeypatch, exit_code, identity):
+def test_build_check_writes_the_record(workspace_case, monkeypatch, exit_code, identity):
     root, vcs = workspace_case
     clear(root)
     if not identity:
-        # A runner with no commit identity: only the commit guard needs one, and it fails closed.
+        # A runner with no commit identity: the record needs none.
         vcs.results['commit_context'] = Result(2, None, 'git.commit_context: could not run: git exited 128')
     (root / 'brief.md').write_text('Build it')
     tree = str(root / 'repo')
-    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root)
     state.transition('A', 'implement', root)
     state._write_state(lambda data: data.setdefault('builds', {}).update(A={
         'brief': 'brief.md', 'worktree': tree, 'runtime': 'claude', 'repo': 'example/project',
         'commands': ['unit'], 'iteration': 1, 'repeats': 0, 'signature': None,
-        'status': 'check', 'action': {'action': 'check'}}), root, reserved=False)
+        'status': 'check', 'action': {'action': 'check'}}), root)
     monkeypatch.setattr(registry, 'load', lambda kind, config: (
         SimpleNamespace(run=lambda *args, **kwargs: Result(
             exit_code, {'error': 'broken'} if exit_code == 1 else None,
             'check unavailable' if exit_code == 2 else '')) if kind == 'checks' else vcs))
     assert main(['build', 'check', 'A']) == exit_code
     assert state.read_state(root)['fast_checks']['example/project']['unit']['sha'] == SHA
-    assert push(root)[0] == (
-        2 if not identity else 0 if exit_code == 0 else 1)
 
 
 def stub(path, code=0):
@@ -261,12 +241,12 @@ def item_worktree(root, vcs, checks):
     vcs.results['repo_context'] = Result(0, {'path': str(tree), 'common_dir': str(root / 'repo/.git')})
     clear(root)
     (root / 'brief.md').write_text('Build it')
-    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root)
     state.transition('A', 'implement', root)
     state._write_state(lambda data: data.setdefault('builds', {}).update(A={
         'brief': 'brief.md', 'worktree': str(tree), 'runtime': 'claude', 'repo': 'example/project',
         'commands': checks, 'iteration': 1, 'repeats': 0, 'signature': None,
-        'status': 'check', 'action': {'action': 'check'}}), root, reserved=False)
+        'status': 'check', 'action': {'action': 'check'}}), root)
     return tree
 
 
@@ -303,7 +283,7 @@ def test_checks_python_wins_in_every_worktree(workspace_case, monkeypatch, folde
     real_checks(monkeypatch, vcs)
     for path, context in ((tree, tree), (root / 'repo', root / 'repo')):
         vcs.results['repo_context'] = Result(0, {'path': str(context), 'common_dir': str(root / 'repo/.git')})
-        assert main(['fast-checks', str(path)]) == 0
+        assert fast_checks.record(path) == 0
         row = state.read_state(root)['fast_checks']['example/project'][VENV]
         assert row['exit'] == 0 and row['interpreter'] == str(setting)
 
@@ -316,7 +296,7 @@ def test_worktree_interpreter_runs_the_command_unchanged(workspace_case, monkeyp
         stub(tree / '.venv/bin/python')
     calls = []
     real_checks(monkeypatch, vcs, calls)
-    assert main(['fast-checks', str(tree)]) == (0 if present else 1)
+    assert fast_checks.record(tree) == (0 if present else 1)
     assert calls == [VENV]
     row = state.read_state(root)['fast_checks']['example/project'][VENV]
     assert row['interpreter'] == (str(tree.resolve() / '.venv/bin/python') if present else None)

@@ -13,7 +13,7 @@ def day(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     state._write_state(lambda data: data['items'].update({'fix-a': {'phase': 'planned'}}),
-                       tmp_path, reserved=False)
+                       tmp_path)
     return tmp_path
 
 
@@ -54,10 +54,3 @@ def test_note_needs_a_verb_or_fix(day, capsys):
     assert '--fix "<title>"' in capsys.readouterr().err
 
 
-def test_findings_are_reserved(day, capsys):
-    from wuwei import state
-    from wuwei.__main__ import main
-    assert main(['event', 'finding.noted', '{}']) == 1
-    assert 'finding.noted: reserved; written by wuwei note --fix' in capsys.readouterr().err
-    with pytest.raises(state.StateError, match='reserved; written by wuwei note --fix'):
-        state.set_state('seat_findings', '{}', day)

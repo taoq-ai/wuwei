@@ -205,7 +205,7 @@ def test_sentinel_stop_lints_owned_gate(seat, tmp_path, monkeypatch, capsys, rol
     relative = (directory.parent / 'briefs/seat-one.md').relative_to(tmp_path).as_posix()
     state._write_state(lambda data: data.update(seats={'seat-one': {
         'id': 'seat-one', 'role': role.rsplit(':', 1)[-1], 'item': 'X',
-        'brief': relative, 'status': 'running'}}), tmp_path, reserved=False)
+        'brief': relative, 'status': 'running'}}), tmp_path)
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': 'WUWEI brief: ' + relative}}) + '\n')

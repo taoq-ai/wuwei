@@ -8,13 +8,12 @@ from pathlib import Path
 import re
 from statistics import mean, median
 
-from wuwei import registry, sessions, state, watch, workspace
+from wuwei import registry, state, watch, workspace
 from wuwei.exits import DAMAGED, SYMLINK, ADAPTER_DATA
 
 
 UNMEASURED = 'unmeasured'
 HOURS = ((5, 'morning'), (11, 'midday'), (14, 'afternoon'), (18, 'evening'))
-AGES = ('0-49 turns', '50-199 turns', '200+ turns', 'compacted', 'no planner')
 COUNTERS = ('gates', 'fix_verdicts', 'fix_rounds', 'lint_rejections', 'interventions')
 
 
@@ -140,33 +139,15 @@ def _hour_band(at):
     return next((name for start, name in reversed(HOURS) if at.hour >= start), 'evening')
 
 
-def _age_band(row):
-    if row is None:
-        return 'no planner'
-    if row.get('compactions'):
-        return 'compacted'
-    turns = row.get('turns', 0)
-    return AGES[0] if turns < 50 else AGES[1] if turns < 200 else AGES[2]
-
-
 def _bands(days, turns, zone):
-    """Quality counters per owner hour band and per planner session-age band."""
-    table = {'hour': {name: dict.fromkeys(COUNTERS, 0) for _, name in HOURS},
-             'session_age': {name: dict.fromkeys(COUNTERS, 0) for name in AGES}}
+    """Quality counters per owner hour band."""
+    table = {'hour': {name: dict.fromkeys(COUNTERS, 0) for _, name in HOURS}}
     seen = set()
     for name, events in days:
-        # The registry is day state, so session ages restart every day.
-        ages, planner = {}, None
         owner = [{'kind': 'owner.turn', 'ts': at.isoformat(), 'payload': {}} for at in turns
                  if at.astimezone(zone).date().isoformat() == name]
         for row in sorted([*events, *owner], key=lambda row: datetime.fromisoformat(row['ts'])):
             kind, payload = row['kind'], row['payload']
-            if kind == 'plan.session':
-                planner = payload.get('session_id')
-                continue
-            if kind == 'session.seen':
-                sessions.count(ages.setdefault(payload.get('session_id'), {}), payload.get('hook'))
-                continue
             hits = {'gates': kind == 'gate.received',
                     'fix_verdicts': kind == 'gate.received' and payload.get('verdict') == 'FIX',
                     'fix_rounds': sum(phase == 'fix' for phase in payload.get('phase_changes', {}).values()),
@@ -176,10 +157,9 @@ def _bands(days, turns, zone):
                 hits['lint_rejections'] = key not in seen
                 seen.add(key)
             at = datetime.fromisoformat(row['ts']).astimezone(zone)
-            for cell in (table['hour'][_hour_band(at)],
-                         table['session_age'][_age_band(ages.get(planner, {}) if planner else None)]):
-                for key, value in hits.items():
-                    cell[key] += value
+            cell = table['hour'][_hour_band(at)]
+            for key, value in hits.items():
+                cell[key] += value
     for cell in (cell for cells in table.values() for cell in cells.values()):
         cell['fix_rate'] = cell['fix_verdicts'] / cell['gates'] if cell['gates'] else UNMEASURED
         if not turns:
@@ -689,15 +669,10 @@ def _matches(command, pattern):
 
 
 def path(events, traces, planner):
-    """#551: the planner's turns (Stop), owner asks (AskUserQuestion spans) and the Bash commands
-    it ran that the governing next.action did not name; unmeasured without the evidence."""
-    if planner is None:
-        return dict.fromkeys(('planner_turns', 'planner_asks', 'off_path'), UNMEASURED)
-    turns = UNMEASURED if events is None else sum(
-        row['kind'] == 'session.seen' and row['payload'].get('session_id') == planner
-        and row['payload'].get('hook') == 'Stop' for row in events)
-    if traces is None or events is None:
-        return {'planner_turns': turns, 'planner_asks': UNMEASURED, 'off_path': UNMEASURED}
+    """#551: the planner's owner asks (AskUserQuestion spans) and the Bash commands it ran that
+    the governing next.action did not name; unmeasured without the evidence."""
+    if planner is None or traces is None or events is None:
+        return dict.fromkeys(('planner_asks', 'off_path'), UNMEASURED)
     actions = [row['payload'] for row in events if row['kind'] == 'next.action'
                and row['payload'].get('action') != 'pass']
     asks, off = 0, []
@@ -721,7 +696,7 @@ def path(events, traces, planner):
                 off.append(command)
         except ValueError:
             off.append(command)
-    return {'planner_turns': turns, 'planner_asks': asks, 'off_path': off}
+    return {'planner_asks': asks, 'off_path': off}
 
 
 def fix_rounds(events):

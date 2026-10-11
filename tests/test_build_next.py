@@ -79,7 +79,7 @@ def test_unknown_build_item_exits_two(seat, capsys):
 def test_agent_launch_refuses_role_assigned_to_codex(seat):
     root, _, _, _, _ = seat
     state._write_state(lambda data: data.update(seat_policy={
-        'builder': {'runtime': 'codex', 'model': 'test'}}), root, reserved=False)
+        'builder': {'runtime': 'codex', 'model': 'test'}}), root)
     action = build.next_action('A', root=root)
     assert action['runtime'] == 'codex'
     code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
@@ -183,7 +183,7 @@ def test_stop_uses_measured_failure_and_parks(seat):
             'test': {'sha': 'a' * 40, 'exit': 1, 'worktree': str(repo), 'clean': True,
                      'build': {'item': 'A', 'brief': str(path.relative_to(root)), 'iteration': iteration + 1},
                      'data': {'test_ids': ['test_one'], 'error': 'same failure'}}}}),
-            root, reserved=False, kind='fast_checks.record')
+            root, kind='fast_checks.record')
         assert stop(seat) == (0, '')
         if iteration < 2:
             assert build.next_action('A', root=root)['action'] == 'continue'
@@ -205,14 +205,6 @@ def test_old_claude_form_names_next(seat, args, capsys):
 def test_next_cli_returns_one_json_action(seat, capsys):
     assert main(['build', 'next', 'A']) == 0
     assert json.loads(capsys.readouterr().out)['action'] == 'launch'
-
-
-@pytest.mark.parametrize('kind', ['build.checked', 'build.check_started', 'seat.usage'])
-def test_build_evidence_is_producer_only(seat, kind, capsys):
-    assert main(['event', kind, '{}']) == 1
-    assert 'reserved' in capsys.readouterr().err
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('builds.A', {'action': 'done'}, seat[0])
 
 
 def test_codex_uses_next_action(tmp_path, monkeypatch):
@@ -245,7 +237,7 @@ def test_stop_does_not_reuse_stale_or_incomplete_checks(seat, case):
     if case == 'missing-data':
         del evidence['data']
     state._write_state(lambda data: data.setdefault('fast_checks', {}).update({'app': {'test': evidence}}),
-                       root, reserved=False)
+                       root)
     assert stop(seat) == (0, '')
     assert build.next_action('A', root=root)['action'] == 'check'
 
@@ -446,7 +438,7 @@ def test_build_next_claims_a_recorded_ticket_as_a_duty(seat, monkeypatch):
     root, _, _, day, _ = seat
     fake = tracked(seat, monkeypatch)
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
-                       root, reserved=False)
+                       root)
     assert build.next_action('A', root=root)['action'] == 'launch'
     assert [call[:2] for call in fake.calls] == [('claim', ('ENG-7',))]
     duties = [(e['kind'], e['payload']) for e in events(day) if e['kind'].startswith('duty.')]
@@ -462,7 +454,7 @@ def test_checked_event_counts_passed_and_failed(seat):
     assert stop(seat) == (0, '')
     record = state.read_state(root)['builds']['A']
     state._write_state(lambda data: data['builds']['A'].update(commands=['one', 'two']),
-                       root, reserved=False)
+                       root)
     build.complete_checks('A', [registry.Result(0), registry.Result(1, {'error': 'broken'})],
                           root=root)
     checked, = [e['payload'] for e in events(day) if e['kind'] == 'build.checked']
@@ -479,7 +471,7 @@ def test_check_in_flight_refuses_next_and_a_second_check(seat, capsys):
     child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
     try:
         state._write_state(lambda data: data['builds']['A'].update(check={
-            'started_at': '2026-09-28T12:00:00+00:00', 'pid': child.pid}), root, reserved=False)
+            'started_at': '2026-09-28T12:00:00+00:00', 'pid': child.pid}), root)
         for args in (['build', 'next', 'A'], ['build', 'check', 'A']):
             capsys.readouterr()
             assert main(args) == 2
@@ -528,13 +520,11 @@ def test_empty_fast_checks_launch_below_strict(seat, posture):
     config = root / '.wuwei/config.toml'  # a stale tests key and day value change nothing
     config.write_text(config.read_text().replace('fast_checks=[]\n', 'fast_checks=[]\ntests="pytest"\n'))
     phase(root, 'planned')
-    state._write_state(lambda data: data.update(pace='careful'), root, reserved=False)
+    state._write_state(lambda data: data.update(pace='careful'), root)
     assert build.next_action('A', root=root)['action'] == 'launch'
     assert state.read_state(root)['builds']['A']['commands'] == []
     started = [e for e in events(day) if e['kind'] == 'build.started']
     assert started[-1]['payload']['checks'] == 'none configured'
-
-
 
 
 def test_empty_fast_checks_check_completes_to_gate(seat):
@@ -552,7 +542,7 @@ def test_dispatch_launches_a_briefed_item_with_no_fast_checks(seat):
     no_checks(root, 'observe')
     phase(root, 'planned')
     state._write_state(lambda data: data.update(gate_approved=True, cap=3, approved_items=['A']),
-                       root, reserved=False)
+                       root)
     entries = dispatch.launch_set(root)['entries']
     assert [(row['item'], row['action']) for row in entries] == [('A', 'launch')]
 

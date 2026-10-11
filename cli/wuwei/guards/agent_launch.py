@@ -124,7 +124,7 @@ def _adhoc(payload, role=None):
             'launcher': (isinstance(session, str) and sessions.registered(data, session)) or 'adhoc',
             'prompt': redact(prompt.strip().splitlines()[0])[:200], 'prompt_sha256': digest,
             'status': 'running', 'started_at': workspace.now().isoformat()}
-    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
+    state._write_state(reserve, root, kind='seat launched', payload=event)
     if role is None:
         return 0, ''
     return 1, UNBRIEFED.format(name=event['name'], target=found[-1] or "no item of today's plan",
@@ -282,7 +282,7 @@ def _check(payload):
         from wuwei.commands import build as build_command
         if role == 'builder':
             build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
-    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
+    state._write_state(reserve, root, kind='seat launched', payload=event)
     return 0, ''
 
 
@@ -388,10 +388,7 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
-    # #516: a stop of today's seat records the session row in its own write; lifecycle then skips its touch.
-    from wuwei.guards.lifecycle import RECORDED, seen_row
     today = directory == workspace.day_dir(root)
-    session = seen_row(payload, 'SubagentStop') if today else None
     try:
         if reserved['status'] == 'running':
             brief.stop_text(payload)
@@ -400,9 +397,7 @@ def stop(payload):
         # A refused stop (another agent, a resumed iteration) still leaves the seat as it was.
         try:
             state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
-                            reason=str(exc), session=session)
-            if session:
-                payload[RECORDED] = str(root.resolve())
+                            reason=str(exc))
         except Exception as error:
             return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
         return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
@@ -413,9 +408,7 @@ def stop(payload):
             from wuwei.commands import build
             handled = build.stopped(item, name, payload, root=root)
         if not handled:
-            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'), session=session)
-            if session:
-                payload[RECORDED] = str(root.resolve())
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
     return 0, ''
