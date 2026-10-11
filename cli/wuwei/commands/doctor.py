@@ -387,22 +387,7 @@ def _workspace(root, config, error, found):
     rows += _outbound(config)
     rows.append(_register(root, config))
     rows += _calibration(root, config)
-    return rows + [_undo(root)]
-
-
-def _undo(root):
-    """#557: the kinds whose undo ran once in this workspace."""
-    from wuwei import undo
-    try:
-        done = undo.ledger(root)
-    except ValueError as exc:
-        return _row('workspace', 'undo rehearsals', 'fail', str(exc),
-                    'move .wuwei/memory/rehearsals.json aside, then run wuwei undo rehearse commit '
-                    'and wuwei undo rehearse decision')
-    rehearsed = [kind for kind in undo.REGISTRY if kind in done]
-    missing = [kind for kind in undo.REGISTRY if kind not in done]
-    return _row('workspace', 'undo rehearsals', 'ok', f'rehearsed: {", ".join(rehearsed) or "none"}; '
-                f'not rehearsed: {", ".join(missing) or "none"} (wuwei undo rehearse <kind>)')
+    return rows
 
 
 def _outbound(config):
@@ -447,7 +432,7 @@ def _register(root, config):
 
 SHADOW = ('Observe posture has run {days} days. To enforce, set '
           'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
-          'bin/wuwei shadow report lists what would have been refused.')
+          "The day report's ## Shadow section lists what would have been refused.")
 
 
 def _calibration(root, config):
@@ -467,7 +452,7 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei calibrate',
                          apply='calibrate') if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
-        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
         rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
@@ -494,11 +479,6 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
                     _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
-    if name == 'strict':  # #478: the guard ignores standing grants under strict.
-        rows += [_row('workspace', f'grant {index}', 'warn',
-                      f"{line['action']} {line['target']} ({line['decision']}) is ignored under strict",
-                      f'bin/wuwei grants revoke {index}')
-                 for index, line in enumerate(config['grants']['standing'], 1)]
     telemetry = config['telemetry']
     rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
                      'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']
@@ -616,13 +596,13 @@ def _day(root, config, probes):
     from wuwei import watch
     from wuwei.commands import status
     rows = [_row('day', 'state', PROBE[probes['state']['result']], probes['state']['value'],
-                 'wuwei state recover in a host terminal'),
+                 'wuwei state recover'),
             _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
                  'wuwei plan session <session id> --take-over from the live session')]
     try:
         found, health, beat, _ = status.scan(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover in a host terminal')]
+        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover')]
     if health == 'alive':
         rows.append(_row('day', 'watch', 'ok', 'alive'))
     elif health == 'off':
@@ -641,7 +621,7 @@ def _day(root, config, probes):
             'runs only in a session; bin/wuwei shepherd schedule runs it overnight'
             + (f'; last headless sweep {last}' if last else ''))))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover'))
     rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
                      beat or 'none today', 'wuwei heartbeat names the failed probe'))
     try:  # #601: one credential reader; the heartbeat row reports a broken saved beat
@@ -683,13 +663,13 @@ def _day(root, config, probes):
                          'WUWEI_SESSION_ID; record commands for asked cards confirm through the planner in state',
                          'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
     except watch.ERRORS as exc:
-        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         if ids := _legacy_traces(root):
             rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
                              'wuwei doctor --fix', apply='trace-decisions'))
     except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover'))
     try:
         ids = _unrecorded(root)
         rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
@@ -697,7 +677,7 @@ def _day(root, config, probes):
                          "the planner runs each card's record command (wuwei decision show <id> --widget "
                          'names it); under strict you run it in a host terminal'))
     except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
 
 
@@ -756,16 +736,13 @@ def _legacy_traces(root):
 
 
 def _unrecorded(root):
-    """#661: cards the owner answered whose record command never ran (Keep and Undo answers
-    on an undo card record nothing more)."""
-    from wuwei import decision, drafts, sessions, state
+    """#661: cards the owner answered whose record command never ran."""
+    from wuwei import decision, drafts, state
     data = state.read_state(root)
     topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
     queue = drafts.read(data)
     found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-             and topic not in (sessions.card_topic(ident := topic.split('=')[0], 'Keep'),
-                               sessions.card_topic(ident, 'Undo'))
-             and decision.answered(data, ident) is None and not _owner_on_file(ident, root)}
+             and decision.answered(data, ident := topic.split('=')[0]) is None and not _owner_on_file(ident, root)}
     found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
               and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
     return sorted(found)
@@ -972,28 +949,14 @@ FIXES = {
 }
 
 
-def widgets(root, batch):
-    """The batch as multi-select widgets of at most four fixes; one fix gets a Skip option."""
-    from wuwei import decision
-    options = [(name, f'{FIXES[name][0]}: {(text.strip().splitlines() or [""])[0]}')
-               for name, text, _ in batch]
-    count = -(-len(options) // 4)
-    return [decision.widget(decision.gate(root) + 'Apply these doctor fixes'
-                            + (f' ({i + 1} of {count})' if count > 1 else '') + '?', 'Fixes',
-                            options[i::count] + [('Skip', 'Apply nothing now; doctor lists it again.')]
-                            * (len(options[i::count]) == 1),
-                            'wuwei doctor --fix --apply <labels>', multi=True)
-            for i in range(count)]
-
-
 def fix(rows, confirm=None, only=None, widget=False):
     """Preview the allow-listed fixes, ask for one digest, apply each bound to its preview, re-diagnose.
-    only narrows the batch to those fix ids; widget prints the batch as widgets and applies nothing."""
+    only narrows the batch to those fix ids; widget prints the batch's Owner step card and applies nothing."""
     import hashlib
     from wuwei import state
     wanted = {row['apply'] for row in rows if row.get('apply') in FIXES}
     if only is not None:
-        only = set(only) - {'Skip'}  # the widget's Skip option picked alongside fixes
+        only = set(only)
         unknown = sorted(only - set(FIXES))
         if unknown:
             print(f'wuwei doctor: unknown fix {", ".join(unknown)}; use one of: {", ".join(FIXES)}',
@@ -1013,28 +976,24 @@ def fix(rows, confirm=None, only=None, widget=False):
             continue
         batch.append((name, text, token))
     notes = 'Not applied:\n' + ''.join(f'  {line}\n' for line in held) if held else ''
-    if widget:
-        plan = workspace.day_dir(root) / 'plan.md' if root else None
-        if batch and not (plan and plan.is_file() and plan.resolve() == plan):
-            print('wuwei doctor: no plan today for the question to cite; '
-                  'run wuwei doctor --fix in a host terminal', file=sys.stderr)
-            return 1
-        print(notes, end='', file=sys.stderr)
-        print(json.dumps(widgets(root, batch), indent=2))
-        return outcome(rows)
     if not batch:
-        print(notes + 'Nothing to apply')
+        print(notes + 'Nothing to apply', file=sys.stderr if widget else sys.stdout)
+        if widget:
+            print('[]')
         return outcome(rows)
+    from wuwei import sessions
     text = ''.join(f'[{name}] {FIXES[name][0]}\n{preview.rstrip()}\n' for name, preview, _ in batch) + notes
+    digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    command = 'bin/wuwei doctor --fix' + (f" --apply {','.join(sorted(only))}" if only is not None else '')
+    if widget:  # #831: one card per batch, the Owner step card the fix itself asks
+        print(json.dumps([sessions.owner_card(command, text, digest)], indent=2))
+        return outcome(rows)
     print(text, end='')
-    try:
-        accepted = (confirm or (lambda value: integrity._host_confirm(
-            value, prompt='Apply the fixes above.')))(
-            hashlib.sha256(text.encode()).hexdigest()[:12])
-    except OSError as exc:
-        print(f'wuwei doctor: {exc}', file=sys.stderr)
-        return 2
-    if not accepted:
+    if confirm is None:  # #831: the owner's answer on the Owner step card
+        if owner := sessions.needs_owner(root, command, text, digest):
+            print(owner, file=sys.stderr)
+            return 1
+    elif not confirm(digest):
         print('wuwei doctor: declined; nothing applied; run bin/wuwei doctor --fix again when you are ready', file=sys.stderr)
         return 1
     for name, _, token in batch:
@@ -1081,7 +1040,7 @@ def register(subparsers):
     mode.add_argument('--fix', action='store_true', help='apply the allow-listed fixes after one host confirmation')
     mode.add_argument('--json', action='store_true', help='print {"exit", "rows"} as JSON')
     parser.add_argument('--widget', action='store_true',
-                        help='with --fix: print the batch as AskUserQuestion widgets; apply nothing')
+                        help='with --fix: print the batch as its Owner step card for AskUserQuestion; apply nothing')
     parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
     parser.add_argument('--section', choices=['pr-flow'], help='print one section only')
     parser.set_defaults(func=run)

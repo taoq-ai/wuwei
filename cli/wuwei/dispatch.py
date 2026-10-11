@@ -226,7 +226,7 @@ CLASS_PATHS = (
     ('CON', ('commands/*', '__main__*', '*contract*', '*schema*', '*api*')),
     ('BUD', ('adapters/*', '*runtime*', '*dispatch*', '*timeout*')),
 )
-GUARD_CODE = ('guards/*', 'grants*', 'outward*', 'hooks/*')
+GUARD_CODE = ('guards/*', 'outward*', 'hooks/*')
 
 
 def classes(root, config, row):
@@ -271,7 +271,7 @@ def tracker_call(item, action, root=None):
         config = workspace.load_config(root)
         ticket = recorded(state.read_state(root), item) or item
         if config['adapters']['tracker'] == 'none':
-            result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set in a host terminal')
+            result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set')
         else:
             tracker = registry.load('tracker', config)
             if action == 'claim':
@@ -936,7 +936,7 @@ def opinion(item, root=None):
     row = _item(data, item)
     second = (row.get('gates') or {}).get('second_opinion')
     if not second:
-        raise Refused(f'item has no second opinion; the owner enables one with bin/wuwei config set gates.second_opinion in a host terminal')
+        raise Refused(f'item has no second opinion; the owner enables one with bin/wuwei config set gates.second_opinion')
     gate = gate_set(row)[-1]
     sentinel = 'sentinel-' + base(gate)
     round_name = {'gate': 'initial', 'delta': 'delta'}.get(row['phase'])
@@ -959,7 +959,7 @@ def opinion(item, root=None):
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
         ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
-            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
+            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set')
         head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
         if seat is None:
             if round_name == 'delta':
@@ -977,7 +977,7 @@ def opinion(item, root=None):
             # continue_job resumes the latest thread of this runtime in the worktree, which is
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
-                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
+                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set')
             feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '

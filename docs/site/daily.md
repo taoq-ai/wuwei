@@ -189,7 +189,7 @@ could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`;
 then record what they would refuse and let the call through. Records still refuse. Deploys,
 releases and messages that wait for your approval ask you on a card, and merges and approvals
 stay yours. Read
-`bin/wuwei shadow report` or the `## Shadow` section of the day report. When `bin/wuwei doctor` asks
+the `## Shadow` section of the day report. When `bin/wuwei doctor` asks
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.md#security-posture).
 
@@ -207,13 +207,10 @@ blocks. On approval the planner records them with
 refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`.
 
-When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
-more card per action, for example
-`D-2: G-1 fix-login deploys <org>/<repo>: allow today, ask when it happens, or keep owner-only?`.
-`Allow today` is the day's grant, so the deploy runs without
-stopping the day. `Ask when it happens` asks you when the seat gets there, and `Keep owner-only`
-leaves the command to you. A deploy nobody planned stops on its own card, the
-[grant](concepts.md#grants) question.
+When an item in the plan needs a deploy, a release or a merge you decide, the lead lists it and
+the plan shows it as an `Owner-only: <action> <target> (owner step)` line. The gate does not
+approve it ahead of time: when the seat gets there, the command asks you its own Owner step card
+([owner-only actions](concepts.md#owner-only-actions)).
 
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
 serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
@@ -356,7 +353,7 @@ until it does, and `close` names any merged item whose docs were never written.
 To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
 the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
 `wuwei merge`, `merge check`, `pr act`, the PR guard and the overnight shepherd refuse that
-PR, under any grant, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
+PR, whatever the merge policy says, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
 the `owner-merge` label and, when raised after the flag, an `Owner merges:` line in its body.
 Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host terminal; the
 next pass then follows the normal merge policy. If you merge it by hand instead, the item
@@ -404,61 +401,11 @@ To answer from your phone, run the planner session with Claude Code Remote Contr
 mobile app and stays open until you answer. The planner records that answer with
 `bin/wuwei decide`, or you run it in a host terminal.
 
-A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one the workspace has
-never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
-`first time for <target>`. One answer clears the target, and the next one runs as usual. The report
-lists each target first seen today under `First time today`.
-
-A record is two-way only when WUWEI can undo it and has tried that undo once here. On the first
-day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
-`wuwei next` returns after the gate. Until they ran, two-way records of that kind come to you as
-cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
-the card. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
-<event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
-`Undone today` and the one-way actions of the day under `Cannot be undone`.
-
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
 event (a [page](concepts.md#page) when its goal date has passed). An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
-
-### Cruise answers
-
-Under `autonomy.mode = "autonomous"` the CLI already takes clear records as recommended (the
-mandate). Cruise mode marks the ones whose class runs at L2 or L3: the record is two-way,
-inside its own branch, PR or the workspace, its margin reaches `decisions.cruise.margin` and
-fewer than `max_per_day` were answered today. Such a record reads `Decided-by: cruise
-defer@L2` (class and level). A thin margin on an L2 or L3 class that the mandate does not
-take still comes to you.
-
-At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei decision show D-3
---widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
-undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
-y. An undo puts the record back to you as `Outcome:
-pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
-decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
-two-way summary from the watch lists it, cruise answers first.
-
-Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Undos,
-reversals, a weekly sample you answer differently and an escaped defect on an item a cruise
-answer named spend the class's error budget: `budget_share` of its cruise answers over
-`budget_window_days`. One event never lowers a class. When the events exceed the allowance
-and number at least two, the CLI lowers the class one level, with a ledger line that
-names every event, and restores it when the window refills. A fast burn writes a `cruise.burn`
-event first: `defer burns its error budget at 7.0x: ...`.
-`bin/wuwei cruise budget` prints class, level, answered, spent, allowance, burn and state.
-`plan propose` asks you to raise a class after `promote_agreements` agreeing answers with
-its budget unspent, and once a week asks one recent cruise answer again without its
-recommendation; both cards come after the morning gate.
-
-The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
-when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
-budget holds a class lower. It adds `· uncalibrated builder` while a role's stated confidence
-is uncalibrated: its records come to you as cards until it recovers. `bin/wuwei cruise
-calibration` shows the Brier score per class and role, and the day report and the retro
-carry a `## Calibration` section naming the records that broke a forecast. A raise card
-also needs the class calibrated. Under `supervised` every class runs at L0.
 
 ### How you answer
 

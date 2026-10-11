@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import urllib.request
 
-from wuwei import calibrate, decision, workspace
+from wuwei import calibrate, workspace
 from wuwei.notes import SLUG_RE
 from wuwei.exits import DAMAGED, SYMLINK
 
@@ -26,10 +26,6 @@ PRIVATE = ('owner', 'repos.name', 'repos.path', 'repos.default_branch',
 FLOORS = workspace.SCHEMA['repos'][0]['gates']['floor'][2]
 # #313: what a profile may never carry, as (key pattern, refused(new, current)).
 DENIED = (
-    ('decisions.cruise.enabled', lambda new, old: new is True and old is False),
-    ('decisions.cruise.levels.*', lambda new, old: new > old),
-    ('decisions.cruise.margin', lambda new, old: new < old),
-    ('decisions.cruise.max_per_day', lambda new, old: new > old),
     ('repos.gates.floor', lambda new, old: FLOORS.index(new) < FLOORS.index(old)),
     ('repos.merge.auto', lambda new, old: new is True),
     ('gates.second_opinion', lambda new, old: new != 'off'),
@@ -79,8 +75,6 @@ def _strings(value):
 
 
 def _current(config, path, key):
-    if path == ('decisions', 'cruise', 'levels'):
-        return decision.level(config, key)
     return (calibrate._table(config, path) or {}).get(key)
 
 

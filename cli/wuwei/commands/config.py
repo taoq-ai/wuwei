@@ -1,6 +1,7 @@
 """Validate workspace configuration."""
 
 import os
+import shlex
 import sys
 
 from wuwei import configtext, env, outward, registry, workspace
@@ -14,7 +15,7 @@ def register(subparsers):
     actions = parser.add_subparsers(dest="action", required=True)
     check = actions.add_parser("check", help="validate config.toml")
     check.set_defaults(func=run)
-    parser = actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)')
+    parser = actions.add_parser('promote', help='apply the calibration proposal (owner, asks on a card)')
     only = parser.add_mutually_exclusive_group()
     only.add_argument('--measure', action='store_true',
                       help='time each test runner once through the checks port (runs repository commands)')
@@ -23,7 +24,7 @@ def register(subparsers):
                            'set (#604); no repository survey')
     parser.set_defaults(func=promote)
     from wuwei.commands import setup
-    parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
+    parser = actions.add_parser('set', help='set one config value (owner, asks on a card)')
     parser.add_argument('key', nargs='?',
                         help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
                              'optional with --from-card, which reads it from the answered option')
@@ -41,7 +42,7 @@ def register(subparsers):
     parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
     parser.add_argument('key', help='dotted key, for example outward.tool_patterns')
     parser.set_defaults(func=show)
-    parser = actions.add_parser('add-repo', help='add one repository (owner, host terminal)')
+    parser = actions.add_parser('add-repo', help='add one repository (owner, asks on a card)')
     parser.add_argument('--name', required=True, help='owner/repo')
     parser.add_argument('--path', required=True, help='relative to the workspace, or absolute')
     parser.add_argument('--branch', required=True, help='the default branch')
@@ -253,17 +254,20 @@ def proposal(root, raw, base, config, results, extra=(), keys=None):
     return text, diff, edits, summary, snapshot
 
 
-def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None):
-    """The one owner digest path: print, confirm on the host terminal, re-read, write."""
+def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None, command=None):
+    """The one owner digest path: print, confirm on the owner's Owner step card, re-read, write."""
     import hashlib
     import json
-    from wuwei import integrity, workspace
+    from wuwei import sessions, workspace
 
     print(summary, end='')
     digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
-    if not (confirm or integrity._host_confirm)(
-            digest, prompt=f'Apply the {what} above.'):
-        print(f'wuwei {label}: declined; nothing written; rerun it in a host terminal and answer y', file=sys.stderr)
+    if confirm is None:  # #831
+        if owner := sessions.needs_owner(root, command or f'bin/wuwei {label}', f'Apply the {what}:\n{summary}', digest):
+            print(owner, file=sys.stderr)
+            return FINDINGS
+    elif not confirm(digest, prompt=f'Apply the {what} above.'):
+        print(f'wuwei {label}: declined; nothing written; run it again', file=sys.stderr)
         return FINDINGS
     path = root / '.wuwei/config.toml'
     if path.read_text(encoding='utf-8') != raw:
@@ -287,7 +291,7 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
 
 
 def promote(args, confirm=None):
-    """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
+    """Owner action: recompute the calibration, show it, and apply it on the owner's card answer."""
     from wuwei import calibrate, workspace
 
     try:
@@ -302,14 +306,14 @@ def promote(args, confirm=None):
                 print(summary, end='')
                 return FINDINGS if missing else CLEAN
             return offer(root, raw, text, summary, label='config promote', what='calibration',
-                         confirm=confirm)
+                         confirm=confirm, command=shlex.join(['bin/wuwei', 'config', 'promote', '--keys', *keys]))
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
                                    measure=getattr(args, 'measure', False))
         text, _, _, summary, snapshot = proposal(root, raw, raw, config, results, keys=())
-        return offer(root, raw, text, summary, label='config promote', what='calibration',
-                     confirm=confirm, snapshot=snapshot)
+        return offer(root, raw, text, summary, label='config promote', what='calibration', confirm=confirm,
+                     snapshot=snapshot, command='bin/wuwei config promote' + (' --measure' if getattr(args, 'measure', False) else ''))
     except ConfigError as exc:
         print(f'wuwei config promote: {exc}', file=sys.stderr)
         return FINDINGS

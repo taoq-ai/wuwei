@@ -1,6 +1,7 @@
 """Session registry: every Claude Code session in the workspace, with one planner."""
 
 from datetime import datetime, time
+import json
 import os
 from pathlib import Path
 import shlex
@@ -57,6 +58,78 @@ def card_topic(card, answer):
 def card_answered(root, card, answer):
     """The calling planner session recorded this answer on that card; never under strict."""
     return card_topic(card, answer) in gate_topics(root, caller(root))[0]
+
+
+OWNER_STEP = 'Owner step'
+
+
+def owner_card(command, detail, token=''):
+    """#831: the Owner step card of one command; record is the command to run again on Yes."""
+    return {'question': f'{OWNER_STEP}: {command}' + (f' ({token})' if token else ''), 'header': OWNER_STEP,
+            'multiSelect': False, 'options': [{'label': 'Yes', 'description': detail},
+                                              {'label': 'No', 'description': 'Nothing changes.'}],
+            'record': command}
+
+
+def owner_topic(question, options, reply):
+    """The hashed answer to an Owner step question: the question, every option as asked, the
+    reply. An empty reply is the asked topic every answer carries, so the latest one decides."""
+    text = '\n'.join([question, *(f"{option['label']}: {option['description']}" for option in options), reply])
+    return card_topic(OWNER_STEP, text if reply else question)
+
+
+def needs_owner(root, command, detail, token=''):
+    """#831: None when the owner's latest answer on this step's card today (recorded by the
+    hook) is Yes, else the refusal naming the card to ask."""
+    card = owner_card(command, detail, token)
+    asked, yes = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes'))
+    path = workspace.day_dir(root) / 'events.jsonl'
+    answered = False
+    for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
+        try:
+            row = json.loads(line)
+            topics = row['payload']['topics'] if row['kind'] == 'gate.asked' else None
+        except (ValueError, TypeError, KeyError):
+            continue  # a damaged row is no answer
+        if isinstance(topics, list) and asked in topics:
+            answered = yes in topics
+    if answered:
+        return None
+    return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
+            f'then run the command again on Yes: {json.dumps(card)}')
+
+
+def owner_step_call(payload, root, *actions):
+    """#831: an AskUserQuestion of only Owner step cards for these actions (wuwei argv
+    prefixes), or a Bash call whose one command is one of them run by the workspace launcher
+    (.wuwei/executable, or this plugin's bin/wuwei) with no redirect and no environment
+    prefix; the gates that refuse every tool call let these through so the owner can still
+    answer in the session."""
+    tool, inputs = payload.get('tool_name'), payload.get('tool_input')
+    if not isinstance(inputs, dict):
+        return False
+    if tool == 'AskUserQuestion':
+        prefixes = [f"{OWNER_STEP}: bin/wuwei {' '.join(action)}" for action in actions]
+        questions = inputs.get('questions')
+        return isinstance(questions, list) and bool(questions) and all(
+            isinstance(question, dict) and question.get('header') == OWNER_STEP
+            and isinstance(text := question.get('question'), str)
+            and any(text == prefix or text.startswith(prefix + ' ') for prefix in prefixes)
+            for question in questions)
+    if tool != 'Bash' or not isinstance(inputs.get('command'), str):
+        return False
+    from wuwei import integrity
+    from wuwei.shell import ParseError, normalize
+    try:
+        commands = normalize(inputs['command'])
+    except ParseError:
+        return False
+    if len(commands) != 1 or commands[0].writes or commands[0].reads or commands[0].env or not commands[0].argv:
+        return False
+    program, *argv = commands[0].argv
+    plugin = (integrity.PLUGIN / 'bin/wuwei').resolve()
+    launcher = program == integrity.recorded(root) or (Path(payload.get('cwd', '.')) / program).resolve() == plugin
+    return launcher and any(argv[:len(action)] == list(action) for action in actions)
 
 
 def stale_seconds(root):

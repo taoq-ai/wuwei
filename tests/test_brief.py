@@ -451,12 +451,17 @@ def test_builder_prompt_carries_the_mandate(day, monkeypatch):
     assert '\u2014' not in prompt
 
 
-def test_mandate_follows_class_levels(day, monkeypatch):
+def test_the_mandate_is_fixed_by_autonomy(day, monkeypatch):
+    # #814: the lists come from autonomy.mode only; a stale cruise table or file changes nothing.
+    text = mandate_prompt(day, monkeypatch, '[autonomy]\nmode = "supervised"\n')
+    assert 'Decide and record: none.' in text and 'decision records of class approach, retry' in text
+    default = section(mandate_prompt(day, monkeypatch), 'Go to the owner')
+    (day[0] / '.wuwei/memory').mkdir(parents=True, exist_ok=True)
+    (day[0] / '.wuwei/memory/cruise.json').write_text('{"levels": {"retry": 0}, "changed": {}}')
     prompt = mandate_prompt(day, monkeypatch, '[decisions.cruise.levels]\napproach = 1\n')
-    assert 'Assumptions:' not in section(prompt, 'Decide and record:')
-    assert 'approach, defer' in section(prompt, 'Go to the owner')
-    prompt = mandate_prompt(day, monkeypatch, '[decisions.cruise]\nenabled = false\n')
-    assert section(prompt, 'Decide and record:') == 'Decide and record: none.'
+    assert section(prompt, 'Go to the owner') == default
+    assert 'under Assumptions:' in section(prompt, 'Decide and record:')
+    assert 'retry, park, accept-residual, merge' in section(prompt, 'Decide and record:')
 
 
 def test_mandate_names_interview_risk_and_deploy_deny(day, monkeypatch):

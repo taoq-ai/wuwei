@@ -44,7 +44,8 @@ ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 's
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
             'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
 INNER = frozenset((*GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
-                   'merged', 'escaped', 'owner', 'seat', 'cruise'))
+                   'merged', 'escaped', 'owner', 'seat',
+                   'cruise'))  # cruise: weeks stored before #814
 OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',
                'draft.sending', 'draft.dropped')
 PROBES = ('refused', 'allowed', 'state_write', 'read_loop')
@@ -174,8 +175,7 @@ def aggregate(root, config, week, days, start):
         classes[named if named in CLASSES else 'other'] += 1
     found['decisions_by_class'] = dict(classes)
     by = [str(payload.get('decided_by')) for payload in kind('decision.decided')]
-    found['decided_by'] = dict(Counter('cruise' if who.startswith('cruise') else who
-                                       for who in by if who in ('owner', 'seat') or who.startswith('cruise')))
+    found['decided_by'] = dict(Counter(who for who in by if who in ('owner', 'seat')))
     found['reversals'] = len(kind('decision.reversed'))
     routed, waits = {}, []
     for name, row in every:

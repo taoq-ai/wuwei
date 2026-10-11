@@ -4,6 +4,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -232,7 +233,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
-        'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -261,11 +262,7 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
-        'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'margin': 0.2, 'max_per_day': 20, 'undo_minutes': 60,
-                                                      'promote_agreements': 10, 'promote_days': 14, 'shadow_days': 5, 'shadow_min': 5,
-                                                      'budget_share': 0.1, 'budget_window_days': 14, 'burn_warn': 2.0,
-                                                      'calibration_threshold': 0.15, 'calibration_min': 10,
-                                                      'levels': {}}, 'lenses': {}},
+        'decisions': {'wait_hours': 24, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
@@ -1225,17 +1222,24 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_decisions_config(tmp_path):
-    from wuwei.workspace import ConfigError, load_config
-    write_config(tmp_path, '[decisions.cruise.levels]\napproach = 1\n')
-    assert load_config(tmp_path)['decisions']['cruise']['levels'] == {'approach': 1}
-    for text, key in (('[decisions.cruise.levels]\nmerge = 4', 'decisions.cruise.levels.merge'),
-                      ('[decisions.cruise.levels]\nmessage = 2', 'decisions.cruise.levels.message'),
-                      ('[decisions.cruise.levels]\nunknown = 1', 'decisions.cruise.levels.unknown'),
-                      ('[decisions.cruise]\nmargin = 0', 'decisions.cruise.margin')):
-        write_config(tmp_path, text + '\n[security]\nposture = "strict"\n')
-        with pytest.raises(ConfigError, match=key):
-            load_config(tmp_path)
+def test_a_cruise_table_only_warns(tmp_path):
+    # #814: decisions.cruise is retired; a stale table loads with an unknown-key warning.
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[security]\nposture = "strict"\n')
+    found = []
+    assert 'cruise' not in load_config(tmp_path, warnings=found)['decisions']
+    assert any('decisions.cruise' in line for line in found), found
+
+
+def test_grant_keys_only_warn(tmp_path):
+    # #816: grants and merge.default_tier are retired; a stale line loads with an unknown-key warning.
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '[merge]\ndefault_tier = "today"\n[grants]\nstanding = [{action = "merge", '
+                 'target = "repo:a/b", scope = "always", decision = "D-1", date = "2026-10-01"}]\n')
+    found = []
+    config = load_config(tmp_path, warnings=found)
+    assert 'grants' not in config and 'default_tier' not in config['merge']
+    assert any('merge.default_tier' in line for line in found) and any('grants' in line for line in found), found
 
 
 def test_decision_lenses_config(tmp_path):
@@ -1343,7 +1347,7 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     before = path.read_text()
     code, out = upgraded(tmp_path, capsys, dry_run=True)
     assert code == 0 and path.read_text() == before
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith('setup:')] == [
         'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
@@ -1356,11 +1360,54 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
 
 
+
+def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
+    # #815: the rehearsal ledger, the seen set, their locks and the cruise file are no longer read.
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    names = ('rehearsals.json', 'rehearsals.lock', 'targets.json', 'targets.lock', 'cruise.json')
+    memory = tmp_path / '.wuwei/memory'
+    memory.mkdir(exist_ok=True)
+    for name in names:
+        (memory / name).write_text('{}')
+    code, out = upgraded(tmp_path, capsys, dry_run=True)
+    assert code == 0 and all((memory / name).exists() for name in names)
+    for name in names:
+        assert out.out.count(f'Would upgrade .wuwei/memory/{name}: remove (no longer read)') == 1
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    assert not any((memory / name).exists() for name in names)
+    for name in names:
+        assert out.out.count(f'Upgraded .wuwei/memory/{name}: remove (no longer read)') == 1
+
+
+def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch, capsys):
+    # #815 review: a memory directory that is a symlink is never cleaned through.
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    ws = tmp_path / 'ws'
+    ws.mkdir()
+    assert init.run(SimpleNamespace(path=str(ws), upgrade=False, dry_run=False)) == 0
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'cruise.json').write_text('{}')
+    memory = ws / '.wuwei/memory'
+    if memory.exists():
+        shutil.rmtree(memory)
+    memory.symlink_to(outside)
+    code, out = upgraded(ws, capsys)
+    assert code == 0, out.err
+    assert (outside / 'cruise.json').exists() and 'cruise.json' not in out.out
+
+
 def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'enforce')
     code, out = upgraded(tmp_path, capsys, dry_run=True)
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith('setup:')] == [
         'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
     assert upgraded(tmp_path, capsys)[0] == 0
     config = tomllib.loads(path.read_text())

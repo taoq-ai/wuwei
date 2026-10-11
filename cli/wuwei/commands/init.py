@@ -95,6 +95,8 @@ def run(args):
     return _finish(destination.parent)
 
 
+RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
+                 'memory/cruise.json')  # #814, #815: init --upgrade removes them
 # #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
 
@@ -245,6 +247,21 @@ def _without_empty_repos(raw):
     sections[0][1][:] = [line for line in sections[0][1]
                          if not re.fullmatch(r'\s*repos\s*=\s*\[\s*\]\s*(?:#.*)?\n?', line)]
     return ''.join(''.join(lines) for _, lines in sections)
+
+
+def _today_tier(raw, before):
+    """#816: merge.default_tier = "today" merged on each repository; merge.auto = true keeps
+    that for a repository that does not set merge.auto itself; "today" never applied under strict."""
+    if (before.get('merge', {}).get('default_tier') != 'today'
+            or before.get('security', {}).get('posture') == 'strict'):
+        return raw, []
+    from wuwei.commands import setup
+    lines = []
+    for index, repo in enumerate(tomllib.loads(raw).get('repos', [])):
+        if 'auto' not in repo.get('merge', {}):
+            raw = setup.write_value(raw, f'repos.{index}.merge.auto', True)
+            lines.append(f'repos.{index}.merge.auto = true (was merge.default_tier = "today")')
+    return raw, lines
 
 
 def _retired_mode(raw):
@@ -430,6 +447,8 @@ def upgrade(args):
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(pruned, template)
         migrated, retired = _retired_mode(migrated)
+        migrated, today = _today_tier(migrated, tomllib.loads(text))
+        retired += today
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
         from wuwei import graph  # #552: the register the modeled sections are views of
@@ -457,8 +476,12 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
-        from wuwei import novelty
-        seeded = novelty.seed(destination.parent, write=not args.dry_run)  # #556
+        memory_dir = destination / 'memory'  # #815: never clean through a symlinked or outside memory dir
+        inside = not memory_dir.is_symlink() and memory_dir.resolve().is_relative_to(destination.resolve())
+        stale = [name for name in RETIRED_FILES if inside and (destination / name).is_file()
+                 and not (destination / name).is_symlink()]  # #815: no longer read
+        for name in [] if args.dry_run else stale:
+            (destination / name).unlink()
         from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
         tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
                                   write=not args.dry_run)
@@ -502,8 +525,8 @@ def upgrade(args):
                   f"{len(register['edges'])} edges from config.toml")
         if pointer_changed:
             print(f'{prefix} executable pointer')
-        if seeded:
-            print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
+        for name in stale:
+            print(f'{prefix} .wuwei/{name}: remove (no longer read)')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
@@ -523,11 +546,6 @@ def upgrade(args):
             tracker.creates_labels(workspace.load_config(destination.parent)) or sys.stdin.isatty())
         for line in labelled:
             print(line)
-        from wuwei import undo
-        unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
-        if unrehearsed:
-            print(f'Undo not rehearsed: {", ".join(unrehearsed)}; run wuwei undo rehearse <kind> '
-                  '(a merge counts after its first wuwei undo)')
         from wuwei import interview  # #530: a read, so it prints under --dry-run too and counts no change
         try:
             loaded = workspace.load_config(destination.parent, raw=migrated)
@@ -542,7 +560,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and not named and not graph_changed and text == raw
+                and not guide_changed and not stale and not named and not graph_changed and text == raw
                 and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:

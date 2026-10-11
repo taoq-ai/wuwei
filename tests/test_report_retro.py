@@ -315,7 +315,7 @@ def test_report_levels(tmp_path, monkeypatch):
     (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Cruise shadow', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close', '## Parked',
+    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close', '## Parked',
                         '## Decisions answered', '## Carry', '## Steward runs']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
@@ -452,24 +452,6 @@ def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     assert '## Spec warnings\n- A: plan (edit)\n' in report.build(root)
 
 
-def test_report_counts_grant_uses(tmp_path, monkeypatch):
-    # #478: one line per grant: how many owner-only actions ran under it.
-    root = tmp_path
-    (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: None, root, reserved=False)
-    from wuwei import report, signal
-    assert '## Grants' not in report.build(root)
-    for _ in range(3):
-        state.append_event('grant.used', {'decision': 'D-3', 'action': 'deploy', 'target': 'repo:acme/app',
-                                          'scope': 'today', 'session': 's', 'item': None}, root)
-    assert '## Grants\n- deploys run under grant D-3: 3\n' in report.build(root)
-    for kind in ('grant.asked', 'grant.used', 'grant.revoked'):
-        assert signal.classify({'kind': kind, 'payload': {}}, {})[0] == 'silent'
-
-
 def test_report_lists_mandate_decisions_and_counts_by_class(tmp_path, monkeypatch):
     # #530: decisions taken under the mandate, Consequential first, and decisions and cards per class.
     from wuwei import report
@@ -500,33 +482,6 @@ def test_report_lists_mandate_decisions_and_counts_by_class(tmp_path, monkeypatc
             '- Routine: 3 decisions, 0 cards', '- Consequential: 1 decisions, 0 cards',
             '- Exploratory: 0 decisions, 0 cards', '- Strategic: 1 decisions, 1 cards',
             'Target: cards only for Strategic and for floors (publish, merge).']
-
-
-def test_report_lists_what_was_undone_and_what_cannot_be(tmp_path, monkeypatch):
-    # #557: the owner sees the real exposure of the day.
-    from wuwei import report
-    root = tmp_path
-    (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: None, root, reserved=False)
-    text = report.build(root)
-    assert '## Undone today\nnone\n\n## Cannot be undone\nnone\n' in text
-    assert text.index('## First time today') < text.index('## Undone today') < text.index('## Merged')
-    state._write_state(lambda data: data.update(decision_outcomes={
-        'D-1': {'option': 'A', 'decided_by': 'owner', 'reversibility': 'one-way'},
-        'D-2': {'option': 'B', 'decided_by': 'mandate', 'reversibility': 'two-way'}}), root, reserved=False)
-    state.append_event('decision.reversed', {'id': 'D-3', 'undo': True, 'class': 'park'}, root)
-    state.append_event('decision.reversed', {'id': 'D-4', 'class': 'design'}, root)
-    state.append_event('undo.done', {'target': '2026-09-29:4', 'kind': 'merge', 'pr': 'example/project#7',
-                                     'revert_pr': 'https://github.com/example/project/pull/8'}, root)
-    state.append_event('draft.sent', {'id': 'R-1', 'tool': 'chat'}, root)
-    text = report.build(root)
-    assert text.split('## Undone today\n')[1].split('\n\n')[0].splitlines() == [
-        '- D-3: undone (park)', '- 2026-09-29:4: merge undone (https://github.com/example/project/pull/8)']
-    assert text.split('## Cannot be undone\n')[1].split('\n\n')[0].splitlines() == [
-        '- D-1: A (one-way)', '- message R-1: a message has no undo']
 
 
 def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):

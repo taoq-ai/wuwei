@@ -114,7 +114,7 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         owner = config['owner']
         names = _normalize(owner['name']).split()
         if not names and not to_owner:
-            return UNRUN, 'outward: owner name must be configured; the owner sets owner.name with bin/wuwei config set in a host terminal'
+            return UNRUN, 'outward: owner name must be configured; the owner sets owner.name with bin/wuwei config set'
         names.extend(_normalize(handle) for handle in owner.get('handles', []))
         pronouns = set(re.split(r'[/,\s]+', _normalize(owner['pronouns']))) - {''}
         for family in PRONOUNS:
@@ -801,18 +801,6 @@ def check_tier(inputs, root, config, channels, *, port=False, tool=None):
             return code, blocked(why[0])
         if decision == 'draft':
             return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
-        if (config['autonomy']['mode'] == 'autonomous' and kind in ('chat', 'slack')
-                and not owner_only(inputs, config, kind)):  # #556: a first-time channel asks once
-            from wuwei import novelty
-            try:
-                found = novelty.novel(root, config, [key for key in (f'channel:{value}' for value in channel_ids(inputs)
-                                                                    if isinstance(value, str))
-                                                     if re.fullmatch(novelty.KEY, key)])
-            except ValueError as exc:
-                return UNRUN, f'outward: {exc}'
-            if found:
-                return FINDINGS, f'{APPROVAL_REQUIRED}: ' + novelty.line(
-                    found, 'approving this draft clears it, then the tier table decides')
         if owner_only(inputs, config, kind):
             # ponytail: logged before check_lint, so a self-DM the lint refuses still counts; move it to the lint's clean result if the count must be exact.
             from wuwei import state  # Only a message to the owner pays for the event (#495).

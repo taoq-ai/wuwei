@@ -12,7 +12,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
-          'decision.decided', 'decision.closed',
+          'decision.decided',
           'decision.routed', 'decision.digest', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'pr.reply.drafted', 'pr.action.decision',
@@ -24,10 +24,10 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'plan.added', 'finding.noted', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
           'build.held', 'build.released',
-          'shepherd.overnight', 'shepherd.swept', 'cruise.carded', 'decision.shadow', 'undo.rehearsed', 'undo.done',
+          'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
+          'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set',
           'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
           'cap.derived')
 

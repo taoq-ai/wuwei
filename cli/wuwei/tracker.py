@@ -28,7 +28,7 @@ def full_id(config, ticket):
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repo):
         raise ValueError(f'ticket {ticket} names no repository; pass owner/repo#{ticket}, or the '
                          'owner sets tracker.project to the GitHub owner/repo with bin/wuwei '
-                         'config set tracker.project <owner/repo> in a host terminal')
+                         'config set tracker.project <owner/repo>')
     return f'{repo}#{ticket}'
 
 
@@ -140,7 +140,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
     config = workspace.load_config(root)
     if config['adapters']['tracker'] == 'none':
         return registry.Result(2, reason='tracker adapter is none; the owner sets adapters.tracker '
-                               '(linear, jira or github) with bin/wuwei config set in a host terminal')
+                               '(linear, jira or github) with bin/wuwei config set')
     if category not in CLASSES:
         return registry.Result(2, reason=f'tracker create: unknown class {category}; '
                                          'use --bug, --triage or --follow-up')
@@ -148,7 +148,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         allowed = json.dumps([*config['tracker']['create'], category])
         return registry.Result(1, reason=(
             f'tracker.create: {category} is not in tracker.create; the owner adds it with '
-            f"bin/wuwei config set tracker.create '{allowed}' in a host terminal"))
+            f"bin/wuwei config set tracker.create '{allowed}'"))
     data = state.read_state(root)
     parent = None
     by_hand = (f', then run bin/wuwei plan set {subject} ticket=<id>' if category == 'items'

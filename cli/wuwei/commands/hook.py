@@ -189,15 +189,27 @@ def newer_template(root, payload, config):
 
 def config_failure(event, payload, reason):
     """A config.toml that does not load (#326): Stop prints it and lets the turn end;
-    PreToolUse lets ToolSearch and reads of the config and charters through so the session
-    can show the line, and refuses everything else with the error."""
+    PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
+    Owner step card through so the session can show and repair the line, and refuses
+    everything else with the error."""
     if event == 'Stop':
         print(reason, file=sys.stderr)
         return CLEAN
-    if repair_read(payload):
+    if repair_read(payload) or config_set(payload):  # #831: repaired in the session
         return CLEAN
     return refuse(event, reason, cwd=payload.get('cwd'),
                   record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)
+
+
+def config_set(payload):
+    """#831: config set by the workspace launcher, or its Owner step card."""
+    from wuwei import workspace
+    from wuwei.sessions import owner_step_call
+    try:
+        root = workspace.find_workspace(Path(payload['cwd']).resolve(), use_environment=False)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return owner_step_call(payload, root, ('config', 'set'))
 
 
 def repair_read(payload):
@@ -299,7 +311,7 @@ def posture(payload, refusals, root, warned=None):
             # #530: raising a PR is gated by evidence under the publish area, never owner-only.
             decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'
         if reason == NO_REVIEWER or reason.startswith('publish: '):
-            line = ''  # It names its own ways out (#478: the owner's card); still blocked.
+            line = ''  # It names its own ways out (#816: the owner's Owner step card); still blocked.
         if guard == 'outward' and reason.startswith('outward: draft '):
             line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
         # #347, #470: decided by the reason, not the area; only deploy says unknown git

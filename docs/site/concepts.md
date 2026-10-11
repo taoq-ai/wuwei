@@ -89,11 +89,6 @@ On a first day some sources are unmeasured until you set them up, for example `m
 The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
 Seats do not ask you what their mandate lets them decide.
 
-### Novel
-
-A repository, channel, person, tool, dependency, environment or workflow the workspace has never touched.
-A decision or send on it asks you once on a card, even when the mandate would take it; your answer clears it.
-
 ### Trust surface
 
 Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
@@ -167,22 +162,15 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Records never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), owner disposition markers, canary or honeytoken egress, and a seat launch naming a missing brief. Relaxing those would corrupt the records the report is built from or let a seat act as you. Below `strict` an owner-only action asks you on a card instead: a deploy, release or publish, and a message that waits for your approval. The merge policy and approvals stay yours. The heartbeat probe session is never relaxed either.
 
-`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
+The day report's `## Shadow` section groups the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
 MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
-## Grants
+## Owner-only actions
 
-An owner-only deploy, release or `deploy.deny` publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and writes a decision card, `Allow deploy on <org>/<name>?`, with the exact command, the target, the item and the seat. The planner asks you the card; your answer is the grant:
+An owner-only deploy, release or `deploy.deny` publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and prints an Owner step card for that exact command. The planner asks you the card. Your Yes lets that same command run today; any other command asks its own card. No config line and no hook answers for you.
 
-- `Keep owner-only`: nothing runs from the session; you run the command in a host terminal. Later tries today name the same card.
-- `Allow once`: the next run of that action on that repository goes through, then the guard asks again.
-- `Allow today`: every run of that action on that repository goes through until `wuwei close`.
-- `Always allow`: a standing line in `[grants]` of `config.toml`, for later days too. Not offered under `strict`, where a line in config is ignored.
-
-Only your recorded answer creates a grant: no seat, no config default and no hook does. Each run under a grant is a `grant.used` event, and the day report counts them per card. `bin/wuwei grants` lists your grants; `bin/wuwei grants revoke <n>` removes a standing one in a host terminal. When the plan already names a deploy, the morning gate asks it with the plan (`Allow today`, `Ask when it happens` or `Keep owner-only`), so the day runs without stopping for it.
-
-A merge works the same way. When the merge policy does not clear a pull request, `bin/wuwei merge <pr>` (or `bin/wuwei pr act <pr>`) asks you on a card, `Allow merge on <org>/<name>?`, and a merge the plan lists is a planned card per repository or per pull request. When the pull request merges while its card is still open (you merged it yourself), the watch or `bin/wuwei pr state` closes the card as merged by you. A `decision.closed` event names the merge commit and who merged it. `wuwei next`, the status line and the board stop asking it, and the next merge on that repository asks a new card. The grant replaces only the auto-merge switch and its pacing (risk flags, never-auto paths, size, soak, daily cap, quiet hours, breaker). The gates must still pass at the current head. Required checks must be green, with approvals at that head and no changes requested. Threads and obligations must be clear, `merge_deploys = false` must hold, and the repository must allow the merge method (`repos.merge_method`; under `auto` squash, then rebase, then merge). When one fails, the reason names it and says no grant lifts this. With no grant, `merge.default_tier` decides: `ask` writes the card, `owner_only` prints the exact `gh pr merge` command for a host terminal. A `trust_surface` pull request waits on its security gate, not on you, and merges like any other once that gate passes at the head; a path in `merge.owner_paths` is always yours. A `gh pr merge` typed in a session is refused with the reason and `bin/wuwei merge <pr>`, which journals and watches the merge.
+A merge happens only through the merge policy (`bin/wuwei merge <pr>`, or `bin/wuwei pr act <pr>`). Quiet hours, the daily cap and the soak are waits the policy clears later. The gates must pass at the current head, required checks must be green with approvals at that head and no changes requested, threads and obligations must be clear, `merge_deploys = false` must hold, and the repository must allow the merge method (`repos.merge_method`; under `auto` squash, then rebase, then merge). When one fails, the reason names it and the next step. The other rules are yours to decide: `merge.auto` off, a tripped breaker, an item outside the approved plan, a risk flag, a spent cycle budget, a never-auto path, a diff over `max_changed_lines` and a path in `merge.owner_paths`. When only those stand between the pull request and a merge, `bin/wuwei merge <pr>` prints one Owner step card for that pull request at its head, `wuwei next` names it, and your Yes merges it. A `trust_surface` pull request waits on its security gate, not on you. A `gh pr merge` typed in a session is refused with the reason and `bin/wuwei merge <pr>`, which journals and watches the merge.
 
 ## Seat launch contract
 
@@ -199,7 +187,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide` or `wuwei decision outcome`. Below strict a refused record command names the card to ask, never a command for you to run, and `wuwei doctor` lists answered cards whose record never ran. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
@@ -391,7 +379,7 @@ prompt carries a `Depth:` line, so no seat decides it:
 | | light | standard | full |
 |---|---|---|---|
 | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists | every class |
-| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path, or the lead flagged it trust_surface or boundary_relevant | always |
+| Gate step zero (mutation) | none | only when the diff touches guard code, outward, a hook or a trust path, or the lead flagged it trust_surface or boundary_relevant | always |
 | After a fix | the same sentinel re-reads and rewrites `Verdict:` and `Head:` | delta round | delta round |
 | Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
 | Retro note | only when a line is not `none` | always | always |
@@ -413,7 +401,7 @@ can turn it off when it stops paying.
 
 Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in `bin/wuwei drafts` and in the approval prompt, and the DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
 
-## Decision classes and cruise levels
+## Decision classes
 
 A decision record gives every option a Title, a Rationale (why it scores as it does) and a
 Consequence (what changes, what it costs, what it closes). The recommendation gets a
@@ -424,44 +412,12 @@ question card shows the titles, the recommended one first, each with its rationa
 consequence and lens lines, and ends the question with the reasoning. `wuwei decision
 template` prints a valid record.
 
-Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md))
-runs each class at a level from L0 to L3. Say `decision route` takes a record under the
-mandate and its class runs at L2 or L3. If the record is two-way, inside its own branch, PR or
-the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
-it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you can undo
-it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
-the CLI: down one level when the class's error budget is spent, back when its window
-refills, up when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
-
-Error budget. One unlucky reversal no longer drops a class. Each class may spend
-`decisions.cruise.budget_share` (10 percent) of its cruise answers over
-`budget_window_days` (14) on undos, reversals, weekly samples answered differently and
-escaped defects. The budget is spent with more events than that and at least two; the class
-then runs one level lower until the window refills, and gets no raise card meanwhile. A
-fast burn (`burn_warn`, the last 48 hours against the window's rate) writes a `cruise.burn` event naming
-the events first. `bin/wuwei cruise budget` prints the table.
-
-Calibration. A record's `Confidence:` is checked against what happened. Each taken record
-with a stored confidence (high 0.9, medium 0.6, low 0.3) whose undo window closed scores 1
-when it stood and 0 when it was undone, reversed, sampled differently or escaped a defect.
-The Brier score per class and per role (the optional `Role:` field) over the error budget
-window is uncalibrated above `calibration_threshold` once `calibration_min` records are
-scored. An uncalibrated class runs at most L1, an uncalibrated role's records go to you as a
-card, and a class gets a raise card only when it is calibrated. `bin/wuwei cruise
-calibration` prints the table.
-
-Shadow promotion. Before a raise card, a class runs in shadow at the next level. Each record
-taken for it also notes what the next level would have answered, and nothing about the live
-route changes. The steward checks those notes against your final answers. One miss ends the
-shadow. After `shadow_days` with at least `shadow_min` checked answers, all agreeing, you get
-the raise card. `bin/wuwei cruise shadow` prints the shadows, and the status line shows
-`· shadow <classes>`.
-
-Every seat prompt ends with a mandate block built from those class levels
-(`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
-line and `deploy.deny`. It says what the seat decides alone, what it decides and records, and what
-comes to you. It closes with "Nothing else is a question." The levels only shape this
-text and pick which taken records are cruise answers. Assume and record: a two-way
+Every seat prompt ends with a mandate block built from `autonomy.mode`, the interview's
+trust-surface line and `deploy.deny`. It says what the seat decides alone, what it decides
+and records, and what comes to you. Under `autonomous` the seat assumes `approach`, records
+`retry`, `park`, `accept-residual` and `merge`, and sends every other class to you. Under
+`supervised` every class comes to you. It closes with "Nothing else is a question." Assume and
+record: a two-way
 open question inside the item is not asked. The seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
 finding. A seat that stops on a question to you without a valid decision id is
@@ -479,18 +435,6 @@ requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on
 round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
 goal date has passed. It reports; the
 round cap (`gates.max_rounds`) is what stops the rounds.
-
-## Measured reversibility
-
-A seat writes `Reversibility: two-way`, but the CLI decides whether that holds. A record is
-two-way only when the CLI knows the undo for its kind of action and that undo ran once in
-this workspace. The class gives the kind: code changes undo with a git revert, park, defer
-and re-plan with `wuwei undo D-n`, and a merge with a revert PR when its repository does not
-deploy on merge. A message never has an undo, and neither does `other`. Each undo is
-rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo rehearse
-decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
-kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
-to you as a card. Nothing is refused for it.
 
 ## DORA keys
 

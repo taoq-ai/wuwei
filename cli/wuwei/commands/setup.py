@@ -40,7 +40,7 @@ def register(subparsers):
     parser.set_defaults(func=run)
 
 
-def _edit(label, what, confirm, change, root=None, keys=(), add=False):
+def _edit(label, what, confirm, change, root=None, keys=(), add=False, command=None):
     """The owner edit frame: validate change(root, raw) -> text, then the digest path; after the
     write one replaced or added line per key in keys (#673)."""
     try:
@@ -50,7 +50,10 @@ def _edit(label, what, confirm, change, root=None, keys=(), add=False):
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
     try:
-        before = load_config(root, raw=raw)
+        try:
+            before = load_config(root, raw=raw)
+        except ValueError:
+            before = None  # #831: a config that does not load is repaired here; the new text must load
         text = change(root, raw)
         if text == raw:
             print('No config.toml changes')
@@ -62,7 +65,7 @@ def _edit(label, what, confirm, change, root=None, keys=(), add=False):
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return FINDINGS
     try:
-        code = config.offer(root, raw, text, diff, label=label, what=what, confirm=confirm)
+        code = config.offer(root, raw, text, diff, label=label, what=what, confirm=confirm, command=command)
     except (OSError, ValueError) as exc:
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
@@ -222,8 +225,8 @@ def _from_card(args, root):
 
 
 def set_value(args, confirm=None):
-    """Owner action: set one config value after a host-terminal digest, or (#529) from the
-    owner's answer on a card outside strict."""
+    """Owner action: set one config value on the owner's Owner step card answer (#831), or
+    (#529) from the owner's answer on a decision card outside strict."""
     def change(root, raw):
         parts = _parts(args.key)
         node = configtext.declared(parts)
@@ -237,49 +240,34 @@ def set_value(args, confirm=None):
                 raise ValueError(f"{args.key}: {args.value!r} is not TOML; pass {kind}, for example '{example}'") from None
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
-        return _settle(raw, merged(load_config(root, raw=raw), parts, parsed['value'],
-                                   getattr(args, 'add', False)))
+        add = getattr(args, 'add', False)  # only --add reads the current values
+        return _settle(raw, merged(load_config(root, raw=raw) if add else None, parts, parsed['value'], add))
 
-    from wuwei import interview, sessions
     card = getattr(args, 'from_card', None)
     given = [part for part in (args.key, args.value) if part is not None]
     if len(given) == 1 or not given and not card:
         print('config set: pass KEY VALUE, or --from-card D-n in the session to read them from the '
               'answered card; nothing written', file=sys.stderr)
         return UNRUN
+    command = shlex.join(['bin/wuwei', 'config', 'set', *given])
     try:
         root = workspace.find_workspace()
-        config = load_config(root)
-        posture = workspace.posture(config)[0]
+        posture = workspace.posture(load_config(root))[0]
     except (OSError, ValueError) as exc:
         if not given:
             print(f'config set: {exc}', file=sys.stderr)
             return UNRUN
         return _edit('config set', 'change', confirm, change, keys=[args.key],
-                     add=getattr(args, 'add', False))  # it reports the reason
-    session = sessions.current() and confirm is None
-    command = shlex.join(['bin/wuwei', 'config', 'set', *given]) if given else (
-        f'bin/wuwei config set <key> <value> (bin/wuwei decision show {card} lists the values)')
-    if posture == 'strict' and (session or not given):
-        print(f'config set: under strict a card answer is not a confirmation; nothing written. '
-              f'Run {command} in a host terminal.', file=sys.stderr)
-        return FINDINGS
+                     add=getattr(args, 'add', False), command=command)  # it reports the reason
     if card and posture != 'strict':
         return _from_card(args, root)
-    if session:  # never a /dev/tty read that comes back empty in a session
-        qid = interview.card_for(args.key)
-        try:
-            current = configtext.dumps(effective(config, _parts(args.key)), inline=True)
-        except (KeyError, IndexError, TypeError, ValueError):
-            current = '<current value>'
-        print('config set: in a session a card answer confirms the change; nothing written. ' + (
-            f'Run bin/wuwei calibrate --questions {qid}, ask the widget, then run its record '
-            f'command wuwei calibrate --answer "{qid}=<label>".' if qid else
-            f'Write a decision whose options carry Value: rows {args.key} = <value> and the line '
-            f'Previous: {args.key} = {current}, and route it. Ask it with bin/wuwei decision show D-n '
-            '--widget, then run bin/wuwei config set --from-card D-n.'), file=sys.stderr)
+    if card and not given:
+        print(f'config set: under strict a decision card is not a confirmation; nothing written. Run '
+              f'bin/wuwei config set <key> <value> (bin/wuwei decision show {card} lists the values); '
+              'it asks its own Owner step card.', file=sys.stderr)
         return FINDINGS
-    return _edit('config set', 'change', confirm, change, keys=[args.key], add=getattr(args, 'add', False))
+    return _edit('config set', 'change', confirm, change, keys=[args.key], add=getattr(args, 'add', False),
+                 command=command)
 
 
 def repo_tables(raw, repos):
@@ -295,7 +283,7 @@ def repo_tables(raw, repos):
 
 
 def add_repo(args, confirm=None):
-    """Owner action: add one [[repos]] table after a host-terminal digest."""
+    """Owner action: add one [[repos]] table on the owner's Owner step card answer (#831)."""
     def change(root, raw):
         repo = {'name': references.repository(args.name), 'path': args.path, 'default_branch': args.branch}
         if args.identity is not None:
@@ -305,7 +293,9 @@ def add_repo(args, confirm=None):
             repo['identity'] = {'name': found[1], 'email': found[2]}
         return repo_tables(raw, [repo])
 
-    return _edit('config add-repo', 'repository', confirm, change)
+    command = shlex.join(['bin/wuwei', 'config', 'add-repo', '--name', args.name, '--path', args.path,
+                          '--branch', args.branch, *(['--identity', args.identity] if args.identity is not None else [])])
+    return _edit('config add-repo', 'repository', confirm, change, command=command)
 
 
 def _yes(question, default):
@@ -543,8 +533,12 @@ def _setup(args, confirm):
     if text == raw and snapshot_path.exists():
         print('Nothing to propose')
     else:
+        posture, repos = getattr(args, 'posture', None), getattr(args, 'repos', None)
+        command = shlex.join(['bin/wuwei', 'setup', *(['--shadow'] if getattr(args, 'shadow', False) else []),
+                              *(['--posture', posture] if posture else []),
+                              *(['--repos', *repos] if repos else [])])  # #831: the card's record
         if config.offer(root, raw, text, summary, label='setup', what='setup', confirm=confirm,
-                        snapshot=snapshot):
+                        snapshot=snapshot, command=command):
             return FINDINGS
         calibrate_command.record(root, results, diff, edits, None)
     optional = []

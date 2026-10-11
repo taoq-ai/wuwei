@@ -55,7 +55,6 @@ EVENT_PRODUCERS = {
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
     'heartbeat: clock': 'wuwei watch',
     'decision.routed': 'wuwei decision route',
-    'decision.closed': 'wuwei watch or wuwei pr state (a merged PR closes its merge card)',
     'decision.reversed': 'wuwei decision outcome',
     'decision.digest': 'wuwei sweep',
     'scanner.finding': 'wuwei scanner or security recorder',
@@ -77,10 +76,9 @@ EVENT_PRODUCERS = {
     'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',
     'steward.due': 'wuwei hook PostToolUse',
     'steward.acknowledged': 'wuwei steward ack',
-    'calibration.drift': 'wuwei steward run', 'cruise.burn': 'wuwei steward run',
+    'calibration.drift': 'wuwei steward run',
     'negotiation.loop': 'wuwei steward run or wuwei dispatch next',
-    'cruise.carded': 'wuwei plan propose', 'decision.waited': 'wuwei sweep',
-    'decision.shadow': 'wuwei decision route',
+    'decision.waited': 'wuwei sweep',
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',
@@ -90,10 +88,7 @@ EVENT_PRODUCERS = {
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
     'outbound.thread': 'wuwei outbound learn',
-    'grant.asked': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise or wuwei plan propose',
-    'grant.used': 'wuwei hook PreToolUse (deploy, push and PR guards) or wuwei pr raise', 'grant.revoked': 'owner host wuwei grants revoke',
     'config.set': 'wuwei config set --from-card or wuwei calibrate --answer',
-    'undo.rehearsed': 'wuwei undo rehearse', 'undo.done': 'wuwei undo',
 }
 
 

@@ -4,7 +4,6 @@ from pathlib import Path
 import re
 
 from wuwei import outward, state, workspace
-from wuwei.cruise import CLASSES, CRUISE, level, running  # noqa: F401 (#283: kept light for the status line)
 from wuwei.verdict import active_text
 from wuwei.exits import DAMAGED
 
@@ -21,10 +20,12 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
           'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
 OPTIONAL = ('Class', 'Reasoning', 'Lenses', 'Role', 'Value', 'Previous')  # #600: config cards
-STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
+STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # Keep is the status quo
 # #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
 ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
-# Design 5.8: the ambiguity threshold of cisr; the cruise margin is decisions.cruise.margin.
+CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan', 'dependency-bump',
+           'design', 'boundary', 'refactor', 'merge', 'message', 'other')  # design 5.8.1
+# Design 5.8: the ambiguity threshold of cisr.
 MARGIN = 0.2
 NO_RECOMMENDATION = 'add the recommendation and the reasoning'
 
@@ -91,9 +92,10 @@ def _scored(fields):
     return rows, passing, wants, scores
 
 
-def evaluate(text, lenses=None):
+def evaluate(text, lenses=None, write=False):
     """Return validated fields and recomputed scores, or a content finding. lenses (the
-    effective lens table) turns on the #475 new-record checks; history readers leave it None."""
+    effective lens table) turns on the #475 new-record checks; history readers leave it None.
+    write (lint, write, the scanner) refuses a #814 legacy cruise answer that a read takes as mandate."""
     fields, current = {}, None
     for line in active_text(text).splitlines():
         match = re.match(r'^(?:#{1,6} )?(' + '|'.join(map(re.escape, FIELDS + OPTIONAL)) + r'):\s*(.*)$', line)
@@ -114,16 +116,17 @@ def evaluate(text, lenses=None):
                 'Class', 'Reasoning', 'Role', 'Previous'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
-    cruise = re.fullmatch(r'cruise ([a-z-]+)@L[23]', fields['Decided-by'])  # #283: a cruise answer
+    if not write and re.fullmatch(r'cruise [a-z-]+@L[23]', fields['Decided-by']):
+        fields['Decided-by'] = 'mandate'  # #814: a record written before the upgrade
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
                          ('Decided-by', ('seat', 'owner', 'mandate'))):
-        if fields[key] not in allowed and not (key == 'Decided-by' and cruise and cruise[1] in CLASSES):
+        if fields[key] not in allowed:
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     if 'Class' in fields and fields['Class'] not in CLASSES:
         raise ValueError(f'Class: expected one of {", ".join(CLASSES)}; fix it in the record; bin/wuwei decision template shows a valid one')
     from wuwei.profiles import ROLES
-    if 'Role' in fields and fields['Role'] not in ROLES:  # #559: the role whose confidence is scored
+    if 'Role' in fields and fields['Role'] not in ROLES:
         raise ValueError(f'Role: expected one of {", ".join(ROLES)}; fix it in the record; bin/wuwei decision template shows a valid one')
     options, passing, _, scores = _scored(fields)
     ids = [row[0] for row in options]
@@ -249,20 +252,18 @@ def card_hash(identifier, fields):
     return card_topic(identifier, f'{fields["Question"]}\n{fields["Options"]}').split('=', 1)[1][:12]
 
 
-def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False, *, root):
+def record_widget(identifier, fields, record=RECORD, level='brief', *, root):
     """A decision that passed the new-record check as a widget: titles as labels, the
-    recommendation first; rationale, consequence and lens lines, trimmed at brief. hidden (the
-    #283 weekly sample) keeps record order and shows neither the recommendation nor its reasons."""
+    recommendation first; rationale, consequence and lens lines, trimmed at brief."""
     chosen = fields['Recommendation']
-    rows = options(fields) if hidden else sorted(options(fields), key=lambda row: row[0] != chosen)
-    lenses = {} if hidden else lens_lines(fields)
+    rows = sorted(options(fields), key=lambda row: row[0] != chosen)
+    lenses = lens_lines(fields)
     trim = first if level == 'brief' else str.strip
     # ponytail: AskUserQuestion shows four options; the others stay answerable through Other.
-    return widget(f'{identifier}: {fields["Question"]}' + ('' if hidden else f' {first(fields["Reasoning"])}'),
+    return widget(f'{identifier}: {fields["Question"]} {first(fields["Reasoning"])}',
                   identifier,
-                  [(title + (' (Recommended)' if option == chosen and not hidden else ''),
-                    '\n'.join(trim(part) for part in ((consequence,) if hidden else
-                                                       (rationale, consequence, *lenses.get(option, [])))))
+                  [(title + (' (Recommended)' if option == chosen else ''),
+                    '\n'.join(trim(part) for part in (rationale, consequence, *lenses.get(option, []))))
                    for option, title, rationale, consequence in rows[:4]],
                   record.format(id=identifier, cli=workspace.owner_cli(root), card=card_hash(identifier, fields)))
 
@@ -282,21 +283,12 @@ def option_id(fields, label):
     return next((row[0] for row in options(fields) if wanted in (row[0].casefold(), row[1].casefold())), label)
 
 
-def lint(text, lenses=LENSES, root=None):
+def lint(text, lenses=LENSES):
     try:
-        fields, scores = evaluate(text, lenses)
+        fields, scores = evaluate(text, lenses, write=True)
         option = fields['Recommendation']
         found = outward.tells(text)
-        said = ''
-        door = fields['Reversibility']
-        if root is not None:  # #557: report, never refuse
-            from wuwei import undo
-            if undo.config_write(fields):  # #600: the door the first route stores
-                said = '' if door == 'two-way' else '\n' + undo.two_way(door)
-            elif door != 'one-way':
-                reason = undo.measured(fields, root, workspace.load_config(root))[1]
-                said = '\n' + undo.line(door, reason) if reason else ''
-        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '') + said
+        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '')
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
 
@@ -363,7 +355,7 @@ def lint_file(path, *, root=None, record=True, clarification=False):
                     root = workspace.find_workspace(Path(path).parent)
                 except FileNotFoundError:
                     pass
-            code, message = lint(text, lens_table(workspace.load_config(root)), root) if root else lint(text)
+            code, message = lint(text, lens_table(workspace.load_config(root))) if root else lint(text)
     except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         code, message = 2, f'decision lint: could not read {path}: {exc}'
     return record_rejection(path, code, message, root=root) if record else (code, message)
@@ -388,21 +380,14 @@ def margin(fields, scores):
             / (10 * sum(int(row[1]) for row in _scored(fields)[2])))
 
 
-def cisr(fields, scores, ambiguous=False):
-    """#530: the MIT CISR class from risk (door and blast radius) and ambiguity (confidence, margin).
-    #559: ambiguous (an uncalibrated role) makes ambiguity high, so a record only moves toward the owner."""
+def cisr(fields, scores):
+    """#530: the MIT CISR class from risk (door and blast radius) and ambiguity (confidence, margin)."""
     if fields.get('Class') in ROUTINE and fields['Reversibility'] != 'one-way':
-        return 'Exploratory' if ambiguous else 'Routine'  # two-way by definition unless the seat wrote one-way
+        return 'Routine'  # two-way by definition unless the seat wrote one-way
     low_risk = (fields['Reversibility'] == 'two-way'
                 and re.match(r'(?i)\s*(?:item|own branch|own pr|day)\b', fields['Blast radius']))
-    clear = not ambiguous and fields['Confidence'] != 'low' and margin(fields, scores) >= MARGIN
+    clear = fields['Confidence'] != 'low' and margin(fields, scores) >= MARGIN
     return ('Routine' if clear else 'Exploratory') if low_risk else ('Consequential' if clear else 'Strategic')
-
-
-def uncalibrated(root, fields):
-    """#559: the record's Role when the steward stored it uncalibrated, else None."""
-    role = fields.get('Role')
-    return role if role in running(root).get('calibration', {}).get('roles', []) else None
 
 
 def route(fields):
@@ -410,7 +395,7 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
-def route_owner(identifier, fields, root, item=None, thin=False):
+def route_owner(identifier, fields, root, item=None):
     """Record an owner route once; a repeat route is a no-op. An item marks an external wait."""
     def mark(data):
         data.setdefault('decision_routes', {}).setdefault(identifier, data_row)
@@ -425,18 +410,11 @@ def route_owner(identifier, fields, root, item=None, thin=False):
     if identifier in data.get('decision_routes', {}) and (
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
-    from wuwei import novelty
-    role = uncalibrated(root, fields)
-    kind = cisr(fields, _scored(fields)[3], ambiguous=bool(role))
-    extra = {'class': fields.get('Class'), 'thin': thin, 'at': workspace.now().isoformat()}  # #283
+    kind = cisr(fields, _scored(fields)[3])
+    extra = {'class': fields.get('Class'), 'at': workspace.now().isoformat()}
     data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'],
                 'cisr': kind, **extra}
     payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind, **extra}
-    novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
-    if novel:  # #556: the owner's answer clears these
-        data_row['novel'] = payload['novel'] = novel
-    if role:  # #559: the record went to the owner because its role is uncalibrated
-        data_row['uncalibrated'] = payload['uncalibrated'] = role
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 
@@ -562,7 +540,7 @@ def owner_record(text, option, where, note=None):
 
 def write(text, root):
     """Validate and allocate a numbered decision without replacing an existing record."""
-    evaluate(text, lens_table(workspace.load_config(root)))
+    evaluate(text, lens_table(workspace.load_config(root)), write=True)
     directory = workspace.day_dir(root) / 'decisions'
     directory.mkdir(parents=True, exist_ok=True)
     used = [int(path.stem[2:]) for path in directory.glob('D-*.md')

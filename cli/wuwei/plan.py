@@ -114,17 +114,37 @@ def _proposal(data, goals_text, framework="wsjf"):
     return data
 
 
+REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+# #518: every owner-only step a lead may list, with its target shape.
+OWNER_ACTIONS = {'deploy': 'repo:' + REPO, 'release': 'repo:' + REPO, 'publish': 'repo:' + REPO,
+                 'merge': f'(?:repo:{REPO}|pr:{REPO}#[0-9]+)',
+                 'message': r'(?:channel|dm):[A-Za-z0-9_-]+',
+                 'secret-set': f'secret:{REPO}/[A-Za-z0-9_]+'}
+
+
+def understood(entry):
+    """'' for a known action with a well-formed target, else why not (never an exception)."""
+    if (not isinstance(entry, dict) or set(entry) != {'action', 'target'}
+            or not all(isinstance(value, str) for value in entry.values())):
+        return 'needs exactly action and target as strings'
+    shape = OWNER_ACTIONS.get(entry['action'])
+    if shape is None:
+        return f'action {entry["action"]} not understood; known: {", ".join(OWNER_ACTIONS)}'
+    if not re.fullmatch(shape, entry['target']):
+        return f'target {entry["target"]} is not in the shape for {entry["action"]}'
+    return ''
+
+
 def owner_steps(item):
-    """#518: plan lines for owner actions that are not grant cards: known owner steps (message,
-    secret-set) and entries the CLI does not understand, which the gate asks as written."""
-    from wuwei import grants
+    """#518, #816: plan lines for the owner actions the lead lists; an entry the CLI does not
+    understand is asked at the gate as written."""
     lines = []
     for entry in item.get('owner_actions', []):
-        reason = grants.understood(entry)
+        reason = understood(entry)
         if reason:
             lines.append(f'Owner-only: {json.dumps(entry, sort_keys=True)} (not understood: {reason}; '
                          'the gate asks for it as written)')
-        elif entry['action'] not in grants.ACTIONS:
+        else:
             lines.append(f'Owner-only: {entry["action"]} {entry["target"]} (owner step)')
     return lines
 
@@ -268,10 +288,7 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import grants, shepherd
-    planned = grants.plan(root, workspace.load_config(root), data['candidates'])
-    from wuwei import cruise
-    cruise.propose(root, workspace.load_config(root))  # #283: raise and weekly sample cards
+    from wuwei import shepherd
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
@@ -294,7 +311,6 @@ def propose(data, root=None):
                      'match none or several), then the planner runs wuwei plan propose again'] if names else []),
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
                   *([f'Ticket: {shown[item["id"]]}'] if item['id'] in shown else []),
-                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
                   *owner_steps(item), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
@@ -580,19 +596,11 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     return {'action': 'build next', 'item': item}
 
 
-def _owner_confirm(command, prompt):
-    """#800: the owner's y/N at the host terminal; an agent's Bash has no terminal, so it fails
-    closed whatever its environment says."""
-    from hashlib import sha256
-    from wuwei import integrity
-    try:
-        confirmed = integrity._host_confirm(sha256(command.encode()).hexdigest(), prompt=prompt)
-    except OSError:
-        raise state.StateError(f'{integrity.HOST_TERMINAL}; the owner runs bin/wuwei plan set {command} '
-                               'in a host terminal') from None
-    if not confirmed:
-        raise state.StateError(f'owner confirmation declined; rerun bin/wuwei plan set {command} in a host '
-                               'terminal and answer y')
+def _owner_confirm(root, argv, detail, token=''):
+    """#800, #831: only the owner's Yes on this step's Owner step card lets it run."""
+    import shlex
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'set', *argv]), detail, token):
+        raise state.StateError(reason)
 
 
 def set_spec(item, assignment, reason=None, root=None):
@@ -606,7 +614,7 @@ def set_spec(item, assignment, reason=None, root=None):
     if value == 'skipped' and not reason:
         raise ValueError(f'spec=skipped needs a reason; run bin/wuwei plan set {item} spec=skipped --reason <why>')
     if value == 'skipped':  # #800: spec before gates; only the owner skips it
-        _owner_confirm(f'{item} spec=skipped --reason <why>', f'Skip the spec for {item}: {reason}')
+        _owner_confirm(root, [item, 'spec=skipped', '--reason', reason], f'Skip the spec for {item}: {reason}')
 
     def update(data):
         if item not in data['items']:
@@ -627,7 +635,11 @@ def set_owner_merge(item, value, root=None):
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
     if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
-        _owner_confirm(f'{item} owner_merge=false', f'Release the owner merge hold on {item}')
+        from wuwei.watch import records  # #831: the answer is bound to this hold, the item's nth hold today
+        held = sum(row['kind'] == 'plan.set' and row['payload'].get('item') == item
+                   and row['payload'].get('owner_merge') is True
+                   for row in records(workspace.day_dir(root) / 'events.jsonl'))
+        _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}', f'hold {held}')
     linked = []
 
     def update(data):

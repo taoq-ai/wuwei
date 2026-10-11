@@ -62,25 +62,12 @@ def test_shadow_candidates_need_more_than_three_and_no_later_page(root):
         '- pr: 8 (gh pr merge: 4, gh a: 1, gh b: 1)')
 
 
-def test_shadow_report_command(root, capsys, tmp_path_factory, monkeypatch):
-    assert main(['shadow', 'report']) == 0
-    assert capsys.readouterr().out == '# WUWEI shadow report\n\nnone\n'
-    refused(root, 'pr', 'gh pr merge 1', '2026-09-28')
-    refused(root, 'commit_push', 'git push --force')
-    assert main(['shadow', 'report']) == 0
-    assert '- pr: 1' in capsys.readouterr().out
-    (root / '.wuwei/config.toml').write_text('[guards]\nmode = "shadow"\nshadow_since = "2026-09-29"\n')
-    assert main(['shadow', 'report']) == 0
-    out = capsys.readouterr().out
-    assert '- commit_push: 1' in out and '- pr:' not in out
-    (root / '.wuwei/days/2026-09-29/events.jsonl').chmod(0o644)
-    with (root / '.wuwei/days/2026-09-29/events.jsonl').open('a') as events:
-        events.write('not json\n')
-    assert main(['shadow', 'report']) == 2
-    outside = tmp_path_factory.mktemp('outside')
-    monkeypatch.delenv('WUWEI_WORKSPACE')
-    monkeypatch.chdir(outside)
-    assert main(['shadow', 'report']) == 2
+@pytest.mark.parametrize('argv', [['shadow', 'report'], ['cruise', 'budget']])
+def test_the_retired_commands_are_unknown(root, argv):
+    # #814: the day report's ## Shadow section replaces shadow report; cruise is gone.
+    with pytest.raises(SystemExit) as exit_:
+        main(argv)
+    assert exit_.value.code == 2
 
 
 OBSERVE = '[security]\nposture = "observe"\n'
@@ -116,4 +103,4 @@ def test_session_start_says_observe_is_on(root, config, on):
     from wuwei.guards import lifecycle
     (root / '.wuwei/config.toml').write_text(config)
     message = lifecycle.session_start({'cwd': str(root)})[1]
-    assert ('Observe posture is on' in message and 'bin/wuwei shadow report' in message) is on
+    assert ('Observe posture is on' in message and '## Shadow section' in message) is on

@@ -227,12 +227,28 @@ Outcome: pending
 """
 
 
+
+def test_the_written_door_stands(ws, capsys):
+    # #815: no rehearsal ledger; a two-way record routes on the door it wrote.
+    path = save(ws, record(cls='approach'))
+    assert route(ws, capsys) == (0, 'mandate')
+    text = path.read_text()
+    assert 'Reversibility: two-way' in text and 'Reversibility corrected' not in text
+
+
+def test_a_new_target_routes_like_a_known_one(ws, capsys):
+    # #815: a target the workspace never touched asks nothing extra.
+    save(ws, record(cls='approach', wants=(('Context: tests/test_example.py', 'Context: repo:acme/new and tests/test_example.py'),)))
+    code, out = route(ws, capsys)
+    assert (code, out) == (0, 'mandate') and 'first time for' not in out
+    assert not (ws / '.wuwei/memory/targets.json').exists()
+
 def test_a_security_finding_still_asks_the_owner(ws, capsys):
     # Review F1: a record the CLI wrote for the owner is never taken under the mandate.
     from wuwei import state
     from wuwei.__main__ import main
     path = save(ws, SCANNER)
-    assert route(ws, capsys)[1].splitlines()[0] == 'owner'  # #557: other has no undo, one-way
+    assert route(ws, capsys)[1].splitlines()[0] == 'owner'
     data = state.read_state(ws)
     assert 'D-3' in data['decision_routes'] and not data.get('decision_outcomes')
     assert 'Decided-by: owner' in path.read_text() and 'Outcome: pending' in path.read_text()
@@ -250,3 +266,43 @@ def test_a_mandate_park_keeps_its_disposition(ws, capsys):
     data = state.read_state(ws)
     assert data['decision_outcomes']['D-3']['item_disposition'] == 'parked DIV-1'
     assert approved({**data, 'approved_items': ['DIV-1'], 'items': {'DIV-1': {}}}) == []
+
+
+def test_stale_cruise_state_never_changes_a_route(ws, capsys):
+    # #814: routing reads the record and autonomy.mode only; a stale cruise.json is ignored.
+    from wuwei import state
+    (ws / '.wuwei/memory').mkdir(parents=True)
+    (ws / '.wuwei/memory/cruise.json').write_text(json.dumps(
+        {'levels': {'park': 0}, 'changed': {}, 'calibration': {'classes': [], 'roles': ['builder']}}))
+    path = save(ws, record(cls='park').replace('Class: park', 'Class: park\nRole: builder'))
+    assert route(ws, capsys) == (0, 'mandate')
+    payload = next(row['payload'] for row in events(ws) if row['kind'] == 'decision.decided')
+    assert payload['cisr'] == 'Routine' and not {'rule', 'level', 'undo_until', 'items'} & payload.keys()
+    assert 'Decided-by: mandate' in path.read_text()
+    save(ws, record(door='one-way', confidence='low'), name='D-4.md')
+    assert route(ws, capsys, 'D-4') == (0, 'owner')
+    row = state.read_state(ws)['decision_routes']['D-4']
+    assert not {'thin', 'uncalibrated'} & row.keys()
+
+
+def test_close_measures_a_cruise_record_written_before_the_upgrade(ws, capsys):
+    # #814: Decided-by: cruise <class>@L<n> from before the upgrade reads as mandate at close.
+    from wuwei import closing, state
+    path = save(ws, record(cls='park').replace('Outcome: pending', 'Outcome: parked DIV-1'))
+    assert route(ws, capsys) == (0, 'mandate')
+    path.write_text(path.read_text().replace('Decided-by: mandate', 'Decided-by: cruise park@L2'))
+    state._write_state(lambda data: data.update(
+        items={'DIV-1': {'goal': 'g', 'status': 'queued', 'phase': 'planned'}}, approved_items=['DIV-1']),
+        ws, reserved=False)
+    _, findings = closing.unresolved(ws, [])
+    assert 'D-3' not in findings and 'DIV-1 is still open' not in findings, findings
+
+
+def test_show_widget_reads_a_legacy_cruise_record_as_mandate(ws, capsys):
+    # #814 review F3: every read path, the widget included, reads a stored cruise answer as mandate.
+    from wuwei.__main__ import main
+    path = save(ws, record(cls='park'))
+    assert route(ws, capsys) == (0, 'mandate')
+    path.write_text(path.read_text().replace('Decided-by: mandate', 'Decided-by: cruise park@L2'))
+    assert main(['decision', 'show', 'D-3', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out) == []

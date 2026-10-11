@@ -59,7 +59,7 @@ def run_fix(args):
 
 def run_add(args):
     if args.slug in OWNER_NOTES:
-        print('wuwei note: the owner keeps the baseline outside agent tools; write the change as a proposal. The owner edits the baseline in a host terminal', file=sys.stderr)
+        print('wuwei note: the owner keeps the baseline outside agent tools; write the change as a proposal. The owner edits the baseline', file=sys.stderr)
         return FINDINGS
     if not SLUG_RE.fullmatch(args.slug):
         print('wuwei note: invalid slug; use lowercase letters, digits and dashes', file=sys.stderr)

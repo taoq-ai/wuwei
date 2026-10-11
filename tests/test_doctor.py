@@ -310,7 +310,7 @@ def test_workspace_rows_healthy(ws):
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
         'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
         'outbound classes', 'outbound tiers', 'register', 'calibration', 'drift',
-        'interview', 'profile', 'posture', 'telemetry', 'undo rehearsals']
+        'interview', 'profile', 'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
@@ -500,19 +500,6 @@ def test_workspace_interview_counts_the_unanswered(ws):
     assert row(doctor.diagnose(), 'interview')['status'] == 'unmeasured'
 
 
-def test_standing_grant_ignored_under_strict(ws):
-    # #478: under strict a standing grant line is ignored; doctor names it.
-    line = ('[grants]\nstanding = [{action = "deploy", target = "repo:acme/widget", scope = "always", '
-            'decision = "D-3", date = "2026-10-04"}]\n[adapters]')
-    config(ws.root, CONFIG.replace('[adapters]', line))
-    assert 'grant 1' not in names(doctor.diagnose(), 'workspace')
-    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n' + line))
-    found = row(doctor.diagnose(), 'grant 1')
-    assert (found['section'], found['status']) == ('workspace', 'warn')
-    assert found['value'] == 'deploy repo:acme/widget (D-3) is ignored under strict'
-    assert found['fix'] == W('grants revoke 1')
-
-
 def test_workspace_telemetry_question_pending(ws):
     # #422: share unset behaves as off but the interview question is still owed.
     config(ws.root, CONFIG.replace('share = "off"', 'share = ""'))
@@ -620,8 +607,6 @@ def test_answered_cards_row(ws):
     assert asked('D-2', topic) == []
     record.unlink()
     assert asked('D-2', topic, outcomes={'D-2': {'option': 'B', 'decided_by': 'owner'}}) == []
-    undo = sessions.card_topic('D-3', 'Undo')
-    assert asked(undo, outcomes={'D-3': {'option': 'A', 'decided_by': 'mandate'}}) == []
     draft_id = pending_draft(ws.root)
     assert asked(draft_id, f'{draft_id}:send') == [draft_id]
 
@@ -651,7 +636,7 @@ def test_day_rows(ws):
     ws.probes['state'] = {'result': 'failed', 'value': 'bad state'}
     ws.probes['planner'] = {'result': 'failed', 'value': 'planner P not registered'}
     rows = doctor.diagnose()
-    assert row(rows, 'state')['fix'] == W('state recover in a host terminal')
+    assert row(rows, 'state')['fix'] == W('state recover')
     assert row(rows, 'planner')['status'] == 'fail' and '--take-over' in row(rows, 'planner')['fix']
 
     workspace.watch_unit(ws.root)[1].unlink()
@@ -876,7 +861,7 @@ def test_pr_flow_section_only(ws, monkeypatch, capsys):
 # US2: --fix
 
 CHECKOUT = ('page: plugin integrity: development checkout requires host reconfirmation; '
-            'run wuwei integrity reconfirm on the host')
+            'run wuwei integrity reconfirm')
 
 
 def fix(confirm):
@@ -924,7 +909,7 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
 def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     rows = [doctor._row('gates', 'mcp docs', 'warn', 'unmeasured', 'wuwei mcp decide proceed-unmeasured docs'),
             doctor._row('workspace', 'posture', 'warn', 'observe long', 'set security.posture = "guarded"'),
-            doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover in a host terminal'),
+            doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover'),
             doctor._row('gates', 'decision', 'fail', 'pending', 'wuwei mcp decide', apply='mcp-decide')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     asked = []
@@ -933,7 +918,7 @@ def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     assert not asked and 'Nothing to apply' in out
     notes = out.split('Not applied:', 1)[1]
     for text in ('wuwei mcp decide proceed-unmeasured docs', 'set security.posture = "guarded"',
-                 'wuwei state recover in a host terminal', 'wuwei mcp decide'):
+                 'wuwei state recover', 'wuwei mcp decide'):
         assert text in notes
     assert not events(ws.root, 'doctor.fixed')
 
@@ -945,15 +930,17 @@ def test_fix_wrong_digest_applies_nothing(ws, monkeypatch, capsys):
     assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
 
 
-def test_fix_without_terminal(ws, monkeypatch, capsys):
+def test_fix_asks_the_owner_step_card(ws, monkeypatch, capsys):
+    # #831: no terminal; the owner's Yes on the printed Owner step card applies the batch.
+    from fakes import owner
     watch_missing(ws)
-
-    def no_terminal(value, *, prompt=''):
-        raise OSError(integrity.HOST_TERMINAL)
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
-    assert fix(None) == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert fix(None) == 1
+    err = capsys.readouterr().err
+    assert 'Owner step: bin/wuwei doctor --fix (' in err and 'host terminal' not in err
     assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
+    owner.answer_card(ws.root, err)
+    fix(None)
+    assert ws.service.installed and events(ws.root, 'doctor.fixed') == [{'fix': 'watch-install', 'exit': 0}]
 
 
 def test_fix_changed_since_preview(ws, monkeypatch, capsys):
@@ -1075,38 +1062,23 @@ def widget_args(**changes):
     return Namespace(**{'fix': True, 'json': False, 'widget': True, 'apply': None, 'section': None, **changes})
 
 
-def test_fix_widget_needs_todays_plan(ws, monkeypatch, capsys):
-    from wuwei.guards.decision import check_question
+def test_fix_widget_prints_the_owner_step_card(ws, monkeypatch, capsys):
+    """#831 F5: one card per fix batch: the widget is the Owner step card the fix asks."""
+    from fakes import owner
     applied, asked = two_fixes(ws, monkeypatch), []
-    assert doctor.run(widget_args(), confirm=asked.append) == 1
-    assert 'run wuwei doctor --fix in a host terminal' in capsys.readouterr().err
-    assert not asked and not applied
-    plan = workspace.day_dir(ws.root) / 'plan.md'
-    plan.parent.mkdir(parents=True, exist_ok=True)
-    plan.write_text('# Plan\n')
-    assert doctor.run(widget_args(), confirm=asked.append) == 1
+    assert doctor.run(widget_args(), confirm=asked.append) in (0, 1)
     (built,) = json.loads(capsys.readouterr().out)
-    assert built['header'] == 'Fixes' and built['multiSelect'] is True
-    assert [o['label'] for o in built['options']] == ['init-upgrade', 'calibrate']
-    assert built['options'][0]['description'].startswith('wuwei init --upgrade')
-    assert built['options'][1]['description'].startswith('wuwei calibrate')
-    assert built['record'] == 'wuwei doctor --fix --apply <labels>'
-    assert built['question'].startswith(f'Morning gate (days/{TODAY}/plan.md): ')
-    assert check_question({'cwd': str(ws.root), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
-        {key: built[key] for key in ('question', 'header', 'options', 'multiSelect')}]}}) == (0, '')
+    assert built['header'] == 'Owner step' and built['multiSelect'] is False
+    assert built['question'].startswith('Owner step: bin/wuwei doctor --fix (')
+    assert built['record'] == 'bin/wuwei doctor --fix'
+    assert '[calibrate] wuwei calibrate' in built['options'][0]['description']
     assert not asked and not applied and not events(ws.root, 'doctor.fixed')
-
-
-def test_widgets_split_and_skip(ws):
-    names = list(doctor.FIXES)
-    def sizes(count):
-        batch = [(names[i], 'text\n', None) for i in range(count)]
-        return [len(w['options']) for w in doctor.widgets(ws.root, batch)]
-    assert sizes(0) == [] and sizes(4) == [4] and sizes(5) == [3, 2] and sizes(6) == [3, 3]
-    split = doctor.widgets(ws.root, [(names[i], 'text\n', None) for i in range(5)])
-    assert [w['question'][-22:] for w in split] == ['doctor fixes (1 of 2)?', 'doctor fixes (2 of 2)?']
-    (single,) = doctor.widgets(ws.root, [(names[0], 'text\n', None)])
-    assert [o['label'] for o in single['options']] == [names[0], 'Skip']
+    assert doctor.run(widget_args(widget=False)) == 1
+    refusal = capsys.readouterr().err
+    assert json.dumps(built) in refusal
+    owner.answer_card(ws.root, refusal)
+    doctor.run(widget_args(widget=False))
+    assert sorted(applied) == ['calibrate', 'init-upgrade']
 
 
 def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
@@ -1117,7 +1089,7 @@ def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     assert applied == ['calibrate'] and len(events(ws.root, 'doctor.fixed')) == 1
     assert doctor.run(widget_args(widget=False, apply='nope'), confirm=lambda digest: True) == 2
     assert 'nope' in capsys.readouterr().err and applied == ['calibrate']
-    assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) in (0, 1)
+    assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) == 2
     assert applied == ['calibrate']
     for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'calibrate'}, {'apply': 'calibrate'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
@@ -1211,10 +1183,10 @@ def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     from wuwei.commands import setup
     launcher = str(ws.plugin / 'bin/wuwei')
     rows = [doctor._row('workspace', 'config', 'fail', 'x', 'wuwei init --upgrade'),
-            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm in a host terminal'),
+            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm'),
             doctor._row('install', 'b', 'fail', 'x', '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan')]
     assert [r['fix'] for r in rows] == [
-        f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm in a host terminal',
+        f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm',
         '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan']
     assert f'{launcher} init --upgrade' in doctor.render(rows)
     assert setup.ending(rows, [], [])[0] == f'Next: {launcher} init --upgrade'
@@ -1280,7 +1252,9 @@ def test_docs_publish_fix_runs_as_printed(ws, capsys):
     (ws.root / 'repo/docs').mkdir()
     found = docs_row(ws, '[docs]\nsystem = "markdown"\n')
     assert found['status'] == 'warn'
-    ws.mp.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    from fakes import owner
+    assert main(shlex.split(found['fix'])[1:]) == 1  # #831: it asks its Owner step card
+    owner.answer_card(ws.root, capsys.readouterr().err)
     assert main(shlex.split(found['fix'])[1:]) == 0, capsys.readouterr()
     assert row(doctor.diagnose(), 'docs')['status'] == 'ok'
 
@@ -1418,22 +1392,6 @@ def test_template_row_leaves_the_register_to_its_row(ws):
         return 0
     ws.mp.setattr(init, 'upgrade', upgrade)
     assert row(doctor.diagnose(), 'template')['status'] == 'ok'
-
-
-def test_undo_rehearsals_row(ws, rehearsed_undo):
-    # #557: the kinds whose undo ran once here, and a damaged ledger with its fix.
-    found = row(doctor.diagnose(), 'undo rehearsals')
-    assert found['status'] == 'ok' and found['value'] == (
-        'rehearsed: commit, decision; not rehearsed: merge (wuwei undo rehearse <kind>)')
-    from wuwei import undo
-    ws.mp.setattr(undo, 'ledger', rehearsed_undo)
-    path = ws.root / '.wuwei/memory/rehearsals.json'
-    path.parent.mkdir(exist_ok=True)
-    path.write_text('{')
-    found = row(doctor.diagnose(), 'undo rehearsals')
-    assert found['status'] == 'fail' and 'memory/rehearsals.json is damaged' in found['value']
-    assert found['fix'] == ('move .wuwei/memory/rehearsals.json aside, then run ' + W('undo rehearse commit')
-                            + ' and ' + W('undo rehearse decision'))
 
 
 def test_day_shepherd_row(ws):

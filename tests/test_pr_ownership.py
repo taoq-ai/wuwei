@@ -73,7 +73,7 @@ def test_fresh_states_and_dispatch(case, condition, expected, action):
             'fix_request': 'fix_round', 'question': 'outbound_tier_then_reply',
             'disagreement': 'owner_decision', 'scope_change': 'owner_decision'}
     if condition == 'approval':
-        assert row['dispatch']['fallback'] == 'merge_decision'
+        assert row['dispatch']['fallback'] == 'owner_decision'
     assert {call[0] for call in host.calls} <= {'pr', 'checks', 'reviews', 'threads'}
 
 

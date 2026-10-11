@@ -588,7 +588,7 @@ def wait(runtime, job, config, root):
         if status['status'] in ('failed', 'cancelled'):
             raise RuntimeError(f'runtime seat {status["status"]}; rerun the same bin/wuwei build command to resume, and run bin/wuwei doctor if it fails again')
         if time.monotonic() >= deadline:
-            raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set in a host terminal')
+            raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set')
         time.sleep(config['build']['poll_interval_seconds'])
 
 
@@ -598,7 +598,7 @@ def run_loop(item, brief, worktree, *, root=None):
         config = workspace.load_config(root)
         runtime_config = registry.runtime_config('builder', config, root)
         if runtime_config['adapters']['runtime'] == 'claude':
-            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set in a host terminal')
+            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set')
         if brief is None or worktree is None:
             raise ValueError('usage: build <item> <brief> <worktree> (Codex only); run bin/wuwei build <item> <brief> <worktree> with all three arguments')
         runtime = registry.load('runtime', runtime_config)

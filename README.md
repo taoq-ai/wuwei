@@ -34,7 +34,6 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
 - The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
-- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card. A target the workspace has never touched asks you once, and a class that keeps being more sure than right runs at most L1. A raise runs in shadow first and goes live only on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
 - One register of people, channels and tools: `bin/wuwei who` reads it ([people, channels and tools](docs/site/configuration.md#people-channels-and-tools)).
 - The DORA four keys: `bin/wuwei dora` prints lead time, deployment frequency, change failure rate and time to restore, each with its source or the reason it has no reading yet ([DORA keys](docs/site/concepts.md#dora-keys)).
 
@@ -72,7 +71,6 @@ Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](
 - `bin/wuwei why last refusal` names the guard, the rule and the fix for the last refused call.
 - `bin/wuwei doctor --fix` checks the install, host, workspace and day, and applies the deterministic fixes after one confirmation.
 - `bin/wuwei next` prints the next step for the day.
-- `bin/wuwei shadow report` lists what the guards would have refused in the observe posture.
 - The day's records are under `.wuwei/days/<date>/`: state, events and decisions ([recovery](docs/site/recovery.md)).
 
 ## What is inside
@@ -108,8 +106,8 @@ Planned: Signal and WhatsApp as owner channels (design spec, section 15).
 1. The CLI owns the path and the model walks it. `bin/wuwei next` returns the one next action: the exact command or Agent call, why, and what comes after. Skills and charters hold judgement, never a step list ([agent guide](docs/site/agent.md), [design spec](docs/specs/2026-09-24-wuwei-design.md) 5.2 and 5.3).
 2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
 3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each edge in design spec 9.2 at the moment of the call, and each edge has its own test. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
-4. Who decides follows from what is decided. Each record gets an MIT CISR class from how reversible it is, how far it reaches and how unclear it is. A Routine two-way decision is taken under the [mandate](docs/site/concepts.md#mandate); a Strategic or one-way one comes to you on a card ([classes and levels](docs/site/concepts.md#decision-classes-and-cruise-levels), design spec 5.8).
-5. Autonomy is earned from the ledger, never by copying you. Each class runs at a level up to its ceiling; your agreements raise it and your reversals lower it ([cruise answers](docs/site/daily.md#cruise-answers), design spec 5.8.1). A [novel](docs/site/concepts.md#novel) target asks you once on a card ([#556](https://github.com/taoq-ai/wuwei/issues/556)). A record counts as two-way only once its undo was rehearsed ([measured reversibility](docs/site/concepts.md#measured-reversibility), [#557](https://github.com/taoq-ai/wuwei/issues/557)). Reversals spend an error budget, so one bad call does not drop a class ([#558](https://github.com/taoq-ai/wuwei/issues/558)). How sure a record says it is gets scored against what happened, with a Brier score ([#559](https://github.com/taoq-ai/wuwei/issues/559)). A raise runs in shadow before it goes live ([#560](https://github.com/taoq-ai/wuwei/issues/560)).
+4. Who decides follows from what is decided. Each record gets an MIT CISR class from how reversible it is, how far it reaches and how unclear it is. A Routine two-way decision is taken under the [mandate](docs/site/concepts.md#mandate); a Strategic or one-way one comes to you on a card ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
+5. Reversibility is a rule, not a score. A two-way door inside the item is assumed and recorded. A clear two-way decision beyond the item is taken under the mandate. A one-way, Strategic or tied one reaches you as one named decision from `wuwei next` ([decision classes](docs/site/concepts.md#decision-classes), design spec 5.8).
 6. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
 7. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
 8. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
@@ -165,7 +163,7 @@ with the one command still required. Optional items, such as branch protections,
 before it and do not block. A second run proposes nothing new
 ([calibration](docs/site/configuration.md#calibration)).
 
-`--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [security posture](docs/site/concepts.md#security-posture).
+`--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and the `## Shadow` section of the day report lists it. See [security posture](docs/site/concepts.md#security-posture).
 
 Then check the install:
 
@@ -275,5 +273,3 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
 - [MIT CISR decision framework](https://cisr.mit.edu/): Sebastian, Weill, Haskamp and vom Brocke, "A framework for determining when AI can make decisions"; the decision classes.
 - [Verifiably Safe Autonomous Decision-Making (vGOAL)](https://www.kuleuven.be/): KU Leuven; a table of safety properties, each with its own test, without the model checker.
-- [Error budgets](https://sre.google/sre-book/embracing-risk/): Google, Site Reliability Engineering, "Embracing Risk"; the error budget of each class.
-- [Brier score](https://doi.org/10.1175/1520-0493%281950%29078%3C0001%3AVOFEIT%3E2.0.CO%3B2): Glenn W. Brier, Monthly Weather Review, 1950; scoring how sure a record says it is.

@@ -111,7 +111,7 @@ def test_push_settings_parse_git_booleans(tmp_path, monkeypatch, settings, code,
 
 @pytest.mark.parametrize('refs,source', [(['HEAD:refs/tags/v1'], SHA), (['refs/tags/v1'], 'c' * 40)])
 def test_push_context_measures_a_tag_destination(tmp_path, monkeypatch, refs, source):
-    # #530: a tag push is measured, so push_check can gate it on the release grant.
+    # #530: a tag push is measured, so push_check can gate it on the release card.
     steps = push_steps(tmp_path) + [{'stdout': 'c' * 40 + '\n', 'when': ['rev-parse']}]
     install_replay(monkeypatch, 'git', steps)
     result = adapter().push_context(str(tmp_path), 'origin', refs)

@@ -215,7 +215,7 @@ def _owner_login(config):
     handles = [handle for handle in config['owner']['handles']
                if not re.fullmatch(r'[UW][A-Z0-9]+', handle)]
     if len(handles) != 1 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', handles[0]):
-        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs); the owner sets owner.handles to one code-host login with bin/wuwei config set in a host terminal')
+        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs); the owner sets owner.handles to one code-host login with bin/wuwei config set')
     return handles[0]
 
 

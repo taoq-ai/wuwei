@@ -123,7 +123,7 @@ def _trace_response(finding, root, posture):
             'Confidence: high\nReversibility: unsure\n'
             'Blast radius: workspace security\nPre-mortem: Further activity could expose data.\n'
             'Revisit: Before resuming affected work.\nDecided-by: owner\nOutcome: pending\n')
-        decision.evaluate(body, decision.LENSES)
+        decision.evaluate(body, decision.LENSES, write=True)
         directory.mkdir(parents=True, exist_ok=True)
         workspace.atomic_write(path, body)
 

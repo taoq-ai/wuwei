@@ -131,7 +131,7 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
     data = json.loads(structured.stdout)
     # #562: the line skips these; status and --json keep them.
-    assert {'cruise', 'plugin', 'template', 'next_meeting', 'next_reply_due', 'sessions', 'seats'} <= data.keys()
+    assert {'plugin', 'template', 'next_meeting', 'next_reply_due', 'sessions', 'seats'} <= data.keys()
     assert 'sessions 0' in full.stdout and 'plugin ' in full.stdout
     assert data['pages'] == 1 and not {'nudges', 'nudges_mode'} & data.keys()
     assert data['phases']['spec'] == 1 and data['cap'] == 2
@@ -257,6 +257,16 @@ def test_reply_due_at_1500_appears_in_status_line(tmp_path):
     assert 'meeting unmeasured' in result.stdout
 
 
+def test_status_line_ignores_a_damaged_cruise_file(tmp_path):
+    # #814: cruise is gone; a stale memory/cruise.json is never read.
+    day(tmp_path, {'items': {}, 'cap': 1})
+    (tmp_path / '.wuwei/memory').mkdir(parents=True, exist_ok=True)
+    (tmp_path / '.wuwei/memory/cruise.json').write_text('not json')
+    result = cli(tmp_path, 'status', '--line')
+    assert result.returncode == 0, result.stderr
+    assert 'cruise' not in result.stdout
+
+
 def test_status_reads_next_meeting_from_configured_calendar(tmp_path, monkeypatch):
     from wuwei import registry
     from wuwei.commands.status import snapshot
@@ -314,6 +324,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
+    emitted.add('decision.reversed')  # owner_outcome picks its kind
     emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
@@ -337,7 +348,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'guard.would_refuse': 'silent', 'config.newer_template': 'warn',
                 'hook.warning': 'warn',
                 'verdict.rejected': 'silent', 'decision.rejected': 'warn',
-                    'decision.decided': 'silent', 'decision.closed': 'silent',
+                    'decision.decided': 'silent',
                     'decision.routed': 'silent', 'decision.digest': 'silent',
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
@@ -371,10 +382,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
-                'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
-                'decision.reversed': 'warn', 'cruise.carded': 'silent', 'decision.shadow': 'silent',
-                'undo.rehearsed': 'silent', 'undo.done': 'silent',
-                'cruise.burn': 'warn',
+                'decision.reversed': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

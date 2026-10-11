@@ -491,22 +491,6 @@ def test_worktrees_rejects_malformed_records(stdout, monkeypatch):
     assert adapter().worktrees('/repo').exit == 2
 
 
-def test_rehearse_revert_on_a_scratch_repository():
-    # #557: the one real smoke test of the commit undo rehearsal.
-    import tempfile
-    git = adapter()
-    with tempfile.TemporaryDirectory() as scratch:
-        result = git.rehearse_revert(scratch)
-        assert result.exit == 0 and result.data['reverted'] is True
-        assert result.data['tree'] and (Path(scratch) / 'rehearsal.txt').read_text() == 'before\n'
-    outside = Path(__file__).resolve().parents[1]
-    for args in (('revert', '--no-edit', 'HEAD'), ('add', '--', 'rehearsal.txt'),
-                 ('commit', '--quiet', '-m', 'WUWEI undo rehearsal'),
-                 ('rev-parse', 'HEAD^{tree}', 'HEAD~2^{tree}')):
-        with pytest.raises(ValueError, match='unsupported git command'):
-            git._run(outside, *args, local=True)
-
-
 def test_invariant_push_identity_reads_only_unpublished_commits(tmp_path, monkeypatch):
     # #616 (proposed design 9.2 I25): a commit any remote-tracking ref reaches is already
     # published, so the push identity check reads only the commits no remote has.

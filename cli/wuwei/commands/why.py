@@ -4,7 +4,7 @@ import json
 import re
 import sys
 
-from wuwei import decision, novelty, references, security, state, verdict, watch, workspace
+from wuwei import decision, references, security, state, verdict, watch, workspace
 from wuwei.commands.event import EVENT_PRODUCERS
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.redact import redact
@@ -38,7 +38,7 @@ def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
     if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
-            EVENT_ID, decision.DECISION_ID, DRAFT, novelty.KEY))):
+            EVENT_ID, decision.DECISION_ID, DRAFT))):
         print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
         return UNRUN
     try:
@@ -53,8 +53,6 @@ def run(args):
             steps = [(line, None, []) for line in held(root, target)]
         elif target == 'adhoc':  # #676
             steps = adhoc(root)
-        elif re.fullmatch(novelty.KEY, target):  # #556
-            steps = [(line, None, []) for line in novelty.explain(root, workspace.load_config(root), target)]
         else:
             steps = item(root, target)
     except Missing as exc:
@@ -298,7 +296,7 @@ def held(root, draft_id):
 
 
 def decided(root, ident):
-    """Today's D-n: options and scores, weights, margin, class, level and who decided."""
+    """Today's D-n: options and scores, weights, margin, class and who decided."""
     path = decision.today_path(ident, root)
     if not path.is_file():
         raise Missing(f'no decision record {ident} today; run bin/wuwei status --json for open decisions')
@@ -311,18 +309,13 @@ def decided(root, ident):
              'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),
              f'margin: {margin:.2f}', f'class: {kind}']
     steps = [(line, None, [str(path.relative_to(root))]) for line in lines]
-    novel = novelty.routed(state.read_state(root), ident)
-    if novel:  # #556
-        steps.append((f'novel: first time for {", ".join(novel)}', None, []))
     rows = list(enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl'), 1))
     last = next(((number, event['payload']) for number, event in reversed(rows)
                  if event['kind'] in ('decision.decided', 'decision.reversed')
                  and event['payload'].get('id') == ident), None)
     if last is None:
-        return steps + [(f'level: {NOT}', None, []), (f'decided: {NOT}', None, [])]
+        return steps + [(f'decided: {NOT}', None, [])]
     number, payload = last
     by = str(payload.get('decided_by') or NOT)
-    cruise = re.search(r'@L(\d)', by)
     at = f'{workspace.day_dir(root).name}:{number}'
-    return steps + [(f'level: L{cruise[1]}' if cruise else f'level: {NOT}', at if cruise else None, []),
-                    (f'decided: {payload.get("option")} by {by}', at, [])]
+    return steps + [(f'decided: {payload.get("option")} by {by}', at, [])]

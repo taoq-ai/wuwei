@@ -600,7 +600,7 @@ def test_recover_restores_last_written_state(workspace, missing):
     from wuwei import state
     corrupt(workspace, missing=missing)
     tokens = []
-    digest = state.recover(confirm=lambda token: tokens.append(token) or True)
+    digest = state.recover(confirm=lambda token: tokens.append(token))
     assert tokens == [digest[:12]]
     assert state.read_state()['cap'] == 3
     assert (day(workspace) / 'state.json').stat().st_mode & 0o777 == 0o444
@@ -631,7 +631,7 @@ def test_recover_refusals_change_nothing(workspace, case, error):
         if case == 'changed':
             snapshot.chmod(0o644)
             snapshot.write_text(snapshot.read_text().replace('"cap": 3', '"cap": 4'))
-        return case != 'declined'
+        return 'declined' if case == 'declined' else None
 
     before = path.read_text()
     expected = state.StateError if case in ('readable', 'declined') else (OSError, ValueError)
@@ -643,42 +643,45 @@ def test_recover_refusals_change_nothing(workspace, case, error):
     assert 'state.recovered' not in [row['kind'] for row in events(workspace)]
 
 
-@pytest.mark.parametrize('case,expected', [('confirmed', 0), ('declined', 1), ('readable', 1),
-                                           ('no_snapshot', 2), ('no_terminal', 2)])
+@pytest.mark.parametrize('case,expected', [('confirmed', 0), ('answered No', 1), ('no answer', 1),
+                                           ('readable', 1), ('no_snapshot', 2)])
 def test_recover_command_exits(workspace, monkeypatch, capsys, case, expected):
-    from wuwei import integrity, state
+    from hashlib import sha256
+    from fakes import owner
+    from wuwei import state
     from wuwei.__main__ import main
     if case == 'readable':
         state.write_state(lambda data: data.update(cap=3))
     else:
         corrupt(workspace)
+    snapshot = day(workspace) / 'state.snapshot.json'
     if case == 'no_snapshot':
-        (day(workspace) / 'state.snapshot.json').chmod(0o644)
-        (day(workspace) / 'state.snapshot.json').unlink()
-    def confirm(token, *, prompt):
-        if case == 'no_terminal':
-            raise OSError('no terminal')
-        return case != 'declined'
-    monkeypatch.setattr(integrity, '_host_confirm', confirm)
+        snapshot.chmod(0o644)
+        snapshot.unlink()
+    elif case in ('confirmed', 'answered No'):  # #831: the owner's answer on the Owner step card
+        (workspace / '.wuwei/config.toml').write_text('')
+        token = sha256(snapshot.read_bytes()).hexdigest()[:12]
+        owner.answer(workspace, 'bin/wuwei state recover', token, 'Yes' if case == 'confirmed' else 'No',
+                     detail="Restore today's state from its snapshot.")
     assert main(['state', 'recover']) == expected
     if expected == 0:
         assert 'state recovered from snapshot' in capsys.readouterr().out
         assert state.read_state()['cap'] == 3
 
 
-def test_recover_without_a_terminal_names_the_owner_action(workspace, monkeypatch, capsys):
+def test_recover_without_an_answer_names_the_owner_step_card(workspace, monkeypatch, capsys):
     import builtins
     from wuwei.__main__ import main
     path = corrupt(workspace)
     real_open = builtins.open
     def fake_open(name, *args, **kwargs):
         if name == '/dev/tty':
-            raise OSError(6, 'Device not configured')
+            raise AssertionError('the host terminal was opened')
         return real_open(name, *args, **kwargs)
     monkeypatch.setattr(builtins, 'open', fake_open)
-    assert main(['state', 'recover']) == 2
+    assert main(['state', 'recover']) == 1
     err = capsys.readouterr().err
-    assert 'run it in a host terminal' in err and 'Errno' not in err
+    assert 'Owner step: bin/wuwei state recover (' in err and 'host terminal' not in err
     assert path.read_text() == '{"cap": 3, "ite'
 
 
@@ -691,7 +694,7 @@ def test_hook_names_recovery_then_continues(workspace):
     payload = {'cwd': str(workspace), 'session_id': 'planner', 'stop_hook_active': False}
     code, reason = stop.check(payload)
     assert code == 2 and 'wuwei state recover' in reason
-    state.recover(confirm=lambda token: True)
+    state.recover(confirm=lambda token: None)
     assert 'recover' not in stop.check(payload)[1]
 
 
@@ -699,7 +702,7 @@ def test_recovered_event_names_the_recovery(workspace):
     from wuwei import state
     from wuwei.commands.status import attention
     corrupt(workspace)
-    digest = state.recover(confirm=lambda token: True)
+    digest = state.recover(confirm=lambda token: None)
     payload = events(workspace)[-1]['payload']
     assert payload['reason'] == 'state recovered from snapshot ' + digest[:12]
     assert 'state.json' in payload['error']

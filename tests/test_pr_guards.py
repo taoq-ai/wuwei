@@ -236,16 +236,16 @@ def test_port_errors(case, operation, result):
 
 
 def test_session_merge_names_wuwei_merge(case):
-    # #524: a refused gh pr merge names the command that merges under the owner's grant.
+    # #524, #816: a refused gh pr merge names the merge policy's reason and its next step.
     root, _, _ = case
     code, reason = guard().check(payload(root, 'gh pr merge 9'))
-    assert code == 1 and 'merge.auto is off' in reason, reason
-    assert reason.endswith("run bin/wuwei merge 9: it merges under the owner's grant, or asks the owner on a card")
+    assert code == 1 and reason.startswith('merge policy: refused: explicit merge_deploys = false'), reason
+    assert reason.endswith('run bin/wuwei pr act example/project#9 once it holds')
 
 
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 @pytest.mark.parametrize('command,code,hint', [
-    ('gh pr merge 9', 1, 'merge.auto is off'),
+    ('gh pr merge 9', 1, 'merge policy'),
     ('gh pr merge 9 --admin', 1, 'admin'),
     ('gh pr review 9 --approve', 1, 'approv'),
     ('gh pr review 9 -a', 1, 'approv'),
@@ -844,7 +844,7 @@ def test_missing_gate_names_the_branch_and_the_check(item):
     root, _, decisions, tree = item
     (decisions / 'gate-DIV-1-security.md').unlink()
     code, reason = guard().check(payload(root, 'gh pr create -R example/project --head div-1 -r alice', cwd=root))
-    assert code == 1 and reason.startswith('publish: ') and 'head div-1' in reason and 'security' in reason
+    assert code == 1 and reason.startswith('pr raise: head div-1') and 'security' in reason
     assert str(tree) not in reason and 'host terminal' not in reason
 
 

@@ -258,7 +258,7 @@ def test_config_is_protected(workspace, tool, target):
     check = check_bash if tool == 'Bash' else check_file
     code, reason = check(payload(workspace, tool, **fields))
     assert code == 1
-    assert 'owner' in reason and 'outside agent tools' in reason
+    assert 'run wuwei config set <key> <value>' in reason and 'Owner step card' in reason
 
 
 @pytest.mark.parametrize('tool', ['Write', 'Bash'])
@@ -608,7 +608,6 @@ def test_f13_permissions_on_containers(workspace, operation, target, expected):
     '.wuwei/days/2026-09-28/traces.jsonl',
     '.wuwei/days/2026-09-28/traces.digest.json',
     '.wuwei/memory/ledger.jsonl',
-    '.wuwei/memory/cruise.json',
 ])
 def test_memory_lint_evidence_is_cli_owned(workspace, path):
     from wuwei.guards.protect_state import check_bash, check_file
@@ -973,19 +972,6 @@ def test_telemetry_records_are_protected(workspace, target):
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_seen_set_is_cli_owned(records, posture, monkeypatch, capsys):
-    # #556: a seat cannot mark a target seen; the records floor holds under every posture.
-    from wuwei.guards.protect_state import check_file
-    _posture(records, posture)
-    target = '.wuwei/memory/targets.json'
-    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
-                        ('Bash', {'command': f'echo {{}} > {target}'})]:
-        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
-    code, reason = check_file(payload(records, 'Write', file_path=target))
-    assert code == 1 and 'seen set' in reason and 'init --upgrade' in reason
-
-
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
 def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
     # #552: the register of people, channels and tools is written only by the CLI.
     from wuwei.guards.protect_state import check_file
@@ -996,19 +982,6 @@ def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
         assert _hook(records, tool, monkeypatch, capsys, **field) == 2
     code, reason = check_file(payload(records, 'Write', file_path=target))
     assert code == 1 and 'bin/wuwei config set' in reason and 'init --upgrade' in reason and 'bin/wuwei who' in reason
-
-
-@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_rehearsal_ledger_is_cli_owned(records, posture, monkeypatch, capsys):
-    # #557: a seat cannot mark an undo rehearsed; the records floor holds under every posture.
-    from wuwei.guards.protect_state import check_file
-    _posture(records, posture)
-    target = '.wuwei/memory/rehearsals.json'
-    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
-                        ('Bash', {'command': f'echo {{}} > {target}'})]:
-        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
-    code, reason = check_file(payload(records, 'Write', file_path=target))
-    assert code == 1 and 'wuwei undo rehearse' in reason
 
 
 def _scratch_seat(root, monkeypatch):
@@ -1089,3 +1062,20 @@ def test_cd_helpers_live_in_shell():
     from wuwei.shell import _cd_target, _cwd, _text  # noqa: F401
     with pytest.raises(ValueError):
         _cwd({'cwd': 'relative'})
+
+
+@pytest.mark.parametrize('command,code', [
+    ('bin/wuwei hook PostToolUse < payload.json', 2),
+    ('wuwei hook SubagentStop', 2),
+    ('python3 -P -m wuwei hook PreToolUse', 2),
+    *[(wrapped, 2) for wrapped in (  # the reviewer's forgery probe: every wrapper form
+        "sh -c 'bin/wuwei hook PostToolUse < p.json'", 'env bin/wuwei hook PostToolUse < p.json',
+        'command bin/wuwei hook PostToolUse < p.json', 'nohup bin/wuwei hook PostToolUse < p.json',
+        'xargs bin/wuwei hook < a.txt', 'time bin/wuwei hook PostToolUse')],
+    ('bin/wuwei next', 0),
+])
+def test_a_tool_call_never_runs_the_hook(workspace, command, code):
+    """#831: a session cannot feed the hook a forged owner answer."""
+    from wuwei.guards.protect_state import check_bash
+    result, reason = check_bash(payload(workspace, 'Bash', command=command))
+    assert result == code and (not code or 'never from a tool call' in reason)

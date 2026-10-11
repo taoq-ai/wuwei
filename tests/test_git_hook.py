@@ -86,18 +86,12 @@ def test_native_push_missing_evidence_refuses_only_under_strict(workspace_case, 
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 1
 
 
-@pytest.mark.parametrize('posture,granted,code', [
-    ('observe', False, 0), ('guarded', False, 0), ('strict', False, 1),
-    ('observe', True, 0), ('guarded', True, 0), ('strict', True, 1)])
-def test_native_tag_push_is_refused_only_under_strict(workspace_case, monkeypatch, capsys,
-                                                                    posture, granted, code):
-    # #530: a tag push is a release; below strict the deploy guard's release card gates it.
+@pytest.mark.parametrize('posture,code', [('observe', 0), ('guarded', 0), ('strict', 1)])
+def test_native_tag_push_is_refused_only_under_strict(workspace_case, monkeypatch, capsys, posture, code):
+    # #530, #816: a tag push is a release; below strict the deploy guard's Owner step card gates it.
     root, _ = workspace_case
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write(f'[security]\nposture = "{posture}"\n')
-        if granted:
-            stream.write('[grants]\nstanding = [{action = "release", target = "repo:example/project", '
-                         'scope = "always", decision = "D-9", date = "2026-09-28"}]\n')
     updates = f'refs/tags/v1 {OLD} refs/tags/v1 {"0"*40}\n'
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == code
     assert code == 0 or 'release' in capsys.readouterr().err

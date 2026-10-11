@@ -926,22 +926,12 @@ def test_missing_evidence_outside_guarded(item_case, posture):
     assert guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1')) == (1, MISSING)
 
 
-def test_missing_evidence_is_a_card_under_guarded(item_case, monkeypatch):
-    from types import SimpleNamespace
-    from wuwei import integrity, state
-    from wuwei.commands import decision
+def test_missing_evidence_refuses_under_guarded(item_case):
+    # #816: no card; the seat runs the named check, the hook levels it under the publish area.
     root, _, tree = item_case
     set_fast_checks(root, {})
-    command = 'git push origin HEAD:refs/heads/div-1'
-    code, reason = guard().check(item_payload(tree, command))
-    assert code == 1 and reason.startswith('publish: ') and 'bin/wuwei build check DIV-1' in reason
-    assert 'host terminal' not in reason and 'decision show D-1' in reason
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
-    assert decision.owner_outcome(SimpleNamespace(id='D-1', option='Allow once'), root=root) == (0, 'once')
-    code, reason = guard().check(item_payload(tree, f'{command} && git commit --no-verify -m x'))
-    assert code == 1 and state.read_state(root)['grants']['D-1']['spent'] is False
-    assert guard().check(item_payload(tree, command)) == (0, '')
-    assert state.read_state(root)['grants']['D-1']['spent'] is True
+    assert guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1')) == (1, MISSING)
+    assert not list((root / '.wuwei/days').glob('*/decisions/D-*.md'))
 
 
 @pytest.mark.parametrize('command', ['cd worktrees/DIV-1 && git push origin HEAD:refs/heads/div-1',

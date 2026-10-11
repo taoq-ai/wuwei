@@ -18,7 +18,7 @@ def _settings(config, ref):
     repo = ref.split('#')[0]
     settings = next((row for row in config['repos'] if row['name'] == repo), None)
     if settings is None:
-        raise ValueError('PR repository is not configured; the owner adds it with bin/wuwei config add-repo in a host terminal')
+        raise ValueError('PR repository is not configured; the owner adds it with bin/wuwei config add-repo')
     return settings
 
 
@@ -86,7 +86,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
     source = str(source_path or (root / repo['path']).resolve())
     windows = config['shepherd']['author_windows_days']
     if not windows or windows != sorted(set(windows)):
-        raise ValueError('authorship windows must increase; the owner sets increasing shepherd.author_windows_days with bin/wuwei config set in a host terminal')
+        raise ValueError('authorship windows must increase; the owner sets increasing shepherd.author_windows_days with bin/wuwei config set')
     for days in (*windows, 0):
         counts = tally(merge.read(vcs.authorship, source, branch, paths, days, root=root))
         ranked = selected = sorted(counts, key=lambda login: (-counts[login], login))
@@ -128,7 +128,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
         if login in emails:
             verified = merge.read(host.author_login, repo['name'], emails[login], root=root)
             if verified['login'] != login:
-                raise ValueError('configured reviewer login differs from code host; the owner fixes its login under shepherd.authors with bin/wuwei setup in a host terminal')
+                raise ValueError('configured reviewer login differs from code host; the owner fixes its login with bin/wuwei config set shepherd.authors')
     return selected
 
 
@@ -212,7 +212,7 @@ def _mentions(config, reviewers):
     by_login = {row['login']: row['mention'] for row in config['shepherd']['authors'].values()}
     if any(login not in by_login or not re.fullmatch(r'[A-Z0-9]+', by_login[login])
            for login in reviewers):
-        raise ValueError('reviewer needs a configured chat mention; the owner adds its mention under shepherd.authors with bin/wuwei setup in a host terminal')
+        raise ValueError('reviewer needs a configured chat mention; the owner adds its mention with bin/wuwei config set shepherd.authors')
     return ' '.join('<@' + by_login[login] + '>' for login in reviewers)
 
 
@@ -250,7 +250,7 @@ def post_review_request(root, ref):
             return gate.exit
         channel = config['shepherd']['review_channel']
         if not re.fullmatch(r'[A-Z0-9]+', channel):
-            raise ValueError('shepherd.review_channel is required; the owner sets it with bin/wuwei config set in a host terminal')
+            raise ValueError('shepherd.review_channel is required; the owner sets it with bin/wuwei config set')
         pr = gate.data['pr']
         text = f'PR #{pr["number"]} ready for review: <{pr["url"]}|#{pr["number"]}> {_mentions(config, reviewers)}'
         chat = registry.load('chat', config)
@@ -291,7 +291,7 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
                       'PR item must be in the approved plan')
         merge.require(data['items'][item].get('pr') is None, 'item already links another PR')
         if config['adapters']['code_host'] == 'none':
-            raise ValueError('code_host adapter is none; configure github; the owner sets adapters.code_host to github with bin/wuwei config set in a host terminal')
+            raise ValueError('code_host adapter is none; configure github; the owner sets adapters.code_host to github with bin/wuwei config set')
         tree = data['items'][item].get('worktree')
         if not isinstance(tree, str) or not tree:
             raise ValueError('item worktree is not recorded; write a brief with --worktree')
@@ -306,15 +306,16 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
-        use = None
-        if code == 1:  # #530: a warning, the owner's card or (strict) the refusal
-            import shlex
-            from wuwei import grants, sessions
-            argv = ['bin/wuwei', 'pr', 'raise', repo_name, '--item', item]
-            payload = {'session_id': sessions.current() or '', 'cwd': str(repo_path),
-                       'tool_input': {'command': shlex.join(argv)}}
-            code, reason = grants.evidence(payload, root, config, argv, reason, repo_name, record=True)
-            use = reason if callable(reason) else None
+        posture, levels = workspace.posture(config)
+        if code == 1 and levels['publish'] != 'block':  # #530, #816: off passes, warn records and warns
+            if levels['publish'] == 'warn':
+                from wuwei import sessions
+                state.append_event('guard.would_refuse', {
+                    'guard': 'pr', 'area': 'publish', 'level': 'warn', 'posture': posture, 'reason': reason,
+                    'exit': 1, 'target': f'bin/wuwei pr raise {repo_name} --item {item}',
+                    'session': sessions.current() or '', 'item': item}, root)
+                print(f'warning: {reason}', file=sys.stderr)
+            code = 0
         if code:
             print(reason)
             return code
@@ -360,8 +361,6 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers, draft=draft)
         if hold:
             merge.read(host.label, ref, merge.LABEL, True, root=root)
-        if use:
-            use()
         moved = dispatch.tracker_call(item, 'in_review', root)
         if config['adapters']['tracker'] != 'none' and moved.exit:  # #670: name why
             print(f'tracker: {moved.reason}', file=sys.stderr)
@@ -505,8 +504,7 @@ def overnight(root):
                 elif current == 'merged':
                     outcome = 'merged'
                 elif current == 'approved':
-                    # ponytail: check only, the morning merges; merge.execute comes back here once
-                    # #524 (merge grants) is on main.
+                    # ponytail: check only, the morning merges; merge.execute comes back here.
                     result = merge.check(ref, root)
                     outcome = ('queued', 'queued', 'unmeasured')[result.exit]
                     reason = result.reason or 'merge cleared by policy; merge waits for the morning (#524)'

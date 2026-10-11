@@ -52,7 +52,8 @@ def test_scripted_day(day):
     assert day.data['raised_prs'] == [day.ref]
     assert day.data['items']['A']['pr'] == day.ref
     from wuwei import merge
-    assert merge.item_evidence(day.root, day.ref, day.data) == 'A'
+    held = []
+    assert merge.item_evidence(day.root, day.ref, day.data, held) == 'A' and held == []
     assert day.data['pr_reviewers'][day.ref] == ['reviewer', 'lead']
     assert len([call for call in day.host.calls if call[0] == 'create_pr']) == 1
     assert any(call[0] == 'request_reviewers' for call in day.host.calls)
@@ -279,8 +280,8 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
     denied = json.loads(output)['hookSpecificOutput']
     assert denied['permissionDecision'] == 'deny'
     assert 'posture: records = block (floor; no setting lowers it)' in denied['permissionDecisionReason']
-    report = day.run('shadow', 'report')
-    assert 'commit_push: 1' in report
+    from wuwei import report
+    assert report.shadow_lines([day.directory])[0].startswith('- commit_push: 1 ')
     day.run('integrity', 'check')
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)

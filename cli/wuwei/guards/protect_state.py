@@ -73,7 +73,7 @@ def _protected_name(path, directories=False):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('metrics',)):
             return True
-        if tail in (('memory', 'voice.md'), ('memory', 'goals.md'), ('memory', 'cruise.json')):
+        if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
         if tail and tail[0] == 'archive':
             return True
@@ -86,9 +86,9 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
             return True
-        if tail in (('memory', 'ledger.jsonl'), ('memory', 'targets.json'), ('memory', 'rehearsals.json')):
+        if tail == ('memory', 'ledger.jsonl'):
             return True
         if len(tail) == 2 and tail[0] == 'charters' and tail[1].endswith('.md'):
             return True
@@ -102,8 +102,8 @@ def _hint(path):
     parts = tuple(part.casefold() for part in path.parts)
     tail = parts[len(parts) - parts[::-1].index('.wuwei'):] if '.wuwei' in parts else ()
     if tail == ('config.toml',):
-        return ('config.toml is protected: the owner runs wuwei config set <key> <value> '
-                'in a host terminal, outside agent tools.')
+        return ('config.toml is protected: run wuwei config set <key> <value>; it asks the owner '
+                'on its Owner step card.')
     if tail[:1] == ('days',) and tail[-1:] in (('state.json',), ('state.snapshot.json',)):
         return ('Day state is protected: change it with the wuwei CLI, wuwei state set '
                 '<path> <value> or wuwei state transition <item> <phase>.')
@@ -119,15 +119,9 @@ def _hint(path):
     if tail == ('graph.json',):
         return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
                 'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')
-    if tail == ('memory', 'rehearsals.json'):
-        return ('rehearsals.json is the undo rehearsal ledger (design 5.8 Measured reversibility): '
-                'only wuwei undo rehearse and wuwei undo write it.')
-    if tail == ('memory', 'targets.json'):
-        return ('targets.json is the seen set (design 5.8.1 Novelty): the CLI writes it from owner '
-                'answers, drafts approve and init --upgrade.')
     if tail[:1] == ('integrity',):
-        return ('Integrity records are protected: the owner runs wuwei integrity reconfirm '
-                'in a host terminal, outside agent tools.')
+        return ('Integrity records are protected: run wuwei integrity reconfirm; it asks the owner '
+                'on its Owner step card.')
     return _STATE_HINT
 
 
@@ -343,6 +337,9 @@ def check_bash(payload):
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
+            if root is not None and (_wuwei_action(command.argv) or [''])[0] == 'hook':  # #831
+                return 2, ('wuwei hook runs only from Claude Code hooks, never from a tool call; '
+                           'run the command the hook guards instead')
             # #349: a script run with no state operand passes; -m json.tool with one file reads.
             # #643: so does a python -c snippet with no write-like token; a refusal names it.
             if (re.fullmatch(_INTERPRETER, program)

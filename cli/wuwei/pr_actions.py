@@ -104,7 +104,7 @@ ACTIONS = {
     'review_stale': ('re-request review, then post in the review channel',
                      {'steps': ['request_reviewers', 'post_review_channel']}),
     'approved': ('wuwei merge or merge decision',
-                 {'steps': ['wuwei merge'], 'fallback': 'merge_decision'}),
+                 {'steps': ['wuwei merge'], 'fallback': 'owner_decision'}),
     'closed': ('owner decision for closed unmerged PR', {'steps': ['owner_decision']}),
 }
 ACTIONS['threads_unanswered'] = ACTIONS['changes_requested']
@@ -248,9 +248,6 @@ def observe(root, host, ref, config, measured):
     for name in merged:  # #647: the item's scratch goes with the confirmed merge
         # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
         shutil.rmtree(root / workspace.SCRATCH / name, ignore_errors=True)
-    if current == 'merged':  # #729: a merge card about this PR is now moot
-        from wuwei import grants
-        grants.close_merged(root, ref, measured['pr'])
     return row
 
 
@@ -326,7 +323,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
-            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
+            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set')
         result = vcs.rebase(str(tree), base_sha, root=root)
         if isinstance(result, registry.Result) and result.exit == 1:
             print(result.reason or 'rebase did not complete')
@@ -576,7 +573,7 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
         from wuwei import merge
         result = merge.execute(ref, root=root)
         if result.exit:
-            print(f'{ref}: {result.reason}')  # #524: the card, the owner's command or the missing condition
+            print(f'{ref}: {result.reason}')  # #816: the wait, or the owner's Owner step card
         return result.exit
     if row['state'] == 'review_stale':
         from wuwei import shepherd

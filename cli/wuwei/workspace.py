@@ -56,7 +56,8 @@ TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
 # A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
 RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
-           'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm')
+           'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
+           'decisions.cruise', 'grants', 'merge.default_tier')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -87,14 +88,7 @@ SCHEMA = {
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
-    # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
-    # #530: "today" (the owner's autonomous answer) lets a merge on a configured repository through below strict.
-    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today")),
-              "owner_paths": [(str, None)]},  # #675: globs only the owner merges, whatever the grant
-    # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
-    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
-                             "target": (str, None), "scope": (str, "always", ("always",)),
-                             "decision": (str, None), "date": (str, None)}]},
+    "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
@@ -155,14 +149,6 @@ SCHEMA = {
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
     "decisions": {"wait_hours": (int, 24, 1),
-                  "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
-                             "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
-                             "promote_agreements": (int, 10, 1), "promote_days": (int, 14, 1),
-                             "shadow_days": (int, 5, 1), "shadow_min": (int, 5, 1),
-                             "budget_share": (float, 0.1), "budget_window_days": (int, 14, 1),
-                             "burn_warn": (float, 2.0),
-                             "calibration_threshold": (float, 0.15), "calibration_min": (int, 10, 1),
-                             "levels": {"*": (int, None, 0, 3)}},
                   "lenses": {"*": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
@@ -474,7 +460,7 @@ def zone(config):
     try:
         return ZoneInfo(name)
     except (KeyError, ValueError):
-        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone in a host terminal') from None
+        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone') from None
 
 
 def verbosity(config, surface):
@@ -583,11 +569,11 @@ def _validate(value, schema, path, raw, unknown=None):
         line = _key_line(raw, path) or _key_line(raw, path[:-1])
         location = f' at line {line}' if line is not None else ''
         key = _dotted(path)
-        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value> in a host terminal')
+        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value>')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value>")
     if isinstance(schema, dict):
         for name in value:
             if name not in schema and "*" not in schema:
@@ -621,7 +607,7 @@ def _validate(value, schema, path, raw, unknown=None):
         else:
             return value
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value>")
     return value
 
 
@@ -777,7 +763,7 @@ def load_config(root=None, *, raw=None, warnings=None):
                 re.compile(row['tool'])
             except re.error:
                 raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
-                                  'with bin/wuwei config set in a host terminal') from None
+                                  'with bin/wuwei config set') from None
         since = config['guards']['shadow_since']
         if since:
             try:
@@ -785,35 +771,15 @@ def load_config(root=None, *, raw=None, warnings=None):
                     raise ValueError
                 date.fromisoformat(since)
             except ValueError:
-                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since in a host terminal') from None
+                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since') from None
         for area, floor in FLOORS.items():
             value = config['security']['areas'][area]
             if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
                 raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
                                   f'{area} always blocks, remove the override')
-        if not 0 < config['decisions']['cruise']['margin'] <= 1:
-            raise ConfigError('decisions.cruise.margin: expected a number above 0 and at most 1; the owner fixes it with bin/wuwei config set decisions.cruise.margin <value> in a host terminal')
-        if not 0 < config['decisions']['cruise']['budget_share'] <= 0.5:
-            raise ConfigError('decisions.cruise.budget_share: expected a number above 0 and at most 0.5; the owner fixes it with bin/wuwei config set decisions.cruise.budget_share <value> in a host terminal')
-        if not 0 < config['decisions']['cruise']['calibration_threshold'] < 1:
-            raise ConfigError('decisions.cruise.calibration_threshold: expected a number above 0 and below 1; the owner fixes it with bin/wuwei config set decisions.cruise.calibration_threshold <value> in a host terminal')
-        for name, value in config['decisions']['cruise']['levels'].items():
-            from wuwei.decision import CLASSES
-            if name not in CLASSES:
-                raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
-                                  + ', '.join(CLASSES))
-            if value > CLASSES[name][1]:
-                raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}; the owner lowers it with bin/wuwei config set in a host terminal')
         for name in config['decisions']['lenses']:
             if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
-                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set in a host terminal')
-        for index, line in enumerate(config['grants']['standing']):
-            if not (re.fullmatch(r'repo:[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+', line['target'])
-                    and re.fullmatch(r'D-[1-9][0-9]*', line['decision'])
-                    and re.fullmatch(r'\d{4}-\d{2}-\d{2}', line['date'])):
-                raise ConfigError(f'grants.standing.{index}: expected target repo:<org>/<name>, decision '
-                                  f'D-n and date YYYY-MM-DD; the owner fixes it with bin/wuwei grants '
-                                  f'revoke {index + 1} in a host terminal')
+                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
@@ -828,7 +794,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if repo['name'] in repo_names:
                 line = _key_line(raw, ('repos', index, 'name'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_names.add(repo['name'])
             try:
                 resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
@@ -837,7 +803,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if resolved in repo_paths:
                 line = _key_line(raw, ('repos', index, 'path'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_paths.add(resolved)
 
         for kind, name in config['adapters'].items():

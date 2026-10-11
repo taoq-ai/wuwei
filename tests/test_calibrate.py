@@ -613,36 +613,32 @@ def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     assert (workspace_root / '.wuwei/config.toml').read_text() == config
 
 
-def test_config_promote_declined_or_without_terminal(workspace_root, capsys):
-    from wuwei import integrity
-
+def test_config_promote_declined_or_without_an_answer(workspace_root, capsys):
     raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
-
-    def refuse(digest, **kw):
-        raise OSError(integrity.HOST_TERMINAL)
 
     def edit(digest, **kw):
         (workspace_root / '.wuwei/config.toml').write_text(raw + '\ncap = 2\n')
         return True
     assert promote(workspace_root, lambda digest, **kw: False) == 1
-    assert promote(workspace_root, refuse) == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert promote(workspace_root, None) == 1  # #831: no answer on its Owner step card
+    assert 'Owner step: bin/wuwei config promote (' in capsys.readouterr().err
     assert (workspace_root / '.wuwei/config.toml').read_text() == raw
     assert promote(workspace_root, edit) == 2
     assert 'cap = 2' in (workspace_root / '.wuwei/config.toml').read_text()
     assert not (workspace_root / '.wuwei/calibration.json').exists()
 
 
-def test_config_promote_through_cli_needs_a_host_terminal(workspace_root, monkeypatch, capsys):
+def test_config_promote_through_cli_asks_the_owner_step_card(workspace_root, monkeypatch, capsys):
     import builtins
-    from wuwei import integrity
+    from fakes import owner
 
     configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
     real = builtins.open
-    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: (_ for _ in ()).throw(OSError('no tty'))
+    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: pytest.fail('opened the terminal')
                         if path == '/dev/tty' else real(path, *a, **k))
-    assert main('config', 'promote') == 2
-    assert integrity.HOST_TERMINAL in capsys.readouterr().err
+    assert main('config', 'promote') == 1
+    owner.answer_card(workspace_root, capsys.readouterr().err)
+    assert main('config', 'promote') == 0, capsys.readouterr().err
 
 
 def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
@@ -666,10 +662,11 @@ def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
     ports['checks'] = SimpleNamespace(run=lambda *a, **k: pytest.fail('ran a repository command'))
     assert promote(workspace_root, lambda digest, **kw: True) == 0
     real = builtins.open
-    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: (_ for _ in ()).throw(OSError('no tty'))
+    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: pytest.fail('opened the terminal')
                         if path == '/dev/tty' else real(path, *a, **k))
     measured(monkeypatch, ports, [0.0, 3.0])
-    assert main('config', 'promote', '--measure') == 2
+    assert main('config', 'promote', '--measure') == 1  # #831: its Owner step card
+    assert 'Owner step: bin/wuwei config promote --measure (' in capsys.readouterr().err
 
 
 def drift_events(root):
@@ -748,27 +745,21 @@ def nested(dotted, value):
     return tree
 
 
-ON = '[decisions.cruise]\nenabled = true\n'
-LEVEL1 = ON + '[decisions.cruise.levels]\napproach = 1\n'
 REVIEWED = [
-    ('repos.merge.auto', True, True, ''), ('decisions.cruise.levels.approach', 2, True, LEVEL1),
-    ('decisions.cruise.levels.defer', 1, True, ON),
-    ('decisions.cruise.enabled', True, True, '[decisions.cruise]\nenabled = false\n'),
+    ('repos.merge.auto', True, True, ''),
     ('repos.gates.floor', 'light', True, ''),
     ('adapters.scanner', 'ziran', True, ''), ('calendar.url', 'https://x.test/c.ics', True, ''),
     ('watch.ping_url', 'https://x.test/p', True, ''), ('codex.command', ['node', 'x.mjs'], True, ''),
     ('owner.name', 'Pat', True, ''), ('repos.identity.email', 'pat@x.test', True, ''),
     ('shepherd.review_channel', 'C1', True, ''), ('guards.mode', 'shadow', True, ''),
     ('security.posture', 'observe', True, ''), ('security.areas.mcp', 'off', True, ''),
-    ('decisions.cruise.levels.approach', 1, False, ON), ('repos.gates.floor', 'full', False, ''),
+    ('repos.gates.floor', 'full', False, ''),
     ('repos.merge.auto', False, False, ''), ('repos.fast_checks', ['make test'], False, ''),
     ('deploy.deny', ['twine upload*'], False, ''),
     ('gates.second_opinion', 'codex:gpt-5', True, ''), ('gates.second_opinion', 'off', False, ''),
     ('telemetry.share', 'anonymous', True, ''), ('telemetry.otlp.endpoint', 'https://x.test', True, ''),
     ('autonomy.mode', 'autonomous', True, '[autonomy]\nmode = "supervised"\n'),
     ('autonomy.mode', 'supervised', False, ''),
-    ('decisions.cruise.margin', 0.1, True, ''), ('decisions.cruise.margin', 0.3, False, ''),
-    ('decisions.cruise.max_per_day', 40, True, ''), ('decisions.cruise.max_per_day', 5, False, ''),
 ]
 
 
@@ -1298,13 +1289,12 @@ def test_detector_refuses_a_chained_ci_run_line(tmp_path):
 
 # #600: the fast-checks record calibrate writes for a repository with none configured.
 
-def test_grants_record_defaults_are_unchanged():
-    from wuwei import grants
+def test_record_defaults_are_unchanged():
     args = ('Q?', 'C.', [('A', 'Go', 'R.', 'C.', 9), ('B', 'Keep it', 'R.', 'C.', 1)], 'Value', 'A',
-            'Value decided it.', 'workspace', 'It fails.')
-    text = grants._record(*args)
+            'Value decided it.', 'workspace', 'It fails.', 'When it changes.')
+    text = calibrate._record(*args)
     assert 'Class: other\n' in text and 'Confidence: medium\nReversibility: one-way\n' in text
-    assert grants._record(*args, cls='other', confidence='medium', door='one-way', extra='') == text
+    assert calibrate._record(*args, cls='other', confidence='medium', door='one-way', extra='') == text
     assert '| Value | 10 | 9 | 1 |\nRecommendation: A\n' in text
 
 
@@ -1313,7 +1303,7 @@ def test_grants_record_defaults_are_unchanged():
     ([], [], ['None', 'Defer'], calibrate.NOTHING),
 ])
 def test_checks_text_is_a_routine_value_card(commands, sources, titles, reason):
-    from wuwei import decision, undo
+    from wuwei import decision
     text = calibrate.checks_text(0, 'acme/paper', commands, sources)
     fields, scores = decision.evaluate(text, decision.LENSES)
     assert fields['Question'] == 'Which fast checks gate every change in repo:acme/paper?'
@@ -1321,7 +1311,7 @@ def test_checks_text_is_a_routine_value_card(commands, sources, titles, reason):
     assert (fields['Class'], fields['Reversibility'], fields['Confidence']) == ('approach', 'two-way', 'high')
     assert fields['Recommendation'] == 'A' and reason in fields['Context']
     assert decision.config_keys(fields)['A'] == ('repos.0.fast_checks', commands)
-    assert fields['Previous'] == 'repos.0.fast_checks = []' and undo.config_write(fields)
+    assert fields['Previous'] == 'repos.0.fast_checks = []'
     assert decision.cisr(fields, scores) == 'Routine'
 
 

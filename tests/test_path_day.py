@@ -196,7 +196,8 @@ def approve_at_head(day):
 @pytest.mark.parametrize('choice', ['Autonomous', 'Supervised'])
 def test_posture_day(tmp_path, monkeypatch, choice):
     # #530 E: a whole day under the setup answer. Under autonomous the owner answers the gate and
-    # one client draft; under supervised every owner-only action asks on a card.
+    # one client draft; under supervised every owner-only action asks on a card. #816: the
+    # repository's merge policy merges under both answers.
     from fakes.day import Day
     from test_decision_classes import LEAD, record
     from wuwei import interview, workspace
@@ -207,7 +208,8 @@ def test_posture_day(tmp_path, monkeypatch, choice):
     day.runtime.spec = not autonomous
     path = day.root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('fast_checks = ["demo-check"]\n',
-                                             'fast_checks = ["demo-check"]\nmerge_deploys = false\n')
+                                             'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
+                                             'merge = {auto = true, soak_minutes = 0}\n')
                     + '[outbound]\nchannel_classes = {C0CLIENT = "client"}\n[deploy]\nworkflows = ["deploy.yml"]\n')
 
     def card(day, action):
@@ -255,9 +257,13 @@ def test_posture_day(tmp_path, monkeypatch, choice):
             day.host.results['pr'].data.update(state='closed', merged=True,
                                                merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
             assert call(day, ['pr', 'state'])[0] == 0
-            if not autonomous:  # a deploy is a publish target: a card under both answers (I18)
-                steps.add(held(day, planner(tool_name='Bash', tool_input={
-                    'command': 'gh workflow run deploy.yml -R acme/widget'}), 'Allow once'))
+            if not autonomous:  # a deploy is a publish target: its Owner step card (I18, #816)
+                from fakes.owner import answer_card
+                deploy = planner(tool_name='Bash', tool_input={'command': 'gh workflow run deploy.yml -R acme/widget'})
+                refused = json.loads(day.hook('PreToolUse', 2, **deploy))['hookSpecificOutput']
+                answer_card(day.root, refused['permissionDecisionReason'], session='planner')
+                day.hook('PreToolUse', 0, **deploy)
+                steps.add('deployed')
     walk(day, card, after)
 
     data, events = day.data, day.events
@@ -268,21 +274,18 @@ def test_posture_day(tmp_path, monkeypatch, choice):
     for row in events:
         if row['kind'] == 'hook.refusal':
             reason = row['payload']['reason']
-            assert 'specify first' in reason or re.search(r'bin/wuwei (?:decision show D-|drafts show draft-)', reason), reason
-    grants = {(row['kind'], row['payload'].get('action')) for row in events if row['kind'].startswith('grant.')}
+            assert 'specify first' in reason or re.search(
+                r'bin/wuwei (?:decision show D-|drafts show draft-)|Owner step: ', reason), reason
+    assert not any(row['kind'].startswith('grant.') for row in events)
     report = (day.directory / 'report.md').read_text()
     if autonomous:
-        extra = [f"{ident}: {row['cisr']}, grant {data.get('grants', {}).get(ident, {}).get('action')}"
-                 for ident, row in data.get('decision_routes', {}).items()]
+        extra = [f"{ident}: {row['cisr']}" for ident, row in data.get('decision_routes', {}).items()]
         assert not extra, extra
         assert sorted({state for state, *_ in answered}) == ['calibrate', 'gate']
         assert [(state, header) for state, _, header, _ in answered if state == 'calibrate'] == [('calibrate', 'Autonomy')]
         assert [row['destination'] for row in data['drafts'].values()] == ['C0CLIENT'], data['drafts']
         assert {name: verdict for name, (_, verdict) in routes.items()} == dict.fromkeys(
             ('routine', 'consequential', 'exploratory'), 'mandate')
-        used = [row['payload'] for row in events if row['kind'] == 'grant.used']
-        assert [(row['decision'], row['action']) for row in used] == [('merge.default_tier', 'merge')]
-        assert 'grant.asked' not in kinds
         mandate = report[report.index('## Taken under mandate'):]
         mandate = mandate[:mandate.index('\n## ', 3)]
         lines = [line for line in mandate.splitlines() if line.startswith('- ')]
@@ -290,13 +293,12 @@ def test_posture_day(tmp_path, monkeypatch, choice):
         for ident, _ in routes.values():
             line = next(line for line in lines if line.startswith(f'- {ident}'))
             assert f'decisions/{ident}.md' in line and f'reverse: bin/wuwei decide {ident}' in line, line
-        assert 'merge' in report[report.index('## Grants'):].split('\n## ', 1)[0]
+        assert '## Grants' not in report
     else:
-        assert {('grant.asked', 'merge'), ('grant.asked', 'deploy')} <= grants, grants
         cisr = {row.get('cisr') for row in data['decision_routes'].values()}
         assert {'Consequential', 'Exploratory'} <= cisr, data['decision_routes']
         assert any(row['destination'] == 'C0CLIENT' for row in data['drafts'].values())
-        assert {'merged'} <= steps and any(step.startswith('D-') for step in steps)
+        assert {'merged', 'deployed'} <= steps
     assert time.monotonic() - started < 60
 
 

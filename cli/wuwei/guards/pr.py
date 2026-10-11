@@ -29,9 +29,7 @@ def merge_check(repo, pr, cwd, root, config):
     if pr is None:
         return 1, 'merge policy requires an explicit PR; use wuwei merge <pr>'
     result = merge.check(pr, root, cwd=cwd, repo=repo)
-    if result.exit == 1:  # #524: wuwei merge is the one way through, under a grant or a card
-        return 1, f"{result.reason}; run bin/wuwei merge {pr}: it merges under the owner's grant, or asks the owner on a card"
-    if result.exit:
+    if result.exit:  # #816: the reason names the wait, or wuwei merge and its Owner step card
         return result.exit, result.reason
     return 1, 'merge policy passed; use wuwei merge <pr> to record evidence and monitor the merge'
 
@@ -211,8 +209,8 @@ def _recorded(root, config, *, path=None, repo=None, branch=None):
     return None
 
 
-def create_check(args, command, cwd, root, config, payload):
-    from wuwei import grants, merge
+def create_check(args, command, cwd, root, config):
+    from wuwei import merge
     operands, found = shell.operands(args, {
         '--reviewer', '-r', '--title', '-t', '--body', '-b', '--body-file', '-F',
         '--base', '-B', '--head', '-H', '--repo', '-R', '--assignee', '-a',
@@ -261,7 +259,7 @@ def create_check(args, command, cwd, root, config, payload):
         return 0, ''
     if heads:
         reason = f'head {heads[-1]}: {reason}'
-    return grants.evidence(payload, root, config, command.argv, reason, repo)
+    return code, reason  # #816: the hook levels it under the publish area
 
 
 def api_check(args, cwd, root, config):
@@ -306,7 +304,7 @@ def api_check(args, cwd, root, config):
             return 1, 'push to an environment branch is refused; deploying is an owner action; run git push origin HEAD:refs/heads/<branch>'
         repo = next((repo for repo in config['repos'] if repo['name'].casefold() == match[1].casefold()), None)
         if repo is None:
-            raise ValueError('API repository default branch is unmeasured; the owner adds the repository with bin/wuwei config add-repo in a host terminal')
+            raise ValueError('API repository default branch is unmeasured; the owner adds the repository with bin/wuwei config add-repo')
         if match[2] == repo['default_branch']:
             return 1, 'push to the default branch is refused; use git push origin HEAD:refs/heads/<branch> for the item branch'
     if re.fullmatch(r'repos/[^/]+/[^/]+/pulls/\d+/reviews(?:/.*)?', endpoint, re.I):
@@ -320,7 +318,7 @@ def api_check(args, cwd, root, config):
     return 0, ''
 
 
-def action(command, cwd, root, config, isolated, payload):
+def action(command, cwd, root, config, isolated):
     from wuwei.security import gh_outbound
     args = command.argv[1:]
     if args in (['--version'], ['--help'], ['-h']):
@@ -365,7 +363,7 @@ def action(command, cwd, root, config, isolated, payload):
         if not isolated:  # owner-only: a chained create must not carry a later owner verb
             raise ValueError('run PR create separately without redirections to keep HEAD evidence current')
         try:
-            code, reason = create_check(args, command, cwd, root, config, payload)
+            code, reason = create_check(args, command, cwd, root, config)
         except ValueError as exc:
             code, reason = 2, str(exc)
         if code and not reason.startswith('publish: ') and reason != NO_REVIEWER:
@@ -453,7 +451,6 @@ def check(payload):
             return found
         if script_relevant:
             raise ValueError('opaque script command; run gh as a plain command')
-        used = []
         for index, command in enumerate(commands):
             if not command.argv:
                 continue
@@ -466,13 +463,9 @@ def check(payload):
             if program == 'gh':
                 for directory, (root, config) in contexts.items():
                     result = action(command, directory, root, config,
-                                    len(commands) == 1 and not command.writes, payload)
+                                    len(commands) == 1 and not command.writes)
                     if result[0]:
                         return result
-                    if callable(result[1]):
-                        used.append(result[1])
-        for use in used:  # #478: a grant is spent only when the whole call runs
-            use()
         return 0, ''
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RuntimeError) as exc:
         return 2, f'PR guard could not run: {exc}'

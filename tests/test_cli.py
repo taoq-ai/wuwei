@@ -324,3 +324,21 @@ def test_cockpit_is_gone(capsys):
         assert exc.value.code == 2
     assert 'mcpServers' not in json.loads((ROOT / '.claude-plugin/plugin.json').read_text())
 
+
+def test_undo_is_gone():
+    # #815: the undo door, its rehearsal and decision undo are deleted.
+    from wuwei.__main__ import main
+    for argv in (['undo', 'D-1'], ['decision', 'undo', 'D-1']):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 2
+
+
+
+def test_grants_are_gone():
+    # #816: the merge policy alone decides a merge; no grants command.
+    from wuwei.__main__ import main
+    for argv in (['grants'], ['grants', 'revoke', '1']):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 2

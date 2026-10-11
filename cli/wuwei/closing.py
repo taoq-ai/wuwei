@@ -16,12 +16,12 @@ def _settings(root):
     config = workspace.load_config(root)
     settings = config['retro']
     if not settings['charter_paths']:
-        raise ValueError('retro.charter_paths must not be empty; the owner lists the charter folders the retro may change with bin/wuwei config set retro.charter_paths in a host terminal')
+        raise ValueError('retro.charter_paths must not be empty; the owner lists the charter folders the retro may change with bin/wuwei config set retro.charter_paths')
     for raw in [*settings['charter_paths'], settings['changelog']]:
         path = Path(raw)
         if (path.is_absolute() or '..' in path.parts or raw.startswith(('-', ':'))
                 or any(c in raw for c in '*?[]\n\r\0')):
-            raise ValueError('retro paths must be literal repository-relative paths; the owner sets plain relative paths with bin/wuwei config set in a host terminal')
+            raise ValueError('retro paths must be literal repository-relative paths; the owner sets plain relative paths with bin/wuwei config set')
     return settings, registry.load('vcs', config), str((root / '.wuwei').resolve())
 
 
@@ -191,7 +191,7 @@ def unresolved(root, rows, open_items=None, notes=None):
                         findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
                 elif identifier in outcomes:
                     record = outcomes[identifier]
-                    if (fields['Decided-by'] == record.get('rule', record['decided_by'])
+                    if (fields['Decided-by'] == record['decided_by']
                             and record['decided_by'] in ('seat', 'mandate')
                             and record.get('item_disposition') == fields['Outcome']):
                         dispositions[fields['Outcome']] = fields['Context'].partition('Reason: ')[2]

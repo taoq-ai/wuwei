@@ -537,8 +537,25 @@ def test_quoted_workflow_name_is_a_deploy_on_its_target(workspace):
         '[deploy]\nworkflows = ["deploy-production.yml"]\n')
     code, reason = check(workspace, 'gh workflow run "Deploy Production" -R fixture-org/app --ref main')
     assert code == 1 and reason.startswith('publish: ')
-    assert 'fixture-org/app' in reason and 'is a deploy (deploy.workflows)' in reason
+    assert 'fixture-org/app' in reason and 'deploy.workflows, owner-only' in reason
     assert 'resolution' not in reason
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_owner_only_runs_only_on_the_owners_answer(workspace, posture):
+    # #816: no grant; the owner's Yes on this exact call's Owner step card, in every posture.
+    from fakes.owner import answer_card
+    with (workspace / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[security]\nposture = "{posture}"\n')
+    command = 'gh release create v1 -R acme/app'
+    code, reason = check(workspace, command)
+    assert code == 1 and reason.startswith(f'publish: {command}: waits for the owner') and 'Owner step: ' in reason
+    assert not (workspace / '.wuwei/days').exists() or not list((workspace / '.wuwei/days').glob('*/decisions/D-*.md'))
+    answer_card(workspace, reason, 'No')
+    assert check(workspace, command)[0] == 1
+    answer_card(workspace, reason)
+    assert check(workspace, command) == (0, '')
+    assert check(workspace, command + ' --notes x')[0] == 1
 
 
 @pytest.mark.parametrize('text,named', [

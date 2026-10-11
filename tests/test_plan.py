@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from wuwei import discovery, integrity, plan, registry, state, workspace
+from fakes import owner
+from wuwei import discovery, plan, registry, state, workspace
 
 
 @pytest.fixture
@@ -481,10 +482,6 @@ def test_gate_widget_is_the_one_approval_question(root):
     assert plan.gate_widget(root)['header'] == 'Goals'
 
 
-def no_terminal(*args, **kwargs):
-    raise OSError(integrity.HOST_TERMINAL)  # an agent's Bash has no /dev/tty
-
-
 def test_plan_set_spec_override(root, capsys, monkeypatch):
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -501,20 +498,20 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
     assert main(['plan', 'set', 'A', 'tier=light']) == 2
     assert main(['plan', 'set', 'Z', 'spec=required']) == 1
     assert 'spec' not in state.read_state(root)['items']['A']
-    # #800: skipping the spec is the owner's y/N at the host; without a terminal it is refused,
-    # whatever the environment says, and the item is unchanged.
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    # #800, #831: skipping the spec is the owner's Yes on its Owner step card; without it the
+    # step is refused, whatever the environment says, and the item is unchanged.
     for name, value in (('WUWEI_SESSION_ID', ''), ('WUWEI_SESSION_ID', 'planner-1')):
         monkeypatch.setenv(name, value)
         capsys.readouterr()
         assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'x']) == 1
-        assert 'the owner runs bin/wuwei plan set A spec=skipped' in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert 'Owner step: bin/wuwei plan set A spec=skipped --reason x' in err and 'host terminal' not in err
         assert 'spec' not in state.read_state(root)['items']['A']
     monkeypatch.delenv('WUWEI_SESSION_ID')
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: False)
+    owner.answer(root, 'bin/wuwei plan set A spec=skipped --reason x', reply='No', detail='Skip the spec for A: x')
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'x']) == 1
     assert 'spec' not in state.read_state(root)['items']['A']
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    owner.answer(root, "bin/wuwei plan set A spec=skipped --reason 'typo fix'", detail='Skip the spec for A: typo fix')
     assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'typo\nfix']) == 0
     assert 'A: spec skipped' in capsys.readouterr().out
     assert state.read_state(root)['items']['A']['spec'] == {'value': 'skipped', 'reason': 'typo fix'}
@@ -545,26 +542,33 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     assert 'A: owner_merge true' in capsys.readouterr().out
     at = '2026-09-28T09:00:00+02:00'
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': True, 'by': 'owner', 'at': at}
-    # #800: releasing the hold is the owner's y/N at the host; without a terminal it is refused
-    # with or without a session id in the environment.
-    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    # #800, #831: releasing the hold is the owner's Yes on its Owner step card; without it the
+    # step is refused with or without a session id in the environment.
     for session in ('', 'planner-1'):
         monkeypatch.setenv('WUWEI_SESSION_ID', session)
         capsys.readouterr()
         assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
-        assert 'the owner runs bin/wuwei plan set A owner_merge=false' in capsys.readouterr().err
+        assert 'Owner step: bin/wuwei plan set A owner_merge=false' in capsys.readouterr().err
         assert state.read_state(root)['items']['A']['owner_merge'] == {'value': True, 'by': 'owner', 'at': at}
     monkeypatch.setenv('WUWEI_SEAT_ROLE', 'builder')
     assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
     assert state.read_state(root)['items']['A']['owner_merge']['by'] == 'builder'
     monkeypatch.delenv('WUWEI_SESSION_ID')
     monkeypatch.delenv('WUWEI_SEAT_ROLE')
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    capsys.readouterr()
+    assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
+    card = capsys.readouterr().err
+    owner.answer_card(root, card)
+    state.append_event('plan.set', {'item': 'A', 'note': 'unrelated'}, root)  # #831 D1: no new answer
     assert main(['plan', 'set', 'A', 'owner_merge=false']) == 0
     assert state.read_state(root)['items']['A']['owner_merge'] == {'value': False, 'by': 'owner', 'at': at}
-    assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set'] == [
+    # #831 F4: the answer is bound to the hold it released; a new hold needs a new answer.
+    assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
+    assert main(['plan', 'set', 'A', 'owner_merge=false']) == 1
+    assert state.read_state(root)['items']['A']['owner_merge']['value'] is True
+    assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set' and 'owner_merge' in e['payload']] == [
         {'item': 'A', 'owner_merge': value, 'by': by, 'prs_seen': False}
-        for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'))]
+        for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'), (True, 'owner'))]
     with pytest.raises(state.StateError, match='reserved; written by wuwei plan set'):
         state.set_state('items.A.owner_merge', '{"value": false}', root)
 
@@ -896,25 +900,20 @@ def deploying():
     return data
 
 
-def test_propose_writes_one_planned_card(root, monkeypatch, capsys):
-    # #478: an owner-only action the lead lists becomes one card the gate question carries.
+def test_owner_actions_are_plan_lines(root, monkeypatch, capsys):
+    # #816: an owner-only action the lead lists is a plan line; no card, the gate asks one question.
     from wuwei.__main__ import main
-    text = plan.propose(deploying(), root).read_text()
-    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
-    day = root / '.wuwei/days/2026-09-28'
-    row = state.read_state(root)['grants']['D-1']
-    assert (row['item'], row['planned'], row['answered']) == ('A', True, None)
-    plan.propose(deploying(), root)
-    assert sorted(path.name for path in (day / 'decisions').glob('D-*.md')) == ['D-1.md']
+    data = deploying()
+    data['candidates'][0]['owner_actions'] += [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                               {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
+    text = plan.propose(data, root).read_text()
+    for line in ('deploy repo:fixture-org/app', 'merge repo:fixture-org/app', 'merge pr:fixture-org/app#7'):
+        assert f'Owner-only: {line} (owner step)\n' in text
+    assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     capsys.readouterr()
     assert main(['plan', 'gate']) == 0
-    gate, card = json.loads(capsys.readouterr().out)
-    assert gate == plan.gate_widget(root)
-    assert card['question'].startswith('D-1: G-1 A deploys fixture-org/app: allow today, ask when it happens, '
-                                       'or keep owner-only? ')
-    assert [option['label'] for option in card['options']] == [
-        'Allow today (Recommended)', 'Ask when it happens', 'Keep owner-only']
+    assert json.loads(capsys.readouterr().out) == [plan.gate_widget(root)]
 
 
 def test_plan_gate_without_owner_actions_is_one_question(root, monkeypatch, capsys):
@@ -947,9 +946,8 @@ def test_owner_actions_must_be_a_list(root):
     ({'action': 'deploy', 'target': 'repo:fixture-org/app', 'when': 'now'},
      '(not understood: needs exactly action and target as strings; the gate asks for it as written)'),
 ])
-def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
-    # #518: the lead's vocabulary (message, secret-set) and anything malformed are lines on
-    # the plan; deploy, release, publish and (#524) merge become grant cards.
+def test_listed_owner_actions_never_stop_the_gate(root, entry, line):
+    # #518: the lead's vocabulary and anything malformed are lines on the plan.
     data = proposal()
     data['candidates'][0]['owner_actions'] = [entry]
     text = plan.propose(data, root).read_text()
@@ -957,31 +955,10 @@ def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
     assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
 
 
-def test_planned_merges_are_gate_cards(root, monkeypatch, capsys):
-    # #524: a merge the lead lists is a planned card like a deploy, per repository or per PR.
-    from wuwei.__main__ import main
-    data = proposal()
-    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
-                                              {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
-    text = plan.propose(data, root).read_text()
-    assert 'Owner-only: merge repo:fixture-org/app (D-1)\n' in text
-    assert 'Owner-only: merge pr:fixture-org/app#7 (D-2)\n' in text and '(owner step)' not in text
-    rows = state.read_state(root)['grants']
-    assert [(rows[key]['action'], rows[key]['target']) for key in ('D-1', 'D-2')] == [
-        ('merge', 'repo:fixture-org/app'), ('merge', 'pr:fixture-org/app#7')]
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    capsys.readouterr()
-    assert main(['plan', 'gate']) == 0
-    _, first, second = json.loads(capsys.readouterr().out)
-    assert first['question'].startswith('D-1: G-1 A merges fixture-org/app: allow today')
-    assert second['question'].startswith('D-2: G-1 A merges fixture-org/app#7: allow today')
-
-
 def test_lead_charter_names_every_owner_action():
     from pathlib import Path
-    from wuwei import grants
     text = (Path(__file__).parents[1] / 'charters/lead.md').read_text()
-    for name in grants.OWNER_ACTIONS:
+    for name in plan.OWNER_ACTIONS:
         assert f'`{name}`' in text, name
 
 
@@ -1003,24 +980,6 @@ def test_the_overnight_report_leads_the_next_morning_plan(root, monkeypatch):
     assert text.index('Status: PROPOSED') < text.index('## Overnight (days/2026-09-26') < text.index('## Goals to confirm')
     assert ('1. acme/widget#7 threads_unanswered: triage review threads. Run: bin/wuwei pr act acme/widget#7\n'
             '   - thread T17 by bob on src/app.py: Why this name?\n') in text
-
-
-def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch, capsys):
-    # #283: ten agreements in a class make plan propose write a raise card; plan gate asks it.
-    from wuwei.__main__ import main
-    rows = {f'D-{100 + index}': {'option': 'A', 'outcome': 'A', 'decided_by': 'owner', 'class': 'defer',
-                                 'recommendation': 'A', 'at': workspace.now().isoformat()} for index in range(10)}
-    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
-    for number in range(300, 310):  # #559: the class is calibrated
-        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': 'defer',
-                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
-    plan.propose(proposal(), root)
-    assert state.read_state(root)['cruise_cards']['D-1']['kind'] == 'raise'
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    capsys.readouterr()
-    assert main(['plan', 'gate']) == 0
-    gate, card = json.loads(capsys.readouterr().out)
-    assert card['header'] == 'D-1' and card['options'][0]['label'] == 'Raise defer to L1 (Recommended)'
 
 
 def test_candidate_paths_are_validated(root):
@@ -1047,20 +1006,6 @@ def test_the_gate_records_no_day_value(root, monkeypatch):
         with pytest.raises(SystemExit) as exited:
             main(argv)
         assert exited.value.code == 2
-
-
-def test_merge_default_today_writes_no_planned_merge_card(root):
-    # #530: a planned merge on a configured repository the merge default covers asks nothing.
-    (root / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname = "fixture-org/app"\npath = "."\ndefault_branch = "main"\n'
-        '[merge]\ndefault_tier = "today"\n')
-    data = proposal()
-    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
-                                              *DEPLOY_ACTION]
-    text = plan.propose(data, root).read_text()
-    assert 'Owner-only: merge repo:fixture-org/app (merge.default_tier)\n' in text
-    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
-    assert [row['action'] for row in state.read_state(root)['grants'].values()] == ['deploy']
 
 
 def test_empty_optional_fields_are_absent(root):

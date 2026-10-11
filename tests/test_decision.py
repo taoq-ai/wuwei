@@ -164,6 +164,15 @@ def test_file_and_cli_exits(ws, capsys, text, code):
         assert events(ws)[-1]['payload']['reasons']
 
 
+
+def test_lint_prints_no_door_correction(ws, capsys):
+    # #815: the written door stands; lint names no undo.
+    from wuwei.__main__ import main
+    path = save(ws, VALID.replace('Class: design', 'Class: message').replace(LENS_BLOCK, ''))
+    assert main(['decision', 'lint', str(path)]) == 0
+    out = capsys.readouterr().out.strip().splitlines()
+    assert len(out) == 1 and out[0].startswith('OK:')
+
 def test_unreadable_and_event_failure(ws, monkeypatch):
     from wuwei.decision import lint_file
     from wuwei import state
@@ -928,19 +937,30 @@ def test_lint_reports_style_without_rejecting(ws):
     assert lint(template()) == (0, 'OK: A (80), Routine')
 
 
-@pytest.mark.parametrize('config,expected', [
-    ({}, {'approach': 2, 'retry': 2, 'park': 2, 'accept-residual': 2, 'defer': 0,
-          'scope-cut': 0, 're-plan': 0, 'dependency-bump': 0, 'design': 0, 'boundary': 0,
-          'refactor': 0, 'merge': 3, 'message': 0, 'other': 0}),
-    ({'approach': 1}, {'approach': 1}),
-    ({'defer': 3}, {'defer': 0}),
-])
-def test_class_levels(config, expected):
+def test_classes_are_the_fixed_list():
     from wuwei import decision
-    settings = {'decisions': {'cruise': {'enabled': True, 'levels': config}}, 'autonomy': {'mode': 'autonomous'}}
-    assert {name: decision.level(settings, name) for name in expected} == expected
-    settings['decisions']['cruise']['enabled'] = False
-    assert {decision.level(settings, name) for name in decision.CLASSES} == {0}
+    assert decision.CLASSES == ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
+                                'dependency-bump', 'design', 'boundary', 'refactor', 'merge', 'message', 'other')
+
+
+def test_cruise_decided_by_reads_as_mandate_and_is_refused_on_write():
+    # #814: a record written before the upgrade reads as mandate; a new write refuses cruise.
+    from wuwei import decision
+    text = VALID.replace('Decided-by: seat', 'Decided-by: cruise park@L2')
+    assert decision.evaluate(text)[0]['Decided-by'] == 'mandate'
+    code, message = decision.lint(text)
+    assert code == 1 and message.startswith('Decided-by'), message
+
+
+def test_role_is_an_optional_validated_field():
+    from wuwei import decision
+    with_role = lambda role: VALID.replace('Class: design', f'Class: design\nRole: {role}')
+    assert decision.lint(with_role('builder'))[0] == 0
+    code, message = decision.lint(with_role('wizard'))
+    assert code == 1 and message.startswith('Role:')
+    assert decision.lint(with_role('builder\nreviewer'))[0] == 1
+    outcome = decision.seat_outcome(*decision.evaluate(with_role('builder')))
+    assert (outcome['confidence'], outcome['role']) == ('high', 'builder')
 
 
 @pytest.mark.parametrize('text,record,code', [

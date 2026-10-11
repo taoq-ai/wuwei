@@ -125,10 +125,10 @@ def read_state(root=None, *, directory=None):
         return _load(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
         if (directory / SNAPSHOT).exists():
-            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; run bin/wuwei state recover in a host terminal') from None
+            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; run bin/wuwei state recover') from None
         return workspace.copy_data(DAY_DEFAULTS)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f'{path}: {exc}; run bin/wuwei state recover in a host terminal') from exc
+        raise ValueError(f'{path}: {exc}; run bin/wuwei state recover') from exc
 
 
 def _event_payload(kind, payload):
@@ -251,8 +251,7 @@ STATE_PRODUCERS = {
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix '
-                          'or wuwei watch and wuwei pr state (a merged PR closes its merge card)'),
+                          'or owner host wuwei doctor --fix'),
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
@@ -275,10 +274,6 @@ STATE_PRODUCERS = {
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
     'outbound_threads': 'wuwei outbound learn',
-    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide'
-              ' or wuwei watch and wuwei pr state (a merged PR closes its merge card)',
-    'cruise_cards': 'wuwei plan propose',
-    'decision_shadows': 'wuwei decision route',
     'main_broken': 'wuwei build',
 }
 
@@ -529,7 +524,7 @@ def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by
 
 
 def recover(root=None, *, confirm):
-    """Restore today's unreadable state from the writer's snapshot after host confirmation."""
+    """Restore today's unreadable state from the writer's snapshot after the owner's answer."""
     from hashlib import sha256
     directory = workspace.day_dir(root)
     path = directory / 'state.json'
@@ -550,8 +545,8 @@ def recover(root=None, *, confirm):
         return reason, sha256(text.encode('utf-8')).hexdigest(), text
 
     reason, digest, text = measure()
-    if not confirm(digest[:12]):
-        raise StateError('state recovery declined; rerun bin/wuwei state recover in a host terminal and answer y')
+    if refusal := confirm(digest[:12]):  # #831: None on the owner's recorded answer
+        raise StateError(refusal)
     with (directory / 'state.lock').open('a') as lock:
         lock_ex(lock, 'state.lock')
         if measure()[1] != digest:

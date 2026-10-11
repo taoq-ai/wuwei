@@ -58,8 +58,7 @@ PARAMETERS = {
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
-            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path'),
-            'rehearse_revert': ('path',)},
+            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
     'docs': {'read': ('ref',), 'write': ('draft',)},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
@@ -99,7 +98,7 @@ def validate(kind, name, *, for_config=False):
     names = known(kind)
     if name not in names:
         raise ValueError((f'adapters.{kind}: unknown adapter {name!r}; '
-                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set in a host terminal'))
+                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set'))
 
 
 def load(kind, config):
