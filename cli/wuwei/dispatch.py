@@ -377,7 +377,8 @@ def tracker_call(item, action, root=None, row=None):
             if action not in ('create', 'claim', 'in_review', 'done'):
                 raise ValueError('unknown tracker action; pass create, claim, in_review or done')
             name = f'tracker.{action}'
-            if hygiene.duty_done(root, item, name):
+            if (hygiene.ticket(data, item) if action == 'create'
+                    else hygiene.duty_done(root, item, name, ticket)):
                 return registry.Result(0, reason=f'{item}: {name} already recorded')
             pr = data['items'].get(item, {}).get('pr')
             if action == 'create':
@@ -401,7 +402,7 @@ def tracker_call(item, action, root=None, row=None):
                     if isinstance(result, registry.Result) and result.exit == 0 and duty and pr:
                         kind = 'pr' if action == 'in_review' else 'close'
                         text = f'Pull request: {pr}.' if action == 'in_review' else f'Merged in {pr}.'
-                        result = hygiene.duty_comment(root, config, port, ticket, f'{kind}:{item}:duty',
+                        result = hygiene.duty_comment(root, config, port, ticket, f'{kind}:{item}:{ticket}:duty',
                                                       kind, f'[{workspace.day_dir(root).name} {item}] {text}')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
                 raise ValueError(f'invalid tracker result; {ADAPTER_DATA}')

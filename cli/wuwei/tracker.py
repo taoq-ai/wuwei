@@ -87,14 +87,15 @@ def open_duties(rows):
             for (item, duty), (kind, payload) in _duties(rows).items() if kind == 'duty.due']
 
 
-def duty_done(root, item, duty):
-    """#842: True when any day's events hold duty.done for (item, duty), so a duty run again by
-    merge.monitor, pr state or a carried day never posts twice."""
+def duty_done(root, item, duty, ticket):
+    """#842: True when any day's events hold duty.done for (item, duty) on this ticket, so a duty
+    run again by merge.monitor, pr state or a carried day never posts twice, while a later item
+    reusing the id with another ticket still gets its update."""
     for path in (root / '.wuwei/days').glob('*/events.jsonl'):
         for text in path.read_text(encoding='utf-8').splitlines():
             if '"duty.done"' in text:
                 payload = json.loads(text).get('payload') or {}
-                if (payload.get('item'), payload.get('duty')) == (item, duty):
+                if (payload.get('item'), payload.get('duty'), payload.get('ticket')) == (item, duty, ticket):
                     return True
     return False
 

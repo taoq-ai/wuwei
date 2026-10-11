@@ -3068,3 +3068,31 @@ def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
         'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
     found = dispatch.next_step('A', root)
     assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner')
+
+
+def test_a_reused_item_id_with_a_new_ticket_runs_its_duty(root, monkeypatch):
+    """#842: a done duty counts only for the same ticket; the same ticket never posts twice."""
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {}),
+                                        'comment': registry.Result(0, {})})
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert [call[0] for call in fake.calls] == ['transition', 'comment']
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-8', 'source': 'set'}}),
+                       root, reserved=False)
+    assert dispatch.tracker_call('A', 'done', root).exit == 0
+    assert [call[1][0] for call in fake.calls] == ['ENG-7', 'ENG-7', 'ENG-8', 'ENG-8']
+    assert [(kind, payload['ticket']) for kind, payload in duty_events(root)] == [
+        ('duty.due', 'ENG-7'), ('duty.done', 'ENG-7'), ('duty.due', 'ENG-8'), ('duty.done', 'ENG-8')]
+
+
+def test_create_runs_again_only_while_the_item_has_no_ticket(root, monkeypatch):
+    from wuwei import dispatch
+    ticketed(root, monkeypatch, {})
+    state.append_event('duty.done', {'item': 'A', 'duty': 'tracker.create', 'ticket': 'ENG-1',
+                                     'pr': None}, root)
+    assert dispatch.tracker_call('A', 'create', root).exit == 0  # A has ENG-7: nothing to open
+    assert [kind for kind, _ in duty_events(root)] == ['duty.done']
+    state._write_state(lambda data: data.update(tickets={}), root, reserved=False)
+    dispatch.tracker_call('A', 'create', root)
+    assert [kind for kind, _ in duty_events(root)][1] == 'duty.due'
