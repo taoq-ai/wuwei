@@ -19,6 +19,10 @@ class Refused(ValueError):
     """Measured policy finding, distinct from missing evidence."""
 
 
+class Wait(Refused):
+    """#816: a pacing rule the policy clears later (daily cap, quiet hours)."""
+
+
 class Routed(Refused):
     """#675: a refusal with its own route (a gate to wait on); its text is the whole reason
     after `merge: `."""
@@ -27,6 +31,11 @@ class Routed(Refused):
 def require(condition, reason):
     if not condition:
         raise Refused(reason)
+
+
+def wait(condition, reason):
+    if not condition:
+        raise Wait(reason)
 
 
 def owner(held, condition, reason):
@@ -318,10 +327,10 @@ def check(ref, root=None, *, cwd=None, repo=None):
         if any(r.split('#')[0] == repo_name and entry.get('monitor_error') for _, r, entry in entries):
             raise ValueError('post-merge observations are unmeasured; run the watch')
         require(not any(r == ref and entry['status'] != 'failed' for _, r, entry in entries), 'PR already has a merge intent')
-        require(sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
+        wait(sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
                     for directory, r, entry in entries if entry['status'] != 'failed') < policy['max_per_day'],
                 'repository daily merge cap reached')
-        require(not quiet(policy, workspace.now()), 'merge is in quiet hours')
+        wait(not quiet(policy, workspace.now()), 'merge is in quiet hours')
         item = item_evidence(root, ref, data, held)
         host = registry.load('code_host', config)
         pr = checked_pr(host, ref, root)
@@ -442,8 +451,10 @@ def check(ref, root=None, *, cwd=None, repo=None):
         return Result(0, evidence)
     except Routed as exc:
         return Result(1, None, f'merge: {exc}')
-    except Refused as exc:
+    except Wait as exc:
         return Result(1, None, f'merge policy: waits: {exc}; run bin/wuwei pr act {ref} once it holds')
+    except Refused as exc:
+        return Result(1, None, f'merge policy: refused: {exc}; run bin/wuwei pr act {ref} once it holds')
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 
@@ -475,6 +486,10 @@ def execute(ref, root=None, *, cwd=None):
     try:
         root = workspace.find_workspace(root)
         with locked(root):
+            try:  # #816: the event names the PR as the item records it
+                shown = str(reference(ref, root, workspace.load_config(root), cwd))
+            except ERRORS:
+                shown = str(ref)
             result = check(ref, root, cwd=cwd)
             held = bool(result.data and result.data.get('owner'))
             if held:  # #816: the owner decides on one Owner step card per PR and head
@@ -488,7 +503,7 @@ def execute(ref, root=None, *, cwd=None):
                     f'merge policy: owner decides: {why}; wait for the Owner step card: {reason}'))
             if result.exit:
                 state.append_event('merge.policy_blocked', {
-                    'pr': str(result.data['evidence']['pr'] if held else ref), 'exit': result.exit,
+                    'pr': shown, 'exit': result.exit,
                     'reason': result.reason, 'owner': held}, root)
                 return result
             evidence = result.data

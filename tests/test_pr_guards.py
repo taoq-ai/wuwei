@@ -239,7 +239,7 @@ def test_session_merge_names_wuwei_merge(case):
     # #524, #816: a refused gh pr merge names the merge policy's reason and its next step.
     root, _, _ = case
     code, reason = guard().check(payload(root, 'gh pr merge 9'))
-    assert code == 1 and reason.startswith('merge policy: waits: explicit merge_deploys = false'), reason
+    assert code == 1 and reason.startswith('merge policy: refused: explicit merge_deploys = false'), reason
     assert reason.endswith('run bin/wuwei pr act example/project#9 once it holds')
 
 

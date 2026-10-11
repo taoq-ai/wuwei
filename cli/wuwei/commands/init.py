@@ -251,8 +251,9 @@ def _without_empty_repos(raw):
 
 def _today_tier(raw, before):
     """#816: merge.default_tier = "today" merged on each repository; merge.auto = true keeps
-    that for a repository that does not set merge.auto itself."""
-    if before.get('merge', {}).get('default_tier') != 'today':
+    that for a repository that does not set merge.auto itself; "today" never applied under strict."""
+    if (before.get('merge', {}).get('default_tier') != 'today'
+            or before.get('security', {}).get('posture') == 'strict'):
         return raw, []
     from wuwei.commands import setup
     lines = []

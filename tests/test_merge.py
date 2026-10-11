@@ -1064,14 +1064,55 @@ def test_quiet_hours_cap_and_soak_are_waits(case, name, hint):
     assert blocked(root)[-1]['owner'] is False and not merged_calls(host)
 
 
+def move_head(root, host, head):
+    """The PR gets a new head with its checks, approval and gate verdicts at it."""
+    host.results['pr'].data['head'] = head
+    host.results['checks'].data[0]['sha'] = head
+    host.results['reviews'].data[0]['sha'] = head
+    host.results['merge'] = Result(0, {'accepted': True, 'sha': head})
+    for gate in ('arch', 'quality', 'security'):
+        (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(head))
+
+
 def test_a_yes_holds_for_its_head_only(case):
+    # #816 review F3: the owner's Yes merges that PR at that head, nothing else.
+    from fakes.owner import answer_card
+    root, host = case
+    auto_only(root, host, 'auto')
+    answer_card(root, policy().execute(REF, root).reason)
+    moved = 'c' * 40
+    move_head(root, host, moved)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and f'({moved[:12]})' in result.reason and not merged_calls(host), result
+    answer_card(root, result.reason)
+    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, moved, 'squash')]
+
+
+def test_a_yes_on_another_pr_never_merges_this_one(case):
     from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, 'auto')
     reason = policy().execute(REF, root).reason
-    answer_card(root, reason.replace(SHA[:12], BASE[:12]))  # a Yes on another head's card
-    result = policy().execute(REF, root)
-    assert result.exit == 1 and not merged_calls(host), result
+    answer_card(root, reason.replace('example/project#7', 'example/project#8'))
+    assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
+
+
+@pytest.mark.parametrize('change,hint', [
+    ('deploys', 'explicit merge_deploys = false is required'), ('item', 'PR needs one linked item'),
+    ('typo', 'unknown key')])
+def test_a_refusal_that_never_clears_is_named_refused(case, monkeypatch, change, hint):
+    # #816 review F2, F5: only soak, cap and quiet hours wait; the event carries the normalized PR.
+    root, host = case
+    if change == 'deploys':
+        config_change(root, 'merge_deploys = false', 'merge_deploys = true')
+    elif change == 'item':
+        state._write_state(lambda d: d['items']['item-7'].update(pr=None), root, reserved=False)
+    else:
+        config_change(root, 'auto = true', 'auto = true\nnever_auto_path = ["x"]')
+    monkeypatch.chdir(root / 'repo')
+    result = policy().execute('7', root)
+    assert result.exit == 1 and result.reason.startswith('merge policy: refused:') and hint in result.reason, result
+    assert blocked(root)[-1]['pr'] == REF and not merged_calls(host)
 
 
 @pytest.mark.parametrize('change,hint', [
