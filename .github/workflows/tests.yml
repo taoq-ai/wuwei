@@ -63,9 +63,9 @@ jobs:
           python -m pytest -q tests/test_ziran_ci_audit.py
 
   latency:
-    # Measures the hook budgets on the quiet runner every push. Informational: it never blocks a merge.
+    # Measures the hook budgets on the quiet runner every push. Informational: findings are warning
+    # annotations and the check stays green (#805).
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
       actions: read
@@ -80,6 +80,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest
       - run: python -m pytest -q tests/test_hooks.py -k latency
+        continue-on-error: true
       # Every probe's figures, red runs included, and the last green main run's to compare (#562).
       - uses: actions/upload-artifact@v4
         if: always()
@@ -96,6 +97,7 @@ jobs:
           if [ -n "$id" ]; then gh run download "$id" -R "$GITHUB_REPOSITORY" -n latency -D previous || echo "no last green figures"; fi
       - name: Compare with the last green run
         if: always()
+        continue-on-error: true
         run: python scripts/latency_report.py latency.jsonl previous/latency.jsonl
 
   skill-evals:

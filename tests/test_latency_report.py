@@ -84,3 +84,18 @@ def test_latency_job_keeps_and_compares_figures():
                    'scripts/latency_report.py latency.jsonl previous/latency.jsonl'):
         assert needed in job, needed
     assert job.count('if: always()') >= 3
+
+
+def test_findings_are_warning_annotations_under_actions(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    assert report.main([write(tmp_path / 'now', NOW), write(tmp_path / 'last', LAST)]) == 1
+    assert '::warning title=latency::margin short: status --line 5.0 ms' in capsys.readouterr().out
+
+
+def test_latency_check_stays_green():
+    """#805: findings are warnings; the job itself is never red."""
+    text = (ROOT / '.github/workflows/tests.yml').read_text()
+    job = text[text.index('\n  latency:'):text.index('\n  skill-evals:')]
+    head, steps = job.split('\n    steps:')
+    assert 'continue-on-error' not in head
+    assert steps.count('continue-on-error: true') == 2

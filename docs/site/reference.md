@@ -511,7 +511,7 @@ The `git commit` and `git push` checks spend most of their time in `git` subproc
 
 ### The latency CI job
 
-The `latency` job in `.github/workflows/tests.yml` runs `python -m pytest -q tests/test_hooks.py -k latency` with `WUWEI_BENCH=1` on every push and pull request. It is `continue-on-error`: a trend line, not a gate. On a 2-CPU runner it is red on every push, because the runner is about 2x slower than the hardware the budget is set for. A red job never blocks a merge.
+The `latency` job in `.github/workflows/tests.yml` runs `python -m pytest -q tests/test_hooks.py -k latency` with `WUWEI_BENCH=1` on every push and pull request. Its measuring and comparing steps are `continue-on-error`: a trend line, not a gate. A probe short of margin or over budget shows as a warning annotation and the check stays green; a 2-CPU runner is about 2x slower than the hardware the budget is set for.
 
 Each benchmark prints one report line:
 
