@@ -134,6 +134,34 @@ def test_outside_every_workspace_is_clean(tmp_path, monkeypatch):
         assert check(tmp_path, 'gh pr merge 7 "', guard, cwd=tmp_path) == (0, '')
 
 
+# Design 4.5: the wrappers that run the rest of the line, each with its own options.
+WRAPPERS = ['command {}', 'command -p {}', 'exec {}', 'exec -a name {}', 'timeout 30 {}',
+            'timeout -s KILL 30s {}', 'nohup {}', 'nice {}', 'nice -n 5 {}', 'sudo {}',
+            'sudo -u bob {}', 'time {}', 'time -p {}', 'xargs {}', 'xargs -n 1 -0 {}',
+            'env A=1 command {}', 'command env A=1 timeout 5 {}']
+
+
+@pytest.mark.parametrize('wrapper', WRAPPERS)
+def test_wrapped_merge_refused(root, wrapper):
+    code, reason = check(root, wrapper.format('gh pr merge 5'))
+    assert code == 1 and reason.startswith('merge policy'), reason
+
+
+@pytest.mark.parametrize('wrapper', WRAPPERS)
+def test_wrapped_force_push_refused(root, wrapper):
+    code, reason = check(root, wrapper.format('git push --force origin x'))
+    assert code == 1 and reason.startswith('force-push is refused'), reason
+
+
+def test_piped_xargs_merge_refused(root):
+    assert check(root, 'echo 5 | xargs gh pr merge')[0] == 1
+
+
+@pytest.mark.parametrize('command', ['timeout gh pr merge 5', 'git log | xargs -n'])
+def test_unreadable_wrapper_is_unparsed(root, command):
+    assert check(root, command) == (2, UNPARSED)
+
+
 # Host merge: on the floor.
 @pytest.mark.parametrize('command,pr', [
     ('gh pr merge 7', '<owner/repo>#7'), ('gh pr merge 7 --squash', '<owner/repo>#7'),

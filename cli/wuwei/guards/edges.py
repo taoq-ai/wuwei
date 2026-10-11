@@ -33,6 +33,14 @@ PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
     'gh pr merge * --admin*')]
 SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
+# Design 4.5: wrappers that run the rest of the line, and their options that take a value.
+WRAPPERS = {'command': (), 'exec': ('-a',), 'nohup': (), 'nice': ('-n', '--adjustment'),
+            'sudo': ('-u', '--user', '-g', '--group', '-C', '-D', '-p', '--prompt', '-r', '-t',
+                     '-U', '-T', '-R'),
+            'timeout': ('-s', '--signal', '-k', '--kill-after'),
+            'xargs': ('-n', '-L', '-P', '-s', '-d', '-E', '-I', '-a', '--max-args', '--max-lines',
+                      '--max-procs', '--max-chars', '--delimiter', '--eof', '--replace', '--arg-file'),
+            'time': ('-f', '--format', '-o', '--output')}
 DEPTH = 4
 # gh options that take a value, so the value is never read as a subcommand or a flag.
 GH_VALUED = ('-t', '--title', '--subject', '-b', '--body', '-F', '--body-file', '-f', '--field',
@@ -131,17 +139,22 @@ def segments(text, cwd, depth=0):
 def _segment(words, cwd, depth, found):
     """Unwrap one segment into found; returns the cwd for the next one."""
     env, assignment = {}, re.compile(r'[A-Za-z_]\w*=')
-    while words and assignment.match(words[0]):
-        key, _, env[key] = words.pop(0).partition('=')
-    if words and PurePosixPath(words[0]).name == 'env':
-        words.pop(0)
-        while words and (words[0] in ('-i', '--ignore-environment', '--')
-                         or words[0].startswith(('--unset=', '-u')) or assignment.match(words[0])):
-            word = words.pop(0)
-            if word == '-u' and words:
-                words.pop(0)
-            elif assignment.match(word):
-                key, _, env[key] = word.partition('=')
+    while words:
+        if assignment.match(words[0]):
+            key, _, env[key] = words.pop(0).partition('=')
+        elif PurePosixPath(words[0]).name == 'env':
+            words.pop(0)
+            while words and (words[0] in ('-i', '--ignore-environment', '--')
+                             or words[0].startswith(('--unset=', '-u')) or assignment.match(words[0])):
+                word = words.pop(0)
+                if word == '-u' and words:
+                    words.pop(0)
+                elif assignment.match(word):
+                    key, _, env[key] = word.partition('=')
+        elif PurePosixPath(words[0]).name in WRAPPERS:
+            words = _unwrap(words)
+        else:
+            break
     if not words:
         return cwd
     if PurePosixPath(words[0]).name in SHELLS:
@@ -155,6 +168,26 @@ def _segment(words, cwd, depth, found):
     if words[0] == 'cd' and len(words) == 2 and '$' not in words[1] and words[1] != '-':
         cwd = (cwd / Path(words[1]).expanduser()).resolve()
     return cwd
+
+
+def _unwrap(words):
+    """The words a wrapper runs, after its own options; ValueError when they cannot be read."""
+    name, index = PurePosixPath(words[0]).name, 1
+    while index < len(words) and words[index].startswith('-') and words[index] != '-':
+        word = words[index]
+        index += 1
+        if word == '--':
+            break
+        if word in WRAPPERS[name]:
+            if index == len(words):
+                raise ValueError(f'{name} {word} has no value; run the command without {name}')
+            index += 1
+    rest = words[index:]
+    if name == 'timeout':
+        if not rest or not re.fullmatch(r'\d+(?:\.\d+)?[smhd]?', rest[0]):
+            raise ValueError('timeout names no duration; run the command without timeout')
+        rest = rest[1:]
+    return rest
 
 
 def _scan(args, valued):

@@ -1198,7 +1198,8 @@ def test_owner_unset_resolves_nothing(configured):
 @pytest.mark.parametrize('enforce', ['false', 'true'])
 @pytest.mark.parametrize('tool', ['mcp__Claude_Browser__computer', 'mcp__claude-in-chrome__navigate'])
 def test_unknown_tool_runs_and_logs(configured, monkeypatch, capsys, enforce, tool):
-    from wuwei.guards.outward import check_lint, check_send
+    from wuwei.guards.edges import check_send
+    from wuwei.guards.outward import check_lint
     root = configured[0]
     set_enforce(root, enforce)
     call = payload(root, tool=tool)
@@ -1215,7 +1216,7 @@ def test_unknown_tool_runs_and_logs(configured, monkeypatch, capsys, enforce, to
 # #838 review F3: an owner disposition marker never leaves through the guard or a port.
 def test_owner_marker_refused_without_a_canary(configured):
     from wuwei import outward
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root, config = configured
     allow(root, SEND)
     assert check_send(payload(root, 'WUWEI parked x', tool=SEND, channel='C1')) == (1, outward.OWNER_MARKERS)
@@ -1239,7 +1240,7 @@ def test_owner_marker_refused_without_a_canary(configured):
     ('mcp__gmail__send_email', {'to': 'pat@example.test', 'body': 'Hi'}, YOUR_MAIL),
 ])
 def test_refusal_offers_a_canvas_or_page_first(configured, tool, inputs, surface):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
     call = payload(root, tool=tool)
@@ -1248,7 +1249,7 @@ def test_refusal_offers_a_canvas_or_page_first(configured, tool, inputs, surface
 
 
 def test_refusal_never_offers_a_set_mail_address(configured):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     root = configured[0]
     with_owner(root)
     write_config(root, '\n[outward.servers]\ngmail = "mail"\n')
@@ -1263,7 +1264,7 @@ def test_share_is_a_write():
 
 
 def test_refusal_on_another_channel_names_no_surface(configured):
-    from wuwei.guards.outward import check_send
+    from wuwei.guards.edges import check_send
     tool = 'mcp__linear__save_issue'
     result = check_send(payload(configured[0], 'Hi', tool=tool, channel='C1'))
     assert result == refused(tool) and 'outbound.owner' not in result[1]

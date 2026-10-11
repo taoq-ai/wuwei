@@ -188,7 +188,7 @@ def test_direct_port_preserves_profile(configured, monkeypatch, capsys, profile)
     ('gh api repos/example/project/pulls/17/merge -X PUT', 'merge'),
     ('gh api repos/example/project/pulls/17/reviews -f event=APPROVE', 'approval'),
     ('terraform apply', 'terraform'),
-    ('gh release create v1', 'release'),
+    ('command gh release create v1', 'release'),
     ('bash -c "kubectl apply -f deployment.yml"', 'kubectl'),
 ])
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
