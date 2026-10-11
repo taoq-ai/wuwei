@@ -31,7 +31,7 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - Calibration of each repository's checks and deploy signals ([calibration](docs/site/configuration.md#calibration)).
 - Setup in the session: `init --shadow`, then each repository and the calibration proposal on an Owner step card ([setup](docs/site/daily.md#2-configure)).
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
-- Security posture: observe, guarded or strict per area, with floors no setting lowers. ([security posture](docs/site/security.md#security-posture)).
+- Security posture: observe, guarded or strict per area, with floors no setting lowers ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
 - The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
 - The DORA four keys: `bin/wuwei dora` prints lead time, deployment frequency, change failure rate and time to restore, each with its source or the reason it has no reading yet ([DORA keys](docs/site/concepts.md#dora-keys)).

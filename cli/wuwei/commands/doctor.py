@@ -524,7 +524,7 @@ def _day(root, config, probes):
         rows.append(_row('day', 'session id', 'ok', 'SessionStart exported it' if flags else 'not recorded today')
                     if not flags or flags[-1] else
                     _row('day', 'session id', 'warn', 'SessionStart had no CLAUDE_ENV_FILE, so Bash calls do not carry '
-                         'WUWEI_SESSION_ID; record commands for asked cards confirm through the planner in state',
+                         'WUWEI_SESSION_ID',
                          'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
     except watch.ERRORS as exc:
         rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
