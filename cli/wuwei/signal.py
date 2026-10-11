@@ -36,69 +36,69 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
 
 
 def classify(event, state):
-    """Return one (tier, lane) pair; malformed events demand a nudge."""
+    """Return one (tier, lane) pair; malformed events demand a warning."""
     if not isinstance(event, dict) or not isinstance(event.get('kind'), str):
-        return 'nudge', 'Work'
+        return 'warn', 'Work'
     kind = event['kind']
     payload = event.get('payload', {})
     if not isinstance(payload, dict):
-        return 'nudge', 'Work'
+        return 'warn', 'Work'
     if kind == 'state.transition' and payload.get('phase') == 'escalated':
         kind = 'item.escalated'
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
     if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
-        return ('nudge' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
+        return ('warn' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
     if kind == 'negotiation.loop':
-        return ('page' if payload.get('past_goal') is True else 'nudge'), lane
+        return ('page' if payload.get('past_goal') is True else 'warn'), lane
     if kind == 'mcp.finding':
-        return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
+        return ('page' if payload.get('severity') in ('high', 'critical') else 'warn'), lane
     if kind == 'shepherd.finished':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
+        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'mcp.checked':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
+        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'warn'), lane
     if kind == 'tracker.call':
         return ('silent' if payload.get('exit') == 0
-                or payload.get('reason') == 'tracker adapter is none' else 'nudge'), lane
+                or payload.get('reason') == 'tracker adapter is none' else 'warn'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
-        return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane
+        return (tier if tier in ('silent', 'warn', 'page') else 'warn'), lane
     if kind == 'item.escalated':
         seats = state.get('seats', {}) if isinstance(state, dict) else {}
         if not isinstance(seats, dict):
-            return 'nudge', lane
+            return 'warn', lane
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
-        return ('page' if blocking else 'nudge'), lane
+        return ('page' if blocking else 'warn'), lane
     if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap', 'remote.refused'):
         return 'page', lane
     if kind == 'decision.one_way':
-        return ('page' if payload.get('blocking') is True else 'nudge'), lane
+        return ('page' if payload.get('blocking') is True else 'warn'), lane
     if kind == 'person.ask':
         due = payload.get('due')
         try:
             deadline = datetime.fromisoformat(due)
             now = datetime.fromisoformat(state["now"])
             if deadline.tzinfo is None:
-                return 'nudge', lane
-            return ('page' if deadline <= now else 'nudge'), lane
+                return 'warn', lane
+            return ('page' if deadline <= now else 'warn'), lane
         except (TypeError, ValueError, KeyError):
-            return 'nudge', lane
+            return 'warn', lane
     if kind == 'budget.usage':
         fraction = payload.get('fraction')
         if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and fraction >= 1:
             return 'page', lane
         if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and fraction < .8:
             return 'silent', lane
-        return 'nudge', lane
+        return 'warn', lane
     if kind == 'watch: sweep':
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
-                else 'nudge'), lane
+                else 'warn'), lane
     if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
                 'build.parked', 'steward.due'):
-        return 'nudge', lane
+        return 'warn', lane
     if kind in SILENT:
         return 'silent', lane
-    return 'nudge', lane
+    return 'warn', lane

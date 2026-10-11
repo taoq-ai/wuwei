@@ -61,7 +61,7 @@ def run(args):
     except ConfigError as exc:
         print(f"wuwei config check: {exc}", file=sys.stderr)
         return FINDINGS
-    for text in found:  # #353: unknown keys warn below strict; the exit code ignores them.
+    for text in found:  # #799: unknown keys warn in every posture; the exit code ignores them.
         print(f'wuwei config check: warning: {text}', file=sys.stderr)
     print('Credentials:')
     status = CLEAN

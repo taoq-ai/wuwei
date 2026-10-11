@@ -189,7 +189,7 @@ could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`;
 then record what they would refuse and let the call through. Records still refuse. Deploys,
 releases and messages that wait for your approval ask you on a card, and merges and approvals
 stay yours. Read
-`bin/wuwei shadow report` or the `## Shadow` section of the day report. When the [nudge](concepts.md#nudge) comes
+`bin/wuwei shadow report` or the `## Shadow` section of the day report. When `bin/wuwei doctor` asks
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.md#security-posture).
 
@@ -295,7 +295,7 @@ time. An item that does not fit waits and says why. The status line shows
 `seats 2 of CAP 3 (G-1 1, G-2 1)`, and `bin/wuwei next` names the waiting item and the seat
 expected to free first.
 
-Watch the status line and `bin/wuwei nudges`. The status line counts items in words, for
+Watch the status line and `bin/wuwei next`. The status line counts items in words, for
 example `1 building`, and later `1 shipped`. The planner runs one loop per item and
 executes each returned action unchanged:
 
@@ -396,7 +396,7 @@ needs an action is one `pr.changed` event with a summary, for example
 Each part is delivered once. A passed check, a resolved conflict, a reviewer request, a
 timestamp, or a PR starting or stopping being owned does not wake the planner;
 `bin/wuwei watch why <pr>` says what the last change fired and what it suppressed.
-The Stop hook message and `bin/wuwei nudges` list that summary first, and the status line
+The Stop hook message lists that summary first, and the status line
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
 put input into an idle session. The listener covers the gap: it sends the summary to your
@@ -410,7 +410,7 @@ Some commands are yours alone and run in a host terminal, never through an agent
 `bin/wuwei decide D-<n> <option>` for any decision, MCP registry findings included (`proceed`
 also re-runs the check), and `bin/wuwei drafts approve` or `drafts drop`. Under `observe` and
 `guarded` the planner asks you a decision in the session and records your answer with the
-same command. Under `strict`, and for credentials, you run it in a host terminal and answer y. Nudges and the report name each pending decision.
+same command. Under `strict`, and for credentials, you run it in a host terminal and answer y. `bin/wuwei next` and the report name each pending decision.
 
 `bin/wuwei decision show D-<n>` prints a decision at your `owner.verbosity` level: by default
 the question, each option with its score, and the recommendation with one reason.
@@ -441,7 +441,7 @@ the card or reply `undo D-3` to the listener DM. You can also run `bin/wuwei und
 
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-nudge (a [page](concepts.md#page) when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
+event (a [page](concepts.md#page) when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
 your DM. An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
@@ -455,8 +455,7 @@ fewer than `max_per_day` were answered today. Such a record reads `Decided-by: c
 defer@L2` (class and level). A thin margin on an L2 or L3 class that the mandate does not
 take still comes to you.
 
-At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei nudges` lists it first,
-`D-3 taken as A by cruise defer@L2, undo until 13:00`, and `bin/wuwei decision show D-3
+At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei decision show D-3
 --widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
 undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
 y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
@@ -469,8 +468,8 @@ reversals, a weekly sample you answer differently and an escaped defect on an it
 answer named spend the class's error budget: `budget_share` of its cruise answers over
 `budget_window_days`. One event never lowers a class. When the events exceed the allowance
 and number at least two, the CLI lowers the class one level, with a ledger line that
-names every event, and restores it when the window refills. A fast burn sends a nudge
-first: `nudge: defer burns its error budget at 7.0x: ... Run: wuwei cruise budget`.
+names every event, and restores it when the window refills. A fast burn writes a `cruise.burn`
+event first: `defer burns its error budget at 7.0x: ...`.
 `bin/wuwei cruise budget` prints class, level, answered, spent, allowance, burn and state.
 `plan propose` asks you to raise a class after `promote_agreements` agreeing answers with
 its budget unspent, and once a week asks one recent cruise answer again without its
@@ -543,7 +542,7 @@ tomorrow (recommended), park it, or keep working, and records the answer with
 
 Inside a session, ask Claude for the board, or call the plugin's `wuwei_board` tool. It
 shows items by phase with gate verdicts, owned PRs and what they wait on, pending decisions
-and pages and nudges as tables, and renders the cockpit inline where the host renders MCP
+and pages as tables, and renders the cockpit inline where the host renders MCP
 Apps. It is read-only: answering a decision or approving a draft stays a CLI owner action.
 
 Anything not on this page is recovery, not daily use: see [recovery](recovery.md).

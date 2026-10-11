@@ -59,7 +59,7 @@ PAGE = [
     ({'kind': 'budget.cap'}, 'Work'),
     ({'kind': 'person.ask', 'payload': {'due': '2026-09-28T11:00:00+02:00'}}, 'People'),
 ]
-NUDGE = [
+WARN = [
     ({'kind': 'decision.one_way'}, 'Decisions'),
     ({'kind': 'merge.policy_blocked'}, 'Decisions'),
     ({'kind': 'work.outside_goals'}, 'Decisions'),
@@ -92,10 +92,10 @@ def test_page_triggers(event, lane):
     assert classify(event, state) == ('page', lane)
 
 
-@pytest.mark.parametrize('event,lane', NUDGE)
-def test_nudge_triggers(event, lane):
+@pytest.mark.parametrize('event,lane', WARN)
+def test_warn_triggers(event, lane):
     from wuwei.signal import classify
-    assert classify(event, {'now': NOW}) == ('nudge', lane)
+    assert classify(event, {'now': NOW}) == ('warn', lane)
 
 
 @pytest.mark.parametrize('event,lane', SILENT)
@@ -104,10 +104,10 @@ def test_silent_triggers(event, lane):
     assert classify(event, {}) == ('silent', lane)
 
 
-def test_escalation_without_running_seat_is_nudge():
+def test_escalation_without_running_seat_is_warn():
     from wuwei.signal import classify
     assert classify({'kind': 'item.escalated', 'payload': {'item': 'A'}},
-                    {'seats': {}}) == ('nudge', 'Decisions')
+                    {'seats': {}}) == ('warn', 'Decisions')
 
 
 def test_signal_cli_reads_event_from_stdin(tmp_path):
@@ -126,14 +126,14 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     directory = day(tmp_path, state_data, [
         {'kind': kind, 'payload': {}, 'ts': NOW}
         for kind in ('security.finding', 'decision.one_way', 'watch: clock')])
-    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742
+    (tmp_path / '.wuwei/config.toml').write_text('')
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
     line = cli(tmp_path, 'status', '--line')
     structured = cli(tmp_path, 'status', '--json')
     full = cli(tmp_path, 'status')
     assert line.returncode == structured.returncode == full.returncode == 0
     assert line.stdout.count('\n') == 1
-    assert 'pages 1' in line.stdout and 'nudges 1' in line.stdout
+    assert 'pages 1' in line.stdout and 'nudges' not in line.stdout
     assert '2 building' in line.stdout
     assert 'reply 2026-09-28T13:00:00+02:00' in full.stdout
     assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
@@ -141,7 +141,7 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     # #562: the line skips these; status and --json keep them.
     assert {'cruise', 'plugin', 'template', 'next_meeting', 'next_reply_due', 'sessions', 'seats'} <= data.keys()
     assert 'sessions 0' in full.stdout and 'plugin ' in full.stdout
-    assert data['pages'] == 1 and data['nudges'] == 1
+    assert data['pages'] == 1 and not {'nudges', 'nudges_mode'} & data.keys()
     assert data['phases']['spec'] == 1 and data['cap'] == 2
     assert data['next_reply_due'] == '2026-09-28T13:00:00+02:00'
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
@@ -221,7 +221,7 @@ def test_no_plan_yet_before_the_gate(tmp_path, state_data):
     day(tmp_path, state_data)
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith('WUWEI no plan yet | pages 0 · nudges 0')
+    assert result.stdout == 'WUWEI no plan yet | pages 0\n'
     result = cli(tmp_path, 'status', '--json')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)['gate_approved'] is False
@@ -307,12 +307,12 @@ def test_routine_progress_is_silent(kind):
     assert classify({'kind': kind}, {}) == ('silent', 'Work')
 
 
-def test_tracker_none_is_silent_but_tracker_failure_nudges():
+def test_tracker_none_is_silent_but_tracker_failure_warns():
     from wuwei.signal import classify
     event = {'kind': 'tracker.call', 'payload': {'exit': 2, 'reason': 'tracker adapter is none'}}
     assert classify(event, {})[0] == 'silent'
     event['payload']['reason'] = 'tracker call unmeasured: OSError'
-    assert classify(event, {})[0] == 'nudge'
+    assert classify(event, {})[0] == 'warn'
 
 
 def test_emitted_kinds_have_intended_tiers():
@@ -326,10 +326,10 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
-    expected = {'draft.created': 'nudge', 'draft.sending': 'silent', 'draft.approved': 'silent',
-                'worktree.hooks_skipped': 'nudge',
-                'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'nudge',
-                'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
+    expected = {'draft.created': 'warn', 'draft.sending': 'silent', 'draft.approved': 'silent',
+                'worktree.hooks_skipped': 'warn',
+                'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'warn',
+                'mcp.finding': 'warn', 'mcp.checked': 'warn', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
@@ -338,15 +338,15 @@ def test_emitted_kinds_have_intended_tiers():
                 'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
-                'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'nudge',
-                'build.fix_opened': 'silent', 'polish.skipped': 'nudge', 'pr.action.done': 'silent',
+                'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'warn',
+                'build.fix_opened': 'silent', 'polish.skipped': 'warn', 'pr.action.done': 'silent',
                 'pr.action.decision': 'silent',
-                'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
-                'seat adhoc': 'silent', 'subagent.untraced': 'nudge',
-                'traces.gap': 'nudge', 'traces.slow': 'nudge', 'hook.refusal': 'silent',
-                'guard.would_refuse': 'silent', 'config.newer_template': 'nudge',
-                'hook.warning': 'nudge',
-                'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
+                'retro.gap': 'warn', 'seat stop unmatched': 'warn',
+                'seat adhoc': 'silent', 'subagent.untraced': 'warn',
+                'traces.gap': 'warn', 'traces.slow': 'warn', 'hook.refusal': 'silent',
+                'guard.would_refuse': 'silent', 'config.newer_template': 'warn',
+                'hook.warning': 'warn',
+                'verdict.rejected': 'silent', 'decision.rejected': 'warn',
                     'decision.decided': 'silent', 'decision.closed': 'silent',
                     'decision.routed': 'silent',
                     'decision.digest': 'silent', 'decision.replied': 'silent', 'decision.escalated': 'silent',
@@ -355,50 +355,49 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.claimed': 'silent',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
                 'reviewer.unresolved': 'silent',
-                'watch: sweep': 'nudge', 'watch: clock': 'silent', 'heartbeat: clock': 'silent',
+                'watch: sweep': 'warn', 'watch: clock': 'silent', 'heartbeat: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
-                'watch: read-failed': 'nudge', 'pr.changed': 'nudge',
+                'watch: read-failed': 'warn', 'pr.changed': 'warn',
                 'session: compact': 'silent', 'session: wake-seen': 'silent',
-                'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'nudge',
-                'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'nudge',
-                'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
+                'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
+                'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
+                'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
                 'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent', 'gate.card': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent',
-                'gate.received': 'silent', 'gate.tiered': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent', 'finding.noted': 'silent',
-                'plan.proposed': 'nudge', 'build.requested': 'nudge',
-                'tracker.call': 'nudge',
+                'plan.proposed': 'warn', 'build.requested': 'warn',
+                'tracker.call': 'warn',
                 'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',
                 'tracker.logged': 'silent', 'plan.set': 'silent',
-                'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
-                'steward.run': 'silent', 'steward.due': 'nudge',
+                'discovery.unmeasured': 'warn', 'steward.notes': 'warn',
+                'steward.run': 'silent', 'steward.due': 'warn',
                 'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
                 'memory.folded': 'silent', 'memory.consolidated': 'silent',
                 'listen: clock': 'silent', 'listen: wake': 'silent',
                 'remote.pending': 'silent', 'remote.started': 'silent',
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',
                 'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
-                'remote.confirmed': 'silent', 'calibration.drift': 'nudge',
-                'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge',
+                'remote.confirmed': 'silent', 'calibration.drift': 'warn',
+                'shepherd.dispatched': 'silent', 'shepherd.finished': 'warn',
                 'shepherd.overnight': 'silent', 'shepherd.swept': 'silent', 'pr.notified': 'silent',
-                'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
-                'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent', 'outward.lint': 'silent',
-                'outward.unknown_tool': 'nudge', 'outward.to_owner': 'silent',
+                'negotiation.loop': 'warn', 'negotiation.notified': 'silent',
+                'decision.waited': 'warn', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent', 'outward.lint': 'silent',
+                'outward.unknown_tool': 'warn', 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
-                'spec.warned': 'nudge', 'docs.set': 'silent', 'docs.written': 'silent',
+                'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
-                'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'pace.set': 'silent', 'pace.carded': 'silent', 'decision.shadow': 'silent',
+                'decision.reversed': 'warn', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'pace.set': 'silent', 'pace.carded': 'silent', 'decision.shadow': 'silent',
                 'undo.rehearsed': 'silent', 'undo.done': 'silent',
-                'cruise.burn': 'nudge',
-                **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
+                'cruise.burn': 'warn',
+                **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
     assert classify({'kind': 'build.iteration'}, {})[0] == 'silent'
     assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 0}}, {})[0] == 'silent'
-    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 1}}, {})[0] == 'nudge'
+    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 1}}, {})[0] == 'warn'
 
 
 def test_emitted_kinds_scan_both_writer_forms_in_nested_files(tmp_path):
@@ -412,7 +411,7 @@ def test_transition_to_escalated_uses_running_seat():
     from wuwei.signal import classify
     event = {'kind': 'state.transition', 'payload': {'item': 'A', 'phase': 'escalated'}}
     assert classify(event, {'seats': {'builder': {'item': 'A', 'status': 'running'}}}) == ('page', 'Decisions')
-    assert classify(event, {'seats': {}}) == ('nudge', 'Decisions')
+    assert classify(event, {'seats': {}}) == ('warn', 'Decisions')
 
 
 @pytest.mark.parametrize('page,spoof,exit_code', [
@@ -480,8 +479,8 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
         shlex.quote(str(ROOT / 'bin/wuwei')) + ' status --line')
 
 
-@pytest.mark.parametrize('kind,tier', [('created', 'nudge'), ('sending', 'silent'),
-                                      ('sent', 'silent'), ('dropped', 'silent'), ('failed', 'nudge')])
+@pytest.mark.parametrize('kind,tier', [('created', 'warn'), ('sending', 'silent'),
+                                      ('sent', 'silent'), ('dropped', 'silent'), ('failed', 'warn')])
 def test_draft_events_use_decisions_lane(kind, tier):
     from wuwei.signal import classify
     assert classify({'kind': 'draft.' + kind}, {}) == (tier, 'Decisions')
@@ -490,31 +489,14 @@ def test_draft_events_use_decisions_lane(kind, tier):
 ROUTED = {'D-2': {'reversibility': 'unsure', 'recommendation': 'defer'}}
 
 
-@pytest.mark.parametrize('outcomes,count', [
-    ({}, 1),
-    ({'D-2': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}, 0),
-])
-def test_routed_decision_nudges_until_answered(tmp_path, monkeypatch, capsys, outcomes, count):
-    from wuwei.__main__ import main
-    day(tmp_path, {'cap': 1, 'items': {'A': {'phase': 'raised'}}, 'decision_routes': ROUTED,
-                   'decision_outcomes': outcomes})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges', '--json']) == 0
-    rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.pending']
-    assert rows == [{'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
-                     'reason': 'D-2 pending owner decision'}][:count]
-    assert main(['status', '--line']) == 0
-    assert f'nudges {count}' in capsys.readouterr().out
-
-
 def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
-    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ['D-2']})
+    from wuwei.commands.status import attention
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ['D-2']})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges', '--json']) == 2
-    capsys.readouterr()
+    with pytest.raises(ValueError, match='invalid decision ledger'):
+        attention(directory)
     assert main(['status', '--line']) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
 
@@ -524,20 +506,19 @@ def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch
     from wuwei.__main__ import main
     replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
                 'payload': {'id': 'D-2', 'option': option}} for option in 'AB']
-    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ROUTED, 'decision_outcomes': outcomes},
-        replies)
+    from wuwei.commands.status import attention
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ROUTED, 'decision_outcomes': outcomes},
+                    replies)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     reason = f'D-2 answered from the phone: option A, confirm with {owner_cli(tmp_path)} decide D-2 A'
     expected = [] if outcomes else [reason]
-    assert main(['nudges', '--json']) == 0
-    rows = [row for row in json.loads(capsys.readouterr().out) if 'D-2' in row['reason']]
-    assert rows == [{'tier': 'nudge', 'source': 'decision.answered', 'lane': 'Decisions',
+    rows = [row for row in attention(directory) if 'D-2' in row['reason']]
+    assert rows == [{'tier': 'warn', 'source': 'decision.answered', 'lane': 'Decisions',
                      'reason': reason}][:len(expected)]
     assert main(['status']) == 0
     text = capsys.readouterr().out
     assert ('phone answers 1' in text) == bool(expected) and reason not in text
-    assert f'nudges {len(expected)}' in text
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['answered'] == expected
 
@@ -548,7 +529,7 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
                 'payload': {'id': identifier, 'option': option}} for identifier, option in zip(ids, 'ABAA')]
     routes = {identifier: {'reversibility': 'two-way', 'recommendation': 'A'} for identifier in ids}
-    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes}, replies)
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes}, replies)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     reasons = [f'{identifier} answered from the phone: option {option}, '
@@ -557,8 +538,8 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     text = capsys.readouterr().out.strip()
     assert text.count('phone answers') == 1 and 'phone answers 4' in text
     assert 'answered from the phone' not in text
-    assert main(['nudges', '--json']) == 0
-    rows = [row['reason'] for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.answered']
+    from wuwei.commands.status import attention
+    rows = [row['reason'] for row in attention(directory) if row['source'] == 'decision.answered']
     assert rows == reasons
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['answered'] == reasons
@@ -585,7 +566,7 @@ def status_of(tmp_path, monkeypatch, events):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True}, events)
-    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
+    (tmp_path / '.wuwei/config.toml').write_text('')
     data = status.snapshot(directory)
     return data, status.full(data), status.attention(directory)
 
@@ -638,14 +619,14 @@ def changed(summary=None, pr='example/project#7'):
     return {'kind': 'pr.changed', 'payload': payload, 'ts': NOW}
 
 
-def test_pr_changed_nudge_is_first_carries_the_summary_and_clears_at_wake_seen(tmp_path, monkeypatch):
+def test_pr_changed_is_first_carries_the_summary_and_clears_at_wake_seen(tmp_path, monkeypatch):
     events = [CLOCK, {'kind': 'build.parked', 'payload': {'reason': 'older'}, 'ts': NOW},
               changed('PR example/project#7: check ci failed'),
               changed('PR example/project#7: check ci passed')]
     data, line, rows = status_of(tmp_path, monkeypatch, events)
     assert (rows[0]['source'], rows[0]['reason']) == ('pr.changed', 'PR example/project#7: check ci passed')
     assert sum(row['source'] == 'pr.changed' for row in rows) == 1
-    assert 'prs 1 changed' in line and 'nudges 2' in line
+    assert 'prs 1 changed' in line
     seen = {'kind': 'session: wake-seen', 'payload': {'at': NOW}, 'ts': NOW}
     data, line, rows = status_of(tmp_path / 'b', monkeypatch, [*events, seen])
     assert [row['source'] for row in rows] == ['build.parked']
@@ -660,11 +641,11 @@ def test_old_pr_changed_without_summary_names_the_fields(tmp_path, monkeypatch):
 def test_negotiation_loop_tiers():
     from wuwei.signal import classify
     loop = {'kind': 'negotiation.loop', 'payload': {'item': 'alpha', 'past_goal': False}}
-    assert classify(loop, {}) == ('nudge', 'Work')
+    assert classify(loop, {}) == ('warn', 'Work')
     loop['payload']['past_goal'] = True
     assert classify(loop, {}) == ('page', 'Work')
     assert classify({'kind': 'negotiation.notified'}, {})[0] == 'silent'
-    assert classify({'kind': 'decision.waited'}, {}) == ('nudge', 'Decisions')
+    assert classify({'kind': 'decision.waited'}, {}) == ('warn', 'Decisions')
 
 
 def test_status_line_counts_loops(tmp_path, monkeypatch):
@@ -788,73 +769,7 @@ def test_issue_acceptance_adapter_none_is_silent(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert attention(directory) == []
     assert main(['status', '--line']) == 0
-    assert 'nudges 0' in capsys.readouterr().out
-
-
-def test_issue_acceptance_nudges_print_lines(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei.commands.status import attention
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges']) == 0
-    assert capsys.readouterr().out == 'No open pages or nudges.\n'
-    assert main(['nudges', '--json']) == 0
-    assert capsys.readouterr().out == '[]\n'
-    checked = {'kind': 'mcp.checked', 'payload': {'exit': 2}}
-    events = [checked, checked, NONE_EVENT, NONE_EVENT,
-              {'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
-               'payload': {'id': 'D-2', 'option': 'A'}},
-              {'kind': 'build.parked', 'payload': {'reason': 'ITEM-1 parked'}}]
-    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': {'D-1': {}, 'D-2': {}}}, events)
-    expected = {
-        'mcp.checked': 'nudge: The last MCP registry check did not pass or could not run (2 times). '
-                       'Run: wuwei mcp check',
-        'build.parked': 'nudge: ITEM-1 parked. Run: wuwei next',
-        'decision.pending': 'nudge: D-1 pending owner decision. Run: wuwei decision show D-1',
-        'decision.answered': 'nudge: D-2 answered from the phone: option A, '
-                             f'confirm with {owner_cli(tmp_path)} decide D-2 A'}
-    rows = attention(directory)
-    assert main(['nudges']) == 0
-    assert capsys.readouterr().out.splitlines() == list(dict.fromkeys(expected[r['source']] for r in rows))
-    assert main(['nudges', '--json']) == 0
-    assert capsys.readouterr().out == json.dumps(rows, allow_nan=False) + '\n'
-    assert [r['count'] for r in rows if r['source'] == 'mcp.checked'] == [2]  # #786: one row, counted
-    (directory / 'events.jsonl').write_text('')
-    (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
-    assert main(['nudges']) == 0
-    assert capsys.readouterr().out == 'No open pages or nudges.\n'
-
-
-def row_of(source, reason, tier='nudge'):
-    return {'tier': tier, 'source': source, 'lane': 'Work', 'reason': reason}
-
-
-@pytest.mark.parametrize('source,reason,expected', [
-    ('item.escalated', 'ITEM-1', 'nudge: ITEM-1 is escalated and waits for you. Run: wuwei why ITEM-1'),
-    ('draft.created', 'DR-1', 'nudge: An outward draft waits for owner approval. Run: bin/wuwei drafts'),
-    ('watch: health', 'watch is dead', 'nudge: watch is dead. Run: wuwei doctor'),
-    ('listen: health', 'listen is dead', 'nudge: listen is dead. Run: wuwei doctor'),
-    ('watch: sweep:unmeasured', 'x', 'nudge: A sweep could not read a record (unmeasured). Run: wuwei doctor'),
-    ('decision.answered', 'D-2 answered, confirm with decision outcome D-2 A',
-     'nudge: D-2 answered, confirm with decision outcome D-2 A'),
-    ('decision.pending', '', 'nudge: . Run: wuwei next'),
-    ('build.parked', 'start with /wuwei:wuwei-plan', 'nudge: start with /wuwei:wuwei-plan'),
-])
-def test_nudge_line_actions(source, reason, expected):
-    from wuwei.commands import nudges
-    assert nudges.line(row_of(source, reason), 1) == expected
-
-
-def test_nudge_page_and_nudge_stay_apart(tmp_path, monkeypatch, capsys):
-    from wuwei.commands import nudges
-    rows = [row_of('x', 'same'), row_of('x', 'same', 'page'), row_of('x', 'same')]
-    monkeypatch.setattr(nudges, 'attention', lambda directory: rows)
-    day(tmp_path, {'cap': 1, 'items': {}})
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert nudges.run(type('A', (), {'json': False})()) == 0
-    assert capsys.readouterr().out.splitlines() == [
-        'nudge: same (2 times). Run: wuwei next', 'page: same. Run: wuwei next']
+    assert capsys.readouterr().out == 'WUWEI no plan yet | pages 0\n'
 
 
 def test_outward_ai_tells_is_silent_and_reserved(capsys):
@@ -886,10 +801,10 @@ TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')
 
 @pytest.mark.parametrize('name', TELEMETRY)
 def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, name):
-    # #422, design 5.13: telemetry.ready is a nudge, the rest are silent; the CLI writes all six.
+    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all six.
     from wuwei.__main__ import main
     from wuwei.signal import classify
-    assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('nudge' if name == 'ready' else 'silent')
+    assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('warn' if name == 'ready' else 'silent')
     day(tmp_path, {})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
@@ -921,7 +836,8 @@ def test_status_json_names_plan_decisions_and_versions(tmp_path):
     data = json.loads(cli(tmp_path, 'status', '--json').stdout)
     assert (data['plan'], data['decisions'], data['plugin'], data['template']) == (
         False, ['D-7'], integrity.version(), '0.1.0')
-    assert {'pages', 'nudges', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
+    assert not {'nudges', 'nudges_mode'} & set(data)
+    assert {'pages', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
             'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'listen', 'health',
             'loops', 'answered', 'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
     (directory / 'plan.md').write_text('# Plan\n')
@@ -957,7 +873,7 @@ def test_issue_acceptance_the_line_starts_with_the_restart_and_fits(tmp_path, mo
     line = status.line(data)
     assert len(line) <= 100
     assert line.startswith('WUWEI restart Claude Code: hooks 0.12.0 and 0.15.0 still running')
-    assert 'pages 0' in line and 'nudges 0' in line
+    assert 'pages 0' in line and 'nudges' not in line
     assert 'ITEM-1' not in line and not re.search(r'\d\d:\d\d', line) and '(plugin' not in line
     whole = tokens(status.line(data, 10 ** 6))
     assert all(token in whole or token.startswith('seats 4/1 (') for token in tokens(line))
@@ -967,9 +883,9 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
     from wuwei.commands import status
     data = four_seats(tmp_path, monkeypatch)
     assert status.line(data) == (
-        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
-    assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · nudges 0 · observe')
-    assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0 · nudges 0'
+        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0')
+    assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · observe')
+    assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0'
     for moved in ('watch', 'listen', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
                   'unplanned', 'checks'):
         assert moved not in status.line({**data, 'cap_bound': 'budget'})
@@ -982,9 +898,9 @@ def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
     from wuwei.commands import status
     directory = day(tmp_path, {'cap': 1, 'items': {}})
     result = cli(tmp_path, 'status', '--line')
-    assert (result.returncode, result.stdout) == (0, 'WUWEI no plan yet | pages 0 · nudges 0\n')
+    assert (result.returncode, result.stdout) == (0, 'WUWEI no plan yet | pages 0\n')
     (directory / 'plan.md').write_text('# Plan\n')
-    assert cli(tmp_path, 'status', '--line').stdout == 'WUWEI gate waiting | pages 0 · nudges 0\n'
+    assert cli(tmp_path, 'status', '--line').stdout == 'WUWEI gate waiting | pages 0\n'
     data = {**four_seats(tmp_path / 'b', monkeypatch), 'decisions': ['D-7', 'D-8']}
     assert status.line(data).startswith('WUWEI decision D-7 waiting | 1 building')
     assert status.line({**data, 'restart': STALE}).startswith('WUWEI restart Claude Code')
@@ -994,13 +910,12 @@ def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
 def test_a_narrow_line_cuts_the_roles_then_drops_whole_tokens(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = four_seats(tmp_path, monkeypatch)
-    assert status.line(data, 81) == (
-        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
-    assert status.line(data, 72) == 'WUWEI 1 building · seats 4/1 (lead, arch, +2 more) | pages 0 · nudges 0'
-    assert status.line(data, 67) == 'WUWEI 1 building · seats 4/1 (lead, +3 more) | pages 0 · nudges 0'
-    assert status.line(data, 52) == 'WUWEI 1 building | pages 0 · nudges 0'
-    assert status.line(data, 42) == 'WUWEI 1 building | pages 0 · nudges 0'
-    assert status.line(data, 27) == 'WUWEI 1 building | pages 0'
+    assert status.line(data, 70) == (
+        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0')
+    assert status.line(data, 61) == 'WUWEI 1 building · seats 4/1 (lead, arch, +2 more) | pages 0'
+    assert status.line(data, 56) == 'WUWEI 1 building · seats 4/1 (lead, +3 more) | pages 0'
+    assert status.line(data, 47) == 'WUWEI 1 building | pages 0'
+    assert status.line(data, 26) == 'WUWEI 1 building | pages 0'
     assert status.line(data, 22) == 'WUWEI 1 building'
     assert status.line(data, 5) == 'WUWEI 1 building'
     assert status.line({**data, 'restart': STALE}, 5) == 'WUWEI ' + STALE.split(' (plugin')[0]
@@ -1020,7 +935,7 @@ def test_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch
     from wuwei.commands import status
     data = sample_day(tmp_path, monkeypatch)
     assert status.line(data) == (
-        'WUWEI 5 planned · 2 building · 2 in review · 3 shipped · seats 1/3 (builder) | pages 0 · nudges 0')
+        'WUWEI 5 planned · 2 building · 2 in review · 3 shipped · seats 1/3 (builder) | pages 0')
     for text in (status.line(data), status.full(data)):
         assert all(text[:match.start()].endswith('seats ') for match in re.finditer(r'\d+/\d+', text)), text
 
@@ -1034,9 +949,9 @@ def test_issue_641_parked_and_escalated_follow_shipped(tmp_path, monkeypatch):
 def test_status_line_width_flag(tmp_path):
     seats = {role: {'status': 'running', 'role': role, 'item': 'ITEM-1'} for role in ROLES}
     day(tmp_path, {'cap': 1, 'gate_approved': True, 'items': {}, 'seats': seats})
-    result = cli(tmp_path, 'status', '--line', '--width', '53')
+    result = cli(tmp_path, 'status', '--line', '--width', '42')
     assert result.returncode == 0, result.stderr
-    assert result.stdout == 'WUWEI seats 4/1 (lead, +3 more) | pages 0 · nudges 0\n'
+    assert result.stdout == 'WUWEI seats 4/1 (lead, +3 more) | pages 0\n'
     assert cli(tmp_path, 'status', '--line', '--width', '40').stdout == 'WUWEI seats 4/1 (+4 more) | pages 0\n'
     assert cli(tmp_path, 'status', '--line', '--width', 'x').returncode == 2
 
@@ -1072,7 +987,7 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
     shown = status.full(data).splitlines()
     assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [
-        'pages 1 · nudges 0 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
+        'pages 1 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
         ' · traces: 2 gaps',
         'watch dead · listen off · health ok · sessions 2',
         'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',
@@ -1097,3 +1012,76 @@ def test_status_names_a_repository_with_no_fast_checks(tmp_path, monkeypatch):
     assert f'acme/paper {fast_checks.NONE}' in shown
     assert not any('acme/widget' in line for line in shown)
     assert 'checks_none' not in status.snapshot(directory, line=True)
+
+
+def at(minutes):
+    """The timestamp this many minutes before NOW."""
+    from datetime import datetime, timedelta
+    return (datetime.fromisoformat(NOW) - timedelta(minutes=minutes)).isoformat()
+
+
+def scan_day(root, monkeypatch, events=(), raw=''):
+    """#786: a day with config.toml, rewritten in place on each call."""
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    directory = root / '.wuwei/days/2026-09-28'
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
+    (directory / 'events.jsonl').write_text(raw + ''.join(json.dumps(e) + '\n' for e in events))
+    (root / '.wuwei/config.toml').write_text('')
+    return directory
+
+
+def read_failed(pr, minutes):
+    return {'kind': 'watch: read-failed', 'payload': {'pr': pr, 'reason': 'could not read'}, 'ts': at(minutes)}
+
+
+def tracker(item, minutes=0, exit=2):
+    payload = {'item': item, 'exit': exit} if exit == 0 else {'item': item, 'exit': exit, 'reason': 'label not found'}
+    return {'kind': 'tracker.call', 'payload': payload, 'ts': at(minutes)}
+
+
+def test_repeats_fold_into_one_row_per_subject(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    events = [read_failed('acme/widget#1', minutes) for minutes in range(49, -1, -1)]
+    directory = scan_day(tmp_path, monkeypatch, events)
+    rows = [row for row in status.attention(directory) if row['source'] == 'watch: read-failed']
+    assert [(row['count'], row['ts']) for row in rows] == [(50, at(0))]
+    scan_day(tmp_path, monkeypatch, events + [read_failed('acme/widget#2', 30)] * 25)
+    rows = [row for row in status.attention(directory) if row['source'] == 'watch: read-failed']
+    assert sorted(row['count'] for row in rows) == [25, 50]
+
+
+def test_a_later_silent_event_clears_its_subject(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    directory = scan_day(tmp_path, monkeypatch, [tracker('A', 3), tracker('B', 2), tracker('A', 1, exit=0)])
+    rows = [row for row in status.attention(directory) if row['source'] == 'tracker.call']
+    assert len(rows) == 1 and rows[0]['count'] == 1 and rows[0]['ts'] == at(2)
+
+
+def test_unreadable_lists_and_pages(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    warning = {'kind': 'hook.warning', 'payload': {'reason': ['a', 'b']}, 'ts': at(1)}
+    finding = {'kind': 'security.finding', 'payload': {}, 'ts': at(1)}
+    directory = scan_day(tmp_path, monkeypatch, [{'kind': 'x', 'ts': at(5)}, warning, warning, finding, finding],
+                         raw='not json\nnot json\nnot json\n')
+    rows = status.attention(directory)
+    unreadable = [row for row in rows if row['source'] == 'unreadable event']
+    assert [(row['count'], row['ts']) for row in unreadable] == [(3, None)]
+    assert [row['count'] for row in rows if row['source'] == 'hook.warning'] == [2]
+    assert [row['count'] for row in rows if row['source'] == 'security.finding'] == [1, 1]
+
+
+def test_counts_that_read_rows_sum_count(tmp_path, monkeypatch):
+    from wuwei import workspace
+    from wuwei.commands import doctor, status
+    gap = {'kind': 'traces.gap', 'payload': {'reason': 'r', 'span': 's', 'session': 's'}, 'ts': at(1)}
+    untraced = {'kind': 'subagent.untraced', 'ts': at(1),
+                'payload': {'agent_type': 'Explore', 'agent_id': 'a1', 'reason': 'no seat'}}
+    directory = scan_day(tmp_path, monkeypatch, [gap] * 3 + [untraced] * 3)
+    assert status.snapshot(directory)['trace_gaps'] == 3
+    probes = {'state': {'result': 'ok', 'value': 'ok'}, 'planner': {'result': 'ok', 'value': 'ok'},
+              'seats': {'result': 'ok', 'value': 'none stuck'}}
+    rows = {row['name']: row['value'] for row in doctor._day(tmp_path, workspace.load_config(tmp_path), probes)}
+    assert rows['traces'] == '3 gaps today'
+    assert rows['untraced subagents'] == '3 stopped with no seat today'

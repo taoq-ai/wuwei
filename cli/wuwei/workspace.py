@@ -35,7 +35,7 @@ MERGE_SCHEMA = {
 }
 
 LEVELS = ("brief", "standard", "full")
-SURFACES = ("decisions", "digest", "nudges", "dm", "report")
+SURFACES = ("decisions", "digest", "dm", "report")
 # #331: what warns and what blocks, per area, by where the plugin runs.
 AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
 AREA_LEVELS = ('off', 'warn', 'block')
@@ -53,6 +53,8 @@ AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound a
 TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
+# #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
+RETIRED = ('nudges', 'owner.verbosity.nudges')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -157,8 +159,6 @@ SCHEMA = {
     "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
-    "nudges": {"mode": (str, "", ("", "off", "next", "all")),  # #742: "" follows autonomy.mode
-               "ttl_hours": (int, 24, 1), "max_open": (int, 20, 1)},  # #786
     "decisions": {"wait_hours": (int, 24, 1),
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
@@ -489,11 +489,6 @@ def verbosity(config, surface):
     return levels[surface] or levels['default']
 
 
-def nudge_mode(config):
-    """The effective nudges.mode (#742): an empty setting follows autonomy.mode."""
-    return config['nudges']['mode'] or ('off' if config['autonomy']['mode'] == 'autonomous' else 'next')
-
-
 def now():
     """Return local now, or the datetime represented by WUWEI_NOW."""
     from datetime import datetime
@@ -745,8 +740,8 @@ def _decode_error():
 
 def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
-    return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
-    texts are appended to warnings when it is a list. In a hook or status line process, a
+    return fresh defaults. Unknown keys never refuse (#799); their texts are appended
+    to warnings when it is a list. In a hook or status line process, a
     parse of the file after its parsed copy missed rewrites the copy (#346); a hit writes
     nothing."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
@@ -860,10 +855,6 @@ def load_config(root=None, *, raw=None, warnings=None):
                 location = f' at line {line}' if line is not None else ''
                 text = str(exc).replace('adapters.docs:', 'docs.system:')
                 raise ConfigError(f'{text}{location}') from exc
-        if unknown and posture(config)[0] == 'strict':
-            from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
-            if not integrity.newer_template(config):
-                raise ConfigError(unknown[0])
         _CONFIGS[path, raw] = (marshal.dumps(config), tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
             _cache(path.parent / 'generated', raw, config, unknown)

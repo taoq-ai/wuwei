@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlsplit
 from wuwei import registry, shell, verdict, workspace
 from wuwei.guards import NO_REVIEWER, RAISE, Guard
 from wuwei.guards.commit_push import data
-from wuwei.guards.protect_state import _cd_target, _cwd
+from wuwei.shell import _cd_target, _cwd
 from wuwei.exits import DAMAGED
 
 

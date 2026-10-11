@@ -175,7 +175,7 @@ function renderCockpit(data) {
     "unmeasured";
   const status = data.status || {};
   document.getElementById("signals").textContent =
-    `${status.pages ?? "unmeasured"} page(s), ${status.nudges ?? "unmeasured"} nudges`;
+    `${status.pages ?? "unmeasured"} page(s)`;
   document.getElementById("signal-events").innerHTML = (data.signals || []).map(row =>
     `<span class="meta">${esc(row.tier)} / ${esc(row.lane)}: ${esc(row.kind)}</span>`
   ).join(" | ");

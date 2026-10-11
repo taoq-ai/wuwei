@@ -23,7 +23,7 @@ OWNER = re.compile(r'\bthe owner\b', re.I)
 # Caught and replaced before anyone reads it (research.md KEEP row).
 KEEP = {('workspace.py', 'time component required')}
 # Person-facing scope (spec Assumptions): whole modules, or named top-level functions.
-PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py', 'commands/nudges.py')
+PERSON_MODULES = ('commands/doctor.py', 'commands/setup.py')
 PERSON_PARTS = {'commands/next.py': {'step'},
                 'control_plane.py': {'HELP', 'render', 'escalate', 'notify'}}
 
@@ -98,10 +98,6 @@ def reasons(source, name='module.py'):
         elif (isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple)
               and len(node.value.elts) == 2 and _code(node.value.elts[0])):
             add(node.value.elts[1])
-        elif (isinstance(node, ast.Assign) and name.endswith('protect_state.py')
-              and any(getattr(t, 'id', '') == '_OWNER_ACTIONS' for t in node.targets)):
-            for value in node.value.values:
-                add(value)
     return found
 
 
@@ -262,7 +258,7 @@ def test_before_plan_report(fresh, capsys):
 
 def test_before_plan_decision_show(fresh, capsys):
     code, text = run(capsys, 'decision', 'show', 'D-1')
-    assert (code, text) == (0, 'No D-1 today; bin/wuwei nudges --all lists open decisions.\n')
+    assert (code, text) == (0, 'No D-1 today; bin/wuwei status --json lists open decisions.\n')
     assert 'Errno' not in text and str(fresh) not in text
 
 

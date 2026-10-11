@@ -216,7 +216,7 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   - `review_stale`: re-request review, then post in the review channel;
   - `approved`: `wuwei merge` when the policy clears it (4.6), otherwise a merge decision;
   - `merged`: done.
-  An overdue action is a `nudge`, then a `page` at twice the deadline (5.9).
+  An overdue action is a `warn` (owner, 2026-10-10, #789), then a `page` at twice the deadline (5.9).
 - Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
   120; head, CI, mergeability, reviews, comments, threads) and, on a change with a part that
   needs a planner action (`watch.ACTIONS`: merged, closed, new commits, conflicts, new
@@ -541,7 +541,7 @@ pace). When inputs disagree the advice takes the slower pace and says what unloc
 one; the budget only advises against a pace. The owner's default (`[pace] default`) is shown
 in one line and never overridden. The pace never moves a floor: records, publish grants,
 strict refusals, trust-boundary findings, merge only at the gated head with green required
-checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17).
+checks, and decision routing hold at every pace.
 
 ### 5.3 Rules
 
@@ -874,8 +874,8 @@ owner. Each class runs at one level:
 - L0 ask: the owner chooses (5.4); the item waits.
 - L1 recommend: the recommendation is preselected in the next decision batch and the owner
   confirms or changes it; the item waits.
-- L2 notify: the CLI takes the recommendation at once and sends a nudge; the owner can undo
-  it with one reply until `undo_minutes` after the nudge reaches them.
+- L2 notify: the CLI takes the recommendation at once and tells the owner; the owner can undo
+  it with one reply until `undo_minutes` after the answer is taken (owner, 2026-10-10, #789).
 - L3 digest: the CLI takes the recommendation at once and lists it in the next digest.
 
 Classes are a fixed list; a new class is an amendment to this section, not config.
@@ -931,7 +931,7 @@ Merge. The `merge` class answers only where `merge.auto = true` and the merge po
 the merge; the policy's eligibility, preconditions, soak window, daily cap and breaker
 replace the other conditions above, unchanged; the ceilings still apply. Auto-merges do
 not count toward `max_per_day`. At L3 (the default, and the behaviour before cruise mode) an auto-merge
-appears in the digest; at L2 a nudge also goes out when the soak window opens; at L0 or L1
+appears in the digest; at L2 the owner is also told when the soak window opens (owner, 2026-10-10, #789); at L0 or L1
 every merge goes to the owner.
 
 Promotion and demotion. The steward proposes raising a class one level through propose and
@@ -966,7 +966,7 @@ escaped defects (5.6) attributed to a cruise answer of the class; the allowance 
 when the events exceed the allowance and number at least two. The burn rate is the events
 of the last 48 hours against the window's allowance, scaled to the window
 (`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
-`cruise.burn` nudge a day naming the events, whose action is `wuwei cruise budget`. The
+`cruise.burn` event a day (owner, 2026-10-10, #789) naming the events, whose action is `wuwei cruise budget`. The
 steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
 class runs one level lower, never below L0, through the promote writer, with a ledger line
 that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
@@ -1040,7 +1040,7 @@ item, gate verdicts on it, re-dispatches of a role already dispatched on it, and
 continuations (gate or PR feedback, not the build loop's fast-check backpressure, which 5.3
 bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
 gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
-the CLI, naming the counts and the last two exchanges. It is a nudge, and a page when the
+the CLI, naming the counts and the last two exchanges. It is a `warn` (owner, 2026-10-10, #789), and a page when the
 item is past the date of the goal it serves (5.7); the control plane sends the owner's DM
 the same summary within `control_plane.content` (15.4); the status line shows `loops N`.
 The signal reports; the negotiation budget (5.3) is what stops the rounds.
@@ -1054,14 +1054,20 @@ Signals. Every event is classified once by `wuwei signal classify` into a delive
 an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
 security finding fired, a base branch went red after an auto-merge, an owner decision
 blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
-or the budget cap hit), `nudge` (shown at the next glance, batched to the phone at most every
-two hours: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
+or the budget cap hit), `warn` (owner, 2026-10-10, #789) (recorded in the day's event log for `why` and the retro,
+never a list and never on the status line: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
 loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
 at 80 percent, a person's ask nearing its reply window, a telemetry week ready to send
 (5.13)), `silent` (visible, never pushed:
 normal progress, L3 cruise answers, auto-merges that went well). Lanes: Work (items by phase),
 Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
-classifier cannot read is a `nudge`, never `silent`.
+classifier cannot read is a `warn`, never `silent`.
+
+Amended (owner, 2026-10-10, #789): the `nudge` tier is renamed `warn` and the nudge list is deleted: no `wuwei
+nudges` command, no `nudges` count on the status line or in `status --json`, no doctor
+`nudges` row, no `[nudges]` config table. Every event is still appended to the day's
+`events.jsonl`; `wuwei next` derives the next action, and the counts that read warnings
+(trace gaps, untraced subagents, phone answers, changed PRs) keep reading them there.
 
 Surfaces, all reading the same classification:
 
@@ -1071,7 +1077,7 @@ Surfaces, all reading the same classification:
   `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
-  cut at whole names; #658), then pages, nudges
+  cut at whole names; #658), then pages (owner, 2026-10-10, #789)
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
   sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
@@ -1083,8 +1089,8 @@ Surfaces, all reading the same classification:
   otherwise.
 - Menu bar (optional adapter). `wuwei status --json` feeds a SwiftBar plugin script shipped
   in `templates/`: a green, amber or red mark visible when the app is in the background,
-  with the pages and nudges in its menu. macOS only; absent when SwiftBar is not installed.
-- Phone. Pages at once and nudge digests through the control plane (Remote Control push by
+  with the pages in its menu (owner, 2026-10-10, #789). macOS only; absent when SwiftBar is not installed.
+- Phone. Pages at once and digests (owner, 2026-10-10, #789) through the control plane (Remote Control push by
   default, messaging adapters in M5), plus the briefing pack and approvals.
 
 Briefings. A routine produces a pack before each calendar event that has attendees (lead
@@ -1386,7 +1392,7 @@ A payload that breaks a rule is not sent; the run records `telemetry.unsent` wit
   week for the next run, the four newest weeks at most; nothing waits or blocks. A 409
   answer counts as sent: the collector already has the week. A sent week records
   `telemetry.shared` (week and mode) and `shared` in its file.
-- `attributed`: the sweep records `telemetry.ready` once per final week (a nudge, 5.9).
+- `attributed`: the sweep records `telemetry.ready` once per final week (a `warn` (owner, 2026-10-10, #789), 5.9).
   The owner runs `bin/wuwei telemetry send`, an owner action on the host refused from agent
   tools like `config set`, which prints the exact issue, asks yes or no (#414) and opens it
   on `repository` with the code host adapter's `issue` (`gh issue create`). The issue comes
@@ -1428,7 +1434,7 @@ stays the source of truth and what the aggregation reads.
 week (the latest by default) and names the mode in force. `wuwei telemetry off` sets
 `share = "off"` without a confirmation, since it only narrows what leaves, and records
 `telemetry.off`; turning sharing on is the owner's (the interview or `config set`). Every
-`telemetry.*` event is written only by the CLI; `telemetry.ready` is a nudge and the rest
+`telemetry.*` event is written only by the CLI; `telemetry.ready` is a `warn` (owner, 2026-10-10, #789) and the rest
 are silent.
 
 Interview. One workspace question after the posture: "Share weekly usage counts with the
@@ -1905,7 +1911,7 @@ supply-chain drift between sessions and prompt-injected edits, and surface them 
   until the owner reinstalls or re-confirms on the host.
 - Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
   it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
-  memory, goals or voice that is uncommitted or committed without that trailer: a `nudge`,
+  memory, goals or voice that is uncommitted or committed without that trailer: a `warn` (owner, 2026-10-10, #789),
   a `page` for charter overrides and the voice.
 - Prompt canary. `wuwei init` generates a random canary token per workspace, embedded in
   every charter and skill the seats load. The canary appearing in outbound text, a PR or
@@ -2021,77 +2027,24 @@ Floors no posture and no override lowers:
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
 
-### 9.2 Safety invariants (owner, 2026-10-05, #530)
+### 9.2 Process edges (owner, 2026-10-11, #789)
 
-The hooks are the runtime monitor; this table is the property list they are checked
-against. `tests/test_invariants.py` checks every row on every case of posture x audience x
-topic x kind x grant state x umbrella x connector mode, and walks every guard reason under
-`observe` and `guarded`.
+An edge is an action WUWEI cannot take back: it changes what others see or leaves the
+workspace. The hooks refuse each edge outside its one path. Every other process rule lives in
+code (`next`, dispatch, the verdict lint, the merge policy) and is tested where it lives.
 
-| Id | Invariant | Checked by | Notes |
+| Edge | Rule | Guard | Test |
 | --- | --- | --- | --- |
-| I1 | Under observe and guarded no path reaches a wall except the records floor | the reason corpus levelled by `hook.posture`; per case, `classify` and the deploy guard | Owned: config and integrity re-confirmation through the card record (the follow-up in `specs/530-posture-day`, Deferred). Exempt: the merge family (a session merge names `bin/wuwei merge`, #524; approval, `--admin`, branch protection and a shepherd merge stay the owner's), the heartbeat probe, `permissions.deny` (deferred), the owner's own Keep answer, owner-written block rows, day state recovery, unknown git (the hook levels it to a warning below strict); a broken config is records |
-| I2 | Every held message has a card path that leads to a send | per case, a held `classify` result; per posture, hold, the Draft card answered Send now, approve, the same call sends | Under strict the owner approves at the host |
-| I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard refuses a session `gh pr merge` and `--admin`, naming `bin/wuwei merge`; per posture x grant x head, `merge.execute` merges only at the gated, green head with a matching grant; per posture x tier x route (a `trust_surface` item with security PASS, with security FIX, with a `merge.owner_paths` path), `merge.execute` merges only the security PASS under the auto policy | #524; a grant lifts only auto-merge eligibility and pacing, never a 4.6 precondition; #675: a `trust_surface` item waits on its security gate, never on the owner; a `merge.owner_paths` path merges only by the owner's hand, whatever the grant |
-| I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
-| I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created; the shipped `merge.default_tier` is empty; `today` is written only by the owner's autonomy answer (#530) |
-| I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |
-| I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535; class tickets in the owner's tracker: I55 (#644) |
-| I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once`, `bin/wuwei decision outcome D-1 once` and `bin/wuwei config set cap 2 --from-card D-1` through `protect_state` from the planner and a seat | #529; #661: below strict the planner's refusal names the card, never a host-terminal command |
-| I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
-| I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
-| I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
-| I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
-| I13 | A shadow never changes a live route | `cruise.level` with and without a stored shadow row, for every class, shadow level and state, cruise on, off and supervised; the full route equality in `tests/test_cruise.py` | #560 |
-| I14 | A raise lands only after a passed shadow | a raise card with no shadow answered `raise` leaves the running levels unchanged | #560; the #558 budget restore is the one raise with no card |
-| I15 | No pace lowers a floor: a tier never drops, depth is light only for a light tier or fast on a measured, unflagged standard item without guard code, and no pace plans more seats than the host fits | `pace.adjust` on every pace, tier, guard, flag and measurement; `pace.seats` on every pace and load; `dispatch.depth` on an untiered item and for a gate reader | #579, #567 |
-| I16 | No pace changes who decides | `cruise.level` for every class and `decision.route` on a two-way and a one-way record with the day at each pace; `plan set pace=fast` through `protect_state` passes for the planner below strict, never for a seat | #579 |
-| I17 | Fast merges only at green required checks | the merge policy, the PR guard and the launch guard never read the pace; `merge.green` on a pending required check is not green | #579; I3 keeps the gated head |
-| I18 | The setup answers never allow a publish target | per posture, `grants.active` with `merge.default_tier = "today"` covers only a merge on a configured repository below strict; no `init.allow_rules` rule matches a deploy, release, protected-branch push or force push | #530 |
-| I19 | A thread reply follows its recorded participants: a team participant sends, a client or public one is held as a draft, never blocked, below strict | per posture, audience and umbrella, `classify` on a reply in thread `C0TEAM/1.2` whose recorded participant is one person of that audience | #526 |
-| I20 | CAP comes from the host: the owner's cap when set, else, for seats that are separate processes, the seats that fit above the memory floor, one per core, at least one, and for Claude subagent seats one per core whatever the free memory; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage x a process and a subagent seat policy | #528, #658 |
-| I21 | An internal-state word (`outward.patterns`) never refuses or holds a tracker, docs or other write; team or company chat is never held and is refused only under strict; a client or public chat an owner row would send is held as a draft naming the word | per posture, audience and kind, `classify` and the outward lint with and without the word, with owner rows that send to the client and public channels | #533 |
-| I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py`. #600: a config write that records its previous value is two-way; its undo is config set with that value, so it needs no rehearsal |
-| I23 | A target the workspace never touched goes to the owner once, and only an owner answer, config or the seed clears it | `decision route` on a two-way Routine record naming a new repository under autonomous; a seat's Write to `memory/targets.json` | #556; the pinned cases stay in `tests/test_novelty.py` |
-| I24 | Every guard reads the same people, channels and connectors from the register as from `config.toml` | `graph.drift` of the register built from the fixture's people, channel classes and connector modes | #552; the guard-decision equality stays in `tests/test_graph.py` |
-| I25 | Doctor and the commit and push guard agree on `repos.N.identity`: both pass a set one, both fail an empty one with the same reason and the same `bin/wuwei config set` fix | doctor's identity row against `commit_push.unset_identity`, the helper the guard raises from, with a set, an empty and a malformed identity | #605; one helper, `commit_push.unset_identity`; doctor fills in the identity git resolves; the guard and native hook runs stay in `tests/test_commit_push.py` and `tests/test_git_hook.py` |
-| I26 | Every command `next` returns to start a planned item exits 0 in a multi-repository workspace: `worktree add` names the candidate's `--repo`, and an item with no repository is parked with its reason | `dispatch._start` on a two-repository fixture with one candidate carrying `repo` and one without; the `worktree add` command run through its command function with the VCS boundary faked, and the other item's command is `plan park` | #603; one repository keeps `worktree add <item>`; `tests/test_dispatch.py` runs the park through `main`; the walking day in `tests/test_path_day.py` runs the brief too |
-| I27 | A fresh day's gate-confirmed proposed goals approve the plan, and approve never writes owner memory | `plan.approve` over the empty goals template with the day's `goals.md`; `memory/goals.md` unchanged after | #603; `goals edit` records them after the gate and stays the owner's under strict |
-| I28 | A stored interview answer never overwrites a key present in `config.toml` with a value other than its default unless `config promote --keys` names it | an autonomy answer recorded with `autonomy.mode = "supervised"` present: the promote proposal keeps it and lists it, the proposal with `--keys autonomy.mode` applies it | #604; measured repository facts and `setup` apply as before |
-| I29 | A decision record command for a card the planner asked never prompts below strict, with and without `WUWEI_SESSION_ID`; under strict it never records from the card | per posture, `decision.owner_confirm` on the planner's asked D-99 with the variable set and unset x no card and the record's card hash, stdin not a terminal, `_host_confirm` recording each call | #599; the seat refusal stays in `tests/test_card_confirms.py` |
-| I30 | A `--card` record command confirms only the card of the record as it stands: a hash from an edited record never records and never prompts | per posture, `decision.owner_confirm` on the asked D-99 with the hash of the record with its Options changed | #599 |
-| I31 | An empty fast-check list never refuses a launch below strict | per posture, `build._repo` on a repository with `fast_checks = []` and no card answered | #600; strict refuses naming `calibrate --questions` until the owner answers the fast-checks card |
-| I32 | A config card with a list value records without a prompt below strict | per posture, a routed card with a Value row `repos.0.fast_checks = ["make test"]` answered in the planner session, then `config set --from-card D-n` with the host prompt failing | #600; strict prints the command for a host terminal |
-| I33 | A config record is never Strategic on its own | Class `other` and none x door one-way, two-way and unsure x confidence high and low: `undo.correct`, then `cisr`, on a record with Value rows and a Previous line | #600; a seat's better class stands |
-| I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain diff of documents, notebooks and data with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor, and on a document with a data file | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
-| I35 | No item opens a fix round past its round cap: `build.open_fix` refuses at the cap and `dispatch next` turns a blocking finding at the cap into a park with the finding and what would unpark it | `dispatch.max_rounds` for `gates.max_rounds` 1, 2 and 3 x each tier override 0, 1 and 3 x each item tier; `build.open_fix` on an item whose build used its cap, with and without a tier override | #623; one cap read in `dispatch.max_rounds`, one round opened in `build.open_fix`; after the cap non-blocking notes ship in the PR body |
-| I36 | An item ticket is attached by the planner below strict or by the owner, never by a seat: `tracker create <item>` and `plan set <item> ticket=<id>` pass for the registered planner below strict and never for a seat, whose reason names the planner; `tracker create --bug` stays a seat command | per posture, `protect_state.check_bash` on both commands for the planner and for a seat, and on a seat's `tracker create --bug A Broken --evidence cli/x.py:1` | #636; the gate's Approve opens the tickets the plan proposed; under strict the owner runs the commands in a host terminal |
-| I37 | An item with `owner_merge` set is never merged by WUWEI: `merge check`, `wuwei merge`, `pr act`, the PR guard and the overnight shepherd refuse naming the flag, under any grant; cleared, they follow the normal policy | `merge.owner_hold` on a set, cleared, absent and malformed record in the walk; the path table `test_owner_merge_holds_on_every_path` (each path x flag set and cleared x no grant and a today grant) | #678; one read in `merge.check`; only `wuwei plan set` writes it; agent tools set it, the owner clears it |
-| I42 | Generated and data lines never count toward the tier or the size cap, and both read the same count from `merge.uncounted`; a diff that changes `.gitattributes` gets no linguist-generated exclusion | `dispatch.tier` and `merge.uncounted` on source with a large data file and with a linguist-generated file, each with and without a changed `.gitattributes` | #657; one decision in `merge.uncounted`, read by `dispatch.tier` and `merge.check` |
-| I38 | An untyped Agent launch in a workspace is never refused below strict and is registered as an adhoc seat; under strict it is refused naming `seat start --adhoc` unless that command recorded its prompt | per posture, `agent_launch.check` on a general-purpose launch, and under strict again after `seat start --adhoc` with the same prompt | #676; its tool calls bind to the seat by the prompt digest, and `why adhoc` lists it |
-| I39 | A FIX verdict is accepted only with a parsed blocking finding, whatever id form starts it | `verdict.lint` and `verdict.finding_blocks` on a FIX verdict for each id form (`F1.`, `Q1.`, `S1.`, `A1.`, `G1.`, `N1.`, `Finding 1.`, `[Q1]`, `1.`, severity first) with `blocks: yes` (accepted, one blocking block) and with `blocks: no` (refused naming the FIX rule) | #677; one parser in `verdict.finding_blocks`, one rule in `verdict.lint` |
-| I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
-| I52 | A `python -c` snippet with no write-like token passes the records guard in every posture; one with a write-like token is refused in every posture, naming the token | per posture, through the hook, a snippet printing the day's `state.json`; `check_bash` on `open(..., "w")` and `Path(...).write_text` snippets naming it | #643; one token scan in `shell.snippet_write`, shared through `shell.reads`; a name built at run time is the 4.5 residual |
-| I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
-| I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
-| I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
-| I44 | A numbered list outside a Findings heading is not a finding, and every sentinel agent carries the verdict format the lint accepts | `verdict.finding_blocks` on an `Evidence` numbered list (no block) and a `Findings` numbered list (one block per line); `verdict.lint_file` on the example in each `agents.render(ROOT)` sentinel agent with that role (`OK: FIX`) | #665; one table in `verdict.FORMAT`, one parser in `verdict.finding_blocks`, rendered by `agents.render` |
-| I50 | Under observe and guarded a traces guard that did not finish in time never fails a tool call: a `TimeoutError` is a warning naming its elapsed milliseconds, recorded as `traces.slow`; strict refuses it | per posture, `traces.check` with the trace read raising `TimeoutError` | #659; any other failure keeps the `traces.gap` path |
-| I41 | A Bash call is judged by what it runs: git or gh words in the text of a call whose every command is a reader or a guarded program never refuse it; a git or gh name built by quotes, a line continuation, eval or sh -c is judged as the plain command; one built from a variable is refused naming it | normalize, constructed and unreadable on the reader, runnable-text, split-name and variable tables | #671; the guard and hook cases stay in tests/test_commit_push.py, tests/test_pr_guards.py and tests/test_parser_warns.py |
-| I72 | WUWEI merges only with a method the repository allows: an explicit `repos.merge_method` only when allowed, `auto` the first allowed of squash, rebase, merge, none allowed the owner's merge | `merge.method_for` on every setting x every subset of allowed methods | #785; one choice in `merge.method_for`, read by `merge.check`; the adapter allowlist admits only `--squash`, `--rebase` and `--merge` |
-| I54 | Under observe and guarded the traces guard never fails a tool call: an inspection or recording failure is a warning naming what it could not read, recorded as `traces.gap`; strict refuses it | per posture, `traces.check` on a PostToolUse payload in a workspace with security required and unreadable security material | #601; the guard decides its own posture; an unreadable config keeps the refusal |
-| I49 | A missing tracker label is created by WUWEI on its own only on the owner's tracker below strict; under strict or on an external tracker the move names the label, `bin/wuwei init --upgrade` and `bin/wuwei tracker move` | `tracker.creates_labels` per posture on an owned and an external GitHub project | #670; one decision in `tracker.creates_labels`, reached by every in-review move through `dispatch.tracker_call`; `setup` and `init --upgrade` create on any tracker from a host terminal |
-| I61 | An Agent launch naming a brief that does not exist is refused in every posture, naming the brief command, and registers no seat | per posture, the PreToolUse hook on a launch naming a missing brief, then the day's seats and `seat launched` events | #725 |
-| I65 | A local tool passes the outward guard in every posture, and a `run_in_terminal` command is judged by the Bash guards as the same command through Bash | per posture, through the hook, `run_in_terminal` with a plain command and with a day `state.json` write, against the same command through Bash; `check_tier` on `open_terminal_tab` | #727; one shape in `guards.outward.resolve` and one view in `hook.as_bash` |
-| I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
-| I51 | A word is the CLI only in program position: a grep, rg or git grep pattern and an awk or sed script that can neither run nor write pass the records guard in every posture; an awk or sed that runs, and an argument-echoing stage piped into an executor, are refused in every posture; a CLI path in a leading literal assignment is judged as the CLI | per posture, through the hook, `grep -n "wuwei decide" notes.txt \| sort` and `x=bin/wuwei; $x state set a b`; `check_bash` for a seat on `awk 'BEGIN{system("bin/wuwei decide D-1 a")}'` (2) and on `x=bin/wuwei; $x decide D-1 a` (1) | #730; argument words judged in `protect_state._owner_action`, variables resolved in `shell.leading_variables` |
-| I60 | A CI-fix item's gate verdict is accepted only with one result row per run step of each job the item records, and never as PASS with a failing step; an item that records no job lints as before | `verdict.lint` on two steps with rows for both, one, a duplicate and a FAIL under PASS, and on one row with no steps | #733; the steps come from `items.<item>.ci_jobs` and the worktree's workflow through `brief.ci_steps` |
-| I59 | A blocking gate verdict never ends in a bare escalate: dispatch next answers a fix round, or an escalate naming its decision record and the command that answers it; a PARK or ESCALATE verdict's card is written once, for the planner below strict and routed to the owner under strict | per posture, `dispatch.next_step` twice on a light item whose quality verdict is ESCALATE: one D-n, the same id twice, command `wuwei decision route D-n` below strict and `wuwei decision show D-n --widget` under strict with the card in `decision_routes` | #732; `tests/test_dispatch.py` runs both commands through `main` |
-| I57 | A fast-check failure holds an item on a fix item only when every failing check names lint locations, and only on files the item did not change; a test failure, a failure on a changed file or one with no location goes back to its builder | `fast_checks.unchanged` on a lint location on an unchanged file, then on a changed file, a missing file, a `..` path, test ids, a pytest `ERROR` line, no location, and one held failure beside one own failure | #648; hold, release and the fix item in `tests/test_main_broken.py` |
-| I47 | A typed Agent launch inside a day is never silently unregistered: below strict it registers a seat or the session is shown its reason; a launch with no brief line registers as an adhoc seat naming `wuwei brief`, and under strict it is refused naming `wuwei brief` | per posture, `agent_launch.check` levelled by `hook.posture` on a launch with no brief line and on a brief line naming an unlogged brief | #660; the brief line may stand on any line; the planner note is kept on the seat |
-| I58 | A polish round opens only from a round-one pass with notes, below the round cap, at most once per item and never under `gates.polish = never`, and exactly one gate re-checks it (the single note author, else quality) until the PR | `dispatch.polish_offer` per mode, note authors, polish record and rounds used; `dispatch.rechecks` on an all-PASS row with an opened polish, before and after a `pr` | #723; the offer rule in `dispatch.polish_offer`, the re-check rule in `dispatch.rechecks`; the round itself is a fix round under I35 |
+| Host merge | A PR merges only through `bin/wuwei merge` under the merge policy (4.6): at the head the gates checked, with green required checks, never with `owner_merge` set; a session `gh pr merge` or a merge API call is refused naming it | `guards/pr.py`, `merge.check` | `tests/test_pr_guards.py`, `tests/test_merge.py` |
+| Approve | WUWEI never approves a PR: `gh pr review --approve` and an APPROVE review event are refused, and the code host port has no approval call | `guards/pr.py` | `tests/test_pr_guards.py`, `tests/test_code_host.py` |
+| Admin | `--admin` and branch protection or ruleset writes are refused | `guards/pr.py` | `tests/test_pr_guards.py` |
+| Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`) is refused | `guards/commit_push.py` | `tests/test_commit_push.py` |
+| Deploy | WUWEI never deploys (4.7) | `guards/deploy.py` | `tests/test_deploy.py` |
+| Outward send | A message, tracker or docs write leaves only as the outward lint and tiers allow (4.3, 4.9) | `guards/outward.py` | `tests/test_outward.py` |
+| PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item warns naming it, and is refused under strict | `guards/pr.py`, `shepherd.raise_pr` | `tests/test_pr_guards.py`, `tests/test_shepherd.py` |
 
-A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
+`tests/test_invariants.py` keeps one check across all guards: no guard reason is a wall under
+observe or guarded (#530).
 
 ## 10. Testing
 
@@ -2337,6 +2290,6 @@ The listener routes messages from people, not only work.
 - Outbound tiers (4.9) govern what the responder may send; where 15.3 and 15.4 are stricter
   for a channel, the stricter rule wins, and every direct message, including an
   acknowledgement, is a draft for one-tap approval.
-- Reply obligations: each needs-you ask is owed until answered. It starts as a `nudge` and
+- Reply obligations: each needs-you ask is owed until answered. It starts as a `warn` (owner, 2026-10-10, #789) and
   becomes a `page` as its reply window closes. The Stop guard refuses day close while a reply
   is owed to a person.

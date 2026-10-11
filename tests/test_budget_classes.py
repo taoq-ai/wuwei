@@ -177,9 +177,8 @@ def test_a_refilled_window_restores_the_level(ws, monkeypatch):
     assert line['action'] == 'raise' and line['reason'].startswith('budget refilled: defer back to L2')
 
 
-def test_a_fast_burn_writes_one_nudge_a_day(ws, capsys):
+def test_a_fast_burn_writes_one_event_a_day(ws):
     from wuwei import budget_classes
-    from wuwei.__main__ import main
     raise_to(ws, 'defer', 2)
     spend(ws, reversals=2)
     budget_classes.evaluate(ws)
@@ -188,9 +187,7 @@ def test_a_fast_burn_writes_one_nudge_a_day(ws, capsys):
     assert 'reversal 2026-09-28 D-11' in burn['reason'] and level(ws) == 2
     budget_classes.evaluate(ws)
     assert len([e for e in events(ws) if e['kind'] == 'cruise.burn']) == 1
-    main(['nudges', '--all'])  # #742: the raw classification
-    assert any(line.startswith('nudge: defer burns its error budget') and line.endswith('Run: wuwei cruise budget')
-               for line in capsys.readouterr().out.splitlines())
+    assert burn['reason'].startswith('defer burns its error budget')
 
 
 def test_a_spent_class_at_l0_is_not_held(ws):
@@ -232,9 +229,7 @@ def test_no_raise_card_after_a_budget_event_since_the_last_change(ws):
 
 
 def test_cruise_budget_prints_the_table(ws, capsys):
-    from wuwei import commands
     from wuwei.__main__ import main
-    assert commands.read_only(['cruise', 'budget'])
     assert main(['cruise', 'budget']) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].split() == ['class', 'level', 'answered', 'spent', 'allowance', 'burn', 'state']

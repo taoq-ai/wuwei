@@ -15,8 +15,8 @@ URI = 'ui://wuwei/board.html'
 MIME = 'text/html;profile=mcp-app'
 TOOL = {'name': 'wuwei_board', 'title': 'WUWEI day board',
         'description': ("Read-only view of today's WUWEI board: items by phase with status and "
-                        'gate verdicts, owned PRs and what they wait on, pending decisions, pages '
-                        'and nudges, the status line, and why each item is where it is (why.json). '
+                        'gate verdicts, owned PRs and what they wait on, pending decisions, pages, '
+                        'the status line, and why each item is where it is (why.json). '
                         'Takes no arguments and writes nothing.'),
         'inputSchema': {'type': 'object', 'properties': {}, 'additionalProperties': False},
         'annotations': {'readOnlyHint': True, 'destructiveHint': False,
@@ -160,7 +160,7 @@ def read(root):
              *_table('Telemetry', ('Metric', 'Value'), _telemetry(root, data)),
              *_table('Attention', ('Tier', 'Lane', 'Reason'),
                      [(r['tier'], r['lane'], r['reason'])
-                      for r in status.surfaced(directory, status.attention(directory), data)[1]]),
+                      for r in status.attention(directory) if r['tier'] == 'page']),
              '', 'Full cockpit: run bin/wuwei dashboard and open the printed loopback URL.']
     files = {'./board.json': json.dumps(dashboard.board_snapshot(directory)),
              './state.json': json.dumps(data), './events.jsonl': events,

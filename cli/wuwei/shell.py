@@ -6,9 +6,10 @@ from itertools import count, product
 from math import prod
 from pathlib import Path, PurePosixPath
 import re
+import os
 import shlex
 
-from wuwei.exits import DAMAGED
+from wuwei.exits import DAMAGED, PAYLOAD
 
 
 class ParseError(ValueError):
@@ -179,6 +180,40 @@ def _launcher(path, cwd):
         return bool(recorded and recorded[0]) and path == Path(recorded[0]).resolve()
     except (OSError, ValueError, RuntimeError):
         return False
+
+
+def _text(value, name):
+    if not isinstance(value, str) or not value or '\0' in value:
+        raise ValueError(f'missing or invalid {name}; {PAYLOAD}')
+    return value
+
+
+def _cwd(payload):
+    cwd = Path(_text(payload.get('cwd'), 'cwd'))
+    if not cwd.is_absolute():
+        raise ValueError(f'cwd must be absolute; {PAYLOAD}')
+    return cwd.resolve()
+
+
+def _cd_target(command):
+    args = command.argv[1:]
+    while args and args[0] in ('-L', '-P'):
+        args = args[1:]
+    if args and args[0] == '--':
+        args = args[1:]
+    elif args and args[0].startswith('-') and args[0] != '-':
+        raise ValueError('unsupported cd option; use git -C or a subshell')
+    if len(args) > 1:
+        raise ValueError('cd requires a single literal directory; pass one literal directory to cd')
+    env = {**os.environ, **command.env}
+    target = args[0] if args else _text(env.get('HOME'), 'HOME')
+    if target == '~' or target.startswith('~/'):
+        target = _text(env.get('HOME'), 'HOME') + target[1:]
+    if target == '-':
+        target = _text(env.get('OLDPWD'), 'OLDPWD')
+    if env.get('CDPATH') and not Path(target).is_absolute() and not target.startswith(('./', '../')):
+        raise ValueError('CDPATH directory search is opaque; use an absolute path')
+    return target
 
 
 def known_cli(word, cwd):
@@ -954,11 +989,9 @@ def snippet_write(argv):
     return None
 
 
-def reads(argv, cwd=None):
-    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action), a
-    python -c snippet with no write-like token (#643) or a read-only call of the known CLI.
-    Shared by the classifier and the state guard."""
-    from wuwei import commands
+def reads(argv):
+    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action) or a
+    python -c snippet with no write-like token (#643). Shared by the classifier and the state guard."""
     if not argv:
         return False
     name, args = PurePosixPath(argv[0]).name, argv[1:]
@@ -972,8 +1005,7 @@ def reads(argv, cwd=None):
         if args[:2] == ['-m', 'json.tool']:
             return len(args) < 4  # no operand reads stdin; a second operand is json.tool's outfile
         return snippet_write(argv) == ''  # #643
-    return name in READ_ONLY or bool(not any('$' in word for word in args)
-                                     and known_cli(argv[0], cwd) and commands.read_only(args))
+    return name in READ_ONLY
 
 
 def inline_code(argv):
@@ -1030,7 +1062,7 @@ def _classify(command, publishers, cwd=None):
         name = PurePosixPath(argv[0]).name if argv else ''
         args = argv[1:]
         literal = not any('$' in word for word in (*args, *writes))
-        safe = reads(argv, cwd)
+        safe = reads(argv)
         if name in ('cd', 'pushd'):
             dirs.append(expand(' '.join(argv)))  # a later write can land under its target
         if '$' in name:

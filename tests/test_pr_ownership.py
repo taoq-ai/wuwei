@@ -180,7 +180,7 @@ def test_timing_config_rejects_invalid(case, key, value):
 
 
 @pytest.mark.parametrize('seconds,blocked,tier', [(1799, False, 'silent'),
-    (1800, False, 'silent'), (1801, True, 'nudge'), (3599, True, 'nudge'), (3600, True, 'page')])
+    (1800, False, 'silent'), (1801, True, 'warn'), (3599, True, 'warn'), (3600, True, 'page')])
 def test_poll_produces_deadline_stop_and_signal(case, monkeypatch, seconds, blocked, tier):
     from wuwei.guards.stop import check
     from wuwei.signal import classify
@@ -200,11 +200,23 @@ def test_poll_produces_deadline_stop_and_signal(case, monkeypatch, seconds, bloc
     events = watch.records(workspace.day_dir(root) / 'events.jsonl')
     signals = [classify(row, {})[0] for row in events if row['kind'] == 'pr.action']
     assert tier in signals
-    assert signals.count('page') <= 1 and signals.count('nudge') <= 1
+    assert signals.count('page') <= 1 and signals.count('warn') <= 1
     watch.poll(root)
     later = watch.records(workspace.day_dir(root) / 'events.jsonl')
     assert sum(classify(row, {})[0] != 'silent' for row in later if row['kind'] == 'pr.action') == sum(
         value != 'silent' for value in signals)
+
+
+def test_poll_reads_an_episode_tier_written_before_801(case, monkeypatch):
+    root, host, _ = case
+    own(root)
+    host.results['pr'].data['mergeable'] = False
+    assert watch.poll(root) == 0
+    advance(monkeypatch, 1801)
+    watch.poll(root)
+    state._write_state(lambda data: data['watch']['actions'][REF].update(tier='nudge'), root, reserved=False)
+    pr_actions.evaluate(root)
+    assert watch.saved(root)['actions'][REF]['tier'] == 'warn'
 
 
 def test_poll_classification_failure_preserves_change_wake(case, capsys):

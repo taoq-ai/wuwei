@@ -147,7 +147,7 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
                'prs': [{'ref': 'javascript:alert(1)', 'state': 'unmeasured',
                         'last_action': 'unmeasured', 'waiting_on': 'unmeasured',
                         'deadline': 'unmeasured'}],
-               'status': {'pages': 1, 'nudges': 2},
+               'status': {'pages': 1},
                'signals': [{'kind': '<bad>', 'tier': 'page', 'lane': 'Work'}],
                'briefing': 'Today <important>'}
     source = (harness.replace('BOARD', json.dumps(board)).replace('STATE', json.dumps(state))
@@ -187,7 +187,7 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
     assert 'unmeasured' in cells['prs']['innerHTML']
     assert 'href="javascript:' not in cells['prs']['innerHTML']
     assert '1 page' in cells['signals']['textContent']
-    assert '2 nudges' in cells['signals']['textContent']
+    assert cells['signals']['textContent'] == '1 page(s)'
     assert '&lt;bad&gt;' in cells['signal-events']['innerHTML']
     assert 'Today <important>' in cells['briefing']['textContent']
 

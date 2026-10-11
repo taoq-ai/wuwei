@@ -198,6 +198,31 @@ def test_merge_method_config(case):
         workspace.load_config(root)
 
 
+@pytest.mark.parametrize('change,key,near', [
+    (('auto = true', 'auto = true\nnever_auto_path = ["x"]'), 'repos.0.merge.never_auto_path',
+     'repos.0.merge.never_auto_paths'),
+    (('[owner]', '[merge]\ndefault_tir = "ask"\n[owner]'), 'merge.default_tir', 'merge.default_tier'),
+])
+def test_unknown_merge_key_refuses(case, change, key, near):
+    # #799: unknown keys only warn, so the merge edge fails closed on its own configuration.
+    config_change(case[0], *change)
+    result = check(case)
+    assert result.exit == 1 and key in result.reason and near in result.reason, result
+
+
+def test_unknown_merge_key_from_a_newer_template_merges(case, monkeypatch):
+    from wuwei import integrity  # #601/#645: a newer install wrote the key
+    monkeypatch.setattr(integrity, 'version', lambda: '0.12.0')
+    config_change(case[0], '[environments]', 'template_version = "0.13.0"\n[environments]')
+    config_change(case[0], 'auto = true', 'auto = true\nnever_auto_path = ["x"]')
+    assert check(case).exit == 0
+
+
+def test_unknown_key_elsewhere_does_not_refuse(case):
+    config_change(case[0], '[owner]', '[host]\nseatz = 2\n[owner]')
+    assert check(case).exit == 0
+
+
 def test_fixes_base_names_checks_red_at_base_and_green_at_head():
     fixes = policy().fixes_base
     def rows(**conclusions):
@@ -1341,6 +1366,8 @@ def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
     host.results['label'] = Result(0, {'labels': ['owner-merge']})
     assert plan.set_owner_merge('item-7', 'true', root) == 'item-7: owner_merge true'
     host.results['label'] = Result(0, {'labels': []})
+    from wuwei import integrity
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)  # #800: the owner's y
     plan.set_owner_merge('item-7', 'false', root)
     assert [c[1] for c in host.calls if c[0] == 'label'] == [
         (REF, 'owner-merge', True), (REF, 'owner-merge', False)]
@@ -1349,6 +1376,53 @@ def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
         plan.set_owner_merge('item-7', 'true', root)
     assert state.read_state(root)['items']['item-7']['owner_merge']['value'] is True
     assert check(case).exit == 1
+
+
+def test_merge_waits_on_gates_at_a_moved_head(case):
+    # Former 9.2 I3 (#524): WUWEI merges only at the head the gates checked.
+    root, host = case
+    for gate in ('arch', 'quality', 'security'):
+        (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(BASE))
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'pre-PR gates not passed at current HEAD' in result.reason, result
+    assert merged_calls(host) == []
+
+
+@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'pr guard', 'overnight shepherd'])
+def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
+    # Former 9.2 I37 (#678): the command paths and the daemon path read one hold.
+    from wuwei import plan, pr_actions, shepherd
+    from wuwei.__main__ import main
+    from wuwei.guards.pr import check as guard
+    from wuwei.watch import records
+    root, host = case
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    plan.set_owner_merge('item-7', 'true', root)
+    approved = [{'pr': REF, 'exit': 1, 'state': 'approved', 'parked': False, 'action': 'merge'}]
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, approved))
+    monkeypatch.chdir(root / 'repo')
+    if path == 'merge check':
+        result = policy().check(REF, root)
+        code, text = result.exit, result.reason or ''
+    elif path == 'wuwei merge':
+        code = main(['merge', '7'])
+        text = capsys.readouterr().out
+    elif path == 'pr act':
+        code = pr_actions.act(root, REF)
+        text = capsys.readouterr().out
+    elif path == 'pr guard':
+        code, text = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
+    else:
+        shepherd.overnight(root)
+        capsys.readouterr()
+        [event] = [row['payload'] for row in records(workspace.day_dir(root) / 'events.jsonl')
+                   if row['kind'] == 'shepherd.overnight']
+        code, text = (1 if event['outcome'] == 'queued' else 0), event['reason']
+    assert code == 1, (path, code, text)
+    assert 'owner merges: owner_merge set by owner on 2026-09-29' in text, (path, text)
+    assert merged_calls(host) == [], (path, text)
 
 
 def row(path, additions=10, deletions=0, previous=None):

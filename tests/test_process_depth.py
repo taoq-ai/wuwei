@@ -63,11 +63,6 @@ def test_sweep_classes_command(root, monkeypatch, capsys):
     assert 'no item has the worktree' in capsys.readouterr().err
 
 
-def test_sweep_classes_is_read_only():
-    from wuwei.commands import read_only
-    assert read_only(['sweep', 'classes', 'worktrees/A'])
-
-
 from test_brief import brief, day  # noqa: E402,F401  (helper and fixture)
 
 

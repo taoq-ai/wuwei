@@ -14,7 +14,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 TIMING = {
-    ('test_invariants.py', 'test_invariants_hold'),
     ('test_traces.py', 'test_large_arguments_record_under_50ms_cpu'),
     ('test_integrity.py', 'test_cached_check_latency'),
     ('test_heartbeat.py', 'test_stuck_state_lock_fails_the_state_probe'),

@@ -147,7 +147,7 @@ def test_unreadable_events_are_unmeasured(day):
 
 def test_event_tiers(capsys):
     assert signal.classify({'kind': 'traces.noted', 'payload': {}}, {})[0] == 'silent'
-    for posture, tier in [('observe', 'silent'), ('guarded', 'nudge'), ('strict', 'nudge')]:
+    for posture, tier in [('observe', 'silent'), ('guarded', 'warn'), ('strict', 'warn')]:
         event = {'kind': 'traces.unmatched', 'payload': {'posture': posture}}
         assert signal.classify(event, {})[0] == tier
     for kind in ('traces.noted', 'traces.unmatched'):

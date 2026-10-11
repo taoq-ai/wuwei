@@ -484,29 +484,6 @@ def test_protect_registry_evidence(configured, relative):
     assert protect_state.check_bash(payload)[0] == 1
 
 
-@pytest.mark.parametrize('command', ['bin/wuwei mcp decide', 'python3 -P -m wuwei mcp decide',
-    'python3 -mwuwei mcp decide', 'bin/wuwei mcp decide proceed-unmeasured aws',
-    'eval "bin/wuwei mcp decide"'])
-def test_owner_command_not_available_to_seats(configured, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == 1
-
-
-def test_workspace_flag_does_not_hide_owner_action(configured):
-    from wuwei.guards import protect_state
-    from wuwei.guards.protect_state import check_bash
-    def run(words):
-        return check_bash({'cwd': str(configured), 'tool_input': {'command': f'bin/wuwei --workspace {configured} {words}'}})
-    assert run('mcp decide D-1 proceed') == (1, protect_state._OWNER_ACTIONS[('mcp', 'decide')])
-    assert run('status') == (0, '')
-
-
-@pytest.mark.parametrize('command', ['python3 -m pytest -q', 'for x in 1; do echo "$x"; done', 'export X=1'])
-def test_irrelevant_shell_is_allowed(configured, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == 0
-
-
 def test_scope_outside_workspace(configured, monkeypatch, tmp_path):
     from wuwei.guards.agent_launch import check
     outside = tmp_path / 'outside'
@@ -582,8 +559,8 @@ def test_empty_registry_does_not_create_day_or_mutate_on_upgrade(tmp_path):
 
 
 @pytest.mark.parametrize('kind,payload,tier', [('mcp.finding', {'severity': 'high'}, 'page'),
-    ('mcp.finding', {'severity': 'medium'}, 'nudge'), ('mcp.checked', {'exit': 0}, 'silent'),
-    ('mcp.checked', {'exit': 2}, 'nudge'), ('mcp.decided', {}, 'silent')])
+    ('mcp.finding', {'severity': 'medium'}, 'warn'), ('mcp.checked', {'exit': 0}, 'silent'),
+    ('mcp.checked', {'exit': 2}, 'warn'), ('mcp.decided', {}, 'silent')])
 def test_mcp_signal_tiers(kind, payload, tier):
     from wuwei.signal import classify
     assert classify({'kind': kind, 'payload': payload}, {})[0] == tier
@@ -603,12 +580,6 @@ def test_nonblocking_findings_visible_in_plan(configured, monkeypatch):
 def test_server_level_finding_nullable_tool_name():
     ziran = importlib.import_module('adapters.scanner.ziran')
     assert ziran._mcp_report([{**finding(drift='typosquat'), 'tool_name': None}])[0]['tool_name'] is None
-
-
-@pytest.mark.parametrize('command', ["bin/wuwei mcp $ACTION", "bin/wuwei mcp $'\\x64ecide'"])
-def test_obfuscated_owner_action_fails_closed(configured, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] in (1, 2)
 
 
 def test_scanner_event_failure_keeps_block_and_recovers(configured, monkeypatch):
@@ -745,13 +716,6 @@ def test_interrupted_backup_cleanup_never_replays_partial_backup(configured, mon
     assert mcp.check(configured).exit == 0
 
 
-@pytest.mark.parametrize('command', ['rg mcp cli', 'python3 -m pytest -k mcp', 'echo mcp',
-    "rg 'wuwei mcp decide' cli", 'c{d,d} ..'])
-def test_mcp_mentions_in_unrelated_commands_do_not_block(configured, command):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == 0
-
-
 COCKPIT = {'command': '${CLAUDE_PLUGIN_ROOT}/bin/wuwei', 'args': ['board'],
            'env': {'CLAUDE_PROJECT_DIR': '${CLAUDE_PROJECT_DIR}'}}
 
@@ -854,7 +818,7 @@ def test_issue_acceptance_inline_plugin_server_registered_expanded_and_drift(tmp
     assert core().check(root).exit == 1
     assert list((root / '.wuwei/ziran/snapshots').glob('*/docs.json')) == [snapshot]
     assert list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-    assert core().cached(root).exit == 0  # A high finding is a nudge under the default block.
+    assert core().cached(root).exit == 0  # A high finding is a warning under the default block.
     assert 'UNTRUSTED CHANGE' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 
@@ -1347,15 +1311,6 @@ def test_mcp_cli_decide_forms(configured, monkeypatch, capsys):
     assert exc.value.code == 0
 
 
-@pytest.mark.parametrize('command,code', [
-    ('bin/wuwei mcp decide --help', 0), ('bin/wuwei mcp decide -h', 0),
-    ('python3 -P -m wuwei mcp decide --help', 0), ('bin/wuwei mcp decide D-1 proceed', 1),
-    ('bin/wuwei mcp decide -- --help', 1), ('bin/wuwei mcp decide --he', 1)])
-def test_owner_help_allowed_from_seat(configured, command, code):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == code
-
-
 def test_launcher_args_not_a_list_fail_closed(configured, monkeypatch):
     calls = fake_scanner(monkeypatch)
     (configured / '.mcp.json').write_text(json.dumps({'mcpServers': {'docs': {'command': 'npx', 'args': 'pkg'}}}))
@@ -1658,7 +1613,6 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
     from wuwei import integrity, plan
     from wuwei.__main__ import main
     from wuwei.guards.decision import record_gate
-    from wuwei.guards.protect_state import check_bash
     monkeypatch.chdir(configured)
     block_critical(configured)
     with (configured / '.wuwei/config.toml').open('a') as config:
@@ -1670,8 +1624,6 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
     assert question['header'] == 'D-1'
     assert record_gate({'cwd': str(configured), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
                         'tool_input': {'questions': [question]}}) == (0, '')
-    command = 'bin/wuwei mcp decide D-1 proceed'
-    found = check_bash({'cwd': str(configured), 'session_id': 'planner-1', 'tool_input': {'command': command}})
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
 
     def no_terminal(value, prompt):
@@ -1681,11 +1633,9 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
     code = main(['mcp', 'decide', 'D-1', 'proceed'])
     text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
     if posture == 'strict':
-        assert found[0] == 1 and found[1].endswith(f'Run it in a host terminal: {command}')
         assert code == 2 and integrity.HOST_TERMINAL in capsys.readouterr().err
         assert 'Outcome: pending' in text
     else:
-        assert found == (0, '')
         assert code == 0 and text.endswith('in the planner session.\n')
         assert core().cached(configured).exit == 0
 

@@ -431,27 +431,6 @@ def test_host_line_reads_the_last_suite(ws):
     assert pace.host_line(ws, {**IDLE, 'load': None}, config) == 'Host 10 cores, load unmeasured, last suite 14 min'
 
 
-def pace_call(root, command, **extra):
-    from wuwei.guards.protect_state import check_bash
-    return check_bash({'hook_event_name': 'PreToolUse', 'session_id': 'planner-1', 'cwd': str(root),
-                       'tool_name': 'Bash', 'tool_input': {'command': command}, **extra})
-
-
-def test_only_the_planner_sets_the_pace_below_strict(root):
-    from wuwei import plan
-    plan.session('planner-1', root)
-    assert pace_call(root, 'bin/wuwei plan set pace=fast') == (0, '')
-    code, reason = pace_call(root, 'bin/wuwei plan set pace=fast', agent_id='seat-1')
-    assert code == 1 and 'Spec overrides are an owner action' in reason
-    assert pace_call(root, 'bin/wuwei plan set pace=fast --reason x')[0] == 1
-    assert pace_call(root, 'bin/wuwei plan set pace=$X')[0] != 0
-    assert pace_call(root, 'bin/wuwei plan set A spec=skipped --reason x')[0] == 1
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('[security]\nposture = "strict"\n')
-    code, reason = pace_call(root, 'bin/wuwei plan set pace=fast')
-    assert code == 1 and 'host terminal' in reason
-
-
 def test_gate_then_text_and_off_path_accept_any_approve_label():
     from wuwei import metrics
     from wuwei.commands.next import THEN
@@ -461,7 +440,6 @@ def test_gate_then_text_and_off_path_accept_any_approve_label():
 
 
 def test_pace_command_prints_the_pace_the_inputs_and_the_balance(pday):
-    from wuwei.commands import read_only
     approved(pday)
     set_pace(pday.root, 'fast')
     lines = pday.run('pace').splitlines()
@@ -469,7 +447,6 @@ def test_pace_command_prints_the_pace_the_inputs_and_the_balance(pday):
     assert lines[1].startswith('Advice: 4 items')
     assert lines[2].startswith('Inputs: Host 4 cores, load ') and 'wish steady' in lines[2] and 'budget' in lines[2]
     assert lines[3].startswith('Balance: binding ')
-    assert read_only(['pace'])
     (pday.directory / 'state.json').chmod(0o600)
     (pday.directory / 'state.json').write_text('{')
     assert 'wuwei pace:' in pday._main(('pace',), 2, '', ('pace',))

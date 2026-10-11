@@ -45,7 +45,7 @@ def notify(root, config, waiting):
     rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
     sent = {(row['payload'].get('pr'), row['payload'].get('at')) for row in rows if row['kind'] == 'pr.notified'}
     states = {ref: episode['state'] for ref, episode in waiting}
-    full = workspace.verbosity(config, 'nudges') == 'full'
+    full = workspace.verbosity(config, 'dm') == 'full'
     for row in rows:
         ref, text = row['payload'].get('pr'), row['payload'].get('summary')
         if row['kind'] != 'pr.changed' or not isinstance(text, str) or (ref, row['ts']) in sent:

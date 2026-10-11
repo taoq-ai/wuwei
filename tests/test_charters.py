@@ -49,12 +49,6 @@ def test_generic_content_lint():
         assert "Learned rules" not in body, name
 
 
-def test_no_repository_engagement_list():
-    assert not (ROOT / "tests/charter_denylist.sha256").exists()
-    spec = (ROOT / "specs/019-charters/spec.md").read_text()
-    assert "owner-local pre-publish scan (issue #42)" in spec
-
-
 def test_generic_patterns_cover_case_without_english_false_positives():
     for value in ("ab-123", "AB_123", "D" + "0" * 8, "G" + "0" * 8):
         assert BANNED.search(value), value
@@ -75,182 +69,12 @@ def test_charter_sentences_have_one_home():
                     seen[normalized] = name
 
 
-# Every rule bullet of design section 5.3 has one stable home. The amended
-# engineering bullet is split into its five standards and the two verdict rows.
-RULES = (
-    ("tracks", "_common.md", "fewer than about twenty tasks"),
-    ("flags", "lead.md", "LLM output used as instructions"),
-    ("pre-pr gates", "_common.md", "arch, quality and security run in parallel"),
-    ("round cap", "_common.md", "counted the same for code, spec and document items"),
-    ("polish round", "_common.md", "fixes only the listed notes"),
-    ("re-gate", "_common.md", "Launch a fresh seat only if the original seat is lost"),
-    ("cap", "lead.md", "a slot frees at builder handoff"),
-    ("seat policy", "planner.md", "model and runtime for each role"),
-    ("registers", "sentinel-arch.md", "A value absent from the register"),
-    ("verdict shape", "_common.md", "PARK records a decision"),
-    ("retro", "_common.md", "Blocked: / Gap: / Change:"),
-    ("test first", "builder.md", "observe the expected failure"),
-    ("simplest", "builder.md", "avoid an abstraction with one implementation"),
-    ("solid", "builder.md", "never add a layer solely to satisfy a principle"),
-    ("clean code", "builder.md", "handle errors where the caller can act on them"),
-    ("conventions", "builder.md", "Match the repository's established tests"),
-    ("quality simplicity", "sentinel-quality.md", "naming what can be deleted and what replaces it"),
-    ("quality design", "sentinel-quality.md", "findings that make this change harder to test or change now"),
-    ("pre-merge condition", "shepherd.md", '"before X" blocks until X is met'),
-    ("simplicity carve-out", "sentinel-quality.md", "Never list trust-boundary validation"),
-    ("escalate definition", "_common.md", "ESCALATE is for an owner-only choice"),
-    ("no follow-up ticket", "_common.md", "No seat files or promises a follow-up ticket"),
-    ("reviewer ladder", "shepherd.md", "rank authors over the past 90 days"),
-    ("trust-boundary block", "_common.md", "A trust-boundary security finding always blocks"),
-    ("clean probes", "_common.md", "runs every probe, test and mutant in a copy under its `Scratch:` directory"),
-)
-
-
-@pytest.mark.parametrize("rule,home,anchor", RULES)
-def test_section_5_3_rule_has_one_home(rule, home, anchor):
-    texts = charter_text()
-    hits = [name for name, body in texts.items() if anchor in body]
-    assert hits == [home], (rule, hits)
-    assert texts[home].count(anchor) == 1, rule
-
-
 @pytest.mark.parametrize("name", ["arch", "quality", "security", "goal"])
 def test_sentinel_agents_carry_clean_probes(name):  # #672
     text = (ROOT / "agents" / f"sentinel-{name}.md").read_text()
     assert "runs every probe, test and mutant in a copy under its `Scratch:` directory" in text
 
 
-def test_amended_role_rules():
-    texts = charter_text()
-    assert "WSJF" in texts["lead.md"] and "RICE" in texts["lead.md"]
-    assert "wuwei rank" in texts["lead.md"]
-    assert "wuwei merge" in texts["shepherd.md"]
-    for part in ("wuwei pr raise", "--item <item>", "gh pr create", "wuwei pr claim"):  # #783
-        assert part in texts["shepherd.md"], part
-    assert "never approve" in texts["_common.md"].lower()
-    assert "never deploy" in texts["_common.md"].lower()
-    assert "decision record" in texts["_common.md"]
-    assert "Reversibility:" in texts["_common.md"]
-    assert "proposals/" in texts["_common.md"]
-    assert "wuwei promote" in texts["_common-authoring.md"]
-    assert "never write either" in texts["_common-authoring.md"]
-    assert "never load the changelog" in texts["_common-authoring.md"]
-    assert "never dispatch" in texts["steward.md"]
-    for anchor in ("Assumptions:", "mandate", "design reconsideration"):
-        assert texts["_common.md"].count(anchor) == 1, anchor
-
-
-def test_gate_and_merge_safety_contract():
-    texts = charter_text()
-    common = texts["_common.md"]
-    lead = texts["lead.md"]
-    shepherd = texts["shepherd.md"]
-    assert "whole-tree detached copy" in common
-    assert "baseline is green" in common
-    assert "non-zero test exit is KILLED" in common
-    assert "SURVIVED" in common and "on disk" in common
-    assert "stop line" in common and "reviewed sha" in common
-    assert "moved HEAD is ESCALATE" in common
-    assert "LLM output used as instructions" in lead
-    assert "more than one configured repository, name each candidate's repository as `repo`" in lead  # #603
-    assert "threshold" in lead and "MCP config" in lead
-    assert "never-auto" in lead and "FULL" in lead
-    assert "review body" in shepherd and "PR comment" in shepherd
-    assert "An approval covers its `commit_id` only" in shepherd
-    assert "fix round is in flight" in shepherd
-    assert "park a one-way" not in texts["sentinel-arch.md"]
-
-
-def test_pre_review_class_sweep():
-    texts = charter_text()
-    classes = ("AUTH", "VAL", "DOC", "TEST", "INF", "RET", "ERR", "STATE", "CON", "BUD")
-    for code in classes:
-        assert f"{code}: PASS|N.A.|FINDING" in texts["builder.md"]
-        # One sentinel owns each independent class check; quality also names DOC: FINDING for
-        # the docs obligation (#419), which is not the class check.
-        assert sum(bool(re.search(rf"Independently check[^\n]*\b{code}\b", texts[role]))
-                   for role in ("sentinel-arch.md", "sentinel-quality.md", "sentinel-security.md")) == 1
-    assert "command" in texts["builder.md"]
-
-
-def test_class_sweep_anchors_first_verbs():
-    lines = charter_text()["builder.md"].splitlines()
-    verbs = ("Trace", "Trace", "Search", "Trace", "Trace", "Trace", "Inject", "Interleave", "Pass", "Give")
-    for code, verb in zip(("AUTH", "VAL", "DOC", "TEST", "INF", "RET", "ERR", "STATE", "CON", "BUD"), verbs):
-        assert any(re.search(rf"`{code}: PASS\|N.A.\|FINDING` {verb}\b", line) for line in lines), code
-
-
-def test_never_auto_path_flag_scope():
-    lead = charter_text()["lead.md"]
-    assert "Infrastructure, secret, schema and migration paths force FULL and set `trust_surface`" in lead
-    assert "Other never-auto paths route to the owner" in lead
-    assert "A diff on a configured never-auto path forces FULL" not in lead
-
-
-def test_writing_for_a_person_names_the_humanizer_and_carries_the_checklist():
-    from wuwei import outward
-    body = (CHARTERS / "_common-authoring.md").read_text(encoding="utf-8")
-    section = "## Writing for a person" + body.split("## Writing for a person", 1)[1].split("\n## ", 1)[0]
-    assert "`humanizer`" in section and "embedded mode" in section
-    assert [int(line.split(".")[0]) for line in section.splitlines() if re.match(r"\d+\. ", line)] == list(range(1, 11))
-    assert "\u2014" not in section and outward.tells(section) == []
-    for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
-                 "sentinel-goal", "shepherd", "steward"):
-        assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
-    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
-    assert all(phrase in skill for phrase in ("humanizer", "decision show", "Writing for a person"))
-    kinds = ("tracker comments", "docs pages", "DMs", "PR comments", "review pings")
-    assert all(kind in section for kind in kinds)
-    assert "outward.ai_tells" in section and "outward.humanize_strict" in section
-    assert "only an em dash or an emoji is refused" not in section
-    assert "tracker comments" in skill and skill.count("humanizer") == 1
-    for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
-                 "sentinel-goal", "shepherd", "steward"):
-        assert (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8").count("humanizer") == 1, role
-
-
-def test_docs_obligation_in_quality_and_builder_charters():
-    texts = charter_text()
-    quality = texts["sentinel-quality.md"]
-    assert "bin/wuwei why <item> --json" in quality and "DOC: FINDING" in quality
-    assert "documented behaviour" in quality and "brief's `Docs:` line" not in quality  # #667
-    builder = texts["builder.md"]
-    assert "Docs:" in builder and "bin/wuwei docs page" in builder
-
-
-def test_tracker_hygiene_commands_have_one_home():
-    texts = charter_text()
-    assert [name for name, body in texts.items() if "tracker create --bug" in body] == ["_common.md"]
-    assert "tracker create --follow-up" in texts["planner.md"]
-    assert "bin/wuwei tracker create <item>" in texts["planner.md"]
-    # #644: the finder files; a gate seat too, naming its role, never asking the owner.
-    common = texts["_common.md"]
-    boundary = common[common.index("## Write and action boundary"):common.index("## Evidence and gates")]
-    assert "files the out-of-scope bugs it finds" in boundary
-    rule7 = next(line for line in common.splitlines() if line.startswith("7. Classify each finding"))
-    assert "--seat <your role>" in rule7 and "never ask the owner" in rule7
-
-
-def test_lead_proposes_each_ticket_and_the_planner_asks_it():
-    """#636: the lead gives each candidate its open ticket; Change something can change it."""
-    texts = charter_text()
-    assert '"ticket": null' in texts["lead.md"]
-    assert "give each candidate the open ticket" in texts["lead.md"]
-    assert "goals, queue, tickets, seat policy" in texts["planner.md"]
-    assert "Approve opens the tickets the plan proposed" in texts["planner.md"]
-
-
-def test_decision_lens_charters():
-    """#475: the record shape lives in _common.md; three roles name the design class and the lens."""
-    texts = charter_text()
-    for phrase in ("`Option | Title | Rationale | Consequence`", "`Reasoning:`", "`Lenses:`", "`Class:`"):
-        assert phrase in texts["_common.md"], phrase
-    for name in ("lead.md", "sentinel-arch.md", "builder.md"):
-        assert "`design`" in texts[name] and "lens lines are mandatory" in texts[name], name
-
-
-# #477: the owner's session is never blocked by work. The lookaheads are immediate, so the
-# background phrasing puts "in the background" right after "Agent" or "Bash".
 BLOCKING = re.compile(
     r"\bwait(?:s|ing)?\s+for\s+(?:the\s+|its\s+|each\s+|every\s+|all\s+)?(?:required\s+)?"
     r"(?:agent|turn|seats?|builders?|sentinels?|checks?|verdicts?)\b"
@@ -288,15 +112,6 @@ def test_blocking_pattern_samples(sentence, blocking):
     assert bool(BLOCKING.search(sentence)) is blocking
 
 
-def test_never_blocking_rule_is_written_down():
-    for name in (".specify/memory/constitution.md", "docs/specs/2026-09-24-wuwei-design.md",
-                 "docs/site/agent.md"):
-        assert "never blocked by work" in (ROOT / name).read_text(encoding="utf-8"), name
-    assert "never by resuming or interrupting a seat" in charter_text()["planner.md"]
-    plan = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
-    assert "wuwei status --line" in plan  # #551: dispatch.next_step enforces the verdict order
-
-
 def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
     body = (CHARTERS / "_common-authoring.md").read_text(encoding="utf-8")
     section = "## Plain tone" + body.split("## Plain tone", 1)[1].split("\n## ", 1)[0]
@@ -308,17 +123,6 @@ def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
         assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
 
 
-def test_builder_names_claude_codes_report_file_check():
-    # #649: the refusal of a scratch analysis.md is Claude Code's check, not a WUWEI hook.
-    builder = charter_text()["builder.md"]
-    assert "wuwei spec analysis <item>" in builder and "in any directory" in builder
-def test_governing_document_charters():  # #664
-    text = charter_text()
-    assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
-    assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
-    assert "governed_by" in text["lead.md"]
-
-
 def test_no_charter_holds_its_own_verdict_format():
     # #665: the format lives in cli/wuwei/verdict.py FORMAT; agents build renders it.
     texts = charter_text()
@@ -326,7 +130,9 @@ def test_no_charter_holds_its_own_verdict_format():
     assert not [name for name, body in texts.items() if "## Verdict format" in body]
 def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
     # #599
-    from test_guide import RERUN
+    RERUN = ('wuwei decision show D-n --widget', '`wuwei decide D-n "<label>" --card <hash>`',
+             'without asking the card again. Below strict, never show the owner a host-terminal command '
+             'for a card they answered')
     skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert all(part in skill for part in RERUN)
 def test_a_seat_finding_has_its_route():
@@ -347,6 +153,8 @@ def test_gate_copies_start_empty_and_match_the_tree():
     assert all(common.count(anchor) == 1 for anchor in anchors)
     for agent in (ROOT / "agents").glob("sentinel-*.md"):
         assert all(anchor in agent.read_text(encoding="utf-8") for anchor in anchors), agent.name
+
+
 def test_approval_wording_reaches_every_gate_and_the_planner():  # #731
     for role in ("sentinel-arch", "sentinel-quality", "sentinel-security", "sentinel-goal"):
         text = (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8")

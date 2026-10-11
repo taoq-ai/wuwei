@@ -104,8 +104,8 @@ MIT CISR decision framework
 Verifiably Safe Autonomous Decision-Making (vGOAL)
   Source: https://www.kuleuven.be/
   Author: KU Leuven
-  Used: the invariant table and its exhaustive test, without the model checker (design
-  spec 9.2).
+  Used: a table of safety properties, each with its own test, without the model checker
+  (design spec 9.2).
 
 Error budgets
   Source: https://sre.google/sre-book/embracing-risk/

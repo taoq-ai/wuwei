@@ -65,10 +65,11 @@ def test_scripted_day(day):
     from wuwei import state
     state.append_event('watch: clock', {}, day.root)
     day.patch.setenv('WUWEI_NOW', '2026-09-29T12:30:00Z')
-    pages = [row for row in json.loads(day.run('nudges', '--json')) if row['source'] == 'watch: health']
+    from wuwei.commands.status import attention
+    pages = [row for row in attention(day.directory) if row['source'] == 'watch: health']
     assert [row['tier'] for row in pages] == ['page']
     state.append_event('watch: clock', {}, day.root)
-    assert not [row for row in json.loads(day.run('nudges', '--json')) if row['source'] == 'watch: health']
+    assert not [row for row in attention(day.directory) if row['source'] == 'watch: health']
     from test_decision import VALID
     (day.directory / 'decisions/D-1.md').write_text(VALID.replace(
         'Reversibility: two-way', 'Reversibility: one-way').replace('Decided-by: seat', 'Decided-by: owner'))
@@ -79,7 +80,7 @@ def test_scripted_day(day):
     day.run('retro')
     day.run('close', '--check', 'retro')
     day.patch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    day.owner('decision', 'outcome', 'D-1', 'A')
+    day.run('decision', 'outcome', 'D-1', 'A')
     assert 'D-1' not in day.run('close', expected=1)
     assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
     # A replayed server-side merge is external evidence, not a forged local outcome.
@@ -278,7 +279,6 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
     denied = json.loads(output)['hookSpecificOutput']
     assert denied['permissionDecision'] == 'deny'
     assert 'posture: records = block (floor; no setting lowers it)' in denied['permissionDecisionReason']
-    day.bash(['decision', 'outcome', 'D-1', 'A'], expected=2)
     report = day.run('shadow', 'report')
     assert 'commit_push: 1' in report
     day.run('integrity', 'check')

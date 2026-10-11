@@ -468,10 +468,14 @@ def test_kinds_without_a_scratch_rehearsal(ws, capsys, kind, expected):
 
 @pytest.mark.parametrize('dry_run', [False, True])
 def test_init_upgrade_lists_the_unrehearsed_kinds(tmp_path, monkeypatch, capsys, dry_run):
-    from test_guide import initialised, upgrade
-    project = initialised(tmp_path, monkeypatch)
+    from argparse import Namespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    project = tmp_path / 'project'
+    project.mkdir()
+    assert init.run(Namespace(path=str(project))) == 0
     capsys.readouterr()
-    upgrade(project, dry_run)
+    init.upgrade(Namespace(path=str(project), dry_run=dry_run))
     out = capsys.readouterr().out
     assert ('Undo not rehearsed: commit, decision, merge; run wuwei undo rehearse <kind> '
             '(a merge counts after its first wuwei undo)') in out

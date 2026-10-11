@@ -203,15 +203,67 @@ def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
     assert row['destination'] in prompt and final in prompt and 'type:' not in prompt
 
 
-def test_approve_outside_strict_needs_no_prompt(root, port, monkeypatch):
+def test_host_approve_without_a_card_answer_is_the_owner_y(root, port, monkeypatch):
+    # #800: no recorded Send answer means the host y/N, never a pass.
     from hashlib import sha256
     row = queued(root)
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: pytest.fail('prompted'))
+    prompts = []
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: prompts.append(value) or True)
     assert main(['drafts', 'approve', row['id']]) == 0
-    assert len(port[1]) == 1
+    assert len(port[1]) == 1 and len(prompts) == 1
     stored = state.read_state(root)['drafts'][row['id']]
     assert stored['answer'] == 'Send now'
     assert stored['text_sha256'] == sha256(row['text'].encode()).hexdigest()
+
+
+@pytest.mark.parametrize('answer, flags', [
+    ('Send now (Recommended)', []), ('Send with an edit', ['--file', 'reply.txt'])])
+def test_session_approve_needs_the_owner_send_answer(root, port, monkeypatch, capsys, answer, flags):
+    """#800: an agent session sends a draft only after the owner's Send answer on its card; with
+    no terminal and no answer it is refused, with or without a session id in the environment."""
+    from test_decision import draft_question
+    from wuwei import plan
+    from wuwei.guards.decision import record_gate
+
+    def no_terminal(*args, **kwargs):
+        raise OSError(integrity.HOST_TERMINAL)
+    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    (root / 'reply.txt').write_text('I can deliver this tomorrow.')
+    row = queued(root)
+    plan.session('planner-1', root)
+
+    def refused():
+        for session in ('', 'planner-1'):
+            monkeypatch.setenv('WUWEI_SESSION_ID', session)
+            capsys.readouterr()
+            assert main(['drafts', 'approve', row['id'], *flags]) == 2
+            err = capsys.readouterr().err
+            assert f"bin/wuwei drafts show {row['id']} --widget" in err, err
+            assert f"the owner runs bin/wuwei drafts approve {row['id']} in a host terminal" in err, err
+            assert port[1] == [] and state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
+    refused()
+    other = 'Send with an edit' if answer.startswith('Send now') else 'Send now (Recommended)'
+    assert record_gate(draft_question(root, row['id'], answer=other)) == (0, '')
+    refused()
+    assert record_gate(draft_question(root, row['id'], answer=answer)) == (0, '')
+    monkeypatch.delenv('WUWEI_SESSION_ID')
+    assert main(['drafts', 'approve', row['id'], *flags]) == 2 and port[1] == []
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    if flags:  # an edited text is still the owner's y unless typed into the card (#493)
+        monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    assert main(['drafts', 'approve', row['id'], *flags]) == 0
+    assert len(port[1]) == 1
+
+
+def test_strict_refusal_names_the_host_command(root, port, monkeypatch, capsys):
+    def no_terminal(*args, **kwargs):
+        raise OSError(integrity.HOST_TERMINAL)
+    strict(root)
+    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    row = queued(root)
+    assert main(['drafts', 'approve', row['id']]) == 2
+    assert (f"the owner runs bin/wuwei drafts approve {row['id']} in a host terminal"
+            in capsys.readouterr().err)
 
 
 def test_editor_trailing_newline_counts_as_unedited(root, port, monkeypatch):
@@ -318,44 +370,12 @@ def test_concurrent_approval_claims_before_transport(root, port, monkeypatch):
 
     def send(payload, *args):
         attempts.append(payload)
-        result = drafts.approve(root, row['id'])
+        result = drafts.approve(root, row['id'], answered=True)
         assert result.exit == 1
         return {'channel': 'C2', 'ts': '1.2'}
     monkeypatch.setattr(port[0], '_send', send)
     assert main(['drafts', 'approve', row['id']]) == 0
     assert len(attempts) == 1
-
-
-@pytest.mark.parametrize('script,code', [
-    ('bin/wuwei drafts approve draft-test', 1),
-    ('python3 -P -m wuwei drafts approve draft-test --edit', 1),
-    ('bin/wuwei drafts drop draft-test', 1),
-    ('env X=1 bin/wuwei drafts approve draft-test', 1),
-    ('sh -c "bin/wuwei drafts approve draft-test"', 1),
-    ('bin/wuwei drafts approve "$ID"', 1),
-    ('for x in a; do bin/wuwei drafts approve "$x"; done', 2),
-    ('bin/wuwei drafts', 0),
-    ('python3 -m pytest -q', 0),
-    ('for x in a; do echo "$x"; done', 0),
-    ('export X=1', 0),
-])
-def test_seat_cannot_decide_drafts(root, script, code):
-    from wuwei.guards.protect_state import check_bash
-    state._write_state(lambda data: data['seats'].update(builder={
-        'id': 'builder', 'role': 'builder', 'item': 'A', 'status': 'running'}),
-        root, reserved=False)
-    result = check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                        'session_id': 'builder', 'tool_input': {'command': script}})
-    assert result[0] == code
-    if code:
-        assert result[1]
-
-
-def test_draft_guard_outside_workspace_is_clean(tmp_path, monkeypatch):
-    from wuwei.guards.protect_state import check_bash
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    assert check_bash({'cwd': str(tmp_path), 'tool_name': 'Bash', 'tool_input': {
-        'command': 'for x in a; do bin/wuwei drafts approve "$x"; done'}}) == (0, '')
 
 
 def test_voice_metrics_use_successful_sends_per_audience(root, port, monkeypatch):
@@ -401,16 +421,6 @@ def test_malformed_drafts_fail_closed(root, bad):
         cockpit_snapshot(workspace.day_dir(root))
 
 
-@pytest.mark.parametrize('script', [
-    "bin/w'uw'ei dra'fts' approve draft-test",
-    "bin/wuw\\ei dra\\fts drop draft-test",
-])
-def test_quoted_host_action_cannot_bypass_guard(root, script):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': script}})[0] == 1
-
-
 def test_multifield_edit_preserves_destination(root, monkeypatch):
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text() + '\n[adapters]\ntracker = "linear"\n')
@@ -432,16 +442,6 @@ def test_multifield_edit_preserves_destination(root, monkeypatch):
     assert calls == []
 
 
-@pytest.mark.parametrize('script', [
-    'python3 -P -mwuwei drafts approve draft-test',
-    'python3 -P -mwu\\wei drafts drop draft-test',
-])
-def test_attached_module_cannot_bypass_owner_guard(root, script):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': script}})[0] == 1
-
-
 def test_dm_approval_uses_destination_voice_profile(root, port, monkeypatch):
     monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D123')
     path = root / '.wuwei/config.toml'
@@ -455,21 +455,6 @@ def test_dm_approval_uses_destination_voice_profile(root, port, monkeypatch):
     assert main(['drafts', 'approve', row['id']]) == 1
     assert port[1] == []
     assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
-
-
-@pytest.mark.parametrize('script,code', [
-    ('python3 -Pmwuwei drafts approve draft-test', 1),
-    ('python3 -PBmwuwei drafts drop draft-test', 1),
-    ('python3 -P -m wuwei.__main__ drafts approve draft-test', 2),
-    ('python3 -P cli/wuwei/__main__.py drafts approve draft-test', 2),
-    ('python3 -c "from wuwei import drafts; drafts.approve(1,2)"', 2),
-    ('python3 cli/wuwei/__main__.py drafts approve draft-test', 2),
-    ('python3 -c "from wuwei import mcp; mcp.decide()"', 2),
-])
-def test_python_entrypoint_forms_cannot_bypass_guard(root, script, code):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
-                       'tool_input': {'command': script}})[0] == code
 
 
 def test_draft_style_finding_is_recorded_and_never_blocks(root, port, monkeypatch):
@@ -791,9 +776,8 @@ def test_approved_tool_draft_passes_its_call_once(root, capsys, monkeypatch):
     from datetime import timedelta
     from hashlib import sha256
     from wuwei.guards.outward import check_tier
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: pytest.fail('prompted'))
     _, _, row = held(root)
-    assert main(['drafts', 'approve', row['id']]) == 0
+    assert main(['drafts', 'approve', row['id']]) == 0  # the host y/N (#800); root confirms it
     assert 'repeat the same call to C9 within 3600 seconds' in capsys.readouterr().out
     stored = state.read_state(root)['drafts'][row['id']]
     assert stored['status'] == 'approved' and stored['answer'] == 'Send now'

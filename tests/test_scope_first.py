@@ -33,7 +33,7 @@ SHAPES = [
 ]
 
 GUARD_TABLES = ('test_commit_push', 'test_pr_guards', 'test_deploy', 'test_protect_state',
-                'test_owner_actions', 'test_seat_command_forms', 'test_pr_ownership',
+                'test_seat_command_forms', 'test_pr_ownership',
                 'test_shell')
 COMMAND_ARGS = ('command', 'script', 'form', 'wrapper', 'operation')
 

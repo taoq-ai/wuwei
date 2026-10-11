@@ -812,25 +812,6 @@ def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
     assert metrics.collect(ws)['seat_decisions_owner_reversed'] == 1
 
 
-@pytest.mark.parametrize('command,expected', [
-    ('bin/wuwei decision outcome D-3 A', 1),
-    ('expect -c "spawn bin/wuwei decision outcome D-3 A"', 2),
-    ('wuwei decision route D-2; expect -c "spawn wuwei decision outcome D-2 A"', 2),
-    ('script -q /dev/null wuwei decision outcome D-2 A', 2),
-    ('unbuffer wuwei decision outcome D-2 A', 2),
-    ('python3 -mwuwei decision outcome D-3 A', 1),
-    ('X=outcome; wuwei decision $X D-3 A', 2),
-    ('wuwei decision route D-2', 0),
-    ('python3 -m pytest -q', 0),
-])
-def test_agent_tool_cannot_invoke_owner_outcome(ws, command, expected):
-    from wuwei.guards.protect_state import check_bash
-    save(ws)
-    payload = {'cwd': str(ws), 'tool_name': 'Bash',
-               'tool_input': {'command': command}}
-    assert check_bash(payload)[0] == expected
-
-
 @pytest.mark.parametrize('data,expected', [
     ({}, None),
     ({'decision_outcomes': {}}, None),

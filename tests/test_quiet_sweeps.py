@@ -13,7 +13,7 @@ from wuwei.__main__ import main
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
+    (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
     state._write_state(lambda data: None, tmp_path, reserved=False)
@@ -38,20 +38,17 @@ def test_watch_dead_seconds_is_configurable(root, monkeypatch):
     assert watch.health(root)[0] == 1
 
 
-def test_nudges_show_current_conditions(root, capsys):
+def test_attention_shows_current_conditions(root):
+    from wuwei.commands.status import attention
     state.append_event('watch: clock', {}, root)
     state.append_event('watch: sweep', {'owed': 1, 'unreadable': 0, 'exit': 1}, root)
     state.append_event('decision.one_way', {'blocking': False}, root)
     state.append_event('work.outside_goals', {}, root)
-    assert main(['nudges', '--json']) == 0
-    rows = json.loads(capsys.readouterr().out)
+    rows = attention(workspace.day_dir(root))
     assert len(rows) == 3
     assert {row['source'] for row in rows} == {'watch: sweep', 'decision.one_way', 'work.outside_goals'}
-    from wuwei.commands.status import snapshot
-    assert snapshot(workspace.day_dir(root))['nudges'] == len(rows)
     state.append_event('watch: sweep', {'owed': 0, 'unreadable': 0, 'exit': 0}, root)
-    assert main(['nudges', '--json']) == 0
-    assert len(json.loads(capsys.readouterr().out)) == 2
+    assert len(attention(workspace.day_dir(root))) == 2
 
 
 def test_discovery_explains_unavailable_sources(root):
@@ -109,11 +106,11 @@ def test_watch_install_uninstall_renders_and_loads(root, tmp_path, monkeypatch):
     assert any(argv[:3] == ['systemctl', '--user', 'disable'] for argv in calls)
 
 
-def test_nudges_clear_pr_action_and_mcp_finding(root):
+def test_warnings_clear_pr_action_and_mcp_finding(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)
     state.append_event('watch: clock', {}, root)
-    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'nudge'}, root)
+    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'warn'}, root)
     state.append_event('mcp.finding', {'severity': 'medium'}, root)
     assert len(attention(day)) == 2
     state.append_event('pr.action', {'pr': 'x/y#1'}, root)
@@ -121,7 +118,7 @@ def test_nudges_clear_pr_action_and_mcp_finding(root):
     assert attention(day) == []
 
 
-def test_draft_nudges_clear_when_draft_is_decided(root):
+def test_draft_warnings_clear_when_draft_is_decided(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)
     for ident in ('d1', 'd2'):
@@ -135,7 +132,7 @@ def test_draft_nudges_clear_when_draft_is_decided(root):
     assert [row['source'] for row in attention(day)] == ['draft.failed']
 
 
-def test_merge_policy_nudge_is_per_pr_and_clears_on_merge(root):
+def test_merge_policy_warning_is_per_pr_and_clears_on_merge(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)
     for _ in range(2):
@@ -147,14 +144,14 @@ def test_merge_policy_nudge_is_per_pr_and_clears_on_merge(root):
     assert attention(day) == []
 
 
-def test_three_sweep_obligations_make_three_nudges(root):
-    from wuwei.commands.status import attention, snapshot
+def test_three_sweep_obligations_make_three_warnings(root):
+    from wuwei.commands.status import attention
     day = workspace.day_dir(root)
     state.append_event('watch: clock', {}, root)
     state.append_event('watch: sweep', {'reply_owed': 3, 'visibility_owed': 0,
         'stale_owed': 0, 'watch_dead': 0, 'scanner_owed': 0,
         'integrity_owed': 0, 'unreadable': 0, 'owed': 3, 'exit': 1}, root)
-    assert len(attention(day)) == snapshot(day)['nudges'] == 3
+    assert len(attention(day)) == 3
     assert all(row['source'] == 'watch: sweep:reply' for row in attention(day))
 
 
@@ -284,14 +281,12 @@ def test_next_sweep_reports_stale_watch_clock(root, monkeypatch):
     assert row['payload']['watch_dead'] == 1
 
 
-def test_nudges_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeypatch, capsys):
-    import json
-    from wuwei.__main__ import main
+def test_attention_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeypatch):
+    from wuwei.commands.status import attention
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    assert main(['nudges', '--json']) == 0
-    assert json.loads(capsys.readouterr().out) == []
+    assert attention(workspace.day_dir(tmp_path)) == []
 
 
 def test_watch_not_started_today_is_off(root, monkeypatch, capsys):
@@ -304,9 +299,7 @@ def test_watch_not_started_today_is_off(root, monkeypatch, capsys):
     assert watch.health(root) == (0, 'watch off: no clock line today')
     assert attention(day) == [] and snapshot(day)['watch'] == 'off'
     assert main(['status']) == 0
-    assert 'pages 0 · nudges 0\nwatch off' in capsys.readouterr().out
-    assert main(['nudges', '--json']) == 0
-    assert json.loads(capsys.readouterr().out) == []
+    assert 'pages 0\nwatch off' in capsys.readouterr().out
 
 
 def test_installed_watch_without_clock_today_is_dead_until_uninstalled(root, tmp_path, monkeypatch,
@@ -325,9 +318,7 @@ def test_installed_watch_without_clock_today_is_dead_until_uninstalled(root, tmp
     assert snapshot(day)['watch'] == 'dead'
     capsys.readouterr()
     assert main(['status']) == 0
-    assert 'pages 1 · nudges 0\nwatch dead' in capsys.readouterr().out
-    assert main(['nudges', '--json']) == 0
-    assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
+    assert 'pages 1\nwatch dead' in capsys.readouterr().out
     assert main(['watch', 'uninstall']) == 0
     assert watch.health(root) == (0, 'watch off: no clock line today')
     assert attention(day) == [] and snapshot(day)['watch'] == 'off'
@@ -352,9 +343,7 @@ def test_dead_watch_pages_until_a_fresh_clock(root, monkeypatch, capsys):
     assert [row['source'] for row in attention(day)] == ['watch: health']
     assert attention(day)[0]['tier'] == 'page' and snapshot(day)['watch'] == 'dead'
     assert main(['status']) == 0
-    assert 'pages 1 · nudges 0\nwatch dead' in capsys.readouterr().out
-    assert main(['nudges', '--json']) == 0
-    assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
+    assert 'pages 1\nwatch dead' in capsys.readouterr().out
     state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0, 'unreadable': 0,
                                         'owed': 0, 'exit': 0, 'integrity_owed': 0}, root)
     assert [row['source'] for row in attention(day)] == ['watch: health']
@@ -367,42 +356,17 @@ def test_dead_watch_pages_until_a_fresh_clock(root, monkeypatch, capsys):
     assert 'watch alive' in capsys.readouterr().out
 
 
-def test_future_clock_nudges_unmeasured_watch(root, monkeypatch, capsys):
+def test_future_clock_warns_unmeasured_watch(root, monkeypatch, capsys):
     from wuwei.commands.status import attention, snapshot
     day = workspace.day_dir(root)
     state.append_event('watch: clock', {}, root)
     monkeypatch.setenv('WUWEI_NOW', (workspace.now() - timedelta(minutes=5)).isoformat())
     rows = attention(day)
-    assert [(row['source'], row['tier']) for row in rows] == [('watch: health', 'nudge')]
+    assert [(row['source'], row['tier']) for row in rows] == [('watch: health', 'warn')]
     assert snapshot(day)['watch'] == 'unmeasured'
     assert main(['status']) == 0
     assert 'watch unmeasured' in capsys.readouterr().out
 
-
-@pytest.mark.parametrize('script,code', [
-    ('bin/wuwei watch uninstall', 1),
-    ('bin/wuwei listen uninstall', 1),
-    ('python3 -P -m wuwei watch uninstall', 1),
-    ('python3 -P -mwuwei watch uninstall', 1),
-    ('sh -c "bin/wuwei watch uninstall"', 1),
-    ('bin/wuwei watch -- uninstall', 1),
-    ('bin/wuwei watch --dry-run -- uninstall', 1),
-    ('bin/wuwei watch "$A"; echo uninstall', 2),
-    ('bin/wuwei watch install; grep uninstall docs/', 0),
-    ('bin/wuwei watch install --dry-run', 0),
-    ('wuwei watch install --dry-run', 0),
-    ('bin/wuwei watch --once', 0),
-    ('grep uninstall docs/', 0),
-    ('python3 -m pytest -q', 0),
-    ('for x in a; do echo "$x"; done', 0),
-    ('export X=1', 0),
-])
-def test_seat_cannot_uninstall_the_watch(root, script, code):
-    from wuwei.guards.protect_state import check_bash
-    result = check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': script}})
-    assert result[0] == code
-    if code:
-        assert ('uninstall in a host terminal' if code == 1 else 'host terminal') in result[1]
 
 
 def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):

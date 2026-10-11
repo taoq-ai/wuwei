@@ -498,8 +498,8 @@ def status_of(capsys):
     text = capsys.readouterr().out
     assert main(['status', '--json']) == 0
     data = json.loads(capsys.readouterr().out)
-    assert main(['nudges', '--all', '--json']) == 0
-    rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'listen: health']
+    from wuwei.commands.status import attention
+    rows = [row for row in attention(workspace.day_dir()) if row['source'] == 'listen: health']
     return text, data['listen'], rows
 
 
@@ -518,7 +518,7 @@ def test_issue_acceptance_dead_listener_shows_in_the_status_line(case, monkeypat
     ('unit', 'listen dead', 'dead', 'page'),
     ('nothing', 'listen off', 'off', None),
     ('no inbound', None, 'none', None),
-    ('future', 'listen unmeasured', 'unmeasured', 'nudge'),
+    ('future', 'listen unmeasured', 'unmeasured', 'warn'),
 ])
 def test_listener_states_in_the_status_line(case, monkeypatch, capsys, setup, part, listening, tier):
     root, _ = case
@@ -703,7 +703,7 @@ def test_failed_full_read_forgets_the_tags(prs, monkeypatch):
     assert tags == {}
 
 
-def test_new_review_comment_reaches_wake_and_nudges_in_one_tick(prs, monkeypatch):
+def test_new_review_comment_reaches_wake_in_one_tick(prs, monkeypatch):
     from wuwei.commands import status
     root, host = prs
     config(root, PR_CONFIG + '[shepherd]\nautostart = false\n')
@@ -747,9 +747,9 @@ def test_pr_change_reaches_the_owner_dm_once(owner_dm, monkeypatch):
     assert host.chat.sent == [summary]
 
 
-def test_full_nudges_name_the_changed_fields(owner_dm, monkeypatch):
+def test_full_dm_names_the_changed_fields(owner_dm, monkeypatch):
     root, host = owner_dm
-    config(root, PR_CONFIG + '[owner.verbosity]\nnudges = "full"\n')
+    config(root, PR_CONFIG + '[owner.verbosity]\ndm = "full"\n')
     change(host, monkeypatch, head='b' * 40)
     assert listen().tick(root, {}) == 0
     assert host.chat.sent == [f'PR {REF}: new commits pushed (head bbbbbbb) (fields: head)']

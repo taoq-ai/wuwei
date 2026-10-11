@@ -74,11 +74,6 @@ Close accepts a parked item once that decision is recorded.
 Move an unfinished item to tomorrow's plan, with a decision record that says so.
 The next morning gate offers it again as carry-over.
 
-### Nudge
-
-A reminder that something needs you, but not right now: on the status line and in `bin/wuwei nudges`.
-Nudges wait for you; pages interrupt.
-
 ### Page
 
 An alert that interrupts you at once, even outside your working hours, for example a failed heartbeat probe.
@@ -177,7 +172,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Records never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), owner disposition markers, canary or honeytoken egress, and a seat launch naming a missing brief. Relaxing those would corrupt the records the report is built from or let a seat act as you. Below `strict` an owner-only action asks you on a card instead: a deploy, release or publish, and a message that waits for your approval. The merge policy and approvals stay yours. The heartbeat probe session is never relaxed either.
 
-`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a nudge, one per guard per day.
+`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` `bin/wuwei doctor` asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a `guard.would_refuse` event in the day's log, one per guard per day.
 
 MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
@@ -300,7 +295,7 @@ requesting reviewers again and posting in the review channel. Approved PRs go th
 Waiting within the review window and merged PRs have no action deadline.
 
 The watch produces the same action deadlines while polling. Repeated observations do
-not postpone an unresolved action. Overdue actions produce a nudge, then a page at twice
+not postpone an unresolved action. Overdue actions produce a warning in the event log, then a page at twice
 the action interval. The planner's Stop hook rechecks fresh evidence and refuses overdue
 actions, naming the PR, state and action. Only a verified owner parking decision exempts
 a PR; carry-forward applies to day close. See [configuration](configuration.md) for
@@ -419,7 +414,7 @@ can turn it off when it stops paying.
 
 ## Writing for you
 
-`owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
+`owner.verbosity` sets how much decisions, the digest, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
 
 Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in `bin/wuwei drafts` and in the approval prompt, and the DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
 
@@ -438,7 +433,7 @@ Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs
 runs each class at a level from L0 to L3. Say `decision route` takes a record under the
 mandate and its class runs at L2 or L3. If the record is two-way, inside its own branch, PR or
 the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
-it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
+it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you can undo
 it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
 the CLI: down one level when the class's error budget is spent, back when its window
 refills, up when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
@@ -448,7 +443,7 @@ Error budget. One unlucky reversal no longer drops a class. Each class may spend
 `budget_window_days` (14) on undos, reversals, weekly samples answered differently and
 escaped defects. The budget is spent with more events than that and at least two; the class
 then runs one level lower until the window refills, and gets no raise card meanwhile. A
-fast burn (`burn_warn`, the last 48 hours against the window's pace) sends a nudge naming
+fast burn (`burn_warn`, the last 48 hours against the window's pace) writes a `cruise.burn` event naming
 the events first. `bin/wuwei cruise budget` prints the table.
 
 Calibration. A record's `Confidence:` is checked against what happened. Each taken record
@@ -486,7 +481,7 @@ recommendation on a two-way door or parks the item on a one-way door, and record
 
 Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
 requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
-round. Then the steward raises one `negotiation.loop` nudge per item per day, and a page when the
+round. Then the steward writes one `negotiation.loop` event per item per day, and a page when the
 goal date has passed. The listener sends the summary to your DM. It reports; the
 round cap (`gates.max_rounds`) is what stops the rounds.
 

@@ -1227,7 +1227,7 @@ def unknown_events(root):
 
 @pytest.mark.parametrize('area,code,recorded', [('', 0, 1), ('off', 0, 0), ('block', 2, 0)])
 def test_unknown_tool_recorded_once(configured, monkeypatch, area, code, recorded):
-    # #469: under guarded an unknown tool passes with one nudge per tool per day.
+    # #469: under guarded an unknown tool passes with one warning per tool per day.
     root = configured[0]
     set_posture(root, 'guarded', area)
     call = payload(root, 'A technical claim.', tool='mcp__acme__frobnicate')

@@ -184,6 +184,8 @@ def write_block(root, start, end, block, fix, write=True, raw=None):
     if starts > 1 or (starts and end not in existing.split(start, 1)[1]):
         raise ValueError(f'{raw}: expected one {start} with its {end}; restore the '
                          f'markers or remove the block, then run {fix}')
+    if not block and not starts:
+        return path, False
     if starts:
         before, rest = existing.split(start, 1)
         after = rest.split(end, 1)[1].removeprefix('\n')

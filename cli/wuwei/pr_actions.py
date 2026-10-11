@@ -188,7 +188,7 @@ def observe(root, host, ref, config, measured):
             created, deadline = (obligations._time(episode[key]) for key in ('created_at', 'deadline'))
             if (created > now or deadline <= created or episode['state'] not in ACTIONS
                     or episode['action'] != ACTIONS[episode['state']][0]
-                    or episode.get('tier', 'silent') not in ('silent', 'nudge', 'page')):
+                    or episode.get('tier', 'silent') not in ('silent', 'warn', 'page', 'nudge')):  # nudge: an episode written before #801
                 raise ValueError('invalid action record; run bin/wuwei pr state for a fresh action')
         head = measured['pr']['head']
         waiting = reviews.get(ref)
@@ -229,7 +229,7 @@ def observe(root, host, ref, config, measured):
                          and done['state'] == row['state']
                          and done['from_head'] == measured['pr']['head'])
             tier = ('page' if now >= deadline + (deadline - created) else
-                    'nudge' if now > deadline else 'silent')
+                    'warn' if now > deadline else 'silent')
             if not completed and not row['parked'] and tier != 'silent' and episode.get('tier', 'silent') != tier:
                 event.update(tier=tier, state=row['state'], action=action, deadline=episode['deadline'])
                 episode['tier'] = tier

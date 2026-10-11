@@ -91,7 +91,7 @@ def table(root, config, now=None):
 
 def evaluate(root):
     """The steward step: a spent class runs one level lower and holds the level it lost; a held
-    class whose window refilled gets that level back; a fast burn writes one nudge a day."""
+    class whose window refilled gets that level back; a fast burn writes one cruise.burn event a day."""
     from wuwei import cruise, promotion
     config = workspace.load_config(root)
     days = config['decisions']['cruise']['budget_window_days']

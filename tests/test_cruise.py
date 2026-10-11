@@ -283,20 +283,6 @@ def answered(ws, capsys):
     return path
 
 
-def test_nudges_list_an_open_undo_window_first(ws, answered, capsys, monkeypatch):
-    from wuwei.__main__ import main
-    save(ws, record(door='one-way', confidence='low'), name='D-4.md')
-    route(ws, capsys, 'D-4')
-    assert main(['nudges', '--all']) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == ('nudge: D-3 taken as A by cruise defer@L2, undo until 13:00. '
-                        'Run: wuwei decision show D-3 --widget')
-    assert any(line.startswith('nudge: D-4 pending') for line in lines[1:])
-    later(monkeypatch, '13:00')
-    main(['nudges', '--all'])
-    assert 'D-3 taken' not in capsys.readouterr().out
-
-
 def test_the_undo_widget_while_the_window_is_open(ws, answered, capsys, monkeypatch):
     from wuwei.__main__ import main
     assert main(['decision', 'show', 'D-3', '--widget']) == 0
@@ -749,9 +735,8 @@ def test_a_raise_card_without_a_passed_shadow_lands_nothing(ws, monkeypatch):
 
 
 def test_the_owner_sees_the_shadow(ws, capsys):
-    from wuwei import commands, cruise, decision, report, state, workspace
+    from wuwei import cruise, decision, report, state, workspace
     from wuwei.__main__ import main
-    assert 'cruise shadow' in commands.READ_ONLY
     state._write_state(lambda data: None, ws, reserved=False)
     assert main(['cruise', 'shadow']) == 0
     assert capsys.readouterr().out.splitlines()[1:] == ['none']

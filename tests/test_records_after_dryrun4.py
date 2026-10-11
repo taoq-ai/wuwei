@@ -19,17 +19,14 @@ RUN = {'kind': 'steward.run', 'payload': {'trigger': 'tool-calls', 'brief': 'b',
 
 
 @pytest.mark.parametrize('events,count', [([DUE, RUN], 0), ([RUN, DUE], 1)])
-def test_steward_run_clears_earlier_due_nudge(tmp_path, monkeypatch, capsys, events, count):
-    day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True},
-        [{**event, 'ts': NOW} for event in events])
-    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
+def test_steward_run_clears_earlier_due_warning(tmp_path, monkeypatch, events, count):
+    from wuwei.commands.status import attention
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True},
+                    [{**event, 'ts': NOW} for event in events])
+    (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges', '--json']) == 0
-    rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'steward.due']
-    assert len(rows) == count
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['nudges'] == count
+    assert [row['tier'] for row in attention(directory) if row['source'] == 'steward.due'] == ['warn'] * count
 
 
 def test_steward_ack_id_is_documented(tmp_path):
@@ -137,7 +134,7 @@ def test_retro_skill_does_not_ask_for_second_close_review():
 
 @pytest.mark.parametrize('config', [
     'repos = []\n[[repos]]\nname = "a/b"\npath = "r"\ndefault_branch = "main"\n',
-    'nonsense = 1\n[security]\nposture = "strict"\n',
+    'cap = true\n',
 ])
 def test_config_error_names_config_toml(tmp_path, monkeypatch, capsys, config):
     from wuwei.guards import integrity

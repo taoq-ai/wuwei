@@ -331,7 +331,7 @@ def test_a_first_time_channel_holds_once(chat, capsys):
     assert 'first time for channel:C9' in capsys.readouterr().out
     assert post(chat, 'C1') == (0, '')
     assert post(chat, 'U0OWNER') == (0, '')
-    assert drafts.approve(chat, ident).exit == 0
+    assert drafts.approve(chat, ident, answered=True).exit == 0
     cleared = seen(chat)['channel:C9']['cleared']
     assert cleared['by'] == 'owner' and cleared['evidence'] == ident
     assert post(chat, 'C9') == (0, '')

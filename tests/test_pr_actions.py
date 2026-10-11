@@ -175,11 +175,9 @@ def test_scope_disagreement_creates_decision(case, capsys):
     assert json.loads(capsys.readouterr().out.splitlines()[-1])['decision'] == action['decision']
 
 
-def test_pr_act_decision_is_routed_and_nudges(case, monkeypatch, capsys):
+def test_pr_act_decision_is_routed(case, monkeypatch, capsys):
     root, host, _, _ = linked(case)
     monkeypatch.chdir(root)
-    with (root / '.wuwei/config.toml').open('a') as stream:  # #742: the raw classification
-        stream.write('[nudges]\nmode = "all"\n')
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': 'This is out of scope; add a new API instead',
@@ -189,18 +187,8 @@ def test_pr_act_decision_is_routed_and_nudges(case, monkeypatch, capsys):
     assert identifier in state.read_state(root)['decision_routes']
     lines = (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
     assert any(json.loads(line)['kind'] == 'decision.routed' for line in lines)
-
-    def pending():
-        assert main(['nudges', '--json']) == 0
-        return [row for row in json.loads(capsys.readouterr().out)
-                if row['source'] == 'decision.pending' and identifier in row['reason']]
-    assert [(row['tier'], row['lane']) for row in pending()] == [('nudge', 'Decisions')]
-    assert main(['status', '--line']) == 0
-    assert 'nudges 0' not in capsys.readouterr().out
     monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
     assert main(['decision', 'outcome', identifier, 'defer']) == 0
-    capsys.readouterr()
-    assert pending() == []
 
 
 @pytest.mark.parametrize('option', ['defer', 'change'])

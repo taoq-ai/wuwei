@@ -500,8 +500,7 @@ def orientation(row, posture, spec=None, session=None):
         *([f'Spec: {spec}'] if spec else []),
         f'Next: {shown}',
         entry,
-        'Reference: wuwei guide (every command, the accepted forms and the rules; the same text is '
-        f'the guide block in the memory.export_to file); owner guide: {plugin}/docs/site/daily.md',
+        f'Reference: wuwei --help lists every command; owner guide: {plugin}/docs/site/daily.md',
     ])
 
 

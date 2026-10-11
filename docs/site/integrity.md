@@ -35,7 +35,7 @@ on the host.
 
 Charters, memory, goals and voice are inspected for uncommitted changes and all
 commits without a `Promoted-by: wuwei` trailer. Charter overrides and voice produce
-pages; other procedure changes produce nudges. `bin/wuwei promote` commits each
+pages; other procedure changes produce a warning in the event log. `bin/wuwei promote` commits each
 landed proposal and its ledger entry, excluding unrelated staged changes. Targets
 with prior unpromoted edits are rejected so promotion cannot bless a hand edit. A commit
 failure returns unmeasured and leaves landed content visible as an uncommitted change.

@@ -1,4 +1,4 @@
-# Defaults apply when settings are omitted. Unknown keys warn (strict posture: errors).
+# Defaults apply when settings are omitted. Unknown keys warn; bin/wuwei init --upgrade removes the ones no longer read.
 # Running build seats (CAP). 0 derives it at every sweep from free memory, cores and the
 # [budget] below; a positive number pins it. Integer counts must not be negative.
 cap = 0
@@ -63,8 +63,8 @@ pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 # timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
 [owner.verbosity]
-default = "brief" # brief, standard or full: how much decisions, the digest, nudges, the DM and the report say to you.
-# dm = "" # Per surface: decisions, digest, nudges, dm or report. Empty uses default.
+default = "brief" # brief, standard or full: how much decisions, the digest, the DM and the report say to you.
+# dm = "" # Per surface: decisions, digest, dm or report. Empty uses default.
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
@@ -236,7 +236,7 @@ code_host_orgs = []
 # learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
 # Your own identity per channel; a message only you receive is never a draft. Setup proposes it.
 # owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login"}
-# Where the planner posts the digest, nudges and day report: "session" or "dm" (your own Slack DM).
+# Where the planner posts the digest and day report: "session" or "dm" (your own Slack DM).
 # owner_channel = "dm"
 # Team PRs also require a configured repos.name, a known internal author and
 # internal discussion participants, verified through the code_host port.
@@ -276,11 +276,6 @@ loop_threshold = 9
 # [autonomy]
 # mode = "supervised" # Every decision beyond a two-way one on its own branch or PR asks the owner.
 
-# [nudges]
-# mode = "" # off, next or all. Empty follows autonomy.mode: off when autonomous, next when supervised.
-# ttl_hours = 24 # A nudge with no new event for this many hours leaves the list.
-# max_open = 20 # At most this many open nudges; the oldest go, counted in one nudges.dropped line.
-
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
 # Cruise mode (design 5.8.1): the CLI answers clear two-way records of a class at L2 or L3.
@@ -293,7 +288,7 @@ wait_hours = 24 # Weekday hours an external confirmation waits before the sweep 
 # promote_days = 14 # days the agreements are counted over
 # budget_share = 0.1 # error budget: events allowed per cruise answer (at most 0.5)
 # budget_window_days = 14 # days the error budget is counted over
-# burn_warn = 2.0 # burn rate that writes a nudge
+# burn_warn = 2.0 # burn rate that writes a cruise.burn event
 # levels = { approach = 2 } # caps a class level
 
 [pr]
@@ -338,7 +333,7 @@ required = true
 # mcp = "off" # integrity, mcp, publish, records, outward, seats
 
 [guards]
-shadow_days = 7 # Days in observe before one nudge asks to switch to guarded.
+shadow_days = 7 # Days in observe before wuwei doctor asks you to switch to guarded.
 shadow_since = "" # YYYY-MM-DD observe started; wuwei init --posture observe sets it.
 
 # Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means

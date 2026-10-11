@@ -86,20 +86,20 @@ def test_shadow_report_command(root, capsys, tmp_path_factory, monkeypatch):
 OBSERVE = '[security]\nposture = "observe"\n'
 
 
-@pytest.mark.parametrize('config,posture,nudged', [
-    ('', 'guarded', False),
-    ('[security]\nposture = "strict"\n[guards]\nshadow_since = "2026-09-22"', 'strict', False),
-    ('[guards]\nmode = "enforce"\nshadow_since = "2026-09-22"', 'guarded', False),
-    (OBSERVE, 'observe', False),
-    (OBSERVE + '[guards]\nshadow_since = "2026-09-23"', 'observe', False),
-    (OBSERVE + '[guards]\nshadow_since = "2026-09-22"', 'observe', True),
-    (OBSERVE + '[guards]\nshadow_days = 3\nshadow_since = "2026-09-25"', 'observe', True),
+@pytest.mark.parametrize('config,posture', [
+    ('', 'guarded'),
+    ('[security]\nposture = "strict"\n[guards]\nshadow_since = "2026-09-22"', 'strict'),
+    ('[guards]\nmode = "enforce"\nshadow_since = "2026-09-22"', 'guarded'),
+    (OBSERVE, 'observe'),
+    (OBSERVE + '[guards]\nshadow_since = "2026-09-23"', 'observe'),
+    (OBSERVE + '[guards]\nshadow_since = "2026-09-22"', 'observe'),
+    (OBSERVE + '[guards]\nshadow_days = 3\nshadow_since = "2026-09-25"', 'observe'),
     # The deprecated #308 form is observe.
-    ('[guards]\nmode = "shadow"\nshadow_since = "2026-09-22"', 'observe', True),
+    ('[guards]\nmode = "shadow"\nshadow_since = "2026-09-22"', 'observe'),
 ])
-def test_status_shows_posture_and_nudges_once(root, config, posture, nudged):
+def test_status_shows_posture(root, config, posture):
     from wuwei.commands import status
-    (root / '.wuwei/config.toml').write_text(f'{config}\n[nudges]\nmode = "all"\n')  # #742
+    (root / '.wuwei/config.toml').write_text(config)
     state._write_state(lambda data: None, root, reserved=False)
     directory = workspace.day_dir(root)
     data = status.snapshot(directory)
@@ -107,11 +107,7 @@ def test_status_shows_posture_and_nudges_once(root, config, posture, nudged):
     for name in ('observe', 'strict'):
         assert (f' · {name}' in status.line(data)) is (name == posture)
     assert 'guarded' not in status.line(data)
-    rows = [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
-    assert data['nudges'] == len(rows) == int(nudged)
-    if nudged:
-        assert rows[0]['tier'] == 'nudge'
-        assert 'security.posture = "guarded"' in rows[0]['reason'] and 'guards.shadow_days' in rows[0]['reason']
+    assert not [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
 
 
 @pytest.mark.parametrize('config,on', [('', False), ('[guards]\nmode = "shadow"\n', True), (OBSERVE, True),
