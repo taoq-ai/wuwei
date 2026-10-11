@@ -306,15 +306,16 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
-        use = None
-        if code == 1:  # #530: a warning, the owner's card or (strict) the refusal
-            import shlex
-            from wuwei import grants, sessions
-            argv = ['bin/wuwei', 'pr', 'raise', repo_name, '--item', item]
-            payload = {'session_id': sessions.current() or '', 'cwd': str(repo_path),
-                       'tool_input': {'command': shlex.join(argv)}}
-            code, reason = grants.evidence(payload, root, config, argv, reason, repo_name, record=True)
-            use = reason if callable(reason) else None
+        posture, levels = workspace.posture(config)
+        if code == 1 and levels['publish'] != 'block':  # #530, #816: off passes, warn records and warns
+            if levels['publish'] == 'warn':
+                from wuwei import sessions
+                state.append_event('guard.would_refuse', {
+                    'guard': 'pr', 'area': 'publish', 'level': 'warn', 'posture': posture, 'reason': reason,
+                    'exit': 1, 'target': f'bin/wuwei pr raise {repo_name} --item {item}',
+                    'session': sessions.current() or '', 'item': item}, root)
+                print(f'warning: {reason}', file=sys.stderr)
+            code = 0
         if code:
             print(reason)
             return code
@@ -360,8 +361,6 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers, draft=draft)
         if hold:
             merge.read(host.label, ref, merge.LABEL, True, root=root)
-        if use:
-            use()
         moved = dispatch.tracker_call(item, 'in_review', root)
         if config['adapters']['tracker'] != 'none' and moved.exit:  # #670: name why
             print(f'tracker: {moved.reason}', file=sys.stderr)
@@ -505,8 +504,7 @@ def overnight(root):
                 elif current == 'merged':
                     outcome = 'merged'
                 elif current == 'approved':
-                    # ponytail: check only, the morning merges; merge.execute comes back here once
-                    # #524 (merge grants) is on main.
+                    # ponytail: check only, the morning merges; merge.execute comes back here.
                     result = merge.check(ref, root)
                     outcome = ('queued', 'queued', 'unmeasured')[result.exit]
                     reason = result.reason or 'merge cleared by policy; merge waits for the morning (#524)'

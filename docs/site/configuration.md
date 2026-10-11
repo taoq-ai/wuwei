@@ -12,7 +12,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
-| `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
+| `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[autonomy]`, `[decisions]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
@@ -294,11 +294,9 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `environments.production` | Not set | Example environment; `[environments]` accepts names and descriptions. |
 | `deploy.workflows` | `[]` | Workflow names, filenames, paths or IDs treated as deploy actions. |
 | `deploy.deny` | `[]` | Literal executable plus argument globs to refuse. |
-| `grants.standing` | `[]` | Standing grants, one per line: `{action = "deploy", target = "repo:<org>/<name>", scope = "always", decision = "D-n", date = "YYYY-MM-DD"}`. `action` is `deploy`, `release`, `publish` or `merge`; `target` may use `*` and `?`. Your `Always allow` answer on a refusal card writes the line; `bin/wuwei grants revoke <n>` removes one. Ignored under `strict`, where `doctor` warns about each line. |
-| `merge.default_tier` | `""` | What a merge the merge policy does not clear does when no grant matches: `ask` writes the decision card, `owner_only` prints the exact `gh pr merge <url> --<method> --match-head-commit <sha>` for a host terminal, with the method `merge check` chose. `today`, written only by the Autonomous setup answer, lets a merge on a configured repository through below `strict` with no card, recorded as `grant.used` with decision `merge.default_tier`. The 4.6 preconditions still hold, a repository whose `merge_deploys` is not `false` is still refused, and a Keep owner-only answer for the target wins. Deploys, releases and publishes keep their cards. Empty means `owner_only` under `strict` and `ask` otherwise. A grant you already recorded counts either way. |
-| `merge.owner_paths` | `[]` | Globs only you merge, for example guard files, workflows or the signing key path. Matched like `never_auto_paths`, on any path suffix of a changed or renamed path. A match is merged by you in a host terminal: the reason names the path and the glob and prints the `gh pr merge` command. No grant, standing line or `merge.default_tier` lifts it. |
+| `merge.owner_paths` | `[]` | Globs only you merge, for example guard files, workflows or the signing key path. Matched like `never_auto_paths`, on any path suffix of a changed or renamed path. A match is yours to decide: the reason names the path and the glob, and `bin/wuwei merge <pr>` merges only on your Yes on its Owner step card. |
 
-The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy on its own: a deploy runs from a session only under a grant you gave (see [grants](concepts.md#grants)).
+The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy on its own: a deploy runs from a session only on your Yes on its Owner step card (see [owner-only actions](concepts.md#owner-only-actions)).
 
 ## Calibration
 

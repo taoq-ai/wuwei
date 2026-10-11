@@ -348,7 +348,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'guard.would_refuse': 'silent', 'config.newer_template': 'warn',
                 'hook.warning': 'warn',
                 'verdict.rejected': 'silent', 'decision.rejected': 'warn',
-                    'decision.decided': 'silent', 'decision.closed': 'silent',
+                    'decision.decided': 'silent',
                     'decision.routed': 'silent', 'decision.digest': 'silent',
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
@@ -382,7 +382,6 @@ def test_emitted_kinds_have_intended_tiers():
                 'spec.warned': 'warn', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
-                'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
                 'decision.reversed': 'warn',
                 **{f'telemetry.{name}': 'warn' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)

@@ -113,19 +113,19 @@ def _tracker(text):
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
-    # #530: one answer sets the posture, the outbound umbrella, the merge default, the learn mode and
-    # the autonomy mode; strict is set by hand. Observe here is the chosen posture, not a trial.
+    # #530: one answer sets the posture, the outbound umbrella, the learn mode and the autonomy
+    # mode; strict is set by hand. Observe here is the chosen posture, not a trial.
     {'id': 'autonomy', 'scope': 'workspace', 'header': 'Autonomy',
      'question': 'How much should WUWEI do without asking you?',
      'choices': (
          ('Autonomous', ('WUWEI acts and reports: guards warn instead of stopping, messages no rule holds go out, '
-                         'merges on your own repositories run once checks and reviews pass, and new connectors '
+                         'merges run where repos.<n>.merge.auto is on, and new connectors '
                          'are learned without asking. Recommended (observe posture, autonomy.mode).'),
-          {'security.posture': 'observe', 'outbound.default_tier': 'send', 'merge.default_tier': 'today',
+          {'security.posture': 'observe', 'outbound.default_tier': 'send',
            'outbound.learn': 'auto', 'autonomy.mode': 'autonomous'}),
-         ('Supervised', ('WUWEI asks you first: owner-only actions, held messages, merges and new connectors wait '
+         ('Supervised', ('WUWEI asks you first: owner-only actions, held messages and new connectors wait '
                          'for your answer on a card (guarded posture, autonomy.mode).'),
-          {'security.posture': 'guarded', 'outbound.default_tier': 'ask', 'merge.default_tier': 'ask',
+          {'security.posture': 'guarded', 'outbound.default_tier': 'ask',
            'outbound.learn': 'card', 'autonomy.mode': 'supervised'})),
      'free': None},
     # #615: merge_deploys defaults to true, so every merge is the owner's until this is answered.

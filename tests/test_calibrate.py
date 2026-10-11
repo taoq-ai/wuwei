@@ -1289,13 +1289,12 @@ def test_detector_refuses_a_chained_ci_run_line(tmp_path):
 
 # #600: the fast-checks record calibrate writes for a repository with none configured.
 
-def test_grants_record_defaults_are_unchanged():
-    from wuwei import grants
+def test_record_defaults_are_unchanged():
     args = ('Q?', 'C.', [('A', 'Go', 'R.', 'C.', 9), ('B', 'Keep it', 'R.', 'C.', 1)], 'Value', 'A',
-            'Value decided it.', 'workspace', 'It fails.')
-    text = grants._record(*args)
+            'Value decided it.', 'workspace', 'It fails.', 'When it changes.')
+    text = calibrate._record(*args)
     assert 'Class: other\n' in text and 'Confidence: medium\nReversibility: one-way\n' in text
-    assert grants._record(*args, cls='other', confidence='medium', door='one-way', extra='') == text
+    assert calibrate._record(*args, cls='other', confidence='medium', door='one-way', extra='') == text
     assert '| Value | 10 | 9 | 1 |\nRecommendation: A\n' in text
 
 

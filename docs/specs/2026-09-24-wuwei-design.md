@@ -343,18 +343,13 @@ when a merged PR is reverted or red on the base branch, or when the rolling 14-d
 defect rate for auto-merged PRs (5.6) exceeds the owner's baseline. Any precondition that
 cannot be read is exit 2: not cleared, so the merge goes to the owner.
 
-Amended (owner, 2026-10-05, #524): a merge the policy does not clear is a grantable owner
-action like a deploy (4.7). `wuwei merge` (and `wuwei pr act`) asks the owner on a decision card
-(Keep owner-only, Allow once, Allow today, Always allow per repository; no Always under
-`strict`), and a merge the plan lists is a planned card the morning gate asks, per repository
-or per PR. The recorded answer replaces only eligibility and pacing (`merge.auto`, risk flags,
-never-auto paths, size, cycle budget, soak, daily cap, quiet hours, breaker); every
-precondition above still holds at the current head, and the repository must allow squash
-merges. A precondition that fails names the condition: no grant lifts it. With no grant,
-`[merge] default_tier` decides: `ask` writes the card, `owner_only` prints the exact
-`gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal; unset, it is
-`owner_only` under `strict` and `ask` otherwise. Granted merges are journaled and watched
-like auto-merges.
+Amended (owner, 2026-10-11, #816): the merge policy alone decides a merge.
+Quiet hours, the daily cap and the soak are waits the policy clears later; every precondition
+above holds at the current head and names its condition. The eligibility rules (`merge.auto`,
+the breaker, the approved plan, risk flags, the cycle budget, never-auto paths, size and
+`[merge] owner_paths`) are the owner's decision: when only they stand, `wuwei merge` prints one
+Owner step card for that PR at its head, `wuwei next` names it, and the owner's recorded Yes
+merges it, journaled and watched like an auto-merge.
 
 Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
 green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
@@ -364,10 +359,9 @@ rule still holds. A held merge reads either `waits: soak ends at <time>` or
 Amended (owner, 2026-10-10, #675): `trust_surface` makes the security gate required instead of
 the item ineligible. A flagged item is eligible once `security` is in its recorded gate set and
 its verdict is PASS at the head, delta round included; until then the PR waits on the gate,
-never on the owner, and no grant changes that. `boundary_relevant` and `agent_surface` are
-unchanged. A diff touching a `[merge] owner_paths` glob, renames included, is merged by the
-owner in a host terminal whatever the grant, standing line or `merge.default_tier`; the reason
-names the path and the glob and prints the `gh pr merge` command.
+never on the owner. `boundary_relevant` and `agent_surface` are unchanged. A diff touching a
+`[merge] owner_paths` glob, renames included, is the owner's decision (#816); the reason names
+the path and the glob.
 
 Amended (owner, 2026-10-10, #785): the merge method follows the repository:
 `repos.merge_method` (`auto`, the default, `squash`, `rebase` or `merge`). Under `auto` WUWEI
@@ -388,12 +382,9 @@ upgrade`/`install`, `terraform apply`, `pulumi up`, `vercel`/`netlify` deploy, `
 `gcloud`/`aws`/`az` deploy verbs, `docker push`), extendable by `deploy.deny` in config. A
 merge into a repository with `merge_deploys = true` is a deployment and goes to the owner.
 
-Amended (owner, 2026-10-04, #478): the guard refuses and asks; only the owner's recorded answer
-(once, today, always) lets the same action through. The refusal writes a decision card
-(`Keep owner-only`, `Allow once`, `Allow today`, `Always allow`; no `Always allow` under strict);
-the answer is the grant, matched on the action class and the repository. A standing grant is
-one `[grants]` line, ignored under strict and removed with `wuwei grants revoke`. No seat,
-default or hook creates a grant.
+Amended (owner, 2026-10-11, #816): the guard refuses and prints the Owner step card of that
+exact command; only the owner's recorded Yes on it lets that command through, the same day. No
+standing line, seat, default or hook answers for the owner.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
@@ -559,7 +550,7 @@ the seats (#528); no day value adjusts either.
   | Spec engine | none (#280) | the engine's steps | the engine's steps |
   | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
   | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
-  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry, or the item is flagged `trust_surface` or `boundary_relevant` (#663) | always |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `outward`, a hook or a `trust_paths` entry, or the item is flagged `trust_surface` or `boundary_relevant` (#663) | always |
   | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
   | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
   | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
@@ -1805,7 +1796,7 @@ fix the seat runs; only `records` is a wall.
 Floors no posture and no override lowers:
 
 - `records` always blocks, with canary and honeytoken egress, owner disposition markers and a seat launch naming a brief that does not exist, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. Admin merge, approvals and branch protection stay owner-only. Amended (owner, 2026-10-05, #524): a merge the merge policy does not clear asks the owner on a card like a deploy, and the grant never lifts a 4.6 precondition. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish runs only on the owner's recorded Yes on the Owner step card of that exact command (#816); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. Admin merge, approvals and branch protection stay owner-only. A merge happens only through the merge policy; a merge it does not clear for an eligibility rule is one owner decision from `wuwei next` (4.6, #816). Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence is the seat's check: it warns under observe and refuses under guarded (#530, #816).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.

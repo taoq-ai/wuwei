@@ -207,13 +207,10 @@ blocks. On approval the planner records them with
 refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`.
 
-When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
-more card per action, for example
-`D-2: G-1 fix-login deploys <org>/<repo>: allow today, ask when it happens, or keep owner-only?`.
-`Allow today` is the day's grant, so the deploy runs without
-stopping the day. `Ask when it happens` asks you when the seat gets there, and `Keep owner-only`
-leaves the command to you. A deploy nobody planned stops on its own card, the
-[grant](concepts.md#grants) question.
+When an item in the plan needs a deploy, a release or a merge you decide, the lead lists it and
+the plan shows it as an `Owner-only: <action> <target> (owner step)` line. The gate does not
+approve it ahead of time: when the seat gets there, the command asks you its own Owner step card
+([owner-only actions](concepts.md#owner-only-actions)).
 
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
 serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
@@ -356,7 +353,7 @@ until it does, and `close` names any merged item whose docs were never written.
 To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
 the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
 `wuwei merge`, `merge check`, `pr act`, the PR guard and the overnight shepherd refuse that
-PR, under any grant, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
+PR, whatever the merge policy says, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
 the `owner-merge` label and, when raised after the flag, an `Owner merges:` line in its body.
 Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host terminal; the
 next pass then follows the normal merge policy. If you merge it by hand instead, the item

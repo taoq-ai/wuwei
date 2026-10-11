@@ -249,6 +249,20 @@ def _without_empty_repos(raw):
     return ''.join(''.join(lines) for _, lines in sections)
 
 
+def _today_tier(raw, before):
+    """#816: merge.default_tier = "today" merged on each repository; merge.auto = true keeps
+    that for a repository that does not set merge.auto itself."""
+    if before.get('merge', {}).get('default_tier') != 'today':
+        return raw, []
+    from wuwei.commands import setup
+    lines = []
+    for index, repo in enumerate(tomllib.loads(raw).get('repos', [])):
+        if 'auto' not in repo.get('merge', {}):
+            raw = setup.write_value(raw, f'repos.{index}.merge.auto', True)
+            lines.append(f'repos.{index}.merge.auto = true (was merge.default_tier = "today")')
+    return raw, lines
+
+
 def _retired_mode(raw):
     """guards.mode = "shadow" becomes security.posture = "observe"; "enforce" is dropped (#355)."""
     present = tomllib.loads(raw)
@@ -432,6 +446,8 @@ def upgrade(args):
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(pruned, template)
         migrated, retired = _retired_mode(migrated)
+        migrated, today = _today_tier(migrated, tomllib.loads(text))
+        retired += today
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
         from wuwei import graph  # #552: the register the modeled sections are views of

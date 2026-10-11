@@ -233,7 +233,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
-        'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -1229,6 +1229,17 @@ def test_a_cruise_table_only_warns(tmp_path):
     found = []
     assert 'cruise' not in load_config(tmp_path, warnings=found)['decisions']
     assert any('decisions.cruise' in line for line in found), found
+
+
+def test_grant_keys_only_warn(tmp_path):
+    # #816: grants and merge.default_tier are retired; a stale line loads with an unknown-key warning.
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '[merge]\ndefault_tier = "today"\n[grants]\nstanding = [{action = "merge", '
+                 'target = "repo:a/b", scope = "always", decision = "D-1", date = "2026-10-01"}]\n')
+    found = []
+    config = load_config(tmp_path, warnings=found)
+    assert 'grants' not in config and 'default_tier' not in config['merge']
+    assert any('merge.default_tier' in line for line in found) and any('grants' in line for line in found), found
 
 
 def test_decision_lenses_config(tmp_path):

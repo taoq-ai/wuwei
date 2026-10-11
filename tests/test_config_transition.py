@@ -387,6 +387,31 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 
 
+@pytest.mark.parametrize('tier', ['today', 'ask'])
+def test_upgrade_maps_the_today_merge_tier_to_merge_auto(tmp_path, monkeypatch, capsys, tier):
+    # #816: grants and merge.default_tier are retired; "today" merged on every repository, so a
+    # repository without its own merge.auto keeps merging through the merge policy.
+    import tomllib
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    repo = '[[repos]]\nname = "{0}"\npath = "/{0}"\ndefault_branch = "main"\n'
+    path.write_text(path.read_text() + f'[merge]\ndefault_tier = "{tier}"\nowner_paths = []\n'
+                    '[grants]\nstanding = []\n' + repo.format('a') + repo.format('b') + '[repos.merge]\nauto = false\n')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    out = capsys.readouterr().out
+    config = tomllib.loads(path.read_text())
+    assert config['merge'] == {'owner_paths': []} and 'grants' not in config
+    for key in ('merge.default_tier', 'grants'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    today = tier == 'today'
+    assert [repo.get('merge', {}).get('auto') for repo in config['repos']] == [True if today else None, False]
+    assert ('Upgraded config.toml: repos.0.merge.auto = true (was merge.default_tier = "today")' in out) is today
+    assert 'repos.1.merge.auto' not in out
+
+
 @pytest.mark.parametrize('dry_run', [False, True])
 def test_upgrade_removes_an_installed_listener_unit(tmp_path, monkeypatch, capsys, dry_run):
     from wuwei import registry

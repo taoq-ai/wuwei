@@ -65,6 +65,9 @@ THEN = {
                   'bin/wuwei calibrate --interview allowlist). Then run wuwei next.'),
     'pr': ('Run it and do any action it prints; when it prints nothing the PR waits on people: end '
            'the turn with wuwei status --line, the watch wakes you when it changes.'),
+    'merge': ('Run it; on exit 1 ask the Owner step card it prints with AskUserQuestion. On Yes run it '
+              'again; on No run wuwei plan park {item} --reason "the owner keeps the merge of {pr}". '
+              'Then run wuwei next.'),
     'close': 'On exit 1 show the owner what it names and end the turn; then run wuwei next.',
     'closed': ('Exit 0 closes the day; on exit 1 show the owner what it names and end the turn; then '
                'run wuwei next.'),
@@ -105,13 +108,15 @@ def approved(data):
 
 
 def _seen(directory):
-    """(done (state, key) pairs, passed pairs, steward runs, steward due, day closed) from one
-    read of today's events; only lines naming a kind next needs are parsed (#346 budget). A row is
-    done when its command ran (the done pairs run() records) or it passed with nothing to ask."""
-    done, passed, returns, runs, due, closed = set(), set(), {}, [], False, False
+    """(done (state, key) pairs, passed pairs, steward runs, steward due, day closed, the PRs
+    whose latest merge event is an owner block) from one read of today's events; only lines
+    naming a kind next needs are parsed (#346 budget). A row is done when its command ran (the
+    done pairs run() records) or it passed with nothing to ask."""
+    done, passed, returns, runs, due, closed, merges = set(), set(), {}, [], False, False, {}
     path = directory / 'events.jsonl'
     for text in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
-        if not ('"next.action"' in text or '"steward.' in text or '"day.closed"' in text):
+        if not ('"next.action"' in text or '"steward.' in text or '"day.closed"' in text
+                or '"merge.' in text):
             continue
         row = json.loads(text)
         kind, payload = row.get('kind'), row.get('payload')
@@ -131,10 +136,12 @@ def _seen(directory):
             due = True
         elif kind == 'day.closed':
             closed = True
+        elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816
+            merges[payload.get('pr')] = payload.get('reason') if payload.get('owner') is True else None
     # ponytail: a row returned three times counts as done, so a refused or failed command (no
     # PostToolUse span) never holds the day; evidence from PostToolUseFailure would lift it.
     done |= passed | {key for key, count in returns.items() if count >= 3}
-    return done, passed, runs, due, closed
+    return done, passed, runs, due, closed, merges
 
 
 def _carry(root, directory):
@@ -177,7 +184,7 @@ def step(root, ran=()):
         session = os.environ.get('WUWEI_SESSION_ID', '').strip() or '<session id>'
         return _row('session', "Register this session as today's planner.",
                     f'wuwei plan session {session}')
-    returned, passed, runs, due, closed = _seen(directory)
+    returned, passed, runs, due, closed, merges = _seen(directory)
     returned |= set(ran)
     if not (directory / 'plan.md').is_file():
         if ('pr-flow', '') not in returned:
@@ -259,8 +266,13 @@ def step(root, ran=()):
                                   f'wuwei dispatch next {name}', item=name))
         elif phase == 'raised':
             pr = items[name].get('pr')
-            prs.append(_row('pr', f'{label} has PR {pr} open; act on its review state.',
-                            f'wuwei pr act {pr}', item=name, then=THEN['pr']))
+            if merges.get(pr):  # #816: one owner decision for this PR, on its Owner step card
+                found.append(_row('merge', f'{label}: the merge policy does not clear PR {pr}; you decide '
+                                  'on its Owner step card.', f'wuwei merge {pr}', item=name,
+                                  then=THEN['merge'].format(item=name, pr=pr)))
+            else:
+                prs.append(_row('pr', f'{label} has PR {pr} open; act on its review state.',
+                                f'wuwei pr act {pr}', item=name, then=THEN['pr']))
         elif phase == 'planned' and building < data['cap']:
             if not any(row['state'] == 'dispatch' for row in found):
                 found.append(_row('dispatch', f'{min(queued, data["cap"] - building)} planned item(s) can '

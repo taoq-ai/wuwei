@@ -114,17 +114,37 @@ def _proposal(data, goals_text, framework="wsjf"):
     return data
 
 
+REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+# #518: every owner-only step a lead may list, with its target shape.
+OWNER_ACTIONS = {'deploy': 'repo:' + REPO, 'release': 'repo:' + REPO, 'publish': 'repo:' + REPO,
+                 'merge': f'(?:repo:{REPO}|pr:{REPO}#[0-9]+)',
+                 'message': r'(?:channel|dm):[A-Za-z0-9_-]+',
+                 'secret-set': f'secret:{REPO}/[A-Za-z0-9_]+'}
+
+
+def understood(entry):
+    """'' for a known action with a well-formed target, else why not (never an exception)."""
+    if (not isinstance(entry, dict) or set(entry) != {'action', 'target'}
+            or not all(isinstance(value, str) for value in entry.values())):
+        return 'needs exactly action and target as strings'
+    shape = OWNER_ACTIONS.get(entry['action'])
+    if shape is None:
+        return f'action {entry["action"]} not understood; known: {", ".join(OWNER_ACTIONS)}'
+    if not re.fullmatch(shape, entry['target']):
+        return f'target {entry["target"]} is not in the shape for {entry["action"]}'
+    return ''
+
+
 def owner_steps(item):
-    """#518: plan lines for owner actions that are not grant cards: known owner steps (message,
-    secret-set) and entries the CLI does not understand, which the gate asks as written."""
-    from wuwei import grants
+    """#518, #816: plan lines for the owner actions the lead lists; an entry the CLI does not
+    understand is asked at the gate as written."""
     lines = []
     for entry in item.get('owner_actions', []):
-        reason = grants.understood(entry)
+        reason = understood(entry)
         if reason:
             lines.append(f'Owner-only: {json.dumps(entry, sort_keys=True)} (not understood: {reason}; '
                          'the gate asks for it as written)')
-        elif entry['action'] not in grants.ACTIONS:
+        else:
             lines.append(f'Owner-only: {entry["action"]} {entry["target"]} (owner step)')
     return lines
 
@@ -268,8 +288,7 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import grants, shepherd
-    planned = grants.plan(root, workspace.load_config(root), data['candidates'])
+    from wuwei import shepherd
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
@@ -292,7 +311,6 @@ def propose(data, root=None):
                      'match none or several), then the planner runs wuwei plan propose again'] if names else []),
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
                   *([f'Ticket: {shown[item["id"]]}'] if item['id'] in shown else []),
-                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
                   *owner_steps(item), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',

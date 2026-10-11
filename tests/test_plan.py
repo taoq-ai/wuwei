@@ -899,25 +899,20 @@ def deploying():
     return data
 
 
-def test_propose_writes_one_planned_card(root, monkeypatch, capsys):
-    # #478: an owner-only action the lead lists becomes one card the gate question carries.
+def test_owner_actions_are_plan_lines(root, monkeypatch, capsys):
+    # #816: an owner-only action the lead lists is a plan line; no card, the gate asks one question.
     from wuwei.__main__ import main
-    text = plan.propose(deploying(), root).read_text()
-    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
-    day = root / '.wuwei/days/2026-09-28'
-    row = state.read_state(root)['grants']['D-1']
-    assert (row['item'], row['planned'], row['answered']) == ('A', True, None)
-    plan.propose(deploying(), root)
-    assert sorted(path.name for path in (day / 'decisions').glob('D-*.md')) == ['D-1.md']
+    data = deploying()
+    data['candidates'][0]['owner_actions'] += [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                               {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
+    text = plan.propose(data, root).read_text()
+    for line in ('deploy repo:fixture-org/app', 'merge repo:fixture-org/app', 'merge pr:fixture-org/app#7'):
+        assert f'Owner-only: {line} (owner step)\n' in text
+    assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     capsys.readouterr()
     assert main(['plan', 'gate']) == 0
-    gate, card = json.loads(capsys.readouterr().out)
-    assert gate == plan.gate_widget(root)
-    assert card['question'].startswith('D-1: G-1 A deploys fixture-org/app: allow today, ask when it happens, '
-                                       'or keep owner-only? ')
-    assert [option['label'] for option in card['options']] == [
-        'Allow today (Recommended)', 'Ask when it happens', 'Keep owner-only']
+    assert json.loads(capsys.readouterr().out) == [plan.gate_widget(root)]
 
 
 def test_plan_gate_without_owner_actions_is_one_question(root, monkeypatch, capsys):
@@ -950,9 +945,8 @@ def test_owner_actions_must_be_a_list(root):
     ({'action': 'deploy', 'target': 'repo:fixture-org/app', 'when': 'now'},
      '(not understood: needs exactly action and target as strings; the gate asks for it as written)'),
 ])
-def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
-    # #518: the lead's vocabulary (message, secret-set) and anything malformed are lines on
-    # the plan; deploy, release, publish and (#524) merge become grant cards.
+def test_listed_owner_actions_never_stop_the_gate(root, entry, line):
+    # #518: the lead's vocabulary and anything malformed are lines on the plan.
     data = proposal()
     data['candidates'][0]['owner_actions'] = [entry]
     text = plan.propose(data, root).read_text()
@@ -960,31 +954,10 @@ def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
     assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
 
 
-def test_planned_merges_are_gate_cards(root, monkeypatch, capsys):
-    # #524: a merge the lead lists is a planned card like a deploy, per repository or per PR.
-    from wuwei.__main__ import main
-    data = proposal()
-    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
-                                              {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
-    text = plan.propose(data, root).read_text()
-    assert 'Owner-only: merge repo:fixture-org/app (D-1)\n' in text
-    assert 'Owner-only: merge pr:fixture-org/app#7 (D-2)\n' in text and '(owner step)' not in text
-    rows = state.read_state(root)['grants']
-    assert [(rows[key]['action'], rows[key]['target']) for key in ('D-1', 'D-2')] == [
-        ('merge', 'repo:fixture-org/app'), ('merge', 'pr:fixture-org/app#7')]
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    capsys.readouterr()
-    assert main(['plan', 'gate']) == 0
-    _, first, second = json.loads(capsys.readouterr().out)
-    assert first['question'].startswith('D-1: G-1 A merges fixture-org/app: allow today')
-    assert second['question'].startswith('D-2: G-1 A merges fixture-org/app#7: allow today')
-
-
 def test_lead_charter_names_every_owner_action():
     from pathlib import Path
-    from wuwei import grants
     text = (Path(__file__).parents[1] / 'charters/lead.md').read_text()
-    for name in grants.OWNER_ACTIONS:
+    for name in plan.OWNER_ACTIONS:
         assert f'`{name}`' in text, name
 
 
@@ -1032,20 +1005,6 @@ def test_the_gate_records_no_day_value(root, monkeypatch):
         with pytest.raises(SystemExit) as exited:
             main(argv)
         assert exited.value.code == 2
-
-
-def test_merge_default_today_writes_no_planned_merge_card(root):
-    # #530: a planned merge on a configured repository the merge default covers asks nothing.
-    (root / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname = "fixture-org/app"\npath = "."\ndefault_branch = "main"\n'
-        '[merge]\ndefault_tier = "today"\n')
-    data = proposal()
-    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
-                                              *DEPLOY_ACTION]
-    text = plan.propose(data, root).read_text()
-    assert 'Owner-only: merge repo:fixture-org/app (merge.default_tier)\n' in text
-    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
-    assert [row['action'] for row in state.read_state(root)['grants'].values()] == ['deploy']
 
 
 def test_empty_optional_fields_are_absent(root):

@@ -25,7 +25,6 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei dora` | Prints the DORA keys over the last 28 days (`--window <days>` changes that). Lead time to merge and to deploy, deployment frequency, change failure rate and time to restore, each with its source or why it is unmeasured. Read-only; exits 2 when the code host could not run. | [DORA keys](concepts.md#dora-keys) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
-| `bin/wuwei grants` | Lists your standing grants and today's grants for owner-only actions; `grants revoke <n>` removes a standing one. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
@@ -432,7 +431,6 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
-| `bin/wuwei grants revoke <n>` | yes |
 | `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |
 | `bin/wuwei watch uninstall` | no |
 | `bin/wuwei config promote` | yes |

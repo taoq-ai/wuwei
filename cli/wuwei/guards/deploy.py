@@ -41,7 +41,7 @@ _FORCE = re.compile(r'--force.*|--mirror|--tags|--follow-tags|--no-verify|-[a-zA
 
 
 def deny(rule, repo=None):
-    """An owner-only rule and the repository the command names; check hands it to grants.gate."""
+    """An owner-only rule and the repository the command names; check asks the owner's Owner step card."""
     return 1, (rule, repo)
 
 
@@ -134,7 +134,6 @@ def git(args, env, config):
         return 0, ''
     action, *args = args
     if action == 'push':
-        # #478: a grant can clear the denies below, so the fail-closed checks run first.
         if override:
             unknown('git override prevents proving push destination')
         if any(arg.startswith(('--receive-pack', '--exec')) for arg in args):
@@ -341,7 +340,6 @@ def check(payload):
             return found
         if (found := unread(raw, protected[2:], cwd=payload['cwd'])) is not None:
             return found
-        used = []
         for index, command in enumerate(commands):
             if not command.argv:
                 continue
@@ -349,21 +347,15 @@ def check(payload):
             if is_opaque(command.argv, fed) and mentions(raw, ('git', 'gh')):
                 unknown(f'opaque deployment command: {" ".join(command.argv)}; use a plain command')
             result = command_result(command.argv, command.env, config, root)
-            if result[0] == 1:
-                from wuwei import grants  # #478: off the hook path until a deploy is refused
-                # A command that may run outside payload cwd has no cwd target to grant.
-                moved = (any(item.argv and PurePosixPath(item.argv[0]).name in ('cd', 'pushd', 'popd')
-                             for item in commands[:index])
-                         or any(key.startswith('GIT_') for key in command.env)
-                         or PurePosixPath(command.argv[0]).name == 'git'
-                         and any(arg.startswith('-C') for arg in command.argv[1:]))
-                result = grants.gate(payload, root, config, command.argv, *result[1], moved=moved)
-            if result[0]:
+            if result[0] == 1:  # #816: the owner's Yes on this exact call's Owner step card
+                from wuwei import sessions  # off the hook path until a deploy is refused
+                from wuwei.commands import hook
+                text = ' '.join(hook.redacted_target(payload, root).split())
+                if reason := sessions.needs_owner(root, text, f'Run it from the session: {result[1][0]}, '
+                                                  'owner-only; it cannot be undone.'):
+                    return 1, f'publish: {reason}'
+            elif result[0]:
                 return result
-            if result[1]:
-                used.append(result[1])
-        for use in used:  # #478: a grant is recorded or spent only when the whole call runs
-            use()
         return 0, ''
     except (ParseError, ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
         return 2, f'deploy: could not inspect: {exc}; write it as plain literal commands; a publish step then asks the owner on a card'

@@ -57,7 +57,7 @@ TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
 RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
            'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
-           'decisions.cruise')
+           'decisions.cruise', 'grants', 'merge.default_tier')
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -88,14 +88,7 @@ SCHEMA = {
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
-    # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
-    # #530: "today" (the owner's autonomous answer) lets a merge on a configured repository through below strict.
-    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today")),
-              "owner_paths": [(str, None)]},  # #675: globs only the owner merges, whatever the grant
-    # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
-    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
-                             "target": (str, None), "scope": (str, "always", ("always",)),
-                             "decision": (str, None), "date": (str, None)}]},
+    "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
@@ -787,13 +780,6 @@ def load_config(root=None, *, raw=None, warnings=None):
         for name in config['decisions']['lenses']:
             if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
                 raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set')
-        for index, line in enumerate(config['grants']['standing']):
-            if not (re.fullmatch(r'repo:[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+', line['target'])
-                    and re.fullmatch(r'D-[1-9][0-9]*', line['decision'])
-                    and re.fullmatch(r'\d{4}-\d{2}-\d{2}', line['date'])):
-                raise ConfigError(f'grants.standing.{index}: expected target repo:<org>/<name>, decision '
-                                  f'D-n and date YYYY-MM-DD; the owner fixes it with bin/wuwei grants '
-                                  f'revoke {index + 1}')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)

@@ -333,3 +333,12 @@ def test_undo_is_gone():
             main(argv)
         assert exc.value.code == 2
 
+
+
+def test_grants_are_gone():
+    # #816: the merge policy alone decides a merge; no grants command.
+    from wuwei.__main__ import main
+    for argv in (['grants'], ['grants', 'revoke', '1']):
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        assert exc.value.code == 2

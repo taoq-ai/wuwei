@@ -452,24 +452,6 @@ def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     assert '## Spec warnings\n- A: plan (edit)\n' in report.build(root)
 
 
-def test_report_counts_grant_uses(tmp_path, monkeypatch):
-    # #478: one line per grant: how many owner-only actions ran under it.
-    root = tmp_path
-    (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state._write_state(lambda data: None, root, reserved=False)
-    from wuwei import report, signal
-    assert '## Grants' not in report.build(root)
-    for _ in range(3):
-        state.append_event('grant.used', {'decision': 'D-3', 'action': 'deploy', 'target': 'repo:acme/app',
-                                          'scope': 'today', 'session': 's', 'item': None}, root)
-    assert '## Grants\n- deploys run under grant D-3: 3\n' in report.build(root)
-    for kind in ('grant.asked', 'grant.used', 'grant.revoked'):
-        assert signal.classify({'kind': kind, 'payload': {}}, {})[0] == 'silent'
-
-
 def test_report_lists_mandate_decisions_and_counts_by_class(tmp_path, monkeypatch):
     # #530: decisions taken under the mandate, Consequential first, and decisions and cards per class.
     from wuwei import report

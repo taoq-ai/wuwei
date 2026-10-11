@@ -57,8 +57,8 @@ numbers and message bodies never land in traces, logs or memory unredacted. Auto
 wall, with one floor: records are written by the workflow and answered by the owner. A
 refusal that names the plain form the seat runs itself is coaching, not a wall. Under
 `strict`, refusals stay. A merge happens only through the merge policy, never by approval or
-override; an owner-only action runs only on the owner's recorded answer (design spec 4.6,
-4.7 and 9.2).
+override; a merge the policy does not clear is the owner's decision, and an owner-only action
+runs only on the owner's recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
 
 ## Constraints
 
@@ -105,4 +105,4 @@ override; an owner-only action runs only on the owner's recorded answer (design 
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11
+**Version**: 2.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-11

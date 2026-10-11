@@ -199,19 +199,19 @@ def test_unrelated_gate_question_with_the_header_confirms_nothing(ws, monkeypatc
 
 
 @pytest.mark.parametrize('reply,values', [
-    ('Autonomous', ('observe', 'send', 'today', 'auto', 'autonomous')),
-    ('Supervised', ('guarded', 'ask', 'ask', 'card', 'supervised'))])
-def test_one_autonomy_answer_writes_five_keys(ws, monkeypatch, capsys, reply, values):
-    # #530 acceptance 1: one card answer writes the five keys through the #529 path.
+    ('Autonomous', ('observe', 'send', 'auto', 'autonomous')),
+    ('Supervised', ('guarded', 'ask', 'card', 'supervised'))])
+def test_one_autonomy_answer_writes_four_keys(ws, monkeypatch, capsys, reply, values):
+    # #530 acceptance 1, #816: one card answer writes the four keys through the #529 path.
     no_terminal(monkeypatch)
     interview_card(ws, 'autonomy', reply)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     assert main('calibrate', '--answer', f'autonomy={reply}') == 0, capsys.readouterr().err
     written = config(ws)
-    assert (written['security']['posture'], written['outbound']['default_tier'], written['merge']['default_tier'],
+    assert (written['security']['posture'], written['outbound']['default_tier'],
             written['outbound']['learn'], written['autonomy']['mode']) == values
     assert not written.get('guards', {}).get('shadow_since')
-    assert events(ws, 'config.set') == [{'keys': ['security.posture', 'outbound.default_tier', 'merge.default_tier',
+    assert events(ws, 'config.set') == [{'keys': ['security.posture', 'outbound.default_tier',
                                                   'outbound.learn', 'autonomy.mode'], 'card': 'autonomy'}]
     assert 'Next:' not in capsys.readouterr().out
 

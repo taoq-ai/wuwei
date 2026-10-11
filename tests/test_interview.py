@@ -155,20 +155,19 @@ def test_telemetry_question_follows_the_posture():
         ('Off', 'Nothing leaves this machine; the counts stay local.', {'telemetry.share': 'off'}))
 
 
-AUTONOMY_KEYS = ('security.posture', 'outbound.default_tier', 'merge.default_tier', 'outbound.learn',
-                 'autonomy.mode')
+AUTONOMY_KEYS = ('security.posture', 'outbound.default_tier', 'outbound.learn', 'autonomy.mode')
 
 
-def test_one_autonomy_answer_sets_five_keys(monkeypatch):
-    # #530: one answer, five keys; observe is the chosen posture, so no shadow clock starts.
+def test_one_autonomy_answer_sets_four_keys(monkeypatch):
+    # #530, #816: one answer, four keys; observe is the chosen posture, so no shadow clock starts.
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     assert interview().settings({'autonomy': 'Autonomous'}, {}) == [
         (('security',), 'posture', 'observe'), (('outbound',), 'default_tier', 'send'),
-        (('merge',), 'default_tier', 'today'), (('outbound',), 'learn', 'auto'),
+        (('outbound',), 'learn', 'auto'),
         (('autonomy',), 'mode', 'autonomous')]
     assert interview().settings({'autonomy': 'Supervised'}, {}) == [
         (('security',), 'posture', 'guarded'), (('outbound',), 'default_tier', 'ask'),
-        (('merge',), 'default_tier', 'ask'), (('outbound',), 'learn', 'card'),
+        (('outbound',), 'learn', 'card'),
         (('autonomy',), 'mode', 'supervised')]
     for row in interview().QUESTIONS[1:]:
         for _, _, result in row['choices']:
@@ -675,7 +674,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert parsed['owner']['verbosity'] == {'default': 'full'}
     assert parsed['security']['posture'] == 'observe'
     assert parsed['telemetry']['share'] == 'off'
-    assert 'guards' not in parsed and parsed['merge'] == {'default_tier': 'today'}  # #530: no shadow clock
+    assert 'guards' not in parsed and 'merge' not in parsed  # #530: no shadow clock
     assert parsed['autonomy'] == {'mode': 'autonomous'} and parsed['outbound']['learn'] == 'auto'
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4
@@ -927,7 +926,7 @@ def test_deploys_question_recommends_from_the_calibration(offline, capsys, monke
 
 GADGET = ONE.replace('widget', 'gadget')
 SUPERVISED = ('[security]\nposture = "guarded"\n\n[outbound]\ndefault_tier = "ask"\nlearn = "card"\n\n'
-              '[merge]\ndefault_tier = "ask"\n\n[autonomy]\nmode = "supervised"\n')
+              '[autonomy]\nmode = "supervised"\n')
 
 
 def asked(root, repos):
@@ -953,7 +952,7 @@ def test_asking_by_id_ignores_the_config(root):
 def test_every_autonomy_key_set_answers_the_autonomy_question(root):
     (root / '.wuwei/config.toml').write_text(ONE + SUPERVISED)
     assert ('autonomy', None) not in asked(root, ['acme/widget'])
-    (root / '.wuwei/config.toml').write_text(ONE + SUPERVISED.replace('default_tier = "ask"\nlearn', 'learn'))
+    (root / '.wuwei/config.toml').write_text(ONE + SUPERVISED.replace('learn = "card"\n', ''))
     assert ('autonomy', None) in asked(root, ['acme/widget'])
 
 

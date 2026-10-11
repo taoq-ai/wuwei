@@ -992,27 +992,14 @@ def test_raise_gate_miss_warns_under_observe(case, monkeypatch, capsys):
     assert event['reason'] == GATE_MISS and event['level'] == 'warn'
 
 
-def test_raise_gate_miss_is_a_card_under_guarded(case, monkeypatch, capsys):
-    from types import SimpleNamespace
-    from wuwei import integrity, shepherd
-    from wuwei.commands import decision
-    root, host = gate_miss(case, monkeypatch, None)
-    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
-    out = capsys.readouterr().out
-    assert not created(host) and 'decision show D-1' in out and 'security' in out
-    assert 'host terminal' not in out
-    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
-    assert decision.owner_outcome(SimpleNamespace(id='D-1', option='Allow once'), root=root) == (0, 'once')
-    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
-    assert len(created(host)) == 1 and state.read_state(root)['grants']['D-1']['spent'] is True
-
-
-def test_raise_gate_miss_refuses_under_strict(case, monkeypatch, capsys):
+@pytest.mark.parametrize('posture', [None, 'strict'])
+def test_raise_gate_miss_refuses_under_guarded_and_strict(case, monkeypatch, capsys, posture):
+    # #816: no card; the gate reason names the seat's step.
     from wuwei import shepherd
-    root, host = gate_miss(case, monkeypatch, 'strict')
+    root, host = gate_miss(case, monkeypatch, posture)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert capsys.readouterr().out.strip() == GATE_MISS and not created(host)
-    assert 'grants' not in state.read_state(root) or not state.read_state(root)['grants']
+    assert not list((root / '.wuwei/days').glob('*/decisions/D-*.md'))
 
 
 @pytest.mark.parametrize('where', ['.', 'docs'])

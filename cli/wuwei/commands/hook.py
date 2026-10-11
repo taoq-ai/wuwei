@@ -301,7 +301,7 @@ def posture(payload, refusals, root, warned=None):
             # #530: raising a PR is gated by evidence under the publish area, never owner-only.
             decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'
         if reason == NO_REVIEWER or reason.startswith('publish: '):
-            line = ''  # It names its own ways out (#478: the owner's card); still blocked.
+            line = ''  # It names its own ways out (#816: the owner's Owner step card); still blocked.
         if guard == 'outward' and reason.startswith('outward: draft '):
             line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
         # #347, #470: decided by the reason, not the area; only deploy says unknown git

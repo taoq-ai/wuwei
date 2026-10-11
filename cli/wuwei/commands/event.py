@@ -55,7 +55,6 @@ EVENT_PRODUCERS = {
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
     'heartbeat: clock': 'wuwei watch',
     'decision.routed': 'wuwei decision route',
-    'decision.closed': 'wuwei watch or wuwei pr state (a merged PR closes its merge card)',
     'decision.reversed': 'wuwei decision outcome',
     'decision.digest': 'wuwei sweep',
     'scanner.finding': 'wuwei scanner or security recorder',
@@ -89,8 +88,6 @@ EVENT_PRODUCERS = {
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
     'outbound.thread': 'wuwei outbound learn',
-    'grant.asked': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise or wuwei plan propose',
-    'grant.used': 'wuwei hook PreToolUse (deploy, push and PR guards) or wuwei pr raise', 'grant.revoked': 'owner host wuwei grants revoke',
     'config.set': 'wuwei config set --from-card or wuwei calibrate --answer',
 }
 

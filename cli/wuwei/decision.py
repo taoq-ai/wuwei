@@ -20,7 +20,7 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
           'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
 OPTIONAL = ('Class', 'Reasoning', 'Lenses', 'Role', 'Value', 'Previous')  # #600: config cards
-STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
+STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # Keep is the status quo
 # #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
 ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan', 'dependency-bump',

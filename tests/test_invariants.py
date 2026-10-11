@@ -19,8 +19,7 @@ def wall(reason, line):
 
 
 # Reasons the guards return from helpers outside guards/: (file, functions, guard checks).
-CALLED = [('grants.py', ('gate', 'evidence'), ('deploy.check', 'commit_push.check', 'pr.check')),
-          ('security.py', ('outbound', 'gh_outbound'), ('outward.check_tier', 'pr.check')),
+CALLED = [('security.py', ('outbound', 'gh_outbound'), ('outward.check_tier', 'pr.check')),
           ('drafts.py', ('reason',), ('outward.check_tier',)),
           ('outward.py', ('check_tier', 'blocked'), ('outward.check_tier',)),
           ('integrity.py', ('measure',), ('integrity.check',)),
@@ -29,10 +28,7 @@ CALLED = [('grants.py', ('gate', 'evidence'), ('deploy.check', 'commit_push.chec
 OWNED = []  # #831: the config and integrity commands ask their own Owner step card
 # Refusals that are not walls the workflow puts up; the note on each row is its rationale.
 MERGES = "merge family: bin/wuwei merge is the path (#524); approval and override stay the owner's"
-EXEMPT = [('grants.py', '{} {}; ask the owner to run it in a host terminal', 'heartbeat probe'),
-          ('grants.py', 'permissions deny it', 'permissions.deny, deferred'),
-          ('grants.py', 'kept it owner-only', "the owner's own Keep answer"),
-          *[('guards/pr.py', part, MERGES) for part in (
+EXEMPT = [*[('guards/pr.py', part, MERGES) for part in (
               'merge policy', 'admin merge', 'PR approval', 'branch protection', 'a shepherd seat never merges')],
           ('guards/stop.py', 'day state missing for registered planner', 'records: state recovery'),
           ('guards/deploy.py', 'if it publishes, run it as a plain literal command',

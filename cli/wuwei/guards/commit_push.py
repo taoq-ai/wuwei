@@ -144,8 +144,8 @@ def push_check(repo, actual, push, root, vcs):
     for update in updates:
         destination = update['destination']
         if isinstance(destination, str) and destination.startswith('refs/tags/'):
-            # #530: a tag is a release. Below strict the deploy guard's release card and grants
-            # (once, today, always) are the gate; strict refuses it from the session.
+            # #530, #816: a tag is a release. Below strict the deploy guard's tag push rule asks the
+            # owner's Owner step card; strict refuses it from the session.
             if workspace.posture(config)[0] != 'strict':
                 continue
             return 1, (f'tag push {destination} is a release; posture strict refuses it from the session; '
@@ -409,7 +409,7 @@ def check(payload):
             raise ValueError('unsupported environment clearing around Git; run git with the normal environment, without clearing or unsetting variables')
         if re.search(r'''(?:^|[;\n'"])\s*\w+=[^;\n]*[;\n]''', raw):
             raise ValueError('standalone environment assignment before Git; write the assignment directly in front of the git command, or remove it')
-        creates_commit, used = False, []
+        creates_commit = False
         for command, directory, root, parsed, errors in scoped:
             if errors:
                 raise ValueError(errors[0])
@@ -491,17 +491,9 @@ def check(payload):
             push = data(next(iter(early), None) or vcs.push_context(actual['path'], remote, refs, root=root))
             result = push_check(repo, actual, push, root, vcs)
             if not result[0]:
-                result = fast_evidence(repo, push['head']['sha'], actual['path'], root)
-                if result[0] == 1:  # #530: a warning, the owner's card or (strict) the refusal
-                    from wuwei import grants
-                    result = grants.evidence(payload, root, workspace.load_config(root), command.argv,
-                                             result[1], repo['name'])
+                result = fast_evidence(repo, push['head']['sha'], actual['path'], root)  # #816: the hook levels it
             if result[0]:
                 return result
-            if callable(result[1]):
-                used.append(result[1])
-        for use in used:  # #478: a grant is spent only when the whole call runs
-            use()
         return 0, ''
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
         reason = str(exc)

@@ -226,7 +226,7 @@ CLASS_PATHS = (
     ('CON', ('commands/*', '__main__*', '*contract*', '*schema*', '*api*')),
     ('BUD', ('adapters/*', '*runtime*', '*dispatch*', '*timeout*')),
 )
-GUARD_CODE = ('guards/*', 'grants*', 'outward*', 'hooks/*')
+GUARD_CODE = ('guards/*', 'outward*', 'hooks/*')
 
 
 def classes(root, config, row):

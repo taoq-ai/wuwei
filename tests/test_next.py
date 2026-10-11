@@ -840,6 +840,24 @@ def test_text_mode_names_the_queue(root, capsys):
     assert 'Queue: build A, verdicts B, pr P' in next_command.text(coarse(root))
 
 
+@pytest.mark.parametrize('later,row', [(None, 'merge'), ('intent', 'pr'), ('wait', 'pr')])
+def test_an_owner_merge_block_is_one_owner_row(root, later, row):
+    # #816: the merge policy does not clear the PR; the owner decides on its Owner step card.
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
+    state.append_event('merge.policy_blocked', {'pr': 'example/project#7', 'exit': 1, 'owner': True,
+                                                'reason': 'merge policy: owner decides: merge.auto is off'}, root)
+    if later == 'intent':
+        state.append_event('merge.intent', {'pr': 'example/project#7'}, root)
+    elif later == 'wait':
+        state.append_event('merge.policy_blocked', {'pr': 'example/project#7', 'exit': 1, 'owner': False,
+                                                    'reason': 'merge policy: waits: quiet hours'}, root)
+    found = coarse(root)
+    assert (found['state'], found['item']) == (row, 'P'), found
+    if row == 'merge':
+        assert found['command'] == 'wuwei merge example/project#7'
+        assert 'wuwei plan park P --reason "the owner keeps the merge of example/project#7"' in found['then']
+
+
 def test_a_lone_pr_comes_after_the_steward(root):
     approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
     found = coarse(root)
@@ -876,13 +894,3 @@ def test_finding_row(root, capsys):
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)
     assert coarse(root) == before
-
-
-def test_merged_pr_drops_its_card(root):  # #729
-    from wuwei import grants
-    approved(root, {}, decision_routes={'D-1': 'owner'}, grants={'D-1': {
-        'action': 'merge', 'target': 'pr:example/project#7', 'rule': 'planned', 'command': None,
-        'item': None, 'seat': None, 'planned': True, 'answered': None, 'spent': False}})
-    assert coarse(root)['state'] == 'decision'
-    assert grants.close_merged(root, 'example/project#7', {'merge_commit': 'b' * 40, 'merged_by': 'owner-login'}) == ['D-1']
-    assert coarse(root)['state'] != 'decision'

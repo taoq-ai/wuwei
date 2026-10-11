@@ -737,6 +737,37 @@ NOTHING = ('no Makefile test, check or lint target, no pyproject.toml or package
            'or markdownlint configuration and no CI test step')
 
 
+def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem,
+            revisit, *, cls='other', confidence='medium', door='one-way', extra=''):
+    """A decision record from (id, title, rationale, consequence, score) rows; extra (#600, Value
+    rows and a Previous line) goes before the Recommendation."""
+    ids, cells = ' | '.join(row[0] for row in rows), ' --- |' * len(rows)
+    return f'''Question: {question}
+Class: {cls}
+Context: {context}
+Options:
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+{''.join(f'| {row[0]} | {row[1]} | {row[2]} | {row[3]} |{chr(10)}' for row in rows)}Musts:
+| Criterion | {ids} |
+| --- |{cells}
+| Owner decides |{' pass |' * len(rows)}
+Wants:
+| Criterion | Weight | {ids} |
+| --- | --- |{cells}
+| {criterion} | 10 | {' | '.join(str(row[4]) for row in rows)} |
+{extra}Recommendation: {recommendation}
+Reasoning: {reasoning}
+Confidence: {confidence}
+Reversibility: {door}
+Blast radius: {blast}
+Pre-mortem: {premortem}
+Revisit: {revisit}
+Decided-by: owner
+Outcome: pending
+'''
+
+
 def checks_text(index, name, commands, sources):
     """#600: the fast-checks card of a repository with none configured: what it declares, or
     none with the reason. Two-way: its undo is config set back to the Previous line."""
@@ -754,8 +785,7 @@ def checks_text(index, name, commands, sources):
              + ''.join(f'| {row[0]} | {key} = {configtext.dumps(row[2], inline=True)} |\n'
                        for row in rows if row[2] is not None)
              + f'Previous: {key} = []\n')
-    from wuwei import grants
-    return grants._record(
+    return _record(
         CHECKS.format(repo=name),
         f'Detected in {", ".join(sources)}.' if commands else f'Nothing detected: {NOTHING}.',
         [(row[0], row[1], row[3], row[4], row[5]) for row in rows], 'Evidence on every change', 'A',
