@@ -55,9 +55,7 @@ def plugin(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setattr(wuwei.guards, '__path__', [str(path)])
     yield tmp_path, monkeypatch, capsys
-    for name in list(sys.modules):
-        if name.startswith('wuwei.guards.'):
-            del sys.modules[name]
+    forget_guards()  # the package attributes too, or a later import gets a stale guard module
 
 
 def replay(plugin, event, payload):

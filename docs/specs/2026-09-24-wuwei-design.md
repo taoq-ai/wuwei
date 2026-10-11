@@ -168,7 +168,7 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat, free memory and ticket refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
 | PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); identity, the default branch and the fast checks stay with the native Git hooks |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
 | PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
@@ -1101,14 +1101,16 @@ existing ticket once the adapter's `created(item)` confirms it exists. `plan app
 item (claim, transitions, comments, history for lead time) uses its ticket id; an item
 without one falls back to its own id and gets no duty.
 
-Duties (#842). An item with a recorded ticket gets three tracker duties while
-`adapters.tracker` is not `none`; an item without one gets none.
+Duties (#842). While `adapters.tracker` is not `none`, a new item gets the `tracker.create`
+duty and an item with a recorded ticket the three lifecycle duties; a duty already done on
+any day is not run again.
 
 | Duty | Due when | Done when | Command `next` names |
 | --- | --- | --- | --- |
+| `tracker.create` | a new candidate is approved (`plan approve`) or an owner-named item is added (`plan add`) with no ticket | the ticket is created and recorded in `tickets` | `wuwei tracker create <item>` |
 | `tracker.claim` | the item's first build starts (`build next`) | the claim (assign, in progress) returns 0 | `wuwei tracker move <item> claim` |
 | `tracker.in_review` | the PR is raised (`pr raise`) or claimed (`pr claim`) | the move to `states.in_review` and the `Pull request: <pr>.` comment both return 0 | `wuwei tracker move <item> in_review` |
-| `tracker.done` | the PR merges (the watch's `merge.completed`, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
+| `tracker.done` | the PR merges (the watch's `merge.completed`, or `pr state` seeing the merge, 4.6) | the move to `states.done` and the `Merged in <pr>.` comment both return 0 | `wuwei tracker move <item> done` |
 
 `dispatch.tracker_call` performs each duty. It appends `duty.due {item, duty, ticket,
 command}` before the tracker call and `duty.done {item, duty, ticket, pr}` when every step

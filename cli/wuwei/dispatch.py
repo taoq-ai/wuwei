@@ -358,38 +358,51 @@ def step_zero(value, paths, trust_paths, flags=None):
     return False, 'no guard code or trust path in the diff'
 
 
-def tracker_call(item, action, root=None):
-    """Perform one tracker lifecycle update without blocking the local build loop. #842: with a
-    recorded ticket it is a duty: duty.due before the call, then duty.done when every step
-    returned 0, or duty.skipped with the error (the adapter already retried)."""
-    from wuwei.tracker import relabel, ticket as recorded
+def tracker_call(item, action, root=None, row=None):
+    """Perform one tracker lifecycle update without blocking the local build loop. #842: it is
+    a duty (create for a day item; claim, in_review and done with a recorded ticket): duty.due before
+    the call, then duty.done when every step returned 0, or duty.skipped with the error (the
+    adapter already retried). A duty already done on any day is not run again. row: the item
+    record a create opens the ticket from when it is not in today's proposal."""
+    from wuwei import tracker as hygiene
     root = workspace.find_workspace(root)
-    ticket, duty = item, None
+    ticket, duty, pr = item, None, None
     try:
         config = workspace.load_config(root)
         data = state.read_state(root)
-        ticket = recorded(data, item) or item
+        ticket = hygiene.ticket(data, item) or item
         if config['adapters']['tracker'] == 'none':
             result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set')
         else:
-            if action not in ('claim', 'in_review', 'done'):
-                raise ValueError('unknown tracker action; pass claim, in_review or done')
-            tracker = registry.load('tracker', config)
+            if action not in ('create', 'claim', 'in_review', 'done'):
+                raise ValueError('unknown tracker action; pass create, claim, in_review or done')
+            name = f'tracker.{action}'
+            if hygiene.duty_done(root, item, name):
+                return registry.Result(0, reason=f'{item}: {name} already recorded')
             pr = data['items'].get(item, {}).get('pr')
-            if recorded(data, item):
-                duty = {'item': item, 'duty': f'tracker.{action}', 'ticket': ticket}
-                state.append_event('duty.due', {**duty, 'command': f'wuwei tracker move {item} {action}'}, root)
-            if action == 'claim':
-                result = tracker.claim(ticket, root=root)
+            if action == 'create':
+                if item in data['items']:  # a duty for a day item; any other subject is refused below
+                    duty = {'item': item, 'duty': name, 'ticket': None}
+                    state.append_event('duty.due', {**duty, 'command': f'wuwei tracker create {item}'}, root)
+                result = hygiene.create(root, item, row=row)
+                if result.exit == 0 and duty:
+                    duty['ticket'] = ticket = result.data['id']
             else:
-                result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
-                if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
-                    result = relabel(tracker, root, config, item, ticket, result)  # #670
-                if isinstance(result, registry.Result) and result.exit == 0 and duty and pr:
-                    day = workspace.day_dir(root).name
-                    text = f'Pull request: {pr}.' if action == 'in_review' else f'Merged in {pr}.'
-                    result = tracker.comment(ticket, f'[{day} {item}] {text}',
-                                             'pr' if action == 'in_review' else 'close', root=root)
+                if hygiene.ticket(data, item):
+                    duty = {'item': item, 'duty': name, 'ticket': ticket}
+                    state.append_event('duty.due', {**duty, 'command': f'wuwei tracker move {item} {action}'}, root)
+                port = registry.load('tracker', config)
+                if action == 'claim':
+                    result = port.claim(ticket, root=root)
+                else:
+                    result = port.transition(ticket, config['tracker']['states'][action], root=root)
+                    if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
+                        result = hygiene.relabel(port, root, config, item, ticket, result)  # #670
+                    if isinstance(result, registry.Result) and result.exit == 0 and duty and pr:
+                        kind = 'pr' if action == 'in_review' else 'close'
+                        text = f'Pull request: {pr}.' if action == 'in_review' else f'Merged in {pr}.'
+                        result = hygiene.duty_comment(root, config, port, ticket, f'{kind}:{item}:duty',
+                                                      kind, f'[{workspace.day_dir(root).name} {item}] {text}')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
                 raise ValueError(f'invalid tracker result; {ADAPTER_DATA}')
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:

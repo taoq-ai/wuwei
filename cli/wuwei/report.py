@@ -157,8 +157,10 @@ def build(root=None):
     skipped = tracker.skipped_duties(watch.records(day / 'events.jsonl'))  # #842: listed, never dropped
     if skipped:
         lines += ['', '## Skipped duties', *(
-            f"- {row['item']}: {row['duty']} on {row['ticket']}: {row['error']}; retry: bin/wuwei "
-            f"tracker move {row['item']} {row['duty'].split('.', 1)[1]}" for row in skipped)]
+            f"- {row['item']}: {row['duty']} on {row['ticket'] or 'a new ticket'}: {row['error']}; "
+            f"retry: bin/wuwei tracker {'create' if row['duty'] == 'tracker.create' else 'move'} "
+            f"{row['item']}{'' if row['duty'] == 'tracker.create' else ' ' + row['duty'][8:]}"
+            for row in skipped)]
     runs = Counter(str(row['payload'].get('trigger')) for row in watch.records(day / 'events.jsonl')
                    if row['kind'] == 'steward.run')
     config = workspace.load_config(root)

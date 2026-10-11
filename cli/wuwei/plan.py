@@ -428,6 +428,11 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                  payload={'items': sorted(imported) if import_yesterday else items,
                                           'approved_items': items,
                                           'flags': {name: candidates[name]['flags'] for name in items}})
+    if config['adapters']['tracker'] != 'none':  # #842: a new item's ticket opens as a duty
+        from wuwei import dispatch
+        for name in items:
+            if proposed(candidates[name], found) is None:
+                dispatch.tracker_call(name, 'create', root)
     from wuwei import shepherd
     for name in claims:  # claim_pr prints the claim or its refusal; the gate stays approved.
         shepherd.claim_pr(root, adopted[name]['pr'], name, data['goals'][0])
@@ -489,6 +494,11 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     state._write_state(admit, root, reserved=False, kind='plan.added',
                        payload={'item': item, 'source': candidate['source'],
                                 'flags': {item: candidate['flags']}})
+    if not chosen and config['adapters']['tracker'] != 'none':  # #842: best effort, never a wall
+        from wuwei import dispatch
+        dispatch.tracker_call(item, 'create', root, row={
+            'scope': candidate['title'], 'goal': candidate['goal'], 'track': candidate['track'],
+            'evidence': 'named by the owner'})
     return {'action': 'build next', 'item': item}
 
 

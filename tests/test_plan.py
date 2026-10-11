@@ -652,28 +652,47 @@ def test_plan_and_gate_card_show_each_ticket(root):
     assert 'Tickets' not in plan.gate_widget(root)['options'][0]['description']
 
 
-def opening(root, monkeypatch, enforce='true'):
-    """A and B link existing tickets, C has none."""
-    from fakes.tracker import Fake
+def opening(root, monkeypatch, enforce='true', created=None):
+    """A and B link existing tickets, C has none; the fake tracker opens it."""
+    from fakes.tracker import Fake, ported
     tracked(root, f'[owner]\nname = "Pat Example"\n[guards]\nenforce = {enforce}\n')
     plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}}), root)
-    fake = Fake({})
+    fake = Fake({'create': created or registry.Result(0, {'id': 'ENG-9',
+                                                           'url': 'https://example.test/ENG-9'})})
+    port = ported(fake)
     load = registry.load
-    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
                         else load(kind, config))
     return fake
 
 
+def duties(root):
+    return [(e['kind'], e['payload']) for e in events(root) if e['kind'].startswith('duty.')]
+
+
 @pytest.mark.parametrize('posture', ['false', 'true'])
-def test_approve_links_the_proposed_tickets_and_opens_none(root, monkeypatch, posture):
-    """#842: A and B link their tickets; C is approved with no ticket and none is created."""
+def test_approve_links_the_proposed_tickets_and_opens_the_new_one_as_a_duty(root, monkeypatch, posture):
+    """#842 F3: A and B link their tickets; C's ticket opens through the tracker.create duty."""
     fake = opening(root, monkeypatch, posture)
     plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
     day = state.read_state(root)
     assert day['tickets'] == {'A': {'id': 'ENG-1', 'source': 'candidate'},
-                              'B': {'id': 'ENG-2', 'source': 'candidate'}}
-    assert day['approved_items'] == ['A', 'B', 'C'] and fake.calls == []
-    assert not [event for event in events(root) if event['kind'].startswith('tracker.')]
+                              'B': {'id': 'ENG-2', 'source': 'candidate'},
+                              'C': {'id': 'ENG-9', 'source': 'create'}}
+    assert [call[0] for call in fake.calls] == ['create'] and fake.calls[0][1][0]['item'] == 'C'
+    assert duties(root) == [
+        ('duty.due', {'item': 'C', 'duty': 'tracker.create', 'ticket': None,
+                      'command': 'wuwei tracker create C'}),
+        ('duty.done', {'item': 'C', 'duty': 'tracker.create', 'ticket': 'ENG-9', 'pr': None})]
+
+
+def test_a_failed_open_is_a_skipped_duty_and_never_refuses(root, monkeypatch):
+    opening(root, monkeypatch, created=registry.Result(2, reason='linear: unreachable'))
+    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    day = state.read_state(root)
+    assert day['approved_items'] == ['A', 'B', 'C'] and 'C' not in day['tickets']
+    assert duties(root)[-1] == ('duty.skipped', {'item': 'C', 'duty': 'tracker.create',
+                                                 'ticket': None, 'error': 'linear: unreachable'})
 
 
 def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
@@ -1108,17 +1127,27 @@ def test_owner_named_bare_ticket_without_a_repository_is_refused(gated, monkeypa
     assert main(['plan', 'add', 'OWN-4', '--goal', 'G-1', '--ticket', '24']) == 2
 
 
-def test_owner_named_item_opens_no_ticket(gated, monkeypatch):
-    """#842: plan add admits the owner's item with no ticket and creates none."""
-    from fakes.tracker import Fake
+@pytest.mark.parametrize('created', [True, False])
+def test_owner_named_item_opens_its_ticket_as_a_duty(gated, monkeypatch, created):
+    """#842 F3: plan add opens the owner's item's ticket as a duty; a failure never refuses."""
+    from fakes.tracker import Fake, ported
     from wuwei import registry
     (gated / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Pat Example"\n'
         '[adapters]\ntracker = "linear"\n')
-    fake = Fake({})
-    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
+                 if created else registry.Result(2, reason='linear: unreachable')})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
     assert plan.add('OWN-3', gated, goal='G-1', title='Fix the export')['action'] == 'build next'
-    assert fake.calls == [] and 'OWN-3' not in state.read_state(gated).get('tickets', {})
+    (_, (draft,), _), = fake.calls
+    assert draft['title'] == 'Fix the export' and draft['item'] == 'OWN-3'
+    assert ('OWN-3' in state.read_state(gated).get('tickets', {})) is created
+    kinds = [e['kind'] for e in map(json.loads, (gated / '.wuwei/days/2026-09-29/events.jsonl')
+                                    .read_text().splitlines()) if e['kind'].startswith('duty.')]
+    assert kinds == ['duty.due', 'duty.done' if created else 'duty.skipped']
 
 
 def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():

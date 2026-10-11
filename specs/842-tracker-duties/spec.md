@@ -197,8 +197,12 @@ no ticket.
 2. No ticket, no duty. An item with no recorded ticket gets no tracker duty, so a seat finding
    or an owner item without a ticket never holds the day. `tracker create <item>` stays for a
    ticket on demand, and seats still file bugs and follow-ups.
-3. Auto-create at `plan approve` and `plan add` goes: it existed to satisfy `tracker.required`.
-   Candidates from the tracker backlog keep their ticket (`plan.tracked`, `plan.proposed`).
+3. Review fix F3 (owner rule: the outward process is followed): `plan approve` opens the ticket
+   of each new candidate and `plan add` of each owner-named item through a best-effort
+   `tracker.create` duty (`duty.due` with `ticket: null`, then `duty.done` with the new ticket
+   recorded, or `duty.skipped`); it never refuses. Candidates from the tracker backlog keep
+   their ticket (`plan.tracked`, `plan.proposed`). A duty already done on any day is not run
+   again, so the merge monitor and `pr state` never post the merged note twice (F1).
 4. `tracker.log` (progress, verdicts and carried or parked notes) stays: it is code, not a
    wall, and the owner kept tracker comments. Only the entries the duties now write move.
 5. `outbound.code_host_orgs` and `outward._external_tracker` stay (part 16 handed them here):

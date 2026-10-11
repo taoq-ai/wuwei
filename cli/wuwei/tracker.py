@@ -87,6 +87,55 @@ def open_duties(rows):
             for (item, duty), (kind, payload) in _duties(rows).items() if kind == 'duty.due']
 
 
+def duty_done(root, item, duty):
+    """#842: True when any day's events hold duty.done for (item, duty), so a duty run again by
+    merge.monitor, pr state or a carried day never posts twice."""
+    for path in (root / '.wuwei/days').glob('*/events.jsonl'):
+        for text in path.read_text(encoding='utf-8').splitlines():
+            if '"duty.done"' in text:
+                payload = json.loads(text).get('payload') or {}
+                if (payload.get('item'), payload.get('duty')) == (item, duty):
+                    return True
+    return False
+
+
+def duty_comment(root, config, port, number, key, kind, text):
+    """#842: a duty's comment through tracker log's ledger: claimed before the send, so a retry
+    after a crash never posts it twice, and within tracker.max_per_item_per_day."""
+    from wuwei import registry
+    logged = state.read_state(root).get('tracker_log', {})
+    entry = logged.get(key)
+    if entry and entry['outcome'] == 'written':
+        return registry.Result(0)
+    if entry and entry['outcome'] == 'sending':
+        return registry.Result(1, reason=f'{key}: an earlier send was interrupted, so it is not posted '
+                                         f'again; check ticket {number} and add the line there if it is missing')
+    if entry:
+        return registry.Result(1, reason=f'{key}: {entry.get("reason", "refused")}')
+    used = sum(row.get('ticket') == number and 'kind' in row
+               and row['outcome'] in ('sending', 'written', 'drafted') for row in logged.values())
+    if used >= config['tracker']['max_per_item_per_day']:
+        return registry.Result(1, reason=f'{key}: ticket {number} already has its '
+                                         'tracker.max_per_item_per_day comments today; retry the duty tomorrow with the '
+                                         'command the day report names')
+
+    def claim(fresh):
+        rows = fresh.setdefault('tracker_log', {})
+        if key in rows:
+            raise state.StateError(f'tracker: {key} already claimed; another run is writing it, '
+                                   'so wait for it to finish')
+        rows[key] = {'outcome': 'sending', 'ticket': number, 'kind': kind}
+    state._write_state(claim, root, reserved=False, kind='tracker.logged', payload={'key': key})
+    result = port.comment(number, text, kind, root=root)
+    if result.exit == 2:
+        _settle(root, key, lambda rows: rows.pop(key, None), exit=2)
+        return result
+    outcome = ({'outcome': 'written'} if result.exit == 0 else
+               {'outcome': 'refused', 'reason': result.reason or 'refused'})
+    _settle(root, key, lambda rows: rows[key].update(outcome), outcome=outcome['outcome'])
+    return result
+
+
 def skipped_duties(rows):
     """#842, pure: the duty.skipped payloads still standing, for the report."""
     return [payload for kind, payload in _duties(rows).values() if kind == 'duty.skipped']
@@ -294,7 +343,7 @@ def log(root):
 
 def creates_labels(config):
     """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker;
-    init --upgrade creates on any tracker."""
+    init --upgrade creates one on an external tracker only from a tty."""
     from wuwei import outward
     return not outward._external_tracker(config)
 
@@ -328,6 +377,11 @@ def relabel(port, root, config, item, ticket, failed):
         return port.transition(ticket, name, root=root)
     if found.data['missing']:
         quoted = ', '.join(f'"{label}"' for label in found.data['missing'])
+        if not creates_labels(config):  # #842: someone else's tracker; its owner adds the label
+            return registry.Result(1, reason=(
+                f'{item} not moved to {name}: the tracker label {quoted} is missing on a tracker '
+                'WUWEI does not own. The duty stays skipped in the day report until its owner adds '
+                f'it; ask them to, then run bin/wuwei tracker move {item} in_review'))
         return registry.Result(1, reason=(
             f'{item} not moved to {name}: the tracker label {quoted} is missing; run '
             'bin/wuwei init --upgrade, which creates it, then bin/wuwei '

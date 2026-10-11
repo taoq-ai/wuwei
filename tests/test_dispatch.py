@@ -1526,6 +1526,34 @@ def test_a_failed_duty_is_recorded_skipped(root, monkeypatch, results):
                                                        'ticket': 'ENG-7', 'error': error})]
 
 
+def test_a_duty_comment_is_claimed_before_it_is_sent(root, monkeypatch):
+    """#842 F4: a crash after the claim never posts the PR link twice on a retry."""
+    from wuwei import dispatch, registry
+    fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
+
+    def crash(item, text, category, root=None):
+        fake.calls.append(('comment', (item, text, category), root))
+        raise OSError('connection reset')
+    fake.comment = crash
+    assert dispatch.tracker_call('A', 'in_review', root).exit == 2
+    fake.comment = lambda *args, **kwargs: pytest.fail('posted twice')
+    result = dispatch.tracker_call('A', 'in_review', root)
+    assert result.exit and 'not posted again' in result.reason
+    assert duty_events(root)[-1][0] == 'duty.skipped'
+
+
+def test_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
+    from wuwei import dispatch, registry
+    ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[tracker]\nmax_per_item_per_day = 1\n')
+    state._write_state(lambda data: data.setdefault('tracker_log', {}).update({'progress:A:1': {
+        'outcome': 'written', 'ticket': 'ENG-7', 'kind': 'progress'}}), root, reserved=False)
+    result = dispatch.tracker_call('A', 'done', root)
+    assert result.exit == 1 and 'max_per_item_per_day' in result.reason
+    assert duty_events(root)[-1][0] == 'duty.skipped'
+
+
 def test_no_duty_without_a_ticket_or_a_tracker(root, monkeypatch):
     from wuwei import dispatch, registry
     ticketed(root, monkeypatch, {'claim': registry.Result(0, {})})
@@ -1553,8 +1581,9 @@ def test_tracker_call_uses_the_ticket(root, monkeypatch):
             if e['kind'] == 'tracker.call'] == [('A', 'ENG-7'), ('B', 'B')]
 
 
-LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing; run '
-                 'bin/wuwei init --upgrade, which creates it, then bin/wuwei tracker move A in_review')
+LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing on a '
+                 'tracker WUWEI does not own. The duty stays skipped in the day report until its owner '
+                 'adds it; ask them to, then run bin/wuwei tracker move A in_review')
 
 
 def moves(root, monkeypatch, labels, orgs='"acme"'):

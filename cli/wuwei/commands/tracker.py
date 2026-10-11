@@ -2,7 +2,7 @@
 
 import sys
 
-from wuwei import tracker, workspace
+from wuwei import state, tracker, workspace
 from wuwei.exits import UNRUN
 
 
@@ -42,6 +42,11 @@ def run(args):
             action = 'done' if args.action == 'done' else args.state
             result = dispatch.tracker_call(args.item, action, root)
             reason = f'{args.item}: ticket {action}' if result.exit == 0 else result.reason
+        elif (not args.category and workspace.load_config(root)['adapters']['tracker'] != 'none'
+              and args.subject in state.read_state(root)['items']):
+            from wuwei import dispatch  # #842: a day item's own ticket is its create duty
+            result = dispatch.tracker_call(args.subject, 'create', root)
+            reason = result.reason
         else:
             result = tracker.create(root, args.subject, args.category or 'items', args.title,
                                     args.evidence, seat=args.seat)

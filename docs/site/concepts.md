@@ -202,8 +202,9 @@ A candidate's `ticket` field, an item discovered from the tracker backlog,
 The lead links an open backlog ticket when one is the item's work; the plan shows it on a
 `Ticket:` line and the gate card lists it.
 
-An item with a ticket gets three tracker duties while `adapters.tracker` is not `none`:
-`tracker.claim` at its first build (assign, in progress), `tracker.in_review` when its PR is
+While `adapters.tracker` is not `none`, `plan approve` and `plan add` open the ticket of a
+new item through the `tracker.create` duty; a failure is a skipped duty, never a refusal.
+An item with a ticket then gets three more duties: `tracker.claim` at its first build (assign, in progress), `tracker.in_review` when its PR is
 raised or claimed (the move and a `Pull request: <pr>.` comment) and `tracker.done` when the
 PR merges (the move and a `Merged in <pr>.` comment). Each writes `duty.due` before the
 tracker call and `duty.done` when every step returned 0. When the adapter call fails after

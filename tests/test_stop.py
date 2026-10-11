@@ -880,3 +880,30 @@ def test_close_never_names_a_missing_ticket(case):
     root, rows = merged_item(case)
     state._write_state(lambda data: data['items']['A'].update(tier='light'), root, reserved=False)
     assert module('closing').unresolved(root, rows) == (0, '')
+
+
+def test_a_merge_seen_by_pr_state_records_the_done_duty_once(case, monkeypatch):
+    """#842 F1: a PR merged on the host moves the item through pr_actions, which runs the done
+    duty; a second run, as merge.monitor's, posts nothing again."""
+    from fakes.tracker import Fake
+    root, host, _ = case
+    own(root)
+    approved(root, pr=REF)
+    for phase in ('implement', 'gate', 'raised'):
+        state.transition('A', phase, root=root)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'transition': Result(0, {}), 'comment': Result(0, {'id': 'c-1'})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: fake if kind == 'tracker' else load(kind, cfg))
+    host.results['pr'].data.update(state='closed', merged=True, merged_at=DAY + 'T11:00:00Z')
+    rows = module('pr_actions').evaluate(root)[1]
+    assert state.read_state(root)['items']['A']['phase'] == 'merged'
+    kinds = [row['kind'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+             if row['kind'].startswith('duty.')]
+    assert kinds == ['duty.due', 'duty.done']
+    assert module('closing').unresolved(root, rows) == (0, '')
+    module('dispatch').tracker_call('A', 'done', root)
+    assert [call[0] for call in fake.calls] == ['transition', 'comment']

@@ -555,3 +555,19 @@ def test_report_lists_skipped_duties(tmp_path, monkeypatch):
     state.append_event('duty.skipped', {**duty, 'error': 'linear: rate limited'}, root)
     assert ('## Skipped duties\n- A: tracker.done on ENG-7: linear: rate limited; '
             'retry: bin/wuwei tracker move A done\n') in report.build(root)
+
+
+def test_report_names_the_create_retry(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'planned'}}), root, reserved=False)
+    from wuwei import report
+    duty = {'item': 'A', 'duty': 'tracker.create', 'ticket': None}
+    state.append_event('duty.due', {**duty, 'command': 'wuwei tracker create A'}, root)
+    state.append_event('duty.skipped', {**duty, 'error': 'linear: unreachable'}, root)
+    assert ('- A: tracker.create on a new ticket: linear: unreachable; retry: bin/wuwei tracker '
+            'create A\n') in report.build(root)
