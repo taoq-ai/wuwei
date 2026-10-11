@@ -41,9 +41,6 @@ def run(args):
                     action = state.read_state(root).get('builds', {}).get(item, {}).get('action', {})
                     if action.get('action') == 'park':
                         print(parked_line(item, action), file=sys.stderr)
-                    elif action.get('action') == 'continue':
-                        print(action['feedback'], file=sys.stderr)
-                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
                     elif action.get('action') in ('continue', 'wait'):
                         print(action.get('feedback') or action['reason'], file=sys.stderr)
                 return code
