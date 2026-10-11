@@ -541,6 +541,13 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
         state.set_state('items.A.owner_merge', '{"value": false}', root)
 
 
+
+def test_ci_jobs_is_written_only_by_its_producers(root):  # #733
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    with pytest.raises(state.StateError, match='reserved; written by wuwei brief or the fix round'):
+        state.set_state('items.A.ci_jobs', '[]', root)
+
 def test_gate_card_names_the_owner_merge_route(root):
     plan.propose(proposal(), root)
     change = plan.gate_widget(root)['options'][-1]

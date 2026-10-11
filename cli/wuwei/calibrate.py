@@ -206,6 +206,7 @@ def _workflow(text):
     """
     triggers, branches, jobs = set(), [], []
     section = trigger = sub = child = prop = job = matrix = environment = None
+    listed = step = at = block = base = None  # #733: steps indent, open step, its key indent, run block
     for number, raw in enumerate(text.splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith('#'):
             continue
@@ -236,16 +237,40 @@ def _workflow(text):
         elif section == 'jobs':
             if indent == child:
                 job = {'name': (key, number), 'id': key, 'continue': False, 'matrix': None,
-                       'environment': None, 'signals': [], 'runs': []}
+                       'environment': None, 'signals': [], 'runs': [], 'steps': []}
                 jobs.append(job)
-                prop = matrix = environment = None
+                prop = matrix = environment = listed = step = block = None
                 continue
             if job is None:
                 continue
             if prop is None:
                 prop = indent
-            if indent == prop:
+            flush = listed and indent == prop and line.startswith('-')  # steps: list at its key's indent
+            if block and indent > at:
+                # ponytail: blank and comment lines inside a run block are dropped with the rest
+                base = indent if base is None else base
+                step['run'] = (step['run'] + '\n' if step['run'] else '') + raw[base:].rstrip()
+            elif listed and (indent > prop or flush):
+                block = None
+                listed = indent if listed is True else listed
+                dash = indent == listed and line.startswith('-')
+                if dash:
+                    step = {'name': None, 'run': None, 'line': number}
+                    job['steps'].append(step)
+                    rest = line[1:].lstrip()
+                    at = indent + len(line) - len(rest)
+                    key, _, value = rest.partition(':')
+                    key, value = key.strip('\'"'), value.strip()
+                if step and (dash or indent == at) and key in ('name', 'run'):
+                    block = key == 'run' and re.fullmatch(r'[|>][-+]?\s*(#.*)?', value)
+                    base = None
+                    if not block:
+                        step[key] = _scalar(value)
+            else:
+                block = None
+            if indent == prop and not flush:
                 matrix = environment = None
+                listed = key == 'steps' or None
                 if key == 'name' and value:
                     job['name'] = (_scalar(value), number)
                 elif key == 'continue-on-error':
@@ -264,7 +289,7 @@ def _workflow(text):
                     job['matrix'] = ([_scalar(v) for v in value[1:-1].split(',') if v.strip()], number)
                 else:
                     job['matrix'] = 'other'
-            run = re.match(r'-?\s*run:\s*([^|>].*)', line)  # #600: single-line steps only
+            run = re.match(r'-?\s*run:\s*([^\s|>].*)', line)  # #600: single-line steps only
             if run:
                 job['runs'].append((_scalar(run[1]), number))
             uses = re.match(r'-?\s*uses:\s*(\S+)', line)

@@ -27,6 +27,8 @@ FORMAT = {  # #665: the one verdict format; agents build renders section() into 
                 'line is a finding only under a `Findings` heading',
                 'F1 medium src/calc.py:19 fails when the input is empty. blocks: yes'),
     'Probe': ('`Probe: <what ran and what it showed>`, or `Probe: not run`', 'Probe: not run'),
+    'CI step': ('`CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>`, one row for each CI step '
+                'your brief lists, at every depth', 'CI step 1: PASS ruff check . exited 0'),
     'Class': ('`<CLASS>: PASS|N.A.|FINDING <id>`, one line per class you check, CLASS one of '
               + ', '.join(CLASS_NAMES) + ' (arch, quality and security)', 'VAL: FINDING F1'),
     'Simplicity': ('`Simplicity: <what to delete and what replaces it, or none and why>` (quality)',
@@ -137,10 +139,28 @@ DOCS_MISSING = re.compile(
     r'|\b(?:missing|no|unset) docs? (?:value|path)\b|\bdoc\b[^\n]{0,40}\bvalue missing\b', re.I)
 
 
-def lint(text, *, quality=False, class_sweep=False, light=False, docs=None):
+CI_ROW = re.compile(r'^[ \t]*(?:[-*+][ \t]+)?CI step (\d+):[ \t]*(PASS|FAIL|NOT RUN)\b[ \t]*\S', re.I | re.M)
+
+
+def ci_rows(text, verdict, steps):
+    """#733: failures for the CI steps a verdict must cite: one row per step, no FAIL under PASS."""
+    found, failures = CI_ROW.findall(text), []
+    for n, label in steps:
+        results = [result.upper() for number, result in found if int(number) == n]
+        if not results:
+            failures.append(f'CI step {n} ({label}) has no result row' + _fix('CI step'))
+        elif len(results) > 1:
+            failures.append(f'CI step {n} has {len(results)} result rows; write one')
+        if verdict == 'PASS' and 'FAIL' in results:
+            failures.append(f'PASS verdict with CI step {n} FAIL' + _fix('Verdict') + ', or rerun the step')
+    return failures
+
+
+def lint(text, *, quality=False, class_sweep=False, light=False, docs=None, steps=()):
     """light (#567, a light item's gate): Verdict:, Head: and findings; no probe row, class
     line, Simplicity or Design row, and no retro note unless one of its lines is written.
-    docs (#667): (item, recorded value) refuses a finding that calls that value missing."""
+    docs (#667): (item, recorded value) refuses a finding that calls that value missing.
+    steps (#733): [(n, label)] the CI steps the item's briefs list, checked at every depth."""
     text = active_text(text)
     failures = []
     verdicts = re.findall(VERDICT_ROW, text, re.M)
@@ -207,6 +227,7 @@ def lint(text, *, quality=False, class_sweep=False, light=False, docs=None):
     if len(heads) != 1 or not re.fullmatch(r'[0-9a-fA-F]{7,40}', heads[0].strip()):
         failures.append('expected exactly one Head: <7 to 40 hex> row'
                         + _fix('Head', heads and 'Head: ' + heads[-1]))
+    failures += ci_rows(text, verdict, steps)
     if failures:
         return FINDINGS, '\n'.join([*failures, 'REJECT: send back to the seat'])
     return CLEAN, f'OK: {verdict}'
@@ -266,6 +287,21 @@ def recorded_docs(path, data, root=None):
         return None
 
 
+def ci_steps(path, data):
+    """#733: [(n, label)] the gate file's seat item must cite; () when the seat or item is
+    unresolved or records no ci_jobs. A recorded workflow that cannot be read raises."""
+    from wuwei import brief
+    try:
+        seat = brief.seats(data).get(Path(path).stem[len('gate-'):]) if data else None
+        row = data['items'][seat['item']] if seat else {}
+        refs, tree = row.get('ci_jobs'), row.get('worktree')
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return ()
+    if not refs or not tree:
+        return ()
+    return [(step['n'], step['label']) for step in brief.ci_steps(refs, Path(tree))[0]]
+
+
 def day_state(path):
     """The day state beside a decisions/gate-*.md file, else None."""
     from wuwei import state
@@ -282,7 +318,7 @@ def lint_file(path, *, role='', root=None):
         role = role.rsplit(':', 1)[-1]
         data = day_state(path)
         code, message = lint(path.read_text(encoding='utf-8'), light=light(path, data),
-                    docs=recorded_docs(path, data, root),
+                    docs=recorded_docs(path, data, root), steps=ci_steps(path, data),
                     quality=role == 'sentinel-quality' or is_quality(path) or is_quality(path.resolve()),
                     class_sweep=role in ('sentinel-arch', 'sentinel-quality', 'sentinel-security') or any(
                         {'arch', 'quality', 'security'} & set(re.split(r'[-_.]', p.name.lower()))

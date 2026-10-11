@@ -590,6 +590,8 @@ def _seats(root, data, item, roles, round_name, commands):
                                    payload={'item': item, 'seat': name, 'head': head})
             action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
             feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light', head)
+            ci = brief.ci_block(data['items'][item].get('ci_jobs', ()), root / worktree)  # #733
+            feedback += '\n' + ci if ci else ''
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                      'prompt': action['prompt'] + '\n\n' + feedback}
         receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
@@ -849,6 +851,8 @@ def opinion(item, root=None):
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
                         'contract in your brief.')
+            ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
+            feedback += '\n' + ci if ci else ''  # #733
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
         seat = {'id': name, 'role': sentinel, 'item': item, 'brief': relative, 'head': head,
                 'status': 'running', 'started_at': workspace.now().isoformat(),

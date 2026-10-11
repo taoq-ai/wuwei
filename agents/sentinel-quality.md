@@ -43,6 +43,7 @@ Write these lines; the verdict lint checks them.
 - Head: `Head: <7 to 40 hex>`, the sha you reviewed, once
 - Finding: `F<n> <severity> <file:line> <failure scenario> blocks: yes|no`; a numbered line is a finding only under a `Findings` heading
 - Probe: `Probe: <what ran and what it showed>`, or `Probe: not run`
+- CI step: `CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>`, one row for each CI step your brief lists, at every depth
 - Class: `<CLASS>: PASS|N.A.|FINDING <id>`, one line per class you check, CLASS one of AUTH, VAL, DOC, TEST, INF, RET, ERR, STATE, CON, BUD, DATA, PROOF (arch, quality and security)
 - Simplicity: `Simplicity: <what to delete and what replaces it, or none and why>` (quality)
 - Design: `Design: <what makes this change harder to test or change, or none and why>` (quality)
@@ -57,6 +58,7 @@ Verdict: FIX
 Head: 3f1c2ab
 F1 medium src/calc.py:19 fails when the input is empty. blocks: yes
 Probe: not run
+CI step 1: PASS ruff check . exited 0
 VAL: FINDING F1
 Simplicity: none, one guard and one division
 Design: none, a single pure function

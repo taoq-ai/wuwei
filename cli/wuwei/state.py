@@ -349,7 +349,8 @@ def _producer_error(parts):
                     'approved_as': 'wuwei plan approve or wuwei plan add',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
                     'docs': 'wuwei plan set or wuwei docs page',
-                    'assumption': 'wuwei decision route --external or wuwei sweep'}.get(
+                    'assumption': 'wuwei decision route --external or wuwei sweep',
+                    'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
                         parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')
 

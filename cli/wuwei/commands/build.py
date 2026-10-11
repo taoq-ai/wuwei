@@ -185,7 +185,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
 
 def open_fix(item, feedback, *, root):
     """Resume the linked builder once with measured gate or PR feedback."""
-    from wuwei.brief import launch_prompt
+    from wuwei.brief import ci_block, ci_jobs, launch_prompt
     from wuwei.security import agent_path
     if not isinstance(feedback, str) or not feedback.strip():
         raise ValueError('fix round needs measured feedback; run the gates first, then pass their findings to the fix round')
@@ -213,6 +213,9 @@ def open_fix(item, feedback, *, root):
     if phase not in ('gate', 'raised', 'delta'):
         raise ValueError(f'fix round needs a gated, delta or raised item; run bin/wuwei dispatch next {item} for its current step')
     brief = root / record['brief']
+    # #733: the CI job the feedback names is recorded, and every one of its steps is listed
+    refs = sorted({*data['items'][item].get('ci_jobs', ()), *ci_jobs(feedback, record['worktree'])})
+    ci = ci_block(refs, record['worktree'])
     resume = record.get('agent_id') or record.get('job')
     if not resume and (record['status'] == 'done' or record['runtime'] == 'codex'):
         from wuwei import brief as brief_writer
@@ -222,7 +225,7 @@ def open_fix(item, feedback, *, root):
                                       worktree=record['worktree'],
                                       pr=data['items'][item].get('pr'), root=root)
         brief = root / relative
-    prompt = launch_prompt(brief, agent_path(root, 'builder'), root=root) + '\n\n' + feedback
+    prompt = launch_prompt(brief, agent_path(root, 'builder'), root=root) + '\n\n' + feedback + ('\n' + ci if ci else '')
     action = {'action': 'continue' if resume else 'launch',
               'feedback': feedback, 'prompt': prompt, 'agent_type': 'wuwei:builder',
               'runtime': record['runtime'], 'brief': str(brief),
@@ -235,6 +238,8 @@ def open_fix(item, feedback, *, root):
         if phase == 'delta':
             dispatch.rotate(fresh, item, used)
         fresh['items'][item]['phase'] = 'fix'
+        if refs:
+            fresh['items'][item]['ci_jobs'] = refs
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
