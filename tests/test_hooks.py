@@ -1058,7 +1058,8 @@ SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.lifecycle',
                          'wuwei.guards.spec', 'wuwei.guards.verdict', 'wuwei.brief', 'wuwei.dispatch',
                          'wuwei.sessions', 'wuwei.specmode',
                          # #839: a git commit's PreToolUse no longer reads the identity (state, registry).
-                         'wuwei.registry', 'wuwei.state', 'wuwei.verdict', 'datetime', '_datetime', 'fcntl'}
+                         'wuwei.registry', 'wuwei.state', 'wuwei.verdict', 'datetime', '_datetime', 'fcntl',
+                         'math'}  # datetime imports math on Python 3.11
 
 
 def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES, printed=False):
