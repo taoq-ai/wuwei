@@ -26,6 +26,9 @@ def register(subparsers):
                                    'as ticket comments')
     done = actions.add_parser('done', help="Move the item's ticket to the done state")
     done.add_argument('item')
+    move = actions.add_parser('move', help="Move the item's ticket to a lifecycle state")
+    move.add_argument('item')
+    move.add_argument('state', choices=('in_review', 'done'))
     parser.set_defaults(func=run)
 
 
@@ -34,9 +37,11 @@ def run(args):
         root = workspace.find_workspace()
         if args.action == 'log':
             return tracker.log(root)
-        if args.action == 'done':
-            result = tracker.done(root, args.item)
-            reason = f'{args.item}: ticket done' if result.exit == 0 else result.reason
+        if args.action in ('done', 'move'):
+            from wuwei import dispatch
+            action = 'done' if args.action == 'done' else args.state
+            result = dispatch.tracker_call(args.item, action, root)
+            reason = f'{args.item}: ticket {action}' if result.exit == 0 else result.reason
         else:
             result = tracker.create(root, args.subject, args.category or 'items', args.title,
                                     args.evidence, seat=args.seat)

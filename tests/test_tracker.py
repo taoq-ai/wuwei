@@ -389,6 +389,76 @@ def test_fold_holding_a_decision_drafts(ws):
     assert row['text'].endswith('Folded 3 updates: decisions 1, progress 1, verdicts 1.')
 
 
+def github(root, posture='guarded', orgs=('acme',), adapter='github'):
+    """The loaded config with a GitHub tracker on acme/app, by dict override."""
+    base = workspace.load_config(root)
+    return {**base, 'adapters': {**base['adapters'], 'tracker': adapter},
+            'tracker': {**base['tracker'], 'project': 'acme/app'},
+            'outbound': {**base['outbound'], 'code_host_orgs': list(orgs)},
+            'security': {**base['security'], 'posture': posture}}
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('orgs', [('acme',), ()])
+def test_creates_labels_by_posture_and_owner(ws, posture, orgs):
+    """#670: WUWEI creates a label on its own only on the owner's tracker below strict."""
+    root, _ = ws
+    owned = bool(orgs) and posture != 'strict'
+    assert tracker.creates_labels(github(root, posture, orgs)) is owned
+    assert tracker.creates_labels(github(root, posture, orgs, 'linear')) is (posture != 'strict')
+
+
+NONE_MISSING = {'created': [], 'missing': []}
+
+
+def test_labels_none_and_malformed(ws, monkeypatch):
+    root, fake = ws
+    monkeypatch.setattr(registry, 'load', lambda *a: pytest.fail('loaded an adapter'))
+    assert tracker.labels(root, github(root, adapter='none'), True) == registry.Result(0, NONE_MISSING)
+    for data in ({'created': []}, None, {'created': 'x', 'missing': []}):
+        result = tracker.labels(root, github(root), True, Fake({'labels': registry.Result(0, data)}))
+        assert result.exit == 2 and result.reason.startswith('tracker labels: an adapter')
+
+    def broken(create, root=None):
+        raise ValueError('bad')
+    result = tracker.labels(root, github(root), False, type('Port', (), {'labels': staticmethod(broken)}))
+    assert result.exit == 2 and 'tracker labels unmeasured' in result.reason
+    fine = Fake({'labels': registry.Result(0, {'created': [], 'missing': ['In Review']})})
+    assert tracker.labels(root, github(root), False, fine).data['missing'] == ['In Review']
+    assert fine.calls == [('labels', (False,), root)]
+
+
+def test_ensure_labels_lines(ws):
+    root, fake = ws
+    fake.results['labels'] = registry.Result(0, {'created': ['In Review'], 'missing': []})
+    assert tracker.ensure_labels(root, 'Upgraded', True) == ['Upgraded tracker label "In Review"']
+    assert fake.calls[-1] == ('labels', (True,), root)
+    fake.results['labels'] = registry.Result(0, NONE_MISSING)
+    assert tracker.ensure_labels(root, 'Created', True) == []
+    fake.results['labels'] = registry.Result(2, reason='github.labels: could not run: no token')
+    assert tracker.ensure_labels(root, 'Created', True) == [
+        'tracker labels not created: github.labels: could not run: no token; run bin/wuwei doctor']
+
+
+def test_tracker_move_runs_the_shared_move(ws, monkeypatch, capsys):
+    """#670: tracker move re-runs a lifecycle move through dispatch.tracker_call."""
+    from wuwei import dispatch
+    root, _ = ws
+    calls, answer = [], [registry.Result(0)]
+    monkeypatch.setattr(dispatch, 'tracker_call',
+                        lambda *args: calls.append(args) or answer[0])
+    assert main(['tracker', 'move', 'A', 'in_review']) == 0
+    assert calls == [('A', 'in_review', root)] and capsys.readouterr().out == 'A: ticket in_review\n'
+    assert main(['tracker', 'done', 'A']) == 0
+    assert calls[-1] == ('A', 'done', root) and capsys.readouterr().out == 'A: ticket done\n'
+    answer[0] = registry.Result(1, reason='A not moved to In Review: missing')
+    assert main(['tracker', 'move', 'A', 'in_review']) == 1
+    assert capsys.readouterr().err == 'wuwei tracker: A not moved to In Review: missing\n'
+    with pytest.raises(SystemExit) as raised:
+        main(['tracker', 'move', 'A', 'merged'])
+    assert raised.value.code == 2
+
+
 def test_log_never_sends_an_absolute_path(ws):
     root, fake = ws
     approved(root)

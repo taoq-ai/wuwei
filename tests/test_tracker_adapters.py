@@ -99,7 +99,11 @@ def test_tracker_port_contract(name, workspace_root, monkeypatch):
         'history': adapter.history(item, root=root),
         'created': adapter.created(item, root=root),
     }
+    requests = len(calls)
+    results['labels'] = adapter.labels(False, root=root)
     assert {key: result.exit for key, result in results.items()} == dict.fromkeys(results, 0), results
+    assert results['labels'].data == {'created': [], 'missing': []}
+    assert len(calls) == requests + (name == 'github')
     row, = results['backlog'].data
     assert set(row) == {'id', 'title', 'url', 'updated', 'state'} and row['id'] == item
     assert set(results['create'].data) == {'id', 'url'}
@@ -214,6 +218,51 @@ def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch)
     assert all(balanced(call[3]['query']) for call in calls)
 
 
+MISSING = {'data': {'repository': {'id': 'repo-node-1', 'label': None}}}
+
+
+def test_github_labels_reads_then_creates(workspace_root, monkeypatch):
+    """#670: without a board, in review is a label; labels(create) reads it and creates it."""
+    from adapters.tracker import github
+    root = workspace_root('github')
+    calls = replay(monkeypatch, [MISSING])
+    result = github.labels(False, root=root)
+    assert (result.exit, result.data) == (0, {'created': [], 'missing': ['In Review']})
+    assert len(calls) == 1 and calls[0][3]['variables'] == {
+        'owner': 'acme', 'name': 'app', 'label': 'In Review'}
+    calls = replay(monkeypatch, [MISSING, {'data': {'createLabel': {'label': {'id': 'label-1'}}}}])
+    result = github.labels(True, root=root)
+    assert (result.exit, result.data) == (0, {'created': ['In Review'], 'missing': []})
+    variables = calls[1][3]['variables']
+    assert 'createLabel' in calls[1][3]['query'] and variables['repositoryId'] == 'repo-node-1'
+    assert variables['name'] == 'In Review' and variables['color']
+    assert all(balanced(call[3]['query']) for call in calls)
+
+
+def test_github_labels_follow_the_state_name_and_board(workspace_root, monkeypatch):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[tracker.states]\nin_review = "Review"\n')
+    calls = replay(monkeypatch, [MISSING])
+    assert github.labels(False, root=root).data == {'created': [], 'missing': ['Review']}
+    assert calls[0][3]['variables']['label'] == 'Review'
+    root = workspace_root('github')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('board = "acme/1"\n')
+    calls = replay(monkeypatch, [])
+    result = github.labels(True, root=root)
+    assert (result.exit, result.data, calls) == (0, {'created': [], 'missing': []}, [])
+
+
+def test_github_label_create_failure_names_the_label(workspace_root, monkeypatch):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    replay(monkeypatch, [MISSING, {'errors': [{'message': 'Resource not accessible'}], 'data': None}])
+    result = github.labels(True, root=root)
+    assert result.exit == 2 and '"In Review"' in result.reason and 'acme/app' in result.reason
+
+
 @pytest.mark.parametrize('message, expected', [
     ('Could not resolve to an Issue\n  with the number of 9.',
      'GitHub error response for acme/app#9: Could not resolve to an Issue with the number of 9.'),
@@ -270,8 +319,9 @@ def test_github_port_contract_through_gh(gh_root, monkeypatch):
     results = [github.backlog('', root=gh_root), github.claim(item, root=gh_root),
                github.transition(item, 'In Review', root=gh_root), github.create(draft, root=gh_root),
                github.comment(item, '[2026-09-29 item-1] Phase: gate.', 'progress', root=gh_root),
-               github.history(item, root=gh_root), github.created(item, root=gh_root)]
-    assert [result.exit for result in results] == [0] * 7, results
+               github.history(item, root=gh_root), github.created(item, root=gh_root),
+               github.labels(False, root=gh_root)]
+    assert [result.exit for result in results] == [0] * 8, results
     assert http == [] and len(calls) == len(responses)
     assert all(argv == ['gh', 'api', 'graphql', '--hostname', 'github.com', '--input', '-']
                and set(payload) == {'query', 'variables'} for argv, payload in calls)

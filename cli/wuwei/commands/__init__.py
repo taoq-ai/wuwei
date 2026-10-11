@@ -29,7 +29,7 @@ WRITES = frozenset({
     'runtime result', 'runtime status', 'seat start', 'seat stop', 'setup', 'shepherd schedule', 'shepherd unschedule', 'signal classify', 'spec analysis', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
-    'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
+    'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'tracker move', 'verdict lint', 'voice edit',
     'voice learn',
     'undo', 'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
 

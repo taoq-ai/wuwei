@@ -27,6 +27,9 @@ class Fake(Recorder):
     def created(self, item, root=None):
         return self._call('created', (item,), root)
 
+    def labels(self, create, root=None):
+        return self._call('labels', (create,), root)
+
 
 def ported(fake):
     """The fake's text-bearing calls behind the real outward wrapper, as the linear module."""
@@ -43,4 +46,4 @@ def ported(fake):
     return SimpleNamespace(create=outward_operation('tracker')(create),
                            comment=outward_operation('tracker')(comment),
                            claim=fake.claim, transition=fake.transition,
-                           backlog=fake.backlog, created=fake.created)
+                           backlog=fake.backlog, created=fake.created, labels=fake.labels)
