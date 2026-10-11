@@ -6,6 +6,7 @@ Exit 0 every probe keeps its margin, 1 a probe is short of margin or over budget
 """
 
 import json
+import os
 import sys
 
 MARGIN = {'cpu': 10, 'wall': 20}  # ms under the budget a quiet runner must keep
@@ -33,6 +34,8 @@ def main(argv):
         now = read(argv[0])
     except (OSError, ValueError, KeyError, IndexError) as exc:
         print(f'latency report: current figures unreadable: {exc}', file=sys.stderr)
+        if os.environ.get('GITHUB_ACTIONS'):
+            print('::warning title=latency::current figures unreadable')
         return 2
     last = {}
     if len(argv) > 1:
@@ -64,6 +67,8 @@ def main(argv):
     if moved:
         print(f'moved most: {moved[1]} +{moved[2]:.1f} ms (+{moved[0]:.0%})')
     print('\n'.join(findings))
+    if os.environ.get('GITHUB_ACTIONS'):  # #805: a finding is a warning annotation, never a red check
+        print('\n'.join(f'::warning title=latency::{finding}' for finding in findings))
     return int(bool(findings))
 
 
