@@ -60,6 +60,7 @@ EVENT_PRODUCERS = {
     'decision.decided': 'wuwei decision outcome or wuwei listen (two-way DM answer)', 'watch: sweep': 'wuwei sweep',
     'heartbeat: clock': 'wuwei watch',
     'decision.routed': 'wuwei decision route',
+    'decision.closed': 'wuwei watch or wuwei pr state (a merged PR closes its merge card)',
     'decision.reversed': 'wuwei decision outcome or wuwei listen (two-way DM answer)',
     'decision.digest': 'wuwei sweep',
     'scanner.finding': 'wuwei scanner or security recorder',

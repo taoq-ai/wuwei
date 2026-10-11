@@ -217,6 +217,7 @@ def pr(ref, root=None):
         'merged_at': _field(value, 'merged_at', str, nullable=True),
         'created_at': _field(value, 'created_at', str),
         'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),
+        'merged_by': _login(value.get('merged_by')),
         'mergeable': _field(value, 'mergeable', bool, nullable=True),
         'merge_state': _field(value, 'mergeable_state', str),
         'additions': _field(value, 'additions', int), 'deletions': _field(value, 'deletions', int),
