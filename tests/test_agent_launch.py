@@ -27,7 +27,7 @@ def check(payload):
 
 @pytest.mark.parametrize('case,code,hint', [
     ('clean', 0, ''), ('unlogged', 1, 'logged'), ('wrong-role', 1, 'role'),
-    ('wrong-name', 1, 'name'), ('modified', 1, 'modified'), ('missing-file', 2, 'brief'),
+    ('wrong-name', 1, 'name'), ('modified', 1, 'modified'), ('missing-file', 2, 'does not exist'),
     ('phase', 1, 'phase'), ('dirty', 1, 'dirty'), ('live', 1, 'builder'),
     ('missing-pid', 1, 'builder'), ('cap', 0, ''), ('memory', 1, 'memory'),
     ('memory-error', 2, 'unmeasured'), ('status-error', 2, 'unavailable'),
@@ -93,6 +93,24 @@ def test_guard_table(launch, monkeypatch, case, code, hint):
         assert 'untracked' in message
 
 
+@pytest.mark.parametrize('case', ['removed', 'never-written'])
+def test_missing_brief_names_the_brief_command(launch, monkeypatch, case):
+    # #725: a launch naming a brief that does not exist names the command and reserves nothing.
+    day, payload = launch
+    root, directory, vcs, host = day
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 8 * 1024**3)
+    name = 'gate' if case == 'removed' else 'never'
+    if case == 'removed':
+        (directory / 'briefs/gate.md').unlink()
+    else:
+        payload['tool_input']['prompt'] = f'WUWEI brief: ./.wuwei/days/{directory.name}/briefs/never.md'
+    before = (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text())
+    assert check(payload) == (2, f'brief .wuwei/days/{directory.name}/briefs/{name}.md does not exist; '
+                                 f'run bin/wuwei brief sentinel-arch <item> <name> first')
+    assert (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()) == before
+
+
 def test_hook_denies_missing_brief(day, monkeypatch, capsys):
     import io
     import sys
@@ -104,6 +122,31 @@ def test_hook_denies_missing_brief(day, monkeypatch, capsys):
     assert main(['hook', 'PreToolUse']) == 2
     out = capsys.readouterr()
     assert json.loads(out.out)['hookSpecificOutput']['permissionDecision'] == 'deny'
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_hook_denies_never_written_brief_below_strict(launch, monkeypatch, capsys, posture):
+    # #725: below strict the records floor still denies a launch naming a missing brief.
+    import io
+    import sys
+    from wuwei.__main__ import main
+    from wuwei.guards import agent_launch
+    day, payload = launch
+    root, directory, vcs, host = day
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(f'\n[security]\nposture = "{posture}"\n[security.areas]\nintegrity = "off"\n')
+    payload['tool_input']['prompt'] = f'WUWEI brief: .wuwei/days/{directory.name}/briefs/never.md'
+    payload.update(session_id='example', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
+    before = (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text())
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    assert main(['hook', 'PreToolUse']) == 2
+    out = json.loads(capsys.readouterr().out)['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny'
+    assert out['permissionDecisionReason'].startswith('brief .wuwei/days/')
+    assert 'posture: records = block (floor; no setting lowers it)' in out['permissionDecisionReason']
+    seats, events = state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()
+    assert seats == before[0] and 'seat launched' not in events[len(before[1]):]
 
 
 def test_memory_floor_equality_and_completed_seats(launch, monkeypatch):
