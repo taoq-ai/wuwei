@@ -84,7 +84,7 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     assert code == 1 and 'CAP 3' in reason
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
     step = json.loads(day.run('next', '--json'))
-    while step['state'] in ('calibrate', 'telemetry'):  # the first day's cards come once (#551)
+    while step['state'] == 'calibrate':  # the first day's card comes once (#551)
         step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
     assert 'D waits' in step['why'] and 'A-builder started first' in step['why']

@@ -208,9 +208,6 @@ def step(root, ran=()):
     if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
         return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
                     'wuwei calibrate --questions', 'card', THEN['calibrate'])
-    if ('telemetry', '') not in returned:
-        return _row('telemetry', "Ask this week's telemetry proposals.",
-                    'wuwei telemetry proposals --widget', 'card')
     todo = [kind for kind in ('commit', 'decision') if ('rehearse', kind) not in returned]  # undo.SCRATCH
     if todo:  # #557: the ledger is read only while a rehearse row is not done
         from wuwei import undo

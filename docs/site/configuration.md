@@ -214,11 +214,11 @@ These keys feed the mandate block in every seat prompt and cruise mode (design s
 
 ## Telemetry
 
-Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. The watch sweep aggregates them at most once a day into `.wuwei/metrics/<week>.json`, never in a hook; `bin/wuwei metrics --week [<week>]` prints a week on demand. A finalised week can propose a config change, asked once at the next morning gate; nothing applies on its own.
+Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. The watch sweep aggregates them at most once a day into `.wuwei/metrics/<week>.json`, never in a hook; `bin/wuwei metrics --week [<week>]` prints a week on demand.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `telemetry.enabled` | `true` | `false` stops the aggregate, the proposals, sharing and the OpenTelemetry export. |
+| `telemetry.enabled` | `true` | `false` stops the aggregate, sharing and the OpenTelemetry export. |
 | `telemetry.share` | `""` | `"anonymous"`, `"attributed"` or `"off"`. Empty means the interview question is not answered yet and sends nothing; `bin/wuwei doctor` lists it as pending. A calibration profile never carries it. |
 | `telemetry.endpoint` | `""` | Where anonymous mode posts; empty or not `https://` keeps every week local. |
 | `telemetry.repository` | `"taoq-ai/wuwei"` | Where attributed mode opens issues with `bin/wuwei telemetry send`. |

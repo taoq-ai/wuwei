@@ -266,8 +266,7 @@ def test_next_names_stuck_seat(seat):
     (day / 'plan.md').write_text('# Plan\n')
     state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
                                                 planner_session_id='S'), root, reserved=False)
-    for name in ('calibrate', 'telemetry'):  # #551: the morning cards already done
-        state.append_event('next.action', {'state': 'x', 'done': [[name, '']]}, root)
+    state.append_event('next.action', {'state': 'x', 'done': [['calibrate', '']]}, root)  # #551: done
     assert next_command.step(root)['state'] == 'build'
     stuck_day(root)
     row = next_command.step(root)

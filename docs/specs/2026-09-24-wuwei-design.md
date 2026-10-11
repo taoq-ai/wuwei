@@ -1219,13 +1219,12 @@ configuration page documents `[spec]`.
 
 Telemetry tells the owner, and the project when the owner agrees, whether WUWEI itself
 works: how often its guards refuse or cannot run, how long a hook takes, how often items
-loop, how many decisions reach the owner. Three layers: the signals the CLI already
-records, a weekly aggregate computed off the hook path, and proposals from it; sharing is
-optional and the owner's choice. Nothing runs in a hook and nothing derived is applied on
-its own. `[telemetry]` in `config.toml`:
+loop, how many decisions reach the owner. Two layers (owner, 2026-10-11, #789): the signals the CLI already
+records and a weekly aggregate computed off the hook path; sharing is optional and the
+owner's choice. Nothing runs in a hook. `[telemetry]` in `config.toml`:
 
-- `enabled` (default true): false stops the aggregate, the proposals, sharing and the
-  OpenTelemetry export; the events a day needs are recorded as before.
+- `enabled` (default true): false stops the aggregate, sharing and the OpenTelemetry
+  export (owner, 2026-10-11, #789); the events a day needs are recorded as before.
 - `share` (default `""`, not asked yet, which behaves as `"off"`): `"anonymous"`,
   `"attributed"` or `"off"`. Set by the interview question below, by the owner with
   `bin/wuwei config set telemetry.share`, or by `wuwei telemetry off`. A calibration
@@ -1273,8 +1272,8 @@ directories under `days/` whose date falls in an ISO week (`2026-W40`, in
 `owner.timezone`) and writes `.wuwei/metrics/<week>.json`, a generated record only the CLI
 writes and that `protect_state` guards like `state.json`. Each run refreshes the current
 week (`final: false`) and finalises each earlier week, of the last four, that has day
-directories and no final file (`final: true`, with its proposals). Budget: 10 seconds of
-wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
+directories and no final file (`final: true`, owner, 2026-10-11, #789). Budget: 10
+seconds of wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
 previous file and records `telemetry.skipped` with the week and the reason, and the next
 run tries again. A telemetry failure never changes the sweep's exit and is never owed work.
 `wuwei metrics --week [<week>]` prints a week's file, computing it when absent; it is a
@@ -1319,31 +1318,14 @@ percentiles as in 5.6.
 | `time_to_restore_hours` | unmeasured until on-call incidents exist (#415) |
 | `aggregation_ms` | the run's wall time |
 
-Proposals. Finalising a week evaluates a fixed list of rules against it; a new rule amends
-this section. A proposal carries its rule, one line of evidence (the numbers that met the
-rule) and one owner command. Nothing is applied on its own, as with calibration (#278).
-
-| Rule | When | Command |
-|---|---|---|
-| `floor-raise` | a tier below `full` has 5 or more merged items in `escaped_by_tier` and an escaped share of at least 0.2 | per repository whose floor is at or below that tier: `bin/wuwei config set repos.<n>.gates.floor '"<next tier>"'` |
-| `floor-lower` | `full` has 10 or more merged items and none escaped | per repository at `full`: the same command with `standard` |
-| `area-block` | a posture area running at `warn` had no `guard.would_refuse` in a week of at least 3 days | `bin/wuwei config set security.areas.<area> '"block"'` |
-| `wait-hours` | 3 or more external waits (5.8.2) answered in the week, p90 under half of `decisions.wait_hours` | `bin/wuwei config set decisions.wait_hours <max(4, ceil(p90 x 1.5))>` |
-| `fast-checks` | 5 or more items with a verdict and a `fix_rounds_per_item` p50 of 1 or more | `bin/wuwei calibrate --measure`, which proposes the fast checks itself (#328) |
-
-Cruise promotions stay the steward's (5.8.1). A finalised week's proposals reach the owner
-once, at the next morning gate: `wuwei telemetry proposals --widget` prints one yes-or-no
-question per proposal (#359, yes recommended, the command named) and records
-`telemetry.presented` for the week, so it is not asked again. Yes is the owner's command,
-which records itself like any owner command (#414); no records nothing. Without
-`--widget` the command lists the latest final week's proposals and writes nothing.
+Proposals: deleted (owner, 2026-10-11, #789); nothing is derived from a week.
 
 Sharing. Nothing leaves the machine unless `share` is `"anonymous"` or `"attributed"`, and
 then only the payload of a final week, a JSON object with exactly these top-level keys:
 `schema`; `week`; `token` (anonymous only); `versions` (`plugin`, `python`, `os`); `config`
 (`posture`, `profile`, `adapters`, `repositories`), where `adapters` maps each port name to
 its adapter name and `repositories` is a count; and `metrics`, the keys of the table above;
-never the proposals or anything else in the file. Anonymisation, checked by
+never anything else in the file (owner, 2026-10-11, #789). Anonymisation, checked by
 `telemetry.validate` before every send and by the collector on receipt:
 
 - every key comes from this section; every key inside a metric is a guard module name,
@@ -1378,7 +1360,7 @@ A payload that breaks a rule is not sent; the run records `telemetry.unsent` wit
   without the token, so an attributed week never ties the anonymous ones to a person. The
   canary and honeytoken checks (7.1) apply; the outward-text lint does not, because the
   body is the validated rendering, not authored text.
-- `off`: nothing is sent; the aggregate and the proposals continue while `enabled`.
+- `off`: nothing is sent; the aggregate continues while `enabled` (owner, 2026-10-11, #789).
 
 OpenTelemetry export (owner, 2026-10-03). The vocabulary maps to OpenTelemetry without
 translation: a day is a trace; each hook call and each seat run is a span with the

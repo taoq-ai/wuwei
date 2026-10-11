@@ -29,7 +29,7 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'inbox.redacted', 'shepherd.dispatched', 'shepherd.overnight', 'shepherd.swept', 'pr.notified', 'negotiation.notified',
           'decision.notified', 'cruise.carded', 'decision.shadow', 'undo.rehearsed', 'undo.done',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
-          'telemetry.presented', 'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
+          'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
           'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
           'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
           'cap.derived', 'pace.set', 'pace.carded')

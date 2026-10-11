@@ -1,5 +1,5 @@
-"""Design 5.13: the weekly aggregate off the hook path, its proposals, the shared payload and
-the owner's OpenTelemetry export.
+"""Design 5.13: the weekly aggregate off the hook path, the shared payload and the
+owner's OpenTelemetry export.
 
 Top-level imports are stdlib only and every wuwei import sits inside a function, so the
 collector (scripts/telemetry-worker/) can bundle this file and call validate on its own.
@@ -98,7 +98,7 @@ def _rate(part, whole):
 
 
 def aggregate(root, config, week, days, start):
-    """Every 5.13 metric of one week, and the evidence the proposal rules need."""
+    """Every 5.13 metric of one week."""
     from wuwei import decision, integrity, metrics as day_metrics, verdict, workspace
     inside = {name: value for name, value in days.items() if week_of(name) == week}
     rows = [(name, row) for name, (_, records) in inside.items() for row in records]
@@ -176,18 +176,15 @@ def aggregate(root, config, week, days, start):
     found['decided_by'] = dict(Counter('cruise' if who.startswith('cruise') else who
                                        for who in by if who in ('owner', 'seat') or who.startswith('cruise')))
     found['reversals'] = len(kind('decision.reversed'))
-    routed, waits, external = {}, [], []
-    zone = workspace.zone(config)
+    routed, waits = {}, []
     for name, row in every:
         payload = row['payload']
         if row['kind'] == 'decision.routed':
-            routed[payload['id']] = _time(row['ts']), 'item' in payload
+            routed[payload['id']] = _time(row['ts'])
         elif (row['kind'] in ('decision.decided', 'decision.reversed') and payload.get('decided_by') == 'owner'
               and payload.get('id') in routed and week_of(name) == week):
-            at, outside = routed.pop(payload['id'])
+            at = routed.pop(payload['id'])
             waits.append((_time(row['ts']) - at).total_seconds() / 3600)
-            if outside:
-                external.append(decision.weekday_hours(at, _time(row['ts']), zone))
     found['owner_wait_hours'] = _percentiles(waits, 'p50', 'p90')
     asks, unnecessary = Counter(), 0
     for directory, _ in inside.values():
@@ -215,8 +212,7 @@ def aggregate(root, config, week, days, start):
                          'os': sys.platform if sys.platform in ('darwin', 'linux') else 'other'},
             'config': {'posture': workspace.posture(config)[0], 'profile': config['profile'],
                        'adapters': dict(config['adapters']), 'repositories': len(config['repos'])},
-            'metrics': {key: found[key] for key in METRICS if key in found},
-            'evidence': {'verdict_items': len(rounds), 'external_wait_hours': external}}
+            'metrics': {key: found[key] for key in METRICS if key in found}}
 
 
 def _round(value):
@@ -261,15 +257,13 @@ def save_week(root, found):
 
 
 def week_file(root, config, week, days=None, *, start=None, write=True):
-    """Compute one week: final with proposals before the current week; keeps shared, ready, presented and otlp."""
+    """Compute one week: final before the current week; keeps shared, ready and otlp."""
     start = time.monotonic() if start is None else start
     days = read_days(root, start) if days is None else days
     found = _round(aggregate(root, config, week, days, start))
     found['final'] = week < current_week(root)
-    if found['final']:
-        found['proposals'] = proposals(found, config)
     previous = load_week(root, week) or {}
-    found.update({key: previous[key] for key in ('shared', 'ready', 'presented', 'otlp') if key in previous})
+    found.update({key: previous[key] for key in ('shared', 'ready', 'otlp') if key in previous})
     if write:
         save_week(root, found)
     return found
@@ -286,47 +280,8 @@ def latest_final(root):
     return next((found for found in map(lambda week: load_week(root, week), weeks(root)) if found.get('final')), None)
 
 
-def proposals(found, config):
-    """Design 5.13's five rules; each {rule, evidence, command}."""
-    from wuwei import guards, workspace
-    from wuwei.metrics import _percentile
-    metrics, evidence, result = found['metrics'], found['evidence'], []
-
-    def floor(rule, tier, line, target, at):
-        for index, repo in enumerate(config['repos']):
-            if at(TIERS.index(repo['gates']['floor'])):
-                result.append({'rule': rule, 'evidence': line, 'command':
-                               f"bin/wuwei config set repos.{index}.gates.floor '\"{target}\"'"})
-
-    tiers = metrics['escaped_by_tier'] if isinstance(metrics['escaped_by_tier'], dict) else {}
-    for tier, row in tiers.items():
-        if tier in TIERS[:-1] and row['merged'] >= 5 and row['escaped'] / row['merged'] >= 0.2:
-            floor('floor-raise', tier, f"{tier}: {row['escaped']} of {row['merged']} merged items escaped",
-                  TIERS[TIERS.index(tier) + 1], lambda at, tier=tier: at <= TIERS.index(tier))
-    full = tiers.get('full', {'merged': 0, 'escaped': 1})
-    if full['merged'] >= 10 and full['escaped'] == 0:
-        floor('floor-lower', 'full', f"full: {full['merged']} merged items, none escaped", 'standard',
-              lambda at: at == TIERS.index('full'))
-    warned = {guards.AREAS.get(guard) for guard in metrics['warnings']}
-    # ponytail: an area no guard module maps to (mcp applies its own posture) is never proposed.
-    for area, level in workspace.posture(config)[1].items():
-        if level == 'warn' and metrics['days'] >= 3 and area in guards.AREAS.values() and area not in warned:
-            result.append({'rule': 'area-block', 'evidence': f"{area} at warn, no warning in {metrics['days']} days",
-                           'command': f"bin/wuwei config set security.areas.{area} '\"block\"'"})
-    waits, limit = evidence['external_wait_hours'], config['decisions']['wait_hours']
-    if len(waits) >= 3 and _percentile(waits, .9) < limit / 2:
-        p90 = round(_percentile(waits, .9), 2)
-        result.append({'rule': 'wait-hours', 'evidence': f'{len(waits)} external waits, p90 {p90} h under {limit / 2:g} h',
-                       'command': f'bin/wuwei config set decisions.wait_hours {max(4, math.ceil(p90 * 1.5))}'})
-    fixes = metrics['fix_rounds_per_item']
-    if evidence['verdict_items'] >= 5 and isinstance(fixes, dict) and fixes['p50'] >= 1:
-        result.append({'rule': 'fast-checks', 'evidence': f"{evidence['verdict_items']} items with a verdict, "
-                       f"fix rounds p50 {fixes['p50']}", 'command': 'bin/wuwei calibrate --measure'})
-    return result
-
-
 def payload(found, *, token=None):
-    """The shareable subset of a final week: never final, evidence, proposals or marks."""
+    """The shareable subset of a final week: never final or marks."""
     return {**{key: found[key] for key in KEYS}, **({'token': token} if token else {})}
 
 

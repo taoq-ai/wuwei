@@ -788,12 +788,12 @@ def test_outward_to_owner_is_silent_and_reserved(capsys):
     assert 'check_tier' in capsys.readouterr().err
 
 
-TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')
+TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'off')
 
 
 @pytest.mark.parametrize('name', TELEMETRY)
 def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, name):
-    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all six.
+    # #422, design 5.13: telemetry.ready is a warning, the rest are silent; the CLI writes all five.
     from wuwei.__main__ import main
     from wuwei.signal import classify
     assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('warn' if name == 'ready' else 'silent')

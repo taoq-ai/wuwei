@@ -52,7 +52,7 @@ def approved(root, items, cap=1, **extra):
     day(root, gate_approved=True, approved_items=list(items), cap=cap, planner_session_id='S',
         items={name: {'phase': phase, **fields} for name, (phase, fields) in items.items()},
         **extra)
-    seen(root, 'calibrate', 'telemetry')
+    seen(root, 'calibrate')
 
 
 def row(capsys, *args):
@@ -195,13 +195,12 @@ def test_cards_after_the_gate_come_once(root, capsys):
     assert (found['state'], found['action']) == ('calibrate', 'card') and found['widget']
     assert 'Next: line' in found['then'] and 'calibrate --interview allowlist' in found['then']
     ran(root, found['widget'][0]['record'].replace('<label>', 'x'))
-    # Telemetry prints [] here: passed in the same call, so the decision comes next.
     found = row(capsys)[1]
     assert (found["state"], found["action"], found.get("item")) == ("decision", "card", "D-1"), found
     passed = [json.loads(line)['payload'] for line in
               (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
               if json.loads(line)['kind'] == 'next.action']
-    assert ('telemetry', 'pass') in [(row['state'], row['action']) for row in passed]
+    assert 'telemetry' not in {row['state'] for row in passed}
     assert row(capsys)[1]['state'] == 'decision'  # unanswered: asked again
     ran(root, found['widget'][0]['record'].replace('<label>', 'x'))
     assert row(capsys)[1]['state'] == 'close'
@@ -816,7 +815,7 @@ def test_unanswered_setup_questions_are_asked_on_any_day(root, capsys, answered)
     planned(root)
     day(root, gate_approved=True, planner_session_id='S')
     found = row(capsys)[1]
-    if answered:  # the list is []: the row passes in the same call, as the telemetry row does
+    if answered:  # the list is []: the row passes in the same call
         assert found['state'] != 'calibrate'
         return
     assert (found['state'], found['action'], found['command']) == ('calibrate', 'card', 'wuwei calibrate --questions')

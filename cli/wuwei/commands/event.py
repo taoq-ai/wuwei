@@ -93,7 +93,7 @@ EVENT_PRODUCERS = {
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',
     **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
-       for action in ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')},
+       for action in ('skipped', 'unsent', 'shared', 'ready', 'off')},
     'docs.set': 'wuwei plan set or wuwei docs page',
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
