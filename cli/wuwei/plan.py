@@ -238,6 +238,10 @@ def propose(data, root=None):
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']
     data = _proposal(data, goals_text, framework)
+    from wuwei import tracker
+    for row in data['candidates']:  # #741: the lead's tickets, in the one id format
+        if row.get('ticket'):
+            row['ticket'] = tracker.full_id(config, row['ticket'])
     from wuwei import mcp
     measured = mcp.check(root)
     gate = mcp.cached(root)  # The posture decides refusal; the sweep shows the measurement.
@@ -356,7 +360,13 @@ def gate_widget(root=None, *, import_yesterday=False):
                   *(['--pace "<label>"'] if advised else [])]))
 
 
-def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None):
+def _approval(scope, note):
+    """#731: the item's recorded approval: the plan scope the owner approved, then the owner's words, on one line."""
+    note = ' '.join((note or '').split())
+    return '; '.join(part for part in (' '.join(scope.split()), note and f'owner: "{note}"') if part)
+
+
+def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None, note=None):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
     if not goals_confirmed:
@@ -409,13 +419,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             and not current.get('gate_approved')):
         from wuwei import drafts
         for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
-            if (proposed(candidates[name], found) is not None
-                    or tracker.check(current, config, name, candidates[name])[0] != 'missing'):
+            status = tracker.check(current, config, name, candidates[name])[0]
+            if proposed(candidates[name], found) is not None or status not in ('missing', 'later'):
                 continue
             result = tracker.create(root, name)
             if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
                 result = drafts.approve(root, result.data['draft'])
-            if result.exit:
+            if result.exit and status == 'missing':  # #646: a small item is approved without it
                 reasons.append(f'{name}: {result.reason}')
     if reasons:
         raise state.StateError('\n'.join(reasons))
@@ -447,7 +457,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                        'budget_size': candidates[name]['score'][
                                            'job_size' if framework == 'wsjf' else 'effort'],
                                        **{key: candidates[name][key] for key in ('tier', 'governed_by')
-                                          if key in candidates[name]}}
+                                          if key in candidates[name]},
+                                       'approved_as': _approval(candidates[name]['scope'], note)}
                                  for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
                        seat_policy=data['seat_policy'], goal_seats=_seats(data),
@@ -468,13 +479,16 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     return written
 
 
-def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None):
+def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None):
     """Admit one item after the gate: a discovered candidate through the intraday
     policy, or an item the owner names under a goal (the owner naming it is the decision)."""
     root = workspace.find_workspace(root)
     day = state.read_state(root)
     if not day['gate_approved']:
         raise state.StateError('morning gate has not been approved; run the morning gate first (/wuwei:wuwei-plan)')
+    if item in day['items'] and _approval('', note):  # #731: the approval is recorded once, at admission
+        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; record the "
+                               "owner's new words as a scope decision: bin/wuwei decision template")
     if item in day['items']:  # #615: an item admitted without risk evidence records it once
         from wuwei.merge import risk_evidence
         if risk_evidence(root, item):
@@ -482,6 +496,11 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         state.append_event('plan.added', {'item': item, 'source': 'replan',
                                           'flags': {item: day['items'][item]['flags']}}, root)
         return {'action': 'risk recorded', 'item': item}
+    if source == 'finding':  # #646: a seat's finding joins as a small item, its ticket later
+        finding = day.get('seat_findings', {}).get(item)
+        if finding is None:
+            raise state.StateError(f'{item} is not a seat finding; wuwei next lists the findings to add')
+        goal, title = goal or day['goals'][0], finding['scope']
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
     candidate = day.get('discovery_candidates', {}).get(item)
@@ -496,7 +515,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
                      'flags': {key: False for key in FLAGS},
                      'title': title or item, 'score': {size_key: 1 if size is None else size},
-                     **({'ticket': ticket} if ticket else {})}
+                     **({'ticket': ticket} if ticket else {}),
+                     **({'tier': 'light'} if source == 'finding' else {})}
     else:
         goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
         _proposal({'goals': day['goals'], 'cap': day['cap'],
@@ -505,6 +525,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
                    'candidates': [candidate]}, goals_text,
                   config['prioritisation']['framework'])
     from wuwei import tracker
+    if candidate.get('ticket'):  # #741: one id format, before anything is written
+        candidate = {**candidate, 'ticket': tracker.full_id(config, candidate['ticket'])}
     chosen = proposed(candidate)
     status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
                                    config, item, candidate)
@@ -560,7 +582,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
                                   **{key: candidate[key] for key in ('tier', 'governed_by') if key in candidate},
-                                  **({'source': source, 'title': candidate['title']} if source else {})}
+                                  **({'source': source, 'title': candidate['title']} if source else {}),
+                                  **({'approved_as': text} if (text := _approval('', note)) else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
@@ -654,7 +677,10 @@ def set_ticket(item, ticket, root=None):
     if item not in names:
         raise state.StateError(f"unknown item {item}; use an id from today's plan or proposal "
                                '(bin/wuwei status lists them)')
-    result = registry.load('tracker', workspace.load_config(root)).created(ticket, root=root)
+    from wuwei import tracker
+    config = workspace.load_config(root)
+    ticket = tracker.full_id(config, ticket)  # #741: one id format, confirmed and stored
+    result = registry.load('tracker', config).created(ticket, root=root)
     if result.exit:
         raise (state.StateError if result.exit == 1 else OSError)(
             result.reason or f'tracker could not confirm {ticket}; check the id in the tracker, then '
@@ -662,6 +688,7 @@ def set_ticket(item, ticket, root=None):
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
         {item: {'id': ticket, 'source': 'set'}}), root, reserved=False, kind='plan.set',
         payload={'item': item, 'ticket': ticket})
+    return ticket
 
 
 def dispose(item, outcome, reason=None, root=None):
@@ -707,7 +734,7 @@ def dispose(item, outcome, reason=None, root=None):
         outcome_record = decision.seat_outcome(*decision.evaluate(text))
         data.setdefault('decision_outcomes', {})[path.stem] = outcome_record
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
-            record.update(phase='parked', status='blocked')
+            record.update(phase='parked', status='blocked', decision=path.stem)
         payload.update(id=path.stem, **outcome_record)
     state._write_state(update, root, reserved=False, kind='decision.decided', payload=payload)
     return payload['id']

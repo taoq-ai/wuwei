@@ -34,6 +34,7 @@ def run(args):
         return refuse(args.event, reason, malformed=True)
     try:
         validate(payload, args.event)
+        payload = as_bash(payload)
     except BaseException as exc:
         return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}',
                       malformed=True)
@@ -116,10 +117,10 @@ def run(args):
     # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
     if args.event != 'SessionStart':
         refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
-    enforced = [(module(check), message, '', code) for check, message, code in refusals]
+    enforced, warned = [(module(check), message, '', code) for check, message, code in refusals], []
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = posture(payload, refusals, root)
+        enforced = posture(payload, refusals, root, warned)
     reasons = [f'{message}\n{line}' if line else message for _, message, line, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
@@ -129,11 +130,23 @@ def run(args):
         if reasons:
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
+    if reasons and args.event == 'PreToolUse' and payload.get('tool_name') == 'Bash':
+        from wuwei.shell import constructed  # #671: only once a Bash call is refused
+        inputs = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+        try:
+            runs = constructed(str(inputs.get('command', '')))
+        except Exception:  # the refusal stands without the name
+            runs = ''
+        if runs:
+            reasons[0] += f'\nresolved: {runs}'
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
                       refusals=[(guard, message, code) for guard, message, _, code in enforced],
                       payload=payload)
+    if warned:  # #660: a launch refusal the posture lets through is shown to the session.
+        print(json.dumps({'hookSpecificOutput': {'hookEventName': args.event,
+                                                 'additionalContext': '\n'.join(warned)}}))
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
@@ -246,10 +259,11 @@ def module(check):
     return check.__module__.rsplit('.', 1)[-1]
 
 
-def posture(payload, refusals, root):
+def posture(payload, refusals, root, warned=None):
     """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
     guard.would_refuse and lets the call through, block enforces it with its posture line.
-    Returns (guard, reason, line, exit); the config is read only because a guard refused."""
+    Returns (guard, reason, line, exit); the config is read only because a guard refused.
+    warned, when given, collects the launch refusals warn let through (#660)."""
     from wuwei import state, workspace
     from wuwei.guards import MERGE, NO_REVIEWER, RAISE, RECORDS_FLOOR, level
     try:
@@ -276,8 +290,8 @@ def posture(payload, refusals, root):
             return ''
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
-        if reason.startswith(RECORDS_FLOOR):
-            line = 'posture: records = block (floor; no setting lowers it)'
+        if reason.startswith(RECORDS_FLOOR):  # #725: the floor blocks, not only labels
+            decided, line = 'block', 'posture: records = block (floor; no setting lowers it)'
         elif line.endswith('(owner-only action; no setting lowers it)') and name != 'strict' \
                 and not reason.startswith(MERGE):
             line = ''  # #530: below strict an owner-only refusal names its card or its fix
@@ -314,6 +328,8 @@ def posture(payload, refusals, root):
                 'guard': guard, 'area': area, 'level': decided, 'posture': name,
                 'reason': reason, 'exit': code, 'target': shown, 'session': payload['session_id'],
                 'item': claimed(root, payload['session_id'])}, root)
+            if warned is not None and guard == 'agent_launch':
+                warned.append(f'{reason}\n{line}' if line else reason)
         except BaseException as exc:
             print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
             enforced.append((guard, reason, line, code))
@@ -364,6 +380,22 @@ def validate(payload, event):
             raise ValueError(f'missing or invalid {field}; {DAMAGED}')
     if payload['hook_event_name'] != event:
         raise ValueError(f'hook_event_name does not match command event; {PAYLOAD}')
+
+
+TERMINAL = 'mcp__terminal__run_in_terminal'  # #727: types one shell command line
+
+
+def as_bash(payload):
+    """#727: a terminal tab's command is judged as the Bash call it types, in the tab's cwd."""
+    if payload.get('tool_name') != TERMINAL or payload['hook_event_name'] != 'PreToolUse':
+        return payload
+    inputs = payload.get('tool_input')
+    if (not isinstance(inputs, dict) or not isinstance(inputs.get('command'), str)
+            or not isinstance(inputs.get('cwd', ''), str)):
+        raise ValueError(f'terminal command and cwd must be strings; {PAYLOAD}')
+    cwd = Path(payload['cwd']) / Path(inputs.get('cwd') or '.').expanduser()
+    return {**payload, 'tool_name': 'Bash', 'tool_input': {'command': inputs['command']},
+            'cwd': str(cwd)}
 
 
 def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=(), payload=None):

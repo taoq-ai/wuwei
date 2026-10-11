@@ -13,7 +13,8 @@ WRITES = frozenset({
     'agents build', 'agents check', 'brief', 'build', 'calibrate export', 'calibrate import',
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
     'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template', 'decision undo',
-    'discover', 'dispatch discovery', 'docs page', 'docs publish', 'dispatch next', 'dispatch opinion', 'dispatch receive',
+    'discover', 'dispatch discovery', 'docs page', 'docs publish', 'dispatch next', 'dispatch opinion', 'dispatch polish', 'dispatch receive',
+    'dispatch skip-polish',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'grants revoke', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
     'memory export', 'memory forget', 'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges',
@@ -29,7 +30,7 @@ WRITES = frozenset({
     'runtime result', 'runtime status', 'seat start', 'seat stop', 'setup', 'shepherd schedule', 'shepherd unschedule', 'signal classify', 'spec analysis', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
-    'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
+    'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'tracker move', 'verdict lint', 'voice edit',
     'voice learn',
     'undo', 'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
 

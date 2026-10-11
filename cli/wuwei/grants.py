@@ -99,6 +99,32 @@ def ask(root, row, text):
     return identifier
 
 
+MERGED = 'merged by the owner'  # #729: the outcome of a merge card whose PR merged
+
+
+def close_merged(root, ref, pr):
+    """#729: close each open merge card about ref (a pr: target, or a wuwei merge rule naming
+    it) now that the code host reads it merged; returns the closed ids."""
+    from wuwei import decision, state, workspace
+    from wuwei.exits import RACE
+    evidence = {'pr': ref, 'sha': pr.get('merge_commit'), 'by': pr.get('merged_by')}
+    data = state.read_state(root)
+    found = [key for key, row in data.get('grants', {}).items()
+             if row['action'] == 'merge' and row['answered'] is None and decision.answered(data, key) is None
+             and (row['target'] == f'pr:{ref}' or str(row.get('rule')).startswith(f'merge: {ref} at '))]
+    for key in found:
+        def close(current, key=key):
+            if current['grants'][key]['answered'] is not None or decision.answered(current, key) is not None:
+                raise ValueError(f'grants: {key} changed; {RACE}')
+            current['grants'][key]['answered'] = 'merged'
+            current.setdefault('decision_outcomes', {})[key] = {
+                'option': 'merged', 'outcome': MERGED, 'decided_by': 'owner', **evidence,
+                'at': workspace.now().isoformat()}
+        state._write_state(close, root, reserved=False, kind='decision.closed',
+                           payload={'id': key, 'outcome': MERGED, **evidence})
+    return found
+
+
 def active(config, data, name, found, standing=True):
     """(scope, D-n) of the grant that lets this action on this target through, else None;
     standing=False leaves the [grants] lines out (#556: a novel target). #530: with
@@ -312,5 +338,5 @@ def gate_widgets(root, config):
     for key in sorted((key for key, row in rows.items() if row['planned'] and row['answered'] is None),
                       key=lambda key: int(key[2:])):
         fields, _ = decision.evaluate(decision.today_path(key, root).read_text(encoding='utf-8'))
-        widgets.append(decision.record_widget(key, fields, level=level))
+        widgets.append(decision.record_widget(key, fields, level=level, root=root))
     return widgets

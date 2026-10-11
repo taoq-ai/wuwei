@@ -18,3 +18,8 @@ def pull_request(value):
         raise ValueError('expected owner/repo#number; pass owner/repo#number')
     repository(value.split('#')[0])
     return value
+
+
+def not_found(reason):
+    """#606, #740: a code host lookup that answered HTTP 404 (an issue number, or no access)."""
+    return '(HTTP 404)' in str(reason)

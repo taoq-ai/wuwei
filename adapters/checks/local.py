@@ -19,11 +19,11 @@ def _environment(output):
     return None
 
 
-def run(path, command, root=None):
+def run(path, command, timeout=300, root=None):
     try:
         if not isinstance(command, str) or not command.strip():
             raise ValueError('empty fast check')
-        result = subprocess.run(['/bin/sh', '-c', command], cwd=path, timeout=300,
+        result = subprocess.run(['/bin/sh', '-c', command], cwd=path, timeout=timeout,
                                 capture_output=True, text=True,
                                 env={key: value for key, value in env.child_environment().items()
                                      if not key.startswith('GIT_')})
@@ -36,5 +36,9 @@ def run(path, command, root=None):
         if environment:
             data['environment'] = environment
         return Result(1, data)
+    except subprocess.TimeoutExpired:  # #724
+        return Result(2, reason=f'fast check `{command}` exceeded {timeout} s '
+                                '(repos.<n>.check_timeout_seconds); raise it with '
+                                'bin/wuwei config set or split the check')
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return Result(2, reason=f'fast check could not run: {type(exc).__name__}')

@@ -312,7 +312,7 @@ def reply(ref, surface, target_id, text, root=None):
     rows = discussion['comments'] if surface == 'comment' else reviews
     target = next((row for row in rows if row['id'] == target_id), None)
     if target is None or target['author'] == me or target['is_bot'] or not target['body'].strip():
-        raise ValueError('no human obligation with that surface and ID; run bin/wuwei nudges for the open obligations and their ids')
+        raise ValueError('no human obligation with that surface and ID; run bin/wuwei nudges --all for the open obligations and their ids')
     fingerprint = _fingerprint(target)
     prior_replies = {row['id'] for row in discussion['comments']}
     result = host.comment(ref, text, None, root=root)
@@ -360,7 +360,7 @@ def _thread_reply(host, ref, target_id, text, me, root):
 
     first = target()
     if first is None or first['author'] == me:
-        raise ValueError('thread is resolved, missing or already answered; run bin/wuwei nudges for the threads still waiting')
+        raise ValueError('thread is resolved, missing or already answered; run bin/wuwei nudges --all for the threads still waiting')
     latest = target()
     if latest is None or latest['id'] != first['id'] or _fingerprint(latest) != _fingerprint(first):
         print('thread last word changed; reread before replying')

@@ -19,6 +19,52 @@ def ticket(data, item):
     return data.get('tickets', {}).get(item, {}).get('id')
 
 
+def full_id(config, ticket):
+    """#741: a bare GitHub issue number becomes <tracker repository>#<n> (design 5.11:
+    tracker.project, else the first configured repository); every other id is kept."""
+    if config['adapters']['tracker'] != 'github' or not re.fullmatch(r'[1-9][0-9]*', str(ticket)):
+        return ticket
+    repo = config['tracker']['project'] or next((row['name'] for row in config['repos']), '')
+    if not re.fullmatch(r'[\w.-]+/[\w.-]+', repo):
+        raise ValueError(f'ticket {ticket} names no repository; pass owner/repo#{ticket}, or the '
+                         'owner sets tracker.project to the GitHub owner/repo with bin/wuwei '
+                         'config set tracker.project <owner/repo> in a host terminal')
+    return f'{repo}#{ticket}'
+
+
+def upgrade(root, config, write=True):
+    """#741, once: the latest day's bare GitHub ticket ids become <repo>#<n>; the lines say what
+    changed (or why an id stays). Earlier days are history and are not rewritten."""
+    from wuwei import watch
+    if config['adapters']['tracker'] != 'github':
+        return []
+    day = next((path for path in watch.days(root) if (path / 'state.json').exists()), None)
+    if day is None:
+        return []
+    try:
+        tickets = state.read_state(directory=day).get('tickets', {})
+    except (OSError, ValueError) as exc:
+        return [f'{day.name}/state.json: tickets unread: {exc}']
+    lines = []
+    for item, row in tickets.items():
+        old = row.get('id')
+        if not isinstance(old, str) or not re.fullmatch(r'[1-9][0-9]*', old):
+            continue
+        try:
+            new = full_id(config, old)
+        except ValueError as exc:
+            lines.append(f'{day.name}/state.json: ticket {item} {old} unchanged: {exc}')
+            continue
+        if write:
+            def update(data, item=item, old=old, new=new):
+                if data['tickets'][item]['id'] == old:
+                    data['tickets'][item]['id'] = new
+            state._write_state(update, root, reserved=False, kind='plan.set', directory=day,
+                               payload={'item': item, 'ticket': new, 'was': old})
+        lines.append(f'{day.name}/state.json: ticket {item} {old} to {new}')
+    return lines
+
+
 def in_force(config):
     return config['adapters']['tracker'] != 'none' and config['tracker']['required']
 
@@ -33,15 +79,18 @@ def pending(data, item):
 
 
 def check(data, config, item, row=None):
-    """The 5.11 rule, pure: (off|ticket|skipped|missing, reason)."""
+    """The 5.11 rule, pure: (off|ticket|skipped|later|missing, reason)."""
     if not in_force(config):
         return 'off', ''
     if ticket(data, item):
         return 'ticket', ''
     row = row or {}
-    if ((row.get('gates', {}).get('tier') or row.get('tier')) in config['tracker']['skip_tiers']
+    tier = row.get('gates', {}).get('tier') or row.get('tier')
+    if (tier in config['tracker']['skip_tiers']
             or data.get('tickets', {}).get(item, {}).get('source') == 'none'):  # #636: the owner's none
         return 'skipped', ''
+    if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
+        return 'later', ''
     strict = workspace.posture(config)[0] == 'strict'
     draft = pending(data, item)
     if draft:
@@ -64,8 +113,10 @@ def _candidate(root, data, item):
     path = workspace.day_dir(root) / 'proposal.json'
     rows = (json.loads(path.read_text(encoding='utf-8')).get('candidates', [])
             if path.is_file() and not path.is_symlink() else [])
+    found = data.get('seat_findings', {}).get(item)  # #646: a seat's finding added as an item
     return next((row for row in rows if row.get('id') == item),
-                data.get('discovery_candidates', {}).get(item))
+                data.get('discovery_candidates', {}).get(item)
+                or found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
 
 
 def _held(root, config, subject, draft_id):
@@ -293,9 +344,55 @@ def log(root):
     return code
 
 
-def done(root, item):
-    from wuwei import dispatch
-    return dispatch.tracker_call(item, 'done', root)
+def creates_labels(config):
+    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
+    below strict; setup and init --upgrade from a host terminal create on any tracker."""
+    from wuwei import outward
+    return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
+
+
+def labels(root, config, create, port=None):
+    """The port's lifecycle labels, {'created': [...], 'missing': [...]}, checked."""
+    from wuwei import registry
+    from wuwei.exits import ADAPTER_DATA
+    if config['adapters']['tracker'] == 'none':
+        return registry.Result(0, {'created': [], 'missing': []})
+    try:
+        result = (port or registry.load('tracker', config)).labels(create, root=root)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return registry.Result(2, reason=f'tracker labels unmeasured: {exc}')
+    if (not isinstance(result, registry.Result) or result.exit not in (0, 1, 2)
+            or result.exit == 0 and not (isinstance(result.data, dict) and all(
+                isinstance(result.data.get(key), list) for key in ('created', 'missing')))):
+        return registry.Result(2, reason=f'tracker labels: {ADAPTER_DATA}')
+    return result
+
+
+def relabel(port, root, config, item, ticket, failed):
+    """A failed in-review move: create a missing label when WUWEI may and move once more,
+    or name the label and the owner's commands; any other failure comes back unchanged."""
+    from wuwei import registry
+    name = config['tracker']['states']['in_review']
+    found = labels(root, config, creates_labels(config), port)
+    if found.exit:
+        return failed
+    if found.data['created']:
+        return port.transition(ticket, name, root=root)
+    if found.data['missing']:
+        quoted = ', '.join(f'"{label}"' for label in found.data['missing'])
+        return registry.Result(1, reason=(
+            f'{item} not moved to {name}: the tracker label {quoted} is missing; the owner runs '
+            'bin/wuwei init --upgrade in a host terminal, which creates it, then bin/wuwei '
+            f'tracker move {item} in_review'))
+    return failed
+
+
+def ensure_labels(root, prefix, create):
+    """The lines setup and init --upgrade print after creating the missing labels."""
+    result = labels(root, workspace.load_config(root), create)
+    if result.exit:
+        return [f'tracker labels not created: {result.reason}; run bin/wuwei doctor']
+    return [f'{prefix} tracker label "{name}"' for name in result.data['created']]
 
 
 def record(draft, created, *, root=None, directory=None, seat=None):

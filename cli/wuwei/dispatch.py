@@ -11,6 +11,9 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 ROLES = ('arch', 'quality', 'security')
 GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.'
+SHEPHERD_BODY = ('Raise the PR for {item} and own it until merged. Open it with bin/wuwei pr raise '
+                 '<owner/repo> --base <branch> --title <title> --body-file <file> --item {item}. It '
+                 'links the PR to {item} and requests the ranked reviewers.')
 TIERS = ('light', 'standard', 'full')
 GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
 # #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
@@ -20,6 +23,8 @@ DOC_SUFFIXES = ('.md', '.rst', '.ipynb')
 AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
               'commands/*', '.claude/*', '.agents/*')
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
+# #734: a scratch path in verdict text, workspace-relative or absolute, maybe with :<line>
+SCRATCH_PATH = r'[^\s`\'"()<>\[\]{},;|]*(?:scratchpad|\.wuwei/scratch)/[^\s`\'"()<>\[\]{},;|]+'
 
 
 def gate_set(row):
@@ -197,6 +202,29 @@ def rotate(data, item, used):
             verdicts[f'{item}:{gate}:initial'] = delta
 
 
+def polish_offer(config, row, roles, results, used):
+    """#723: the polish round a round-one pass offers, {'gate', 'notes'}, or None (off, no
+    notes, already recorded, or at the round cap). The gate is the one that wrote every
+    note, else quality."""
+    notes = [note for result in results for note in result['notes']]
+    if (config['gates']['polish'] == 'never' or not notes or row.get('polish')
+            or used >= max_rounds(config, row)):
+        return None
+    authors = [role for role, result in zip(roles, results) if result['notes']]
+    return {'gate': authors[0] if len(authors) == 1 else 'quality', 'notes': notes}
+
+
+def rechecks(data, item, role):
+    """#723: role runs the item's delta: its initial verdict was not PASS (#732), or it is the
+    gate of the item's open polish round (before the PR). One rule for next_step, delta_due, receive and
+    opinion."""
+    row = data['items'][item]
+    first = _record(data, item, role, 'initial')
+    polish = row.get('polish') or {}
+    return bool(first) and (first['verdict'] != 'PASS' or (
+        polish.get('status') == 'opened' and polish.get('gate') == role and not row.get('pr')))
+
+
 # #567: the builder's class sweep at standard covers the classes whose files the diff touches.
 # ponytail: a glob heuristic per class; sentinels still own their classes.
 CLASS_PATHS = (
@@ -250,7 +278,7 @@ def step_zero(value, paths, trust_paths, flags=None):
 
 def tracker_call(item, action, root=None):
     """Record the tracker measurement without blocking the local build loop."""
-    from wuwei.tracker import ticket as recorded
+    from wuwei.tracker import relabel, ticket as recorded
     root = workspace.find_workspace(root)
     ticket = item
     try:
@@ -264,6 +292,8 @@ def tracker_call(item, action, root=None):
                 result = tracker.claim(ticket, root=root)
             elif action in ('in_review', 'done'):
                 result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
+                if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
+                    result = relabel(tracker, root, config, item, ticket, result)  # #670
             else:
                 raise ValueError('unknown tracker action; pass claim, in_review or done')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
@@ -293,6 +323,65 @@ def _record(data, item, role, round_name):
     return data['gate_verdicts'].get(f'{item}:{role}:{round_name}')
 
 
+CARD = (  # #732: the card a PARK or ESCALATE verdict asks for; no finding text is copied
+    'Question: Gate {role} says {verdict} on {item}: open a fix round or park it?\nClass: park\n'
+    'Context: {file} holds the {verdict} verdict and its findings.\n'
+    'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+    '| fix | Open a fix round | The verdict file names the finding and what closes it. | '
+    'The builder fixes the blocking findings and the gate checks them again. |\n'
+    '| park | Defer and park the item | Stops spending until the finding is reconsidered. | '
+    'The item pauses until the owner resumes it. |\n'
+    'Musts:\n| Criterion | fix | park |\n| --- | --- | --- |\n| Within the round cap | pass | pass |\n'
+    'Wants:\n| Criterion | Weight | fix | park |\n| --- | --- | --- | --- |\n'
+    '| Follows the gate verdict | 10 | {fix} | {park} |\n'
+    "Recommendation: {recommendation}\nReasoning: The gate's {verdict} verdict decided it; "
+    "the owner's answer on this card would flip it.\n"
+    'Confidence: medium\nReversibility: two-way\nBlast radius: own branch\n'
+    'Pre-mortem: A fix round that cannot close the finding spends a round; the round cap then parks the item.\n'
+    "Revisit: When the fix round's delta verdict is in, or when the owner resumes the item.\n"
+    'Decided-by: {by}\nOutcome: pending\n')
+
+
+def _waiting(ident, reason, owner=True):
+    """#732: every escalate names its record and the command that answers it."""
+    return {'action': 'escalate', 'reason': reason, 'decision': ident,
+            'command': f'wuwei decision show {ident} --widget' if owner else f'wuwei decision route {ident}'}
+
+
+def _parked(root, item, reason):
+    """#732: a blocked item with no round left parks with its record (plan.dispose)."""
+    from wuwei import plan
+    return _waiting(plan.dispose(item, 'parked', reason, root), reason)
+
+
+def _card(root, config, data, item, role, round_name):
+    """#732: (id, recorded option or None, owner's) of the card a PARK or ESCALATE verdict asks
+    for; written once, its id kept on the verdict record; routed to the owner under strict."""
+    from wuwei import decision
+    key = f'{item}:{role}:{round_name}'
+    result = data['gate_verdicts'][key]
+    ident = result.get('decision')
+    strict = workspace.posture(config)[0] == 'strict'
+    if ident is None:
+        text = CARD.format(item=item, role=role, verdict=result['verdict'], file=result['file'],
+                           by='owner' if strict else 'seat',
+                           **({'recommendation': 'park', 'fix': 0, 'park': 10} if result['verdict'] == 'PARK'
+                              else {'recommendation': 'fix', 'fix': 10, 'park': 0}))
+        payload = {'item': item, 'role': role, 'round': round_name}
+
+        def update(fresh):
+            if fresh['gate_verdicts'][key].get('decision'):
+                raise Refused(f'gate card changed during dispatch; {RACE}')
+            fresh['gate_verdicts'][key]['decision'] = payload['decision'] = decision.write(text, root).stem
+        state._write_state(update, root, reserved=False, kind='gate.card', payload=payload)
+        ident = payload['decision']
+    if strict and ident not in data.get('decision_routes', {}):  # idempotent; repairs a lost route
+        decision.route_owner(ident, decision.evaluate(
+            decision.today_path(ident, root).read_text(encoding='utf-8'))[0], root)
+    return (ident, (data.get('decision_outcomes', {}).get(ident) or {}).get('option'),
+            strict or ident in data.get('decision_routes', {}))
+
+
 def next_step(item, root=None):
     """Return the next planner action without launching a seat."""
     from wuwei import steward
@@ -305,6 +394,8 @@ def next_step(item, root=None):
         raise Refused(f'steward note {notes[0]["id"]} requires planner acknowledgement: '
                       f'{notes[0]["text"]}')
     phase = row['phase']
+    if phase in ('parked', 'escalated') and row.get('decision'):  # #732: waits on its record
+        return _waiting(row['decision'], f'{item} is {phase} on decision {row["decision"]}')
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
@@ -343,25 +434,18 @@ def next_step(item, root=None):
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):
-            return {'action': 'escalate', 'reason': 'fix round already used'}
+            return _parked(root, item, 'fix round already used')
         if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused(f'fix phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
-        roles = [role for role in gates
-                 if _record(data, item, role, 'initial')['verdict'] == 'FIX']
-        return _fix(item, roles)
+        return _fix(item, [role for role in gates if rechecks(data, item, role)])
     if phase == 'gate':
         roles = list(gates)
         round_name = 'initial'
     else:
         if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused(f'delta phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
-        roles = [role for role in gates
-                 if _record(data, item, role, 'initial')['verdict'] == 'FIX']
+        roles = [role for role in gates if rechecks(data, item, role)]
         round_name = 'delta'
-    if any(_record(data, item, role, round_name) and
-           _record(data, item, role, round_name)['verdict'] in ('PARK', 'ESCALATE')
-           for role in roles):
-        return {'action': 'escalate', 'reason': 'gate parked or escalated'}
     missing = [role for role in roles if _record(data, item, role, round_name) is None]
     if missing:
         commands = []
@@ -370,31 +454,60 @@ def next_step(item, root=None):
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
-    results = [_record(data, item, role, round_name) for role in roles]
-    if any(result['verdict'] in ('PARK', 'ESCALATE') for result in results):
-        return {'action': 'escalate', 'reason': 'gate parked or escalated'}
-    if phase == 'gate':
-        failures = [role for role in roles if _record(data, item, role, 'initial')['verdict'] == 'FIX']
-        if not failures:
-            return {'action': 'raise', 'notes': []}
-        from wuwei.commands import build
-        build.open_fix(item, _fix_feedback(data, item, failures, 'initial'), root=root)
-        return _fix(item, failures)
-    blocking = [role for role, result in zip(roles, results) if result['blocks']]
-    if blocking:  # #623: the next round below the cap; a park with its finding at the cap
-        cap = max_rounds(config, row)
-        if rounds_used(data, item) >= cap:
-            finding = next(text for text in results[roles.index(blocking[0])]['findings']
-                           if re.search(verdict.BLOCKS_YES, text, re.I))
-            return {'action': 'escalate', 'reason': (
-                f'round cap {cap} reached: {blocking[0]} still blocks: '
-                f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
-                'that closes it is recorded in the spec')}
-        from wuwei.commands import build
-        build.open_fix(item, _fix_feedback(data, item, blocking, 'delta'), root=root)
-        return _fix(item, blocking)
-    notes = [note for result in results for note in result['notes']]
-    return {'action': 'raise', 'notes': notes}
+    results = dict(zip(roles, (_record(data, item, role, round_name) for role in roles)))
+    asked = [role for role in roles if results[role]['verdict'] in ('PARK', 'ESCALATE')]
+    blocking = [role for role in roles if role in asked or (
+        results[role]['verdict'] == 'FIX' if phase == 'gate' else results[role]['blocks'])]
+    if not blocking:
+        if phase == 'gate':  # #723: a pass with notes may offer a polish round
+            offer = polish_offer(config, row, roles, list(results.values()), rounds_used(data, item))
+            if offer is not None:
+                if config['gates']['polish'] == 'always':
+                    return _open_polish(root, item, offer)
+                return {'action': 'polish', **offer, 'command': 'wuwei dispatch polish ' + shlex.quote(item),
+                        'skip': 'wuwei dispatch skip-polish ' + shlex.quote(item)}
+        return raise_action(root, data, item, [note for result in results.values() for note in result['notes']])
+    cap = max_rounds(config, row)
+    if rounds_used(data, item) >= cap:  # #623: a park with its finding at the cap
+        findings = results[blocking[0]]['findings']
+        finding = next((text for text in findings if re.search(verdict.BLOCKS_YES, text, re.I)),
+                       (findings or ['none'])[0])
+        return _parked(root, item, (
+            f'round cap {cap} reached: {blocking[0]} still blocks: '
+            f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
+            'that closes it is recorded in the spec'))
+    for role in asked:  # #732: the verdict's decision request is a card; its answer decides
+        ident, answer, owner = _card(root, config, data, item, role, round_name)
+        if answer is None:
+            head = (results[role]['findings'] or ['no finding'])[0]
+            return _waiting(ident, f'gate {role} {results[role]["verdict"]}: '
+                            f'{" ".join(head.splitlines()[0].split())}', owner)
+        if answer == 'park':
+            state._write_state(lambda fresh: fresh['items'][item].update(
+                phase='parked', status='blocked', decision=ident), root, reserved=False,
+                kind='gate.card', payload={'item': item, 'phase': 'parked', 'decision': ident})
+            return _waiting(ident, f'{item} is parked on decision {ident}')
+    from wuwei.commands import build
+    build.open_fix(item, _fix_feedback(data, item, blocking, round_name), root=root)
+    return _fix(item, blocking)
+
+
+def raise_action(root, data, item, notes):
+    """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
+    name = f'shepherd-{item}'
+    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
+    worktree = data['items'][item].get('worktree') or str(root)
+    action = {'action': 'raise', 'notes': notes, 'seats': []}
+    if not path.is_file():
+        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+                              '--body ' + shlex.quote(body)]
+    elif name not in data['seats']:
+        action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
+    else:
+        action['reason'] = (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
+                            f'bin/wuwei why {item} shows it')
+    return action
 
 
 def launch_set(root=None):
@@ -449,9 +562,10 @@ def launch_set(root=None):
     for name in builds:
         if name not in busy:
             add(name, lambda: build.next_action(name, root=root))
-    building = len(builds)
+    seated = [name for name in builds if not state.held(data, name)]  # #648: a held item takes no seat
+    building = len(seated)
     share = Counter(data.get('goal_seats', {}))
-    share.subtract(goal(name) for name in builds)
+    share.subtract(goal(name) for name in seated)
     first, rest = [], []
     for name in (name for name in names if items[name]['phase'] == 'planned'):
         (first if share[goal(name)] > 0 else rest).append(name)
@@ -490,11 +604,12 @@ def launch_set(root=None):
 
 
 def candidate(root, name):
-    """Today's proposal row for the item, or None."""
+    """Today's proposal row for the item, else its #648 main_broken row (a fix item), or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
     candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
-    return next((row for row in candidates if row.get('id') == name), None)
+    return (next((row for row in candidates if row.get('id') == name), None)
+            or state.read_state(root).get('main_broken', {}).get(name))
 
 
 def _start(root, name, repos):
@@ -554,9 +669,20 @@ def _seats(root, data, item, roles, round_name, commands):
                                 + ' --round delta')
             if not delta_due(data, item, role, name):
                 continue
-            action = brief.seat_action('sentinel-' + role, root / seat['brief'],
-                                       data['items'][item]['worktree'], root)
-            feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light')
+            # #669: the fix round moved the head; record it so an in-session resume can
+            # write a true Head: line ('head' stays the initial head for delta_due).
+            worktree = data['items'][item]['worktree']
+            head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
+                              str((root / worktree).resolve()), root=root)['sha']
+            if seat.get('delta_head') != head:
+                state._write_state(lambda fresh: fresh['seats'][name].update(delta_head=head),
+                                   root, reserved=False, kind='gate.delta_head',
+                                   payload={'item': item, 'seat': name, 'head': head})
+            action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
+            feedback = _recheck_feedback(data['items'][item], first,
+                                         depth(data['items'][item], gate=True) == 'light', head)
+            ci = brief.ci_block(data['items'][item].get('ci_jobs', ()), root / worktree)  # #733
+            feedback += '\n' + ci if ci else ''
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                      'prompt': action['prompt'] + '\n\n' + feedback}
         receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
@@ -572,7 +698,7 @@ def delta_due(data, item, role, name):
     row = data['items'].get(item)
     first = _record(data, item, role, 'initial')
     seat = data['seats'].get(name)
-    return bool(row and row['phase'] == 'delta' and first and first['verdict'] == 'FIX'
+    return bool(row and row['phase'] == 'delta' and first and rechecks(data, item, role)
                 and _record(data, item, role, 'delta') is None
                 and Path(first['file']).stem.removeprefix('gate-') == name
                 and seat and seat['status'] == 'stopped' and seat.get('agent_id')
@@ -595,24 +721,101 @@ def _opinion_name(data, rows, item, gate, round_name):
     return logged[-1]['name'] + '-' + gate.partition('@')[2] if logged else None
 
 
-def _delta_feedback(first, light=False):
+def _delta_feedback(first, light=False, head='HEAD'):
     if light:  # #567: no delta procedure at light; the same seat re-reads its findings
-        return (f'Re-read: the fix round changed {first["head"]}..HEAD. Re-read the diff for your '
-                f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}; '
-                'mark each finding the fix closed blocks: no.')
-    return (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
-            f'findings at the current HEAD and rewrite {first["file"]}. A new finding on lines '
+        return (f'Re-read: the fix round changed {first["head"]}..{head}. Re-read the diff for your '
+                f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}, '
+                f'with Head: {head}; mark each finding the fix closed blocks: no.')
+    return (f'Delta review: the fix round changed {first["head"]}..{head}. Re-check your '
+            f'findings at {head} and rewrite {first["file"]} with Head: {head}. A new finding on lines '
             'this fix round did not change is blocks: no, unless it is a trust-boundary security '
             'finding.')  # #623: no scope widening after round one
 
 
+def _recheck_feedback(row, first, light=False, head='HEAD'):
+    """#723: a polish re-check reads the notes; any other delta keeps _delta_feedback."""
+    polish = row.get('polish') or {}
+    if first['verdict'] != 'PASS' or polish.get('status') != 'opened':
+        return _delta_feedback(first, light, head)
+    return (f'Polish re-check: the polish round changed {first["head"]}..{head} to close these review '
+            'notes:\n' + '\n'.join(polish['notes']) + f'\nRewrite {first["file"]} with Head: {head}: '
+            'drop each note the delta closed, keep an open one as blocks: no, and block only on a '
+            'defect the delta introduced.')
+
+
+def _polish_feedback(notes):
+    return ('Polish round: every gate passed. Fix only these non-blocking review notes, test first '
+            'where a note names a behaviour, and change nothing else. A note that needs more than a '
+            'small local change stays a review note; name it in your handoff.\n' + '\n'.join(notes))
+
+
 def _fix_feedback(data, item, roles, round_name):
-    return '\n'.join(f'Gate {role} FIX: fix only the blocking findings (blocks: yes) in '
-                     f'{_record(data, item, role, round_name)["file"]}.' for role in roles)
+    return '\n'.join(f'Gate {role} {record["verdict"]}: fix only the blocking findings (blocks: yes) '
+                     f'in {record["file"]}.' for role in roles
+                     for record in (_record(data, item, role, round_name),))
 
 
 def _fix(item, roles):
     return {'action': 'fix', 'roles': roles, 'command': 'wuwei build next ' + shlex.quote(item)}
+
+
+def _stale_scratch(text, brief_text, root):
+    """#734: scratch paths the verdict names that existed before its seat's brief was written."""
+    from datetime import datetime
+    written = re.search(r'^Written: (\S+)$', brief_text, re.M)
+    if not written:
+        return []
+    since = datetime.fromisoformat(written[1]).timestamp()
+    stale = []
+    for token in dict.fromkeys(re.findall(SCRATCH_PATH, text)):
+        path = Path(root) / re.sub(r'(:\d+)+$', '', token.rstrip('.:'))
+        try:
+            # ponytail: ctime, since tar sets mtime to the commit time; a stale file the seat
+            # rewrote reads as new, which is right: its content is the seat's
+            if path.stat().st_ctime < since:
+                stale.append(token)
+        except OSError:
+            continue  # not on disk: nothing to date
+    return stale
+
+
+def _open_polish(root, item, offer):
+    from wuwei.commands import build
+    build.open_fix(item, _polish_feedback(offer['notes']), root=root,
+                   polish={'status': 'opened', 'gate': offer['gate'], 'notes': offer['notes']})
+    return _fix(item, [offer['gate']])
+
+
+def _offered(root, item):
+    """#723: the open polish offer; refused unless gates.polish is offer and one is open."""
+    mode = workspace.load_config(root)['gates']['polish']
+    if mode != 'offer':
+        raise Refused(f'gates.polish is {mode}; bin/wuwei dispatch next {item} decides the polish round itself')
+    offer = next_step(item, root)
+    if offer['action'] != 'polish':
+        raise Refused(f'{item} has no polish offer; run bin/wuwei dispatch next {item} for its step')
+    return offer
+
+
+def polish(item, root=None):
+    """#723: open the offered polish round."""
+    root = workspace.find_workspace(root)
+    return _open_polish(root, item, _offered(root, item))
+
+
+def skip_polish(item, root=None):
+    """#723: decline the offered polish round; the notes ship as review notes."""
+    root = workspace.find_workspace(root)
+    offer = _offered(root, item)
+
+    def update(fresh):
+        row = _item(fresh, item)
+        if row['phase'] != 'gate' or row.get('polish'):
+            raise Refused(f'polish state changed during skip; {RACE}')
+        row['polish'] = {'status': 'skipped', 'gate': offer['gate'], 'notes': offer['notes']}
+    state._write_state(update, root, reserved=False, kind='polish.skipped',
+                       payload={'item': item, 'gate': offer['gate'], 'notes': len(offer['notes'])})
+    return raise_action(root, state.read_state(root), item, offer['notes'])
 
 
 def receive(item, role, name, round_name='initial', root=None):
@@ -630,7 +833,7 @@ def receive(item, role, name, round_name='initial', root=None):
         raise Refused(f'gate round does not match item phase {data["items"][item]["phase"]};run bin/wuwei dispatch next {item} for the right round')
     if round_name == 'delta':
         first = _record(data, item, role, 'initial')
-        if first is None or first['verdict'] != 'FIX':
+        if first is None or not rechecks(data, item, role):
             raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
         raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
@@ -658,19 +861,27 @@ def receive(item, role, name, round_name='initial', root=None):
     if brief_path.resolve() != directory / 'briefs' / f'{name}.md':
         raise Refused(f'seat brief path does not match gate name; receive the seat with the name its brief was written for (bin/wuwei dispatch next {item})')
     brief_text = brief_path.read_text(encoding='utf-8')
-    if (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
+    # #669: a delta seat answers to the head the fix round left, never the stale brief head
+    expected = str(seat.get('delta_head') or seat.get('head') or '') if round_name == 'delta' else ''
+    if expected:
+        if not expected.lower().startswith(head.lower()):
+            raise Refused(f'verdict Head {head} is not the delta head {expected}; have the sentinel '
+                          f'write the verdict with Head: {expected}, then receive it again')
+    elif (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
             and not str(seat.get('head') or '').lower().startswith(head.lower())):
         raise Refused('verdict HEAD differs from dispatched brief; have the sentinel write the verdict with the Head from its brief, then receive it again')
     trees = re.findall(r'^Worktree: (.+)$', brief_text, re.M)
+    left = []
     if trees and trees[0] != 'none':
         from wuwei import registry
         tree = Path(trees[0])
         if not tree.is_absolute():
             raise Refused(f'gate brief has an invalid worktree; write the brief again with --worktree <absolute path> (bin/wuwei worktree add {item} creates it)')
-        current_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
-                                  str(tree), root=root)['sha']
+        vcs = registry.load('vcs', workspace.load_config(root))
+        current_head = brief.read(vcs.head, str(tree), root=root)['sha']
         if not isinstance(current_head, str) or not current_head.lower().startswith(head.lower()):
             raise Refused(f'verdict HEAD differs from current worktree HEAD; write a fresh gate brief for the current HEAD and run bin/wuwei dispatch next {item}')
+        left = [row['path'] for row in brief.status(vcs, str(tree), root)]  # #672
     current = [_record(data, item, gate, round_name) for gate in gates]
     if any(record and record['head'] != head for record in current):
         raise Refused(f'gate HEAD differs from sibling verdict; rerun the odd gate on the current HEAD via bin/wuwei dispatch next {item}')
@@ -715,8 +926,19 @@ def receive(item, role, name, round_name='initial', root=None):
             raise Refused(f'gate state changed during receive; {RACE}')
         fresh['gate_verdicts'][key] = value
 
+    stale = _stale_scratch(text, brief_text, root)  # #734: before the write, so damage records nothing
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
+    if left:  # #672: the round left files in the builder's worktree
+        # ponytail: git status omits ignored files (a gitignored __pycache__); the brief's
+        # Probe env: line prevents those. Add an --ignored status form if seats keep leaving them.
+        print(f"warning: {tree} has files the gate round left: {', '.join(left)}; gate seats "
+              'probe in a copy under their scratch directory; remove them, or the next gate '
+              'brief refuses a dirty tree', file=sys.stderr)
+    for cited in stale:
+        print(f"warning: {name}'s verdict names {cited}, which existed before its brief was "
+              "written; its check may have read an earlier seat's files: rerun it in a new, "
+              'empty directory', file=sys.stderr)
     if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         workspace.atomic_write(path, text + '\n')
     return value
@@ -740,7 +962,7 @@ def opinion(item, root=None):
     if _record(data, item, gate, round_name):
         return _record(data, item, gate, round_name)
     first = _record(data, item, gate, 'initial')
-    if round_name == 'delta' and (not first or first['verdict'] != 'FIX'):
+    if round_name == 'delta' and not rechecks(data, item, gate):
         raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     name = _opinion_name(data, brief.events(root) if round_name == 'initial' else [], item, gate, round_name)
     if name is None:
@@ -755,6 +977,7 @@ def opinion(item, root=None):
         ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
+        head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
         if seat is None:
             if round_name == 'delta':
                 raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
@@ -772,12 +995,13 @@ def opinion(item, root=None):
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
-            feedback = (_delta_feedback(first) if round_name == 'delta' else
+            feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
                         'contract in your brief.')
+            ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
+            feedback += '\n' + ci if ci else ''  # #733
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
-        head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
         seat = {'id': name, 'role': sentinel, 'item': item, 'brief': relative, 'head': head,
                 'status': 'running', 'started_at': workspace.now().isoformat(),
                 'runtime': second['runtime'], 'model': second['model'], 'job': job}

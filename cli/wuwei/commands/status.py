@@ -29,6 +29,7 @@ SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
                 'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
 WIDTH = 100  # status --line columns unless --width says otherwise (#521)
+LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is start-up and printing
 # #641: what the line calls each phase, in this order; CAP is shown on seats only.
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
@@ -130,7 +131,7 @@ def scan(directory, classified_state=None, *, config=None):
                     if payload['pin'] != pin:
                         continue
             else:
-                kind, payload = 'unreadable event', {}
+                kind, payload, stamp = 'unreadable event', {}, None
             if kind == 'watch: sweep' and isinstance(payload, dict):
                 current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
                 fields = (('reply_owed', 'reply', 'nudge'),
@@ -159,8 +160,12 @@ def scan(directory, classified_state=None, *, config=None):
                 key = (kind, payload.get('id', number))
             elif kind == 'guard.would_refuse' and isinstance(payload, dict):
                 key = (kind, payload.get('guard'))
-            else:
+            elif tier == 'page':
                 key = (kind, number)
+            else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it
+                subject = (payload.get('pr') or payload.get('item') or payload.get('reason', kind)) \
+                    if isinstance(payload, dict) else kind
+                key = (kind, str(subject))
             if tier == 'silent':
                 current.pop(key, None)
             else:
@@ -179,7 +184,9 @@ def scan(directory, classified_state=None, *, config=None):
                     waiting = mcp.pending(directory.parents[2])
                     reason = 'MCP {} {} finding on {}: run '.format(*shown) + (
                         mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
-                current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
+                current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason,
+                                'count': current.get(key, {}).get('count', 0) + 1,
+                                'ts': stamp if isinstance(stamp, str) else None}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
     health = {}
@@ -217,7 +224,7 @@ def scan(directory, classified_state=None, *, config=None):
             if option := replied.get(identifier):
                 source, reason = 'decision.answered', (
                     f'{identifier} answered from the phone: option {option}, '
-                    f'confirm with wuwei decide {identifier} {option}')
+                    f'confirm with {workspace.owner_cli(directory.parents[2])} decide {identifier} {option}')
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
     for identifier, row in classified_state.get('decision_outcomes', {}).items():
@@ -252,6 +259,56 @@ def scan(directory, classified_state=None, *, config=None):
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
+def _tidy(rows, now, limits=None):
+    """#786: drop nudges quiet for nudges.ttl_hours, keep the newest nudges.max_open, the
+    nudges.dropped row included. Pages, and rows without ts, never age out."""
+    limits = limits or {key: rule[1] for key, rule in workspace.SCHEMA['nudges'].items()}
+    ttl, cap = limits['ttl_hours'], limits['max_open']
+
+    def seen(row):
+        return datetime.fromisoformat(row['ts']).astimezone() if row.get('ts') else now
+
+    nudges = [row for row in rows if row['tier'] == 'nudge']
+    fresh = [row for row in nudges if now - seen(row) <= timedelta(hours=ttl)]
+    expired = len(nudges) - len(fresh)
+    if not expired and len(fresh) <= cap:
+        return rows
+    kept = {id(row) for row in sorted(fresh, key=seen, reverse=True)[:cap - 1]}
+    dropped = len(fresh) - len(kept)
+    return [row for row in rows if row['tier'] != 'nudge' or id(row) in kept] + [{
+        'tier': 'nudge', 'source': 'nudges.dropped', 'lane': 'Work',
+        'reason': f'{expired} expired after nudges.ttl_hours = {ttl}, {dropped} dropped over nudges.max_open = {cap}',
+        'expired': expired, 'dropped': dropped}]
+
+
+def surfaced(directory, rows, data=None, config=None):
+    """(mode, rows) the surfaces show under nudges.mode (#742): pages always; off drops every
+    nudge; next keeps an unrecorded phone answer and adds a ready fix round and a pending close;
+    all, or a day without config.toml, shows every row."""
+    if config is None and (directory.parents[1] / 'config.toml').is_file():
+        config = workspace.load_config(directory.parents[2])
+    mode = 'all' if config is None else workspace.nudge_mode(config)
+    # #786: the surfaces see the tidied list; scan keeps every row for health counts and --all.
+    rows = _tidy(rows, workspace.now(), config['nudges'] if config is not None else None)
+    if mode == 'all':
+        return mode, rows
+    shown = [row for row in rows if row['tier'] != 'nudge'
+             or (mode == 'next' and row['source'] == 'decision.answered')]
+    if mode == 'next':
+        data = state.read_state(directory=directory) if data is None else data
+        busy = {item for _, _, item in state.in_flight(data)}
+        for name, item in data['items'].items():
+            if item['phase'] == 'fix' and name not in busy:
+                shown.append({'tier': 'nudge', 'source': 'round.ready', 'lane': 'Work',
+                              'reason': f'{name} fix round is ready: run wuwei build next {name}'})
+        phases = [data['items'][name]['phase'] for name in data['approved_items'] if name in data['items']]
+        if (data['gate_approved'] and phases and not busy and not data.get('close_requested')
+                and 'merged' in phases and all(phase in ('merged', 'parked', 'escalated') for phase in phases)):
+            shown.append({'tier': 'nudge', 'source': 'close.ready', 'lane': 'Work',
+                          'reason': f'{phases.count("merged")} merged and nothing left to build: run wuwei close'})
+    return mode, shown
+
+
 def snapshot(directory, line=False):
     """The day's figures; line=True skips the fields status --line never renders (#562)."""
     data = state.read_state(directory=directory)
@@ -275,8 +332,9 @@ def snapshot(directory, line=False):
         directory, classified_state, config=config)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
-    result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
-    result['trace_gaps'] = sum(row['source'] == 'traces.gap' for row in active)
+    result['nudges_mode'], shown = surfaced(directory, active, data, config)
+    result['nudges'] = sum(row['tier'] == 'nudge' for row in shown)
+    result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     result['plan'] = (directory / 'plan.md').is_file()
@@ -335,8 +393,40 @@ def snapshot(directory, line=False):
     return result
 
 
+def _line_or_cache():
+    """The line's snapshot, or the heartbeat's cached line when the compute overruns its
+    budget (#659). With no cache it waits; a compute error is raised, never the cache."""
+    import threading
+    result = []
+
+    def compute():
+        try:
+            result.append((True, snapshot(workspace.day_dir(), line=True)))
+        except BaseException as exc:
+            result.append((False, exc))
+
+    worker = threading.Thread(target=compute, daemon=True)
+    worker.start()
+    worker.join(LINE_BUDGET_MS / 1000)
+    if worker.is_alive():
+        try:
+            cached = state.read_state(directory=workspace.day_dir()).get('watch', {}).get('status_line')
+        except Exception:
+            cached = None
+        if isinstance(cached, str):
+            return cached
+        worker.join()
+    ok, value = result[0]
+    if not ok:
+        raise value
+    return line(value, WIDTH)
+
+
 def run(args):
     try:
+        if args.line and not args.json and getattr(args, 'width', WIDTH) == WIDTH:
+            print(_line_or_cache())
+            return CLEAN
         data = snapshot(workspace.day_dir(), line=args.line and not args.json)
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
         if args.json:
@@ -378,7 +468,8 @@ def _groups(data, shown=None):
         names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])
         work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
                     + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
-    attention = [f'pages {data["pages"]}', f'nudges {data["nudges"]}']
+    attention = [f'pages {data["pages"]}'] + (
+        [] if data.get('nudges_mode') == 'off' else [f'nudges {data["nudges"]}'])  # #742
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
     if data.get('pace') not in (None, 'steady'):  # #579

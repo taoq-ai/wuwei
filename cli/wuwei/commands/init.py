@@ -12,7 +12,7 @@ import tempfile
 import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
-from wuwei import env, security, workspace
+from wuwei import env, integrity, security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
@@ -79,7 +79,7 @@ def run(args):
         env.initialize(Path(staging))
         from wuwei.commands.agents import write_workspace
         write_workspace(template.parents[1], Path(staging))
-        executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
+        executable = integrity.launcher(destination.parent)
         (Path(staging) / "executable").write_text(str(executable) + "\n")
         if posture:
             config = Path(staging) / 'config.toml'
@@ -91,7 +91,6 @@ def run(args):
             config.write_text(text, encoding='utf-8')
         config = Path(staging) / 'config.toml'
         config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
-        from wuwei import integrity
         integrity.initialize(Path(staging))
         settings_path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
@@ -190,7 +189,6 @@ def _status_line(executable):
 
 def _finish(root):
     code = _register_mcp(root)
-    from wuwei import integrity
     print(integrity.check(root).reason or 'plugin integrity: clean')
     return code
 
@@ -236,7 +234,6 @@ def _sections(raw):
 
 def _stamp(text):
     """Raise the top-level template_version to this plugin's version; never lower it (#353)."""
-    from wuwei import integrity
     mine = integrity.version()
     current = tomllib.loads(text).get('template_version', '')
     if not integrity.release(mine) or (integrity.release(current) or ()) >= integrity.release(mine):
@@ -359,7 +356,7 @@ def upgrade(args):
         text = _without_empty_repos(raw)
         tomllib.loads(text)
         found = []
-        workspace.load_config(destination.parent, raw=text, warnings=found)
+        config = workspace.load_config(destination.parent, raw=text, warnings=found)
         for warning in found:
             print(f'wuwei init: warning: {warning}; run bin/wuwei doctor for the fix', file=sys.stderr)
         plugin = Path(__file__).resolve().parents[3]
@@ -378,7 +375,7 @@ def upgrade(args):
             graph.warn('init', exc)
             previous = register = None
         graph_changed = register != previous
-        executable = plugin / 'bin/wuwei'
+        executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
         for local in sorted((destination / 'charters').glob('*.md')):
@@ -395,6 +392,9 @@ def upgrade(args):
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
         from wuwei import novelty
         seeded = novelty.seed(destination.parent, write=not args.dry_run)  # #556
+        from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
+        tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
+                                  write=not args.dry_run)
         if not args.dry_run:
             if security_data is None:
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
@@ -404,6 +404,10 @@ def upgrade(args):
                 graph.save(destination.parent, register)
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
+            try:  # #735: the checkouts find the workspace from anywhere
+                workspace.index(destination.parent, workspace.load_config(destination.parent, raw=migrated))
+            except (OSError, ValueError) as exc:
+                print(f'wuwei init: warning: workspace index not written: {exc}; rerun bin/wuwei init --upgrade to write it', file=sys.stderr)
             if pointer_changed:
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
             if guide_changed:
@@ -419,7 +423,6 @@ def upgrade(args):
         for line in retired:
             print(f'{prefix} config.toml: {line}')
         if stamp_changed:
-            from wuwei import integrity
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if named:
             print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
@@ -432,6 +435,14 @@ def upgrade(args):
             print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+        for line in tickets:
+            print(f'{prefix} {line}')
+        # #670: doctor runs the dry run, which never contacts the tracker
+        labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
+            destination.parent, prefix,
+            tracker.creates_labels(workspace.load_config(destination.parent)) or sys.stdin.isatty())
+        for line in labelled:
+            print(line)
         from wuwei import undo
         unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
         if unrehearsed:
@@ -439,10 +450,13 @@ def upgrade(args):
                   '(a merge counts after its first wuwei undo)')
         from wuwei import interview  # #530: a read, so it prints under --dry-run too and counts no change
         try:
-            names = [repo['name'] for repo in workspace.load_config(destination.parent, raw=migrated)['repos']]
-            count = len(interview.unanswered(destination.parent, names))
+            loaded = workspace.load_config(destination.parent, raw=migrated)
+            count = len(interview.unanswered(destination.parent, [repo['name'] for repo in loaded['repos']]))
             if count:
                 print(f'setup: {count} questions unanswered: {interview.HOW}')
+            if 'mode' not in tomllib.loads(migrated).get('nudges', {}):  # #742: the default, not written
+                print(f'nudges.mode unset, so nudges follow autonomy.mode: {workspace.nudge_mode(loaded)}; '
+                      'set nudges.mode = "next" or "all" in config.toml to see more')
         except (OSError, ValueError) as exc:
             print(f'setup: unanswered questions unmeasured: {exc}')
         for name, local_version, base_version in conflicts:
@@ -451,13 +465,13 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and not named and not graph_changed and text == raw):
+                and not guide_changed and not seeded and not named and not graph_changed and text == raw
+                and not tickets and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
         _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
-        from wuwei import integrity
         if integrity.other_versions():  # #353: another version's hooks still run
             print(integrity.RESTART)
         return code

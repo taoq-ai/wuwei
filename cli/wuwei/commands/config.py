@@ -294,6 +294,10 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
         except (OSError, ValueError) as exc:  # A13: an explanation record never stops a write
             graph.warn(label, exc)
         workspace.atomic_write(path, text)
+        try:
+            workspace.index(root, workspace.load_config(root, raw=text))  # #735: checkouts find it
+        except (OSError, ValueError) as exc:
+            print(f'wuwei {label}: warning: workspace index not written: {exc}; rerun bin/wuwei init --upgrade to write it', file=sys.stderr)
     if snapshot is not None:
         workspace.atomic_write(root / '.wuwei/calibration.json',
                                json.dumps(snapshot, indent=2, sort_keys=True) + '\n')

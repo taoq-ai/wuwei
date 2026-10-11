@@ -2,7 +2,8 @@
 
 from collections import namedtuple
 from functools import lru_cache
-from itertools import count
+from itertools import count, product
+from math import prod
 from pathlib import Path, PurePosixPath
 import re
 import shlex
@@ -65,6 +66,27 @@ _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
                     r'(?P<redirect>[0-9]*(?:<<-?|>>!?|>!|<>|>&|<&|>\||[<>])|&>>?)|'
                     r'(?P<operator>\&\&|\|\||[;&|()\n])')
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
+# #730: a whole word that is one plain variable (the _variable_read form).
+_VARIABLE = re.compile(r'"?\$\{?([A-Za-z_]\w*)\}?"?')
+# #730: builtins that can set a variable named by any word, and the . and source loaders.
+_WRITERS = re.compile(r'(?<![\w./-])(?:read|printf|mapfile|readarray|declare|typeset|local|export|readonly|'
+                      r'unset|getopts|eval|source|let|wait|\.)(?![\w./-])')
+
+
+def leading_variables(text):
+    """#730: {name: value} of a leading assignment statement (x=bin/wuwei; ...) whose values are
+    single literal words; a name written anywhere else as a bare word (x=, x+=, read x, getopts g
+    x, unset x) is left out, only its $x and ${x} reads may follow. The first statement always
+    runs, in the outer shell, before every later stage. Any variable-writing builtin word makes
+    every name opaque: its name operand can be built by expansion (read ${n%?})."""
+    text = re.sub(r'''['"\\]''', '', text)
+    if _WRITERS.search(text):
+        return {}
+    match = re.match(r'\s*((?:[A-Za-z_]\w*=[\w./][\w./:@+-]*[ \t]+)*[A-Za-z_]\w*=[\w./][\w./:@+-]*)'
+                     r'[ \t]*(?:;|&&|\n)', text)
+    pairs = dict(word.split('=', 1) for word in match[1].split()) if match else {}
+    return {key: value for key, value in pairs.items()
+            if len(re.findall(rf'(?<![\w$])(?<!\$\{{){key}(?!\w)', text)) == 1}
 PLUGIN_LAUNCHER = Path(__file__).resolve().parents[2] / 'bin/wuwei'  # resolved once, as registry.ADAPTERS
 _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
 
@@ -102,7 +124,7 @@ def mentions(raw, names, *, script=False) -> bool:
     # ANSI-C quoting can hide every character of a name.
     if "$'" in raw and not script:
         return True
-    unquoted = re.sub(r'''['"\\]''', '', raw)
+    unquoted = re.sub(r'''\\\n|['"\\]''', '', raw)  # #671: the shell joins continuations
     if pattern.search(raw) or pattern.search(unquoted):
         return True
     if script:
@@ -130,8 +152,12 @@ def mentions(raw, names, *, script=False) -> bool:
             and not re.match(r'-[CR]|--(?:repo|git-dir|work-tree)=', word)
             for index, word in enumerate(words)):
         return True
-    # An assignment prefix is not a command name; the word after it is.
-    return any(not _literal(word) for word in re.findall(
+    # An assignment prefix is not a command name; the word after it is. #730: a variable from
+    # the leading assignment statement is judged by its value.
+    variables = leading_variables(raw)
+    return any(not _literal(word) and not ((name := _VARIABLE.fullmatch(word)) and name[1] in variables
+                                           and not pattern.search(variables[name[1]]))
+               for word in re.findall(
         r'(?:^|[;&|(\n])\s*(?:[A-Za-z_]\w*=[^\s;&|()]*\s+)*([^\s;&|()]+)', unquoted)
         if not _ASSIGNMENT.match(word))
 
@@ -226,9 +252,21 @@ def normalize(command: str, *, protected=(), words=None) -> list[Command]:
     Reject dynamic substitutions, control flow and unknown wrapper options; extend
     the supported grammar with bypass tests when a guard needs those constructs.
     """
+    protected, texts = ('git', 'gh', *protected), []
     try:
-        return _parse(command, False, protected=('git', 'gh', *protected),
-                      words=[] if words is None else words, scope_ids=count())
+        found = _parse(command, False, protected=protected,
+                       words=[] if words is None else words, texts=texts, scope_ids=count(),
+                       variables=leading_variables(command))
+        # #671: a reader's text is data only when no command of the call can run it,
+        # and no write lands in git's own files (hooks, config).
+        if texts and any(item.argv and PurePosixPath(item.argv[0]).name not in protected
+                         and not reads(item.argv)
+                         or any('.git' in (part.casefold() for part in PurePosixPath(target).parts)
+                                for target in item.writes)  # case-insensitive filesystems
+                         for item in found):
+            for text in texts:
+                _reject_mentions(text)
+        return found
     except (ValueError, RecursionError) as exc:
         error = type(exc) if isinstance(exc, ParseError) else ParseError
         raise error((str(exc) or 'shell nesting too deep') +
@@ -286,7 +324,8 @@ def _read_word(script, position):
     return ''.join(raw), position
 
 
-def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=(), scope_ids):
+def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, texts, scope=(), scope_ids,
+           variables=None):
     if not isinstance(script, str) or '\0' in script:
         raise ParseError(f'command must be text without NUL; {DAMAGED}')
     tokens, raw_tokens, heredocs = [], [], []
@@ -327,7 +366,7 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
                     body, position = _heredoc(script, position, delimiter, strip_tabs)
                     owner = tokens[owner_start] if owner_start < len(tokens) else ('', True)
                     if owner[1] or PurePosixPath(owner[0]).name not in ('git', 'gh'):
-                        _reject_mentions(body)
+                        texts.append(body)
                 heredocs.clear()
             operator = True
         else:
@@ -388,7 +427,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
                         raw_argv.append(raw_tokens[position])
                     position += 1
                 current = _unwrap(argv, nested, raw_argv, env, protected,
-                                  words=words, scope=current_scope, scope_ids=scope_ids)
+                                  words=words, texts=texts, scope=current_scope, scope_ids=scope_ids,
+                                  variables=variables)
                 if writes or reads:
                     if not current:
                         current = [Command([], nested, dict(env or {}))]
@@ -426,7 +466,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
     return result
 
 
-def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'), *, words, scope, scope_ids):
+def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'), *, words, texts, scope, scope_ids,
+            variables=None):
     env = dict(inherited_env or {})
     while argv:
         if _ASSIGNMENT.match(argv[0]):
@@ -440,7 +481,15 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             continue
         program = PurePosixPath(argv[0]).name or argv[0]
         if not _literal(raw_argv[0]):
-            raise ParseError('nonliteral command name is unsupported; write the command name literally instead of building it from a variable')
+            # #730: a variable from the leading assignment statement is its literal value.
+            name = _VARIABLE.fullmatch(raw_argv[0])
+            value = (variables or {}).get(name[1]) if name else None
+            if value is None or PurePosixPath(value).name in protected:
+                raise ParseError(f'nonliteral command name {raw_argv[0]} in stage {" ".join(raw_argv)} is unsupported; '
+                                 'assign it a literal path at the start of the command (x=bin/wuwei; $x ...), '
+                                 'or write the command name literally')
+            argv, raw_argv = [value, *argv[1:]], [value, *raw_argv[1:]]
+            program = PurePosixPath(value).name
         if program in _PATH_COMMANDS and not all(
                 _literal(raw, allow_globs=program not in ('cd', 'pushd', 'popd')) for raw in raw_argv):
             raise NonliteralPathError('nonliteral file or directory arguments are unsupported; write the literal path')
@@ -455,11 +504,8 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
         if program == 'eval':
             if any(_expands(raw) for raw in raw_argv[1:]):
                 raise ParseError('expanding eval is unsupported; run the command directly, or give eval a literal string')
-            for raw in raw_argv[1:]:
-                if len(list(_QUOTED_PART.finditer(raw))) > 1:
-                    _reject_mentions(raw)
             expanded = _parse(' '.join(argv[1:]), subshell, env, protected,
-                              words=words, scope=scope, scope_ids=scope_ids)
+                              words=words, texts=texts, scope=scope, scope_ids=scope_ids)
             # eval runs in the current shell, unlike a shell -c child.
             return [item._replace(scope=scope + item.scope[len(scope) + 1:])
                     for item in expanded]
@@ -485,20 +531,19 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             if index + 1 < len(argv) and re.search(r'\$[@*0-9{]', argv[index]):
                 raise ParseError('shell positional expansion is unsupported; write the real values into the script text and drop the extra arguments')
             _reject_mentions(' '.join(raw_argv[:index] + raw_argv[index + 1:]))
-            if len(list(_QUOTED_PART.finditer(raw_argv[index]))) > 1:
-                _reject_mentions(raw_argv[index])
-            if len(_GUARDED.findall(re.sub(r'''['"\\]''', '', argv[index]))) > len(_GUARDED.findall(argv[index])):
-                raise ParseError('obfuscated git/gh mention in shell script; write git or gh plainly')
             return _parse(argv[index], True, env, protected,
-                          words=words, scope=scope, scope_ids=scope_ids)
+                          words=words, texts=texts, scope=scope, scope_ids=scope_ids)
         if program not in ('env', 'command', 'exec', 'nohup', 'time', 'xargs',
                            'nice', 'timeout', 'sudo', 'stdbuf', 'setsid'):
             if program in protected:
                 if not all(_literal(raw) for raw in raw_argv) and not _variable_read(argv, raw_argv, words):
                     raise ParseError('nonliteral guarded arguments are unsupported; write the literal arguments')
                 return [Command(argv, subshell, env, scope=scope)]
-            _reject_mentions(' '.join(raw_argv))
-            _reject_mentions(' '.join(argv))
+            if reads(argv):
+                texts += (' '.join(raw_argv), ' '.join(argv))
+            else:
+                _reject_mentions(' '.join(raw_argv))
+                _reject_mentions(' '.join(argv))
             return [Command(argv, subshell, env, scope=scope)]
         if program == 'xargs':
             _reject_mentions(' '.join(raw_argv))
@@ -550,7 +595,8 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             if not argv:
                 return [Command(['echo'], True, env)]
             expanded = _unwrap(argv, subshell, raw_argv, env, protected,
-                               words=words, scope=scope, scope_ids=scope_ids)
+                               words=words, texts=texts, scope=scope, scope_ids=scope_ids,
+                               variables=variables)
             if any(item.writes or (item.argv and PurePosixPath(item.argv[0]).name in
                                   (*protected, *_PATH_COMMANDS)) for item in expanded):
                 raise ParseError('input-driven guarded arguments are unsupported; run the command directly with literal arguments instead of piping into xargs')
@@ -574,7 +620,7 @@ _SNIPPET_WRITES = re.compile(
     r'|\w*(?:write|remove|rename|replace|unlink|rmdir|mkdir|makedirs|touch|truncate|chmod|chown'
     r'|symlink|hardlink|inplace)\w*|os\.(?:link|open|fork)'
     r'|shutil|subprocess|system|popen|spawn|exec|eval|getattr|__import__|importlib|runpy|ctypes'
-    r'|sqlite3|shelve|dbm'
+    r'|sqlite3|shelve|dbm|\brun\(|\bpty\b|\b(?:git|gh)\b'  # #671: a snippet that may run git or gh
     r'|\\|chr|argv|environ|stdin|input|lower|decode|logging|Handler|extract|tarfile|zipfile'
     r'|__|vars|globals'
     r'|(?<![\w/-])(?<![^\w.]\.)wuwei(?![\w/-])', re.I)  # the CLI imported; not .wuwei/ or cli/wuwei/
@@ -1040,8 +1086,45 @@ def unread(command, publishers=(), cwd=None):
     return None
 
 
+def constructed(command):
+    """#671: the git and gh commands this call runs under a name its text does not spell
+    plainly ('git push; gh pr merge'), else ''. When the call does not parse, a program word
+    built from variables counts if assignments in the call give it a git or gh value; it is
+    named for the refusal, never resolved to one value."""
+    try:
+        runs = [item.argv for item in normalize(command)]
+    except ParseError:
+        runs = []
+        try:
+            stages = [_strip(argv) for argv, _, _ in _simple(_cut(command, []))]
+        except ValueError:
+            stages = []
+        values = {}
+        for found, _, _ in stages:
+            for key, value in found:
+                values.setdefault(key, set()).add(value)
+        variable = r'\$\{?([A-Za-z_]\w*)\}?'
+        for _, argv, _ in stages:
+            names = list(dict.fromkeys(re.findall(variable, argv[0]))) if argv else []
+            # One value per variable per run; over 64 combinations the refusal stands (#346 budget).
+            if names and all(name in values for name in names) \
+                    and prod(len(values[name]) for name in names) <= 64:
+                for chosen in product(*(sorted(values[name]) for name in names)):
+                    value = dict(zip(names, chosen))
+                    runs.append([re.sub(variable, lambda m: value[m[1]], argv[0]), *argv[1:]])
+    plain = ' '.join(command.split())
+    found = []
+    for argv in runs:
+        name = PurePosixPath(argv[0]).name if argv else ''
+        if name in ('git', 'gh'):
+            found.append(' '.join([name, *argv[1:3 if name == 'gh' else 2]]))
+    return '; '.join(dict.fromkeys(text for text in found if text not in plain))
+
+
 def unreadable(command, cwd=None):
     """#530: what a guard cannot read in this call, '' when it can read all of it."""
+    if constructed(command):  # #671: it names the command it runs
+        return ''
     path = script_path(command, cwd)
     if path is not None:
         return f'script {path.name}'

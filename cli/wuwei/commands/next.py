@@ -81,7 +81,6 @@ LEAD_BODY = ('Propose today. Answer with one JSON object: goals, seat_policy, en
              '(id, outcome, measure, target, date, priority), never an id alone. Check open '
              'status and overlap against the items of the day and other active work.')
 # No single quote in LEAD_BODY: step quotes it without shlex, which hook paths do not import.
-SHEPHERD_BODY = 'Raise the PR for {item} and own it until merged.'
 PROPOSE = 'run wuwei plan propose '
 
 
@@ -234,13 +233,19 @@ def step(root, ran=()):
     if stuck := brief.stuck(data):
         return _row('stuck', f'Seat {stuck[0]} ended with no recorded result.',
                     f'wuwei seat stop {stuck[0]} --unmeasured "seat ended with no recorded result"')
+    for ident, finding in data.get('seat_findings', {}).items():  # #646: proposed once
+        if ident not in data['items'] and ('finding', ident) not in returned:
+            return _row('finding', f"A seat found a small fix: {finding['scope']}. Add it as a small "
+                        'item; its ticket follows after it ships.',
+                        f'wuwei plan add {ident} --from-finding', item=ident)
     rows = state.in_flight(data)
     running = {item for _, _, item in rows}
     items = data['items']
     names = approved(data)
-    building = sum(items[name]['phase'] in state.BUILD_PHASES for name in names)
+    # #648: a held item waits on its fix item and takes no seat
+    building = sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name) for name in names)
     queued = sum(items[name]['phase'] == 'planned' for name in names)
-    waiting = None
+    waiting = held = None
     found, prs = [], []  # #666: runnable rows first; a PR waits on people, so it comes last
     for name in names:
         phase = items[name]['phase']
@@ -249,7 +254,9 @@ def step(root, ran=()):
         # Inline, not wuwei.tracker: next runs on hook paths.
         ticket = data.get('tickets', {}).get(name, {}).get('id')
         label = f'{name} ({ticket})' if ticket else name
-        if phase in state.BUILD_PHASES:
+        if phase in state.BUILD_PHASES and (fix := state.held(data, name)):
+            held = held or (label, fix)
+        elif phase in state.BUILD_PHASES:
             found.append(_row('build', f'{label} is in {phase}; this is its build loop step.',
                               f'wuwei build next {name}', item=name))
         elif phase in ('gate', 'delta'):
@@ -302,6 +309,9 @@ def step(root, ran=()):
     if rows:
         return _row('wait', f'Running: {text}; SubagentStop records each seat, and a background '
                     'check reports when it exits.', 'wuwei status --line', 'wait')
+    if held:
+        return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
+                    f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
     # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
     from wuwei.commands.status import scan
     _, watch, _, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})
@@ -387,10 +397,15 @@ def resolve(row, root):
         if action['action'] == 'fix':
             return None
         if action['action'] == 'escalate':
-            return _row(name, f"{item}: {action['reason']}; park it for the owner.",
-                        f'wuwei plan park {item} --reason ' + shlex.quote(action['reason']), item=item)
+            return _row(name, f"{item}: {action['reason']}; decision {action['decision']}.",
+                        action['command'], item=item)  # #732: the command that answers it
         if action['action'] == 'raise':
             return _shepherd(root, item, action['notes'], row['why'])
+        if action['action'] == 'polish':  # #723
+            return _row('polish', f"{item}: every gate passed with {len(action['notes'])} review "
+                        'note(s); one polish round fixes them before the PR.', action['command'],
+                        item=item, then=f"Run the command, or run {action['skip']} instead when the "
+                        'notes are not small fixes inside the item; then run wuwei next.')
         return {**keep, **action, 'why': row['why'], 'then': THEN['set']}
     if name == 'dispatch':
         from wuwei import dispatch
@@ -399,22 +414,18 @@ def resolve(row, root):
 
 
 def _shepherd(root, item, notes, why):
-    """The shepherd raises the PR: its brief, its launch, or a card when it stopped without one."""
-    import shlex
-    data = state.read_state(root)
-    name = f'shepherd-{item}'
-    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
-    worktree = data['items'][item].get('worktree') or str(root)
-    if not path.is_file():
-        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+    """The shepherd raises the PR: dispatch's brief command, its launch, or a card when it
+    stopped without one (#783: one raise action for dispatch, build and next)."""
+    from wuwei import dispatch
+    action = dispatch.raise_action(root, state.read_state(root), item, notes)
+    if action.get('commands'):
         return _row('raise', f'{why} Every gate passed; brief the shepherd to raise the PR.',
-                    f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} --body '
-                    + shlex.quote(body), item=item)
-    if name not in data['seats']:
-        return {'state': 'raise', 'item': item, **brief.seat_action('shepherd', path, worktree, root),
+                    action['commands'][0], item=item)
+    if action['seats']:
+        return {'state': 'raise', 'item': item, **action['seats'][0],
                 'why': f'{why} Launch the shepherd to raise the PR.', 'then': THEN['agent']}
-    return _row('raise', f'{name} stopped without raising the PR.', f'wuwei why {item}', 'card',
-                THEN['owner'], item=item)
+    return _row('raise', f'shepherd-{item} stopped without raising the PR.', f'wuwei why {item}',
+                'card', THEN['owner'], item=item)
 
 
 def named(action):

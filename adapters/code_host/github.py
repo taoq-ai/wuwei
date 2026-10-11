@@ -9,8 +9,9 @@ import subprocess
 import sys
 from urllib.parse import quote
 
+from .._http import RateLimited, gh_limit, retry
 from wuwei.registry import Result, outward_operation
-from wuwei.redact import redact
+from wuwei.redact import reply
 from wuwei.references import pull_request, repository as _repo
 
 
@@ -61,10 +62,13 @@ def _run(args, payload=None, *, json_output=True, env=None):
     match args:
         case ['auth', 'status', '--hostname', 'github.com']:
             allowed = payload is None and not json_output
-        case ['pr', 'merge', url, '--squash', '--match-head-commit', sha]:
+        case ['pr', 'merge', url, '--squash' | '--rebase' | '--merge', '--match-head-commit', sha]:
             repo, number = _ref(url)
             allowed = (url == f'https://github.com/{repo}/pull/{number}' and
                        bool(_sha(sha)) and payload is None)
+        case ['pr', 'ready', url]:  # #726: take an owned draft out of draft
+            repo, number = _ref(url)
+            allowed = url == f'https://github.com/{repo}/pull/{number}' and payload is None
         case ['api', '--include', 'user']:
             allowed = payload is None and not json_output
         case ['api', 'user']:
@@ -101,8 +105,17 @@ def _run(args, payload=None, *, json_output=True, env=None):
         raise ValueError('unsupported gh command')
     if args[0] == 'api':
         args = [*args, '--hostname', 'github.com']
-    result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
-                            capture_output=True, text=True, timeout=TIMEOUT, env=env)
+
+    def call():
+        result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
+                                capture_output=True, text=True, timeout=TIMEOUT, env=env)
+        if result.returncode and (limit := gh_limit(result.stderr, env)):
+            raise limit
+        return result
+    try:
+        result = retry(call)
+    except RateLimited as limit:
+        raise ValueError(str(limit)) from None  # _operation shows plain ValueError text only
     if args[0] == 'auth':
         return result.returncode
     if '--include' in args and re.match(r'HTTP/\S+ 304\b', result.stdout):
@@ -124,7 +137,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
         for token in {(env or os.environ).get(key) for key in ('GH_TOKEN', 'GITHUB_TOKEN')} - {None, ''}:
             line = line.replace(token, '[REDACTED]')
         if line:
-            reason += ': ' + redact(line)[:200]
+            reason += ': ' + reply(line)[:200]
         if re.search(r'auth login|not logged|authentication', line, re.I):
             reason += '; run gh auth login'
         raise ValueError(reason)
@@ -204,6 +217,7 @@ def pr(ref, root=None):
         'merged_at': _field(value, 'merged_at', str, nullable=True),
         'created_at': _field(value, 'created_at', str),
         'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),
+        'merged_by': _login(value.get('merged_by')),
         'mergeable': _field(value, 'mergeable', bool, nullable=True),
         'merge_state': _field(value, 'mergeable_state', str),
         'additions': _field(value, 'additions', int), 'deletions': _field(value, 'deletions', int),
@@ -427,7 +441,7 @@ def protection(repo, branch, root=None):
             'classic': classic}
 
 
-    result['merge_queue'], result['squash'] = False, True
+    result['merge_queue'], narrow = False, None
     for rule in _pages(f'repos/{_repo(repo)}/rules/branches/{quote(branch, safe="")}'):
         kind = _field(rule, 'type', str)
         if kind == 'merge_queue':
@@ -456,9 +470,13 @@ def protection(repo, branch, root=None):
             ):
                 result[target] |= _field(params, source, bool)
             if params.get('allowed_merge_methods') is not None:  # #524: a ruleset narrows the methods
-                result['squash'] &= 'squash' in _list(params['allowed_merge_methods'])
-    # #524: WUWEI merges only with --squash; a repository that does not allow it is refused.
-    result['squash'] &= _field(_api(f'repos/{_repo(repo)}'), 'allow_squash_merge', bool)
+                listed = set(_list(params['allowed_merge_methods']))
+                narrow = listed if narrow is None else narrow & listed
+    # #785: the methods the repository allows, narrowed by its rulesets; all three fields are read.
+    repository = _api(f'repos/{_repo(repo)}')
+    allowed = [method for method, key in (('squash', 'allow_squash_merge'), ('rebase', 'allow_rebase_merge'),
+                                          ('merge', 'allow_merge_commit')) if _field(repository, key, bool)]
+    result['methods'] = [method for method in allowed if narrow is None or method in narrow]
     return result
 
 
@@ -599,11 +617,20 @@ def label(ref, name, present, root=None):
 
 
 @_operation
-def merge(ref, sha, root=None):
+def merge(ref, sha, method, root=None):
     repo, number = _ref(ref)
+    if method not in ('squash', 'rebase', 'merge'):  # #785
+        raise ValueError('invalid merge method')
     _run(['pr', 'merge', f'https://github.com/{repo}/pull/{number}',
-          '--squash', '--match-head-commit', _sha(sha)], json_output=False)
+          '--' + method, '--match-head-commit', _sha(sha)], json_output=False)
     return {'accepted': True, 'sha': sha}
+
+
+@_operation
+def ready(ref, root=None):
+    repo, number = _ref(ref)
+    _run(['pr', 'ready', f'https://github.com/{repo}/pull/{number}'], json_output=False)
+    return {'ready': True}
 
 
 @_operation
@@ -639,6 +666,14 @@ def auth_status(root=None):
         if code == 0:
             return Result(0)
         if code == 1:
+            # #784: gh auth status calls the API and says "token invalid" on any non-200, a
+            # rate limit included; one gh api user read tells which (#738 names a limit).
+            try:
+                _run(['api', 'user'])
+                return Result(0)
+            except ValueError as exc:
+                if str(exc).startswith('GitHub rate limit until '):
+                    return Result(2, reason=str(exc))
             return Result(1, reason='gh auth: missing')
         return Result(2, reason='gh auth: could not run')
     except (OSError, subprocess.SubprocessError, ValueError):

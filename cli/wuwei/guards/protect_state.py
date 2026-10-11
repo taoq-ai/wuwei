@@ -121,6 +121,10 @@ GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the ow
                 'them only through a card the owner answered (#529); for an unknown connector, channel or '
                 'person the planner runs bin/wuwei outbound learn. For another value it asks a decision with '
                 'options titled <key> = <value> and runs bin/wuwei config set <key> <value> --from-card D-n.')
+# #661: below strict the owner answers on a card; the planner never hands them a command.
+CARD_FIRST = ("The owner's answer on a card in this session records it: ask the card (bin/wuwei decision "
+              'show <id> --widget for a decision, the Draft card for a draft, the morning gate for goals '
+              'and voice), then run the record command the card names.')
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
@@ -142,6 +146,32 @@ _CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_O
 # operand and tee do, so they are not here). #471: shell.reads adds the classifier's
 # read-only words (cat, jq, sed -n Np, find without an action).
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
+# #730: what an awk or sed script runs or writes. ponytail: a token scan, not a parser; it
+# over-matches (any e, w or W command or flag word, a pipe, a redirect), and a script it
+# cannot clear keeps the refusal.
+_SCRIPT_EFFECT = r'system|getline|[|>]|(?<![A-Za-z])[gpiImM0-9]*[ewW](?![A-Za-z])'
+
+
+def _text_script(argv):
+    """#730: awk or sed whose script runs nothing and writes no file only reads."""
+    words = argv[1:]
+    return (bool(argv) and Path(argv[0]).name in ('awk', 'sed')
+            and all(re.fullmatch(r'-[nEr]+|-e|-F.*', word) for word in words if word.startswith('-'))
+            and not re.search(_SCRIPT_EFFECT, ' '.join(word for word in words if not word.startswith('-'))))
+
+
+def _pattern_args(argv):
+    """#730: grep prints matched lines, never its pattern, so its words are data in any pipe or
+    redirect; --label, rg --replace and rg --pre print or run their words.
+    ponytail: -l and -H print file names, and a file named as a command must already exist;
+    ls | tclsh reaches that today too."""
+    from wuwei.shell import git_kind
+    program = Path(argv[0]).name if argv else ''
+    if program == 'git':
+        return argv[1:2] == ['grep'] and git_kind(argv[1:]) == 'read'
+    return (program == 'grep' and not any(word.startswith('--label') for word in argv)
+            or program == 'rg' and not any(re.match(r'--(?:replace|pre)|-[A-Za-z]*r', word)
+                                           for word in argv[1:]))
 
 
 def _positional(words):
@@ -209,6 +239,17 @@ def _strict(cwd):
         return True
 
 
+def _record_card(identifier, cwd):
+    """#599: the card hash of today's D-n record, as its widget's record command names it."""
+    from wuwei import decision
+    try:
+        root = _workspace(cwd) or worktree_workspace(cwd)
+        fields = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))[0]
+        return decision.card_hash(identifier, fields)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def _owner_relevant(text, script=False):
     """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
     from wuwei.shell import mentions
@@ -219,8 +260,8 @@ def _owner_relevant(text, script=False):
         and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
-# #357, #354, #493: records the planner may write from its own answered gate question.
-_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''),
+# #357, #354, #493, #661: records the planner may write from its own answered gate question.
+_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''), ('decision', 'outcome'),
                ('drafts', 'approve'), ('drafts', 'drop'), ('config', 'set')}
 
 
@@ -241,22 +282,27 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
     xargs = relevant and mentions(text, ('xargs',), script=script)
     unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
     readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS
-                                or reads(c.argv, cwd) and snippet_write(c.argv) != '')
+                                or reads(c.argv, cwd) and snippet_write(c.argv) != ''
+                                or _text_script(c.argv) or _pattern_args(c.argv))
                for c in commands]
     # A pipe feeds an executor unless every later stage is a reader with no redirect.
     feeds = [False] * len(commands)
     for index in range(len(commands) - 2, -1, -1):
         feeds[index] = commands[index].separator == '|' and (
             not readers[index + 1] or bool(commands[index + 1].writes) or feeds[index + 1])
+    kept = None  # #730: the stage whose mention may reach an executor, for the reason
     for index, command in enumerate(commands):
         argv = command.argv
         named = len(_WUWEI.findall(' '.join([*argv, *command.env.values()])))
         # A reader's mentions are only text when it stands alone: no redirect, no group or
         # subshell (scope depth 1, or 2 for a top-level pipe stage), no pipe into an executor.
+        # #730: a pattern program never prints its words, so they are text anywhere.
         piped = command.separator == '|' or index > 0 and commands[index - 1].separator == '|'
-        if not readers[index] or (not command.writes and not feeds[index]
-                                  and len(command.scope) == (2 if piped else 1)):
+        if not readers[index] or _pattern_args(argv) or (not command.writes and not feeds[index]
+                                                         and len(command.scope) == (2 if piped else 1)):
             unseen -= named
+        elif named:
+            kept = (shlex.join(argv), _WUWEI.search(' '.join([*argv, *command.env.values()]))[0])
         action = _wuwei_action(argv)
         # A renamed or symlinked launcher is the CLI too; checked only for a literal owner pair.
         if (action is None and argv and '/' in argv[0] and _owner_reason(_pair(argv[1:]))
@@ -278,9 +324,11 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             hidden = (is_opaque(argv) and '-m' not in argv[1:]
                       or re.fullmatch(_INTERPRETER, program) and (named or any(
                           re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
-            if hidden or re.search(_CLI_WORD, ' '.join(words)):
+            word = re.search(_CLI_WORD, ' '.join(words))
+            if hidden or word:
                 return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                           'guard can read it; owner actions run in a host terminal.')
+                           'guard can read it; owner actions run in a host terminal.'
+                           f' Stage: {shlex.join(argv)}; word: {word[0] if word else program}.')
             continue
         group, verb = _pair(action)
         if xargs and not (re.fullmatch(r'[a-z][\w-]*', group) and (
@@ -314,21 +362,38 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                     # #493: approve needs the owner's Send answer; --file/--edit needs Send with an edit.
                     edited = any(word in ('--file', '--edit') or word.startswith('--file=') for word in action)
                     ids = [word + (':edit' if edited else ':send') for word in ids]
-                if group in ('mcp', 'decide', 'drafts') and ids and set(ids) <= edits[0]:
-                    continue
                 # #529: the card the planner asked; the CLI checks the owner's answer itself.
-                cards = [value for flag, value in zip(action, action[1:]) if flag == '--from-card']
-                cards += [word.split('=', 1)[1] for word in action if word.startswith('--from-card=')]
+                cards = [value for flag, value in zip(action, action[1:]) if flag in ('--card', '--from-card')]
+                cards += [word.split('=', 1)[1] for word in action if word.startswith(('--card=', '--from-card='))]
+                # #661: a decision's card hash is the owner's answer the gate recorded on that card;
+                # #599: or the card the widget's record command names for an asked id.
+                unknown = [card for card in cards if not re.fullmatch(r'[0-9a-f]{1,64}', card) or not any(
+                    topic.startswith(f'{ident}={card}') for ident in ids for topic in edits[0]) and not any(
+                    ident in edits[0] and card == _record_card(ident, cwd) for ident in ids)]
+                if group in ('decide', 'decision') and unknown and ids and not _strict(cwd):
+                    return 1, (f'Unknown card hash {unknown[0]!r}: it is not an answer the owner gave on the '
+                               f'card. Ask it with bin/wuwei decision show {ids[0]} --widget and run the record '
+                               'command the card names.')
+                if group in ('mcp', 'decide', 'decision', 'drafts') and ids and set(ids) <= edits[0]:
+                    continue
                 if ((group, verb) == ('config', 'set') and not xargs and len(cards) == 1
                         and re.fullmatch(r'D-[1-9][0-9]*', cards[0]) and cards[0] in edits[0]):
                     continue
-                return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
+                if not _strict(cwd):  # #661: a card, never a host-terminal command below strict
+                    return 1, reason if group == 'config' else CARD_FIRST
+                # The owner's pasted command prompts y/N, so the card hash words drop.
+                shown = argv if group not in ('decide', 'decision') else [
+                    word for before, word in zip(['', *argv], argv)
+                    if before not in ('--card', '--from-card') and not word.startswith(('--card', '--from-card'))]
+                return 1, f'{reason} Run it in a host terminal: {shlex.join(shown)}'
             return 1, reason
     # #471: a call made only of readers runs nothing, so a mention in its input is data.
     if relevant and unseen > 0 and not all(readers):
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
         return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                   'guard can read it; owner actions run in a host terminal.')
+                   'guard can read it; owner actions run in a host terminal.'
+                   + (f' Stage: {kept[0]} feeds a pipe or file; word: {kept[1]}.' if kept
+                      else ' The mention sits in a here-doc, comment or input no stage shows.'))
     return None
 
 
@@ -369,7 +434,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'traces.digest.json', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
             return True
         if tail in (('memory', 'ledger.jsonl'), ('memory', 'targets.json'), ('memory', 'rehearsals.json')):
             return True

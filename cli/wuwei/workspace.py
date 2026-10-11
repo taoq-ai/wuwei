@@ -70,8 +70,10 @@ SCHEMA = {
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
                "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
+               "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
+               "merge_method": (str, "auto", ("auto", "squash", "rebase", "merge")),  # #785
                "gates": {"floor": (str, "standard", ("light", "standard", "full")),
                          "light_max_lines": (int, 100, 0),
                          "data_paths": [(str, None)],  # #657: data globs (a trailing / is a directory) that never count
@@ -84,7 +86,8 @@ SCHEMA = {
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
     # #530: "today" (the owner's autonomous answer) lets a merge on a configured repository through below strict.
-    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today"))},
+    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today")),
+              "owner_paths": [(str, None)]},  # #675: globs only the owner merges, whatever the grant
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
     "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
                              "target": (str, None), "scope": (str, "always", ("always",)),
@@ -124,7 +127,8 @@ SCHEMA = {
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
-             "reservation_timeout_seconds": (int, 14400, 1)},
+             "reservation_timeout_seconds": (int, 14400, 1),
+             "rate_limit_wait_seconds": (int, 120, 0)},
     "consolidation": {"archive_after_days": (int, 30, 0),
                       "similarity_threshold": (float, 0.85)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
@@ -140,7 +144,8 @@ SCHEMA = {
               "second_opinion_role": (str, "quality", ("arch", "quality", "security")),
               "max_rounds": (int, 2, 1),  # #623: fix rounds per item before notes ship or a blocker parks
               "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
-                                  "full": (int, 0, 0)}},
+                                  "full": (int, 0, 0)},
+              "polish": (str, "offer", ("never", "offer", "always"))},  # #723: one notes-only round after a pass
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
               "ping_url": (str, "")},
@@ -152,6 +157,8 @@ SCHEMA = {
     "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
+    "nudges": {"mode": (str, "", ("", "off", "next", "all")),  # #742: "" follows autonomy.mode
+               "ttl_hours": (int, 24, 1), "max_open": (int, 20, 1)},  # #786
     "decisions": {"wait_hours": (int, 24, 1),
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
@@ -237,7 +244,7 @@ SCHEMA = {
             {"pattern": r"mcp__(?=.*atlassian).*__(?:\w*_)?(create|update)Confluence.*", "channel": "docs"},
         ]],
         # #492: the owner's alias of an MCP server id to its channel.
-        "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other"))},
+        "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other", "local"))},
         # #492: the owner's approval mode of an MCP server id; absent is the class default.
         "modes": {"*": (str, None, ("send", "draft", "refuse"))},
         # #496: a connector's default audience class for what it has not seen, by server id.
@@ -326,8 +333,58 @@ def find_workspace(start=None, *, use_environment=True):
             if (root / '.wuwei').is_symlink():
                 raise ValueError('.wuwei must not be a symlink')
             return root
+    # #735: a configured checkout beside the workspace, read only after the walk fails.
+    roots = sorted(root for root, checkouts in _indexed().items()
+                   if any(start.is_relative_to(path) for path in checkouts)
+                   and (Path(root) / '.wuwei').is_dir() and not (Path(root) / '.wuwei').is_symlink())
+    if len(roots) == 1:
+        return Path(roots[0])
+    if roots:
+        raise FileNotFoundError(f'{start} is a configured repository of {len(roots)} workspaces: '
+                                f'{", ".join(roots)}; pass --workspace <path> (or set '
+                                'WUWEI_WORKSPACE=<path>) to pick one')
     raise FileNotFoundError(f"No .wuwei/ found from {start}; run from the workspace, set "
                             "WUWEI_WORKSPACE=<path> or pass --workspace <path> (wuwei init creates one)")
+
+
+INDEX = '.config/wuwei/workspaces.json'  # #735: under the home folder; never a .wuwei/ there
+
+
+def _indexed():
+    """#735: the per-user index {root: [checkout]}, absolute strings; missing or damaged is empty."""
+    import json
+    try:
+        data = json.loads((Path.home() / INDEX).read_text(encoding='utf-8'))
+        return {root: list(checkouts) for root, checkouts in data.items()
+                if Path(root).is_absolute() and isinstance(checkouts, list)
+                and all(isinstance(path, str) and Path(path).is_absolute() for path in checkouts)}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {}
+
+
+def index(root, config):
+    """#735: record root's configured checkouts in the per-user index find_workspace reads;
+    the root itself and the home folder or its parents are never indexed."""
+    import json
+    root, home = Path(root).resolve(), Path.home().resolve()
+    checkouts = sorted({str(path) for repo in config['repos']
+                        if (path := (root / Path(repo['path']).expanduser()).resolve()) != root
+                        and not home.is_relative_to(path)})
+    data = _indexed()
+    data.pop(str(root), None)
+    if checkouts:
+        data[str(root)] = checkouts
+    path = Path.home() / INDEX
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # ponytail: no lock; two writers at once can drop one root's entry until its next config
+    # write or init --upgrade. Lock the file if several workspaces are set up concurrently.
+    atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
+
+
+def owner_cli(root):
+    """#735: the owner command prefix that works from any folder (the leading flag, #354)."""
+    import shlex
+    return f'bin/wuwei --workspace {shlex.quote(str(root))}'
 
 
 def worktree_workspace(path):
@@ -430,6 +487,11 @@ def verbosity(config, surface):
     """The owner's level for one surface: its own setting, else owner.verbosity.default."""
     levels = config['owner']['verbosity']
     return levels[surface] or levels['default']
+
+
+def nudge_mode(config):
+    """The effective nudges.mode (#742): an empty setting follows autonomy.mode."""
+    return config['nudges']['mode'] or ('off' if config['autonomy']['mode'] == 'autonomous' else 'next')
 
 
 def now():
@@ -624,7 +686,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 16  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 17  # Bump when the parse, the schema, the defaults or the checks change.
 # #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so

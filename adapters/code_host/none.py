@@ -44,8 +44,12 @@ def comment(ref, text, thread, root=None):
     return record_none("code_host", "comment", root, measurement=False)
 
 
-def merge(ref, sha, root=None):
+def merge(ref, sha, method, root=None):
     return record_none("code_host", "merge", root, measurement=False)
+
+
+def ready(ref, root=None):
+    return record_none('code_host', 'ready', root, measurement=False)
 
 
 def label(ref, name, present, root=None):

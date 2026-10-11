@@ -174,7 +174,7 @@ Day and sessions
   warn       watch: not installed
       fix: wuwei watch install
       ...
-doctor: 1 fail, 1 warn, 0 unmeasured
+doctor: 1 fail, 1 warn, 0 unmeasured, 0 waiting
 ```
 
 Set the protections when you are ready, and run `bin/wuwei watch install` when you want the
@@ -205,7 +205,7 @@ the lead proposes them, `plan.md` shows them as provisional and the approval que
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>"`.
+`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>" [--note "<your words>"]`.
 
 The gate card also carries the day's [pace](concepts.md#pace). `Approve` takes the
 recommended pace; `Approve at careful`, `Approve at steady` or `Approve at fast` approves the
@@ -232,9 +232,10 @@ leaves the command to you. A deploy nobody planned stops on its own card, the
 [grant](concepts.md#grants) question.
 
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
-serves; the planner runs `wuwei plan add <item> --goal G-n` and the item joins today's plan. A
-candidate the discovery sweep found goes through `wuwei plan add <item>` and the intraday
-start policy.
+serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
+joins today's plan. Every builder and gate brief for it quotes your words under `Approved as:`,
+and `wuwei why <item>` shows them. A candidate the discovery sweep found goes through
+`wuwei plan add <item>` and the intraday start policy.
 
 The planner asks the morning gate as question cards. After you approve, it records the goals
 and the plan, and you can run the last two commands yourself. A clean first plan with one
@@ -247,7 +248,7 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI 1 planned · seats 0/1 | pages 0 · nudges 0 · observe
+WUWEI 1 planned · seats 0/1 | pages 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
@@ -317,14 +318,28 @@ executes each returned action unchanged:
    `continue` action with the FIX verdict files as feedback. The planner launches a fresh
    Agent with its `prompt`; Claude Code's Agent takes no `resume`. Then it runs the build
    loop again until `done`, which moves the item to `delta`.
-5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
+   A [PARK](concepts.md#park) or ESCALATE verdict returns `escalate` with `decision`, a
+   card `dispatch next` wrote once from the verdict, and `command`. Below strict the
+   planner runs `wuwei decision route D-n`; under strict you answer it from
+   `wuwei decision show D-n --widget`. Answered `fix`, the next `dispatch next` opens the
+   fix round; answered `park`, it parks the item on the card. `build next` prints the
+   same answer.
+5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that did not pass, and `seats` holds a
    `continue` action per seat with its `prompt`, `resume` (the seat's agent ID) and a
    `receive` call with `--round delta`. The planner launches it as a fresh Agent, which
-   continues the same seat. After the delta verdicts it returns `raise` with review notes,
-   or `escalate`. A light item has no delta review: its `continue` feedback starts
+   continues the same seat. `dispatch next` records the head the fix round left on the
+   reviewer's seat, and the `continue` feedback names it. The delta verdict's `Head:` is that
+   head, whether the planner continues the seat in its session or as a fresh Agent. After
+   the delta verdicts it returns `raise` with review notes,
+   the next fix round, or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
+   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. With no round left the item parks with its decision
+   record, and `escalate` names it in `decision` with the `command` that answers it. A
+   light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
-   <file> --item <item>` opens the PR and moves the item to `raised`. `wuwei pr state`
+   <file> --item <item>` opens the PR, links it to the item and moves the item to `raised`.
+   The shepherd opens it this way. A `gh pr create` for a recorded item that links no PR
+   warns naming `wuwei pr raise ... --item <item>` below strict and is refused under strict. `wuwei pr state`
    reads the host; `wuwei pr act <ref>` returns the next PR action, including a post-PR fix
    round. When the host reports the PR merged, the item is `merged`, whatever round it
    was in.

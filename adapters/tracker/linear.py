@@ -137,3 +137,9 @@ def created(item, *, root=None):
     if not isinstance(value, dict) or not isinstance(value.get('createdAt'), str):
         raise Failure('missing issue creation time')
     return value['createdAt']
+
+
+@operation('linear.labels')
+def labels(create, *, root=None):
+    """#670: Linear moves workflow states, not labels, so it needs none."""
+    return {'created': [], 'missing': []}

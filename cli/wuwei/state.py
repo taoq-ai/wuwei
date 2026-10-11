@@ -141,14 +141,14 @@ def _event_payload(kind, payload):
     return payload
 
 
-def append_event(kind, payload=None, root=None, *, directory=None):
+def append_event(kind, payload=None, root=None, *, directory=None, timeout=30):
     """Append one event using the shared clock, never a caller timestamp."""
     payload = _event_payload(kind, payload)
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
     with (directory / 'state.lock').open('a') as lock:
-        lock_ex(lock, 'state.lock')
+        lock_ex(lock, 'state.lock', timeout)
         _append_event(kind, payload, directory)
 
 
@@ -251,7 +251,8 @@ STATE_PRODUCERS = {
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer)'),
+                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer) '
+                          'or wuwei watch and wuwei pr state (a merged PR closes its merge card)'),
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
@@ -268,16 +269,19 @@ STATE_PRODUCERS = {
     'negotiation_loops': 'wuwei steward run or wuwei dispatch next',
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
+    'seat_findings': 'wuwei note --fix',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session, wuwei listen (remote sessions) or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
     'outbound_threads': 'wuwei outbound learn',
-    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide',
+    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide'
+              ' or wuwei watch and wuwei pr state (a merged PR closes its merge card)',
     'cruise_cards': 'wuwei plan propose',
     'pace': 'wuwei plan approve or wuwei plan set pace=', 'pace_card': 'wuwei plan propose',
     'decision_shadows': 'wuwei decision route',
+    'main_broken': 'wuwei build',
 }
 
 
@@ -307,6 +311,14 @@ def check_running(build):
     except PermissionError:
         pass
     return marker
+
+
+def held(data, name):
+    """#648: the fix item a held build waits on while that item has not ended, else None."""
+    action = (data.get('builds', {}).get(name) or {}).get('action') or {}
+    fix = action.get('fix') if action.get('action') == 'wait' else None
+    ended = data['items'].get(fix, {}).get('phase') in ('merged', 'parked', 'escalated')
+    return fix if fix and not ended else None
 
 
 def mid_round(data):
@@ -345,9 +357,12 @@ def _producer_error(parts):
                     'title': 'wuwei plan add or wuwei pr claim',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
+                    'approved_as': 'wuwei plan approve or wuwei plan add',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
+                    'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
                     'docs': 'wuwei plan set or wuwei docs page',
-                    'assumption': 'wuwei decision route --external or wuwei sweep'}.get(
+                    'assumption': 'wuwei decision route --external or wuwei sweep',
+                    'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
                         parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')
 
@@ -413,7 +428,7 @@ def set_state(path, value, root=None):
     return write_state(update, root, kind='state.set', payload={'path': path, 'value': value})
 
 
-def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):
     """Link one owned PR to its item in the same write as day ownership."""
     from wuwei.references import pull_request
     ref = pull_request(ref)
@@ -442,6 +457,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
         payload['head'] = head
     if reviewers is not None:
         payload['reviewers'] = reviewers
+    if draft:
+        payload['draft'] = True
     if raised:
         return _write_state(update, root, reserved=False, kind='pr.raised', payload=payload)
     return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)

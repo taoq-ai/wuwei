@@ -28,6 +28,10 @@ LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, th
 # #667: the values the day changes under a seat are read live, never copied into the brief.
 LIVE = ('Live: run bin/wuwei why {item} --json when you start and again before your verdict or handoff; '
         'its docs, ticket and spec fields are the record at that moment. This brief copies none of them.')
+# #645: one doctor for every seat; install findings belong to the owner.
+DOCTOR = ('Doctor: run the launcher in .wuwei/executable with doctor; another copy hands over '
+          "to it. Its Install rows and its workspace executable row are the owner's: name them "
+          'in your handoff, never as a Next: step, and never run their fix.')
 
 
 def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
@@ -58,6 +62,69 @@ def checks_line(pace, tests):
         return (f'Checks: fast; {tests} on the test files your diff changes, never the full suite; '
                 'CI is the gate; bin/wuwei build check runs them')
     return None
+
+
+# #733: the conclusions pr_actions._fix reports as red (everything but success, neutral, skipped)
+RED = ('failure', 'error', 'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure')
+
+
+def ci_jobs(text, tree):
+    """#733: sorted '<workflow path>#<job id>' of each worktree workflow job the text names:
+    'job <name>', '<name> job', or the fix-feedback line '<name>[ (<matrix>)]: <red conclusion>',
+    <name> being the job id or its name:."""
+    from wuwei import calibrate
+    found = set()
+    for _, relative, flow in calibrate._workflows(Path(tree), []):
+        for job in flow['jobs']:
+            for name in {job['id'], job['name'][0]}:
+                name, quote = re.escape(name), '[`\'"]?'
+                if (re.search(rf'(?<![\w-])job[ \t]+{quote}{name}{quote}(?![\w-])', text, re.I)
+                        or re.search(rf'(?<![\w-]){quote}{name}{quote}[ \t]+job\b', text, re.I)
+                        or re.search(rf'^[ \t]*{name}(?: \([^)\n]*\))?:[ \t]*(?:{"|".join(RED)})\b', text, re.M)):
+                    found.add(f"{relative}#{job['id']}")
+    return sorted(found)
+
+
+def ci_steps(refs, tree):
+    """#733: (steps, missing) for recorded refs. steps: one dict per run step in ref order and
+    file order, numbered from 1: {'n', 'label', 'source', 'run'}. missing: refs whose job is
+    not in the worktree at this head. Raises ValueError when a recorded workflow is unreadable."""
+    from wuwei import calibrate
+    tree, found, jobs = Path(tree), [], {}
+    if refs and (tree / '.github/workflows').is_symlink():
+        raise ValueError('CI workflow directory .github/workflows is a symlink; fix it, then retry')
+    for _, relative, flow in calibrate._workflows(tree, found):
+        jobs.update({f"{relative}#{job['id']}": (relative, job) for job in flow['jobs']})
+    files = {ref.rpartition('#')[0] for ref in refs}
+    for row in found:
+        path = row['source'].rpartition(':')[0]
+        if row['kind'] == 'skipped' and path in files:
+            raise ValueError(f"CI workflow {path} unreadable ({row['value']}); fix the file, then retry")
+    steps, missing = [], [ref for ref in refs if ref not in jobs]
+    for ref in refs:
+        relative, job = jobs.get(ref, (None, {'steps': []}))
+        for step in job['steps']:
+            if step['run']:
+                steps.append({'n': len(steps) + 1, 'label': f"{job['id']} / {step['name'] or 'unnamed'}",
+                              'source': f"{relative}:{step['line']}", 'run': step['run']})
+    return steps, missing
+
+
+def ci_block(refs, tree):
+    """#733: the step block for recorded refs, ending in a newline; '' when there are none."""
+    if not refs:
+        return ''
+    steps, missing = ci_steps(refs, tree)
+    named = ', '.join('{1} ({0})'.format(*ref.rpartition('#')[::2])
+                      for ref in [r for r in refs if r not in missing] or refs)
+    lines = [f'CI steps: this item fixes CI job {named}. Run every step below locally from the worktree '
+             'root, not only the one that was red, and cite each as one row in your verdict or handoff: '
+             'CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>.']
+    for step in steps:
+        lines.append(f"CI step {step['n']}: {step['label']} ({step['source']})")
+        lines += ['    ' + line for line in step['run'].splitlines()]
+    lines += [f'CI job {ref}: not in the workflow file at this head' for ref in missing]
+    return '\n'.join(lines) + '\n'
 
 
 def mandate(root):
@@ -158,12 +225,15 @@ def _user_messages(path):
             yield content
 
 
+def reference(text):
+    """#660: the brief path of the first line of text that starts with the marker, else None."""
+    return next((line[len(REFERENCE_PREFIX):] for line in text.splitlines()
+                 if line.startswith(REFERENCE_PREFIX)), None)
+
+
 def transcript_reference(path):
     """Read the same brief reference for session binding and seat stop."""
-    for content in _user_messages(path):
-        if content.startswith(REFERENCE_PREFIX):
-            return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
-    return None
+    return next(filter(None, map(reference, _user_messages(path))), None)
 
 
 def subagent_transcript(payload):
@@ -422,8 +492,15 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
         scratch = root / workspace.SCRATCH / item / role  # #647: one scratch directory per seat
         header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
-                      'no scratchpad; create it if missing and write every temporary file there, '
+                      'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
+                      'when it holds files you did not write, and write every temporary file there, '
                       "never at the scratchpad root or in another item's directory")
+        if gate:  # #672: a gate probe never writes in the builder's worktree
+            header.append('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX='
+                          f'{shlex.quote(str(scratch / "pycache"))}; set it on every command that '
+                          'runs code, and run every probe, test and mutant in a copy of the worktree '
+                          'under your scratch directory, never in the worktree itself')
+        header.append(DOCTOR)
         from wuwei import mcp
         names = mcp.unmeasured(root)
         if names:
@@ -478,6 +555,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if role == 'builder' and tree:
             from wuwei import specmode
             block = specmode.brief_block(config, item, current, tree)
+        refs, ci = [], ''
+        if (role == 'builder' or gate) and tree:  # #733: the CI job this item fixes, every step
+            refs = sorted({*current.get('ci_jobs', ()), *ci_jobs(body + '\n' + (current.get('title') or ''), tree)})
+            ci = ci_block(refs, tree)
+            ci = '' if ci.rstrip('\n') in body else ci  # a second opinion copies the block
         depth = None
         if role == 'builder' or gate:
             from wuwei import dispatch
@@ -496,12 +578,12 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                   'the main worktree; report it, do not build one')
                 elif found:
                     header.append(f'Check interpreter: {command} runs with {found[0]} ({found[1]})')
-            current, tests = pace.current(data, config), repo.get('tests', '')
+            speed, tests = pace.current(data, config), repo.get('tests', '')
             # #600: nothing runs locally; fast pace with repos.tests runs the tests the diff touches
-            if not fast_checks.commands(root, config, repo, tree) and not (current == 'fast' and tests):
+            if not fast_checks.commands(root, config, repo, tree) and not (speed == 'fast' and tests):
                 header.append(f'{fast_checks.NONE[0].upper()}{fast_checks.NONE[1:]}. '
                               'Write "checks: none configured" in the PR body.')
-            elif line := checks_line(current, tests):
+            elif line := checks_line(speed, tests):
                 header.append(line)
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
@@ -524,13 +606,25 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header.append(line)
         if role == 'builder' or gate:
             header.append(LIVE.format(item=item))
+            if current.get('approved_as'):  # #731: the owner's recorded approval settles the scope question
+                header.append(f"Approved as: {current['approved_as']}")
         header += rulings(body, directory, tree, data)
+        strict = workspace.posture(config)[0] == 'strict'
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):
                 if other != pr:
                     host = host or registry.load('code_host', config)
-                    header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
-        text = '\n'.join(header) + '\n\n' + body + '\n' + block
+                    try:
+                        header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
+                    except ValueError as exc:
+                        # #740: a ticket is an issue, which the pulls endpoint 404s on (#606); a
+                        # reference is optional evidence, so it never refuses below strict.
+                        from wuwei import references
+                        if strict and not references.not_found(exc):
+                            raise
+                        header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
+                                      'kept as a reference')
+        text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))
         import hashlib
         payload = {'name': name, 'item': item, 'role': role, 'path': relative, 'gate': gate,
@@ -563,6 +657,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         fresh['items'][item]['worktree'] = str(tree)
                 if role == 'builder' and item in fresh['items']:
                     fresh['items'][item]['depth'] = depth
+                if refs and item in fresh['items']:
+                    fresh['items'][item]['ci_jobs'] = refs
                 if role == 'builder':
                     sessions.claim(fresh, item, session, workspace.now(),
                                    config['sessions']['stale_seconds'], cwd=str(Path.cwd()))
@@ -573,5 +669,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             if created:
                 output.unlink()
             raise
+        if scratch.is_dir() and any(scratch.iterdir()):  # #734: a new seat never inherits files
+            # ponytail: one move per timestamp; a fixed WUWEI_NOW moving twice is an OSError (exit 2)
+            scratch.rename(scratch.with_name(f'{role}.{workspace.now():%Y%m%dT%H%M%S.%f}'))
         scratch.mkdir(parents=True, exist_ok=True)
         return relative

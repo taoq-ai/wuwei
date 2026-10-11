@@ -78,10 +78,12 @@ def _integrity(root):
 
 
 def _config(root):
+    from wuwei import env
     from wuwei.commands.config import missing
     try:
+        env.load(root)  # #601: the watch is long-lived; read .wuwei/env at each beat, as doctor does
         names = missing(workspace.load_config(root))
-    except workspace.ConfigError as exc:
+    except ValueError as exc:  # ConfigError is one
         return 'failed', str(exc)
     return ('failed', 'missing ' + ', '.join(names)) if names else ('ok', 'complete')
 
@@ -209,7 +211,15 @@ def beat(root):
                                          + f'heartbeat {first} failed: {probes[first]["value"]}')
         record = {'health': status, 'probes': probes, 'drift': drift, 'page': page,
                   'ping': _ping(root, status)}
-        watch.save(root, {'heartbeat': record}, kind='heartbeat: clock', payload=record)
+        changes = {'heartbeat': record}
+        try:  # #659: status --line prints this when its own compute overruns its budget
+            from wuwei.commands import status as line
+            suffix = f' · as of {workspace.now():%H:%M}'
+            changes['status_line'] = line.line(line.snapshot(workspace.day_dir(root), line=True),
+                                               line.WIDTH - len(suffix)) + suffix
+        except (*watch.ERRORS, RecursionError):
+            pass  # no cache: status --line waits for its own compute
+        watch.save(root, changes, kind='heartbeat: clock', payload=record)
         for name in drift:
             print(f'heartbeat: behaviour drift: {name}', flush=True)
         if page:

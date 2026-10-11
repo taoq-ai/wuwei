@@ -6,7 +6,7 @@ import sys
 
 from wuwei import novelty, state, workspace
 from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, uncalibrated, decided_record, evaluate, lens_table, lint_file, margin,
-                            option_id, options, owner_confirm, owner_record, present, record_rejection,
+                            no_card, option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path, widget)
 from wuwei.exits import RACE, SYMLINK
 
@@ -29,6 +29,8 @@ def register(subparsers):
     outcome = commands.add_parser('outcome', help='Record an owner choice from the host terminal')
     outcome.add_argument('id')
     outcome.add_argument('option')
+    outcome.add_argument('--card', '--from-card', dest='card', metavar='HASH',
+                         help="the owner's answer hash on the card (#661; the CLI binds it with #599)")
     outcome.set_defaults(func=run)
     show = commands.add_parser('show', help='Print a decision at the owner verbosity level')
     show.add_argument('id')
@@ -139,7 +141,7 @@ def show(args):
         text = path.read_text(encoding='utf-8')
         fields, _ = evaluate(text, lens_table(config) if args.widget else None)
     except FileNotFoundError:  # #362: a state answer; --widget callers read JSON, so a finding there.
-        return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges lists open decisions.'
+        return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges --all lists open decisions.'
     except (OSError, UnicodeError) as exc:
         return 2, (f'decision show: could not read {path.relative_to(root)}: {type(exc).__name__}; '
                    'check the file is readable, then run bin/wuwei doctor')
@@ -161,7 +163,7 @@ def show(args):
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         from wuwei.decision import config_keys  # #529: a config card records through config set
         record = CONFIG_RECORD if config_keys(fields) else RECORD
-        card = record_widget(args.id, fields, record, level=level)
+        card = record_widget(args.id, fields, record, level=level, root=root)
         novel = novelty.routed(state.read_state(root), args.id)
         if novel:
             card['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
@@ -200,10 +202,15 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
     if where and fields['Reversibility'] != 'two-way':
         return 1, (f'decision: only a two-way decision is decided from the DM; '
-                   f'run bin/wuwei decide {args.id} {args.option} in a host terminal')
-    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
+                   f'run {workspace.owner_cli(root)} decide {args.id} {args.option} in a host terminal')
+    card = getattr(args, 'card', None)
+    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.',
+                                   card, fields)
+    if not where and card is not None:
+        return 1, no_card(root, args.id, args.option)
     if not where:
-        return 1, 'decision: owner confirmation declined; rerun bin/wuwei decide <id> <option> in a host terminal and answer y'
+        return 1, (f'decision: owner confirmation declined; rerun {workspace.owner_cli(root)} decide <id> <option> '
+                   'in a host terminal and answer y')
     if path.read_text(encoding='utf-8') != text:
         return 2, f'decision: record changed during confirmation; {RACE}'
     reversed_choice = previous is not None and previous['option'] != args.option
@@ -271,10 +278,10 @@ def undo(args, *, root=None, where=None):
         return 1, f'decision undo: {exc}'
     row = state.read_state(root).get('decision_outcomes', {}).get(args.id)
     if not isinstance(row, dict) or row.get('decided_by') != 'mandate' or not row.get('undo_until'):
-        return 1, f'{args.id} has no undo window; reverse it with wuwei decide {args.id} <option>'
+        return 1, f'{args.id} has no undo window; run {workspace.owner_cli(root)} decide {args.id} <option> to reverse it'
     if not cruise.window(row):
         return 1, (f'undo window closed at {cruise.clock(row["undo_until"])}; '
-                   f'reverse it with wuwei decide {args.id} <option>')
+                   f'run {workspace.owner_cli(root)} decide {args.id} <option> to reverse it')
     answer = (args.answer or 'Undo').strip().removesuffix(' (Recommended)').strip().casefold()
     if answer == 'keep':
         return 0, 'kept'

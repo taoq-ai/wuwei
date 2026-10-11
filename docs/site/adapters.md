@@ -62,7 +62,7 @@ the exit code.
 
 | Adapter | Required credential or configuration |
 | --- | --- |
-| code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
+| code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. When it fails, WUWEI reads `gh api user` once: a GitHub rate limit shows in doctor as `gh` waiting, rate limited until <time>, never as missing auth. |
 | tracker.linear | `LINEAR_API_KEY` |
 | tracker.jira | `JIRA_SITE` (an `https://` origin, kept from seats but not redacted), `JIRA_EMAIL` and `JIRA_API_TOKEN`; `tracker.project` names the project key |
 | tracker.github | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only, or your gh login with `tracker.auth = "gh"` ([below](#github-tracker-through-your-gh-login)); `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |
@@ -96,6 +96,11 @@ gh's own text. On either path a GraphQL error reads `GitHub error response for
 <owner>/<repo>#<n>: <message>`: the ticket, when the lookup names one, and GitHub's first
 error message, on one line, redacted and cut at 160 characters. With `tracker.board`, the Status write needs the `project` scope, which a
 default gh login lacks: run `gh auth refresh -s project`.
+Without a board, in review is the label named by `tracker.states.in_review`: `setup` and
+`init --upgrade` in a host terminal create it, and doctor's `tracker labels` row warns while it is missing.
+When `pr raise` or `tracker move` finds it missing, WUWEI creates it on your own tracker under
+observe and guarded; under strict or on an external tracker it prints the label,
+`bin/wuwei init --upgrade` and `bin/wuwei tracker move <item> in_review`.
 
 The trade-off: the token is scoped to issues and projects; your gh login is broad (classic
 scopes such as `repo` and `workflow`). With the opt-in, the tracker path gives up least

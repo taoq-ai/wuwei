@@ -1,7 +1,8 @@
 """GitHub Issues and Projects tracker adapter (GraphQL, GITHUB_TRACKER_TOKEN or the gh login).
 
 Ticket ids are owner/repo#N. With tracker.board (owner/number) a transition sets the board's
-Status field; without one, in review is a label and done closes the issue. With
+Status field; without one, in review is a label (created by setup, init --upgrade, or on a
+failed move, #670) and done closes the issue. With
 tracker.auth = "gh" and no GITHUB_TRACKER_TOKEN, the same GraphQL runs through gh api graphql.
 """
 
@@ -10,7 +11,7 @@ import os
 import re
 import subprocess
 
-from .._http import Failure, credential, operation, request, settings, status
+from .._http import Failure, credential, gh_limit, operation, request, retry, settings, status
 from wuwei import redact
 from wuwei.registry import outward_operation
 
@@ -23,9 +24,9 @@ VARIABLES = '$owner:String!,$name:String!,$number:Int!'
 def _query(query, variables, root):
     payload = {'query': query, 'variables': variables}
     if os.environ.get('GITHUB_TRACKER_TOKEN'):
-        value = request(URL, credential('GITHUB_TRACKER_TOKEN'), payload)
+        value = retry(lambda: request(URL, credential('GITHUB_TRACKER_TOKEN'), payload), root)
     elif settings(root)['tracker']['auth'] == 'gh':
-        value = _gh(payload)
+        value = retry(lambda: _gh(payload), root)
     else:
         raise Failure('GITHUB_TRACKER_TOKEN is missing; set it in .wuwei/env, or set '
                       'tracker.auth = "gh" to use your gh login')
@@ -57,6 +58,8 @@ def _gh(payload):
     except subprocess.TimeoutExpired:
         raise Failure('gh api graphql timed out after 30 s') from None
     if result.returncode:
+        if limit := gh_limit(result.stderr):
+            raise limit
         code = re.search(r'\(HTTP ([1-5][0-9][0-9])\)', result.stderr)
         if code:
             hint = status(int(code[1]))
@@ -92,6 +95,19 @@ def _repo(root):
     return repo
 
 
+def _repos(root):
+    """tracker.project and every configured repository, once each (#601)."""
+    config = settings(root)
+    names = list(dict.fromkeys(name for name in (config['tracker']['project'],
+                                                 *(row['name'] for row in config['repos'])) if name))
+    if not names:
+        _repo(root)  # its message names the missing project
+    for name in names:
+        if not re.fullmatch(r'[\w.-]+/[\w.-]+', name):
+            raise Failure(f'{name} is not a GitHub owner/repo; fix tracker.project or repos.name')
+    return names
+
+
 def _issue(item, root):
     return _query(f'query({VARIABLES}){{{ISSUE}}}', _ref(item), root)['repository']['issue']['id']
 
@@ -100,18 +116,20 @@ def _issue(item, root):
 def backlog(filter, *, root=None):
     if not isinstance(filter, str):
         raise Failure('invalid backlog filter')
-    repo = _repo(root)
-    owner, name = repo.split('/')
     labels = ',labels:[$label]' if filter else ''
-    rows = _query('query($owner:String!,$name:String!' + (',$label:String!' if filter else '') +
-                  '){repository(owner:$owner,name:$name){issues(first:100,states:OPEN' + labels +
-                  '){nodes{number title url updatedAt} pageInfo{hasNextPage}}}}',
-                  {'owner': owner, 'name': name, **({'label': filter} if filter else {})}, root
-                  )['repository']['issues']
-    if rows['pageInfo']['hasNextPage'] is not False:
-        raise Failure('incomplete GitHub backlog')
-    return [{'id': f"{repo}#{row['number']}", 'title': row['title'], 'url': row['url'],
-             'updated': row['updatedAt'], 'state': 'Open'} for row in rows['nodes']]
+    found = []
+    for repo in _repos(root):
+        owner, name = repo.split('/')
+        rows = _query('query($owner:String!,$name:String!' + (',$label:String!' if filter else '') +
+                      '){repository(owner:$owner,name:$name){issues(first:100,states:OPEN' + labels +
+                      '){nodes{number title url updatedAt} pageInfo{hasNextPage}}}}',
+                      {'owner': owner, 'name': name, **({'label': filter} if filter else {})}, root
+                      )['repository']['issues']
+        if rows['pageInfo']['hasNextPage'] is not False:
+            raise Failure(f'incomplete GitHub backlog for {repo}')
+        found += [{'id': f"{repo}#{row['number']}", 'title': row['title'], 'url': row['url'],
+                   'updated': row['updatedAt'], 'state': 'Open'} for row in rows['nodes']]
+    return found
 
 
 @operation('github.claim')
@@ -157,6 +175,31 @@ def transition(item, state, *, root=None):
     return _query('mutation($id:ID!,$label:ID!){addLabelsToLabelable(input:{labelableId:$id,'
                   'labelIds:[$label]}){labelable{... on Issue{id}}}}',
                   {'id': value['repository']['issue']['id'], 'label': value['repository']['label']['id']}, root)
+
+
+@operation('github.labels')
+def labels(create, *, root=None):
+    """#670: the in-review label a move without a board adds; a board needs none."""
+    tracker = settings(root)['tracker']
+    if tracker['board']:
+        return {'created': [], 'missing': []}
+    repo = _repo(root)
+    owner, name = repo.split('/')
+    label = tracker['states']['in_review']
+    value = _query('query($owner:String!,$name:String!,$label:String!){repository(owner:$owner,'
+                   'name:$name){id label(name:$label){id}}}',
+                   {'owner': owner, 'name': name, 'label': label}, root)['repository']
+    if value['label']:
+        return {'created': [], 'missing': []}
+    if not create:
+        return {'created': [], 'missing': [label]}
+    try:
+        _query('mutation($repositoryId:ID!,$name:String!,$color:String!){createLabel(input:{'
+               'repositoryId:$repositoryId,name:$name,color:$color}){label{id}}}',
+               {'repositoryId': value['id'], 'name': label, 'color': 'fbca04'}, root)
+    except Failure as exc:
+        raise Failure(f'could not create the label "{label}" in {repo}: {exc}') from None
+    return {'created': [label], 'missing': []}
 
 
 @outward_operation('tracker')

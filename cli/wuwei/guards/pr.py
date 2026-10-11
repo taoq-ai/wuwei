@@ -6,6 +6,7 @@ import posixpath
 from pathlib import Path
 import re
 import shlex
+import sys
 from urllib.parse import unquote, urlsplit
 
 from wuwei import registry, shell, verdict, workspace
@@ -101,10 +102,13 @@ def _recorded_gates(root, sha, records, item, items=None):
             raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
         complete = True
         missing = []
+        # #723: a gate is judged on its delta whenever it has one (FIX, or the polish re-check)
+        rechecked = {role for role, first in zip(roles, initial)
+                     if first['verdict'] == 'FIX' or f'{candidate}:{role}:delta' in records}
         for role, first in zip(roles, initial):
-            row = records.get(f'{candidate}:{role}:delta') if first['verdict'] == 'FIX' else first
+            row = records.get(f'{candidate}:{role}:delta') if role in rechecked else first
             if row is None or (row['verdict'] != 'PASS' and not (
-                    first['verdict'] == 'FIX' and row['verdict'] == 'FIX'
+                    role in rechecked and row['verdict'] == 'FIX'
                     and row['blocks'] is False)):
                 complete = False
                 missing.append(role)
@@ -126,9 +130,7 @@ def _recorded_gates(root, sha, records, item, items=None):
                                 for block in verdict.finding_blocks(active))
             if row['blocks'] is not actual_blocks:
                 raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
-            if not sha.lower().startswith(row['head'].lower()) and (
-                    first['verdict'] == 'FIX' or not any(
-                        initial_row['verdict'] == 'FIX' for initial_row in initial)):
+            if not sha.lower().startswith(row['head'].lower()) and (role in rechecked or not rechecked):
                 complete = False
                 missing.append(role)
         if complete:
@@ -239,6 +241,16 @@ def create_check(args, command, cwd, root, config, payload):
         raise ValueError('repository environment override cannot be verified; remove the GIT_* and GH_* overrides and run gh pr create from the item worktree')
     if operands or values(found, '--web', '-w'):
         raise ValueError('opaque PR create; use explicit CLI options')
+    from wuwei import state
+    linked = (item, cwd) if item else _recorded(root, config, path=cwd)
+    if linked and not state.read_state(root)['items'][linked[0]].get('pr'):
+        # #783: pr raise links the PR to its item; a PR from gh pr create stays unlinked.
+        hint = (f'{linked[0]} is a WUWEI item: raise its PR with bin/wuwei pr raise '
+                f'{repo or "<owner/repo>"} --base <branch> --title <title> --body-file <file> '
+                f'--item {linked[0]}. It links the PR to {linked[0]}; gh pr create does not')
+        if workspace.posture(config)[0] == 'strict':
+            return 1, hint
+        print(f'warning: {hint}', file=sys.stderr)
     reviewers = values(found, '--reviewer', '-r')
     if (reviewers or config['shepherd']['min_reviewers']) and not (reviewers and all(
             part.strip() and not part.strip().startswith('-')

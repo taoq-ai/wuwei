@@ -13,7 +13,7 @@ NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
 DRAFT = r'draft-[0-9a-f]{32}'
-GROUPS = ('queued', 'worktree', 'tier', 'gate', 'decision', 'phase', 'merge')
+GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'decision', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
 
 
@@ -169,6 +169,14 @@ def item(root, name):
             if kind == 'worktree.created' and payload.get('item') == name:
                 add('worktree', f'worktree: branch {payload.get("branch", NOT)} from {payload.get("base", NOT)} '
                     f'at {str(payload.get("start", NOT))[:12]}')
+            if kind == 'seat launched' and payload.get('item') == name:
+                seat = data.get('seats', {}).get(payload.get('name'), {})
+                if seat.get('planner_note'):  # #660: the planner's note around WUWEI's launch prompt
+                    add('seat', f'seat {payload["name"]} ({seat.get("role")}): planner note: {seat["planner_note"]}',
+                        rel(day / 'state.json'))
+                elif seat.get('role') == 'adhoc':
+                    add('seat', f'seat {payload["name"]} ({seat.get("type")}, unbriefed): prompt: '
+                        f'{seat.get("prompt", NOT)}', rel(day / 'state.json'))
             if kind == 'gate.tiered' and payload.get('item') == name:
                 reasons = payload.get('reasons') or []
                 add('tier', f'tier: {payload.get("tier", NOT)}' + (f' ({"; ".join(reasons)})' if reasons else ''))
@@ -209,6 +217,8 @@ def item(root, name):
                                        [rel(day / 'decisions' / f'{ident}.md')]))
     day, data = days[-1]
     row = data['items'][name]
+    if row.get('approved_as'):  # #731: the owner's recorded approval, once, from the latest day
+        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'state.json')]))
     steps = [step for group in GROUPS for step in groups[group] or (
         [(f'{REQUIRED[group]}: {NOT}', None, [])]
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]
@@ -291,7 +301,7 @@ def decided(root, ident):
     """Today's D-n: options and scores, weights, margin, class, level and who decided."""
     path = decision.today_path(ident, root)
     if not path.is_file():
-        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges for open decisions')
+        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges --all for open decisions')
     text = path.read_text(encoding='utf-8')
     fields, scores = decision.evaluate(text)
     _, _, wants, _ = decision._scored(fields)

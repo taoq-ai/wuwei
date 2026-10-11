@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 
-from wuwei import security, workspace
+from wuwei import security, verdict, workspace
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 
 
@@ -51,7 +51,13 @@ def render(root, overrides=None):
                 any(not isinstance(tool, str) or tool not in TOOLS for tool in tools) or
                 len(tools) != len(set(tools))):
             raise ValueError(f'{role}: expected a nonempty, explicit, unique tool list; {DAMAGED}')
-        body = common + '\n' + authoring + '\n' + _charter(root, role, overrides)
+        charter = _charter(root, role, overrides)
+        if any('## Verdict format' in text for text in (common, authoring, charter)):
+            raise ValueError(f'{role}: a charter carries its own Verdict format section; the format '
+                             'lives in cli/wuwei/verdict.py FORMAT and agents build renders it; '
+                             'remove the section')
+        verdict_format = verdict.section() + '\n' if role.startswith('sentinel-') else ''  # #665
+        body = common + '\n' + verdict_format + authoring + '\n' + charter
         description = f'Follow the {role.replace("-", " ")} charter for assigned WUWEI work.'
         output[f'{role}.md'] = (
             f'---\nname: {role}\ndescription: {description}\n'

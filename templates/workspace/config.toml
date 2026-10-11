@@ -70,6 +70,7 @@ default = "brief" # brief, standard or full: how much decisions, the digest, nud
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
 seats = 0 # 0 derives the seat ceiling from free memory and cores; a number pins it.
 reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
+rate_limit_wait_seconds = 120 # Wait this long at most for a GitHub rate limit to reset, then retry once; 0 never waits.
 
 # [budget]
 # tokens_per_day = 0 # Input plus output tokens a day; it bounds CAP with the per-seat cost. 0 is no budget.
@@ -112,6 +113,7 @@ timeout_seconds = 300
 # second_opinion_role = "quality"
 # max_rounds = 2 # Fix rounds per item; after the cap notes ship in the PR and a blocker parks.
 # tier_max_rounds = { light = 0, standard = 0, full = 0 } # 0 uses max_rounds.
+# polish = "offer" # never, offer or always: one notes-only round after a pass.
 
 [control_plane]
 content = "summary" # summary or none; what a messaging transport sends about decisions.
@@ -196,7 +198,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
 # humanize_strict = false # true refuses a text with a tell instead of warning.
 # draft_ttl = 3600 # Seconds an approved draft's tool call may repeat, once.
-# Server alias (slack, tracker, code_host, docs, mail or other), checked first, and the
+# Server alias (slack, tracker, code_host, docs, mail, other or local), checked first, and the
 # server's mode (send, draft or refuse); bin/wuwei outbound learn proposes both on a card.
 # [outward.servers]
 # "<server id>" = "slack"
@@ -273,6 +275,11 @@ loop_threshold = 9
 # Default autonomous: decision route takes a Routine, Consequential or scoring Exploratory record as recommended.
 # [autonomy]
 # mode = "supervised" # Every decision beyond a two-way one on its own branch or PR asks the owner.
+
+# [nudges]
+# mode = "" # off, next or all. Empty follows autonomy.mode: off when autonomous, next when supervised.
+# ttl_hours = 24 # A nudge with no new event for this many hours leaves the list.
+# max_open = 20 # At most this many open nudges; the oldest go, counted in one nudges.dropped line.
 
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.

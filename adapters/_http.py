@@ -2,7 +2,10 @@
 
 import json
 import os
+import re
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from functools import wraps
@@ -21,6 +24,8 @@ HINTS = {401: 'credential rejected (wrong, expired or revoked token)',
          404: 'not found or not visible to the credential (check the project or repository '
               "name and the token's access)",
          429: 'rate limited; retry later'}
+
+WAIT = 60  # GitHub: with no reset given, wait at least one minute (#738)
 
 
 def status(code):
@@ -47,6 +52,57 @@ def operation(name):
     return decorate
 
 
+class RateLimited(Failure):
+    """#738: a GitHub rate limit and its reset (epoch seconds); the text is numbers and fixed words."""
+
+    def __init__(self, reset, remaining=None, limit=None, resource=None):
+        self.reset = reset
+        left = (f' ({remaining} of {limit} {resource} calls left)'
+                if None not in (remaining, limit, resource) else '')
+        super().__init__(f'GitHub rate limit until {time.strftime("%H:%M:%S", time.gmtime(reset))} UTC'
+                         f'{left}; retry after it')
+
+
+def cap(root=None):
+    """The longest wait for a reset (host.rate_limit_wait_seconds); 120 with no readable workspace."""
+    try:
+        return settings(root)['host']['rate_limit_wait_seconds']
+    except (OSError, ValueError, KeyError):
+        return 120
+
+
+def gh_limit(stderr, env=None):
+    """A RateLimited when gh's stderr names a rate limit, its reset read from gh api rate_limit."""
+    if not re.search(r'rate limit', stderr or '', re.I):
+        return None
+    try:
+        result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
+                                capture_output=True, text=True, timeout=30, env=env)
+        resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
+        name, row = min(((name, resources[name]) for name in ('core', 'graphql')),
+                        key=lambda pair: pair[1]['remaining'])
+        if not all(type(row[key]) is int for key in ('remaining', 'limit', 'reset')):
+            raise TypeError
+        # Calls left means a secondary limit, which gives no reset.
+        return RateLimited(row['reset'] if row['remaining'] == 0 else time.time() + WAIT,
+                           row['remaining'], row['limit'], name)
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+        return RateLimited(time.time() + WAIT)
+
+
+def retry(call, root=None):
+    """Run call; on a RateLimited whose reset is within the cap, wait for it and run call once more.
+    Per gh call or request, never per port operation, so a write that succeeded is not repeated."""
+    try:
+        return call()
+    except RateLimited as limit:
+        wait = limit.reset - time.time()
+        if wait > cap(root):
+            raise
+        time.sleep(max(0, wait))
+    return call()
+
+
 def credential(name):
     value = os.environ.get(name)
     if not value:
@@ -62,6 +118,21 @@ def settings(root):
     return workspace.load_config(workspace.find_workspace(root))
 
 
+def _github_limit(code, headers):
+    """#738: raise RateLimited from GitHub's rate-limit headers; a 403 without them is not one."""
+    left = [headers.get(key) or '' for key in ('X-RateLimit-Remaining', 'X-RateLimit-Limit')]
+    resource = headers.get('X-RateLimit-Resource') or ''
+    calls = ((int(left[0]), int(left[1]), resource)
+             if all(map(str.isdigit, left)) and re.fullmatch(r'[a-z_]+', resource) else ())
+    after, reset = headers.get('Retry-After') or '', headers.get('X-RateLimit-Reset') or ''
+    if after.isdigit():
+        raise RateLimited(time.time() + int(after), *calls) from None
+    if left[0] == '0' and reset.isdigit():
+        raise RateLimited(int(reset), *calls) from None
+    if code == 429:
+        raise RateLimited(time.time() + WAIT, *calls) from None
+
+
 def request(url, token, payload=None, *, authorization='Bearer', extra_headers=None,
             method='POST'):
     headers = {'Content-Type': 'application/json',
@@ -75,6 +146,8 @@ def request(url, token, payload=None, *, authorization='Bearer', extra_headers=N
                 raise Failure(status(response.status))
             body = response.read(4_000_001)
     except urllib.error.HTTPError as exc:
+        if url.startswith('https://api.github.com/') and exc.code in (403, 429):
+            _github_limit(exc.code, exc.headers or {})
         raise Failure(status(exc.code)) from None
     if len(body) > 4_000_000:
         raise Failure('response too large')

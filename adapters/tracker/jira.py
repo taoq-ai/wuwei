@@ -113,3 +113,9 @@ def created(item, *, root=None):
     if not isinstance(value, str):
         raise Failure('missing issue creation time')
     return value
+
+
+@operation('jira.labels')
+def labels(create, *, root=None):
+    """#670: Jira moves workflow transitions, not labels, so it needs none."""
+    return {'created': [], 'missing': []}
