@@ -40,7 +40,10 @@ THEN = {
             'continue to Agent in the background in one message (a continue is a fresh Agent with '
             'its prompt; resume only to an Agent tool that takes it), run each run entry through '
             'Bash in the background, write each duty and run its record command, and ask the '
-            "decision's card with AskUserQuestion when there is one; then run wuwei next."),
+            "decision's card with AskUserQuestion when there is one; then run wuwei next. When "
+            'nothing changed since the last call, end the turn with wuwei status --line instead.'),
+    'decide': ('Ask its card with AskUserQuestion; on Yes run its command, on No leave it; then run '
+               'wuwei next.'),
     'card': ('Ask the widget list with AskUserQuestion, record each answer with its record '
              'command, then run wuwei next.'),
     'owner': ('Show the owner the why and the command in one line; run wuwei next when they say '
@@ -130,8 +133,9 @@ def _seen(directory):
             runs.append(payload)
         elif kind == 'day.closed':
             closed = True
-        elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816
-            merges[payload.get('pr')] = payload.get('reason') if payload.get('owner') is True else None
+        elif kind in ('merge.policy_blocked', 'merge.intent'):  # #816; G1: (owner reason, when it held)
+            owner = payload.get('owner') is True and kind == 'merge.policy_blocked'
+            merges[payload.get('pr')] = (payload.get('reason'), None) if owner else (None, row.get('ts'))
     # ponytail: a row returned three times counts as done, so a refused or failed command (no
     # PostToolUse span) never holds the day; evidence from PostToolUseFailure would lift it.
     done |= passed | {key for key, count in returns.items() if count >= 3}
@@ -210,7 +214,8 @@ def step(root, ran=()):
     decision = found['decision']
     if decision:
         pr = decision['command'].split()[-1]
-        decision['then'] = (THEN['merge'].format(item=decision['item'], pr=pr)
+        decision['then'] = (THEN['decide'] if decision.get('card') else
+                            THEN['merge'].format(item=decision['item'], pr=pr)
                             if decision['command'].startswith('wuwei merge ') else THEN['owner-step'])
     if launches or due or decision or found['parks']:
         parts = [f'{len(launches)} launch(es)' if launches else '', f'{len(due)} due duty(ies)' if due else '',

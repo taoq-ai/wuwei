@@ -579,25 +579,34 @@ def test_corrupt_state_names_recovery_and_writes_keep_a_snapshot(workspace):
     assert snapshot.stat().st_mode & 0o777 == 0o444
     path.chmod(0o644)
     path.write_text(path.read_text()[:10])
+    assert state.read_state()['cap'] == 3  # #844 F4: the log holds the records
+    corrupt(workspace)  # an old day without patches still names recovery
     with pytest.raises(ValueError, match='wuwei state recover'):
         state.read_state()
 
 
-def corrupt(root, *, missing=False):
+def corrupt(root):
+    """An old day (its log carries no patch, written before #844) whose state.json is torn:
+    the one case state recover still serves; a day whose log holds its records rebuilds."""
     from wuwei import state
     state.write_state(lambda data: data.update(cap=3))
+    log = day(root) / 'events.jsonl'
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    log.chmod(0o644)
+    log.write_text(''.join(json.dumps({key: value for key, value in row.items() if key != 'patch'}) + '\n'
+                           for row in rows))
     path = day(root) / 'state.json'
     path.chmod(0o644)
-    if missing:
-        path.unlink()
-    else:
-        path.write_text('{"cap": 3, "ite')
+    path.write_text('{"cap": 3, "ite')
     return path
 
 
 def test_a_missing_state_json_is_rebuilt_from_the_log(workspace):
     from wuwei import state
-    corrupt(workspace, missing=True)
+    state.write_state(lambda data: data.update(cap=3))
+    path = day(workspace) / 'state.json'
+    path.chmod(0o644)
+    path.unlink()
     assert state.read_state()['cap'] == 3  # #844: state.json is a cache of the log
     with pytest.raises(state.StateError, match='nothing to recover'):
         state.recover(confirm=lambda token: None)
@@ -830,13 +839,47 @@ def test_an_old_day_without_patches_moves_into_the_log_on_its_next_write(workspa
     assert (data['cap'], data['gate_approved'], list(data['items'])) == (2, True, ['A'])
 
 
-def test_a_malformed_log_row_is_damaged(workspace):
+def test_a_torn_last_line_never_reached_the_cache_and_is_skipped(workspace):
+    # F4: a write that died mid-line recorded nothing; reads, writes and recover go on.
     from wuwei import state
-    state._write_state(lambda data: data.update(cap=2), reserved=False)
+    state.set_state('cap', 2)
     log = day(workspace) / 'events.jsonl'
     log.chmod(0o644)
-    log.write_text(log.read_text() + '{"kind": "state.write", "payload": {"patch": \n')
+    with log.open('ab') as stream:
+        stream.write(b'{"kind": "state.write", "patch": {"set": {"cap": ')
+    assert state.read_state()['cap'] == 2
+    assert state.set_state('cap', 3)['cap'] == 3
     (day(workspace) / 'state.json').chmod(0o644)
     (day(workspace) / 'state.json').unlink()
-    with pytest.raises(ValueError, match='events.jsonl: invalid event record'):
-        state.read_state()
+    assert state.read_state()['cap'] == 3
+    with pytest.raises(state.StateError, match='nothing to recover'):
+        state.recover(confirm=lambda token: None)
+
+
+def test_a_hand_edited_cache_loses_to_the_log(workspace):
+    # F6, F7: an edit to state.json, with or without its log size, never changes the records.
+    from wuwei import state
+    state.set_state('cap', 2)
+    path = day(workspace) / 'state.json'
+    for drop in (False, True):
+        data = json.loads(path.read_text())
+        data.update(cap=9, gate_approved=True)
+        if drop:
+            data.pop('log_size')
+        path.chmod(0o644)
+        path.write_text(json.dumps(data))
+        assert (state.read_state()['cap'], state.read_state()['gate_approved']) == (2, False)
+
+
+def test_a_replaced_log_never_takes_the_old_cache(workspace):
+    # F8: a new log that grew past the old size is folded alone, never under the old cache.
+    from wuwei import state
+    state.set_state('cap', 2)
+    state.set_state('seat_policy', {'x': 1})
+    log = day(workspace) / 'events.jsonl'
+    size = log.stat().st_size
+    log.chmod(0o644)
+    log.unlink()
+    while not log.is_file() or log.stat().st_size <= size:
+        state.append_event('next.action', {'state': 'x', 'pad': 'y' * 50})
+    assert state.read_state()['cap'] == 1

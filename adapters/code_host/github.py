@@ -360,7 +360,7 @@ def pulls(repo, root=None):
     comment time by someone other than the author."""
     owner, name = _repo(repo).split('/')
     value = _run(['api', 'graphql', '--input', '-'], {'query': _PULLS, 'variables': {'o': owner, 'r': name}})
-    rollup = {'SUCCESS': 'green', 'FAILURE': 'red', 'ERROR': 'red'}
+    rollup = {'SUCCESS': 'green', 'FAILURE': 'red', 'ERROR': 'red', None: 'none'}  # G3: None, no CI
     rows = []
     for v in _list(value['data']['repository']['pullRequests']['nodes']):
         author = _login(v.get('author'))

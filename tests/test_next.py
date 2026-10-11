@@ -39,11 +39,10 @@ def planned(root):
 
 
 def day(root, **fields):
-    """Write today's state as given; phases skip the transition checks a fixture does not need."""
-    data = {**state.read_state(root), **fields}
-    path = workspace.day_dir(root) / 'state.json'
-    path.unlink()
-    path.write_text(json.dumps(data))
+    """Set today's records as given (one patch event, #844); phases skip the transition checks a
+    fixture does not need."""
+    from fakes import records
+    records.write(root, fields)
 
 
 def approved(root, items, cap=1, **extra):
@@ -649,6 +648,9 @@ def test_close_path(root, capsys):
     expect('report', 'wuwei report')
     assert "owner's DM D9" in states[-1]['then']
     (workspace.day_dir(root) / 'report.md').write_text('# Report\n')
+    found = coarse(root)  # #844: the summary duty to the owner's DM comes due with the report
+    assert [(row['duty'], row['item']) for row in found['duties']] == [('summary', 'day')]
+    state.append_event('duty.done', {'item': 'day', 'duty': 'summary', 'evidence': 'dm'}, root)
     expect('closed', 'wuwei close')
     state.append_event('day.closed', {}, root)
     expect('done', None, 'done')

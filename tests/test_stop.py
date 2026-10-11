@@ -387,10 +387,9 @@ def test_stop_table(case, monkeypatch, change, expected):
         advance(monkeypatch, 1801)
     elif change == 'no_planner':
         state._write_state(lambda data: data.pop('planner_session_id'), root, reserved=False)
-    elif change == 'malformed_state':
-        path = workspace.day_dir(root) / 'state.json'
-        path.chmod(0o644)
-        path.write_text('{bad')
+    elif change == 'malformed_state':  # #844: records that fail their schema (a torn cache rebuilds)
+        from fakes import records
+        records.write(root, {'cap': 'bad'})
     elif change == 'bad_retry':
         hook_payload['stop_hook_active'] = 'true'
     code, reason = module('guards/stop').check(hook_payload)
@@ -572,7 +571,8 @@ def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
             phase={'phase_only': 'parked', 'merged': 'merged'}.get(mode, 'planned'))
         if mode == 'phase_only':
             data['items']['A']['resume_phase'] = 'planned'
-        workspace.atomic_write(workspace.day_dir(root) / 'state.json', json.dumps(data))
+        from fakes import records  # #844: the log holds the records
+        records.write(root, {'items': data['items']})
     elif mode != 'open':
         seat_disposition(root, mode)
     monkeypatch.chdir(root)

@@ -42,16 +42,19 @@ ENDINGS = ('close', 'closed', 'retro', 'promote', 'retro-applied', 'report', 'do
 # --- worlds ---------------------------------------------------------------------------------
 
 def item(name, stage='queued', plan='approved', tier='light', rounds=0, verdicts=None, pr=None,
-         owner_merge=False, duties=None):
+         owner_merge=False, duties=None, moved=False, agents=False):
     """One item of a world. stage: queued, building (builder running), gating (builder
-    stopped), raised or merged; a gating item's verdicts map its gates to GATE_KINDS."""
+    stopped), raised or merged; a gating item's verdicts map its gates to GATE_KINDS. moved: a
+    rebase or a push moved the PR head past the verdicts; agents: the gate seats recorded an
+    agent id (a stale verdict re-reads on its seat, else on a fresh brief)."""
     started = plan == 'approved' and stage != 'queued'
     if stage in ('raised', 'merged') and verdicts is None:
         verdicts = {role: 'PASS' for role in ROLES[tier]}
     return {'name': name, 'plan': plan, 'stage': stage if plan == 'approved' else None, 'tier': tier,
             'worktree': started, 'builder': ('running' if stage == 'building' else 'stopped') if started else None,
             'verdicts': verdicts or {}, 'rounds': rounds,
-            'pr': 'merged' if stage == 'merged' else pr, 'owner_merge': owner_merge, 'duties': duties or {}}
+            'pr': 'merged' if stage == 'merged' else pr, 'owner_merge': owner_merge, 'duties': duties or {},
+            'moved': moved, 'agents': agents}
 
 
 def world(rng):
@@ -69,6 +72,10 @@ def world(rng):
                           pr=rng.choice(PR_KINDS), duties={'ping': rng.random() < 0.5})
         if stage == 'merged':
             fields['duties']['tracker'] = rng.random() < 0.5
+        if stage == 'raised':
+            fields['moved'] = rng.random() < 0.3
+        if stage == 'gating':
+            fields['agents'] = rng.random() < 0.5
         items.append(item(f'item-{index + 1}', stage, plan, **fields))
     return {'cap': rng.randint(1, 3), 'items': items}
 
@@ -154,6 +161,10 @@ def materialise(root, day):
             if kind != 'absent':
                 (directory / 'decisions' / f'gate-{role}-{name}.md').write_text(verdict_text(kind))
                 data['seats'][f'{role}-{name}'] = {'item': name, 'role': f'sentinel-{role}', 'status': 'stopped'}
+                if row['agents']:
+                    (directory / 'briefs' / f'{role}-{name}.md').write_text(f'Review {name}.\n')
+                    data['seats'][f'{role}-{name}'].update(
+                        agent_id=f'agent-{role}-{name}', brief=f'.wuwei/days/2026-10-11/briefs/{role}-{name}.md')
             if current == 'delta':  # the round before: every gate asked for the fix
                 data['gate_verdicts'][f'{name}:{role}:initial'] = record(name, role, 'FIX', 'initial')
             if kind not in ('absent', 'malformed'):
@@ -163,7 +174,8 @@ def materialise(root, day):
             entry.update(pr=f'{REPO}#{100 + number}', owner_merge=row['owner_merge'])
             data['raised_prs'].append(entry['pr'])
             pulls.append({'ref': entry['pr'], 'state': 'merged' if row['pr'] == 'merged' else 'open',
-                          'checks': None if row['pr'] == 'merged' else row['pr'], 'head': full(HEAD),
+                          'checks': None if row['pr'] == 'merged' else row['pr'],
+                          'head': 'c' * 40 if row['moved'] else full(HEAD),
                           'labels': ['owner-merge'] if row['owner_merge'] else []})
         events += [('duty.done', {'item': name, 'duty': duty}) for duty, done in row['duties'].items() if done]
         data['items'][name] = entry
@@ -178,6 +190,8 @@ def materialise(root, day):
 def configure(root, extra=''):
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text(
+        # the channels the ping and tracker duties need (#844, G7): a review channel, a page
+        'shepherd.review_channel = "C0REVIEW"\noutbound.owner.pages = ["https://pages.example/day"]\n'
         f'[[repos]]\nname = "{REPO}"\npath = "project"\ndefault_branch = "main"\n'
         '[spec]\nengine = "none"\n[gates]\npolish = "never"\n[duties]\non = ["ping", "tracker"]\n' + extra)
 
@@ -218,9 +232,11 @@ def oracle(day):
                 launches.add(('fix', name))
             else:
                 launches.add(('raise', name))
-        if stage == 'raised' and row['pr'] == 'red':
+        if stage == 'raised' and row['moved']:  # the verdicts do not cover the PR head: re-read first
             (decisions if capped else launches).add(('owner' if capped else 'fix', name))
-        if stage == 'raised' and row['pr'] == 'green':
+        elif stage == 'raised' and row['pr'] == 'red':
+            (decisions if capped else launches).add(('owner' if capped else 'fix', name))
+        elif stage == 'raised' and row['pr'] == 'green':
             (decisions if row['owner_merge'] else launches).add(('owner' if row['owner_merge'] else 'merge', name))
         if stage in ('raised', 'merged') and not row['duties'].get('ping'):
             duties.add(('ping', name))
@@ -288,6 +304,8 @@ def test_the_generator_covers_every_dimension(results):
     assert {(duty, done) for row in rows for duty, done in row['duties'].items()} == {
         ('ping', True), ('ping', False), ('tracker', True), ('tracker', False)}
     assert {row['owner_merge'] for row in rows if row['pr'] == 'green'} == {True, False}
+    assert {row['moved'] for row in rows if row['stage'] == 'raised'} == {True, False}
+    assert {row['agents'] for row in rows if 'stale' in row['verdicts'].values()} == {True, False}
 
 
 def test_every_ready_launch_is_offered(results):
@@ -451,7 +469,9 @@ def test_729_an_owner_merge_row_ends_when_the_pr_merges(run):
                                                 'reason': 'owner_merge'}, root)
     assert answer(root) == [('owner', 'item-1')]
     seat_state(root, lambda data: data['items']['item-1'].update(phase='merged'))
-    assert ('owner', 'item-1') not in answer(root)
+    offers = answer(root)
+    assert not [offer for offer in offers if offer[1] == 'item-1' and offer[0] not in ('tracker',)]
+    assert ('tracker', 'item-1') in offers
 
 
 def test_732_a_blocking_verdict_gives_the_fix_round_or_one_owner_decision(run, tmp_path):
@@ -643,3 +663,91 @@ def test_a_park_at_the_round_cap_is_the_owners_plan_resume_decision(run):
     owner.answer(root, 'bin/wuwei plan resume item-1', plan.resume_token(root, 'item-1'), 'No',
                  detail=f'Resume item-1: {reason}')
     assert answer(root) != [('owner', 'item-1')]
+
+
+# --- review fixes (#844) -------------------------------------------------------------------------
+
+def test_a_stale_gate_is_never_an_empty_launch(tmp_path_factory):
+    """F2: every gating world with a stale PASS resolves its gates into a seat or a command, with
+    and without the seat's agent id."""
+    found = []
+    with pytest.MonkeyPatch.context() as patch:
+        for case, day in enumerate(WORLDS):
+            names = [row['name'] for row in day['items'] if row['stage'] == 'gating' and row['plan'] == 'approved'
+                     and 'stale' in row['verdicts'].values()]
+            if not names:
+                continue
+            root = tmp_path_factory.mktemp(f'stale{case}')
+            environment(patch, root)
+            configure(root)
+            materialise(root, day)
+            for name in names:
+                try:
+                    action = dispatch.next_step(name, root)
+                except dispatch.Refused as exc:
+                    found.append((name, str(exc)))
+                    continue
+                if action['action'] == 'gates' and not (action['seats'] or action.get('commands')):
+                    found.append((name, action))
+    assert not found, found[:3]
+
+
+def test_f1_a_pr_head_moved_past_the_verdicts_is_never_merged(run):
+    from wuwei import merge
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', duties={'ping': True},
+                                                 moved=True)]})
+    assert offers == [('fix', 'item-1')]
+    code, _ = merge.gate_check(root, root / 'trees/item-1', workspace.load_config(root), sha='c' * 40,
+                               item='item-1')
+    assert code == 1
+    assert dispatch.next_step('item-1', root)['action'] == 'fix'  # the round every gate re-reads
+    row = state.read_state(root)['items']['item-1']
+    assert row['phase'] == 'fix' and row['fix_heads'][-1][0] == 'c' * 40
+
+
+def test_f5_a_gone_or_unreadable_worktree_never_raises(run):
+    import shutil
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'PASS'})]})
+    assert offers == [('raise', 'item-1')]
+    head = root / 'project/.git/worktrees/item-1/HEAD'
+    head.write_text('ref: refs/heads/feature\n')  # an unborn ref: no HEAD to read
+    assert answer(root) == [('owner', 'item-1')]
+    assert 'trees/item-1' in next_command.step(root)['decision']['why']
+    shutil.rmtree(root / 'trees/item-1')
+    assert answer(root) == [('owner', 'item-1')]
+
+
+def test_f3_a_verdict_edited_after_receipt_is_not_received_again(run):
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'FIX'})]})
+    path = workspace.day_dir(root) / 'decisions/gate-quality-item-1.md'
+    path.write_text(f'Verdict: PASS\nHead: {HEAD}\n')
+    assert answer(root) == offers == [('fix', 'item-1')]  # the receipt stands
+    with pytest.raises(dispatch.Refused, match='already received'):
+        dispatch.receive('item-1', 'quality', 'quality-item-1', root=root)
+
+
+def test_f9_a_pr_closed_on_the_host_is_one_owner_decision(run):
+    root, _ = run({'cap': 1, 'items': [item('item-1', 'raised', pr='pending', duties={'ping': True})]})
+    listing = workspace.day_dir(root) / 'prs.json'
+    listing.write_text(listing.read_text().replace('"open"', '"closed"'))
+    found = next_command.step(root)
+    assert answer(root) == [('owner', 'item-1')] and found['launches'] == []
+    assert found['decision']['command'] == 'wuwei plan park item-1 --reason "PR closed unmerged on the code host"'
+    assert found['decision']['card']['record'] == found['decision']['command']
+
+
+def test_g1_a_green_pr_the_policy_holds_is_waiting_not_a_merge_spin(run):
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'raised', pr='green', duties={'ping': True})]})
+    assert offers == [('merge', 'item-1')]
+    state.append_event('merge.policy_blocked', {'pr': f'{REPO}#101', 'exit': 1, 'owner': False,
+                                                'reason': 'merge policy: waits: approvals missing'}, root)
+    assert answer(root) == [('wait', '')]
+    assert 'nothing changed' in next_command.THEN['set']
+
+
+def test_g5_next_records_the_park_of_a_park_verdict(run, capsys):
+    from wuwei.__main__ import main
+    root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'PARK'})]})
+    assert offers == []
+    assert main(['next', '--json']) in (0, 1)
+    assert state.read_state(root)['items']['item-1']['phase'] == 'parked'

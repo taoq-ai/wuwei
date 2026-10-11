@@ -519,6 +519,22 @@ def next_step(item, root=None):
     if phase in ('parked', 'escalated'):  # only the owner resumes it, on plan resume's card
         return {'action': 'escalate', 'reason': (row.get('disposition') or {}).get('reason') or f'{item} is {phase}',
                 'command': 'wuwei plan resume ' + shlex.quote(item)}
+    from wuwei import derive
+    if phase == 'raised' and row.get('pr'):  # F1: a rebase or a push moved the PR past its verdicts
+        pull = derive.listing(workspace.day_dir(root))['pulls'].get(row['pr']) or {}
+        if moved := derive.moved(root, data, item, pull.get('head')):
+            cap = max_rounds(workspace.load_config(root), row)
+            if rounds_used(data, item) >= cap:
+                return _parked(root, item, f"round cap {cap} reached: PR {row['pr']} head moved to "
+                               f'{moved[:12]} past its verdicts')
+            from wuwei.commands import build
+            build.open_fix(item, f'The PR head moved to {moved[:12]} outside a fix round (a rebase or a '
+                           'push). Bring the worktree to that head, rerun the fast checks there and change '
+                           'nothing else unless they fail; every gate then re-reads it.', root=root, start=moved)
+            return _fix(item, [])
+    if phase in ('gate', 'delta') and (tree := derive.gone(root, row)):  # F5
+        raise Refused(f'{item} worktree {tree} is gone or its HEAD unreadable; no verdict counts there; '
+                      f'the owner decides on the card of bin/wuwei next: park {item} or restore the worktree')
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
@@ -810,6 +826,20 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
                 feedback = _delta_feedback(record, True, current)
                 actions.append({**action, 'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                                 'prompt': action['prompt'] + '\n\n' + feedback, 'receive': receive})
+            elif current and worktree:  # F2: no seat to continue: a fresh gate seat reads the current head
+                fresh = f'{base(role)}-{item}-{current[:7]}'
+                logged = [row['payload'] for row in brief.events(root) if row['kind'] == 'brief written'
+                          and row['payload'].get('name') == fresh]
+                again = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, fresh))) + (
+                    ' --round delta' if round_name == 'delta' else '')
+                if not logged:
+                    commands.append(f'wuwei brief {base(role)} {item} {fresh} --gate --worktree '
+                                    f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
+                elif fresh not in data['seats']:
+                    actions.append({**brief.seat_action('sentinel-' + base(role), root / logged[-1]['path'],
+                                                        logged[-1]['worktree'], root), 'receive': again})
+                elif data['seats'][fresh]['status'] == 'stopped':
+                    commands.append(again)
             continue
         if '@' in role:
             second = data['items'][item]['gates']['second_opinion']

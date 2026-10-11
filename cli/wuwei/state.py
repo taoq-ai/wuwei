@@ -115,7 +115,8 @@ def _load(text):
     """An old day's or a snapshot's state text, validated (state recover)."""
     data = json.loads(text)
     if isinstance(data, dict):
-        data.pop('log_size', None)
+        for key in CACHE_KEYS:
+            data.pop(key, None)
     json.dumps(data, allow_nan=False)
     return _validate(data)
 
@@ -159,24 +160,61 @@ def _apply(data, patch):
         data.pop(key, None)
 
 
+CACHE_KEYS = ('log_size', 'log_head', 'digest')
+
+
+def _fingerprint(encoded):
+    """A deterministic fingerprint without hashlib on the hook path (#346): Python's integer
+    hash is not salted per process. ponytail: not cryptographic; it detects edits, not forgery."""
+    return format(hash(int.from_bytes(b'\x01' + encoded, 'big')) & 0xFFFFFFFFFFFFFFFF, 'x')
+
+
+def _digest(data):
+    """The records' fingerprint the cache carries: an edit to state.json breaks it (F7)."""
+    return _fingerprint(json.dumps(data, sort_keys=True, allow_nan=False).encode())
+
+
+def _log_head(log):
+    """The log's identity: its first line's fingerprint (F8); a replaced log has another."""
+    try:
+        with log.open('rb') as handle:
+            return _fingerprint(handle.readline())
+    except FileNotFoundError:
+        return ''
+
+
 def _fold(directory, cache=True):
-    """#844: (the day's records, whether the day started, whether they came from an old day's
-    state.json); cache False folds the log alone. The event log is the truth and
-    state.json its cache: the cache is read when it records the log size it reflects, and only
-    the log's tail past that size is folded onto it. A state.json without a log size (an old
-    day, written before #844) is read as the day's records; the next write's patch carries it
-    into the log."""
+    """#844: (the day's records, whether the day started, whether they came from outside the
+    log); cache False folds the log alone. The event log is the truth and state.json its cache,
+    read only when its fingerprint holds (no hand edit), it names this log (the first line) and
+    the log reached its size; only the tail past that size is folded onto it. A state.json
+    without a log size is an old day's records, read only while the log holds no patch; the next
+    write's patch carries it into the log. A line that does not parse is a write that never
+    finished (it never reached the cache) and is skipped."""
     path, log = directory / 'state.json', directory / 'events.jsonl'
     try:
         raw = json.loads(path.read_text(encoding='utf-8')) if cache else None
     except FileNotFoundError:
         raw = None
+    except ValueError:
+        if not day_started(directory, log_only=True):
+            raise
+        raw = None  # a torn cache: the log has the records
     if raw is not None and not isinstance(raw, dict):
-        raise ValueError(f'expected object; {DAMAGED}')
+        if not day_started(directory, log_only=True):
+            raise ValueError(f'expected object; {DAMAGED}')
+        raw = None
     size = log.stat().st_size if log.is_file() else 0
     if isinstance(raw, dict) and 'log_size' not in raw:
-        return raw, True, True
-    offset = raw.pop('log_size') if isinstance(raw, dict) and isinstance(raw.get('log_size'), int) else -1
+        if not day_started(directory, log_only=True):
+            return raw, True, True
+        raw = None  # F6: once the log holds records it wins over an edited file
+    offset = -1
+    if isinstance(raw, dict):
+        meta = {key: raw.pop(key, None) for key in CACHE_KEYS}
+        if (isinstance(meta['log_size'], int) and meta['digest'] == _digest(raw)
+                and meta['log_head'] == _log_head(log)):
+            offset = meta['log_size']
     if offset > size:  # the log lost lines the cache holds: keep the records, never fewer
         return raw, True, True
     if offset >= 0:
@@ -192,19 +230,19 @@ def _fold(directory, cache=True):
                 continue
             try:
                 patch = json.loads(line).get('patch')
-            except (ValueError, TypeError, KeyError, AttributeError):
-                raise ValueError(f'{log}: invalid event record; {DAMAGED}') from None
+            except (ValueError, AttributeError):
+                continue  # F4: a torn write recorded nothing
             if isinstance(patch, dict):
                 _apply(data, patch)
                 started = True
     return data, started, False
 
 
-def day_started(directory):
+def day_started(directory, log_only=False):
     """#844: True once the day holds records (its log carries a patch, or an old day's
     state.json exists); replaces every state.json existence check."""
     directory = Path(directory)
-    if (directory / 'state.json').is_file():
+    if not log_only and (directory / 'state.json').is_file():
         return True
     log = directory / 'events.jsonl'
     return log.is_file() and b'"patch"' in log.read_bytes()
@@ -327,8 +365,9 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         _append_event(kind, {**payload, 'prs_seen': seen, **({'phase_changes': changes} if changes else {})},
                       directory, [(name, {**extra, 'prs_seen': seen}) for name, extra in more],
                       patch=_diff(log, data) or None)
-        size = (directory / 'events.jsonl').stat().st_size
-        encoded = json.dumps({**data, 'log_size': size}, allow_nan=False) + '\n'
+        log = directory / 'events.jsonl'
+        encoded = json.dumps({**data, 'log_size': log.stat().st_size, 'log_head': _log_head(log),
+                              'digest': _digest(data)}, allow_nan=False) + '\n'
         # One directory fsync, after both renames, makes both durable (#516).
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444, sync_dir=False)
         workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
@@ -638,7 +677,8 @@ def recover(root=None, *, confirm):
         lock_ex(lock, 'state.lock')
         if measure()[1] != digest:
             raise ValueError('state changed during confirmation; retry')
-        workspace.atomic_write(path, text, mode=0o444)
+        # an old day's records, without the cache keys: the log holds no patch to fold (#844)
+        workspace.atomic_write(path, json.dumps(_load(text)) + '\n', mode=0o444)
         _append_event('state.recovered', {'snapshot': digest, 'reason': f'state recovered from snapshot {digest[:12]}',
                                            'error': reason}, directory)
     return digest

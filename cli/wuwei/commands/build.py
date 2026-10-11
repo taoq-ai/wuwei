@@ -260,7 +260,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     return action
 
 
-def open_fix(item, feedback, *, root, polish=None):
+def open_fix(item, feedback, *, root, polish=None, start=None):
     """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
     item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
@@ -322,7 +322,7 @@ def open_fix(item, feedback, *, root, polish=None):
         fresh['items'][item]['phase'] = 'fix'
         from wuwei import derive  # #844: the head each fix round starts from and leaves
         fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []),
-                                             [derive.head(record['worktree']), None]]
+                                             [start or derive.head(record['worktree']), None]]
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),

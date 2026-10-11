@@ -329,10 +329,9 @@ def test_session_start_table(case, condition, expected):
         state.append_event('watch: clock', {}, root)
     if condition == 'dead':
         advance(case, 1200)
-    if condition == 'corrupt':
-        path = workspace.day_dir(root) / 'state.json'
-        path.chmod(0o600)
-        path.write_text('{')
+    if condition == 'corrupt':  # #844: records that fail their schema (a torn cache rebuilds)
+        from fakes import records
+        records.write(root, {'cap': 'bad'})
     code, message = lifecycle.session_start({'cwd': str(root)})
     assert code == expected
     if condition != 'corrupt':
@@ -376,10 +375,9 @@ def test_compact_table(case, condition, expected):
     root, _, _, _ = case
     lifecycle = lifecycle_module()
     directory = workspace.day_dir(root)
-    if condition == 'corrupt_state':
-        path = directory / 'state.json'
-        path.chmod(0o600)
-        path.write_text('{')
+    if condition == 'corrupt_state':  # #844: records that fail their schema (a torn cache rebuilds)
+        from fakes import records
+        records.write(root, {'cap': 'bad'})
     if condition in ('corrupt_events', 'partial_event'):
         path = directory / 'events.jsonl'
         path.chmod(0o600)

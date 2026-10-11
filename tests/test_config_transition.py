@@ -577,21 +577,3 @@ def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
     assert 'graph.json' not in capsys.readouterr().out and target.exists()
-
-
-def test_duties_turn_on_from_the_configured_channels(tmp_path, monkeypatch, capsys):
-    # #844: init writes duties.on from what the workspace configures; an upgrade that adds the
-    # [duties] table does the same and says so.
-    import re
-    from wuwei.commands import init
-    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
-    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
-    path = tmp_path / '.wuwei/config.toml'
-    assert workspace.load_config(tmp_path)['duties']['on'] == ['shepherd', 'summary']
-    text = re.sub(r'\[duties\]\n(#[^\n]*\n)*on = [^\n]*\n', '', path.read_text())
-    text = text.replace('review_channel = ""', 'review_channel = "C0REVIEW"')
-    path.write_text(text)
-    capsys.readouterr()
-    init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False))
-    assert 'Upgraded config.toml: duties.on = ["ping", "shepherd", "summary"]' in capsys.readouterr().out
-    assert workspace.load_config(tmp_path)['duties']['on'] == ['ping', 'shepherd', 'summary']

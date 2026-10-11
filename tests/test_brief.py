@@ -98,8 +98,8 @@ def test_gate_phase_refused(day, monkeypatch, phase):
     data['items']['X']['phase'] = phase
     if phase in ('parked', 'escalated'):
         data['items']['X']['resume_phase'] = 'gate'
-    (day[1] / 'state.json').chmod(0o600)
-    (day[1] / 'state.json').write_text(json.dumps(data))
+    from fakes import records  # #844: the log holds the records
+    records.write(day[0], {'items': data['items']})
     assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', '--worktree', 'tree') == 1
     assert not (day[1] / 'briefs/gate.md').exists()
 
@@ -130,8 +130,8 @@ def test_gate_fail_closed(day, monkeypatch, capsys, case, code, hint):
     if case == 'unknown-item':
         data = state.read_state(root)
         data['items'] = {}
-        (directory / 'state.json').chmod(0o600)
-        (directory / 'state.json').write_text(json.dumps(data))
+        from fakes import records  # #844: the log holds the records
+        records.write(root, {'items': data['items']})
     assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', *opts) == code
     assert hint in capsys.readouterr().err
     assert not (directory / 'briefs/gate.md').exists()

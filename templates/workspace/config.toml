@@ -170,10 +170,12 @@ stale_seconds = 3600
 # rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
 
 [duties]
-# Outward duties wuwei next lists until each is recorded: ping (post the review request once a PR
-# is raised), shepherd (answer new review threads), tracker (update the ticket or page once merged),
-# summary (post the day summary once the report is written).
-on = []
+# Outward duties wuwei next lists until each is recorded, each while its channel is configured:
+# ping (shepherd.review_channel: post the review request once a PR is raised), shepherd (a code
+# host: answer new review threads), tracker (a tracker or an owner page: update it once merged),
+# summary (outbound.owner_channel = "dm": post the day summary once the report is written).
+# Remove a name to turn that duty off.
+on = ["ping", "shepherd", "tracker", "summary"]
 
 [pr]
 poll_seconds = 120

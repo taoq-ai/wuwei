@@ -121,19 +121,45 @@ def refresh(root, config):
 
 
 def counted(root, row, record, current):
-    """The received verdict when its file still says what was received and it counts at the
-    current HEAD; None makes the gate run again (missing, edited after receipt, or stale)."""
-    from wuwei import verdict
+    """The received verdict when it counts at the current HEAD, else None (missing or stale: its
+    head moved). The receipt is the record: a file edited after it changes nothing (#844 F3)."""
     if record is None:
         return None
-    try:
-        text = verdict.active_text((root / record['file']).read_text(encoding='utf-8'))
-    except (OSError, UnicodeError, KeyError, TypeError):
-        return None
-    if (verdict.rows(text, 'Head') != [record['head']]
-            or re.findall(verdict.VERDICT_ROW, text, re.M) != [record['verdict']]):
-        return None
     return record if at_head(row, record['head'], current) else None
+
+
+def when(text):
+    """An ISO time as an instant (G2: offsets compare as times, never as strings), else None."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(text).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
+def gone(root, row):
+    """The recorded worktree whose HEAD cannot be read (removed, or an unborn or chained ref),
+    else None: no verdict counts there and nothing raises (#844 F5)."""
+    tree = row.get('worktree')
+    if not tree:
+        return None
+    path = Path(root) / tree
+    # a checkout with no .git at all is not a git worktree (a fixture's stand-in): not judged
+    return tree if not path.is_dir() or ((path / '.git').exists() and head(path) is None) else None
+
+
+def moved(root, data, name, pull_head):
+    """The PR head when a rebase or a push moved it past the item's verdicts (none of its
+    recorded fix rounds made it), else None (#844 F1)."""
+    from wuwei import dispatch
+    row = data['items'][name]
+    if not pull_head:
+        return None
+    for role in dispatch.gate_set(row):
+        record = dispatch._record(data, name, role, 'delta') or dispatch._record(data, name, role, 'initial')
+        if record and not at_head(row, record['head'], pull_head):
+            return pull_head
+    return None
 
 
 def _gate(root, data, config, name):
@@ -142,6 +168,8 @@ def _gate(root, data, config, name):
     cap, PARK, ESCALATE, FIX."""
     from wuwei import dispatch
     row = data['items'][name]
+    if tree := gone(root, row):
+        return 'gone', f'its worktree {tree} is gone or its HEAD unreadable'
     if row['phase'] == 'gate' and not dispatch._resumed(root, name):
         blocked = dispatch._blocked_card(root, data, name)
         if blocked and blocked[1] == 'No':
@@ -201,7 +229,8 @@ def offers(data, root, config, merges=None):
     from wuwei import dispatch
     from wuwei.commands.next import TERMINAL, approved
     merges = merges or {}
-    pulls = listing(workspace.day_dir(root))['pulls']
+    found = listing(workspace.day_dir(root))
+    pulls, listing_at = found['pulls'], found['fetched_at']
     items = data['items']
     names = approved(data)
     running = {item for _, _, item in state.in_flight(data)}
@@ -217,9 +246,21 @@ def offers(data, root, config, merges=None):
         why = why.replace(name, f'{name} ({ticket})', 1) if ticket else why
         launches.append({'kind': kind, 'item': name, 'command': command, 'why': why})
 
-    def ask(name, why, command):
+    def ask(name, why, command, card=False):
+        """card: the decision is the owner's Yes on this command's card (a park); after a No
+        the item stays as it is and is not asked again."""
         nonlocal decision
+        if decision is None and card:
+            from wuwei import sessions
+            detail = f'{name}: {why}. Yes parks it; No keeps it as it is.'
+            if sessions.owner_answer(root, command, detail) == 'No':
+                return
+            decision = {'item': name, 'why': f'{name}: {why}', 'command': command,
+                        'card': sessions.owner_card(command, detail)}
         decision = decision or {'item': name, 'why': f'{name}: {why}', 'command': command}
+
+    def park(name, reason):
+        ask(name, reason, f'wuwei plan park {name} --reason "{reason}"', card=True)
 
     for name in data['approved_items']:  # the round cap or a stuck build parked it: the owner decides
         row = items.get(name) or {}
@@ -233,8 +274,11 @@ def offers(data, root, config, merges=None):
         row = items[name]
         phase, pr = row['phase'], row.get('pr')
         pull = pulls.get(pr) if pr else None
-        if phase in TERMINAL or name in merged or (pull or {}).get('state') == 'closed':
-            continue  # merged, parked or carried; a PR closed on the host reads as parked
+        if phase in TERMINAL or name in merged:
+            continue  # merged, parked or carried
+        if (pull or {}).get('state') == 'closed':  # F9, G8: the owner parks it, re-opens or carries
+            park(name, 'PR closed unmerged on the code host')
+            continue
         if phase in state.BUILD_PHASES:
             rows.append({'state': 'build', 'item': name, 'command': f'wuwei build next {name}'})
             build = data.get('builds', {}).get(name) or {}
@@ -252,7 +296,9 @@ def offers(data, root, config, merges=None):
             if name in running:
                 continue  # never a gate before the builder (or a gate seat) stops
             kind, why = _gate(root, data, config, name)
-            if kind == 'owner':
+            if kind == 'gone':
+                park(name, why)
+            elif kind == 'owner':
                 ask(name, why, f'wuwei dispatch next {name}')
             elif kind == 'park':
                 parks.append(name)
@@ -261,8 +307,17 @@ def offers(data, root, config, merges=None):
         elif phase == 'raised':
             waiting.append({'state': 'pr', 'item': name, 'command': f'wuwei pr act {pr}'})
             checks = (pull or {}).get('checks')
+            checks = 'green' if checks == 'none' else checks  # G3: no CI; merge.check holds the policy
             owner = row.get('owner_merge') or 'owner-merge' in ((pull or {}).get('labels') or ())
-            if merges.get(pr) or (checks == 'green' and owner):
+            blocked, held = merges.get(pr) or (None, None)
+            fetched = when(listing_at) if listing_at else None
+            if pull is not None and moved(root, data, name, pull.get('head')):  # F1: re-read first
+                if dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+                    ask(name, f'PR {pr} head moved past its verdicts at the round cap.', f'wuwei dispatch next {name}')
+                else:
+                    launch('fix', name, f'wuwei dispatch next {name}',
+                           f'{name}: PR {pr} head moved past its verdicts; the gates re-read it.')
+            elif blocked or (checks == 'green' and owner):
                 ask(name, f'the merge of {pr} is yours to decide.', f'wuwei merge {pr}')
             elif pull is None:
                 launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} is not in the listing yet.')
@@ -272,6 +327,8 @@ def offers(data, root, config, merges=None):
                 launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red.')
             elif pull.get('mergeable') == 'conflicting':
                 launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} conflicts with its base.')
+            elif checks == 'green' and held and (fetched is None or when(held) >= fetched):
+                pass  # G1: the merge policy holds it (approvals, threads, soak); it waits on people
             elif checks == 'green':
                 launch('merge', name, f'wuwei merge {pr}', f'{name}: PR {pr} is green.')
     return {'launches': launches, 'decision': decision, 'parks': parks, 'rows': rows + waiting}
@@ -296,7 +353,10 @@ def _rows(directory):
     found = []
     for text in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
         if '"duty.' in text or '"pr.review_posted"' in text:
-            found.append(json.loads(text))
+            try:
+                found.append(json.loads(text))
+            except ValueError:
+                continue  # a torn line recorded nothing (F4)
     return found
 
 
@@ -323,12 +383,18 @@ def duties(root, config, directory=None, data=None):
     done = {}  # (item or PR, duty): the latest record time
     for row in rows:
         payload = row.get('payload') or {}
+        at = when(row.get('ts'))
         if row.get('kind') in ('duty.done', 'duty.skipped', 'duty.due'):
             key = (payload.get('item'), {'tracker.done': 'tracker'}.get(payload.get('duty'), payload.get('duty')))
-            done[key] = max(done.get(key, ''), row.get('ts', ''))
+            done[key] = max(filter(None, (done.get(key), at)), default=None)
         elif row.get('kind') == 'pr.review_posted':
-            done[(payload.get('pr'), 'ping')] = row.get('ts', '')
-    on = set(config['duties']['on'])
+            done[(payload.get('pr'), 'ping')] = at
+    # G7: a duty is due while its channel is configured; duties.on only turns one off
+    channels = {'ping': bool(config['shepherd']['review_channel']),
+                'shepherd': config['adapters']['code_host'] != 'none',
+                'tracker': config['adapters']['tracker'] != 'none' or bool(config['outbound']['owner']['pages']),
+                'summary': config['outbound']['owner_channel'] != 'session'}
+    on = {name for name in config['duties']['on'] if channels.get(name)}
     channel = config['shepherd']['review_channel']
     for index, day in enumerate(days):
         values = data if index == 0 and data is not None else state.read_state(directory=day)
@@ -343,13 +409,15 @@ def duties(root, config, directory=None, data=None):
                 add('ping', name, f'Post the review request for {pr}'
                     + (f' to the review channel {channel}.' if channel else '.'),
                     f'wuwei pr ping {pr}' if channel else f'wuwei duty {name} ping --evidence <link>')
-            activity = pull.get('activity_at')
-            if 'shepherd' in on and pr and not merged and activity and activity > done.get((name, 'shepherd'), ''):
+            activity, answered = when(pull.get('activity_at')), done.get((name, 'shepherd'))
+            if 'shepherd' in on and pr and not merged and activity and (answered is None or activity > answered):
                 add('shepherd', name, f'Launch the shepherd seat to answer every open review thread on {pr} '
                     '(wuwei pr act --reply).', f'wuwei duty {name} shepherd --evidence <link>')
-            if 'tracker' in on and merged and (name, 'tracker') not in done:
+            ticket = (values.get('tickets', {}).get(name) or {}).get('id')
+            page = bool(config['outbound']['owner']['pages'])  # an item with no ticket has a page or no duty
+            if 'tracker' in on and merged and (ticket or page) and (name, 'tracker') not in done:
                 add('tracker', name, f'Update the ticket or page of {name}: merged in {pr}.',
-                    f'wuwei tracker move {name} done' if config['adapters']['tracker'] != 'none'
+                    f'wuwei tracker move {name} done' if ticket and config['adapters']['tracker'] != 'none'
                     else f'wuwei duty {name} tracker --evidence <link>')
         if 'summary' in on and (day / 'report.md').is_file() and ('day', 'summary') not in done:
             add('summary', 'day', "Post the day's summary to the owner's channel.",

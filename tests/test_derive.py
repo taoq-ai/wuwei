@@ -61,7 +61,8 @@ def root(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
-        '[adapters]\ncode_host = "github"\n[duties]\non = ["ping", "summary"]\n')
+        '[adapters]\ncode_host = "github"\n[shepherd]\nreview_channel = "C0REVIEW"\n'
+        '[outbound]\nowner_channel = "dm"\n[duties]\non = ["ping", "summary"]\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-10-11T10:00:00+00:00')
     return tmp_path
@@ -162,3 +163,63 @@ def test_the_listing_is_stale_after_wuwei_raises_or_merges(root):
     assert not derive.stale(root, config, data)
     state.append_event('merge.completed', {'pr': 'example/project#1'}, root)
     assert derive.stale(root, config, data)
+
+
+def test_shepherd_is_due_on_activity_newer_than_its_record_across_offsets(root, monkeypatch):
+    # G2: times compare as instants, east and west of UTC; G5: newer activity makes it due.
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
+        '[adapters]\ncode_host = "github"\n')
+    raised(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-11T11:00:00+02:00')  # 09:00 UTC
+    state.append_event('duty.done', {'item': 'A', 'duty': 'shepherd'}, root)
+    for activity, due in (('2026-10-11T09:30:00Z', True), ('2026-10-11T08:30:00Z', False),
+                          ('2026-10-11T04:30:00-05:00', True)):
+        (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+            {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending', 'activity_at': activity}]}))
+        duties = [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
+        assert ('shepherd' in duties) is due, activity
+
+
+def test_a_pr_without_ci_is_none_and_merges_like_green(root, monkeypatch):
+    # G3: a null checks rollup is 'none', never pending forever.
+    import importlib
+    github = importlib.import_module('adapters.code_host.github')
+    node = {'number': 7, 'state': 'OPEN', 'isDraft': False, 'headRefOid': SHA, 'mergeable': 'MERGEABLE',
+            'author': {'login': 'me'}, 'labels': {'nodes': []},
+            'commits': {'nodes': [{'commit': {'statusCheckRollup': None}}]},
+            'latestReviews': {'nodes': []}, 'comments': {'nodes': []}}
+    monkeypatch.setattr(github, '_run', lambda *args, **kwargs: {'data': {'repository': {'pullRequests': {
+        'nodes': [node]}}}})
+    assert github.pulls('example/project').data[0]['checks'] == 'none'
+    raised(root)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'none', 'labels': []}]}))
+    found = derive.offers(state.read_state(root), root, workspace.load_config(root))
+    assert [(row['kind'], row['item']) for row in found['launches']] == [('merge', 'A')]
+
+
+def test_a_skipped_duty_is_recorded_listed_and_clears_the_duty(root, capsys):
+    # G5, G6: wuwei duty --skipped records duty.skipped; the report lists it.
+    from wuwei import tracker, watch
+    from wuwei.__main__ import main
+    raised(root)
+    assert main(['duty', 'A', 'ping', '--skipped', 'the review channel is archived']) == 0
+    assert derive.duties(root, workspace.load_config(root)) == []
+    rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
+    assert [(row['item'], row['duty']) for row in tracker.skipped_duties(rows)] == [('A', 'ping')]
+
+
+def test_duties_follow_the_configured_channels(root):
+    # G7: a duty is due only while its channel is configured; duties.on only turns one off.
+    path = root / '.wuwei/config.toml'
+    base = '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
+    path.write_text(base)
+    raised(root)
+    (workspace.day_dir(root) / 'report.md').write_text('# Report\n')
+    assert derive.duties(root, workspace.load_config(root)) == []  # no review channel, report in session
+    path.write_text(base + '[adapters]\ncode_host = "none"\n[shepherd]\nreview_channel = "C0REVIEW"\n'
+                    '[outbound]\nowner_channel = "dm"\n')
+    assert [row['duty'] for row in derive.duties(root, workspace.load_config(root))] == ['ping', 'summary']
+    path.write_text(path.read_text() + '[duties]\non = ["summary"]\n')
+    assert [row['duty'] for row in derive.duties(root, workspace.load_config(root))] == ['summary']

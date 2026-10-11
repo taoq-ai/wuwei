@@ -474,9 +474,12 @@ item worktrees' HEAD, the verdict files, the cached PR listing (`prs.json`, refr
 code-host list call per repository when older than `pr.poll_seconds`) and the seat ledger.
 `state.json` is a cache of that fold, read only when it reflects the whole log, never
 required. After the morning gate `next` returns the set: every ready launch with its prompt,
-every due outward duty (`[duties] on`: ping once a PR is raised, shepherd on new outside
-review activity, tracker once merged, summary once the report is written) and at most one
-owner decision. The planner does every launch and duty and asks the decision on its Owner
+every due outward duty (each while its channel is configured, `[duties] on` turns one off:
+ping once a PR is raised, shepherd on new outside review activity, tracker once merged, summary
+once the report is written) and at most one owner decision. The log wins: a cache whose
+fingerprint, log identity or size does not hold is ignored, and a torn last line is skipped.
+A PR head a rebase or a push moved past its verdicts opens a round every gate re-reads; a PR
+closed unmerged, or a worktree whose HEAD cannot be read, is one owner decision to park. The planner does every launch and duty and asks the decision on its Owner
 step card. Code decides what is ready, due or waiting on the owner; the model writes every
 text. A PARK verdict parks in code; an ESCALATE, a builder's `Blocked:` line, the round cap,
 red checks at the cap, `owner_merge` and a merge the policy does not clear are the decision.

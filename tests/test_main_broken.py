@@ -55,11 +55,10 @@ def test_unchanged_needs_every_failure_held(tree):
 
 
 def write(root, change):
-    path = workspace.day_dir(root) / 'state.json'
-    data = json.loads(path.read_text())
+    from fakes import records  # #844: the log holds the records
+    data = state.read_state(root)
     change(data)
-    path.unlink()
-    path.write_text(json.dumps(data))
+    records.write(root, data)
 
 
 @pytest.fixture
