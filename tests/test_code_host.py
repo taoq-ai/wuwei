@@ -616,7 +616,7 @@ def test_open_prs_refuses_a_bad_login(author, monkeypatch):
     assert result.exit == 2 and calls == []
 
 RATE_LIMIT = ['api', 'rate_limit', '--hostname', 'github.com']
-PR = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--hostname', 'github.com']
+PR = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--include', '--hostname', 'github.com']
 SECONDARY_PR = 'secondary limit on repos/acme/widget/pulls/7, '
 
 
@@ -678,13 +678,53 @@ def headers(resource, remaining, reset, extra=''):
             '{"message":"API rate limit exceeded","documentation_url":"https://docs.github.com"}')
 
 
-TOKEN_HINT = 'check that WUWEI and gh use the same token (GH_TOKEN/GITHUB_TOKEN)'
+FIELD = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--include', '--hostname', 'github.com']
+FIELD_RESET = 1_791_809_746  # 2026-10-12 12:55:46 UTC
 
 
-def test_a_full_bucket_names_both_readings(tmp_path, monkeypatch):
-    # #891 field case: gh said the primary wording while gh api rate_limit showed core 5000 of 5000.
-    # Neither reading is guessed away: both are named, with the token hint, and the failed read is
-    # not asked again with --include.
+def test_the_refused_replys_headers_decide(tmp_path, monkeypatch):
+    # #899 field case: the refused read's own headers say core 0 until 12:55:46 while gh api
+    # rate_limit would say 5000 of 5000. The headers decide; rate_limit is never asked.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': FIELD, 'exit': 1, 'stdout': headers('core', 0, FIELD_RESET), 'stderr': PRIMARY},
+        {'argv': RATE_LIMIT, 'stdout': limits(5000, 5000, NOW + 3600)}])
+    result = adapter().pr('acme/widget#7')
+    assert result.reason == ('github.pr: could not run: GitHub rate limit until 12:55:46 UTC '
+                             '(0 of 5000 core calls left); retry after it')
+    assert calls == [['gh', *FIELD]]
+
+
+@pytest.mark.parametrize('stderr,remaining,extra,expected', [
+    (SECONDARY, 4990, '', f'GitHub rate limit until {hms(NOW + 60)} UTC (secondary limit on '
+                          'repos/acme/widget/pulls/7, 4990 of 5000 core calls left); retry after it'),
+    (PRIMARY, 4990, 'Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 30)} UTC (secondary limit on '
+                                           'repos/acme/widget/pulls/7, Retry-After 30 s, 4990 of 5000 core calls '
+                                           'left); retry after it'),
+    (SECONDARY, 0, 'Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 941)} UTC (0 of 5000 core calls '
+                                          'left); retry after it'),
+    (PRIMARY, 4990, '', f'GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused repos/acme/widget/pulls/7 '
+                        'with a rate limit while its headers say 4990 of 5000 core calls left); retry after it'),
+], ids=['secondary-wording', 'retry-after', 'empty-beats-secondary', 'primary-with-calls-left'])
+@pytest.mark.parametrize('operation', ['pr', 'probe'])
+def test_included_headers_decide(operation, stderr, remaining, extra, expected, tmp_path, monkeypatch):
+    # #899: secondary only on gh's secondary wording or Retry-After; remaining 0 is the bucket until
+    # its reset. A plain and a conditional read both hold the headers; rate_limit is never asked.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    argv = FIELD if operation == 'pr' else ['api', 'repos/acme/widget/pulls/7', '--include', '--hostname', 'github.com']
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': argv, 'exit': 1, 'stdout': headers('core', remaining, NOW + 941, extra), 'stderr': stderr},
+        {'argv': RATE_LIMIT, 'stdout': limits(4990, 4990, NOW + 3600)}])
+    result = getattr(adapter(), operation)('acme/widget#7', *([{}] if operation == 'probe' else []))
+    assert result.reason == f'github.{operation}: could not run: ' + expected
+    assert len(calls) == 1 and 'same token' not in result.reason
+
+
+def test_no_headers_and_a_full_bucket_name_the_disagreement(tmp_path, monkeypatch):
+    # #899: a refusal without headers falls back to rate_limit; when it shows calls left on gh's
+    # primary wording, a short note says so, with no token hint and no second read.
     wait_cap(tmp_path, monkeypatch, 0)
     install_clock(monkeypatch)
     calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY},
@@ -692,35 +732,20 @@ def test_a_full_bucket_names_both_readings(tmp_path, monkeypatch):
     result = adapter().pr('acme/widget#7')
     assert result.reason == (
         f'github.pr: could not run: GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused '
-        'repos/acme/widget/pulls/7 with a rate limit (gh: API rate limit exceeded for user ID 1), but '
-        f'rate_limit shows 5000 of 5000 core calls left, reset {hms(NOW + 3600)} UTC; {TOKEN_HINT}); '
+        'repos/acme/widget/pulls/7 with a rate limit, but rate_limit shows 5000 of 5000 core calls left); '
         'retry after it')
-    assert 'secondary' not in result.reason
     assert [call[1:3] for call in calls] == [PR[:2], RATE_LIMIT[:2]]
 
 
-@pytest.mark.parametrize('extra,expected', [
-    ('', f'GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused repos/acme/widget/pulls/7 with a '
-         'rate limit (gh: API rate limit exceeded for user ID 1), its headers say core 0 of 5000 until '
-         f'{hms(NOW + 941)} UTC, but rate_limit shows 4990 of 5000 core calls left, reset {hms(NOW + 3600)} '
-         f'UTC; {TOKEN_HINT}); retry after it'),
-    ('Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 30)} UTC (secondary limit on '
-                             'repos/acme/widget/pulls/7, Retry-After 30 s, 4990 of 5000 core calls left); '
-                             'retry after it'),
-], ids=['primary-wording', 'retry-after'])
-def test_included_headers_are_named_never_trusted(extra, expected, tmp_path, monkeypatch):
-    # #891: a conditional read already holds X-RateLimit headers saying core 0 while rate_limit has
-    # calls left. Without Retry-After both readings are named (no extra request); with it, GitHub
-    # signalled a secondary limit, waited for its Retry-After.
-    wait_cap(tmp_path, monkeypatch, 0)
-    install_clock(monkeypatch)
-    argv = ['api', 'repos/acme/widget/pulls/7', '--include', '--hostname', 'github.com']
-    calls = install_replay(monkeypatch, 'gh', [
-        {'argv': argv, 'exit': 1, 'stdout': headers('core', 0, NOW + 941, extra), 'stderr': PRIMARY},
-        {'argv': RATE_LIMIT, 'stdout': limits(4990, 4990, NOW + 3600)}])
-    result = adapter().probe('acme/widget#7', {})
-    assert result.reason == 'github.probe: could not run: ' + expected
-    assert len(calls) == 2
+@pytest.mark.parametrize('case', CASES, ids=lambda c: c['operation'])
+def test_read_recording_with_its_head(case, tmp_path, monkeypatch):
+    # #899: an --include read prints its status line and headers first; the body still parses.
+    head = 'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\nX-Ratelimit-Remaining: 1215\r\n\r\n'
+    steps = [{**step, 'stdout': head + step['stdout']} if '--include' in step.get('argv', []) else step
+             for step in deepcopy(case['steps'])]
+    install_replay(monkeypatch, 'gh', steps)
+    result = getattr(adapter(), case['operation'])(*case['args'], root=tmp_path)
+    assert (result.exit, result.data, result.reason) == (0, case['data'], '')
 
 
 def test_a_search_limit_never_names_its_query(tmp_path, monkeypatch):
@@ -764,6 +789,7 @@ def test_a_write_is_never_asked_again(tmp_path, monkeypatch):
         {'exit': 1, 'stderr': PRIMARY}, {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 90)}])
     result = adapter().create_pr({'repo': 'acme/widget', 'base': 'main', 'head': 'x', 'title': 't', 'body': 'b'})
     assert f'until {hms(NOW + 90)} UTC (0 of 5000 core calls left)' in result.reason and len(calls) == 2
+    assert '--include' not in calls[0]  # #899: a write carries no headers; rate_limit decides
 
 def test_wait_override_never_waits(tmp_path, monkeypatch):
     # #867: doctor sets WUWEI_RATE_LIMIT_WAIT=0; a reset 30 s away is reported, not waited for.
@@ -825,7 +851,7 @@ def test_json_error_reply_shows_its_message(monkeypatch):
 
 
 AUTH = ['auth', 'status', '--hostname', 'github.com']
-USER = ['api', 'user', '--hostname', 'github.com']
+USER = ['api', 'user', '--include', '--hostname', 'github.com']
 AUTH_FAILED = ('github.com\n  X Failed to log in to github.com account octocat (keyring)\n'
                '  - Active account: true\n  - The token in keyring is invalid.\n')
 

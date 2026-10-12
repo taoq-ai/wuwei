@@ -82,33 +82,32 @@ def cap(root=None):
 
 
 def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=None):
-    """A RateLimited when gh's stderr names a rate limit, read from gh api rate_limit for the
-    resource the failed call spends. An empty bucket waits for its reset. #891: calls left is a
-    secondary limit only when GitHub says so (the word, or Retry-After as after); on the primary
-    wording both readings are named, with the refused reply's headers (seen: resource, remaining,
-    limit, reset) when an --include read holds them, and neither is guessed away."""
+    """A RateLimited when gh's stderr names a rate limit. #899: the refused reply's own X-RateLimit
+    headers (seen: resource, remaining, limit, reset) decide; gh api rate_limit for the resource the
+    call spends is read only when the reply carried none. An empty bucket waits for its reset;
+    calls left is a secondary limit only when GitHub says so (the word, or Retry-After as after)."""
     if not re.search(r'rate limit', stderr or '', re.I):
         return None
-    try:
-        result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
-                                capture_output=True, text=True, timeout=30, env=env)
-        resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
-        row = resources[resource]
-        if not all(type(row[key]) is int for key in ('remaining', 'limit', 'reset')):
-            raise TypeError
-    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-        return RateLimited(time.time() + (after or WAIT))
-    if row['remaining'] == 0:
-        return RateLimited(row['reset'], 0, row['limit'], resource)
+    if seen:
+        resource, remaining, limit, reset = seen
+    else:
+        try:
+            result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
+                                    capture_output=True, text=True, timeout=30, env=env)
+            resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
+            remaining, limit, reset = (resources[resource][key] for key in ('remaining', 'limit', 'reset'))
+            if not all(type(value) is int for value in (remaining, limit, reset)):
+                raise TypeError
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+            return RateLimited(time.time() + (after or WAIT))
+    if remaining == 0:
+        return RateLimited(reset, 0, limit, resource)
     if after or re.search(r'secondary', stderr, re.I):
-        return RateLimited(time.time() + (after or WAIT), row['remaining'], row['limit'], resource, where, after)
-    # Fixed words and numbers only: GitHub's primary wording is matched, never echoed.
-    said = re.search(r'API rate limit (?:already )?exceeded for (?:user|installation) ID \d+', stderr)
-    note = (f"GitHub refused {where or resource} with a rate limit (gh: {said[0] if said else 'rate limit'})"
-            + (f', its headers say {seen[0]} {seen[1]} of {seen[2]} until {_hms(int(seen[3]))} UTC' if seen else '')
-            + f", but rate_limit shows {row['remaining']} of {row['limit']} {resource} calls left, reset "
-            f"{_hms(row['reset'])} UTC; check that WUWEI and gh use the same token (GH_TOKEN/GITHUB_TOKEN)")
-    return RateLimited(time.time() + WAIT, note=note)
+        return RateLimited(time.time() + (after or WAIT), remaining, limit, resource, where, after)
+    # Fixed words and numbers only: GitHub's primary wording with calls left, never echoed.
+    told = ' while its headers say' if seen else ', but rate_limit shows'
+    return RateLimited(time.time() + WAIT, note=f'GitHub refused {where or resource} with a rate limit'
+                                                f'{told} {remaining} of {limit} {resource} calls left')
 
 
 def retry(call, root=None):
