@@ -672,3 +672,26 @@ def test_unreadable_base_is_unmeasured(case, capsys, damage):
     assert main(['pr', 'state', REF]) == 2
     row = pr_row(capsys)
     assert row['exit'] == 2 and row['reason'].startswith('PR state unmeasured:')
+
+
+def test_pr_act_on_a_full_bucket_names_both_readings(case, monkeypatch, capsys):
+    # #891: pr act through the real GitHub adapter. GitHub refuses the PR read with its primary
+    # wording while gh api rate_limit shows core full: both readings and the token hint are named,
+    # never "0 of 5000 core calls left" alone, and the failed read is not asked again.
+    import importlib
+    from fakes.replay import NOW, hms, install_clock, install_replay, limits
+    root, _, vcs, _ = linked(case)
+    github = importlib.import_module('adapters.code_host.github')
+    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': github, 'vcs': vcs}[kind])
+    monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '0')
+    install_clock(monkeypatch)
+    pr = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--hostname', 'github.com']
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': pr, 'exit': 1, 'stderr': 'gh: API rate limit exceeded for user ID 1. (HTTP 403)'},
+        {'argv': ['api', 'rate_limit', '--hostname', 'github.com'], 'stdout': limits(5000, 5000, NOW + 3600)}])
+    assert main(['pr', 'act', REF]) == 2
+    out = capsys.readouterr().out
+    assert (f'GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused repos/acme/widget/pulls/7 with a '
+            'rate limit (gh: API rate limit exceeded for user ID 1), but rate_limit shows 5000 of 5000 core '
+            f'calls left, reset {hms(NOW + 3600)} UTC; check that WUWEI and gh use the same token') in out
+    assert '(0 of 5000' not in out and len(calls) == 2
