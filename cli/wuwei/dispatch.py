@@ -49,13 +49,24 @@ def host(root, config, running=0, free=None, policy=None):
     else one per core, and never read free memory; seats that are separate processes take the
     median of today's last five memory readings (the seats that fit above the floor, one per
     core). Then the owner's values; `bound` names what set CAP. `free` is MiB when the caller
-    already measured it; `policy` the day's seat policy when held."""
+    already measured it; `policy` the day's seat policy when held. #898: with
+    host.min_free_memory_pct set, every runtime reads the share free; `held` says why no new
+    seat launches (below the floor, or unmeasured)."""
     import statistics  # lazy: dispatch is on the hook path (#346)
 
     from wuwei import metrics, state, workspace
-    from wuwei.guards.agent_launch import free_memory
+    from wuwei.guards.agent_launch import free_memory, free_percent
 
     owner_cap, owner_seats = config['cap'], config['host']['seats']
+    floor, held, note = config['host']['min_free_memory_pct'], {}, ''
+    if floor:
+        try:
+            share = free_percent(config, root)
+            note = f'; free memory {share}% (floor {floor}%)'
+            held = {'held': f'held: free memory {share}% < {floor}%'} if share < floor else {}
+        except ValueError as exc:  # never a silent block: the hold names the reading's failure
+            note, held = f'; {exc}', {'held': f'held: {exc}' + (
+                '' if 'doctor' in str(exc) else '; bin/wuwei doctor tests the host adapter')}
     try:
         if policy is None:
             policy = state.read_state(root)['seat_policy']
@@ -68,7 +79,7 @@ def host(root, config, running=0, free=None, policy=None):
     except (OSError, ValueError) as exc:
         cap = owner_cap or 1
         return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
-                'text': f'cap {cap} (unmeasured): {exc}'}
+                'text': f'cap {cap} (unmeasured): {exc}{note}', **held}
     days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
     damaged, memory = None, {}
     if separate:
@@ -93,7 +104,8 @@ def host(root, config, running=0, free=None, policy=None):
                   'seat_source': 'default' if seat is None else 'measured', 'reading': reading}
     else:
         fit, rule = owner_seats or cores, 'host.seats'
-        measured = 'subagent runtime, free memory not read' + ('' if owner_seats else f'; host.seats unset, {cores} cores')
+        measured = 'subagent runtime' + ('' if floor else ', free memory not read') + (
+            '' if owner_seats else f'; host.seats unset, {cores} cores')
     # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
     seats = owner_seats or max(fit, len(ROLES))
     cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
@@ -101,7 +113,7 @@ def host(root, config, running=0, free=None, policy=None):
             if owner_cap else f'cap {cap} ({bound}): {measured}')
     if damaged:
         text += f'; warning: {damaged}'
-    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
+    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text + note, **held}
 
 
 WINDOWS = {'five_hour': 300, 'seven_day': 10080}  # #845: minutes; the usage windows both runtimes share
@@ -815,15 +827,16 @@ def launch_set(root=None):
     data, config = state.read_state(root), workspace.load_config(root)
     items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
+    live = brief.live(data)  # #898: only registered seats that have not handed back hold a slot
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
-    limits = host(root, config, running=len(running), policy=data['seat_policy'])
+    limits = host(root, config, running=len(live), policy=data['seat_policy'])
     # #845: seats each runtime's windows still carry, less its running seats and build loops
     policies = [row for row in data['seat_policy'].values() if isinstance(row, dict)]
     rooms = windows(root, config, {config['adapters']['runtime'], *(row.get(key) for row in policies
                                                                     for key in ('runtime', 'alternate'))} - {None})
     taken = Counter([(seat['role'] == 'builder' and (data.get('builds', {}).get(seat.get('item')) or {}).get('runtime'))
                      or seat.get('runtime') or data['seat_policy'].get(seat['role'], {}).get('runtime')
-                     or config['adapters']['runtime'] for seat in running]
+                     or config['adapters']['runtime'] for seat in live]
                     + [build['runtime'] for build in data.get('builds', {}).values() if state.looping(build)])
     windows_left = {name: row['room'] and max(0, row['room'] - taken[name]) for name, row in rooms.items()}
     hold = lambda runtime: {'action': 'wait', 'reason': f"{runtime} usage window has no room for a seat "
@@ -836,7 +849,7 @@ def launch_set(root=None):
         state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root,
                            kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text'],
                                                         **{key: limits[key] for key in ('reading',) if key in limits}})
-    free = start = ceiling - len(running)
+    free = start = ceiling - len(live)
     builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
     busy = {seat['item'] for seat in running}
     names = [name for name in approved(data) if name not in busy]
@@ -864,7 +877,10 @@ def launch_set(root=None):
             [value.get('runtime')] if launches else [])
         held = next((name for name, count in need.items() if windows_left.get(name) is not None
                      and windows_left[name] < count), None)
-        if held:
+        if launches and 'held' in limits:  # #898: below the memory floor no seat starts; re-check soon
+            value = {'action': 'wait', 'reason': limits['held'],
+                     'until': (workspace.now() + timedelta(minutes=1)).isoformat()}
+        elif held:
             value = hold(held)
         elif launches > free:
             value = {'action': 'wait', 'reason': (
@@ -891,7 +907,8 @@ def launch_set(root=None):
         share[goal(name)] -= 1
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
-    gate_waits = any(row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
+    gate_waits = 'held' not in limits and any(  # #898: a memory hold holds the builds itself
+        row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
     starts, skip = {}, []
     for name in first + rest:
         if name in briefed:
@@ -918,6 +935,9 @@ def launch_set(root=None):
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 f'CAP {cap} reached ({building} building); bin/wuwei next names the seat '
                 'expected to free first')})
+        elif 'held' in limits:  # #898 F1: held before build next binds, moves or claims it
+            entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': limits['held'],
+                            'until': (workspace.now() + timedelta(minutes=1)).isoformat()})
         elif name in briefed:
             add(name, lambda: build.next_action(name, root=root, runtime=runtime))
         else:
@@ -1355,7 +1375,7 @@ def opinion(item, root=None):
     runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
     seat = data['seats'].get(name)
     if seat is None or seat['status'] != 'running':
-        running = sum(other['status'] == 'running' for other in brief.seats(data).values())
+        running = len(brief.live(data))  # #898
         ceiling = host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set')

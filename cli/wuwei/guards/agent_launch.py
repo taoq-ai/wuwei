@@ -16,6 +16,16 @@ def free_memory(config, root):
     return value
 
 
+def free_percent(config, root):
+    """#898: the share of the host free, 0-100, from the host adapter."""
+    from wuwei import brief, registry
+
+    value = brief.read(registry.load('host', config).free_percent, root=root)
+    if type(value) is not int or not 0 <= value <= 100:
+        raise ValueError('free memory percentage unmeasured; retry; if it repeats, run bin/wuwei doctor, which tests the host adapter')
+    return value
+
+
 def check(payload):
     from wuwei import brief
 
@@ -266,14 +276,15 @@ def _check(payload):
                                     + '; ask the builder to commit or discard them, then write the gate brief again'))
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         event.update(free_mib=available // 2**20, running=len(running))
-        builders = sum(seat['role'] == 'builder' for seat in running)
+        live = brief.live(data)  # #898: adhoc and handed-back seats hold no slot
+        builders = sum(seat['role'] == 'builder' for seat in live)
         from wuwei.dispatch import host  # lazy: hook path (#346); #528: derived at launch
-        limits = host(root, config, running=len(running), free=available // 2**20,
+        limits = host(root, config, running=len(live), free=available // 2**20,
                                 policy=data['seat_policy'])
         if role == 'builder' and builders >= limits['cap']:
             raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
-        if len(running) >= limits['seats']:
-            raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
+        if len(live) >= limits['seats']:
+            raise brief.Refused(f'running seats {len(live)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
         data['seats'][logged['name']] = {
             'id': logged['name'], 'role': logged['role'], 'item': logged['item'],
             'brief': relative, 'head': head, 'status': 'running',

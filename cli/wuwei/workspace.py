@@ -102,7 +102,7 @@ SCHEMA = {
     "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
-    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
+    "host": {"free_memory_mb": (int, 1024, 0), "min_free_memory_pct": (int, 0, 0, 100), "seats": (int, 0, 0),
              "reservation_timeout_seconds": (int, 14400, 1),
              "rate_limit_wait_seconds": (int, 120, 0)},
     "memory": {"budget_tokens": (int, 6000, 1), "export_to": (str, "CLAUDE.md")},

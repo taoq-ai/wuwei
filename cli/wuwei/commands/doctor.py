@@ -269,10 +269,25 @@ def _host(root, config):
             rows.append(_row('host', 'memory', 'unmeasured', result.reason or 'free memory unmeasured',
                              'check the host adapter'))
         else:
+            from wuwei.guards.agent_launch import free_percent
             mib, floor = result.data // 2**20, config['host']['free_memory_mb']
-            rows.append(_row('host', 'memory', 'ok', f'{mib} MiB') if mib >= floor else
-                        _row('host', 'memory', 'fail', f'{mib} MiB below {floor} MiB',
-                             'free memory, or lower host.free_memory_mb in .wuwei/config.toml'))
+            pct, share, value = config['host']['min_free_memory_pct'], None, f'{mib} MiB (floor {floor} MiB); '
+            try:  # #898: the share free and its floor, beside the MiB floor
+                share = free_percent(config, root)
+                reading = f'{share}% free ' + (f'(floor {pct}%)' if pct else '(floor off)')
+            except ValueError as exc:
+                reading = str(exc)
+            if mib < floor:
+                rows.append(_row('host', 'memory', 'fail', f'{mib} MiB below {floor} MiB',
+                                 'free memory, or lower host.free_memory_mb in .wuwei/config.toml'))
+            elif pct and share is None:
+                rows.append(_row('host', 'memory', 'unmeasured', value + reading,
+                                 'check the host adapter, or set host.min_free_memory_pct = 0'))
+            elif pct and share < pct:
+                rows.append(_row('host', 'memory', 'fail', value + f'{share}% free below the floor {pct}%',
+                                 'free memory, or lower host.min_free_memory_pct in .wuwei/config.toml'))
+            else:
+                rows.append(_row('host', 'memory', 'ok', value + reading))
     return rows
 
 
