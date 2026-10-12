@@ -207,7 +207,7 @@ def step(root, ran=()):
     from wuwei import derive
     launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
                  'command': brief.recovery(name, seats[name])} for name in brief.stuck(data)]
-    launches += [{'kind': 'finding', 'item': ident, 'command': f'wuwei plan add {ident} --from-finding',
+    launches += [{'kind': 'finding', 'item': ident, 'command': _finding_command(ident, finding, data, config),
                   'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
                  for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once
                  if ident not in data['items'] and ('finding', ident) not in returned]
@@ -407,6 +407,13 @@ def _ran(root):
         except ValueError:
             continue  # an unparsed command names nothing
     return []
+
+
+def _finding_command(ident, finding, data, config):
+    """#908: a finding's plan add, with the goal and repository selections it cannot infer."""
+    choices = (('goal', data.get('goals', [])), ('repo', [repo['name'] for repo in config['repos']]))
+    return ' '.join([f'wuwei plan add {ident} --from-finding', *(
+        f'--{key} <one of {", ".join(values)}>' for key, values in choices if not finding.get(key) and len(values) > 1)])
 
 
 def orientation(row, enforce, spec=None, session=None):

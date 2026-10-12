@@ -226,6 +226,12 @@ def _seats(data):
     return data.get('seats') or goal_seats(data['candidates'], data['cap'])
 
 
+def adopted_id(repos, name, number):
+    """#603, #908: an adopted PR's item id; with several repositories it names the whole
+    repository (owner_repo; an owner login holds no underscore), so no two repositories share one."""
+    return f'PR-{name.replace("/", "_")}-{number}' if len(repos) > 1 else f'PR-{number}'
+
+
 def _owner_prs(config, root, candidates):
     """#510: the owner's open PRs in the configured repositories, as rows the gate claims."""
     from wuwei import registry
@@ -244,10 +250,8 @@ def _owner_prs(config, root, candidates):
             result = host.open_prs(repo['name'], login, root=root)
             if result.exit:
                 return [], f'unmeasured: {result.reason}'
-            # #603: with several repositories the id names the repository, so one number gives two ids.
-            prefix = f'PR-{repo["name"].rsplit("/", 1)[-1]}-' if len(config['repos']) > 1 else 'PR-'
             for pr in result.data:
-                ident = f'{prefix}{pr["number"]}'
+                ident = adopted_id(config['repos'], repo['name'], pr['number'])
                 if (pr['author'] or '').casefold() in logins and ident not in taken:
                     taken.add(ident)
                     rows.append({'id': ident, 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']})
@@ -511,13 +515,19 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         state.append_event('plan.added', {'item': item, 'source': 'replan',
                                           'flags': {item: day['items'][item]['flags']}}, root)
         return {'action': 'risk recorded', 'item': item}
+    finding = {}
     if source == 'finding':  # #646: a seat's finding joins as a small item
         finding = day.get('seat_findings', {}).get(item)
         if finding is None:
             raise state.StateError(f'{item} is not a seat finding; wuwei next lists the findings to add')
-        goal, title = goal or day['goals'][0], finding['scope']
+        # #908: the goal and repository of the item it was found in; never a first one by default
+        goal = goal or finding.get('goal') or (day['goals'][0] if len(day['goals']) == 1 else None)
+        repo, title = repo or finding.get('repo'), finding['scope']
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
+    command = f'bin/wuwei plan add {item}' + (' --from-finding' if source == 'finding' else '')
+    if goal is None and finding:
+        raise state.StateError(f'{item} names no goal; run {command} --goal <one of {", ".join(day["goals"])}>')
     if goal is None:
         raise state.StateError(f"{item} is not in the plan; to add it as the owner's item "
                                f'run bin/wuwei plan add {item} --goal G-n')
@@ -532,8 +542,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
                  **({'repo': repo} if repo else {}),
                  **({'governed_by': governed_by} if governed_by is not None else {})}
     names = [row['name'] for row in config['repos']]
-    if repo is not None and repo not in names or source is None and repo is None and len(names) > 1:
-        raise ValueError(f'{item}: name its repository: run bin/wuwei plan add {item} --goal {goal} '
+    if repo is not None and repo not in names or repo is None and len(names) > 1:
+        raise ValueError(f'{item}: name its repository: run {command} --goal {goal} '
                          f'--repo <one of {", ".join(names) or "none configured"}>')
     _admitted(item, candidate, checkout(root, config['repos'], repo, f'worktrees/{item}'))
     from wuwei import tracker
@@ -548,7 +558,10 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
                                   **{key: candidate[key] for key in ('tier', 'governed_by', 'repo') if key in candidate},
-                                  **({'source': source, 'title': candidate['title']} if source else {}),
+                                  **({'source': source} if source else {}),
+                                  **({'title': candidate['title']} if source or title else {}),
+                                  **({'parent': finding['item']} if 'item' in finding else {}),
+                                  **({'evidence': finding['evidence']} if finding else {}),
                                   **({'approved_as': text} if (text := _approval('', note)) else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):

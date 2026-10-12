@@ -545,22 +545,31 @@ def test_owner_pr_search_skips_handles_that_are_not_github_logins(root, monkeypa
     assert [call[1][1] for call in host.calls] == ['builder', 'leone']
     assert [row['id'] for row in rows] == ['PR-12'] and sweep == 'measured: 1 open PR by the owner'
 
-def test_one_pr_number_in_two_repositories_gives_two_ids(root, monkeypatch):
-    # #603 review: with two repositories the claim id names the repository, so approve takes both.
+def test_one_pr_number_and_one_file_in_three_repositories(root, monkeypatch):
+    # #603 review, #908: the claim id names the whole repository, so three repositories that share
+    # a short name give three ids; a file all three hold names no repository.
     from fakes.code_host import Fake
     from wuwei import shepherd
+    names = ('acme/app', 'beta/app', 'gamma/app')
     (root / '.wuwei/config.toml').write_text('[owner]\nhandles = ["Builder"]\n' + ''.join(
-        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in ('widget', 'paper')))
+        f'[[repos]]\nname = "{name}"\npath = "{name[:4]}"\ndefault_branch = "main"\n' for name in names))
+    for name in names:
+        (root / name[:4] / 'cli').mkdir(parents=True)
+        (root / name[:4] / 'cli/app.py').write_text('')
     host = Fake()
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
-    plan.propose(proposal(), root)
-    widget = plan.gate_widget(root)
-    assert widget['record'] == 'wuwei plan approve --items A PR-widget-12 PR-paper-12 --goals-confirmed'
+    data = proposal()
+    data['candidates'][0]['paths'] = ['cli/app.py']
+    text = plan.propose(data, root).read_text()
+    assert 'Repository: not named' in text
+    assert 'repo' not in json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates'][0]
+    ids = ['PR-acme_app-12', 'PR-beta_app-12', 'PR-gamma_app-12']
+    assert plan.gate_widget(root)['record'] == f'wuwei plan approve --items A {" ".join(ids)} --goals-confirmed'
     claimed = []
     monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
-    plan.approve(['A', 'PR-widget-12', 'PR-paper-12'], root, goals_confirmed=True)
-    assert [args[1:3] for args in claimed] == [('acme/widget#12', 'PR-widget-12'), ('acme/paper#12', 'PR-paper-12')]
+    plan.approve(['A', *ids], root, goals_confirmed=True)
+    assert [args[1:3] for args in claimed] == [(f'{name}#12', ident) for name, ident in zip(names, ids)]
 
 
 def test_gate_widget_is_the_one_approval_question(root):
