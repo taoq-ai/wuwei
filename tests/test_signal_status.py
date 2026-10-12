@@ -265,7 +265,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
                 'reviewer.unresolved': 'silent',
                 'watch: observation': 'silent',
-                'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
+                'plan.session': 'silent', 'gate.asked': 'silent', 'owner.approved': 'silent', 'pr.disposition': 'silent', 'pr.action': 'warn',
                 'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
                 'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent',

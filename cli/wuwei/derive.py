@@ -246,7 +246,7 @@ def offers(data, root, config, merges=None):
         if decision is None and card:
             from wuwei import sessions
             detail = f'{name}: {why}. Yes parks it; No keeps it as it is.'
-            if sessions.owner_answer(root, command, detail) == 'No':
+            if sessions.owner_answer(root, command) == 'No':
                 return
             decision = {'item': name, 'why': f'{name}: {why}', 'command': command,
                         'card': sessions.owner_card(command, detail)}
@@ -260,8 +260,7 @@ def offers(data, root, config, merges=None):
         reason = (row.get('disposition') or {}).get('reason') or ''
         if row.get('phase') == 'parked' and reason.startswith(ASK_PARKS):
             from wuwei import plan, sessions
-            if sessions.owner_answer(root, f'bin/wuwei plan resume {name}', f'Resume {name}: {reason}',
-                                     plan.resume_token(root, name, data)) is None:
+            if sessions.owner_answer(root, f'bin/wuwei plan resume {name}', plan.resume_token(root, name, data)) is None:
                 ask(name, reason, f'wuwei plan resume {name}')
     for name in names:
         row = items[name]

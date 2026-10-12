@@ -567,11 +567,10 @@ def _thread(root, ref, item, tree, measured, reply=None, target=None, fix=None, 
         rounds = dispatch.rounds_used(state.read_state(root), item)
         token = f'{obligations._fingerprint(latest)[:12]}-r{rounds}'
         no = 'The planner replies that the thread is deferred to you.'
-        owner = sessions.owner_answer(root, command, detail, token, no)
-        if owner == 'Yes':
-            return _fix(root, ref, item, tree, measured, feedback=feedback(scope))
-        if owner != 'No':
-            print(sessions.needs_owner(root, command, detail, token, no), file=sys.stderr)
+        if sessions.owner_answer(root, command, token) != 'No':
+            if (refusal := sessions.needs_owner(root, command, detail, token, no)) is None:
+                return _fix(root, ref, item, tree, measured, feedback=feedback(scope))
+            print(refusal, file=sys.stderr)
             return 1
         answer = {'option': 'defer'}
     print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface, 'thread': target, 'question': text,

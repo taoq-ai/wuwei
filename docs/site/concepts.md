@@ -179,6 +179,8 @@ Every seat prompt ends with the [mandate](#mandate) block. A two-way open questi
 
 A command that needs your answer refuses and prints its Owner step card. The planner asks it in the session with AskUserQuestion. On Yes the same command runs again and passes. The only other card is the morning gate (`wuwei plan gate`).
 
+Your Yes counts for the card's question: the exact command and its token. The option text is there for you to review, so a shortened diff still counts. A Yes counts once; running the command again later asks again. After your Yes the command applies from the session or from your own terminal.
+
 Owner commands include `config set`, `config add-repo`, `config promote`, `plan resume`, a `merge` past the policy, a deploy and `doctor --fix`. No config line and no hook answers a card for you.
 
 ## Duties
