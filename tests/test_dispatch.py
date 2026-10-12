@@ -1213,10 +1213,16 @@ class FakeRuntime:
         self.calls, self.text, self.statuses = [], text, list(statuses)
         self.usage = {'cost': 0.42} if usage is None else usage
         self.dispatched = Result(0, {'id': 'j1', 'started_at': 0})
+        self.status_error = None
 
     def dispatch(self, role, brief, worktree, write, *, root=None):
         self.calls.append(('dispatch', role, brief, worktree, write))
         return self.dispatched
+
+    def cancel(self, job, *, root=None):
+        from wuwei.registry import Result
+        self.calls.append(('cancel', job['id']))
+        return Result(0, {})
 
     def continue_job(self, job, feedback, *, root=None):
         from wuwei.registry import Result
@@ -1227,7 +1233,7 @@ class FakeRuntime:
         from wuwei.registry import Result
         self.calls.append(('status', job['id']))
         return Result(0, {'status': self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0],
-                          'model': 'm1'})
+                          'model': 'm1', **({'error': self.status_error} if self.status_error else {})})
 
     def result(self, job, *, root=None):
         from wuwei.registry import Result
@@ -1267,6 +1273,9 @@ def test_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
     brief_path = directory / 'briefs/q-1-codex.md'
     header, body = brief_path.read_text().split('\n\n', 1)
     assert 'Model: m1' in header.splitlines() and body == 'Review the item.\n'
+    verdict_line, = [line for line in header.splitlines() if line.startswith('Verdict file:')]
+    assert 'WUWEI writes your final message there' in verdict_line  # #871 L1
+    assert 'the only file you write' not in verdict_line
     assert runtime.calls[0] == ('dispatch', 'sentinel-quality', str(brief_path), str(root / 'repo'), True)
     assert (directory / 'decisions/gate-q-1-codex.md').read_text() == OPINION_TEXT + '\n'
     seat = state.read_state(root)['seats']['q-1-codex']
@@ -1302,14 +1311,43 @@ def test_passing_opinion_lets_the_item_raise(root, monkeypatch):
 def test_opinion_rerun_polls_the_running_job(root, monkeypatch):
     from wuwei import dispatch
 
-    runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=('failed',)))
-    with pytest.raises(RuntimeError, match='failed'):
-        dispatch.opinion('A', root)
-    assert state.read_state(root)['gate_verdicts'] == {}
-    runtime.statuses = ['completed']
-    runtime.calls.clear()
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=('running', 'completed')))
+    brief_path = workspace.day_dir(root) / 'briefs/q-1-codex.md'
+    brief_path.write_text('Item: A\n\nReview the item.\n')
+    state._write_state(lambda data: data['seats'].update({'q-1-codex': {
+        'id': 'q-1-codex', 'item': 'A', 'role': 'sentinel-quality', 'status': 'running',
+        'started_at': '2026-09-29T12:00:00+00:00', 'runtime': 'codex', 'model': 'm1',
+        'head': 'a' * 40, 'brief': str(brief_path.relative_to(root)),
+        'job': {'id': 'j1', 'started_at': 0}}}), root)
+    (root / '.wuwei/config.toml').write_text((root / '.wuwei/config.toml').read_text()
+                                            + '[build]\npoll_interval_seconds = 0\n')
     assert dispatch.opinion('A', root)['verdict'] == 'FIX'
-    assert [call[0] for call in runtime.calls] == ['status', 'result']
+    assert [call[0] for call in runtime.calls] == ['status', 'status', 'result']
+
+
+@pytest.mark.parametrize('stop', ['failed', 'unmeasured'])
+def test_failed_opinion_frees_its_seat_and_the_rerun_relaunches(root, monkeypatch, stop):
+    # #871: the companion's error is named, the seat stops holding a host seat, and a rerun
+    # (also after seat stop --unmeasured) dispatches a new job instead of re-reading the old one
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=('failed',)))
+    runtime.status_error = 'codex app-server exited unexpectedly: failed to initialize sqlite'
+    with pytest.raises(RuntimeError, match='failed to initialize sqlite'):
+        dispatch.opinion('A', root)
+    seat = state.read_state(root)['seats']['q-1-codex']
+    assert seat['status'] == 'stopped' and 'sqlite' in seat['failed']
+    if stop == 'unmeasured':
+        state._write_state(lambda data: data['seats']['q-1-codex'].update(
+            status='unmeasured', reason='job failed', by='owner'), root)
+    assert state.read_state(root)['gate_verdicts'] == {}
+    runtime.statuses, runtime.status_error = ['completed'], None
+    runtime.calls.clear()
+    runtime.statuses = ['failed', 'completed'] if stop == 'unmeasured' else ['completed']
+    assert dispatch.opinion('A', root)['verdict'] == 'FIX'
+    assert [call[0] for call in runtime.calls] == ['status'] * (stop == 'unmeasured') + [
+        'dispatch', 'status', 'result']  # F3: an unmeasured seat's old job is read first
+    assert 'failed' not in state.read_state(root)['seats']['q-1-codex']
 
 
 def test_opinion_keeps_a_verdict_the_seat_wrote(root, monkeypatch):
@@ -1332,9 +1370,11 @@ def test_rejected_opinion_continues_the_same_job(root, monkeypatch):
     runtime.text = OPINION_TEXT
     assert dispatch.opinion('A', root)['verdict'] == 'FIX'
     continued = [call for call in runtime.calls if call[0] == 'continue']
-    assert continued == [('continue', 'j1', 'Your verdict file was rejected by the verdict lint; '
-                          'rewrite .wuwei/days/2026-09-29/decisions/gate-q-1-codex.md to the verdict '
-                          'contract in your brief.')]
+    # #871 L1: the sandboxed seat answers with its final message; WUWEI writes the file
+    assert continued == [('continue', 'j1', 'Your verdict was rejected by the verdict lint. Reply with '
+                          'your whole verdict, rewritten to the verdict format, as your final message; '
+                          'WUWEI writes it to .wuwei/days/2026-09-29/decisions/gate-q-1-codex.md.')]
+    assert (workspace.day_dir(root) / 'decisions/gate-q-1-codex.md').read_text() == OPINION_TEXT + '\n'
     assert [call[0] for call in runtime.calls].count('dispatch') == 1
 
 
@@ -1425,6 +1465,27 @@ def test_cli_opinion_contract(root, monkeypatch, capsys):
     assert 'runtime seat failed' in capsys.readouterr().err
 
 
+@pytest.mark.parametrize('old,calls', [
+    ('running', ['status', 'cancel', 'dispatch', 'status', 'result']),
+    ('failed', ['status', 'dispatch', 'status', 'result'])])
+def test_relaunch_after_unmeasured_cancels_the_old_job_still_running(root, monkeypatch, old, calls):
+    # #871 F3: one job per verdict file; the owner's unmeasured stop does not stop the job
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=(old, 'completed')))
+    brief_path = workspace.day_dir(root) / 'briefs/q-1-codex.md'
+    brief_path.write_text('Item: A\n\nReview the item.\n')
+    state._write_state(lambda data: data['seats'].update({'q-1-codex': {
+        'id': 'q-1-codex', 'item': 'A', 'role': 'sentinel-quality', 'status': 'unmeasured',
+        'reason': 'slow', 'by': 'owner', 'runtime': 'codex', 'model': 'm1', 'head': 'a' * 40,
+        'brief': str(brief_path.relative_to(root)), 'job': {'id': 'j0', 'started_at': 0}}}), root)
+    (root / '.wuwei/config.toml').write_text((root / '.wuwei/config.toml').read_text()
+                                            + '[build]\npoll_interval_seconds = 0\n')
+    assert dispatch.opinion('A', root)['verdict'] == 'FIX'
+    assert [call[0] for call in runtime.calls] == calls
+    assert runtime.calls[0] == ('status', 'j0')
+
+
 def opinion_fix_round(root, monkeypatch, delta_text, cap=''):
     from wuwei import dispatch
 
@@ -1461,6 +1522,61 @@ def test_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
         'Probe:', '- P3 | cli/example.py:12 | naming fails when read | blocks: no\nProbe:')
     outcome = opinion_fix_round(root, monkeypatch, text)
     assert outcome['action'] == 'raise' and 'naming' in outcome['notes'][0]
+
+
+@pytest.mark.parametrize('flags,selected', [((), False), (('trust_surface',), True),
+                                             (('agent_surface',), False)])
+def test_second_opinion_when_selects_by_item_flag(root, monkeypatch, flags, selected):
+    # #873: with the selector set to trust_surface, only trust-surface items get the second gate
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('src/app.py', 200, 0)], flags=flags,
+           extra=SECOND + 'second_opinion_when = ["trust_surface"]\n')
+    assert ('second_opinion' in tier_of(root)) == selected
+    assert ('quality@codex' in dispatch.gate_set(state.read_state(root)['items']['A'])) == selected
+
+
+@pytest.mark.parametrize('change', ['second_opinion = "off"\n',
+                                    'second_opinion = "codex:m1"\nsecond_opinion_when = ["agent_surface"]\n'])
+def test_second_opinion_turned_off_releases_the_waiting_item(root, monkeypatch, change):
+    # #873: the item's other gates passed and only the second opinion is pending; after the
+    # owner switches it off (or narrows the selector), dispatch next raises the item
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch)
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    assert dispatch.next_step('A', root)['roles'] == ['quality@codex']
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('second_opinion = "codex:m1"\n', change))
+    [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'A']
+    assert entry['action'] == 'raise'
+    assert 'second_opinion' not in state.read_state(root)['items']['A']['gates']
+    assert [{key: row[key] for key in ('item', 'gate')} for row in events_of(root, 'gate.released')] == [
+        {'item': 'A', 'gate': 'quality@codex'}]
+    with pytest.raises(dispatch.Refused, match='no second opinion'):
+        dispatch.opinion('A', root)
+    assert runtime.calls == []
+
+
+@pytest.mark.parametrize('change', ['second_opinion = "off"\n',
+                                    'second_opinion = "codex:m1"\nsecond_opinion_when = ["agent_surface"]\n'])
+def test_a_blocking_second_opinion_survives_switching_it_off(root, monkeypatch, change):
+    # #873 F1: only a pending second opinion is released; a recorded FIX still blocks
+    from wuwei import dispatch
+
+    opinion_ready(root, monkeypatch)
+    assert dispatch.opinion('A', root)['verdict'] == 'FIX'
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('second_opinion = "codex:m1"\n', change))
+    outcome = dispatch.next_step('A', root)
+    assert outcome == {'action': 'fix', 'roles': ['quality@codex'], 'command': 'wuwei build next A'}
+    assert state.read_state(root)['items']['A']['gates']['second_opinion'] == OPINION
+    assert events_of(root, 'gate.released') == []
 
 
 def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):

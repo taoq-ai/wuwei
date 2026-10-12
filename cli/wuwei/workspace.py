@@ -112,6 +112,8 @@ SCHEMA = {
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
     "gates": {"second_opinion": (str, "off"),
               "second_opinion_role": (str, "quality", ("arch", "quality", "security")),
+              # #873: item flags that select the second opinion; empty is every standard and full item
+              "second_opinion_when": [(str, None, ("trust_surface", "boundary_relevant", "agent_surface"))],
               "max_rounds": (int, 2, 1),  # #623: fix rounds per item before notes ship or a blocker parks
               "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
                                   "full": (int, 0, 0)},

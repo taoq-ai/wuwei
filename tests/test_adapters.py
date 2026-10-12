@@ -70,6 +70,7 @@ CALLS = [
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
     ('vcs', 'unhook', ('repo', 'write'), False),
     ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
+    ('vcs', 'commit_all', ('repo', 'item', 'name', 'email'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('vcs', 'recent_commits', ('repo',), True),
     ('vcs', 'default_branch', ('repo',), True),
@@ -92,6 +93,7 @@ CALLS = [
     ('runtime', 'status', ('job',), True),
     ('runtime', 'result', ('job',), True),
     ('runtime', 'continue_job', ('job', 'feedback'), False),
+    ('runtime', 'cancel', ('job',), False),  # #871 F3
     ('scanner', 'audit', ('path',), True),
     ('scanner', 'gate', ('result', 'threshold'), True),
     ('scanner', 'traces', ('file',), True),

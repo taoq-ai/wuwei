@@ -59,6 +59,10 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
     match args:
         case ('init', '--quiet'):
             allowed = local
+        case ('add', '--all'):  # #871 L2: commit_all, in a build worktree
+            allowed = not local
+        case ('commit', '--quiet', '-m', message):
+            allowed = not local and bool(re.fullmatch(_BUILD_MESSAGE, message))
         case ('add', '-A', '--', *paths):
             allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
         case ('commit', '--only', '-m', message, '--', *paths):
@@ -618,6 +622,26 @@ def worktree_identity(repo, name, email, root=None):
     _run(repo, 'config', '--worktree', 'user.name', name)
     _run(repo, 'config', '--worktree', 'user.email', email)
     return {'name': name, 'email': email}
+
+
+_BUILD_MESSAGE = r'chore\([A-Za-z0-9][A-Za-z0-9_.-]*\): Codex builder changes'  # the item identifier rule
+
+
+@_operation
+def commit_all(repo, item, name, email, root=None):
+    """#871 L2: commit every change in the item's worktree with the given identity. A Codex
+    job's sandbox cannot write the worktree's git metadata, so WUWEI commits its build."""
+    message = f'chore({item}): Codex builder changes'
+    if not isinstance(item, str) or not re.fullmatch(_BUILD_MESSAGE, message):
+        raise ValueError('invalid build item')
+    for value in (name, email):
+        if (not isinstance(value, str) or not value.strip() or value.startswith('-')
+                or any(char in value for char in '\n\r\0<>')):
+            raise ValueError('invalid identity')
+    settings = {'user.name': name, 'user.email': email}
+    _run(repo, 'add', '--all', settings=settings, env={})
+    _run(repo, 'commit', '--quiet', '-m', message, settings=settings, env={})
+    return {}
 
 
 @_operation

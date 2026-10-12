@@ -51,7 +51,10 @@ def setup(tmp_path, monkeypatch, checks, spec='[spec]\nengine="none"\n'):
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
                           status=lambda *a, **kw: registry.Result(0, []),
                           repo_context=lambda *a, **kw: registry.Result(0, {
-                              'path': str(repo), 'common_dir': str(repo / '.git')}))
+                              'path': str(repo), 'common_dir': str(repo / '.git')}),
+                          commits=[])
+    vcs.commit_all = lambda *a, **kw: vcs.commits.append(a) or registry.Result(0, {})
+    runtime.vcs = vcs
 
     def load(kind, config):
         return {'runtime': runtime, 'vcs': vcs}.get(kind) or FakeChecks()
@@ -129,6 +132,88 @@ def test_codex_rerun_resumes_job_after_poll_timeout(tmp_path, monkeypatch, capsy
     assert state.read_state(tmp_path)['builds']['A']['status'] == 'done'
     assert runtime.calls == [('dispatch', str(brief))]
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
+
+
+def test_codex_failed_job_frees_the_build_and_the_rerun_relaunches(tmp_path, monkeypatch, capsys):
+    # #871: a failed job names the companion's error, and the record is ready again
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    with monkeypatch.context() as patch:
+        patch.setattr(runtime, 'status', lambda job, *, root=None: registry.Result(0, {
+            'status': 'failed', 'error': 'failed to initialize sqlite state runtime'}))
+        assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 2
+    assert 'failed to initialize sqlite state runtime' in capsys.readouterr().err
+    record = state.read_state(tmp_path)['builds']['A']
+    assert record['status'] == 'ready' and record['action']['action'] == 'launch'
+    [failed] = [e['payload'] for e in events(day) if e['kind'] == 'build.failed']
+    assert 'sqlite' in failed['reason']
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert runtime.calls == [('dispatch', str(brief))] * 2
+
+
+IDENTITY = 'identity = { name = "Builder", email = "builder@example.test" }\n'
+
+
+def test_codex_build_is_committed_by_wuwei_with_the_repo_identity(tmp_path, monkeypatch):
+    # #871 L2: the sandboxed job cannot write the worktree's git metadata, so WUWEI commits
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=["test"]\n' + IDENTITY))
+    vcs = runtime.vcs
+    vcs.status = lambda *a, **kw: registry.Result(0, [] if vcs.commits else [
+        {'path': 'C.txt', 'index': '?', 'worktree': '?', 'original_path': None}])
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert vcs.commits == [(str(repo.resolve()), 'A', 'Builder', 'builder@example.test')]
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+
+
+def test_codex_build_commit_needs_the_repo_identity(tmp_path, monkeypatch, capsys):
+    # #871 L2: no identity, no commit; the build keeps its completed job, so the rerun commits
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    runtime.vcs.status = lambda *a, **kw: registry.Result(0, [
+        {'path': 'C.txt', 'index': '?', 'worktree': '?', 'original_path': None}])
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 2
+    assert 'config set repos.0.identity' in capsys.readouterr().err
+    assert runtime.vcs.commits == [] and state.read_state(tmp_path)['builds']['A']['status'] == 'running'
+
+
+def test_a_build_with_a_dirty_tree_is_not_done(tmp_path, monkeypatch):
+    # #871 L2: uncommitted changes after a build never reach the gates
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=["test"]\n' + IDENTITY))
+    runtime.vcs.status = lambda *a, **kw: registry.Result(0, [
+        {'path': 'C.txt', 'index': '?', 'worktree': '?', 'original_path': None}])
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
+    feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
+    assert feedback and 'uncommitted changes: C.txt' in feedback[0]
+
+
+@pytest.mark.parametrize('commits', [False, True])
+def test_a_build_with_no_new_commit_is_not_done(tmp_path, monkeypatch, commits):
+    # #871 L2: a build whose HEAD is still its start head never sends that head to the gates
+    import subprocess
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@e']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
+    if commits:
+        done = runtime.result
+        runtime.result = lambda job, *, root=None: subprocess.run(
+            [*git, 'commit', '-q', '--allow-empty', '-m', 'change'], check=True) and done(job, root=root)
+    code = build.run_loop('A', str(brief), str(repo), root=tmp_path)
+    phase = state.read_state(tmp_path)['items']['A']['phase']
+    feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
+    if commits:
+        assert (code, phase, feedback) == (0, 'gate', [])
+    else:
+        assert (code, phase) == (1, 'parked')
+        assert feedback and 'no new commit over the start head' in feedback[0]
 
 
 def test_local_check_exposes_failing_ids_and_error(monkeypatch):

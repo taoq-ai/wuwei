@@ -32,6 +32,10 @@ def result(job, *, root=None):
     return Result(2, reason='Claude host must report seat result')
 
 
+def cancel(job, *, root=None):
+    return Result(2, reason='Claude host must stop its own seats')
+
+
 def continue_job(job, feedback, *, root=None):
     if not isinstance(job, dict) or not isinstance(feedback, str) or not feedback:
         return Result(2, reason='invalid Claude continuation')

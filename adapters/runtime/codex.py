@@ -44,18 +44,47 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
         prompt = f'Read charter {charter} and brief {brief}. Work in {tree}. '
         prompt += 'Do not ask questions or reach external services. Report decisions and finish available work.'
         from wuwei.brief import mandate
-        prompt += ' ' + mandate(root)
+        from wuwei.verdict import retro_contract, section
+        # #871 L1, L2: the sandbox writes only the worktree; the day's decisions directory and
+        # the worktree's git metadata (in the main repository's .git) are outside it
+        prompt += f' Write no file outside {tree}, except temporary files under $TMPDIR, your scratchpad. '
+        if role.startswith('sentinel-'):
+            prompt += ('Your final message is your whole verdict: WUWEI writes it to the verdict file '
+                       'your brief names and lints it.\n\n' + section() + '\n')
+        else:
+            prompt += ('Leave your changes uncommitted: the git metadata is outside your sandbox, so '
+                       'WUWEI commits them when your job completes. ' + retro_contract() + ' ')
+        prompt += mandate(root)
         options = ['--fresh', '--background']
         if write:
             options.append('--write')
         model = re.search(r'^Model: ([A-Za-z0-9][A-Za-z0-9._-]*)$', brief.read_text().split('\n\n', 1)[0], re.M)
         if model:
             options += ['--model', model[1]]
-        started_at = time.time()
-        return _started(_call('task', tree, *options, prompt, root=root), tree, role, started_at, root,
-                        brief)
+        return _task(tree, [*options, prompt], role, root, brief)
     except (OSError, ValueError) as exc:
         return registry.Result(2, reason=f'Codex dispatch could not run: {exc}')
+
+
+START_SECONDS = 60
+
+
+def _task(tree, arguments, role, root, brief):
+    """#871: one Codex task start at a time on this host. Concurrent app-server starts contend
+    on the shared Codex state database, so the start holds a lock in the Codex home until its
+    job has a thread or ends. ponytail: a thread id is the readiness sign (no documented
+    contract; START_SECONDS bounds it)."""
+    from wuwei import state
+    home = _home()
+    home.mkdir(parents=True, exist_ok=True)
+    with (home / 'wuwei-start.lock').open('a') as lock:
+        state.lock_ex(lock, 'codex.lock', timeout=5 * START_SECONDS)
+        started_at = time.time()
+        return _started(_call('task', tree, *arguments, root=root), tree, role, started_at, root, brief)
+
+
+def _home():
+    return Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex')
 
 
 def _job(job):
@@ -88,6 +117,12 @@ def _started(started, tree, role, started_at, root, brief):
         if cancelled.exit:
             return registry.Result(2, reason=f'Codex workspace mismatch; cancellation failed: {cancelled.reason}')
         return registry.Result(1, reason='Codex workspace root differs from worktree; job cancelled')
+    deadline = time.monotonic() + START_SECONDS  # #871: the start lock holds until the thread is up
+    while (isinstance(status_job, dict) and not status_job.get('threadId')
+           and status_job.get('status') in ('queued', 'running') and time.monotonic() < deadline):
+        time.sleep(1)
+        found = _call('status', tree, job_id, root=root)
+        status_job = None if found.exit else found.data.get('job')
     job = {'id': job_id, 'worktree': str(tree), 'role': role, 'started_at': started_at}
     if brief:
         job['brief'] = str(brief)
@@ -104,7 +139,10 @@ def status(job, *, root=None):
         status_value = job_data.get('status') if isinstance(job_data, dict) else None
         if status_value not in ('queued', 'running', 'completed', 'failed', 'cancelled'):
             return registry.Result(2, reason='Codex status is missing or unknown')
-        return registry.Result(0, {'status': status_value, 'model': job_data.get('model')})
+        # #871: the companion's reason: errorMessage when the run threw, else a failed turn's summary
+        error = job_data.get('errorMessage') or (job_data.get('summary') if status_value == 'failed' else None)
+        return registry.Result(0, {'status': status_value, 'model': job_data.get('model'),
+                                   **({'error': error} if isinstance(error, str) and error else {})})
     except (OSError, ValueError, KeyError) as exc:
         return registry.Result(2, reason=f'Codex status could not run: {exc}')
 
@@ -159,7 +197,7 @@ def _windows(thread):
     names = {300: 'five_hour', 10080: 'seven_day'}
     if not isinstance(thread, str) or not re.fullmatch(r'[0-9A-Za-z-]+', thread):
         return {}
-    home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex')
+    home = _home()
     try:
         for path in sorted(home.glob(f'sessions/*/*/*/rollout-*-{thread}.jsonl'), reverse=True):
             for line in reversed(path.read_text(encoding='utf-8').splitlines()):
@@ -184,8 +222,16 @@ def continue_job(job, feedback, *, root=None):
         _, tree = _job(job)
         if not isinstance(feedback, str) or not feedback:
             raise ValueError('empty Codex feedback')
-        started_at = time.time()
-        started = _call('task', tree, '--resume-last', '--background', '--write', feedback, root=root)
-        return _started(started, tree, job.get('role', 'builder'), started_at, root, job.get('brief'))
+        return _task(tree, ['--resume-last', '--background', '--write', feedback], job.get('role', 'builder'),
+                     root, job.get('brief'))
     except (OSError, ValueError, KeyError) as exc:
         return registry.Result(2, reason=f'Codex continuation could not run: {exc}')
+
+
+def cancel(job, *, root=None):
+    """#871: cancel a job the owner stopped while it still runs."""
+    try:
+        job_id, tree = _job(job)
+        return _call('cancel', tree, job_id, root=root)
+    except (OSError, ValueError, KeyError) as exc:
+        return registry.Result(2, reason=f'Codex cancel could not run: {exc}')

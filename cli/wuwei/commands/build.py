@@ -258,7 +258,8 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     action = seat_action('builder', path, tree, root, runtime)
     previous = record
     commands = list(repo['fast_checks'])
-    record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
+    from wuwei import derive  # #871 L2: the head the build must move past
+    record = {'brief': str(path.relative_to(root)), 'worktree': str(tree), 'start': derive.head(tree),
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
@@ -333,11 +334,11 @@ def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
             fresh['items'][item]['polish'] = polish
         fresh['items'][item]['phase'] = 'fix'
         from wuwei import derive  # #844: the head each fix round starts from and leaves
-        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []),
-                                             [start or derive.head(record['worktree']), None]]
+        head = start or derive.head(record['worktree'])
+        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []), [head, None]]
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
-        fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
+        fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)), 'start': head,
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
@@ -507,6 +508,7 @@ def complete_checks(item, results, *, root, expected=None):
                                       build=True, where='gates')
         if code:
             failures.append(('spec', {'error': reason}))
+        failures += _unbuilt(record, root, config)
     if not failures:
         record.update(status='done', action={'action': 'done'})
     else:
@@ -532,6 +534,21 @@ def complete_checks(item, results, *, root, expected=None):
 
 
 AFTER = {'implement': 'gate', 'fix': 'delta'}
+
+
+def _unbuilt(record, root, config):
+    """#871 L2: a build that leaves uncommitted changes, or no commit over the head it started
+    from, did not build; the gates never get an unchanged head."""
+    from wuwei import derive
+    from wuwei.brief import status
+    dirty = status(registry.load('vcs', config), record['worktree'], root)
+    if dirty:
+        return [('commit', {'error': 'uncommitted changes: ' + ', '.join(row['path'] for row in dirty)
+                            + '; commit the change or remove what does not belong to it'})]
+    if record.get('start') and derive.head(record['worktree']) == record['start']:
+        return [('commit', {'error': f'no new commit over the start head {record["start"][:12]}; '
+                                     'make and commit the change the brief asks for'})]
+    return []
 
 
 def built(data, item, after, end):
@@ -589,11 +606,33 @@ def wait(runtime, job, config, root):
             raise ValueError(f'invalid runtime status; {ADAPTER_DATA}')
         if status['status'] == 'completed':
             return status
-        if status['status'] in ('failed', 'cancelled'):
-            raise RuntimeError(f'runtime seat {status["status"]}; rerun the same bin/wuwei build command to resume, and run bin/wuwei doctor if it fails again')
+        if status['status'] in ('failed', 'cancelled'):  # #871: the caller frees the seat; a rerun relaunches
+            raise RuntimeError(f'runtime seat {status["status"]}' + (f': {status["error"]}' if status.get('error') else '')
+                               + '; rerun the same command to relaunch it, and run bin/wuwei doctor if it fails again')
         if time.monotonic() >= deadline:
             raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set')
         time.sleep(config['build']['poll_interval_seconds'])
+
+
+def _commit(item, root, config):
+    """#871 L2: commit a completed runtime job's changes with the repository identity. The
+    job's sandbox cannot write the worktree's git metadata (it lives in the main repository's
+    .git/worktrees), so it leaves them uncommitted. ponytail: every change in the worktree goes
+    in, as the builder left it (the prompt forbids other writes; the gates review the diff)."""
+    from wuwei import commit_push
+    from wuwei.brief import status
+    record = state.read_state(root)['builds'][item]
+    vcs = registry.load('vcs', config)
+    if not status(vcs, record['worktree'], root):
+        return
+    index, repo = next(((index, row) for index, row in enumerate(config['repos'])
+                        if row['name'] == record['repo']), ('<n>', {}))
+    unset = commit_push.unset_identity(repo.get('identity'), index)
+    if unset:
+        raise ValueError(f'{unset[0]}; WUWEI commits a Codex build with it. The owner runs {unset[1]}, '
+                         'then rerun the same command')
+    _data(vcs.commit_all(record['worktree'], item,
+                         repo['identity']['name'], repo['identity']['email'], root=root), 'commit')
 
 
 def run_loop(item, brief, worktree, *, root=None):
@@ -642,7 +681,13 @@ def run_loop(item, brief, worktree, *, root=None):
                 previous = dict(record)
                 record.update(status='running', job=job, started_at=workspace.now().isoformat())
                 _save(item, record, root, 'build.launched', previous)
-            status = wait(runtime, job, config, root)
+            try:
+                status = wait(runtime, job, config, root)
+            except RuntimeError as exc:  # #871: a failed job frees the build; the rerun relaunches
+                running = state.read_state(root)['builds'][item]
+                _save(item, {**running, 'status': 'ready'}, root, 'build.failed', running, {'reason': str(exc)})
+                raise
+            _commit(item, root, config)
             record_result(item, _data(runtime.result(job, root=root), 'result'),
                           root=root, model=status.get('model'))
     except PortExit as exc:

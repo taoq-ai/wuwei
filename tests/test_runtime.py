@@ -267,3 +267,129 @@ def test_codex_result_lints_only_its_own_verdict(tmp_path, monkeypatch):
     assert adapter.result(job, root=root).exit == 0
     own.write_text('Verdict: PASS\n')
     assert adapter.result(job, root=root).exit == 1
+
+
+def test_codex_starts_one_app_server_at_a_time(tmp_path, monkeypatch):
+    # #871: concurrent app-server starts contend on the shared ~/.codex state database; the
+    # second task starts only once the first job reports its thread
+    import threading
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'brief.md'
+    brief.write_text('Do task')
+    adapter = importlib.import_module('adapters.runtime.codex')
+    log, polls, lock = [], {}, threading.Lock()
+
+    def run(argv, **kwargs):
+        with lock:
+            if argv[1] == 'task':
+                job = f'j{sum(entry[0] == "task" for entry in log) + 1}'
+                log.append(('task', job))
+                return SimpleNamespace(returncode=0, stdout=json.dumps({'jobId': job}), stderr='')
+            job = argv[2]
+            polls[job] = polls.get(job, 0) + 1
+            thread = f't-{job}' if polls[job] >= 3 else None
+            if thread:
+                log.append(('thread', job))
+            return SimpleNamespace(returncode=0, stderr='', stdout=json.dumps({
+                'workspaceRoot': str(root), 'job': {'id': job, 'status': 'running',
+                                                    'workspaceRoot': str(root), 'threadId': thread}}))
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    monkeypatch.setattr(adapter.time, 'sleep', lambda seconds: None)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(
+        adapter.dispatch('builder', str(brief), str(root), True, root=root))) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert [result.exit for result in results] == [0, 0]
+    assert log == [('task', 'j1'), ('thread', 'j1'), ('task', 'j2'), ('thread', 'j2')]
+    assert (tmp_path / 'codex/wuwei-start.lock').is_file()  # the lock is the host's Codex home's
+
+
+def test_codex_start_lock_frees_when_the_job_ends_before_a_thread(tmp_path, monkeypatch):
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'brief.md'
+    brief.write_text('Do task')
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    payloads['status']['job']['status'] = 'failed'
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv[1])
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payloads[argv[1]]), stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    monkeypatch.setattr(adapter.time, 'sleep', lambda seconds: pytest.fail('no wait after the job ended'))
+    assert adapter.dispatch('builder', str(brief), str(root), True, root=root).exit == 0
+    assert calls == ['task', 'status']
+
+
+def test_codex_status_names_the_companion_error(tmp_path, monkeypatch):
+    # #871: the failed job's errorMessage reaches the refusal
+    root = setup(tmp_path, monkeypatch)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    payloads['status']['job'].update(status='failed', errorMessage='failed to initialize sqlite state runtime')
+    monkeypatch.setattr(adapter, '_call', lambda *args, **kwargs: adapter.registry.Result(0, payloads['status']))
+    data = adapter.status({'id': 'j1', 'worktree': str(root)}, root=root).data
+    assert data['status'] == 'failed' and data['error'] == 'failed to initialize sqlite state runtime'
+    # a turn that fails inside Codex has no errorMessage; its summary is the failure line
+    del payloads['status']['job']['errorMessage']
+    payloads['status']['job']['summary'] = 'model no-such-model is not supported'
+    assert adapter.status({'id': 'j1', 'worktree': str(root)}, root=root).data['error'] == (
+        'model no-such-model is not supported')
+    payloads['status']['job']['status'] = 'running'
+    assert 'error' not in adapter.status({'id': 'j1', 'worktree': str(root)}, root=root).data
+
+
+def test_codex_prompt_asks_for_the_retro_note(tmp_path, monkeypatch):
+    # #871: the Gap: and Change: lines check_retro reads, from the one verdict format table
+    from wuwei import verdict
+    root, _, job, calls = codex_task(tmp_path, monkeypatch, 'Item: A\n\nReview it.')
+    contract = verdict.retro_contract()
+    assert job.exit == 0 and contract in calls[0][-2]
+    for key in verdict.RETRO_KEYS:
+        assert verdict.FORMAT[key][0] in contract
+
+
+def test_codex_gate_prompt_makes_the_final_message_the_verdict(tmp_path, monkeypatch):
+    # #871 L1: the sandbox refuses the day's decisions directory, so the verdict is the final
+    # message, in the format the lint reads (verdict.section(), rendered from FORMAT)
+    from wuwei import verdict
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'q-1-codex.md'
+    brief.write_text('Item: A\n\nReview it.')
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads, calls = companion_payloads(root), []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payloads[argv[1]]), stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    assert adapter.dispatch('sentinel-quality', str(brief), str(root), True, root=root).exit == 0
+    prompt = calls[0][-2]
+    assert verdict.section() in prompt and 'final message is your whole verdict' in prompt
+    assert f'Write no file outside {root}' in prompt
+
+
+def test_codex_builder_prompt_leaves_the_commit_to_wuwei(tmp_path, monkeypatch):
+    # #871 L2: the worktree's git metadata is outside the sandbox, so WUWEI commits
+    root, _, job, calls = codex_task(tmp_path, monkeypatch, 'Item: A\n\nBuild it.')
+    assert job.exit == 0 and 'WUWEI commits them' in calls[0][-2]
+    assert f'Write no file outside {root}' in calls[0][-2]
+
+
+def test_codex_cancel_calls_the_companion_in_the_worktree(tmp_path, monkeypatch):
+    # #871 F3: the adapter wraps the companion's cancel
+    root = setup(tmp_path, monkeypatch)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv[1:], kwargs['cwd']))
+        return SimpleNamespace(returncode=0, stdout='{}', stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    assert adapter.cancel({'id': 'j0', 'worktree': str(root)}, root=root).exit == 0
+    assert calls == [(['cancel', 'j0', '--json'], str(root))]
+    assert adapter.cancel({'id': '', 'worktree': str(root)}, root=root).exit == 2

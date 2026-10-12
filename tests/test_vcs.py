@@ -141,6 +141,16 @@ def test_worktree_identity_needs_worktree_config(monkeypatch):
     assert result.exit == 1 and 'extensions.worktreeConfig' in result.reason
     assert len(calls) == 3
 
+def test_commit_all_commits_every_change_with_the_given_identity(monkeypatch):
+    # #871 L2: a Codex build's changes, committed by WUWEI with the repository identity
+    calls = install_replay(monkeypatch, 'git', [{'stdout': ''}, {'stdout': ''}])
+    result = adapter().commit_all('/repo', 'A', 'Builder', 'builder@example.test')
+    assert result.exit == 0
+    identity = ['-c', 'user.name=Builder', '-c', 'user.email=builder@example.test']
+    assert [call[1:] for call in calls] == [identity + ['add', '--all'],
+                                            identity + ['commit', '--quiet', '-m', 'chore(A): Codex builder changes']]
+
+
 @pytest.mark.parametrize('operation,args', [
     ('merge_base', ['/repo', '--help']),
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),
@@ -156,6 +166,9 @@ def test_worktree_identity_needs_worktree_config(monkeypatch):
     ('worktree_identity', ['/repo', 'A\nB', 'b@example.test']),
     ('worktree_identity', ['/repo', 'A', '<b@example.test>']),
     ('worktree_identity', ['/repo', ' ', 'b@example.test']),
+    ('commit_all', ['/repo', '--amend', 'B', 'b@example.test']),
+    ('commit_all', ['/repo', 'A', 'B', '-c core.hooksPath=x']),
+    ('commit_all', ['/repo', 'A) x', 'B', 'b@example.test']),
 ])
 def test_option_injection_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):
