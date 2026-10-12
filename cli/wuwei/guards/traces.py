@@ -143,6 +143,9 @@ def check(payload):
         else:
             code, reason = _record(payload, root, findings, transcript_path)
             if not code:
+                if 'honeytoken' in findings:  # #878: after _record binds the session to its seat
+                    from wuwei import scanner
+                    scanner.honeytoken(payload['session_id'], root)
                 return 0, ''
     except BaseException as exc:
         slow, ms = isinstance(exc, TimeoutError), round((time.monotonic() - started) * 1000)

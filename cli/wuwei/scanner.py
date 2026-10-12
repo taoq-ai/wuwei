@@ -134,6 +134,22 @@ def _trace_response(finding, root, traces):
         if not _private_read(traces, session):
             return False
         reason += ' after a credential read'
+    _park(finding, reason, root)
+    return True
+
+
+def honeytoken(session, root):
+    """#878: an item seat's honeytoken read parks its items and holds the close
+    (closing.scanner_hold) like a critical chain; other sessions keep the security page."""
+    from wuwei import brief
+    if any(session in seat.get('trace_sessions', []) for seat in brief.seats(state.read_state(root)).values()
+           if seat['role'] != 'adhoc'):
+        _park({'chain': ['security.honeytoken'], 'risk_level': 'critical', 'session_id': session},
+              'security.honeytoken read', root)
+
+
+def _park(finding, reason, root):
+    from wuwei import brief
     state.append_event('scanner.finding', {**finding, 'reason': reason}, root)
 
     def update(data):
@@ -145,7 +161,6 @@ def _trace_response(finding, root, traces):
                 item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
     state._write_state(update, root)
-    return True
 
 
 def trace_sweep(root, config):

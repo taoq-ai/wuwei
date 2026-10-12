@@ -323,6 +323,41 @@ def test_honeytoken_reads_are_page_and_scanner_finding(secured, form):
     assert data['honeytoken'] not in raw + json.dumps(rows)
 
 
+@pytest.mark.parametrize('seat', ['bound', 'first call', 'adhoc', 'none'])
+def test_seat_honeytoken_read_parks_and_holds_close(secured, seat):
+    # #878: a seat's honeytoken read parks its item and holds the close like a critical chain;
+    # other sessions keep the security.honeytoken page and park nothing.
+    from wuwei import closing, state
+    from wuwei.guards.traces import check
+    path = secured / '.wuwei' / material(secured)['honeytoken_path']
+    payload = trace_payload(secured, 'Read', {'file_path': str(path)})
+    record = {'item': 'work', 'role': 'adhoc' if seat == 'adhoc' else 'builder', 'status': 'running',
+              'brief': 'briefs/builder.md', 'trace_sessions': ['test-session']}
+    if seat == 'first call':
+        del record['trace_sessions']
+        transcript = secured / 'session.jsonl'
+        transcript.write_text(json.dumps({'type': 'user', 'message': {
+            'content': 'WUWEI brief: briefs/builder.md'}}) + '\n')
+        payload['transcript_path'] = str(transcript)
+    state._write_state(lambda data: data.update(
+        items={'work': {'phase': 'implement', 'status': 'running'}},
+        seats={} if seat == 'none' else {'builder': record}), secured)
+    assert check(payload) == (0, '')
+    item = state.read_state(secured)['items']['work']
+    findings = [row['payload'] for row in events(secured) if row['kind'] == 'scanner.finding']
+    critical = [row for row in findings if row.get('risk_level') == 'critical']
+    code, reason = closing.scanner_hold(secured)
+    if seat in ('bound', 'first call'):
+        assert item['phase'] == 'parked'
+        assert item['disposition'] == {'kind': 'parked', 'reason': 'security.honeytoken read'}
+        assert [(row['session_id'], row['reason']) for row in critical] == [('test-session', 'security.honeytoken read')]
+        assert code == 1 and 'security.honeytoken' in reason
+    else:
+        assert item['phase'] == 'implement' and not critical
+        assert findings == [{'tier': 'page', 'source': 'tool_trace', 'rule': 'security.honeytoken'}]
+        assert (code, reason) == (0, '')
+
+
 @pytest.mark.parametrize('tool,inputs', [
     ('Bash', {'command': 'python3 -c "print(open(\'.wuwei/credentials/backup.env\').read())"'}),
     ('Bash', {'command': 'cat .wuwei/security.json'}),
