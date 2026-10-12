@@ -63,6 +63,8 @@ After it the pull request is raised, another round runs, or the item comes to yo
 
 Stop work on an item for now; the item records why.
 A PARK verdict, the round cap or your No parks it, and only you resume it (`plan resume`, on its Owner step card).
+A resumed build moves on: the builder continues once, or the fast checks run again. The same failure parks it again.
+A fast check that cannot start (a missing interpreter or test runner) holds the build instead of parking it: repair it, then run `wuwei build check <item>`. It parks only after `build.stuck_after` unchanged rechecks.
 
 ### Carry
 

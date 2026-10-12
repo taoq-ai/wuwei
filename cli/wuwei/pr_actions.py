@@ -233,8 +233,9 @@ def observe(root, host, ref, config, measured):
     return row
 
 
-def evaluate(root, refs=None):
-    """Return per-PR results, preserving each unreadable PR and its reason."""
+def evaluate(root, refs=None, read=None):
+    """Return per-PR results, preserving each unreadable PR and its reason. read: a dict that
+    takes each PR's evidence, so the action that asked acts on this one read (#907)."""
     rows = []
     try:
         if not state.day_started(workspace.day_dir(root)):
@@ -249,6 +250,8 @@ def evaluate(root, refs=None):
                 if ref not in owned:
                     raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
                 measured = watch.evidence(host, ref, root)
+                if read is not None:
+                    read[ref] = measured
                 rows.append(observe(root, host, ref, config, measured))
             except watch.ERRORS as exc:
                 rows.append({'pr': ref, 'exit': 2, 'reason': f'PR state unmeasured: {exc}'})
@@ -274,12 +277,10 @@ def _item(root, ref):
     return name, path
 
 
-def _rebase(root, ref, item, tree, *, resume=False):
+def _rebase(root, ref, item, tree, measured, *, resume=False):
     from wuwei import fast_checks, registry
     from wuwei import commit_push
     config = workspace.load_config(root)
-    host = registry.load('code_host', config)
-    measured = watch.evidence(host, ref, root)
     pr = measured['pr']
     if pr['mergeable'] is not False:
         raise ValueError('PR is no longer conflicted; refresh its action; run bin/wuwei pr state and follow the new action')
@@ -377,15 +378,14 @@ def _gated_push(root, ref, item, tree):
         # H1: a teammate pushed after the round started; the lease would overwrite it. Merge it first.
         from wuwei import dispatch
         from wuwei.commands import build
-        cap, granted = dispatch.max_rounds(config, data['items'][item]), dispatch._resumed(root, item)
-        if dispatch.rounds_used(data, item) >= cap and not granted:  # J1, K1: the owner's resume grants one
+        if cap := dispatch.capped(root, config, data, item):  # J1, K1: the owner's resume grants one
             reason = f'round cap {cap} reached: PR {ref} moved to {pr["head"][:12]} again'
             dispatch._parked(root, item, reason)
             print(f'{ref}: {reason}; nothing is pushed; {item} parks and the owner decides on the Owner '
                   f'step card of bin/wuwei plan resume {item}')
             return 1
         action = build.open_fix(item, _merge_feedback(root, ref, f'PR {ref} moved to {pr["head"][:12]} '
-                                                      'while this round ran.', pr['branch']), root=root, granted=granted)
+                                                      'while this round ran.', pr['branch']), root=root)
         print(f'{ref}: the PR moved to {pr["head"][:12]}, which this worktree does not contain; nothing '
               f'is pushed. A fix round merges it, the gates read it, then pr act --push:')
         print(json.dumps(action, sort_keys=True))
@@ -443,7 +443,8 @@ def launch(root, ref):
     for a conflict, red checks or a fix asked in review, else the pr act run the planner does.
     It never merges, posts, replies or marks a PR ready (review F1)."""
     run = {'action': 'run', 'command': f'wuwei pr act {ref}'}
-    _, rows = evaluate(root, [ref])
+    read = {}
+    _, rows = evaluate(root, [ref], read)
     row, = rows
     if row['exit'] != 1 or row['parked'] or row['state'] not in FIX_STATES:
         return run
@@ -451,7 +452,7 @@ def launch(root, ref):
         item, tree = _item(root, ref)
         if tree is None:
             return run
-        measured = watch.evidence(registry.load('code_host', workspace.load_config(root)), ref, root)
+        measured = read[ref]
         feedback = None
         if row['state'] == 'conflicted':
             feedback = _conflict(root, ref, measured)
@@ -511,8 +512,7 @@ def _fix_round(root, ref, item, tree, measured, feedback=None):
         return 1, action
     if row['phase'] == 'implement':  # #879: the claimed round in flight answers its current step
         return 1, build.next_action(item, root=root)
-    cap = dispatch.max_rounds(workspace.load_config(root), row)
-    if dispatch.rounds_used(data, item) >= cap:  # #844: the owner decides on plan resume's card
+    if cap := dispatch.capped(root, workspace.load_config(root), data, item):  # #844: the owner decides on plan resume's card
         reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
         dispatch._parked(root, item, reason)
         return 1, (f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
@@ -590,7 +590,8 @@ def _ready(root, ref, ready):
 def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=False):
     """Execute safe PR actions and surface work requiring a builder or owner."""
     ref = pull_request(ref)
-    _, rows = evaluate(root, [ref])
+    read = {}
+    _, rows = evaluate(root, [ref], read)
     row, = rows
     if row['exit'] == 2:
         print(row['reason'])
@@ -633,15 +634,13 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
     if row['state'] in ('conflicted', 'ci_red', 'changes_requested', 'threads_unanswered'):
         try:
             item, tree = _item(root, ref)
-            config = workspace.load_config(root)
+            measured = read[ref]
             if row['state'] == 'conflicted' and tree is None:
-                measured = watch.evidence(registry.load('code_host', config), ref, root)
                 return _adopt(root, ref, item, measured['pr'], 'a rebase')
             if row['state'] == 'conflicted':
                 if run or complete:
-                    return _rebase(root, ref, item, tree, resume=complete)
+                    return _rebase(root, ref, item, tree, measured, resume=complete)
                 if ref in state.read_state(root)['claimed_prs']:  # #879: a builder rebases a taken-over PR
-                    measured = watch.evidence(registry.load('code_host', config), ref, root)
                     return _fix(root, ref, item, tree, measured, feedback=_conflict(root, ref, measured))
                 print(json.dumps({'action': 'rebase', 'pr': ref, 'item': item,
                                   'worktree': str(tree), 'steps': row['dispatch']['steps'],
@@ -650,7 +649,6 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
                 return 1
             if run or complete:
                 raise ValueError(f'--run and --complete apply only to a conflicted PR; run bin/wuwei pr act {ref} without them')
-            measured = watch.evidence(registry.load('code_host', config), ref, root)
             if row['state'] == 'ci_red':
                 return _fix(root, ref, item, tree, measured)
             return _thread(root, ref, item, tree, measured, reply)

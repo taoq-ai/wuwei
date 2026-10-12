@@ -83,6 +83,8 @@ def _protected_name(path, directories=False):
         if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md',
                                                                 'scanner-audit.json'):
             return True
+        if tail[:1] == ('days',) and tail[2:3] == ('reports',) and (len(tail) == 4 or directories and len(tail) == 3):
+            return True  # #905: a seat report the stop kept for wuwei seat stop --verdict
         if tail == ('memory', 'ledger.jsonl'):
             return True
         if len(tail) == 2 and tail[0] == 'charters' and tail[1].endswith('.md'):

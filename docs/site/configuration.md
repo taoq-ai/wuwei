@@ -126,6 +126,7 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `host.free_memory_mb` | `1024` | Free memory floor in MiB. |
+| `host.min_free_memory_pct` | `0` | Hold new seat launches while the host has less than this percent of its memory free (macOS `memory_pressure`, Linux `MemAvailable`). `next` shows `held: free memory 38% < 40%` and checks again a minute later; running seats keep running. `0` is off. |
 | `host.seats` | `0` | Total seat ceiling, builders and gates. `0` means one per core. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a seat reservation is reported stale. |
 | `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit before one retry. `0` never waits. Doctor never waits. |

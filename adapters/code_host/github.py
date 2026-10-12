@@ -113,8 +113,12 @@ def _run(args, payload=None, *, json_output=True, env=None):
                                             match[2]) is not None)
     if not allowed:
         raise ValueError('unsupported gh command')
+    # #899: a single-page read carries its own rate-limit headers, with no second request to read
+    # them. Writes, the revert mutation and paged reads (a head per page, unprobed) carry none.
+    cut = (args[0] == 'api' and not {'--include', '--method', '--paginate'} & set(args)
+           and (payload or {}).get('query') != _REVERT)
     if args[0] == 'api':
-        args = [*args, '--hostname', 'github.com']
+        args = [*args, *(['--include'] if cut else []), '--hostname', 'github.com']
 
     # #867: the bucket this call spends; gh pr merge and ready run GraphQL.
     endpoint = (next(arg for arg in args[1:] if not arg.startswith('-')) if args[0] == 'api'
@@ -127,19 +131,22 @@ def _run(args, payload=None, *, json_output=True, env=None):
         result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                                 capture_output=True, text=True, timeout=TIMEOUT, env=env)
         if result.returncode and re.search(r'rate limit', result.stderr, re.I):
-            # #891: never asked again with --include (a request inside a secondary limit can extend
-            # it); an --include read already holds Retry-After and the X-RateLimit headers.
+            # #899: the refused reply's own head holds Retry-After and the X-RateLimit headers; a
+            # call is never asked again to read them (a request inside a secondary limit can extend it).
             head = re.split(r'\r?\n\r?\n', result.stdout, maxsplit=1)[0] if '--include' in args else ''
             found = {key.lower(): value for key, value in re.findall(r'^([\w-]+):[ \t]*(\S*)\s*$', head, re.M)}
             after = found.get('retry-after', '')
             seen = [found.get('x-ratelimit-' + key, '') for key in ('resource', 'remaining', 'limit', 'reset')]
+            valid = re.fullmatch(r'[a-z_]+', seen[0]) and all(map(str.isdigit, seen[1:]))
             raise gh_limit(result.stderr, env, resource, where, int(after) if after.isdigit() else None,
-                           seen if re.fullmatch(r'[a-z_]+', seen[0]) and all(map(str.isdigit, seen[1:])) else None)
+                           (seen[0], *map(int, seen[1:])) if valid else None)
         return result
     try:
         result = retry(call)
     except RateLimited as limit:
         raise ValueError(str(limit)) from None  # _operation shows plain ValueError text only
+    if cut and re.match(r'HTTP/\S+ \d{3}', result.stdout):
+        result.stdout = (re.split(r'\r?\n\r?\n', result.stdout, maxsplit=1) + [''])[1]
     if args[0] == 'auth':
         return result.returncode
     if '--include' in args and re.match(r'HTTP/\S+ 304\b', result.stdout):

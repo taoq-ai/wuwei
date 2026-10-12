@@ -321,7 +321,7 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     return action
 
 
-def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
+def open_fix(item, feedback, *, root, polish=None, start=None):
     """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
     item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
@@ -346,7 +346,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
     from wuwei import dispatch
     cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
     used = dispatch.rounds_used(data, item)
-    if used >= cap and not granted:  # #623: one round cap for gate and PR fixes alike; granted: the owner's resume
+    if used >= cap and not dispatch._resumed(root, item):  # #623: one cap for gate and PR fixes; D3, #904: the owner's resume grants one
         raise ValueError(f'round cap {cap} reached (gates.max_rounds); park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised', 'delta'):
@@ -447,11 +447,10 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
             raise ValueError(f'build changed during result recording; {RACE}')
         if agent_id is not None:
             data['seats'][record['seat']]['status'] = 'stopped'
-            data['seats'][record['seat']].pop('reason', None)  # recovered from unmeasured (#473)
+            for key in ('reason', 'report', 'report_sha256'):  # recovered from unmeasured (#473, #905)
+                data['seats'][record['seat']].pop(key, None)
         current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
-                       result=result, action={'action': 'check',
-                       'command': 'wuwei build check ' + shlex.quote(item),
-                       'worktree': record['worktree'], 'checks': record['commands']})
+                       result=result, action=recheck(item, record))
     updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage,
                                 'runtime': record['runtime']})
@@ -463,8 +462,19 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     return updated['builds'][item]
 
 
+def recheck(item, record, reason=None):
+    """The fast-check step; reason (#904): the environment hold it waits on to be repaired."""
+    action = {'action': 'check', 'command': 'wuwei build check ' + shlex.quote(item),
+              'worktree': record['worktree'], 'checks': record['commands']}
+    return {**action, 'reason': reason} if reason else action
+
+
 def check_binding(item, record):
     return {'item': item, 'brief': record['brief'], 'iteration': record['iteration'] + 1}
+
+
+class Mismatch(ValueError):
+    """#905: a stop from an agent that is not the bound builder; the seat stays as it was."""
 
 
 def stopped(item, name, payload, *, root):
@@ -477,11 +487,11 @@ def stopped(item, name, payload, *, root):
         return True
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
-        raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
+        raise Mismatch(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
     if agent_id == record.get('replaced'):
         return True  # #614: the replaced agent's late stop; the fresh launch records the round
     if record.get('agent_id') and record['agent_id'] != agent_id:
-        raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
+        raise Mismatch(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
     from wuwei.brief import last_turn
     completion, message, _ = last_turn(payload['agent_transcript_path'])
     text = payload.get('last_assistant_message')
@@ -492,15 +502,19 @@ def stopped(item, name, payload, *, root):
     if completion == record.get('completion'):
         return True
     reported = payload.get('usage', {})
-    if isinstance(reported, dict):
-        reported = {**{key: payload[source] for key, source in (
-            ('input_tokens', 'total_input_tokens'), ('output_tokens', 'total_output_tokens'),
-            ('duration', 'duration_seconds'), ('model', 'model')) if source in payload}, **reported}
-        if 'duration' not in reported and 'duration_ms' in payload:
-            milliseconds = payload['duration_ms']
-            if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
-                raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
-            reported['duration'] = milliseconds / 1000
+    try:
+        if isinstance(reported, dict):
+            reported = {**{key: payload[source] for key, source in (
+                ('input_tokens', 'total_input_tokens'), ('output_tokens', 'total_output_tokens'),
+                ('duration', 'duration_seconds'), ('model', 'model')) if source in payload}, **reported}
+            if 'duration' not in reported and 'duration_ms' in payload:
+                milliseconds = payload['duration_ms']
+                if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
+                    raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
+                reported['duration'] = milliseconds / 1000
+        normalize_usage(reported, None)
+    except ValueError:
+        reported = {}  # #905: usage the runtime got wrong is unmeasured; the finished result still counts
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
     measured = data.get('fast_checks', {}).get(record['repo'], {})
@@ -539,7 +553,16 @@ def complete_checks(item, results, *, root, expected=None):
                 reason = result.data['environment']
                 if not isinstance(reason, str) or not reason.strip():
                     raise ValueError(f'invalid environment check reason; {DAMAGED}')
-                _park(root, item, record, f'environment: {reason}', expected)
+                # #904: a hold the repair clears with a recheck; unchanged, it parks for the owner
+                signature = _signature([('environment', {'error': reason})])
+                record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
+                record['signature'], reason = signature, f'environment: {reason}'
+                if record['repeats'] >= workspace.load_config(root)['build']['stuck_after']:
+                    _park(root, item, record, reason, expected)
+                else:
+                    record['action'] = recheck(item, record, f'{reason}; repair the check environment '
+                                               f'(install it, or fix the interpreter), then run bin/wuwei build check {item}')
+                    _save(item, record, root, 'build.held', expected, {'reason': reason})
                 return 1
             failures.append((command, result.data))
     config = workspace.load_config(root)
@@ -766,6 +789,10 @@ def run_loop(item, brief, worktree, *, root=None):
                     return 1
                 if action['action'] == 'wait':
                     print(f'build: {item} waits: {action["reason"]}; run bin/wuwei build {item} <brief> <worktree> again once {action["fix"]} merges', file=sys.stderr)
+                    return 1
+                if action['action'] == 'check' and action.get('reason'):
+                    print(f'build: {item} holds: {action["reason"].partition(";")[0]}; repair it, then run '
+                          f'bin/wuwei build check {item}', file=sys.stderr)
                     return 1
                 if action['action'] == 'check':
                     check(item, root=root)

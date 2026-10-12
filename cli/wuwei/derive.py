@@ -68,16 +68,19 @@ def at_head(row, recorded, current):
 
 
 def listing(directory):
-    """The cached PR listing: {'fetched_at': iso or None, 'pulls': {ref: row}}."""
+    """The cached PR listing: {'fetched_at': iso or None, 'pulls': {ref: row}, 'repos': {name:
+    {'at': iso of its last read, 'failed': reason when that read failed}}} (#907)."""
     path = Path(directory) / 'prs.json'
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
-        return {'fetched_at': None, 'pulls': {}}
+        return {'fetched_at': None, 'pulls': {}, 'repos': {}}
     if not isinstance(value, dict) or not isinstance(value.get('pulls'), list):
         raise ValueError(f'{path}: invalid PR listing; delete it and run wuwei next to refresh it')
+    repos = value.get('repos')
     return {'fetched_at': value.get('fetched_at'),
-            'pulls': {row['ref']: row for row in value['pulls'] if isinstance(row, dict) and row.get('ref')}}
+            'pulls': {row['ref']: row for row in value['pulls'] if isinstance(row, dict) and row.get('ref')},
+            'repos': repos if isinstance(repos, dict) else {}}
 
 
 # WUWEI's own PR steps: the listing is refreshed on the next call after one of them
@@ -86,39 +89,56 @@ LISTING_EVENTS = (b'"pr.raised"', b'"pr.claimed"', b'"pr.pushed"', b'"merge.auto
 
 
 def stale(root, config, data):
-    """True when an item has a PR and the listing is older than pr.poll_seconds, or older than
-    WUWEI's own last raise, claim or merge."""
+    """The repositories whose listing is due, when an item has a PR (#907: each on its own): never
+    read, read pr.poll_seconds ago or more (a failed read retries then, never sooner), or read
+    before WUWEI's own last raise, claim or merge."""
     if not any(row.get('pr') for row in data['items'].values()):
-        return False
-    directory = workspace.day_dir(root)
-    fetched = listing(directory)['fetched_at']
-    if not fetched:
-        return True
+        return []
     from datetime import datetime
-    at = datetime.fromisoformat(fetched)
-    if (workspace.now() - at).total_seconds() >= config['pr']['poll_seconds']:
-        return True
+    directory = workspace.day_dir(root)
+    found = listing(directory)
     log = directory / 'events.jsonl'
     acted = [json.loads(line)['ts'] for line in (log.read_bytes().splitlines() if log.is_file() else ())
              if any(kind in line for kind in LISTING_EVENTS)]
-    return bool(acted) and datetime.fromisoformat(acted[-1]) >= at
+    due = []
+    for repo in config['repos']:
+        # a listing written before #907 has one time for every repository
+        at = (found['repos'].get(repo['name']) or {}).get('at') or (None if found['repos'] else found['fetched_at'])
+        if (not at or (workspace.now() - datetime.fromisoformat(at)).total_seconds() >= config['pr']['poll_seconds']
+                or acted and datetime.fromisoformat(acted[-1]) >= datetime.fromisoformat(at)):
+            due.append(repo['name'])
+    return due
 
 
-def refresh(root, config):
-    """One code-host list call per repository; writes prs.json. On a failed call the old
-    listing stays and the reason is returned (None on success)."""
+def refresh(root, config, names=None):
+    """One code-host list call per repository in names (every configured one when None); writes
+    prs.json. A failed call keeps that repository's rows and records its time and reason, which
+    leave them unmeasured until the retry (#900); the others refresh. Returns the failures as one
+    reason, or None. The reads run first; the merge into prs.json runs under state.lock on the
+    listing as it is then, so an overlapping next never restores rows it did not read."""
     from wuwei import registry
     port = registry.load('code_host', config)
-    pulls = []
-    for repo in config['repos']:
-        result = port.pulls(repo['name'], root=root)
-        if result.exit or not isinstance(result.data, list):
-            return result.reason or f'PR listing for {repo["name"]} unmeasured'
-        pulls += [{**row, 'ref': f"{repo['name']}#{row['number']}"} for row in result.data]
-    workspace.day_dir(root).mkdir(parents=True, exist_ok=True)
-    workspace.atomic_write(workspace.day_dir(root) / 'prs.json',
-                           json.dumps({'fetched_at': workspace.now().isoformat(), 'pulls': pulls}) + '\n')
-    return None
+    directory = workspace.day_dir(root)
+    now, configured = workspace.now().isoformat(), [repo['name'] for repo in config['repos']]
+    results = {name: port.pulls(name, root=root) for name in (names if names is not None else configured)}
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / 'state.lock').open('a') as lock:
+        state.lock_ex(lock, 'state.lock')
+        found, failed = listing(directory), []
+        # a repository taken out of config leaves the listing
+        pulls = [row for row in found['pulls'].values() if row['ref'].rsplit('#', 1)[0] in configured]
+        repos = {name: row for name, row in found['repos'].items() if name in configured}
+        for name, result in results.items():
+            if result.exit or not isinstance(result.data, list):
+                repos[name] = {'at': now, 'failed': result.reason or 'unmeasured'}
+                failed.append(f"{name}: {repos[name]['failed']}")
+                continue
+            repos[name] = {'at': now}
+            pulls = [row for row in pulls if row['ref'].rsplit('#', 1)[0] != name]
+            pulls += [{**row, 'ref': f"{name}#{row['number']}"} for row in result.data]
+        workspace.atomic_write(directory / 'prs.json',
+                               json.dumps({'fetched_at': now, 'pulls': pulls, 'repos': repos}) + '\n')
+    return '; '.join(failed) or None
 
 
 def counted(root, row, record, current):
@@ -193,7 +213,7 @@ def _gate(root, data, config, name):
         results[role]['verdict'] == 'FIX' if round_name == 'initial' else results[role]['blocks'])]
     if not blocking:
         return 'raise', 'every gate passed at the current head'
-    if dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+    if dispatch.capped(root, config, data, name):  # #904: the owner's resume grants one round
         return 'owner', f'round cap reached: {blocking[0]} still blocks'
     resumed = dispatch._resumed(root, name)
     if any(results[role]['verdict'] == 'PARK' for role in asked) and not resumed:
@@ -227,7 +247,7 @@ def offers(data, root, config, merges=None):
     items in plan order. A launch is {kind, item, command, why}; the decision the first owner
     decision in plan order; parks the items a PARK verdict or the owner's No parks in code
     (wuwei next records them); rows one status row per open item, runnable first, PRs last."""
-    from wuwei import dispatch
+    from wuwei import dispatch, merge
     from wuwei.commands.next import TERMINAL, approved
     merges = merges or {}
     found = listing(workspace.day_dir(root))
@@ -277,6 +297,16 @@ def offers(data, root, config, merges=None):
         pull = pulls.get(pr) if pr else None
         if phase in TERMINAL or name in merged:
             continue  # merged, parked or carried
+        repo = (found['repos'].get(pr.rsplit('#', 1)[0]) or {}) if pr else {}
+        if repo.get('failed') and pull is not None and (phase == 'raised' or pull.get('state') == 'closed'):
+            # #900: a failed read leaves the repository's PR rows unmeasured; no decision rests on them
+            # (a PR with no row takes the pr act step, which reads it fresh)
+            from datetime import timedelta
+            retry = (when(repo['at']) + timedelta(seconds=config['pr']['poll_seconds'])).isoformat()
+            waiting.append({'state': 'unmeasured', 'item': name, 'command': 'wuwei next',
+                            'why': f"{name}: PR {pr} is unmeasured: the listing of {pr.rsplit('#', 1)[0]} "
+                                   f"failed ({repo['failed']}); wuwei next reads it again from {retry}"})
+            continue
         if (pull or {}).get('state') == 'closed':  # F9, G8: the owner parks it, re-opens or carries
             park(name, 'PR closed unmerged on the code host')
             continue
@@ -309,13 +339,13 @@ def offers(data, root, config, merges=None):
             waiting.append({'state': 'pr', 'item': name, 'command': f'wuwei pr act {pr}'})
             checks = (pull or {}).get('checks')
             checks = 'green' if checks == 'none' else checks  # G3: no CI; merge.check holds the policy
-            owner = row.get('owner_merge') or 'owner-merge' in ((pull or {}).get('labels') or ())
+            owner = merge.owner_hold(row) or 'owner-merge' in ((pull or {}).get('labels') or ())
             blocked, held = merges.get(pr) or (None, None)
-            fetched = when(listing_at) if listing_at else None
+            at = repo.get('at') or listing_at  # #907: the time its repository was read
+            fetched = when(at) if at else None
             claimed = pr in data.get('claimed_prs', ()) and bool(row.get('worktree'))  # #879
             if pull is not None and moved(root, data, name, pull.get('head')):  # F1: re-read first
-                if (dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row)
-                        and not dispatch._resumed(root, name)):  # D3: the owner's resume grants one round
+                if dispatch.capped(root, config, data, name):  # D3: the owner's resume grants one round
                     ask(name, f'PR {pr} head moved past its verdicts at the round cap.', f'wuwei dispatch next {name}')
                 else:
                     launch('fix', name, f'wuwei dispatch next {name}',
@@ -324,7 +354,7 @@ def offers(data, root, config, merges=None):
                 ask(name, f'the merge of {pr} is yours to decide.', f'wuwei merge {pr}')
             elif pull is None:
                 launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} is not in the listing yet.')
-            elif checks == 'red' and dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+            elif checks == 'red' and dispatch.capped(root, config, data, name):
                 ask(name, f'PR {pr} checks are red at the round cap.', f'wuwei pr act {pr}')
             elif checks == 'red':
                 launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red.')

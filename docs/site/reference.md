@@ -147,9 +147,9 @@ For `rice`, use `reach` (positive), `impact` (0.25, 0.5, 1, 2, 3), `confidence` 
 
 ### Stuck seats
 
-A background seat ends with the harness's hand-back, and its SubagentStop carries no last message. The hook then reads the report from the seat's transcript. When it cannot, it stops the seat as `unmeasured` with a reason and names the recovery command. A seat never stays `running`.
+A background seat ends with the harness's hand-back, and its SubagentStop carries no last message. The hook then reads the report from the seat's transcript. When it cannot, or when the result cannot be recorded, it stops the seat as `unmeasured` with a reason, keeps the report its transcript ends with in `reports/<name>.md`, a protected file whose sha256 the seat records, and names the recovery command. A seat never stays `running`. Malformed usage is recorded as unmeasured and never costs the result. A stop from an agent other than the bound one, or a late stop after a relaunch, leaves the seat as it is.
 
-`seat stop <name> --verdict <file>` records the report through the same SubagentStop guards. A sentinel's file must pass the verdict lint first. `seat stop <name> --unmeasured "<reason>"` stops the seat so the day can move; a running builder's build parks with that reason. `seat stop` runs from the planner session. `next` and the doctor `stuck seats` row name it.
+`seat stop <name> --verdict <file>` records the report through the same SubagentStop guards; with no file it records the kept report, or the hand-back the transcript ends with, and `next` offers that before `--unmeasured`. A sentinel's file must pass the verdict lint first. `seat stop <name> --unmeasured "<reason>"` stops the seat so the day can move; a running builder's build parks with that reason. `seat stop` runs from the planner session. `next` and the doctor `stuck seats` row name it.
 
 An Agent launched with a type outside the WUWEI seats is an ad-hoc seat once the day's `state.json` exists. The launch guard registers it as `adhoc-<n>` with its type and the sha256 of its prompt. A SubagentStop that matches no seat records `subagent.untraced`, which the doctor counts. `why adhoc` lists today's ad-hoc seats. An ad-hoc seat has no report, so a stale one stops with `--unmeasured` only.
 

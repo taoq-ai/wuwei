@@ -30,7 +30,8 @@ def register(subparsers):
     stop = actions.add_parser('stop', help='Record a stuck seat\'s report, or stop it as unmeasured')
     stop.add_argument('name')
     how = stop.add_mutually_exclusive_group(required=True)
-    how.add_argument('--verdict', metavar='FILE', help='the seat\'s report or verdict')
+    how.add_argument('--verdict', metavar='FILE', nargs='?', const='',
+                     help='the seat\'s report or verdict; with no FILE, the report its stop left (#905)')
     how.add_argument('--unmeasured', metavar='REASON', help='one line: why no report is recorded')
     stop.set_defaults(func=run)
     start = actions.add_parser('start', help='Record an ad-hoc seat before its Agent launch (#676)')
@@ -143,28 +144,55 @@ def run(args):
             build._park(root, seat['item'], dict(record), f'seat {name} stopped unmeasured: {reason.strip()}', record)
         print(f'seat {name} stopped unmeasured')
         return CLEAN
-    return stop_with_report(root, data, name, seat, args.verdict)
+    if args.verdict:
+        return stop_with_report(root, data, name, seat, args.verdict)
+    return stop_with_report(root, data, name, seat, None, kept_report(root, name, seat))
 
 
-def stop_with_report(root, data, name, seat, path):
-    """Run the registered SubagentStop guards on the stop the hook would have seen."""
+def kept_report(root, name, seat):
+    """#905: the text of the report a seat's stop left: the file the stop hook kept, read once
+    and checked against its sha256, else the report its recorded transcript ends with, kept now."""
+    if seat.get('report'):
+        import hashlib
+        path = root / seat['report']
+        data = None if path.parent.is_symlink() else path.read_bytes()
+        if data is None or hashlib.sha256(data).hexdigest() != seat.get('report_sha256'):
+            raise ValueError(f'{path} changed since its stop kept it; pass --verdict <file>, '
+                             f'or run wuwei seat stop {name} --unmeasured "<reason>"')
+        return data.decode('utf-8')
+    try:
+        text = brief.stop_text({'agent_transcript_path': seat.get('transcript')})
+    except (OSError, ValueError) as exc:
+        raise ValueError(f'{name} left no readable report ({exc}); pass --verdict <file>, '
+                         f'or run wuwei seat stop {name} --unmeasured "<reason>"') from None
+    brief.keep_report(root, workspace.day_dir(root), name, text)  # the evidence; the text is what counts
+    return text
+
+
+def stop_with_report(root, data, name, seat, path, text=None):
+    """Run the registered SubagentStop guards on the stop the hook would have seen. text (#905):
+    a kept report already read and checked; it is linted from a private copy, never re-read."""
     import json
     from pathlib import Path
     import tempfile
     from wuwei.guards import SELECTION, discover
 
-    text = Path(path).read_text(encoding='utf-8')
+    if text is None:
+        text = Path(path).read_text(encoding='utf-8')
     role = seat['role']
-    if role.startswith('sentinel-'):
-        from wuwei import verdict
-        code, message = verdict.lint_file(path, role=role, root=root)
-        if code:
-            return refuse(code, message)
     record = data.get('builds', {}).get(seat['item']) or {}
     traced = seat.get('trace_sessions') or ['']
     agent_id = (record.get('agent_id') if record.get('seat') == name else None) or seat.get('agent_id') \
         or traced[-1].rpartition(':')[2] or name
     with tempfile.TemporaryDirectory() as directory:
+        if role.startswith('sentinel-'):
+            from wuwei import verdict
+            if path is None:
+                path = Path(directory) / f'{name}.md'
+                path.write_text(text, encoding='utf-8')
+            code, message = verdict.lint_file(path, role=role, root=root)
+            if code:
+                return refuse(code, message)
         transcript = Path(directory) / 'agent.jsonl'
         transcript.write_text(
             json.dumps({'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + seat['brief']}}) + '\n'
