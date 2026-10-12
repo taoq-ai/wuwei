@@ -46,6 +46,9 @@ item is parked, a critical `scanner.finding` names the rule, and `closing.scanne
 
 ### Edge Cases
 
+- A failed seat check fails closed: the critical finding is appended even if the session
+  may not be a seat, since the state could not be read.
+- A send refused before the seat's first recorded call is not yet bound, so it only pages.
 - An adhoc seat keeps its launcher's rule (#676), so it counts as a non-seat, as for ZIRAN chains.
 - A second read by the same seat appends another critical finding; parking is idempotent and
   each finding is its own Owner step card, as for chains.
@@ -59,6 +62,11 @@ item is parked, a critical `scanner.finding` names the rule, and `closing.scanne
 - **FR-002**: The seat check runs after the recorder binds the session to its seat.
 - **FR-003**: Sessions that are not item seats keep the current events and park nothing.
 - **FR-004**: `closing.scanner_hold` is unchanged; the critical finding holds the close.
+- **FR-005**: Fail closed. When the seat check or the park raises, the critical finding is still
+  appended so the close holds, and the recorder warning names the honeytoken, not a missing span.
+- **FR-006**: A honeytoken send refused at PreToolUse (`outward: security.honeytoken`) parks an
+  item seat's items the same way; the seat is matched by the id the recorder binds (subagent
+  suffix, hashed when redaction changes it).
 
 ## Success Criteria
 

@@ -302,7 +302,7 @@ def _append_jsonl(path, *records):
             path.chmod(0o444)
 
 
-def _write_state(update, root=None, *, kind='state.write', payload=None, directory=None):
+def _write_state(update, root=None, *, kind='state.write', payload=None, directory=None, timeout=30):
     """Apply a callback that mutates fresh state while holding the writer lock."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     payload = _event_payload(kind, payload)
@@ -310,7 +310,7 @@ def _write_state(update, root=None, *, kind='state.write', payload=None, directo
     directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
-        lock_ex(lock, 'state.lock')
+        lock_ex(lock, 'state.lock', timeout)
         data, started, legacy = _fold(directory)
         log = _fold(directory, cache=False)[0] if legacy else workspace.copy_data(data)
         data = _validate(data)

@@ -358,6 +358,77 @@ def test_seat_honeytoken_read_parks_and_holds_close(secured, seat):
         assert (code, reason) == (0, '')
 
 
+def seat_state(root, session='test-session'):
+    from wuwei import state
+    state._write_state(lambda data: data.update(
+        items={'work': {'phase': 'implement', 'status': 'running'}},
+        seats={'builder': {'item': 'work', 'role': 'builder', 'status': 'running',
+                           'brief': 'briefs/builder.md', 'trace_sessions': [session]}}), root)
+
+
+def test_seat_honeytoken_park_failure_still_holds_close(secured, monkeypatch, capsys):
+    # #878 F1: fail closed; a park that raises still leaves the critical finding that holds the
+    # close, and the warning does not claim the span is missing.
+    from wuwei import closing, scanner
+    from wuwei.guards.traces import check
+    seat_state(secured)
+
+    def locked(*args):
+        raise TimeoutError('state.json remained locked')
+    monkeypatch.setattr(scanner, '_park', locked)
+    path = secured / '.wuwei' / material(secured)['honeytoken_path']
+    capsys.readouterr()
+    assert check(trace_payload(secured, 'Read', {'file_path': str(path)})) == (0, '')
+    assert closing.scanner_hold(secured)[0] == 1
+    err = capsys.readouterr().err
+    assert 'honeytoken' in err and 'may be missing' not in err and 'could not record the tool span' not in err
+    assert 'traces.slow' not in {row['kind'] for row in events(secured)}
+
+
+@pytest.mark.parametrize('agent', [None, 'a1'])
+@pytest.mark.parametrize('seat', [True, False])
+def test_refused_honeytoken_send_by_seat_parks(secured, monkeypatch, capsys, seat, agent):
+    # #878: a seat sending the honeytoken value outward is refused at PreToolUse and never
+    # reaches PostToolUse; the refusal parks it and holds the close too. Other sessions only page.
+    import io
+    import sys
+    from wuwei import closing, state
+    from wuwei.commands import hook
+    session = 'test' + (':' + agent if agent else '')
+    seat_state(secured, session if seat else 'other')
+    payload = {'cwd': str(secured), 'tool_name': 'Bash',
+               'tool_input': {'command': 'gh issue create --title t --body "' + material(secured)['honeytoken'] + '"'},
+               'hook_event_name': 'PreToolUse', 'session_id': 'test',
+               'transcript_path': str(secured / 'transcript.jsonl'), **({'agent_id': agent} if agent else {})}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    assert hook.run(SimpleNamespace(event='PreToolUse')) == 2
+    assert 'security.honeytoken' in json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
+    item = state.read_state(secured)['items']['work']
+    assert (item['phase'] == 'parked') is seat
+    assert (closing.scanner_hold(secured)[0] == 1) is seat
+
+
+def test_refused_honeytoken_send_park_never_delays_the_refusal(secured, capsys):
+    # #878 D1: a held state.lock bounds the refused-send park to a short wait; the refusal stands.
+    import fcntl
+    import time
+    from wuwei.commands import hook
+    seat_state(secured, 'test')
+
+    def check_send(payload):
+        pass
+    reason = 'outward: security.honeytoken'
+    payload = {'cwd': str(secured), 'session_id': 'test'}
+    with (workspace.day_dir(secured) / 'state.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        started = time.monotonic()
+        enforced = hook.enforce(payload, [(check_send, reason, 1)], secured)
+        elapsed = time.monotonic() - started
+    assert enforced == [('test_canary', reason, 1)]
+    assert elapsed < 5
+    assert 'TimeoutError' in capsys.readouterr().err
+
+
 @pytest.mark.parametrize('tool,inputs', [
     ('Bash', {'command': 'python3 -c "print(open(\'.wuwei/credentials/backup.env\').read())"'}),
     ('Bash', {'command': 'cat .wuwei/security.json'}),

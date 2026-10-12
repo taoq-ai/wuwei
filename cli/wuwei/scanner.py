@@ -138,19 +138,24 @@ def _trace_response(finding, root, traces):
     return True
 
 
-def honeytoken(session, root):
+def honeytoken(session, root, timeout=30):
     """#878: an item seat's honeytoken read parks its items and holds the close
     (closing.scanner_hold) like a critical chain; other sessions keep the security page."""
     from wuwei import brief
-    if any(session in seat.get('trace_sessions', []) for seat in brief.seats(state.read_state(root)).values()
-           if seat['role'] != 'adhoc'):
-        _park({'chain': ['security.honeytoken'], 'risk_level': 'critical', 'session_id': session},
-              'security.honeytoken read', root)
+    finding, reason = {'chain': ['security.honeytoken'], 'risk_level': 'critical', 'session_id': session}, 'security.honeytoken read'
+    try:
+        if any(session in seat.get('trace_sessions', []) for seat in brief.seats(state.read_state(root)).values()
+               if seat['role'] != 'adhoc'):
+            _park(finding, reason, root, timeout)
+    except Exception:
+        # Fail closed: the close holds when the seat check or the park failed; the same payload is one card.
+        state.append_event('scanner.finding', {**finding, 'reason': reason}, root, timeout=timeout)
+        raise
 
 
-def _park(finding, reason, root):
+def _park(finding, reason, root, timeout=30):
     from wuwei import brief
-    state.append_event('scanner.finding', {**finding, 'reason': reason}, root)
+    state.append_event('scanner.finding', {**finding, 'reason': reason}, root, timeout=timeout)
 
     def update(data):
         items = {seat['item'] for seat in brief.seats(data).values()
@@ -160,7 +165,7 @@ def _park(finding, reason, root):
             if item is not None and 'parked' in state.PHASES[item['phase']]:
                 item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
-    state._write_state(update, root)
+    state._write_state(update, root, timeout=timeout)
 
 
 def trace_sweep(root, config):
