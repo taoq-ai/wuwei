@@ -111,6 +111,20 @@ def approved(data):
             and (data['items'][name].get('disposition') or {}).get('kind') not in ('carried', 'parked')]
 
 
+def building(data):
+    """#910: the one build slot count for derive, the launch set, build next, next and the launch
+    guard: approved items in a build phase, not held (#648), in plan order. Running and reserved
+    builds alike: a stopped builder awaiting its checks keeps its slot until its handoff."""
+    return [name for name in approved(data) if data['items'][name]['phase'] in state.BUILD_PHASES
+            and not state.held(data, name)]
+
+
+def slot(data, item, cap):
+    """#910: item's builder may launch: it is among the first CAP holders, or a slot is free."""
+    holders = building(data)
+    return item in holders[:cap] or len(holders) < cap
+
+
 def _seen(directory):
     """(done (state, key) pairs, steward runs, day closed, the PRs whose latest
     merge event is an owner block) from one read of today's events; only lines
@@ -234,7 +248,7 @@ def step(root, ran=()):
     rows = state.in_flight(data)
     items = data['items']
     names = approved(data)
-    building = sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name) for name in names)
+    count = len(building(data))
     waiting = next((name for name in names if items[name]['phase'] == 'planned'), None)
     held = next(((name, fix) for name in names if items[name]['phase'] in state.BUILD_PHASES
                  and (fix := state.held(data, name))), None)
@@ -250,7 +264,7 @@ def step(root, ran=()):
                       if seat['status'] == 'running' and seat['role'] == 'builder')
     text = state.in_flight_text(rows)
     if waiting and builders:
-        return _row('wait', f'{waiting} waits: {building} of CAP {data["cap"]} building; '
+        return _row('wait', f'{waiting} waits: {count} of CAP {data["cap"]} building; '
                     f'{builders[0][1]} started first ({builders[0][0] or "start unrecorded"}) and '
                     f'is expected to free first; SubagentStop records each result. Running: {text}',
                     'wuwei status --line', 'wait')

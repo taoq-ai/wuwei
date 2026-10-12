@@ -4,7 +4,7 @@ import pytest
 
 from wuwei import workspace
 
-CAP = 'seat not registered: running build seats 2 at CAP 2; wait for a build seat to finish, then retry'
+CAP = 'seat not registered: build slots 2 at CAP 2: held by X, Y; wait for a build to hand off, then retry'
 MISMATCH = ('seat not registered: Agent role does not match logged brief role; write the brief '
             'again with bin/wuwei seat brief, then launch with the name and role it returns')
 CANARY = 'outward: security.canary'

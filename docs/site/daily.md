@@ -102,8 +102,9 @@ first runs every step of the [spec engine](concepts.md#spec-engine). `done` move
 **Gates.** `wuwei dispatch next <item>` sets the [tier](concepts.md#tier) and names the gate
 roles. The planner writes one brief per role, for example
 `wuwei seat brief quality <item> quality-1 --gate --worktree <path> --file -`, and launches
-them together. After each seat stops, `wuwei dispatch receive <item> <role> <seat>` records
-its verdict at the item's head.
+the ones that fit the free seats together; `next` offers the rest after those verdicts. After
+each seat stops, `wuwei dispatch receive <item> <role> <seat>` records its verdict at the item's
+head.
 
 **Fix and delta.** A FIX opens a fix round: the builder continues as a fresh Agent with the
 verdicts as feedback. Then the gates that asked for the fix review again, the

@@ -864,7 +864,7 @@ def launch_set(root=None):
     from datetime import timedelta
     from wuwei import derive
     from wuwei.commands import build
-    from wuwei.commands.next import approved
+    from wuwei.commands.next import approved, building as holders, slot
     root = workspace.find_workspace(root)
     data, config = state.read_state(root), workspace.load_config(root)
     items = data['items']
@@ -874,8 +874,10 @@ def launch_set(root=None):
     limits = host(root, config, running=len(live), policy=data['seat_policy'])
     # #845: seats each runtime's windows still carry, less its running seats and build loops
     policies = [row for row in data['seat_policy'].values() if isinstance(row, dict)]
+    second = config['gates']['second_opinion']  # #910: a second opinion takes its runtime's room
     rooms = windows(root, config, {config['adapters']['runtime'], *(row.get(key) for row in policies
-                                                                    for key in ('runtime', 'alternate'))} - {None})
+                                                                    for key in ('runtime', 'alternate')),
+                                   second.partition(':')[0] if second != 'off' else None} - {None})
     taken = Counter([(seat['role'] == 'builder' and (data.get('builds', {}).get(seat.get('item')) or {}).get('runtime'))
                      or seat.get('runtime') or data['seat_policy'].get(seat['role'], {}).get('runtime')
                      or config['adapters']['runtime'] for seat in live]
@@ -892,7 +894,6 @@ def launch_set(root=None):
                            kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text'],
                                                         **{key: limits[key] for key in ('reading',) if key in limits}})
     free = start = ceiling - len(live)
-    builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
     busy = {seat['item'] for seat in running}
     names = [name for name in approved(data) if name not in busy]
     goal = lambda name: items[name].get('goal', 'unplanned')
@@ -915,22 +916,45 @@ def launch_set(root=None):
                      'reason': f'{name} build loop ended right after it started; it runs again at {again.isoformat()}'}
         launches = len(value.get('seats', [])) if 'seats' in value else int(
             value['action'] in ('launch', 'continue', 'start') or value['action'] == 'run' and 'runtime' in value)
-        need = Counter(seat.get('runtime') for seat in value.get('seats', [])) if 'seats' in value else Counter(
-            [value.get('runtime')] if launches else [])
-        held = next((name for name, count in need.items() if windows_left.get(name) is not None
-                     and windows_left[name] < count), None)
+        seats, runtime = 'seats' in value, value.get('runtime')
         if launches and 'held' in limits:  # #898: below the memory floor no seat starts; re-check soon
             value = {'action': 'wait', 'reason': limits['held'],
                      'until': (workspace.now() + timedelta(minutes=1)).isoformat()}
-        elif held:
-            value = hold(held)
+        elif kind in ('build', 'fix') and launches and not seats and not slot(
+                fresh := state.read_state(root), name, cap):  # #910: as the guard, on this sweep's writes
+            value = {'action': 'wait', 'reason': f'CAP {cap} reached: build slots held by '
+                     f"{', '.join(holders(fresh)[:cap])}; this builder launches when one hands off"}
+        elif seats and launches:  # #910: the seats that fit launch; the rest after these verdicts
+            fit, rest = [], []
+            for seat in value['seats']:
+                room = windows_left.get(seat.get('runtime'))
+                if len(fit) < free and room != 0:
+                    fit.append(seat)
+                    if room is not None:
+                        windows_left[seat['runtime']] -= 1
+                else:
+                    rest.append(seat)
+            spent = next((seat['runtime'] for seat in rest if windows_left.get(seat.get('runtime')) == 0), None)
+            free -= len(fit)
+            if not fit:
+                value = hold(spent) if spent and free > 0 else {'action': 'wait', 'reason': (
+                    f'{launches} launch(es) wait for the {max(free, 0)} free of host.seats={ceiling}; '
+                    'they launch as running seats stop')}
+            elif rest:
+                value = {**value, 'seats': fit, 'deferred': len(rest), 'reason': (
+                    f'{len(fit)} of {launches} seats launch now; the rest wait for '
+                    + (f'the {spent} usage window ({rooms[spent]["text"]})' if spent else f'host.seats={ceiling}')
+                    + ' and launch after these verdicts are received')}
+        elif launches and windows_left.get(runtime) == 0:
+            value = hold(runtime)
         elif launches > free:
             value = {'action': 'wait', 'reason': (
                 f'{launches} launch(es) do not fit the {max(free, 0)} free of host.seats={ceiling}; '
-                'they launch together next turn, after running seats stop')}
-        else:
+                'they launch next turn, after running seats stop')}
+        elif launches:
             free -= launches
-            windows_left.update({key: windows_left[key] - count for key, count in need.items() if windows_left.get(key) is not None})
+            if windows_left.get(runtime) is not None:
+                windows_left[runtime] -= 1
         entries.append({'item': name, 'goal': goal(name), **value})
 
     offered = [launch for launch in derive.offers(data, root, config)['launches']  # seat steps only
@@ -939,7 +963,9 @@ def launch_set(root=None):
                          key=lambda launch: launch['command'].startswith('wuwei build next ')):
         add(launch['item'], lambda: resolve_offer(root, launch), launch['kind'])
     names = [name for name in names if not derive.waits_on(root, data, name)]  # #637
-    seated = [name for name in builds if not state.held(data, name)]  # #648: a held item takes no seat
+    # #910: the one build slot count, read after the offers (a fix round opened this sweep holds
+    # one); #648: a held item takes no seat
+    seated = holders(state.read_state(root))
     building = len(seated)
     share = Counter(data.get('goal_seats', {}))
     share.subtract(goal(name) for name in seated)
@@ -949,8 +975,16 @@ def launch_set(root=None):
         share[goal(name)] -= 1
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
-    gate_waits = 'held' not in limits and any(  # #898: a memory hold holds the builds itself
-        row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
+    def partial(name):  # #910: an initial gate batch runs while the rest of its set is not launched
+        gates = [seat for seat in data['seats'].values() if seat['item'] == name and seat['role'].startswith('sentinel-')]
+        try:
+            return items[name]['phase'] == 'gate' and len(gates) < len(gate_set(items[name]))
+        except ValueError:  # a damaged gate record refuses the item at its own step, never the set
+            return False
+    gate_waits = 'held' not in limits and (any(  # #898: a memory hold holds the builds itself
+        row['action'] == 'wait' or row.get('deferred') for row in entries  # #910: or launches part of its set
+        if items[row['item']]['phase'] in ('gate', 'delta')) or any(
+        partial(seat['item']) for seat in running if seat['role'].startswith('sentinel-')))
     starts, skip = {}, []
     for name in first + rest:
         if name in briefed:

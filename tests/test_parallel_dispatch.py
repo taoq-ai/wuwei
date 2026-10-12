@@ -127,7 +127,8 @@ def test_gate_sentinels_run_together_and_the_item_moves_after_all_verdicts(day):
     assert {key: result[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
-def test_gate_seats_wait_when_host_seats_cannot_hold_them_together(day):
+def two_of_three_gates(day):
+    """#910: three briefed gate seats on host.seats = 2; the two that fit launch and stop."""
     day.plan()
     day.approve()
     day.run('plan', 'session', 'planner')
@@ -137,7 +138,51 @@ def test_gate_seats_wait_when_host_seats_cannot_hold_them_together(day):
     config = day.root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '[host]\nseats = 2\n')
     entries, rows = launch_set(day)
-    assert entries == [('A', 'wait')] and 'host.seats=2' in rows[0]['reason']
+    assert entries == [('A', 'gates')] and rows[0]['deferred'] == 1 and 'host.seats=2' in rows[0]['reason']
+    first = rows[0]['seats']
+    assert len(first) == 2
+    for action in first:
+        day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, action))
+    assert sum(seat['status'] == 'running' for seat in day.data['seats'].values()) == 2
+    assert launch_set(day)[0] == []  # the batch runs; the item is offered again when it stops
+    for action in first:
+        day.runtime.finish(action['agent_type'].removeprefix('wuwei:'), Path(action['brief']))
+        day.run(*action['receive'].split()[1:])
+    return first
+
+
+def test_three_gates_on_two_seats_launch_two_then_the_third(day):
+    # #910: the seats that fit launch, their verdicts are received, then the rest; never over two
+    first = two_of_three_gates(day)
+    entries, rows = launch_set(day)
+    assert entries == [('A', 'gates')] and 'deferred' not in rows[0]
+    [third] = rows[0]['seats']
+    assert third['agent_type'] not in {action['agent_type'] for action in first}
+    heads = {row['payload']['head'] for row in day.events if row['kind'] == 'brief written'
+             and row['payload'].get('gate')}
+    assert heads == {day.data['builds']['A']['checked']}  # one set, one checked head
+    day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, third))
+    assert sum(seat['status'] == 'running' for seat in day.data['seats'].values()) == 1
+    day.runtime.finish(third['agent_type'].removeprefix('wuwei:'), Path(third['brief']))
+    day.run(*third['receive'].split()[1:])
+    assert day.next()['action'] == 'raise'
+
+
+def test_a_head_move_refuses_the_deferred_gate_seat_and_its_siblings_verdicts(day):
+    # #910 risk: the deferred seat reads the head its siblings read or not at all
+    from adapters.vcs import git
+    from wuwei import derive
+    first = two_of_three_gates(day)
+    [third] = launch_set(day)[1][0]['seats']
+    (day.repo / 'memory/demo.py').write_text('VALUE = 99\n')
+    assert git.workspace_commit(day.repo, ['memory/demo.py']).exit == 0
+    code, reason = guard(day, str(Path(third['brief']).relative_to(day.root)), third['agent_type'])
+    assert code == 1 and 'HEAD changed' in reason
+    row = day.data['items']['A']
+    for action in first:
+        role = action['agent_type'].removeprefix('wuwei:sentinel-')
+        record = day.data['gate_verdicts'][f'A:{role}:initial']
+        assert derive.counted(day.root, row, record, day.head) is None
 
 
 def test_docs_skill_and_charter_name_the_parallel_start():

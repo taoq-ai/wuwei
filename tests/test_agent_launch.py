@@ -32,6 +32,21 @@ def recorded(root, item, name):
         'brief': path, 'status': 'ready', 'action': {'action': 'launch'}}}), root)
 
 
+def building(root, *items):
+    """#910: approved items in a build phase, plan order: each holds or waits for a build slot."""
+    state._write_state(lambda data: data.update(approved_items=list(items)) or [
+        data['items'].setdefault(item, {'phase': 'planned'}) for item in items], root)
+    state._write_state(lambda data: [data['items'][item].update(phase='implement') for item in items], root)
+
+
+def builder(root, directory, monkeypatch, item, name):
+    assert brief(monkeypatch, 'body', 'builder', item, name) == 0
+    recorded(root, item, name)
+    relative = str((directory / f'briefs/{name}.md').relative_to(root))
+    return check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'builder', 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
+
+
 @pytest.mark.parametrize('case,code,hint', [
     ('clean', 0, ''), ('unlogged', 1, 'logged'), ('wrong-role', 1, 'role'),
     ('wrong-name', 1, 'name'), ('modified', 1, 'modified'), ('missing-file', 2, 'does not exist'),
@@ -261,7 +276,7 @@ def test_concurrent_launches_reserve_once(day, monkeypatch, same_brief):
     from threading import Barrier
     from wuwei.guards import agent_launch
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    (day[0] / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 3\n')
+    (day[0] / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 1\n')
     payloads = []
     for item, name in (('X', 'one'), ('Y', 'two')):
         assert brief(monkeypatch, 'body', 'builder', item, name) == 0
@@ -570,6 +585,7 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
     (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n')
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     state._write_state(lambda data: data.update(cap=1), root)
+    building(root, 'X', 'Y', 'Z', 'W')
     for item, name in (('X', 'one'), ('Y', 'two'), ('Z', 'three'), ('W', 'four')):
         assert brief(monkeypatch, 'body', 'builder', item, name) == 0
         recorded(root, item, name)
@@ -577,6 +593,22 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
         code, reason = check({'cwd': str(root), 'tool_input': {
             'subagent_type': 'builder', 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
         assert (code, 'CAP 3' in reason) == ((1, True) if name == 'four' else (0, False)), reason
+
+
+def test_builder_cap_counts_build_slots_not_live_builder_seats(day, monkeypatch):
+    # #910: one count with derive and the launch set: a Codex build loop (no seat) holds a slot,
+    # and a stopped builder ahead in plan order keeps its slot while a later build's seat runs
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    (root / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 8\n')
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    building(root, 'B', 'X')
+    state._write_state(lambda data: data.setdefault('builds', {}).update(B={'runtime': 'codex'}), root)
+    code, reason = builder(root, directory, monkeypatch, 'X', 'x-one')
+    assert code == 1 and 'build slots 2 at CAP 1: held by B;' in reason, reason
+    building(root, 'X', 'B')
+    set_seats({'b': {'item': 'B', 'role': 'builder', 'status': 'running', 'brief': 'b.md'}}, root)
+    assert builder(root, directory, monkeypatch, 'X', 'x-two') == (0, '')
 
 
 def test_launch_ceiling_counts_only_live_registered_seats(day, monkeypatch):
