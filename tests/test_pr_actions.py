@@ -674,27 +674,27 @@ def test_unreadable_base_is_unmeasured(case, capsys, damage):
     assert row['exit'] == 2 and row['reason'].startswith('PR state unmeasured:')
 
 
-def test_pr_act_on_a_full_bucket_names_both_readings(case, monkeypatch, capsys):
-    # #891: pr act through the real GitHub adapter. GitHub refuses the PR read with its primary
-    # wording while gh api rate_limit shows core full: both readings and the token hint are named,
-    # never "0 of 5000 core calls left" alone, and the failed read is not asked again.
+def test_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
+    # #899 field case through pr act and the real GitHub adapter: the refused PR read's own headers
+    # say core 0 until 12:55:46 while gh api rate_limit would say 5000 of 5000. The headers decide,
+    # rate_limit is never asked and no token hint is printed.
     import importlib
-    from fakes.replay import NOW, hms, install_clock, install_replay, limits
+    from fakes.replay import NOW, install_clock, install_replay, limits
     root, _, vcs, _ = linked(case)
     github = importlib.import_module('adapters.code_host.github')
     monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': github, 'vcs': vcs}[kind])
     monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '0')
     install_clock(monkeypatch)
-    pr = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--hostname', 'github.com']
+    pr = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--include', '--hostname', 'github.com']
+    head = ('HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Limit: 5000\r\nX-Ratelimit-Remaining: 0\r\n'
+            'X-Ratelimit-Reset: 1791809746\r\nX-Ratelimit-Resource: core\r\n\r\n{"message":"API rate limit exceeded"}')
     calls = install_replay(monkeypatch, 'gh', [
-        {'argv': pr, 'exit': 1, 'stderr': 'gh: API rate limit exceeded for user ID 1. (HTTP 403)'},
+        {'argv': pr, 'exit': 1, 'stdout': head, 'stderr': 'gh: API rate limit exceeded for user ID 1. (HTTP 403)'},
         {'argv': ['api', 'rate_limit', '--hostname', 'github.com'], 'stdout': limits(5000, 5000, NOW + 3600)}])
     assert main(['pr', 'act', REF]) == 2
     out = capsys.readouterr().out
-    assert (f'GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused repos/acme/widget/pulls/7 with a '
-            'rate limit (gh: API rate limit exceeded for user ID 1), but rate_limit shows 5000 of 5000 core '
-            f'calls left, reset {hms(NOW + 3600)} UTC; check that WUWEI and gh use the same token') in out
-    assert '(0 of 5000' not in out and len(calls) == 2
+    assert 'GitHub rate limit until 12:55:46 UTC (0 of 5000 core calls left); retry after it' in out
+    assert 'same token' not in out and len(calls) == 1
 
 
 @pytest.mark.parametrize('how', ['act', 'launch', 'thread'])

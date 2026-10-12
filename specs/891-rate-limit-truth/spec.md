@@ -83,3 +83,9 @@ that endpoint.
   recorded.
 - The tracker's token path (`_http.request`) still reads headers from its own failed reply,
   as before. It is out of scope; it is not on the `pr act` path.
+- Superseded by #899 (2026-10-12): the next field case answered the open question. With the
+  same shell and token, `gh api rate_limit` printed core 5000 while the refused reply's own
+  headers said core 0 until 12:55:46, and that reset held, as it had in #867. So the refused
+  reply's `X-RateLimit-*` headers now decide the bucket (read with `--include` on the request
+  itself), `rate_limit` is only the fallback for replies without headers, and the token hint is
+  gone.

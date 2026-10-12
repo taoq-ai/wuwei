@@ -91,7 +91,7 @@ def commit(sha, parent, message='merge change'):
 
 def history_prefix():
     return [{'argv': ['api', 'repos/acme/widget/branches/main', '-H', 'Cache-Control: no-cache',
-                       '--hostname', 'github.com'],
+                       '--include', '--hostname', 'github.com'],
              'stdout': json.dumps({'commit': {'sha': 'b' * 40}})},
             {'stdout': json.dumps([commit(SHA, 'e' * 40)])}]
 
@@ -123,7 +123,7 @@ def test_history_without_patches_uses_compare_messages_only(monkeypatch):
     reverted['parents'].append({'sha': 'd' * 40})
     calls = install_replay(monkeypatch, 'gh', history_prefix()[:1] + [{
         'argv': ['api', f'repos/acme/widget/compare/{SHA}...{"b" * 40}',
-                 '-H', 'Cache-Control: no-cache', '--hostname', 'github.com'],
+                 '-H', 'Cache-Control: no-cache', '--include', '--hostname', 'github.com'],
         'stdout': json.dumps({'status': 'ahead', 'total_commits': 1, 'commits': [reverted]})}])
     result = adapter().history('acme/widget', SHA, 'main', patches=False)
     assert result.exit == 0, result

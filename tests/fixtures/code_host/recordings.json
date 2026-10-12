@@ -11,6 +11,7 @@
           "repos/acme/widget/pulls/7",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -160,6 +161,7 @@
           "graphql",
           "--input",
           "-",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -217,6 +219,7 @@
           "repos/acme/widget/branches/release%2Fnext/protection",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -241,6 +244,7 @@
           "repos/acme/widget",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -463,6 +467,7 @@
           "repos/acme/widget/pulls/7",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -503,6 +508,7 @@
           "graphql",
           "--input",
           "-",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -555,6 +561,7 @@
           "repos/acme/widget",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -573,6 +580,7 @@
         "argv": [
           "api",
           "user",
+          "--include",
           "--hostname",
           "github.com"
         ],
@@ -596,6 +604,7 @@
           "search/issues?q=is%3Apr%20is%3Aopen%20repo%3Aacme%2Fwidget%20author%3Abuilder&per_page=100",
           "-H",
           "Cache-Control: no-cache",
+          "--include",
           "--hostname",
           "github.com"
         ],
