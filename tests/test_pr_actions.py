@@ -327,7 +327,8 @@ def test_unreadable_base_never_starts_rebase(case, monkeypatch, capsys):
 
 def test_fix_round_returns_to_delta_gate(case):
     from wuwei.commands import build
-    root, host, _, tree = linked(case)
+    root, host, vcs, tree = linked(case)
+    vcs.results['status'] = Result(0, [])  # #871 L2: the fix round left a clean tree
     completed_build(root, tree)
     action = build.open_fix('A', 'tests failed', root=root)
     assert action['action'] == 'continue'

@@ -251,6 +251,16 @@ def _host(root, config):
     codex = shutil.which('codex')
     rows.append(_row('host', 'codex', 'fail', 'not on PATH', 'install the Codex CLI') if needed and not codex
                 else _row('host', 'codex', 'ok', codex or 'not used'))
+    try:
+        from wuwei import state
+        policy = state.read_state(root)['seat_policy'].values() if root else ()
+    except (OSError, ValueError):
+        policy = ()
+    if gap := codex_gap(config, policy):  # #860
+        script = _companion(config)
+        rows.append(_row('host', 'codex.command', 'warn', gap + (f'; companion found at {script}' if script else ''),
+                         "bin/wuwei config set codex.command '[\"node\", \"" + (script or '<path to codex-companion.mjs>')
+                         + "\"]'"))
     if adapters['host'] == 'none':
         rows.append(_row('host', 'memory', 'unmeasured', 'adapters.host = "none"', 'set adapters.host = "local"'))
     else:
@@ -264,6 +274,32 @@ def _host(root, config):
                         _row('host', 'memory', 'fail', f'{mib} MiB below {floor} MiB',
                              'free memory, or lower host.free_memory_mb in .wuwei/config.toml'))
     return rows
+
+
+CODEX_GAP = 'codex.command empty: runtime codex unavailable'
+
+
+def _companion(config):
+    """#860: the installed codex plugin's companion script, else None."""
+    try:
+        plugins = json.loads(Path(config['scanner']['mcp']['plugins_file']).expanduser()
+                             .read_text(encoding='utf-8'))['plugins']
+        scripts = [Path(row['installPath']) / 'scripts/codex-companion.mjs'
+                   for name, rows in plugins.items() if name.startswith('codex@') for row in rows]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return next((str(script) for script in scripts if script.is_file()), None)
+
+
+def codex_gap(config, policy=()):
+    """#860: CODEX_GAP when codex.command is empty and the codex runtime is wanted (the runtime,
+    the second opinion, a codex usage window, a seat policy row) or its plugin is installed."""
+    if config['codex']['command']:
+        return ''
+    wanted = ('codex' in (config['adapters']['runtime'], config['gates']['second_opinion'].partition(':')[0])
+              or any(config['budget']['codex'].values())
+              or any('codex' in (row.get('runtime'), row.get('alternate')) for row in policy if isinstance(row, dict)))
+    return CODEX_GAP if wanted or _companion(config) else ''
 
 
 def _workspace(root, config, error, found):

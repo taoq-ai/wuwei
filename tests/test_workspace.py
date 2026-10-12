@@ -247,7 +247,7 @@ def test_config_defaults_and_independence(tmp_path):
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
-        'gates': {'second_opinion': 'off', 'second_opinion_role': 'quality', 'max_rounds': 2,
+        'gates': {'second_opinion': 'off', 'second_opinion_role': 'quality', 'second_opinion_when': [], 'max_rounds': 2,
                   'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}, 'polish': 'offer'},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
         'duties': {'on': ['ping', 'shepherd', 'tracker', 'summary']},
@@ -1218,7 +1218,7 @@ def test_second_opinion_config(tmp_path):
     write_config(tmp_path, '')
     gates = {key: value for key, value in load_config(tmp_path)['gates'].items()
              if 'rounds' not in key and key != 'polish'}
-    assert gates == {'second_opinion': 'off', 'second_opinion_role': 'quality'}
+    assert gates == {'second_opinion': 'off', 'second_opinion_role': 'quality', 'second_opinion_when': []}
     write_config(tmp_path, '[gates]\nsecond_opinion = "codex:gpt-6-astra"\nsecond_opinion_role = "security"\n')
     assert load_config(tmp_path)['gates']['second_opinion'] == 'codex:gpt-6-astra'
     assert load_config(tmp_path)['gates']['second_opinion_role'] == 'security'
@@ -1228,6 +1228,12 @@ def test_second_opinion_config(tmp_path):
             load_config(tmp_path)
     write_config(tmp_path, '[gates]\nsecond_opinion_role = "goal"\n')
     with pytest.raises(ConfigError, match='gates.second_opinion_role'):
+        load_config(tmp_path)
+    # #873: the selector names item flags only
+    write_config(tmp_path, '[gates]\nsecond_opinion_when = ["trust_surface", "agent_surface"]\n')
+    assert load_config(tmp_path)['gates']['second_opinion_when'] == ['trust_surface', 'agent_surface']
+    write_config(tmp_path, '[gates]\nsecond_opinion_when = ["waf"]\n')
+    with pytest.raises(ConfigError, match='gates.second_opinion_when'):
         load_config(tmp_path)
 
 

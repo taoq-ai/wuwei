@@ -323,12 +323,35 @@ def tier(root, config, row):
         reasons.append(f'docs-only: 1 reviewer ({single})')
     record = {'tier': effective, 'computed': computed, 'reasons': reasons,
               'roles': [single] if single else ['quality'] if effective == 'light' else list(ROLES)}
-    second = config['gates']['second_opinion']
-    if effective != 'light' and second != 'off':
-        runtime, _, model = second.partition(':')
-        record['second_opinion'] = {'role': config['gates']['second_opinion_role'],
-                                    'runtime': runtime, 'model': model}
+    if found := second_opinion(config, row, effective):
+        record['second_opinion'] = found
     return record
+
+
+def second_opinion(config, row, tier):
+    """The item's second-opinion gate, or None: off, a light tier, or (#873) none of the flags
+    gates.second_opinion_when names."""
+    second, when = config['gates']['second_opinion'], config['gates']['second_opinion_when']
+    if second == 'off' or tier == 'light' or when and not any(row['flags'].get(name) for name in when):
+        return None
+    runtime, _, model = second.partition(':')
+    return {'role': config['gates']['second_opinion_role'], 'runtime': runtime, 'model': model}
+
+
+def _released(root, config, data, item):
+    """#873: a recorded second opinion the config no longer selects leaves the item's tier
+    record, so an item waiting only on it moves on; the state after it. One whose latest
+    verdict blocks (FIX, PARK, ESCALATE or a blocks: yes finding) stays until it is answered."""
+    gates = data['items'][item].get('gates') or {}
+    if not gates.get('second_opinion') or second_opinion(config, data['items'][item], gates.get('tier')):
+        return data
+    gate = gate_set(data['items'][item])[-1]
+    latest = _record(data, item, gate, 'delta') or _record(data, item, gate, 'initial')
+    if latest and (latest['verdict'] != 'PASS' or latest['blocks']):
+        return data
+    state._write_state(lambda fresh: fresh['items'][item]['gates'].pop('second_opinion', None), root,
+                       kind='gate.released', payload={'item': item, 'gate': gate})
+    return state.read_state(root)
 
 
 def _changes(root, config, row):
@@ -660,6 +683,8 @@ def next_step(item, root=None):
         state._write_state(update, root, kind='gate.tiered',
                            payload={'item': item, **record})
         row = data['items'][item] = {**row, 'gates': record}
+    data = _released(root, config, data, item)
+    row = data['items'][item]
     if phase == 'gate':
         # Design 5.10 backstop: no gates for an item reached by a manual transition with a gap.
         from wuwei import specmode
@@ -1302,7 +1327,9 @@ def opinion(item, root=None):
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
     data = state.read_state(root)
-    row = _item(data, item)
+    _item(data, item)
+    data = _released(root, config, data, item)
+    row = data['items'][item]
     second = (row.get('gates') or {}).get('second_opinion')
     if not second:
         raise Refused(f'item has no second opinion; the owner enables one with bin/wuwei config set gates.second_opinion')
@@ -1323,15 +1350,20 @@ def opinion(item, root=None):
     relative = str((directory / 'briefs' / f'{name}.md').relative_to(root))
     runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
     seat = data['seats'].get(name)
-    if seat is None or seat['status'] == 'stopped':
+    if seat is None or seat['status'] != 'running':
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
         ceiling = host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set')
         head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
-        if seat is None:
-            if round_name == 'delta':
-                raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
+        if round_name == 'delta' and seat is None:
+            raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
+        if seat is None or round_name == 'initial' and (seat['status'] == 'unmeasured' or seat.get('failed')):
+            # #871: a failed or unmeasured seat has no thread to continue; it starts again
+            if seat and seat['status'] == 'unmeasured' and seat.get('job'):  # one job per verdict file
+                found = build._data(runtime.status(seat['job'], root=root), 'status')
+                if found.get('status') in ('queued', 'running'):
+                    build._data(runtime.cancel(seat['job'], root=root), 'cancel')
             if not (root / relative).exists():
                 text = (directory / 'briefs' / f'{name.rpartition("-")[0]}.md').read_text(encoding='utf-8')
                 try:
@@ -1348,9 +1380,10 @@ def opinion(item, root=None):
                     or data['seat_policy'].get('builder', {}).get('runtime')) == second['runtime']:
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set')
             feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
-                        'Your verdict file was rejected by the verdict lint; rewrite '
-                        f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
-                        'contract in your brief.')
+                        'Your verdict was rejected by the verdict lint. Reply with your whole verdict, '
+                        'rewritten to the verdict format, as your final message, in plain lines, not '
+                        'in a code block; WUWEI writes it to '
+                        f'{directory.relative_to(root)}/decisions/gate-{name}.md.')  # #871 L1
             ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
             feedback += '\n' + ci if ci else ''  # #733
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
@@ -1359,7 +1392,13 @@ def opinion(item, root=None):
                 'runtime': second['runtime'], 'model': second['model'], 'job': job}
         state._write_state(lambda fresh: fresh['seats'].update({name: seat}), root,
                            kind='seat launched', payload={'name': name, 'item': item})
-    status = build.wait(runtime, seat['job'], config, root)
+    try:
+        status = build.wait(runtime, seat['job'], config, root)
+    except RuntimeError as exc:  # #871: a failed job frees its host seat; the rerun relaunches
+        state._write_state(lambda fresh: fresh['seats'][name].update(
+            status='stopped', stopped_at=workspace.now().isoformat(), failed=str(exc)), root,
+            kind='seat stopped', payload={'name': name, 'failed': str(exc)})
+        raise
     result = build._data(runtime.result(seat['job'], root=root), 'result')
     if not isinstance(result, dict) or not isinstance(result.get('text'), str):
         raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')

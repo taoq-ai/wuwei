@@ -259,6 +259,45 @@ def test_host_rows_healthy(ws):
     assert row(doctor.diagnose(), 'ziran')['status'] == 'fail'
 
 
+def codex_plugin(ws):
+    script = ws.root.parent / 'codex-plugin/scripts/codex-companion.mjs'
+    script.parent.mkdir(parents=True)
+    script.write_text('')
+    plugins = json.loads(ws.installed.read_text())
+    plugins['plugins']['codex@openai-codex'] = [{'scope': 'user', 'installPath': str(script.parents[1])}]
+    ws.installed.write_text(json.dumps(plugins))
+    return script
+
+
+def test_empty_codex_command_names_the_installed_companion(ws):
+    # #860: an empty codex.command with the codex plugin installed is one warn row naming its script
+    script = codex_plugin(ws)
+    found = row(doctor.diagnose(), 'codex.command')
+    assert (found['section'], found['status']) == ('host', 'warn')
+    assert found['value'] == f'codex.command empty: runtime codex unavailable; companion found at {script}'
+    assert found['fix'] == W(f"config set codex.command '[\"node\", \"{script}\"]'")
+    config(ws.root, CONFIG + f'\n[codex]\ncommand = ["node", "{script}"]\n')
+    assert 'codex.command' not in names(doctor.diagnose(), 'host')
+
+
+@pytest.mark.parametrize('wanted', ['[gates]\nsecond_opinion = "codex:m1"\n',
+                                    '[budget.codex]\nfive_hour = 1000\n', 'policy', ''])
+def test_empty_codex_command_warns_when_codex_is_wanted(ws, wanted):
+    # #860: the config, a codex usage window or today's seat policy names the codex runtime
+    stub(ws.bin, 'codex')
+    if wanted == 'policy':
+        state._write_state(lambda data: data.update(seat_policy={
+            'builder': {'runtime': 'claude', 'model': 'opus', 'alternate': 'codex'}}), ws.root)
+    else:
+        config(ws.root, CONFIG + '\n' + wanted)
+    rows = names(doctor.diagnose(), 'host')
+    assert ('codex.command' in rows) == bool(wanted)
+    if wanted:
+        found = row(doctor.diagnose(), 'codex.command')
+        assert found['value'] == 'codex.command empty: runtime codex unavailable'
+        assert 'codex-companion.mjs' in found['fix']
+
+
 def test_host_identity_set_per_repository(ws):
     ws.vcs.results['identity'] = Result(1, reason='git.identity: could not run: git exited 1')
     rows = doctor.diagnose()

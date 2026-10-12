@@ -269,6 +269,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'warn',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'warn', 'base.red': 'page',
                 'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent',
+                'gate.released': 'silent',
                 'plan.added': 'silent', 'finding.noted': 'silent',
                 'tracker.call': 'warn',
                 'tracker.created': 'silent', 'tracker.folded': 'silent', 'duty.due': 'silent',

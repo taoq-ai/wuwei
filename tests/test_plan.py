@@ -95,6 +95,18 @@ def test_alternate_never_shares_the_second_opinion_runtime(root):
             'runtime': 'claude', 'model': 'sonnet', 'alternate': 'codex'}}}, root)
 
 
+@pytest.mark.parametrize('command', ['', '[codex]\ncommand = ["node", "companion.mjs"]\n'])
+def test_seat_policy_line_names_an_empty_codex_command(root, command):
+    # #860: a seat policy on codex with an empty codex.command says so at the morning gate
+    (root / '.wuwei/config.toml').write_text(command)
+    path = plan.propose({**proposal(), 'seat_policy': {'builder': {
+        'runtime': 'claude', 'model': 'sonnet', 'alternate': 'codex'}}}, root)
+    gap = '(codex.command empty: runtime codex unavailable)'
+    [line] = [line for line in path.read_text().splitlines() if line.startswith('Seat policy: ')]
+    assert line.endswith(gap) is not bool(command)
+    assert (gap in plan.gate_widget(root)['options'][0]['description']) is not bool(command)
+
+
 def test_approve_selected_items_and_reserve_gate_fields(root):
     plan.propose(proposal(), root)
     plan.approve(['A'], root, goals_confirmed=True)

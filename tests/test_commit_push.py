@@ -89,6 +89,7 @@ engine = "none"
     fake = Fake({'commit_context': Result(0, context), 'push_context': Result(0, push),
                  'repo_context': Result(0, {key: context[key] for key in ('path', 'common_dir')}),
                  'head': Result(0, push['head']),
+                 'status': Result(0, []),  # #871 L2: a passing build leaves a clean tree
                  'push_commits': Result(0, {'commits': [push['head']]}),
                  'merge_base': Result(0, {'sha': OLD})})
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)

@@ -179,6 +179,17 @@
     ]
   },
   {
+    "operation": "touched",
+    "args": ["/repo with spaces", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+    "steps": [
+      {
+        "argv": ["-C", "/repo with spaces", "log", "--format=", "--name-only", "-z", "--no-renames", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD", "--"],
+        "stdout": "file name\u0000.env.example\u0000\n\nfile name\u0000"
+      }
+    ],
+    "data": [".env.example", "file name"]
+  },
+  {
     "operation": "log_since",
     "args": [
       "/repo with spaces",

@@ -145,6 +145,7 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
 | `gates.second_opinion` | `"off"` | `"<runtime>:<model>"` runs one gate of every STANDARD and FULL item again on that model. A blocking finding from either blocks. |
 | `gates.second_opinion_role` | `"quality"` | The gate it repeats: `arch`, `quality` or `security`. |
+| `gates.second_opinion_when` | `[]` | Item flags that select the second opinion: `trust_surface`, `boundary_relevant`, `agent_surface`. Empty runs it on every STANDARD and FULL item. Turning the second opinion off, or narrowing this list, drops a pending or passed second opinion at the next `dispatch next`, so an item waiting only on it moves on. One that returned a blocking verdict keeps its gate until it is fixed. |
 | `gates.max_rounds` | `2` | Fix rounds per item. At the cap, notes ship in the PR body and a blocking finding parks the item. |
 | `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per tier. `0` uses `max_rounds`. |
 | `gates.polish` | `"offer"` | After a pass with notes: `never`, `offer` one notes-only round, or `always`. |

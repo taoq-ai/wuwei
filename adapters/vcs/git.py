@@ -59,6 +59,10 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
     match args:
         case ('init', '--quiet'):
             allowed = local
+        case ('add', '--all'):  # #871 L2: commit_all, in a build worktree
+            allowed = not local
+        case ('commit', '--quiet', '-m', message):
+            allowed = not local and bool(re.fullmatch(_BUILD_MESSAGE, message))
         case ('add', '-A', '--', *paths):
             allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
         case ('commit', '--only', '-m', message, '--', *paths):
@@ -121,6 +125,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
                 allowed = bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', tip) and (
                     re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base) or '..' not in base
                     and re.fullmatch(r'refs/remotes/[^\s~^:?*\[\\]+', base)))
+        case ('log', '--format=', '--name-only', '-z', '--no-renames', rev, '--'):  # #871 touched
+            allowed = (isinstance(rev, str) and rev.endswith('..HEAD')
+                       and bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', rev[:-6])))
         case ('log', '--format=', '--name-only', '-z', since, until, 'HEAD', '--'):
             allowed = bool(re.fullmatch(r'--since=\d{4}-\d{2}-\d{2}T00:00:00', since)
                            and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
@@ -620,6 +627,29 @@ def worktree_identity(repo, name, email, root=None):
     return {'name': name, 'email': email}
 
 
+_BUILD_MESSAGE = r'chore\([A-Za-z0-9][A-Za-z0-9_.-]*\): Codex builder changes'  # the item identifier rule
+
+
+@_operation
+def commit_all(repo, item, name, email, root=None):
+    """#871 L2: commit every change in the item's worktree with the given identity. A Codex
+    job's sandbox cannot write the worktree's git metadata, so WUWEI commits its build."""
+    message = f'chore({item}): Codex builder changes'
+    if not isinstance(item, str) or not re.fullmatch(_BUILD_MESSAGE, message):
+        raise ValueError('invalid build item')
+    for value in (name, email):
+        if (not isinstance(value, str) or not value.strip() or value.startswith('-')
+                or any(char in value for char in '\n\r\0<>')):
+            raise ValueError('invalid identity')
+    settings = {'user.name': name, 'user.email': email}
+    # B3: GIT_AUTHOR_* and GIT_COMMITTER_* outrank -c user.*, so the identity sets them too
+    env = {f'GIT_{kind}_{field.upper()}': value for kind in ('AUTHOR', 'COMMITTER')
+           for field, value in (('name', name), ('email', email))}
+    _run(repo, 'add', '--all', settings=settings, env=env)
+    _run(repo, 'commit', '--quiet', '-m', message, settings=settings, env=env)
+    return {}
+
+
 @_operation
 def push_commits(repo, remote, destination, local_sha, remote_sha, default_branch, root=None):
     """Read every outgoing commit, using actual hook SHAs when available."""
@@ -677,6 +707,16 @@ def changes_on(repo, day, root=None):
     date.fromisoformat(day)
     output = _run(repo, 'log', '--format=', '--name-only', '-z',
                   '--since=' + day + 'T00:00:00', '--until=' + day + 'T23:59:59', 'HEAD', '--')
+    return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
+
+
+@_operation
+def touched(repo, base, root=None):
+    """#871 A16: every path any commit in base..HEAD touched, a file deleted again included,
+    since a push sends each of those commits."""
+    if not isinstance(base, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base):
+        raise ValueError('expected a full commit sha')
+    output = _run(repo, 'log', '--format=', '--name-only', '-z', '--no-renames', base + '..HEAD', '--')
     return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
 
 

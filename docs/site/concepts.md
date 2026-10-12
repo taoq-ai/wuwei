@@ -150,7 +150,7 @@ The tier also sets how much process an item gets. Every brief carries a `Depth:`
 
 The default `repos.gates.floor` is `standard`, so light depth needs `floor = "light"`.
 
-With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate on that model. A blocking finding from either model blocks. The retro's `## Second opinion` section lists what each model raised alone.
+With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate on that model. `gates.second_opinion_when` narrows it to items with one of the named flags, for example `["trust_surface"]`. A blocking finding from either model blocks. The retro's `## Second opinion` section lists what each model raised alone.
 
 ## Fix rounds
 
