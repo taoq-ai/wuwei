@@ -358,3 +358,27 @@ def test_overlapping_refreshes_never_restore_a_failed_repositorys_old_rows(root,
     found = derive.listing(workspace.day_dir(root))
     assert found['repos']['example/two']['failed'] == 'gh: HTTP 502'
     assert sorted(found['pulls']) == ['example/one#1', 'example/three#1']
+
+
+def test_a_released_owner_merge_is_not_a_hold(root):
+    # #904: plan set owner_merge=false stores a record; only a true value holds the merge.
+    raised(root)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'green', 'labels': []}]}))
+    for value, launches, decision in ((False, [('merge', 'A')], None), (True, [], 'wuwei merge example/project#1')):
+        state._write_state(lambda data: data['items']['A'].update(owner_merge={
+            'value': value, 'by': 'owner', 'at': '2026-10-11T10:00:00+00:00'}), root)
+        found = derive.offers(state.read_state(root), root, workspace.load_config(root))
+        assert [(row['kind'], row['item']) for row in found['launches']] == launches
+        assert (found['decision'] or {}).get('command') == decision
+
+
+def test_red_checks_at_the_cap_after_the_owners_resume_are_a_fix_round(root):
+    # #904: the owner's resume grants one round past the cap here too, until a round opens.
+    claimed(root, {'status': 'done', 'fix_rounds': 2})
+    assert offered(root, checks='red') == []
+    state.append_event('plan.disposed', {'item': 'A', 'outcome': 'parked'}, root)
+    state.append_event('plan.resumed', {'item': 'A'}, root)
+    assert offered(root, checks='red') == [('fix', ACT, True)]
+    state.append_event('build.fix_opened', {'item': 'A'}, root)
+    assert offered(root, checks='red') == []

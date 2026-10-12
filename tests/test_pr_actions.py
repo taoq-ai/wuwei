@@ -91,6 +91,22 @@ def test_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
     assert item['phase'] == 'parked' and item['disposition']['reason'].startswith('round cap 2 reached')
 
 
+def test_red_ci_at_the_round_cap_after_the_owners_resume_opens_one_round(case, capsys):
+    # #904: the owner's resume grants one round past the cap; opening it spends the grant.
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root)
+    state.append_event('plan.resumed', {'item': 'A'}, root)
+    host.results['checks'] = Result(0, [{'name': 'tests', 'sha': 'a' * 40,
+        'state': 'completed', 'conclusion': 'failure', 'url': 'https://example.test/check'}])
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert action['action'] in ('launch', 'continue') and 'tests' in action['prompt']
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+    from wuwei import dispatch
+    assert not dispatch._resumed(root, 'A')
+
+
 def test_unanswered_thread_needs_composed_reply(case, capsys):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,

@@ -90,17 +90,107 @@ def test_agent_launch_refuses_role_assigned_to_codex(seat):
     assert not state.read_state(root)['seats']
 
 
-def test_step_build_parks_missing_pytest_without_continue(seat):
+MISSING = {'test_ids': [], 'error': 'No module named pytest', 'environment': 'pytest not found'}
+
+
+def resume_yes(root, capsys):
+    from fakes import owner
+    capsys.readouterr()
+    assert main(['plan', 'resume', 'A']) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+
+
+def test_a_missing_interpreter_holds_for_a_recheck_and_the_repair_moves_on(seat):
+    # #904: an environment failure is a build hold with a recheck action, not an owner park,
+    # and no builder round is spent on it.
     root, _, _, day, results = seat
     launch(seat, build.next_action('A', root=root))
     assert stop(seat) == (0, '')
-    results.append(registry.Result(1, {'test_ids': [], 'error': 'No module named pytest',
-                                       'environment': 'pytest not found'}))
+    results.append(registry.Result(1, MISSING))
     assert main(['build', 'check', 'A']) == 1
     action = build.next_action('A', root=root)
-    assert action['action'] == 'park'
-    assert action['reason'] == 'environment: pytest not found'
+    assert action['action'] == 'check' and 'build check A' in action['command']
+    assert action['reason'].startswith('environment: pytest not found')
+    assert state.read_state(root)['items']['A']['phase'] == 'implement'
+    results.append(registry.Result(0))  # the interpreter is repaired
+    assert main(['build', 'check', 'A']) == 0
+    assert build.next_action('A', root=root)['action'] == 'done'
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
+
+
+def test_an_unchanged_environment_failure_parks_and_a_resume_rechecks_once(seat, capsys):
+    # #904: unchanged environment failures stay bounded (stuck_after rechecks, then the park the
+    # owner decides); the owner's resume gives one recheck, and the same failure parks again.
+    root, _, _, day, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    for _ in range(3):
+        assert build.next_action('A', root=root)['action'] == 'check'
+        results.append(registry.Result(1, MISSING))
+        assert main(['build', 'check', 'A']) == 1
+    action = build.next_action('A', root=root)
+    assert action == {'action': 'park', 'reason': 'environment: pytest not found'}
+    resume_yes(root, capsys)
+    assert build.next_action('A', root=root)['action'] == 'check'
+    results.append(registry.Result(1, MISSING))
+    assert main(['build', 'check', 'A']) == 1
+    assert build.next_action('A', root=root)['action'] == 'park'
+    assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
+
+
+def test_a_resumed_stuck_build_continues_its_builder_once(seat, capsys):
+    # #904: plan resume resets the parked build action with the phase, so build next never
+    # returns the park the owner just answered; the same failure parks again (bounded).
+    root, repo, path, day, results = seat
+    for _ in range(3):
+        action = build.next_action('A', root=root)
+        launch(seat, action, action.get('resume'))
+        assert stop(seat) == (0, '')
+        results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'same failure'}))
+        main(['build', 'check', 'A'])
+    assert build.next_action('A', root=root)['action'] == 'park'
+    resume_yes(root, capsys)
+    assert state.read_state(root)['items']['A']['phase'] == 'implement'
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'continue' and action['resume'] == 'agent-builder'
+    assert 'same fast-check failure repeated' in action['feedback']
+    launch(seat, action, action['resume'])
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'same failure'}))
+    assert main(['build', 'check', 'A']) == 1
+    assert build.next_action('A', root=root)['action'] == 'park'
+
+
+
+@pytest.mark.parametrize('kind', ['stuck', 'environment'])
+def test_a_resumed_build_spends_the_resume_at_its_check(seat, capsys, kind):
+    # #904 review F1: a build park's resume is answered by the build check; the item reaches its
+    # gates with no round grant left, so a PARK, ESCALATE or Blocked card still asks the owner.
+    from wuwei import dispatch
+    root, _, _, _, results = seat
+    failure = MISSING if kind == 'environment' else {'test_ids': ['test_one'], 'error': 'same failure'}
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    for _ in range(3):
+        action = build.next_action('A', root=root)
+        if action['action'] == 'continue':
+            launch(seat, action, action['resume'])
+            assert stop(seat) == (0, '')
+        results.append(registry.Result(1, failure))
+        main(['build', 'check', 'A'])
+    assert build.next_action('A', root=root)['action'] == 'park'
+    resume_yes(root, capsys)
+    assert dispatch._resumed(root, 'A')
+    action = build.next_action('A', root=root)
+    if action['action'] == 'continue':
+        launch(seat, action, action['resume'])
+        assert stop(seat) == (0, '')
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert not dispatch._resumed(root, 'A')
 
 
 def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch, capsys):

@@ -172,7 +172,8 @@ def materialise(root, day):
                 round_name = 'delta' if current == 'delta' else 'initial'
                 data['gate_verdicts'][f'{name}:{role}:{round_name}'] = record(name, role, kind, round_name)
         if row['pr']:
-            entry.update(pr=f'{REPO}#{100 + number}', owner_merge=row['owner_merge'])
+            entry.update(pr=f'{REPO}#{100 + number}', owner_merge={  # #904: the record plan set writes
+                'value': row['owner_merge'], 'by': 'owner', 'at': '2026-10-11T09:00:00+00:00'})
             data['raised_prs'].append(entry['pr'])
             pulls.append({'ref': entry['pr'], 'state': 'merged' if row['pr'] == 'merged' else 'open',
                           'checks': None if row['pr'] == 'merged' else row['pr'],
