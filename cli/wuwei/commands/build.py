@@ -214,8 +214,9 @@ def _busy(item, record):
         raise ValueError(f'fast checks for {item} are running since {marker["started_at"][11:16]} (pid {marker["pid"]}); run bin/wuwei build next {item} when that command exits')
 
 
-def next_action(item, brief=None, worktree=None, *, root=None):
-    """Return one stable action. Executing it belongs to the caller."""
+def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
+    """Return one stable action. Executing it belongs to the caller. runtime (#845): the runtime
+    a new build binds, routed by the launch set; else routed here on fresh window room."""
     from wuwei.brief import events, identifier, seat_action
     root = workspace.find_workspace(root)
     identifier(item)
@@ -249,7 +250,12 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
     repo = _repo(root, tree, config)
-    action = seat_action('builder', path, tree, root)
+    policy = data['seat_policy'].get('builder', {})
+    if runtime is None and policy.get('alternate'):
+        from wuwei import dispatch
+        rooms = dispatch.windows(root, config, [policy['runtime'], policy['alternate']])
+        runtime = dispatch.route(policy, config['adapters']['runtime'], {name: row['room'] for name, row in rooms.items()})
+    action = seat_action('builder', path, tree, root, runtime)
     previous = record
     commands = list(repo['fast_checks'])
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
@@ -398,7 +404,11 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
                        'command': 'wuwei build check ' + shlex.quote(item),
                        'worktree': record['worktree'], 'checks': record['commands']})
     updated = state._write_state(update, root, kind='seat.usage',
-                       payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage})
+                       payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage,
+                                'runtime': record['runtime']})
+    if result.get('windows'):
+        from wuwei import dispatch
+        dispatch.save_windows(root, record['runtime'], result['windows'])
     if agent_id is not None:
         state.append_event('seat stopped', {'name': record['seat']}, root)
     return updated['builds'][item]
@@ -584,11 +594,22 @@ def run_loop(item, brief, worktree, *, root=None):
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
         runtime_config = registry.runtime_config('builder', config, root)
+        bound = state.read_state(root).get('builds', {}).get(item)  # #845: a routed build keeps its runtime
+        if bound:
+            runtime_config = {**config, 'adapters': {**config['adapters'], 'runtime': bound['runtime']}}
         if runtime_config['adapters']['runtime'] == 'claude':
             raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set')
         if brief is None or worktree is None:
             raise ValueError('usage: build <item> <brief> <worktree> (Codex only); run bin/wuwei build <item> <brief> <worktree> with all three arguments')
         runtime = registry.load('runtime', runtime_config)
+
+        def claim(data):  # #845 F2: one loop per item; a second run ends without a job
+            record = data.get('builds', {}).get(item)
+            if record and state.check_running({'check': record.get('loop')}):
+                raise PortExit(0, f"{item} build loop already running (pid {record['loop']['pid']})")
+            if record:
+                record['loop'] = {'pid': os.getpid(), 'started_at': workspace.now().isoformat()}
+        state._write_state(claim, root)
         while True:
             record = state.read_state(root).get('builds', {}).get(item)
             if record and record['status'] == 'running' and record.get('job'):

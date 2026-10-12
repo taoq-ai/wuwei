@@ -53,6 +53,10 @@ def _proposal(data, goals_text, framework="wsjf"):
                         for key in ('runtime', 'model'))
                 for role, policy in data['seat_policy'].items())):
         raise ValueError(f'seat_policy requires runtime and model per role; {PLAN_JSON}')
+    for role, policy in data['seat_policy'].items():  # #845: an optional alternate runtime
+        if 'alternate' in policy and (policy['alternate'] not in workspace.SCHEMA['budget']
+                                      or policy['alternate'] == policy['runtime']):
+            raise ValueError(f'seat_policy {role} alternate must be another known runtime; {PLAN_JSON}')
     if (not isinstance(data['envelope'], dict) or
             not all(key in data['envelope'] for key in ('start', 'end', 'net_build_hours')) or
             type(data['envelope']['net_build_hours']) not in (int, float) or
@@ -236,6 +240,8 @@ def propose(data, root=None):
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']
     data = _proposal(data, goals_text, framework)
+    if config['gates']['second_opinion'].partition(':')[0] == data['seat_policy'].get('builder', {}).get('alternate'):
+        raise ValueError(f'seat_policy builder alternate must differ from the second opinion runtime; {PLAN_JSON}')
     from wuwei import tracker
     for row in data['candidates']:  # #741: the lead's tickets, in the one id format
         if row.get('ticket'):

@@ -1,6 +1,6 @@
 # Defaults apply when settings are omitted. Unknown keys warn; bin/wuwei init --upgrade removes the ones no longer read.
-# Running build seats (CAP). 0 derives it at every sweep from free memory, cores and the
-# [budget] below; a positive number pins it. Integer counts must not be negative.
+# Running build seats (CAP). 0 derives it at every sweep from free memory and cores; a
+# positive number pins it. The [budget] windows below bound it per runtime. Integer counts must not be negative.
 cap = 0
 profile = "strict" # strict or standard
 template_version = "" # Plugin version that last wrote this file; init and init --upgrade set it.
@@ -53,8 +53,14 @@ seats = 0 # 0 derives the seat ceiling from free memory and cores; a number pins
 reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
 rate_limit_wait_seconds = 120 # Wait this long at most for a GitHub rate limit to reset, then retry once; 0 never waits.
 
-# [budget]
-# tokens_per_day = 0 # Input plus output tokens a day; it bounds CAP with the per-seat cost. 0 is no budget.
+# Input plus output tokens per usage window; with the per-seat cost they bound each runtime's
+# seats, and next waits for the window's reset. 0 is no budget.
+# [budget.claude]
+# five_hour = 0
+# seven_day = 0
+# [budget.codex]
+# five_hour = 0
+# seven_day = 0
 
 [memory]
 budget_tokens = 6000 # SessionStart memory payload budget; today is left out first.

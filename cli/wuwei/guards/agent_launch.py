@@ -201,6 +201,8 @@ def _check(payload):
         raise brief.Refused('second-opinion brief runs through wuwei dispatch opinion, not Agent')
     config = workspace.load_config(root)
     runtime = registry.runtime_config(role, config, root)['adapters']['runtime']
+    if role == 'builder':  # #845: a routed build runs on the runtime its record binds
+        runtime = state.read_state(root).get('builds', {}).get(logged['item'], {}).get('runtime', runtime)
     registry.validate('runtime', runtime)
     if runtime != 'claude':
         raise brief.Refused(f'{role} uses {runtime.capitalize()} runtime, not Agent; start it with bin/wuwei dispatch opinion <item> or bin/wuwei build <item> <brief> <worktree>')

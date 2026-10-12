@@ -30,7 +30,7 @@ Every table `config.toml` accepts, and the heading that documents its keys.
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.identity]`, `[repos.shepherd]`, `[checks]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[spec]` | [Specification mode](#specification-mode) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]` (`[budget.claude]`, `[budget.codex]`), `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]` | [Host, build and memory](#host-build-and-memory) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -41,7 +41,7 @@ Every table `config.toml` accepts, and the heading that documents its keys.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cap` | `0` | Maximum running build seats. `0` derives CAP at `plan propose` and whenever `wuwei next` plans launches, from the host and `budget.tokens_per_day`. A positive number is your override, still bounded by the budget. The morning gate shows CAP and how it was measured. |
+| `cap` | `0` | Maximum running build seats. `0` derives CAP at `plan propose` and whenever `wuwei next` plans launches, from the host. A positive number is your override. Each runtime's CAP is CAP bounded by the room left in its usage windows (`budget.*`). The morning gate shows CAP and how it was measured. |
 | `template_version` | `""` | Plugin version that last wrote this file. `init` and `init --upgrade` raise it and never lower it. An older plugin treats keys it does not know as unknown, and `doctor` says to restart Claude Code. |
 | `profile` | `"strict"` | Outward lint profile: `strict` or `standard`. Standard warns where strict refuses. |
 | `guards.enforce` | `true` | `false` records a guard refusal as `guard.would_refuse` and lets the call through. Records, merges, approvals, admin merges, deploys and outward sends outside `outward.allow` still refuse. `config check` and `doctor` print the setting. |
@@ -129,7 +129,8 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | `host.seats` | `0` | Total seat ceiling, builders and gates. `0` means one per core. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a seat reservation is reported stale. |
 | `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit before one retry. `0` never waits. |
-| `budget.tokens_per_day` | `0` | Input plus output tokens a day. It bounds CAP with the measured per-seat cost. `0` is no budget. |
+| `budget.claude.five_hour`, `budget.claude.seven_day` | `0` | Input plus output tokens Claude Code may spend in its 5-hour and 7-day usage windows. With the measured per-seat cost they bound how many Claude seats start. `0` is no budget. |
+| `budget.codex.five_hour`, `budget.codex.seven_day` | `0` | The same for Codex. |
 | `memory.budget_tokens` | `6000` | SessionStart memory payload budget. Today's lines go first. |
 | `memory.export_to` | `"CLAUDE.md"` | Workspace file that receives the generated rules block. Never under `.wuwei/`. |
 | `retro.charter_paths` | `[".wuwei/charters"]` | Charter paths the retro reviews. |
@@ -161,6 +162,17 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | `shepherd.tie_commits` | `2` | A third author within this many commits of second place is added. |
 | `shepherd.source_exclude` | specs, lock and generated files | Paths left out of reviewer selection. |
 | `shepherd.authors` | `{}` | Author email to `{login, mention}`. An unmapped email is resolved through the code host. |
+
+Usage windows: a seat launch on a runtime whose window has no room for another seat waits for
+the window's reset, and running seats finish. When every launch waits, `wuwei next` returns a
+background `sleep` until just after the reset, then offers them again. A window counts the
+runtime's measured `seat.usage` tokens, and the runtime's own reading when there is one: Claude
+Code's status line input (`wuwei status --line`) and the Codex seat's session file. A reading of
+100 percent holds launches even with no budget; below that a budget is needed. A budget holds
+launches early only once seat tokens are measured: with no measured seats (Codex seats today)
+it holds them only at a 100 percent reading. A builder seat
+policy row may name an `alternate` runtime: a new build starts there when its own runtime's
+window is spent and the alternate's is not.
 
 ## Telemetry
 

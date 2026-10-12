@@ -769,3 +769,46 @@ def test_attention_on_a_workspace_without_day_state_lists_nothing(tmp_path, monk
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     assert attention(workspace.day_dir(tmp_path)) == []
+
+
+class _Broken:
+    def isatty(self):
+        return False
+
+    def read(self):
+        raise OSError('stdin closed')
+
+
+def test_status_line_saves_claude_window_readings(tmp_path, monkeypatch, capsys):
+    # #845: the status line stdin's rate_limits are the Claude readings; the line never changes.
+    import io
+    import time
+    from wuwei.__main__ import main
+    day(tmp_path, {'cap': 2, 'gate_approved': True, 'items': {'A': {'phase': 'implement'}}})
+
+    def pipe(text, close=True):
+        read, write = os.pipe()
+        os.write(write, text.encode())
+        if close:
+            os.close(write)
+        return os.fdopen(read)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    cache = tmp_path / '.wuwei/windows.json'
+
+    def run(stdin):
+        monkeypatch.setattr(sys, 'stdin', stdin)
+        assert main(['status', '--line']) == 0
+        return capsys.readouterr().out
+    plain = run(pipe(''))
+    started = time.monotonic()
+    assert run(pipe('', close=False)) == plain and time.monotonic() - started < 2  # F8: an open pipe never hangs
+    for stdin in (pipe('{"model": {}}'), pipe('{not json'), pipe('[1]'), pipe('{"rate_limits": 7}'),
+                  io.StringIO('{"rate_limits": {}}'), _Broken()):
+        assert run(stdin) == plain and not cache.exists()
+    payload = {'rate_limits': {'five_hour': {'used_percentage': 42, 'resets_at': 1790611200},
+                               'seven_day': {'used_percentage': 18.5, 'resets_at': 1791043200}}}
+    assert run(pipe(json.dumps(payload))) == plain
+    assert json.loads(cache.read_text()) == {'claude': {
+        'five_hour': {'used_percent': 42, 'resets_at': '2026-09-28T16:00:00+00:00'},
+        'seven_day': {'used_percent': 18.5, 'resets_at': '2026-10-03T16:00:00+00:00'}}}

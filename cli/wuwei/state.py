@@ -350,6 +350,11 @@ def check_running(build):
     return marker
 
 
+def looping(build):
+    """#845: a routed build's background loop (`wuwei build`) while its process lives."""
+    return check_running({'check': build.get('loop')}) if isinstance(build, dict) else None
+
+
 def held(data, name):
     """#648: the fix item a held build waits on while that item has not ended, else None."""
     action = (data.get('builds', {}).get(name) or {}).get('action') or {}
@@ -370,6 +375,8 @@ def in_flight(data):
             if isinstance(seat, dict) and seat.get('status') == 'running']
     rows += [(marker['started_at'], 'checks', item) for item, build in data.get('builds', {}).items()
              if (marker := check_running(build))]
+    rows += [(marker['started_at'], 'builder', item) for item, build in data.get('builds', {}).items()
+             if (marker := looping(build))]
     return sorted(rows, key=lambda row: row[0])
 
 

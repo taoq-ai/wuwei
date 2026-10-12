@@ -1,8 +1,9 @@
 """The status line Claude Code runs on every refresh (plumbing: `wuwei next` is the board)."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import re
+import select
 import sys
 
 from wuwei import state, workspace
@@ -132,7 +133,25 @@ def snapshot(directory):
     return result
 
 
+def _save_readings():
+    """#845: save the Claude window readings of the status line stdin (rate_limits); whatever
+    stdin holds, the line is printed as before."""
+    try:
+        if sys.stdin is None or sys.stdin.isatty() or not select.select([sys.stdin], [], [], 0.2)[0]:
+            return  # a pipe left open with nothing written never holds the line
+        limits = json.loads(sys.stdin.read() or '{}').get('rate_limits') or {}
+        readings = {window: {'used_percent': row.get('used_percentage'),
+                             'resets_at': datetime.fromtimestamp(row['resets_at'], timezone.utc).isoformat()}
+                    for window, row in limits.items() if window in ('five_hour', 'seven_day') and isinstance(row, dict)}
+        if readings:
+            from wuwei import dispatch  # lazy: only a payload with readings pays for it
+            dispatch.save_windows(workspace.find_workspace(), 'claude', readings)
+    except (OSError, ValueError, TypeError, AttributeError, KeyError, OverflowError):
+        pass
+
+
 def run(args):
+    _save_readings()
     try:
         data = snapshot(workspace.day_dir())
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
