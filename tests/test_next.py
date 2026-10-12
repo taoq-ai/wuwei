@@ -759,9 +759,58 @@ def test_a_pr_waiting_on_people_comes_after_the_steward(root):
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
         {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
     found = coarse(root)
-    assert (found['state'], found['command']) == ('wait', 'wuwei status --line') and 'P' in found['why']
+    # #887: only PRs wait: next names the blocking pr wait, run in the background
+    assert (found['state'], found['command'], found['action']) == ('wait', 'wuwei pr wait', 'background')
+    assert 'P' in found['why'] and 'in the background' in found['then']
     state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md'}, root)
     assert coarse(root)['state'] == 'steward'
+
+
+def test_a_fix_round_with_due_review_activity_is_a_wait_not_a_duty_row(root):
+    # #906 D1: during a fix round (builder running) the shepherd duty is no row to run; next waits.
+    approved(root, {'P': ('fix', {'pr': 'example/project#7', 'worktree': str(root)})},
+             raised_prs=['example/project#7'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': [], 'head': 'abc1234def',
+         'activity_at': '2026-09-30T09:30:00Z'}]}))
+    day(root, seats={'b': {'status': 'running', 'role': 'builder', 'item': 'P'}}, builds={'P': {'status': 'running'}})
+    found = coarse(root)
+    assert found['state'] == 'wait' and 'duties' not in found
+
+
+def test_review_activity_launches_one_shepherd_seat_per_revision(root, capsys):
+    # #906: repeated next calls give the brief command, then the seat launch, then nothing more for
+    # that revision; the shepherd duty is never a record to write by hand.
+    import shlex
+    from wuwei import brief
+    approved(root, {'P': ('raised', {'pr': 'example/project#7', 'worktree': str(root)})},
+             raised_prs=['example/project#7'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': [],
+         'activity_at': '2026-09-30T09:30:00Z'}]}))
+    found = coarse(root)
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('shepherd', 'P')]
+    assert found['duties'] == []
+    [entry] = row(capsys)[1]['launches']
+    [command] = entry['commands']
+    assert entry['action'] == 'shepherd' and entry['seats'] == []
+    assert command.startswith('wuwei seat brief shepherd P shepherd-P-20260930093000 ')  # no head listed
+    body = shlex.split(command)[-1]
+    assert '--thread <id> --reply' in body and '--fix' in body and '--scope' in body
+    path = workspace.day_dir(root) / 'briefs/shepherd-P-20260930093000.md'
+    path.parent.mkdir()
+    path.write_text(body + '\n')  # the brief command needs a git worktree; its body is checked above
+    [entry] = row(capsys)[1]['launches']
+    assert entry['seats'] == [brief.seat_action('shepherd', path, str(root), root)]
+    day(root, seats={'shepherd-P-20260930093000': {'status': 'running', 'role': 'shepherd', 'item': 'P'}})
+    found = coarse(root)
+    assert found['state'] == 'wait' and 'duties' not in found  # the running seat answers it
+    # F1: a seat that stopped with a reply still owed (after --fix, a scope No, or a dead seat)
+    # leaves the duty on next's list, with pr act as its step, never a silent wait
+    day(root, seats={'shepherd-P-20260930093000': {'status': 'stopped', 'role': 'shepherd', 'item': 'P'}})
+    found = coarse(root)
+    assert found['launches'] == [] and [(duty['item'], duty['duty'], duty['record']) for duty in found['duties']] == [
+        ('P', 'shepherd', 'wuwei pr act example/project#7')]
 
 
 def test_json_rows_survive_resolution(root, capsys, monkeypatch):

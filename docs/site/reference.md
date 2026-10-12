@@ -198,7 +198,8 @@ Without gate approval both subcommands exit 1 and create nothing.
 | `raise REPO --base B --title T --body-file F --item I [--draft]` | Raises a prepared, pushed branch. |
 | `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one. |
 | `ping <ref>` | Requests reviewers and posts when the gates clear. |
-| `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --push]` | Executes the next owned PR action. |
+| `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --fix WHY \| --scope WHY \| --push] [--thread ID]` | Executes the next owned PR action. |
+| `wait [--timeout SECONDS]` | Blocks until a raised or claimed PR changes in a way `next` acts on. |
 | `disposition <ref> parked\|carried --comment TEXT` | Records a verified disposition on the PR. |
 
 ### Raising a PR
@@ -209,7 +210,15 @@ Reviewers are the top committers to the changed source paths, plus `shepherd.lea
 
 `--draft` opens a draft. An `owner_merge` item opens as a draft without the flag. `pr act <ref> --ready` marks a draft ready. On a PR that is not a draft it prints `already ready for review` and exits 0.
 
-On a claimed PR with a worktree, a conflict, red checks or a fix asked in review opens a fix round, and `wuwei next` returns its builder as a launch. For a conflict the builder merges the base; it never rebases the teammate's commits. The round runs the normal gates. Once every gate passes at the worktree head, `pr act <ref> --push` pushes the branch, leased on the PR head, and the item is raised again. Before that, `--push` exits 1. It also pushes nothing when the PR moved past what the worktree holds, so a teammate's newer commit is never overwritten: a fix round merges it and the gates run again. It refuses a head that changed after the gate check. A seat's own `git push` to a claimed PR's branch, or from its worktree, is refused. When the PR moved and no fix round is left, the item parks for the owner. `wuwei next` never merges, posts or marks a claimed PR ready; those stay a `pr act` run. A PR whose head branch is the default branch gets no worktree.
+On a claimed PR with a worktree, a conflict, red checks or a `--fix` the shepherd seat asks opens a fix round, and `wuwei next` returns its builder as a launch. For a conflict the builder merges the base; it never rebases the teammate's commits. The round runs the normal gates. Once every gate passes at the worktree head, `pr act <ref> --push` pushes the branch, leased on the PR head, and the item is raised again. Before that, `--push` exits 1. It also pushes nothing when the PR moved past what the worktree holds, so a teammate's newer commit is never overwritten: a fix round merges it and the gates run again. It refuses a head that changed after the gate check. A seat's own `git push` to a claimed PR's branch, or from its worktree, is refused. When the PR moved and no fix round is left, the item parks for the owner. `wuwei next` never merges, posts or marks a claimed PR ready; those stay a `pr act` run. A PR whose head branch is the default branch gets no worktree.
+
+### Review threads
+
+`pr act <ref>` on an owed review reply prints it as `{"action": "reply", "thread": ..., "question": ..., "owed": [...]}` and opens nothing; WUWEI never reads intent from the words. The shepherd seat answers each owed id with `--thread <id>` and one of `--reply TEXT` (posted first, through the outward lint), `--fix WHY` (a fix round with the thread and the reason as feedback) or `--scope WHY` (the Owner step card; Yes opens the fix round, No returns the defer reply). An open P1 bot thread is owed too; answer it with `--fix` (a reply is refused, since only the fix outdates it). A `--thread` that is no longer owed, or an empty reason, exits 2. Without `--thread` the first owed reply is answered. When no shepherd seat is offered or running, `next` lists the `shepherd` duty with `pr act` as its step.
+
+### Waiting on PRs
+
+`pr wait [--timeout SECONDS]` (default 3600) blocks until a raised or claimed PR changes in a way `next` acts on: a review thread or comment, a review, checks, mergeability, a moved head, a merge or a close. It prints one line per new step, `<item> <kind> <pr>: <why>` (for example `B shepherd acme/widget#2: ...`), and exits 1. At the timeout it prints nothing and exits 0; with no raised or claimed PR it exits 0 at once. A tick reads the PR listing only for repositories holding such a PR and only once their listing is `pr.poll_seconds` old: one GraphQL request per repository, whatever the PR count, and none while `next` read it recently. A rate-limit refusal holds the next read until its reset. `next` returns it, in the background, while only PRs wait on people.
 
 ## merge
 
@@ -217,7 +226,7 @@ On a claimed PR with a worktree, a conflict, red checks or a fix asked in review
 
 ## duty
 
-`bin/wuwei duty <item> <duty> --evidence <link>` records an outward duty `next` listed as done. Duties are `ping`, `shepherd`, `tracker` and `summary`. Use `day` as the item for the day's summary. `--skipped <why>` records a duty that cannot be done; the day report lists it. A duty that is not due is refused.
+`bin/wuwei duty <item> <duty> --evidence <link>` records an outward duty `next` listed as done. Duties are `ping`, `shepherd`, `tracker` and `summary`. Use `day` as the item for the day's summary. `--skipped <why>` records a duty that cannot be done; the day report lists it. A duty that is not due is refused. The `shepherd` duty takes no `--evidence`: a PR read (`pr act`, `pr state`, `close`) that finds no reply owed records it.
 
 Outward duties follow the item phase: the ping after a PR is raised, shepherd replies, the tracker or Notion update, and the day-end summary. `close` waits on them.
 

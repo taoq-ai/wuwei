@@ -118,10 +118,17 @@ code host. Red checks, a conflict or a moved head come back from `wuwei next` as
 act <pr>` or a new gate pass.
 
 **Duties.** With a review channel set, a raised PR brings the `ping` duty: post the review
-request. New review threads bring the `shepherd` duty. With a tracker or an owner page, a merge
-brings the `tracker` duty. The
-planner writes each one and records it with `wuwei duty <item> <duty> --evidence <link>`.
-See [duties](concepts.md#duties).
+request. With a tracker or an owner page, a merge brings the `tracker` duty. The planner writes
+each one and records it with `wuwei duty <item> <duty> --evidence <link>`. New review activity
+brings the `shepherd` duty, which `wuwei next` returns as a seat launch, once per activity. The
+seat answers each owed thread with `wuwei pr act <pr> --thread <id>` and `--reply`, `--fix` or
+`--scope` (your card). A PR read that finds no reply owed records it. See
+[duties](concepts.md#duties).
+
+**PR loop.** While only PRs wait on people, `wuwei next` returns `wuwei pr wait`, which the planner
+runs in the background. It exits on the first change `wuwei next` acts on (a review thread, red
+checks, a conflict, a moved head, a merge) with one line naming the item, and the planner runs
+`wuwei next`. You do not have to ask for it.
 
 **Merge.** When the checks are green, `wuwei next` offers `wuwei merge <pr>`. It applies the
 merge policy: gates at head, required checks, approvals, threads, the soak and the merge

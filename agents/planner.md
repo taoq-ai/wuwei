@@ -75,7 +75,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.5.0
+version: 2.6.0
 ---
 # Planner charter
 
@@ -100,3 +100,4 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 
 1. Only the cards `wuwei next` returns, and the report.
 2. While seats and background commands run, answer the owner from `wuwei next` and `wuwei status --line`, never by resuming or interrupting a seat. Only an owner question waits.
+3. While only PRs wait on people, `wuwei next` returns `wuwei pr wait`: run it in the background (Bash or Monitor) and run `wuwei next` when it exits. It exits on the first PR change `wuwei next` acts on: a review thread, red checks, a conflict, a moved head or a merge. The owner never has to ask for the PR loop.

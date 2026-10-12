@@ -788,19 +788,45 @@ def raise_action(root, data, item, notes):
     if (pr := data['items'][item].get('pr')) in data.get('claimed_prs', ()):  # #879: back to its branch
         return {'action': 'run', 'command': f'wuwei pr act {pr} --push', 'notes': notes}
     name = f'shepherd-{item}'
+    body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+    action = {'action': 'raise', 'notes': notes, 'seats': [], **(_seat(root, data, item, name, body) or {
+        'reason': (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
+                   f'bin/wuwei why {item} shows it')})}
+    return action
+
+
+def _seat(root, data, item, name, body):
+    """The shepherd seat's next step: its brief command while the brief is missing, then its
+    launch while the seat is not registered, else None (it ran)."""
     path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
     worktree = data['items'][item].get('worktree') or str(root)
-    action = {'action': 'raise', 'notes': notes, 'seats': []}
     if not path.is_file():
-        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
-        action['commands'] = [f'wuwei seat brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
-                              '--body ' + shlex.quote(body)]
-    elif name not in data['seats']:
-        action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
-    else:
-        action['reason'] = (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
-                            f'bin/wuwei why {item} shows it')
-    return action
+        return {'commands': [f'wuwei seat brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+                             '--body ' + shlex.quote(body)]}
+    if name not in data['seats']:
+        return {'seats': [brief.seat_action('shepherd', path, worktree, root)]}
+    return None
+
+
+SHEPHERD_THREADS = (
+    'Answer the review activity on {pr} for {item}. Run bin/wuwei pr act {pr}: it prints the next owed '
+    'reply with its thread id, the question and every owed id. Read the thread and classify it against '
+    'the item promise (Approved as). Answer each owed id with one of: bin/wuwei pr act {pr} --thread <id> '
+    '--reply "<answer with evidence>"; --fix "<what the item promised and what is wrong>" when it asks a '
+    'change inside the promise (a fix round opens); --scope "<why it is outside the promise>" when it '
+    'asks a change outside it (the owner decides on the Owner step card it prints; hand it back). Repeat '
+    'until pr act prints nothing owed; that read records the duty. Never merge.')
+
+
+def shepherd_action(root, item):
+    """#906: the shepherd seat that answers the item's review activity, once per activity revision
+    (its seat name carries it): the brief command, then the seat launch."""
+    from wuwei import derive
+    data = state.read_state(root)
+    pr = data['items'][item]['pr']
+    name = derive.shepherd_seat(item, derive.listing(workspace.day_dir(root))['pulls'].get(pr) or {})
+    return {'action': 'shepherd', 'seats': [], **(_seat(root, data, item, name, SHEPHERD_THREADS.format(
+        pr=pr, item=item)) or {'action': 'wait', 'reason': f'{name} already ran for this review activity'})}
 
 
 def resolve_offer(root, launch):
@@ -809,7 +835,9 @@ def resolve_offer(root, launch):
     a launch is named, never looped on: the next derivation reads its record."""
     from wuwei.commands import build
     item, command = launch['item'], launch['command']
-    if command.startswith('wuwei build next '):
+    if launch['kind'] == 'shepherd':  # #906
+        action = shepherd_action(root, item)
+    elif command.startswith('wuwei build next '):
         action = build.next_action(item, root=root)
     elif command.startswith('wuwei dispatch next ') and command != 'wuwei dispatch next --all':
         action = next_step(item, root)

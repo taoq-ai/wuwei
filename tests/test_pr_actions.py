@@ -123,9 +123,11 @@ def test_review_fix_request_opens_fix_round(case, capsys):
     host.results['reviews'] = Result(0, [{'id': 5, 'author': 'reviewer', 'is_bot': False,
         'state': 'changes_requested', 'sha': 'a' * 40, 'body': 'Please fix the parser',
         'submitted_at': workspace.now().isoformat()}])
-    assert main(['pr', 'act', REF]) == 1
+    assert main(['pr', 'act', REF]) == 1  # #906: no keyword opens a round; the seat classifies
+    assert json.loads(capsys.readouterr().out)['action'] == 'reply'
+    assert main(['pr', 'act', REF, '--thread', '5', '--fix', 'the item promised the parser']) == 1
     action = json.loads(capsys.readouterr().out)
-    assert 'Please fix the parser' in action['prompt']
+    assert 'Please fix the parser' in action['prompt'] and 'the item promised the parser' in action['prompt']
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
 
 
@@ -145,7 +147,7 @@ def test_thread_fix_request_opens_fix_round(case, capsys):
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': 'Please fix the parser', 'created_at': workspace.now().isoformat()}]}]
-    assert main(['pr', 'act', REF]) == 1
+    assert main(['pr', 'act', REF, '--thread', 'T17', '--fix', 'a defect in the promised parser']) == 1
     assert 'Please fix the parser' in json.loads(capsys.readouterr().out)['prompt']
 
 
@@ -188,6 +190,8 @@ def test_unmerged_or_paused_items_keep_their_phase(case, capsys, phase):
 
 
 SCOPE = 'This is out of scope; add a new API instead'
+WHY = 'a new API is not in the approved promise'
+ASKED = ['pr', 'act', REF, '--thread', 'T17', '--scope', WHY]
 
 
 def scope_thread(host, body=SCOPE):
@@ -196,19 +200,23 @@ def scope_thread(host, body=SCOPE):
             'body': body, 'created_at': workspace.now().isoformat()}]}]
 
 
-def test_scope_change_asks_the_owner_step_card(case, capsys):
-    # Part 14: a reviewer's scope change is the owner's decision, on the card of pr act.
+def test_scope_change_asks_the_owner_step_card_only_when_the_seat_says_so(case, capsys):
+    # Part 14, #906: a scope change is the owner's decision, asked only on the seat's explicit --scope.
     root, host, _, _ = linked(case)
     scope_thread(host)
     assert main(['pr', 'act', REF]) == 1
+    out, err = capsys.readouterr()
+    assert json.loads(out)['action'] == 'reply' and 'Owner step' not in err
+    assert main(ASKED) == 1
     err = capsys.readouterr().err
-    assert f'Owner step: bin/wuwei pr act {REF} (' in err
-    assert f'Reviewer asks a scope change on {REF} (T17): \\"{SCOPE}\\"' in err
+    assert f"Owner step: bin/wuwei pr act {REF} --thread T17 --scope '{WHY}' (" in err
+    assert f'The shepherd asks a scope decision on {REF} (T17): \\"{SCOPE}\\"' in err
     assert 'The planner replies that the thread is deferred to you.' in err
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-    assert 'pr_action_decisions' not in state.read_state(root)
-    assert main(['pr', 'act', REF]) == 1  # asked again until the owner answers
-    assert f'Owner step: bin/wuwei pr act {REF} (' in capsys.readouterr().err
+    assert main(ASKED) == 1  # asked again until the owner answers
+    assert f'Owner step: bin/wuwei pr act {REF} --thread T17 --scope' in capsys.readouterr().err
+    assert main([*ASKED[:-1], ' ']) == 2  # a classification names its reason
+    assert 'need the reason against the item promise' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('reply', ['No', 'Yes'])
@@ -218,14 +226,99 @@ def test_answered_scope_card_routes_by_answer(case, capsys, reply):
     if reply == 'Yes':
         completed_build(root, tree)
     scope_thread(host)
-    assert main(['pr', 'act', REF]) == 1
+    assert main(ASKED) == 1
     owner.answer_card(root, capsys.readouterr().err, reply=reply)
-    assert main(['pr', 'act', REF]) == 1
+    assert main(ASKED) == 1
     action = json.loads(capsys.readouterr().out.splitlines()[-1])
     if reply == 'No':
         assert (action['action'], action['option']) == ('reply', 'defer')
     else:
-        assert SCOPE in action['prompt']
+        assert SCOPE in action['prompt'] and WHY in action['prompt']
+        rounds = state.read_state(root)['builds']['A']['fix_rounds']
+        assert main(ASKED) == 1  # F6: the Yes opened its round; a replay asks the owner again
+        assert 'Owner step' in capsys.readouterr().err
+        assert state.read_state(root)['builds']['A']['fix_rounds'] == rounds
+
+
+def test_a_bot_p1_thread_is_answered_or_fixed_by_its_id(case, monkeypatch, capsys):
+    # #906 F4: an open P1 bot thread is owed; the seat can reply to it or open a fix round for it.
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    host.results['threads'].data['threads'] = [{'id': 'B1', 'resolved': False, 'outdated': False, 'comments': [{
+        'id': 8, 'author': 'review-bot', 'is_bot': True, 'body': '**P1** the loop never ends',
+        'created_at': workspace.now().isoformat()}]}]
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert (action['surface'], action['thread'], action['owed']) == ('bot-p1', 'B1', ['bot-p1:B1'])
+    sent = []
+    monkeypatch.setattr('wuwei.obligations.reply', lambda *args: sent.append(args) or 0)
+    assert main(['pr', 'act', REF, '--thread', 'B1', '--reply', 'The loop ends at the cap.']) == 2  # D3
+    assert 'use --fix' in capsys.readouterr().out and sent == []
+    assert main(['pr', 'act', REF, '--thread', 'B1', '--fix', 'the item promised a bounded loop']) == 1
+    assert '**P1** the loop never ends' in json.loads(capsys.readouterr().out)['prompt']
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+
+
+def thread(number, body, name=None):
+    return {'id': name or f'T{number}', 'resolved': False, 'outdated': False, 'comments': [{
+        'id': number, 'author': 'reviewer', 'is_bot': False, 'body': body,
+        'created_at': workspace.now().isoformat()}]}
+
+
+@pytest.mark.parametrize('question', ['Could you explain this change?', 'Is this in scope?',
+                                      'Why not a queue instead?'])
+def test_an_explicit_reply_posts_whatever_words_the_question_holds(case, monkeypatch, capsys, question):
+    # #906: the reply is honoured first; "change", "scope" and "instead" open no round and no card.
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    host.results['threads'].data['threads'] = [thread(3, question)]
+    sent = []
+    monkeypatch.setattr('wuwei.obligations.reply', lambda *args: sent.append(args) or 0)
+    assert main(['pr', 'act', REF]) == 1
+    out, err = capsys.readouterr()
+    assert json.loads(out)['action'] == 'reply' and 'Owner step' not in err
+    assert main(['pr', 'act', REF, '--thread', 'T3', '--reply', 'It removes a race.']) == 0
+    assert [call[:4] for call in sent] == [(REF, 'thread', 3, 'It removes a race.')]
+    assert state.read_state(root)['items']['A']['phase'] == 'raised'
+    assert 'Owner step' not in capsys.readouterr().err
+
+
+def test_each_thread_is_answered_by_its_id_and_a_newer_comment_takes_no_reply(case, monkeypatch, capsys):
+    # #906: multiple threads, and new activity while the seat composes a reply: the reply goes to the
+    # thread it names, never to the comment that now sorts first.
+    root, host, _, _ = linked(case)
+    host.results['threads'].data['threads'] = [thread(3, 'Why a lock?'), thread(4, 'Why a retry?')]
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert (action['thread'], action['owed']) == ('T3', ['thread:T3', 'thread:T4'])
+    host.results['threads'].data['comments'] = [{'id': 9, 'author': 'reviewer', 'is_bot': False,
+                                                 'body': 'Also, any docs?', 'created_at': workspace.now().isoformat()}]
+    sent = []
+    monkeypatch.setattr('wuwei.obligations.reply', lambda *args: sent.append(args) or 0)
+    assert main(['pr', 'act', REF, '--thread', 'T4', '--reply', 'The host drops calls.']) == 0
+    assert sent[0][:4] == (REF, 'thread', 4, 'The host drops calls.')
+    assert main(['pr', 'act', REF, '--thread', 'T9', '--reply', 'x']) == 2
+    assert 'T9 is not owed a reply' in capsys.readouterr().out
+
+
+def test_no_reply_owed_records_the_shepherd_duty_from_the_ledger(case, capsys):
+    # #906: completion comes from a fresh read with nothing owed, once, stamped with the read's start.
+    from wuwei import derive
+    root, host, _, _ = linked(case)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': REF, 'state': 'open', 'checks': 'pending', 'activity_at': '2026-09-28T11:00:00Z'}]}))
+    config = workspace.load_config(root)
+    shepherd = lambda: [row for row in derive.duties(root, config) if row['duty'] == 'shepherd']
+    host.results['threads'].data['threads'] = [thread(3, 'Why a lock?')]
+    assert main(['pr', 'state', REF]) == 1
+    assert shepherd()  # a reply is still owed
+    host.results['threads'].data['threads'] = []
+    assert main(['pr', 'state', REF]) == 0
+    assert main(['pr', 'state', REF]) == 0
+    assert shepherd() == []
+    done = [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+            if row['kind'] == 'duty.done']
+    assert [(row['item'], row['duty'], row['as_of']) for row in done] == [('A', 'shepherd', workspace.now().isoformat())]
 
 
 def explained(case):
@@ -462,7 +555,7 @@ def test_fix_without_a_worktree_returns_the_adopt_command(case, capsys, listing,
         host.results['reviews'] = Result(0, [{'id': 5, 'author': 'reviewer', 'is_bot': False,
             'state': 'changes_requested', 'sha': 'a' * 40, 'body': 'Please fix the parser',
             'submitted_at': workspace.now().isoformat()}])
-    assert main(['pr', 'act', REF]) == 1
+    assert main(['pr', 'act', REF, *(['--thread', '5', '--fix', 'promised'] if change == 'review_fix' else [])]) == 1
     action = json.loads(capsys.readouterr().out)
     assert {key: action[key] for key in ('action', 'item', 'command', 'then')} == {
         'action': 'adopt', 'item': 'A', 'command': command, 'then': f'bin/wuwei pr act {REF}'}
@@ -731,7 +824,7 @@ def test_one_pr_action_collects_one_evidence_bundle(case, how):
     if how == 'launch':
         assert pr_actions.launch(root, REF)['action'] in ('launch', 'continue')
     else:
-        assert main(['pr', 'act', REF]) == 1
+        assert main(['pr', 'act', REF, *(['--thread', 'T17', '--fix', 'promised'] if how == 'thread' else [])]) == 1
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
     reads = [call[0] for call in host.calls]
     assert [reads.count(name) for name in ('pr', 'reviews', 'threads')] == [1, 1, 1], reads

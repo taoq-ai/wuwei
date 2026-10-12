@@ -158,6 +158,21 @@ def when(text):
         return None
 
 
+def revision(activity):
+    """#906: an activity time as the digits of its UTC instant (YYYYMMDDHHMMSS), the suffix of the
+    shepherd seat that answers it; None for no activity."""
+    from datetime import timezone
+    at = when(activity) if activity else None
+    return at.astimezone(timezone.utc).strftime('%Y%m%d%H%M%S') if at else None
+
+
+def shepherd_seat(item, pull):
+    """#906: the shepherd seat of one review revision: the activity time and the PR head (F1: a
+    pushed fix round brings a seat that answers with evidence)."""
+    head = pull.get('head')
+    return f"shepherd-{item}-{revision(pull.get('activity_at'))}" + (f'-{head[:7]}' if head else '')
+
+
 def gone(root, row):
     """The recorded worktree whose HEAD cannot be read (removed, or an unborn or chained ref),
     else None: no verdict counts there and nothing raises (#844 F5)."""
@@ -257,6 +272,7 @@ def offers(data, root, config, merges=None):
     running = {item for _, _, item in state.in_flight(data)}
     merged = {name for name, row in items.items() if row['phase'] == 'merged'
               or (pulls.get(row.get('pr')) or {}).get('state') == 'merged'}
+    shepherds = {duty['item'] for duty in duties(root, config, data=data) if duty['duty'] == 'shepherd'}
     free = data['cap'] - sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name)
                              for name in names)
     launches, parks, rows, waiting = [], [], [], []
@@ -360,9 +376,10 @@ def offers(data, root, config, merges=None):
                 launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red.')
             elif pull.get('mergeable') == 'conflicting':
                 launch('fix' if claimed else 'pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} conflicts with its base.')
-            elif claimed and any(duty['duty'] == 'shepherd' and duty['item'] == name
-                                 for duty in duties(root, config, data=data)):
-                launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} has review activity.')
+            elif name in shepherds:  # #906: one seat per revision, never beside a running one
+                if shepherd_seat(name, pull) not in data['seats'] and not shepherding(data, name):
+                    launch('shepherd', name, f'wuwei pr act {pr}', f"{name}: PR {pr} has review activity at "
+                           f"{pull.get('activity_at')}; the shepherd seat answers it.")
             elif checks == 'green' and held and (fetched is None or when(held) >= fetched):
                 pass  # G1: the merge policy holds it (approvals, threads, soak); it waits on people
             elif checks == 'green':
@@ -370,11 +387,18 @@ def offers(data, root, config, merges=None):
     return {'launches': launches, 'decision': decision, 'parks': parks, 'rows': rows + waiting}
 
 
+def shepherding(data, item):
+    """True while a shepherd seat of the item runs (#906 F3)."""
+    return any(seat.get('role') == 'shepherd' and seat.get('item') == item and seat.get('status') == 'running'
+               for seat in data['seats'].values())
+
+
 def seated(data, launch):
-    """True for a launch the launch set resolves: the build and gate steps, and the pr act step of
-    a claimed PR with a worktree, a fix-round builder or else its plain run (#879)."""
+    """True for a launch the launch set resolves: the build and gate steps, the shepherd seat
+    (#906), and the pr act step of a claimed PR with a worktree, a fix-round builder or else its
+    plain run (#879)."""
     command, row = launch['command'], data['items'].get(launch['item']) or {}
-    return command.startswith(('wuwei build next ', 'wuwei dispatch next ')) or (
+    return launch['kind'] == 'shepherd' or command.startswith(('wuwei build next ', 'wuwei dispatch next ')) or (
         command == f"wuwei pr act {row.get('pr')}"
         and bool(row.get('worktree')) and row.get('pr') in data.get('claimed_prs', ()))
 
@@ -428,7 +452,7 @@ def duties(root, config, directory=None, data=None):
     done = {}  # (item or PR, duty): the latest record time
     for row in rows:
         payload = row.get('payload') or {}
-        at = when(row.get('ts'))
+        at = when(payload.get('as_of') or row.get('ts'))  # #906: a shepherd record counts from its read
         if row.get('kind') in ('duty.done', 'duty.skipped', 'duty.due'):
             key = (payload.get('item'), {'tracker.done': 'tracker'}.get(payload.get('duty'), payload.get('duty')))
             done[key] = max(filter(None, (done.get(key), at)), default=None)
@@ -456,8 +480,10 @@ def duties(root, config, directory=None, data=None):
                     f'wuwei pr ping {pr}' if channel else f'wuwei duty {name} ping --evidence <link>')
             activity, answered = when(pull.get('activity_at')), done.get((name, 'shepherd'))
             if 'shepherd' in on and pr and not merged and activity and (answered is None or activity > answered):
-                add('shepherd', name, f'Launch the shepherd seat to answer every open review thread on {pr} '
-                    '(wuwei pr act --reply).', f'wuwei duty {name} shepherd --evidence <link>')
+                add('shepherd', name, f'Answer the review activity on {pr}: wuwei next launches the shepherd '
+                    'seat once per revision; with none offered or running, run wuwei pr act and answer each '
+                    'owed id with --thread <id> and --reply, --fix or --scope. A PR read that finds no reply '
+                    'owed records it.', f'wuwei pr act {pr}')
             ticket = (values.get('tickets', {}).get(name) or {}).get('id')
             page = bool(config['outbound']['owner']['pages'])  # an item with no ticket has a page or no duty
             if 'tracker' in on and merged and (ticket or page) and (name, 'tracker') not in done:

@@ -34,9 +34,15 @@ def register(subparsers):
     mode.add_argument('--run', action='store_true', help='Execute the returned rebase step')
     mode.add_argument('--complete', action='store_true', help='Finish a manually resolved rebase')
     mode.add_argument('--ready', action='store_true', help='Mark a draft PR ready for review')
-    mode.add_argument('--reply', help='Composed answer to the next unanswered review question')
+    mode.add_argument('--reply', help='Composed answer to the owed review reply (--thread names it)')
+    mode.add_argument('--fix', help='Open a fix round for the owed reply: what the item promised and what is wrong')
+    mode.add_argument('--scope', help="Ask the owner's scope decision on the owed reply: why it is outside the item")
     mode.add_argument('--push', action='store_true', help="Push a claimed PR's fix once its gates pass")
+    act.add_argument('--thread', help='The owed reply pr act printed (its thread id); default the first owed')
     act.set_defaults(func=run_act)
+    wait = commands.add_parser('wait', help='Block until a raised or claimed PR needs wuwei next; one line per change')
+    wait.add_argument('--timeout', type=int, default=3600, help='Seconds before it exits 0 with nothing (default 3600)')
+    wait.set_defaults(func=run_wait)
     record = commands.add_parser('disposition')
     record.add_argument('ref')
     record.add_argument('kind', choices=('parked', 'carried'))
@@ -73,5 +79,10 @@ def run_ping(args):
 
 
 def run_act(args):
-    return pr_actions.act(workspace.find_workspace(), args.ref, run=args.run,
-                          complete=args.complete, reply=args.reply, ready=args.ready, push=args.push)
+    return pr_actions.act(workspace.find_workspace(), args.ref, run=args.run, complete=args.complete,
+                          reply=args.reply, ready=args.ready, push=args.push, thread=args.thread,
+                          fix=args.fix, scope=args.scope)
+
+
+def run_wait(args):
+    return pr_actions.wait(workspace.find_workspace(), args.timeout)

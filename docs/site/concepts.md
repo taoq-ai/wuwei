@@ -188,7 +188,7 @@ A duty is an outward step the day owes. `wuwei next` lists each due one, the pla
 Each duty is due while its channel is configured; `duties.on` turns one off:
 
 - `ping`: post the review request once the PR is raised (`wuwei pr ping`);
-- `shepherd`: answer new review threads on the PR;
+- `shepherd`: answer new review activity on the PR; `wuwei next` launches the shepherd seat once per activity, and a PR read that finds no reply owed records it;
 - `tracker`: update the ticket or page once merged (`wuwei tracker move <item> done`);
 - `summary`: post the day summary to your DM once the report is written.
 

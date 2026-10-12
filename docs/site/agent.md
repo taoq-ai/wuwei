@@ -22,7 +22,7 @@ Each role has a charter in `charters/<role>.md`; sentinels are `sentinel-<area>.
 - `lead`: launched at plan time. It proposes and scores the candidates and any goal change.
 - `builder`: one per item, launched from `wuwei build next`. It works only in its worktree.
 - `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`. Each reviews a change it did not write and returns a verdict.
-- `shepherd`: launched when `wuwei next` lists the shepherd duty for a raised PR. It answers review threads.
+- `shepherd`: launched by `wuwei next` on new review activity on a raised PR, once per activity. It classifies each owed thread against the item and answers it with `pr act --thread <id>`: `--reply`, `--fix` or `--scope`.
 - `steward`: launched once at close by `wuwei close`. It reviews the day's procedure.
 
 ## Working with the owner

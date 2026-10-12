@@ -27,7 +27,7 @@ _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
 _ETAG = r'(?:W/)?"[\x21\x23-\x7e]*"'
 
 # #844: one listing call per repository for the derived next
-_PULLS = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(first:100,'
+_PULLS = ('query($o:String!,$r:String!){viewer{login} repository(owner:$o,name:$r){pullRequests(first:100,'
           'orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state isDraft headRefOid mergeable '
           'author{login} labels(first:20){nodes{name}} '
           'commits(last:1){nodes{commit{statusCheckRollup{state}}}} '
@@ -383,17 +383,20 @@ def merged_prs(repo, root=None):
 def pulls(repo, root=None):
     """#844: every recent PR of the repository in one call: state (open, merged, closed), head,
     draft, the checks rollup (pending, red, green), labels, mergeable and the latest review or
-    comment time by someone other than the author."""
+    comment time by someone other than the viewer (#906: WUWEI's own replies and pings are not review
+    activity; the author is left out only when it is the viewer, so a teammate's follow-up counts). latestReviews holds each reviewer's newest review of any state,
+    a thread reply included (probed live, 2026-10-12)."""
     owner, name = _repo(repo).split('/')
     value = _run(['api', 'graphql', '--input', '-'], {'query': _PULLS, 'variables': {'o': owner, 'r': name}})
     rollup = {'SUCCESS': 'green', 'FAILURE': 'red', 'ERROR': 'red', None: 'none'}  # G3: None, no CI
-    rows = []
+    rows, viewer = [], _login(value['data'].get('viewer'))
     for v in _list(value['data']['repository']['pullRequests']['nodes']):
         author = _login(v.get('author'))
         commits = _list(v['commits']['nodes'])
         checks = ((commits[0]['commit'] or {}).get('statusCheckRollup') or {}).get('state') if commits else None
         times = [node.get('submittedAt') or node.get('createdAt') for key in ('latestReviews', 'comments')
-                 for node in _list(v[key]['nodes']) if _login(node.get('author')) not in (None, author)]
+                 for node in _list(v[key]['nodes'])  # D2: a teammate author's follow-up on a claimed PR counts
+                 if _login(node.get('author')) not in (None, viewer, author if author == viewer else None)]
         rows.append({'number': _field(v, 'number', int), 'state': _field(v, 'state', str).lower(),
                      'head': _sha(v['headRefOid']), 'draft': _field(v, 'isDraft', bool),
                      'checks': rollup.get(checks, 'pending'),

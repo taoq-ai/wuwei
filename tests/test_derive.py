@@ -164,25 +164,29 @@ def test_a_failed_repository_leaves_its_pr_rows_unmeasured_and_the_others_usable
     assert 'example/two' in row['why'] and 'gh: HTTP 502' in row['why'] and '2026-10-11T10:02:00+00:00' in row['why']
 
 
-def test_the_github_listing_maps_one_call(monkeypatch):
+@pytest.mark.parametrize('viewer,activity', [
+    ('me', '2026-10-11T09:30:00Z'),  # a raised PR: the author is the viewer, left out
+    ('wuwei-owner', '2026-10-11T09:00:00Z')])  # D2: a claimed PR: the teammate author's follow-up counts
+def test_the_github_listing_maps_one_call(monkeypatch, viewer, activity):
     import importlib
     github = importlib.import_module('adapters.code_host.github')
     node = {'number': 7, 'state': 'OPEN', 'isDraft': False, 'headRefOid': SHA, 'mergeable': 'CONFLICTING',
             'author': {'login': 'me'}, 'labels': {'nodes': [{'name': 'owner-merge'}]},
             'commits': {'nodes': [{'commit': {'statusCheckRollup': {'state': 'FAILURE'}}}]},
             'latestReviews': {'nodes': [{'author': {'login': 'me'}, 'submittedAt': '2026-10-11T09:00:00Z'}]},
-            'comments': {'nodes': [{'author': {'login': 'you'}, 'createdAt': '2026-10-11T08:00:00Z'}]}}
+            'comments': {'nodes': [{'author': {'login': 'you'}, 'createdAt': '2026-10-11T08:00:00Z'},
+                                   {'author': {'login': 'wuwei-owner'}, 'createdAt': '2026-10-11T09:30:00Z'}]}}
     calls = []
 
-    def run(args, payload=None, **kwargs):
+    def run(args, payload=None, **kwargs):  # #906 F3: the viewer's own replies are not activity
         calls.append(args)
-        return {'data': {'repository': {'pullRequests': {'nodes': [node]}}}}
+        return {'data': {'viewer': {'login': viewer}, 'repository': {'pullRequests': {'nodes': [node]}}}}
     monkeypatch.setattr(github, '_run', run)
     result = github.pulls('example/project')
     assert len(calls) == 1 and result.exit == 0
     assert result.data == [{'number': 7, 'state': 'open', 'head': SHA, 'draft': False, 'checks': 'red',
                             'mergeable': 'conflicting', 'labels': ['owner-merge'],
-                            'activity_at': '2026-10-11T08:00:00Z'}]
+                            'activity_at': activity}]
 
 
 def raised(root):
@@ -323,15 +327,61 @@ def test_a_claimed_pr_with_a_worktree_is_a_fix_round_step(root, pull, build, exp
     assert offered(root, **pull) == expected
 
 
-def test_a_claimed_pr_with_due_review_activity_is_a_fix_round_step(root):
-    (root / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
-        '[adapters]\ncode_host = "github"\n')
-    claimed(root)
-    activity = {'activity_at': '2026-10-11T09:30:00Z'}
-    assert offered(root, **activity) == [('pr', ACT, True)]  # G3: resolved to a builder or a plain run
-    state.append_event('duty.done', {'item': 'A', 'duty': 'shepherd'}, root)
-    assert offered(root, **activity) == []  # answered: the PR waits on people
+SHEPHERDED = ('[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
+              '[adapters]\ncode_host = "github"\n')
+
+
+@pytest.mark.parametrize('setup', [raised, claimed])
+def test_due_review_activity_is_one_shepherd_launch_per_activity_revision(root, setup):
+    # #906: the duty is a seated launch (brief, then seat), never a record the planner writes;
+    # once the revision's seat is registered the PR waits, and newer activity launches again.
+    (root / '.wuwei/config.toml').write_text(SHEPHERDED)
+    setup(root)
+    first, later = '2026-10-11T09:30:00Z', '2026-10-11T04:45:00-05:00'
+    pull = {'activity_at': first, 'head': SHA}
+    assert offered(root, **pull) == [('shepherd', ACT, True)]
+    name = derive.shepherd_seat('A', pull)
+    assert name == f'shepherd-A-20261011093000-{SHA[:7]}' and derive.revision(None) is None
+
+    def seat(status):
+        state._write_state(lambda data: data.setdefault('seats', {}).update({name: {
+            'item': 'A', 'role': 'shepherd', 'status': status}}), root)
+    seat('running')
+    assert offered(root, **pull) == []
+    assert offered(root, activity_at=later, head=SHA) == []  # F3: never a second seat beside a running one
+    seat('stopped')
+    assert offered(root, **pull) == []  # this revision ran
+    assert offered(root, activity_at=first, head=OTHER) == [('shepherd', ACT, True)]  # F1: a pushed fix round
+    assert offered(root, activity_at=later, head=SHA) == [('shepherd', ACT, True)]  # 09:45 UTC: a new one
+    state.append_event('duty.done', {'item': 'A', 'duty': 'shepherd', 'as_of': '2026-10-11T09:50:00+00:00'}, root)
+    assert offered(root, activity_at=later, head=SHA) == []  # answered: the PR waits on people
+
+
+def test_a_shepherd_record_counts_from_the_read_it_rests_on(root):
+    # #906: duty.done carries as_of, the time its PR read started; activity after it is due again
+    # even though the record was written later.
+    (root / '.wuwei/config.toml').write_text(SHEPHERDED)
+    raised(root)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending', 'activity_at': '2026-10-11T09:30:00Z'}]}))
+    state.append_event('duty.done', {'item': 'A', 'duty': 'shepherd', 'as_of': '2026-10-11T09:00:00+00:00'}, root)
+    [row] = [row for row in derive.duties(root, workspace.load_config(root)) if row['duty'] == 'shepherd']
+    assert row['record'] == 'wuwei pr act example/project#1'
+
+
+def test_the_shepherd_duty_takes_no_evidence_text(root, capsys):
+    # #906: completion comes from the obligation ledger (pr act), never from a link; a skip stays.
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(SHEPHERDED)
+    raised(root)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending', 'activity_at': '2026-10-11T09:30:00Z'}]}))
+    capsys.readouterr()
+    assert main(['duty', 'A', 'shepherd', '--evidence', 'https://example.test/x']) == 1
+    assert 'bin/wuwei pr act example/project#1' in capsys.readouterr().err
+    assert 'shepherd' in [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
+    assert main(['duty', 'A', 'shepherd', '--skipped', 'the reviewer left the company']) == 0
+    assert 'shepherd' not in [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
 
 
 def test_a_raised_or_worktreeless_claimed_pr_keeps_its_pr_act_run(root):

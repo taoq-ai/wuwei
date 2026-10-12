@@ -483,7 +483,8 @@ def test_next_launches_a_builder_for_a_claimed_conflict(tmp_path, monkeypatch, c
 
 
 def test_next_never_merges_posts_or_readies_a_claimed_pr(tmp_path, monkeypatch, capsys):
-    # review F1: an approved claimed PR with fresh activity stays a pr act run the planner does.
+    # review F1: an approved claimed PR with fresh activity is the shepherd seat's (#906), never a
+    # merge, a post or a ready from next.
     from wuwei import derive, dispatch, merge, pr_actions, shepherd
     from wuwei.commands import next as next_command
     root, host, head = remote_only_claim(tmp_path, monkeypatch, capsys)
@@ -501,13 +502,15 @@ def test_next_never_merges_posts_or_readies_a_claimed_pr(tmp_path, monkeypatch, 
     monkeypatch.setattr(pr_actions, '_ready', lambda *args, **kwargs: calls.append('ready'))
     found = [row for row in derive.offers(state.read_state(root), root, workspace.load_config(root))['launches']
              if row['item'] == 'PR-7']
-    assert [(row['kind'], row['command']) for row in found] == [('pr', 'wuwei pr act acme/widget#7')]
+    assert [(row['kind'], row['command']) for row in found] == [('shepherd', 'wuwei pr act acme/widget#7')]
     [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'PR-7']
-    assert (entry['kind'], entry['action'], entry['command']) == ('pr', 'run', 'wuwei pr act acme/widget#7')
+    assert (entry['kind'], entry['action']) == ('shepherd', 'shepherd')
+    assert [command.split()[:5] for command in entry['commands']] == [
+        ['wuwei', 'seat', 'brief', 'shepherd', 'PR-7']]
     row = {'state': 'set', 'action': 'set', 'launches': found, 'duties': [], 'decision': None,
            'parks': [], 'rows': [], 'why': '', 'then': ''}
     assert [launch['action'] for launch in next_command.resolve(row, root)['launches']
-            if launch['item'] == 'PR-7'] == ['run']
+            if launch['item'] == 'PR-7'] == ['shepherd']
     assert calls == []
 
 
