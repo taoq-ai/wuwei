@@ -75,7 +75,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.5.0
+version: 2.6.0
 ---
 # Planner charter
 
