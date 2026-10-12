@@ -1,7 +1,6 @@
 """A scripted delivery day, collected by the default PR test suite."""
 
 import json
-import time
 
 import pytest
 
@@ -11,9 +10,7 @@ def day(tmp_path, monkeypatch):
     return Day(tmp_path / 'workspace', monkeypatch)
 
 
-@pytest.mark.xdist_group('timing')
 def test_scripted_day(day):
-    started = time.monotonic()
     day.plan()
     assert day.data['gate_approved'] is False
     assert day.run('dispatch', 'next', 'A', expected=1)
@@ -100,7 +97,6 @@ def test_scripted_day(day):
     from wuwei import metrics
     assert metrics.collect(day.root)['fix_rounds_per_item'] == {'A': 1}
     assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
-    assert time.monotonic() - started < 20
 
 
 def test_fix_round_and_delta_with_fresh_agents(day):

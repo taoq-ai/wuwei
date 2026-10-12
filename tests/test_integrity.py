@@ -270,19 +270,13 @@ def test_integrity_files_protected(tmp_path, name):
     assert check_bash(payload)[0] != 0
 
 
-@pytest.mark.xdist_group('timing')
-def test_cached_check_latency(tmp_path):
-    import time
+def test_cached_check_reads_the_verdict_without_measuring(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 0, 'fingerprint': 'a' * 64, 'reason': ''}))
-    samples = []
-    for _ in range(100):
-        start = time.perf_counter()
-        assert api.cached(root).exit == 0
-        samples.append(time.perf_counter() - start)
-    assert sorted(samples)[94] < .05
+    monkeypatch.setattr(api, 'check', lambda *args, **kwargs: pytest.fail('measured'))
+    assert api.cached(root).exit == 0
 
 
 def vcs():

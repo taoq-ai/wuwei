@@ -1,6 +1,5 @@
 """Hook tables run in-process; fixture replays exercise the executable shim."""
 
-from functools import cache
 import io
 import json
 import os
@@ -319,7 +318,7 @@ LAUNCHER_MODULES = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
                                   ('status', '--line')], ids=' '.join)
 def test_warm_config_cache_skips_tomllib(tmp_path, args, shape):
     # #346: with the parsed copy of config.toml current, no hook or status line parses TOML,
-    # in a templated workspace with security material and in the latency tests' blank one.
+    # in a templated workspace with security material and in the latency script's blank one.
     from fakes.integrity import seed
     from wuwei import security
     (tmp_path / '.wuwei').mkdir()
@@ -415,7 +414,7 @@ def test_calibrate_is_off_every_hook_path(tmp_path):
               'sys.exit(3 if {"wuwei.calibrate"} & set(sys.modules) else 0)\n')
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), json.dumps(calls)],
                             text=True, capture_output=True, cwd=tmp_path,
-                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_BENCH': '1'})
+                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path)})
     assert result.returncode == 0, result.stderr
     assert 'calibrat' not in (ROOT / 'hooks/hooks.json').read_text()
 
@@ -705,124 +704,6 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
         discover()
 
 
-@pytest.mark.parametrize('ci,bench,load,expected,wall_budget', [
-    (False, False, 1.0, 'assert', None),
-    (False, False, 4.0, 'skip', None),
-    (False, False, 8.0, 'skip', None),
-    (True, False, 1.0, 'skip', None),
-    (True, True, 8.0, 'assert', None),
-    (False, True, 8.0, 'assert', None),
-    (False, True, 8.0, 'assert', 59),
-    (False, True, 8.0, 'pass', 61),
-])
-def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected, wall_budget):
-    monkeypatch.delenv('CI', raising=False)
-    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)  # its fixture rows are not probe figures
-    monkeypatch.delenv('WUWEI_BENCH', raising=False)
-    if ci:
-        monkeypatch.setenv('CI', '1')
-    if bench:
-        monkeypatch.setenv('WUWEI_BENCH', '1')
-    monkeypatch.setattr(os, 'getloadavg', lambda: (load, 0, 0))
-    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
-    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
-    if expected == 'pass':
-        assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
-    elif expected == 'assert':
-        with pytest.raises(AssertionError, match=r'startup floor CPU 20\.00 ms, wall 22\.00 ms'):
-            assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
-    else:
-        with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*python3 -I startup floor CPU 20\.00 ms, wall 22\.00 ms.*load'):
-            assert_latency_budget('hook', 51.0, 60.0, capsys)
-
-
-@cache
-def test_latency_row_is_written_before_the_budget(monkeypatch, capsys, tmp_path):
-    # #562: the latency job keeps one JSON row per probe, red runs included.
-    out = tmp_path / 'latency.jsonl'
-    monkeypatch.setenv('WUWEI_BENCH', '1')
-    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
-    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)
-    assert_latency_budget('hook', 40.0, 60.0, capsys)
-    assert not out.exists()
-    monkeypatch.setenv('WUWEI_LATENCY_OUT', str(out))
-    with pytest.raises(AssertionError):
-        assert_latency_budget('hook', 51.0, 60.0, capsys)
-    assert_latency_budget('tick', 51.0, 60.0, capsys, wall_budget=100)
-    rows = [json.loads(line) for line in out.read_text().splitlines()]
-    assert [(r['probe'], r['cpu_ms'], r['wall_ms'], r['budget_ms'], r['measure']) for r in rows] == [
-        ('hook', 51.0, 60.0, 50, 'cpu'), ('tick', 51.0, 60.0, 100, 'wall')]
-    assert {'floor_cpu_ms', 'floor_wall_ms', 'load', 'cpus'} <= rows[0].keys()
-
-
-def startup_floor(runs):
-    """p95 CPU and wall ms of a bare interpreter start, the floor under every hook figure."""
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    cpu, wall = [], []
-    for _ in range(runs):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        subprocess.run([sys.executable, '-I', '-c', 'pass'], check=True)
-        wall.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-    return quantiles(cpu, n=100)[94] * 1000, quantiles(wall, n=100)[94] * 1000
-
-
-def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, runs=60):
-    load = os.getloadavg()[0]
-    cpus = os.cpu_count() or 1
-    floor_cpu, floor_wall = startup_floor(runs)
-    report = (f'{name} p95 over {runs} runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms, '
-              f'python3 -I startup floor CPU {floor_cpu:.2f} ms, wall {floor_wall:.2f} ms, '
-              f'load {load:.2f} on {cpus} CPUs')
-    with capsys.disabled():
-        print('\n' + report)
-    if out := os.environ.get('WUWEI_LATENCY_OUT'):  # #562: kept before the assert, red runs too
-        with open(out, 'a', encoding='utf-8') as file:
-            file.write(json.dumps({'probe': name, 'cpu_ms': cpu_ms, 'wall_ms': wall_ms,
-                                   'budget_ms': 50 if wall_budget is None else wall_budget,
-                                   'measure': 'cpu' if wall_budget is None else 'wall',
-                                   'floor_cpu_ms': floor_cpu, 'floor_wall_ms': floor_wall,
-                                   'load': load, 'cpus': cpus}) + '\n')
-    # Budgets are enforced only when asked (WUWEI_BENCH=1): wall time on a working host is
-    # load-bound, and a load heuristic made the suite red on busy developer machines.
-    if os.environ.get('WUWEI_BENCH') == '1':
-        if wall_budget is None:
-            assert cpu_ms < 50, report
-        else:
-            assert wall_ms < wall_budget, report
-    else:
-        pytest.skip(report)
-
-
-@pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
-def test_hook_latency(subprocess_plugin, capsys, event):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    name = 'bash' if event == 'PreToolUse' else 'example'
-    payload = (ROOT / f'tests/payloads/{event}/{name}.json').read_text()
-    elapsed = []
-    cpu = []
-    for _ in range(60):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess_replay(subprocess_plugin, event, payload)
-        elapsed.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    assert_latency_budget(event, cpu_ms, wall_ms, capsys)
-
-
 def test_unaccounted_shell_mention_blocks_hook(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
@@ -839,40 +720,6 @@ GUARDS = [Guard('PreToolUse', 'Bash', check)]
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
     assert result.returncode == 2
     assert 'run git or gh as a plain command' in result.stderr
-
-
-@pytest.mark.xdist_group('timing')
-def test_status_line_latency(subprocess_plugin, capsys):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    root, env = subprocess_plugin
-    env['WUWEI_NOW'] = '2026-09-28T12:00:00+02:00'
-    directory = root.parent / '.wuwei/days/2026-09-28'
-    directory.mkdir(parents=True)
-    (directory / 'state.json').write_text('{"items":{},"cap":1}\n')
-    kinds = ('state.write', 'state.set', 'state.transition', 'seat launched',
-             'brief written', 'fast_checks.record', 'seat stopped', 'retro.captured')
-    events = ''.join(json.dumps({'kind': kinds[index % len(kinds)],
-                                 'payload': {'detail': 'x' * 400},
-                                 'ts': '2026-09-28T12:00:00+02:00'}) + '\n'
-                     for index in range(10000))
-    (directory / 'events.jsonl').write_text(events)
-    cpu = []
-    wall = []
-    for _ in range(60):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess.run([str(root / 'bin/wuwei'), 'status', '--line'],
-                                capture_output=True, text=True, cwd=root.parent, env=env)
-        wall.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(wall, n=100)[94] * 1000
-    assert_latency_budget('status --line', cpu_ms, wall_ms, capsys)
 
 
 DAY = '2026-09-28'
@@ -996,36 +843,6 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
         shutil.rmtree(directory)
         shutil.copytree(saved, directory)
     return (root, env), payloads, reset, calls
-
-
-@pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('path', ['SubagentStop', 'SessionStart', 'commit', 'push'])
-def test_workspace_hook_latency(seeded_workspace, capsys, path):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    plugin, payloads, reset, calls = seeded_workspace
-    event, fields = payloads[path]
-    payload = json.dumps({**fixture(event), **fields})
-    runs = 60 if os.environ.get('WUWEI_BENCH') == '1' else 20
-    elapsed, cpu = [], []
-    for _ in range(runs):
-        reset()
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess_replay(plugin, event, payload)
-        elapsed.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-        if event != 'SessionStart':
-            assert result.stdout == '', result.stdout
-    assert not calls.exists(), calls.read_text()
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    assert_latency_budget(f'{path} in a workspace', cpu_ms, wall_ms, capsys,
-                          wall_budget=100, runs=runs)
 
 
 # #516: the modules the SubagentStop path runs beyond the PreToolUse Bash call's.

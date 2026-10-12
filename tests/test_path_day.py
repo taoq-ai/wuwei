@@ -6,7 +6,6 @@ import json
 import re
 import shlex
 import sys
-import time
 
 import pytest
 
@@ -122,7 +121,6 @@ def walk(day, card, after=None, looks=1):
     pytest.fail(f'the day did not close: {action}')
 
 
-@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('looks,tier', [(1, 'standard'), (2, 'standard'), (1, 'light')])
 def test_the_day_closes_walking_only_next(day, looks, tier):
     if tier == 'light':  # #567: the repository floor and the lead allow light
@@ -132,7 +130,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
         day.proposal = partial(day.proposal, tier='light')
         day.runtime.spec = False  # no spec engine at light (#280)
     # looks 2: the planner asks next again before each action; asking is not doing (#551 review).
-    started, asks, merged = time.monotonic(), [], []
+    asks, merged = [], []
 
     def card(day, action):
         for widget in action['widget']:
@@ -164,7 +162,6 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
     builder = next(row['payload']['path'] for row in day.events if row['kind'] == 'brief written'
                    and row['payload']['role'] == 'builder')
     assert f'Depth: {tier};' in (day.root / builder).read_text()
-    assert time.monotonic() - started < 60
 
 
 def ask(day, widget, label):
@@ -212,7 +209,6 @@ def approve_at_head(day):
     day.host.results['pr'].data.update(additions=1, deletions=1, changed_files=1)
 
 
-@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('posture', [False, True])
 def test_enforce_day(tmp_path, monkeypatch, posture):
     # #530 E, part 14, #837: a whole day with guards.enforce false and true. The quality gate says
@@ -220,7 +216,7 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     # written. Log-only, the owner answers the gate, that card and one unlisted send; enforced,
     # every owner-only action asks on a card. #816: the repository's merge policy merges either way.
     from fakes.day import Day
-    started, answered, steps = time.monotonic(), [], set()
+    answered, steps = [], set()
     autonomous = not posture
     day = prepare(Day(tmp_path / 'workspace', monkeypatch))
     day.quality = 'ESCALATE'
@@ -291,7 +287,6 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
         assert '## Grants' not in report
     else:
         assert {'merged', 'deployed'} <= steps
-    assert time.monotonic() - started < 60
 
 
 class Reached(Exception):

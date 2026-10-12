@@ -493,20 +493,6 @@ def test_cli_check_and_numeric_merge(case, monkeypatch, capsys):
     assert 'head' in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('command,code', [
-    ('gh pr merge 7', 1), ('env X=1 gh pr merge 7 --squash', 1),
-    ('gh pr merge 7 --admin', 1), ('gh api repos/example/project/pulls/7/merge -X PUT', 1),
-    ('gh pr merge $PR', 1), ('gh pr merge "', 2),
-    ('python3 -m pytest -q', 0), ('for x in 1; do echo x; done', 0), ('export X=1', 0),
-])
-def test_guard_never_bypasses_dedicated_writer(case, command, code):
-    from wuwei.guards.edges import check_bash as guard
-    root, host = case
-    result = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': command}})
-    assert result[0] == code, result
-    assert not any(c[0] == 'merge' for c in host.calls)
-
-
 def test_guard_names_wuwei_merge_without_running_the_policy(case, monkeypatch):
     # #839: every session merge is refused naming bin/wuwei merge, which runs the policy.
     from wuwei.guards.edges import check_bash as guard

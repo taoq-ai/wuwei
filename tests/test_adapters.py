@@ -457,9 +457,7 @@ def test_watch_probe_refuses_unlisted_commands(tmp_path, monkeypatch):
         module.probe([(('hook', 'PreToolUse'), '{}'), (('state', 'set'), '')], tmp_path)
 
 
-@pytest.mark.xdist_group('timing')
-def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
-    import time
+def test_watch_probe_times_out_a_slow_call(tmp_path):
     from wuwei.registry import watch_service
     module = watch_service()
     script = tmp_path / 'wuwei'
@@ -468,10 +466,8 @@ def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
     script.chmod(0o755)
     module.LAUNCHER = script
     ran = []
-    start = time.monotonic()
     results, during = module.probe([(('hook', 'PreToolUse'), 'slow\n'), (('hook', 'PreToolUse'), '{}\n')],
                                    tmp_path, during=lambda: ran.append(1) or 'measured', timeout=1)
-    assert time.monotonic() - start < 3
     assert ran == [1] and during == 'measured'
     (timed, reason, _), (code, line, ms) = results
     assert (timed, reason) == (None, 'timeout')

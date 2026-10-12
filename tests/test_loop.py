@@ -1,18 +1,19 @@
-"""Characterise the loop before the derived next (#844).
+"""The loop's contract (#844, #849): what the derived `next` must offer for any day.
 
-Three parts, run against today's `next`:
+Three parts:
 
 1. A property test over generated item states. Each case is a world (the plan file, the
    worktree, the builder seat, the verdict files, the round count, the cached PR listing and the
-   outward duties) that `materialise` writes as the day files today's commands would have left.
-   An oracle says what the loop must offer for that world; each invariant of #844 is one test.
+   outward duties) that `materialise` writes as the day files the commands leave. An oracle says
+   what the loop must offer for that world; each invariant is one test: every ready launch
+   offered, every due duty offered, at most one owner decision and only when nothing is ready,
+   never past the round cap, never a gate, raise or merge before its evidence, and never done
+   with an open duty.
 2. One test per recorded scheduler dead end and state drift case from the two study days.
 3. Deleting state.json between two `next` calls changes no answer.
 
-Every assertion today's `next` violates is xfail(strict=True) with the gap as its reason, so the
-suite stays green today and each xfail must turn into a pass in the rewrite. The rewrite owns
-`materialise` (where the derived next reads its inputs) and `answer` (how its output reads as
-offers); the worlds, the oracle and the invariants stay.
+A change to the loop keeps the worlds, the oracle and the invariants; it may change only
+`materialise` (where `next` reads its inputs) and `answer` (how its output reads as offers).
 """
 
 import json

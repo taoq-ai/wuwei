@@ -394,7 +394,7 @@ Every tool call waits for `bin/wuwei hook <event>`, so the hook path carries a b
 
 Every hook first pays for an interpreter start. `bin/wuwei` starts `python3 -I -P -S`, and hook processes skip the cyclic garbage collector and the interpreter teardown. Each hook imports only the guard modules its event and tool can run (`MODULES` in `cli/wuwei/guards/__init__.py`). The validated config is cached as `generated/config.cache.json`, so a hook never parses TOML while `config.toml` is unchanged.
 
-The `latency` job in `.github/workflows/tests.yml` runs `python -m pytest -q tests/test_hooks.py -k latency` with `WUWEI_BENCH=1`. It is a trend line, not a gate. Each benchmark prints its p95 next to the `python3 -I` startup floor on the same line. The job writes `latency.jsonl` and compares it with the last `main` run through `scripts/latency_report.py`. Locally, `WUWEI_BENCH=1` asserts the budgets; without it the benchmarks print and skip.
+The `latency` job in `.github/workflows/tests.yml` runs `python scripts/hook_latency.py`. It is a trend line, not a gate, and no test asserts a duration. Each probe prints its p95 next to the `python3 -I` startup floor on the same line. The job writes `latency.jsonl` and compares it with the last `main` run through `scripts/latency_report.py`, which warns on a probe over budget or short of margin. Run the script locally to see the same figures.
 
 ## Plumbing
 

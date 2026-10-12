@@ -12,6 +12,9 @@ SCRIPT = ROOT / 'scripts/latency_report.py'
 spec = spec_from_file_location('latency_report', SCRIPT)
 report = module_from_spec(spec)
 spec.loader.exec_module(report)
+spec = spec_from_file_location('hook_latency', ROOT / 'scripts/hook_latency.py')
+latency = module_from_spec(spec)
+spec.loader.exec_module(latency)
 
 
 def row(probe, cpu, wall, budget=50, measure='cpu'):
@@ -79,8 +82,8 @@ def test_script_runs(tmp_path):
 def test_latency_job_keeps_and_compares_figures():
     text = (ROOT / '.github/workflows/tests.yml').read_text()
     job = text[text.index('\n  latency:'):text.index('\n  skill-evals:')]
-    for needed in ('continue-on-error: true', 'WUWEI_BENCH: "1"', 'WUWEI_LATENCY_OUT: latency.jsonl',
-                   'actions: read', 'actions/upload-artifact', 'name: latency',
+    for needed in ('continue-on-error: true', 'WUWEI_LATENCY_OUT: latency.jsonl',
+                   'python scripts/hook_latency.py', 'actions: read', 'actions/upload-artifact', 'name: latency',
                    'scripts/latency_report.py latency.jsonl previous/latency.jsonl'):
         assert needed in job, needed
     assert job.count('if: always()') >= 3
@@ -99,3 +102,23 @@ def test_latency_check_stays_green():
     head, steps = job.split('\n    steps:')
     assert 'continue-on-error' not in head
     assert steps.count('continue-on-error: true') == 2
+
+
+def test_hook_latency_writes_one_row_per_probe_and_asserts_no_budget(tmp_path, monkeypatch, capsys):
+    # #849: the script measures and the report warns; no test or script asserts a duration.
+    out = tmp_path / 'latency.jsonl'
+    floor = lambda runs: (20.0, 22.0)
+    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)
+    latency.record('hook', 40.0, 60.0, floor=floor)
+    assert not out.exists()
+    monkeypatch.setenv('WUWEI_LATENCY_OUT', str(out))
+    latency.record('hook', 51.0, 60.0, floor=floor)
+    latency.record('tick', 51.0, 60.0, wall_budget=100, floor=floor)
+    assert 'hook p95 over 60 runs: CPU 51.00 ms, wall 60.00 ms, python3 -I startup floor CPU 20.00 ms' in (
+        capsys.readouterr().out)
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [(r['probe'], r['cpu_ms'], r['wall_ms'], r['budget_ms'], r['measure']) for r in rows] == [
+        ('hook', 51.0, 60.0, 50, 'cpu'), ('tick', 51.0, 60.0, 100, 'wall')]
+    assert {'floor_cpu_ms', 'floor_wall_ms', 'load', 'cpus'} <= rows[0].keys()
+    assert report.main([str(out)]) == 1
+    assert 'over budget: hook' in capsys.readouterr().out

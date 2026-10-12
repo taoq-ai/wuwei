@@ -1,8 +1,7 @@
-"""#685: the suite runs in parallel, the clock tests share one worker, and a seat can run only the tests a diff touches."""
+"""#685, #849: the suite runs in parallel, CI holds it under 3000 test functions, and a seat can run only the tests a diff touches."""
 
 import ast
 from importlib.util import module_from_spec, spec_from_file_location
-import json
 from pathlib import Path
 import subprocess
 import sys
@@ -13,91 +12,51 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-TIMING = {
-    ('test_traces.py', 'test_large_arguments_record_under_50ms_cpu'),
-    ('test_integrity.py', 'test_cached_check_latency'),
-    ('test_adapters.py', 'test_watch_probe_runs_calls_together_and_times_out'),
-    ('test_e2e_day.py', 'test_scripted_day'),
-    ('test_path_day.py', 'test_the_day_closes_walking_only_next'),
-    ('test_path_day.py', 'test_enforce_day'),
-    ('test_hooks.py', 'test_hook_latency'),
-    ('test_hooks.py', 'test_status_line_latency'),
-    ('test_hooks.py', 'test_workspace_hook_latency'),
-}
-
-
 WORKFLOW = (ROOT / '.github/workflows/tests.yml').read_text()
 JOB = WORKFLOW[WORKFLOW.index('\n  test:'):WORKFLOW.index('\n  ziran-audit:')]
 
 
-def test_ci_test_job_runs_in_parallel_and_reruns_only_flagged_timing_tests():
-    for line in (
-        'pip install pytest pytest-xdist',
-        'python -m pytest -q -n auto --dist loadgroup',
-        'continue-on-error: true',
-        "if: steps.suite.outcome == 'failure'",
-        "python - <<'EOF'",
-    ):
-        assert line in JOB
-    assert 'needs:' not in WORKFLOW
+def test_ci_test_job_runs_in_parallel_with_no_timing_group():
+    assert 'python -m pytest -q -n auto\n' in JOB
+    assert 'pip install pytest pytest-xdist' in JOB
+    assert 'loadgroup' not in JOB and 'timing' not in JOB and 'needs:' not in WORKFLOW
 
 
-def rerun(tmp_path, monkeypatch, failed):
-    """Run the workflow's rerun step against a lastfailed cache; return its exit and the pytest args it used."""
+def count_step(tmp_path, monkeypatch, functions):
+    """Run the workflow's count step over a tests/ tree holding that many test functions."""
     lines = JOB.split("python - <<'EOF'\n", 1)[1].splitlines()
     source = textwrap.dedent('\n'.join(lines[:[line.strip() for line in lines].index('EOF')]))
-    if failed is not None:
-        cache = tmp_path / '.pytest_cache/v/cache'
-        cache.mkdir(parents=True)
-        (cache / 'lastfailed').write_text(json.dumps(dict.fromkeys(failed, True)))
-    calls = []
+    (tmp_path / 'tests/sub').mkdir(parents=True)
+    (tmp_path / 'tests/test_a.py').write_text('def test_x():\n    pass\n' * (functions - 1))
+    (tmp_path / 'tests/sub/test_b.py').write_text('class TestB:\n    def test_y(self):\n        pass\n')
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(pytest, 'main', lambda args: calls.append(args) or 0)
     try:
-        exec(compile(source, 'rerun', 'exec'), {})
+        exec(compile(source, 'count', 'exec'), {})
     except SystemExit as stop:
-        return stop.code, calls
-    except OSError:
-        return 1, calls
+        return stop.code
+    return 0
 
 
-def test_rerun_runs_only_the_failed_timing_tests_alone(tmp_path, monkeypatch):
-    code, calls = rerun(tmp_path, monkeypatch, ['tests/test_a.py::test_t[x]@timing', 'tests/test_b.py::test_u@timing'])
-    assert (code, calls) == (0, [['-q', 'tests/test_a.py::test_t[x]', 'tests/test_b.py::test_u']])
+@pytest.mark.parametrize('functions,failed', [(2999, False), (3000, True)])
+def test_ci_fails_at_3000_test_functions(tmp_path, monkeypatch, capsys, functions, failed):
+    assert bool(count_step(tmp_path, monkeypatch, functions)) is failed
+    assert f'{functions} test functions' in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('failed', [
-    ['tests/test_a.py::test_p'],
-    ['tests/test_a.py::test_t@timing', 'tests/test_a.py::test_p'],
-    ['tests/test_a.py'],
-    [],
-    None,
-], ids=['plain', 'plain-and-timing', 'collection-error', 'empty-cache', 'no-cache'])
-def test_rerun_never_retries_and_fails_on_anything_else(tmp_path, monkeypatch, failed):
-    code, calls = rerun(tmp_path, monkeypatch, failed)
-    assert code not in (0, None) and calls == []
-
-
-def test_pyproject_has_xdist_as_dev_dependency_and_the_group_marker():
+def test_pyproject_has_xdist_as_dev_dependency_and_no_group_marker():
     project = tomllib.loads((ROOT / 'pyproject.toml').read_text())
     assert 'pytest-xdist' in project['project']['optional-dependencies']['dev']
-    assert any(m.startswith('xdist_group') for m in project['tool']['pytest']['ini_options']['markers'])
+    assert 'markers' not in project['tool']['pytest']['ini_options']
 
 
-def timing_marked(path):
-    found = set()
-    for node in ast.walk(ast.parse(path.read_text())):
-        if isinstance(node, ast.FunctionDef):
-            for deco in node.decorator_list:
-                if (isinstance(deco, ast.Call) and ast.unparse(deco.func) == 'pytest.mark.xdist_group'
-                        and [ast.literal_eval(a) for a in deco.args] == ['timing']):
-                    found.add((path.name, node.name))
-    return found
-
-
-def test_exactly_the_clock_tests_share_the_timing_group():
-    marked = set().union(*(timing_marked(p) for p in (ROOT / 'tests').glob('test_*.py')))
-    assert marked == TIMING
+def test_no_test_shares_an_xdist_group():
+    # #849: no clock test is left to pin to one worker.
+    grouped = [(path.name, node.name) for path in (ROOT / 'tests').glob('test_*.py')
+               for node in ast.walk(ast.parse(path.read_text()))
+               if isinstance(node, ast.FunctionDef) and any(
+                   isinstance(deco, ast.Call) and ast.unparse(deco.func) == 'pytest.mark.xdist_group'
+                   for deco in node.decorator_list)]
+    assert grouped == []
 
 
 @pytest.fixture
