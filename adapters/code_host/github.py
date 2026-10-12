@@ -9,7 +9,7 @@ import subprocess
 import sys
 from urllib.parse import quote
 
-from .._http import RateLimited, gh_limit, included_limit, retry
+from .._http import RateLimited, gh_limit, retry
 from wuwei.registry import Result, outward_operation
 from wuwei.redact import reply
 from wuwei.references import pull_request, repository as _repo
@@ -117,16 +117,24 @@ def _run(args, payload=None, *, json_output=True, env=None):
         args = [*args, '--hostname', 'github.com']
 
     # #867: the bucket this call spends; gh pr merge and ready run GraphQL.
-    endpoint = args[1] if args[0] == 'api' else 'graphql' if args[0] == 'pr' else ''
+    endpoint = (next(arg for arg in args[1:] if not arg.startswith('-')) if args[0] == 'api'
+                else 'graphql' if args[0] == 'pr' else '')
     resource = 'graphql' if endpoint == 'graphql' else 'search' if endpoint.startswith('search/') else 'core'
+    # #891: the endpoint a secondary limit names; a search query can carry an email (#362).
+    where = 'search' if resource == 'search' else endpoint.split('?')[0] or ' '.join(args[:2])
 
     def call():
         result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                                 capture_output=True, text=True, timeout=TIMEOUT, env=env)
         if result.returncode and re.search(r'rate limit', result.stderr, re.I):
-            limit = _headers_limit(args, payload, result, env) or gh_limit(result.stderr, env, resource)
-            if limit:
-                raise limit
+            # #891: never asked again with --include (a request inside a secondary limit can extend
+            # it); an --include read already holds Retry-After and the X-RateLimit headers.
+            head = re.split(r'\r?\n\r?\n', result.stdout, maxsplit=1)[0] if '--include' in args else ''
+            found = {key.lower(): value for key, value in re.findall(r'^([\w-]+):[ \t]*(\S*)\s*$', head, re.M)}
+            after = found.get('retry-after', '')
+            seen = [found.get('x-ratelimit-' + key, '') for key in ('resource', 'remaining', 'limit', 'reset')]
+            raise gh_limit(result.stderr, env, resource, where, int(after) if after.isdigit() else None,
+                           seen if re.fullmatch(r'[a-z_]+', seen[0]) and all(map(str.isdigit, seen[1:])) else None)
         return result
     try:
         result = retry(call)
@@ -166,29 +174,6 @@ def _run(args, payload=None, *, json_output=True, env=None):
         _errors(json.loads(result.stdout))
     return result.stdout
 
-
-
-def _headers_limit(args, payload, result, env):
-    """#867: the limit from the failed response's own X-RateLimit headers. A read already run with
-    --include carries them; another read (REST GET or GraphQL query) is asked once more with
-    --include and no pagination (a refused request spends no quota), after a primary limit only.
-    A write is never repeated,
-    and gh pr merge, gh pr ready and gh auth status print no headers: those fall back to rate_limit."""
-    if '--include' in args:
-        return included_limit(result.stdout)
-    if re.search(r'secondary', result.stderr, re.I):
-        return None  # D1: GitHub says wait out a secondary limit; another request can extend it
-    query = isinstance(payload, dict) and args[1] == 'graphql' and payload.get('query') != _REVERT
-    if args[0] != 'api' or not (query or payload is None and '--method' not in args):
-        return None
-    again = [arg for arg in args if arg not in ('--paginate', '--slurp')]
-    try:
-        shown = subprocess.run(['gh', *again[:2], '--include', *again[2:]],
-                               input=json.dumps(payload) if query else None,
-                               capture_output=True, text=True, timeout=TIMEOUT, env=env)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return included_limit(shown.stdout)
 
 def _api(endpoint, *, pages=False, payload=None):
     if payload is not None:
