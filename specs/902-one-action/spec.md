@@ -90,9 +90,11 @@ waits on something real, or opens a specific owner decision.
 - **FR-005**: A gate with no initial verdict in fix or delta does not refuse: the fix round goes
   on, and in delta that gate reads the current head on a fresh seat; `receive` takes that one
   initial verdict in delta. It is recorded like a later round's (round `delta` in the record,
-  marked `late`), so merge's round-one HEAD agreement does not count it. Until a fix round moves
-  the head, `decide` judges it as an initial verdict (review F1): FIX opens the fix round after
-  the cap check, PARK parks, ESCALATE asks the owner; it takes no delta re-read meanwhile.
+  marked `late`), so merge's round-one HEAD agreement does not count it. A late verdict that is
+  not a PASS is judged as an initial verdict until a fix round opens, whatever moves the head
+  meanwhile (review F1, D1): FIX opens the fix round after the cap check, PARK parks, ESCALATE
+  asks the owner; it takes no delta re-read. The fix round (`rotate`) clears the flag; a late
+  PASS takes the ordinary stale and recheck path.
 - **FR-005a**: A stale second opinion (`role@runtime`) reruns through `dispatch opinion`, never a
   Claude fresh seat; `dispatch opinion` returns its stored verdict only while it counts at the
   current head (review F2).

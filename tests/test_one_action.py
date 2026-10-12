@@ -108,19 +108,28 @@ def test_a_missing_initial_receipt_in_delta_is_gated_and_received(day):
     assert merge._recorded_gates(day.root, day.head, data['gate_verdicts'], 'A', data['items']) == (0, '')
 
 
+@pytest.mark.parametrize('moved', [False, True])
 @pytest.mark.parametrize('late,expected', [('FIX', 'fix'), ('PARK', 'parked'), ('ESCALATE', 'escalate')])
-def test_a_late_initial_that_blocks_is_judged_as_an_initial_verdict(day, late, expected):
-    # review F1: a late initial FIX, PARK or ESCALATE opens the fix round, parks or asks the owner;
-    # it is never waved through by a delta re-read of the same head.
+def test_a_late_initial_that_blocks_is_judged_as_an_initial_verdict(day, late, expected, moved):
+    # review F1, D1: a late initial FIX, PARK or ESCALATE opens the fix round, parks or asks the
+    # owner until a fix round opens; it is never waved through by a delta re-read, also after a
+    # commit outside a fix round moved the head and every gate re-read it.
     from wuwei import merge
     to_delta(day)
     state._write_state(lambda data: data['gate_verdicts'].pop('A:arch:initial'), day.root)
     day.runtime.verdict = late
-    action = follow(day)
+    while 'A:arch:initial' not in day.data['gate_verdicts']:
+        run(day, dispatch_next(day))
     assert day.data['gate_verdicts']['A:arch:initial']['verdict'] == late
+    if moved:
+        day.runtime.verdict = 'PASS'
+        commit(day)
+    action = follow(day)
     assert action['action'] == expected, action
     if expected == 'escalate':
         assert action['command'] == 'wuwei dispatch next A' and action['card']
+    if expected == 'fix':  # the fix round answers it: from here it is an ordinary initial FIX
+        assert 'late' not in day.data['gate_verdicts']['A:arch:initial']
     phase = day.data['items']['A']['phase']
     assert phase == {'fix': 'fix', 'parked': 'parked', 'escalate': 'delta'}[expected]
     data = day.data

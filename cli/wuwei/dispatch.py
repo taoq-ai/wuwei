@@ -412,6 +412,7 @@ def rotate(data, item, used):
     reading initial and delta."""
     verdicts = data['gate_verdicts']
     for gate in gate_set(data['items'][item]):
+        (verdicts.get(f'{item}:{gate}:initial') or {}).pop('late', None)  # #902 D1: this round answers it
         delta = verdicts.pop(f'{item}:{gate}:delta', None)
         if delta is not None:
             verdicts[f'{item}:{gate}:round{used}'] = verdicts[f'{item}:{gate}:initial']
@@ -682,11 +683,12 @@ def decide(root, data, config, item):
         return {'step': 'gates', 'roles': late, 'round': 'initial', 'stale': late, 'current': current,
                 'note': note, 'why': f"{', '.join(late)} has no initial verdict"}
     round_name = 'initial' if phase == 'gate' else 'delta'
-    # #902 review F1: a late initial (received in this delta) at the current head is judged as an
-    # initial verdict, outside the delta re-read, until a fix round moves the head
+    # #902 review F1, D1: a late initial that is not a PASS (received in this delta) is judged as an
+    # initial verdict, outside the delta re-read, until a fix round opens (rotate clears the flag);
+    # a late PASS takes the ordinary stale and recheck path
     late = [role for role in gates if round_name == 'delta' and _record(data, item, role, 'delta') is None
-            and (_record(data, item, role, 'initial') or {}).get('late') and current
-            and current.lower().startswith(_record(data, item, role, 'initial')['head'].lower())]
+            and (_record(data, item, role, 'initial') or {}).get('late')
+            and _record(data, item, role, 'initial')['verdict'] != 'PASS']
     roles = list(gates) if round_name == 'initial' else [
         role for role in gates if role not in late and rechecks(data, item, role, root)]
     stale = [role for role in roles if _record(data, item, role, round_name) is not None
