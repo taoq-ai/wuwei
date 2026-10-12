@@ -28,3 +28,11 @@
 
 - [x] T013 every importing test file plus invariants, docs and charters under 3.12; the changed
   areas under 3.11.
+
+## Phase 4: review fix round
+
+- [x] T015 red: running unrecorded seat, `--repo` and `--pr` of another repository, a hand commit
+  after the checks (reconcile and a seat-built item), a failing outside loop, one JSON document
+  with `failed`, `--track FULL`; then FR-010 to FR-016.
+- [x] T016 red: a recheck at the gate with a committed `.env` or an uncommitted fix, and a commit
+  after the checks measured HEAD; then FR-017 and FR-018.

@@ -351,6 +351,8 @@ def test_fix_round_returns_to_delta_gate(case):
     record = state.read_state(root)['builds']['A']
     state._write_state(lambda data: data['builds']['A'].update(status='check'),
                        root)
+    from test_build_next import measured
+    measured(root, 'A')
     assert build.complete_checks('A', [Result(0)], root=root) == 0
     assert state.read_state(root)['items']['A']['phase'] == 'delta'
 

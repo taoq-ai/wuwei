@@ -202,3 +202,140 @@ def test_reconcile_refuses_what_needs_an_explicit_resolution(ws, capsys, case):
     assert {'unplanned': 'plan add D', 'other-repo': 'acme/web', 'other-worktree': 'another worktree',
             'parked': 'plan resume A'}[case] in err, err
     assert (workspace.day_dir(root) / 'state.json').read_bytes() == before
+
+
+def running_seat(root, item='A'):
+    state._write_state(lambda data: data['seats'].update({'b-a': {
+        'id': 'b-a', 'role': 'builder', 'item': item, 'brief': 'x', 'status': 'running',
+        'started_at': '2026-10-12T11:00:00+00:00'}}), root)
+
+
+def test_a_running_builder_seat_with_no_build_record_refuses_reconcile(ws, capsys):
+    # review F1: a seat still committing must stop before its work is verified
+    root, trees, checks = ws
+    running_seat(root)
+    before = (workspace.day_dir(root) / 'state.json').read_bytes()
+    assert reconcile('A', '--worktree', trees['A']) == 1
+    assert 'builder seat b-a is running on A' in capsys.readouterr().err
+    assert (workspace.day_dir(root) / 'state.json').read_bytes() == before and checks == []
+
+
+@pytest.mark.parametrize('flag', ['--repo', '--pr'])
+def test_another_repository_never_overrides_the_items(ws, capsys, flag):
+    # review F2: the item's recorded repository needs an explicit resolution to change
+    root, trees, _ = ws
+    args = ['--worktree', trees['B'], '--repo', 'acme/web'] if flag == '--repo' else ['--pr', 'acme/web#7']
+    before = (workspace.day_dir(root) / 'state.json').read_bytes()
+    assert reconcile('A', *args) == 1
+    assert 'A is for acme/widget' in capsys.readouterr().err
+    assert (workspace.day_dir(root) / 'state.json').read_bytes() == before
+
+
+def test_a_hand_commit_after_the_checks_never_reaches_the_gates_unchecked(ws, capsys):
+    # review residual: a gate reviews the head the fast checks passed on, on every path
+    from wuwei import brief
+    root, trees, checks = ws
+    assert reconcile('A', '--worktree', trees['A']) == 0
+    assert state.read_state(root)['builds']['A']['checked'] == git(trees['A'], 'rev-parse', 'HEAD')
+    (trees['A'] / 'secret.txt').write_text('unchecked\n')
+    git(trees['A'], 'add', '.')
+    git(trees['A'], 'commit', '-q', '-m', 'by hand')
+    head = git(trees['A'], 'rev-parse', 'HEAD')
+    with pytest.raises(brief.Refused, match='fast checks passed on'):
+        brief.gate_ready(state.read_state(root), 'A', head)
+    action = dispatch.next_step('A', root)
+    assert action['action'] == 'check' and action['command'] == 'wuwei build check A'
+    with pytest.raises(dispatch.Refused, match='A build is check, not done'):
+        dispatch.next_step('A', root)
+    assert main(['build', 'check', 'A']) == 0 and checks == ['A', 'A']
+    assert state.read_state(root)['builds']['A']['checked'] == head
+    assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+def test_a_failing_outside_loop_still_parks(ws, capsys, monkeypatch):
+    # review F3: repeats carry across reconciles at new heads
+    root, trees, _ = ws
+    load = registry.load
+    runner = SimpleNamespace(run=lambda path, command, **kw: registry.Result(1, {'error': 'boom'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runner if kind == 'checks' else load(kind, config))
+    for n in range(3):
+        (trees['A'] / f'f{n}.txt').write_text('x\n')
+        git(trees['A'], 'add', '.')
+        git(trees['A'], 'commit', '-q', '-m', f'round {n}')
+        reconcile('A', '--worktree', trees['A'])
+    assert state.read_state(root)['items']['A']['phase'] == 'parked'
+    capsys.readouterr()
+
+
+def test_pr_stdout_is_one_json_document_and_verified_lists_passes(ws, capsys, monkeypatch):
+    # review F5
+    from fakes.code_host import Fake as Host
+    root, trees, _ = ws
+    host = Host()
+    host.results['pr'].data.update(branch='feature-a', head=git(trees['A'], 'rev-parse', 'HEAD'))
+    load = registry.load
+    runner = SimpleNamespace(run=lambda path, command, **kw: registry.Result(1, {'error': 'boom'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host'
+                        else runner if kind == 'checks' else load(kind, config))
+    assert reconcile('A', '--worktree', trees['A'], '--pr', 'acme/widget#7') == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out['verified'] == [] and out['failed'] == ['check: exit 1 at ' + out['head'][:12]]
+
+
+def test_reconcile_takes_the_track_a_protected_path_needs(ws, capsys):
+    # review F7
+    root, trees, _ = ws
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[brief]\nfull_path_patterns = ["(^|/)guards/"]\n')
+    (trees['A'] / 'guards').mkdir()
+    (trees['A'] / 'guards/x.py').write_text('x = 1\n')
+    git(trees['A'], 'add', '.')
+    git(trees['A'], 'commit', '-q', '-m', 'guard')
+    assert reconcile('A', '--worktree', trees['A']) == 1
+    assert 'rerun bin/wuwei build reconcile A with --track FULL' in capsys.readouterr().err
+    assert reconcile('A', '--worktree', trees['A'], '--track', 'FULL') == 0, capsys.readouterr()
+    assert state.read_state(root)['items']['A']['track'] == 'FULL'
+
+
+@pytest.mark.parametrize('case', ['private', 'dirty'])
+def test_a_recheck_at_the_gate_runs_every_build_check(ws, capsys, case):
+    # review D1, D2: a recheck is a whole build check (private files, uncommitted changes), and
+    # checked is the head the checks measured
+    root, trees, checks = ws
+    tree = trees['A']
+    assert reconcile('A', '--worktree', tree) == 0
+    if case == 'private':
+        (tree / '.env').write_text('TOKEN=x\n')
+        git(tree, 'add', '-f', '.env')
+        git(tree, 'commit', '-q', '-m', 'secret')
+    else:
+        (tree / 'work.txt').write_text('broken\n')
+        git(tree, 'commit', '-q', '-am', 'broken')
+        (tree / 'work.txt').write_text('fixed, not committed\n')
+    checked = state.read_state(root)['builds']['A']['checked']
+    assert dispatch.next_step('A', root)['action'] == 'check'
+    assert main(['build', 'check', 'A']) == 1
+    build = state.read_state(root)['builds']['A']
+    assert build['status'] == 'ready' and build['checked'] == checked
+    assert ('.env' if case == 'private' else 'uncommitted changes') in build['action']['feedback']
+    with pytest.raises(dispatch.Refused, match='not done'):
+        dispatch.next_step('A', root)
+
+
+def test_checked_is_the_head_the_checks_measured(ws, capsys, monkeypatch):
+    # review D2: a commit after the checks measured HEAD is not the checked head
+    from wuwei import fast_checks
+    root, trees, _ = ws
+    record = fast_checks.record
+
+    def moved(path):
+        code = record(path)
+        (Path(path) / 'late.txt').write_text('late\n')
+        git(path, 'add', 'late.txt')
+        git(path, 'commit', '-q', '-m', 'late')
+        return code
+    measured = git(trees['A'], 'rev-parse', 'HEAD')
+    monkeypatch.setattr(fast_checks, 'record', moved)
+    assert reconcile('A', '--worktree', trees['A']) == 0
+    assert state.read_state(root)['builds']['A']['checked'] == measured
+    assert dispatch.next_step('A', root)['action'] == 'check'  # the late commit is checked first

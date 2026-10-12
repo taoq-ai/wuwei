@@ -83,6 +83,8 @@ def held_day(seat, monkeypatch):
 
 
 def check(root, item, *results):
+    from test_build_next import measured
+    measured(root, item)
     return build.complete_checks(item, list(results), root=root)
 
 

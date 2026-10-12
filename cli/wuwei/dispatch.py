@@ -673,14 +673,21 @@ def next_step(item, root=None):
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
+        build = data.get('builds', {}).get(item)
+        moved = build and build['status'] == 'done' and build.get('checked') and derive.head(build['worktree'])
+        if moved and moved != build['checked']:  # #901 review: a gate reads only a checked head
+            from wuwei.commands import build as builds
+            return builds.recheck_moved(item, root, build, moved)
         try:
             brief.gate_ready(data, item)
         except brief.Refused as exc:
             raise Refused(str(exc)) from exc
+        if build and build.get('checked') and build['status'] != 'done':  # #901: checks pass before gates
+            raise Refused(f'{item} build is {build["status"]}, not done; run bin/wuwei build next {item} for its step, '
+                          f'then bin/wuwei dispatch next {item}')
         # #901: a build done without a seat (build reconcile) has stood down as well
-        if (data.get('builds', {}).get(item) or {}).get('status') != 'done' and not any(
-                seat['item'] == item and seat['role'] == 'builder'
-                and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
+        if build is None and not any(seat['item'] == item and seat['role'] == 'builder'
+                                     and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
     note = ''
     if phase == 'gate' and not _resumed(root, item) and (blocked := _blocked_card(root, data, item)):

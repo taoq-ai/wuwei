@@ -24,6 +24,7 @@ def register(subparsers):
     parser.add_argument('--pr', help='reconcile: the open PR of the work, owner/repo#n')
     parser.add_argument('--repo', help='reconcile: the repository of --branch')
     parser.add_argument('--branch', help='reconcile: the existing branch that holds the work')
+    parser.add_argument('--track', choices=('SLICE', 'FULL'), help="reconcile: the item's track, as plan add records it")
     parser.set_defaults(func=run)
 
 
@@ -310,14 +311,7 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     elif stale:
         start = previous.get('start') or next(iter(logged), None)
     else:  # #889 F4: a new record counts the commits its branch holds over the brief's base
-        base = previous is None and re.search(r'^Merge-base: (\S+)', path.read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
-        start = derive.head(tree)
-        if base and derive.SHA.fullmatch(base[1]):
-            try:  # D3: a base a rebase left behind is no ancestor of HEAD; HEAD stays the start
-                if read(registry.load('vcs', config).merge_base, tree, base[1], root=root)['sha'] == base[1]:
-                    start = base[1]
-            except ValueError:
-                pass
+        start = (previous is None and _base_start(path, tree, config, root)) or derive.head(tree)
     record = {**(previous if stale else {}), 'brief': relative, 'worktree': str(tree), 'start': start,
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
@@ -335,6 +329,20 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
         from wuwei import dispatch
         dispatch.tracker_call(item, 'claim', root)
     return action
+
+
+def _base_start(path, tree, config, root):
+    """#889 F4, #901: the brief's Merge-base when it is an ancestor of HEAD (D3: a base a rebase
+    left behind is not), else None; the start head a new build counts its commits from."""
+    from wuwei import derive
+    from wuwei.brief import read
+    base = re.search(r'^Merge-base: (\S+)', Path(path).read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
+    if not (base and derive.SHA.fullmatch(base[1])):
+        return None
+    try:
+        return base[1] if read(registry.load('vcs', config).merge_base, str(tree), base[1], root=root)['sha'] == base[1] else None
+    except ValueError:
+        return None
 
 
 def open_fix(item, feedback, *, root, polish=None, start=None):
@@ -595,9 +603,10 @@ def complete_checks(item, results, *, root, expected=None):
                                       build=True, where='gates')
         if code:
             failures.append(('spec', {'error': reason}))
+    if not failures:  # #901 review D1: a recheck at a gate is a whole build check as well
         failures += _unbuilt(record, root, config)
-    if not failures:
-        record.update(status='done', action={'action': 'done'})
+    if not failures:  # #901 review: the head the checks passed on is the only head a gate reads
+        record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data))
     elif _retry(root, config, item, record, failures, expected):
         return 1
     _save(item, record, root, 'build.checked', expected,
@@ -609,6 +618,18 @@ def complete_checks(item, results, *, root, expected=None):
         state._write_state(lambda data: built(data, item, after, end), root, kind='state.transition',
                            payload={'item': item, 'phase': after})
     return 1 if failures else 0
+
+
+def _measured(item, record, data):
+    """#901 review D2: the one HEAD every fast check measured; HEAD when none is configured."""
+    from wuwei import derive
+    if not record['commands']:
+        return derive.head(record['worktree'])
+    rows = data.get('fast_checks', {}).get(record['repo'], {})
+    shas = {(rows.get(command) or {}).get('sha') for command in record['commands']}
+    if len(shas) != 1 or None in shas:
+        raise ValueError(f'incomplete fast checks: they measured no single HEAD; rerun bin/wuwei build check {item}')
+    return shas.pop()
 
 
 AFTER = {'implement': 'gate', 'fix': 'delta'}
@@ -678,6 +699,16 @@ def built(data, item, after, end):
     if after == 'delta' and heads and heads[-1][1] is None:
         heads[-1][1] = end  # #844: the head this fix round produced
     state._move(data, item, after)
+
+
+def recheck_moved(item, root, record, head):
+    """#901 review: a done build whose worktree moved past its checked head goes back to its fast
+    checks before any gate reads that head; returns the check step."""
+    _save(item, {**record, 'status': 'check', 'action': recheck(item, record)}, root, 'build.rechecked',
+          record, {'checked': record['checked'], 'head': head})
+    return {**recheck(item, record), 'reason': (
+        f'HEAD {head[:12]} is past {record["checked"][:12]}, the head the fast checks passed on; a gate '
+        f'reads only a checked head, so run wuwei build check {item}, then wuwei dispatch next {item}')}
 
 
 def check(item, *, root=None):
@@ -851,7 +882,7 @@ def run_reconcile(args):
         return 2
     try:
         print(json.dumps(reconcile(args.arguments[0], worktree=args.worktree, pr=args.pr,
-                                   repo=args.repo, branch=args.branch)))
+                                   repo=args.repo, branch=args.branch, track=args.track)))
         return 0
     except (state.StateError, Refused) as exc:
         print(f'build reconcile: {exc}', file=sys.stderr)
@@ -865,7 +896,7 @@ UNMEASURED = ['gates: not run on this work yet', 'owner approval: none recorded'
               'tests or reviews the outside work ran: not counted']
 
 
-def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None):
+def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None, track=None):
     """#901: bring work done outside the record back in: the item's worktree, its PR and, before
     the gates, a build record that starts at the fast checks (no builder seat is invented). Each
     step reads what is recorded first, so a rerun finishes an interrupted one and an unchanged
@@ -884,7 +915,14 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                                f'bin/wuwei plan add {item} --goal <G-n>, then rerun')
     if row['phase'] in ('parked', 'escalated'):
         raise state.StateError(f'{item} is {row["phase"]}; resume it with bin/wuwei plan resume {item}, then rerun')
-    repo = repo or row.get('repo')
+    _running(data, item)  # review F1: a seat still committing stops before its work is verified
+    ref = pr and merge.reference(pr, root, config, repo=config['repos'][0]['name'] if len(config['repos']) == 1 else None)
+    other = next((name for name in (repo, ref and ref.split('#')[0]) if name and row.get('repo') not in (None, name)), None)
+    if other:  # review F2: the item's recorded repository changes only by an explicit decision
+        raise state.StateError(f'{item} is for {row["repo"]}, not {other}; pass a worktree, branch or PR of '
+                               f'{row["repo"]}, or the owner admits the {other} work as its own item with '
+                               f'bin/wuwei plan add <item> --repo {other}')
+    repo = row.get('repo') or repo
     if worktree:
         workspace.adopt_worktree(root, item, worktree, vcs, dirty=True, repo=repo)
     elif branch and not row.get('worktree'):
@@ -894,11 +932,12 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                                    f'{", ".join(found["name"] for found in config["repos"])}>')
         worktrees.checkout(root, config, item, rows[0], branch, dirty=True)
     if pr:
-        ref = merge.reference(pr, root, config, repo=config['repos'][0]['name'] if len(config['repos']) == 1 else None)
         data = state.read_state(root)
         row = data['items'][item]
         if row.get('pr') != ref or not row.get('worktree') and ref not in data['raised_prs']:
-            code = shepherd.claim_pr(root, ref, item, built=True)
+            from contextlib import redirect_stdout
+            with redirect_stdout(sys.stderr):  # review F5: stdout stays one JSON document
+                code = shepherd.claim_pr(root, ref, item, built=True)
             if code:
                 raise (state.StateError if code == 1 else ValueError)(
                     f'pr claim {ref} exited {code}; the line above says why, then rerun')
@@ -908,7 +947,7 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                                'or --pr <owner/repo#n>')
     tree = (root / row['worktree']).resolve(strict=True)
     if row['phase'] in ('planned', *state.BUILD_PHASES):
-        _reconcile_build(item, root, config, vcs, tree, row)
+        _reconcile_build(item, root, config, vcs, tree, row, track)
     data = state.read_state(root)
     row, record = data['items'][item], data.get('builds', {}).get(item) or {}
     head = read(vcs.head, str(tree), root=root)['sha']
@@ -918,9 +957,10 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
             'pr': row.get('pr'), 'build': record.get('status'),
             'dirty': [change['path'] for change in status(vcs, str(tree), root)],
             'changed': read(vcs.touched, str(tree), record['start'], root=root) if record.get('start') else [],
-            'verified': [f'{command}: exit {measured[command]["exit"]} at {head[:12]}'
-                         for command in record.get('commands', ())
-                         if measured.get(command, {}).get('sha') == head],
+            **{key: [f'{command}: exit {measured[command]["exit"]} at {head[:12]}'
+                     for command in record.get('commands', ())
+                     if measured.get(command, {}).get('sha') == head and (measured[command]['exit'] == 0) is passed]
+               for key, passed in (('verified', True), ('failed', False))},
             'unmeasured': UNMEASURED + (['fast checks: none configured'] if record and not record['commands'] else []),
             'action': record.get('action'),
             'next': (f'wuwei build next {item}' if phase in state.BUILD_PHASES
@@ -928,14 +968,23 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                      else None if phase == 'merged' else 'wuwei next')}
 
 
-def _reconcile_build(item, root, config, vcs, tree, row):
+def _running(data, item):
+    """A running builder seat of the item, by its build record or its seat row (review F1)."""
+    from wuwei.brief import seats
+    record = data.get('builds', {}).get(item) or {}
+    name = record.get('seat') if record.get('status') == 'running' else next(
+        (name for name, seat in seats(data).items()
+         if seat['role'] == 'builder' and seat['item'] == item and seat['status'] == 'running'), None)
+    if record.get('status') == 'running' or name:
+        raise state.StateError(f'builder seat {name} is running on {item}; wait for its stop hook, then rerun')
+
+
+def _reconcile_build(item, root, config, vcs, tree, row, track=None):
     """The build step of reconcile: a build record at the fast checks on a brief at HEAD; an
-    existing record keeps its start head, runtime and fix rounds."""
-    from wuwei import brief as briefs, derive, dispatch
+    existing record keeps its start head, runtime, fix rounds and failure counts (review F3)."""
+    from wuwei import brief as briefs, dispatch
     record = state.read_state(root).get('builds', {}).get(item)
-    if record and record['status'] == 'running':
-        raise state.StateError(f'builder seat {record.get("seat")} is running on {item}; wait for its stop '
-                               f'hook, then rerun')
+    _running(state.read_state(root), item)
     head = briefs.read(vcs.head, str(tree), root=root)['sha']
     snapshot = {'head': head, 'dirty': sorted(change['path'] for change in briefs.status(vcs, str(tree), root))}
     if record and (record['status'] in ('done', 'parked') or record['action']['action'] == 'wait'
@@ -947,19 +996,26 @@ def _reconcile_build(item, root, config, vcs, tree, row):
         relative = str((workspace.day_dir(root) / 'briefs' / f'{name}.md').relative_to(root))
         if not any(event['kind'] == 'brief written' and event['payload'].get('path') == relative
                    for event in briefs.events(root)):
-            relative = briefs.write('builder', item, name, (
-                f'Reconciled: {item} was built outside the WUWEI record in this worktree, at HEAD {head}. '
-                'Nothing it ran outside counts: WUWEI runs the fast checks, then the gates. When WUWEI '
-                'sends you their failures, fix them here, commit, and stop. Uncommitted at reconcile: '
-                + (', '.join(snapshot['dirty']) or 'none') + '.'), worktree=str(tree), pr=row.get('pr'), root=root)
-        base = re.search(r'^Merge-base: (\S+)', (root / relative).read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
+            try:
+                relative = briefs.write('builder', item, name, (
+                    f'Reconciled: {item} was built outside the WUWEI record in this worktree, at HEAD {head}. '
+                    'Nothing it ran outside counts: WUWEI runs the fast checks, then the gates. When WUWEI '
+                    'sends you their failures, fix them here, commit, and stop. Uncommitted at reconcile: '
+                    + (', '.join(snapshot['dirty']) or 'none') + '.'), worktree=str(tree), pr=row.get('pr'),
+                    track=track, root=root)
+            except briefs.Refused as exc:  # review F7: the way out is this command's own option
+                if '--track FULL' not in str(exc):
+                    raise
+                raise briefs.Refused(f'{exc}: rerun bin/wuwei build reconcile {item} with --track FULL') from exc
         repo = _repo(root, tree, config)
-        fresh = {**{key: record[key] for key in ('fix_rounds',) if record and key in record},
+        fresh = {'iteration': 0, 'repeats': 0, 'signature': None,
+                 **{key: record[key] for key in ('fix_rounds', 'iteration', 'repeats', 'signature')
+                    if record and key in record},
                  'brief': relative, 'worktree': str(tree),
-                 'start': (record or {}).get('start') or (base[1] if base and derive.SHA.fullmatch(base[1]) else None),
+                 'start': (record or {}).get('start') or _base_start(root / relative, tree, config, root) or head,
                  'runtime': (record or {}).get('runtime') or registry.runtime_config('builder', config, root)['adapters']['runtime'],
-                 'repo': repo['name'], 'commands': list(repo['fast_checks']), 'iteration': 0, 'repeats': 0,
-                 'signature': None, 'status': 'check', 'reconciled': {**snapshot, 'at': workspace.now().isoformat()}}
+                 'repo': repo['name'], 'commands': list(repo['fast_checks']),
+                 'status': 'check', 'reconciled': {**snapshot, 'at': workspace.now().isoformat()}}
         fresh['action'] = recheck(item, fresh)
 
         def implement(data):  # in the same write: the record and the build phase

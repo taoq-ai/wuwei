@@ -273,7 +273,7 @@ def _check(payload):
                 raise brief.Refused('worktree HEAD changed since brief was written; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
         if logged['gate'] or logged['role'].startswith('sentinel-'):
             try:
-                brief.gate_ready(data, logged['item'])
+                brief.gate_ready(data, logged['item'], head)
             except brief.Refused as exc:
                 raise brief.Refused(str(exc) + stale_note) from exc
             tree = logged.get('worktree')

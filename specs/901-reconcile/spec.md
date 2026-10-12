@@ -124,6 +124,31 @@ launch of that brief and the guard accepts it.
 - **FR-009**: `build next` for a new build of a planned item past the day's derived CAP raises
   the CAP wait, as `wuwei next` counts it; `build check` with no record names reconcile.
 
+## Review round (FIX)
+
+- **FR-010** (F1): reconcile refuses while any builder seat of the item runs, recorded on the
+  build or only in the seat ledger.
+- **FR-011** (F2): an item's recorded repository is never overridden by `--repo` or by the
+  repository of `--pr`; reconcile refuses and names the explicit way.
+- **FR-012** (residual): `complete_checks` records `checked`, the HEAD the passing checks ran on.
+  `brief.gate_ready` refuses a gate brief or launch at another head; `dispatch next` sends a done
+  build whose worktree moved past it back to `build check` (`build.rechecked`), and refuses the
+  gates while a build that has a checked head is not done. This holds for every build.
+- **FR-013** (F3): a reconcile at a new HEAD keeps the record's iteration, repeats and signature,
+  so an unchanged failing outside loop parks at `build.stuck_after`.
+- **FR-014** (F4, F6): one helper, `_base_start`, reads the brief's merge base and keeps it only
+  when it is an ancestor of HEAD, for `build next` and reconcile.
+- **FR-015** (F5): stdout is one JSON document (the claim prints to stderr); `verified` lists
+  passing checks, `failed` the others.
+- **FR-016** (F7): `--track FULL` records the item's track through the brief, and the protected
+  path refusal names it.
+
+- **FR-017** (delta D1): every check completion runs `_unbuilt` (uncommitted changes, private
+  files in the commits since start, no change), a recheck at a gate included; only the spec step
+  stays with `implement` and `fix`.
+- **FR-018** (delta D2): `checked` is the one HEAD every fast check measured (a mismatch or a
+  missing row is incomplete: rerun), and HEAD only when no fast check is configured.
+
 ## Success Criteria
 
 - **SC-001**: the failing tests above pass; every test file importing a changed module passes

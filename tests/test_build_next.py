@@ -577,12 +577,20 @@ def test_checked_event_counts_passed_and_failed(seat):
     assert record['status'] == 'check'
 
 
+def measured(root, item, sha='a' * 40):
+    """#901 review D2: the HEAD the fast checks measured, as build check records it."""
+    record = state.read_state(root)['builds'][item]
+    state._write_state(lambda data: data.setdefault('fast_checks', {}).setdefault(record['repo'], {}).update(
+        {command: {'sha': sha, 'exit': 0} for command in record['commands']}), root)
+
+
 def checked(seat):
     root = seat[0]
     launch(seat, build.next_action('A', root=root))
     assert stop(seat) == (0, '')
     if state.read_state(root)['builds']['A']['status'] != 'check':
         state._write_state(lambda data: data['builds']['A'].update(status='check'), root)
+    measured(root, 'A')
     return root, [registry.Result(0)] * len(state.read_state(root)['builds']['A']['commands'])
 
 
@@ -967,3 +975,24 @@ def test_a_sentinel_launch_needs_no_build_record(seat):
         'subagent_type': 'wuwei:sentinel-arch', 'description': 'Gate A',
         'prompt': brief.seat_action('sentinel-arch', gate, repo, root)['prompt']}})
     assert 'build record' not in reason
+
+
+def test_a_seat_built_item_whose_head_moves_after_its_checks_goes_back_to_them(seat):
+    # #901 review: every build records the head its checks passed on; no gate reads another
+    from wuwei import brief, dispatch
+    root, repo, _, _, results = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    registry.load('vcs', None).touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    state._write_state(lambda data: data['builds']['A'].update(start='c' * 40), root)
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert state.read_state(root)['builds']['A']['checked'] == 'a' * 40 and phase(root) == 'gate'
+    (repo / '.git/HEAD').write_text('b' * 40 + '\n')  # a commit by hand
+    state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A']), root)
+    with pytest.raises(brief.Refused, match='not the head its fast checks passed on'):
+        brief.gate_ready(state.read_state(root), 'A', 'b' * 40)
+    assert dispatch.next_step('A', root)['action'] == 'check'
+    assert state.read_state(root)['builds']['A']['status'] == 'check'
