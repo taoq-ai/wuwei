@@ -7,7 +7,7 @@ from pathlib import Path
 from time import monotonic as _monotonic, sleep as _sleep
 
 from wuwei import workspace
-from wuwei.exits import DAMAGED
+from wuwei.exits import DAMAGED, RACE
 
 
 def lock_ex(lock, name, timeout=30):
@@ -463,17 +463,23 @@ def transition(item, phase, root=None):
                        payload={'item': item, 'phase': phase})
 
 
-def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None):
+def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None, report=None,
+              expected=None):
     """Release a reservation while preserving the used brief and seat identity; with a reason
-    the seat is unmeasured: its report could not be recorded (#473)."""
+    the seat is unmeasured: its report could not be recorded (#473), and report is where it
+    is kept for wuwei seat stop --verdict, with its sha256 (#905: brief.keep_report). expected: the seat record the stop read; a
+    seat changed since (a relaunch, a recorded result) is left as it is."""
     fields = {'reason': reason} if reason else {}
     if by:
         fields['by'] = by
+    fields.update(report or {})
 
     def update(data):
         seat = data['seats'][name]
-        seat.pop('reason', None)
-        seat.pop('by', None)
+        if expected is not None and seat != expected:
+            raise ValueError(f'seat {name} changed during its stop; {RACE}')
+        for key in ('reason', 'by', 'report', 'report_sha256'):
+            seat.pop(key, None)
         seat.update(status='unmeasured' if reason else 'stopped', stopped_at=workspace.now().isoformat(),
                     **fields)
         if isinstance(agent_id, str) and agent_id.strip():

@@ -26,9 +26,10 @@ A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei in
 
 ### A stuck seat
 
-A seat whose report cannot be read is stopped as `unmeasured`, never left running. `wuwei next`, the doctor `stuck seats` row and `why` name it. From the planner session:
+A seat whose report cannot be read or recorded is stopped as `unmeasured`, never left running. A readable report is kept in `.wuwei/days/<date>/reports/<name>.md`. `wuwei next`, the doctor `stuck seats` row and `why` name it. From the planner session:
 
-- `bin/wuwei seat stop <name> --verdict <file>` records the report from a file. It runs the same stop guards, and a sentinel's file must pass the verdict lint first.
+- `bin/wuwei seat stop <name> --verdict` records the kept report, or the hand-back the seat's transcript ends with. `wuwei next` offers this first whenever the report is readable.
+- `bin/wuwei seat stop <name> --verdict <file>` records the report from a file. Both run the same stop guards, and a sentinel's report must pass the verdict lint first.
 - `bin/wuwei seat stop <name> --unmeasured "<reason>"` stops it so the day can move. A builder's running build parks with that reason.
 
 An adhoc seat has no report, so only `--unmeasured` clears it. See [stuck seats](reference.md#stuck-seats).

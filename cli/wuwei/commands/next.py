@@ -203,8 +203,7 @@ def step(root, ran=()):
     seats = brief.seats(data)
     from wuwei import derive
     launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
-                 'command': f'wuwei seat stop {name} --unmeasured "seat ended with no recorded result"'}
-                for name in brief.stuck(data)]
+                 'command': brief.recovery(name, seats[name])} for name in brief.stuck(data)]
     launches += [{'kind': 'finding', 'item': ident, 'command': f'wuwei plan add {ident} --from-finding',
                   'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
                  for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once

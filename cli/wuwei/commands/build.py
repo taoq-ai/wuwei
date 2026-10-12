@@ -447,7 +447,8 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
             raise ValueError(f'build changed during result recording; {RACE}')
         if agent_id is not None:
             data['seats'][record['seat']]['status'] = 'stopped'
-            data['seats'][record['seat']].pop('reason', None)  # recovered from unmeasured (#473)
+            for key in ('reason', 'report', 'report_sha256'):  # recovered from unmeasured (#473, #905)
+                data['seats'][record['seat']].pop(key, None)
         current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
                        result=result, action=recheck(item, record))
     updated = state._write_state(update, root, kind='seat.usage',
@@ -472,6 +473,10 @@ def check_binding(item, record):
     return {'item': item, 'brief': record['brief'], 'iteration': record['iteration'] + 1}
 
 
+class Mismatch(ValueError):
+    """#905: a stop from an agent that is not the bound builder; the seat stays as it was."""
+
+
 def stopped(item, name, payload, *, root):
     """Accept only the hook-bound seat result and current measured check evidence."""
     data = state.read_state(root)
@@ -482,11 +487,11 @@ def stopped(item, name, payload, *, root):
         return True
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
-        raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
+        raise Mismatch(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
     if agent_id == record.get('replaced'):
         return True  # #614: the replaced agent's late stop; the fresh launch records the round
     if record.get('agent_id') and record['agent_id'] != agent_id:
-        raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
+        raise Mismatch(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
     from wuwei.brief import last_turn
     completion, message, _ = last_turn(payload['agent_transcript_path'])
     text = payload.get('last_assistant_message')
@@ -497,15 +502,19 @@ def stopped(item, name, payload, *, root):
     if completion == record.get('completion'):
         return True
     reported = payload.get('usage', {})
-    if isinstance(reported, dict):
-        reported = {**{key: payload[source] for key, source in (
-            ('input_tokens', 'total_input_tokens'), ('output_tokens', 'total_output_tokens'),
-            ('duration', 'duration_seconds'), ('model', 'model')) if source in payload}, **reported}
-        if 'duration' not in reported and 'duration_ms' in payload:
-            milliseconds = payload['duration_ms']
-            if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
-                raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
-            reported['duration'] = milliseconds / 1000
+    try:
+        if isinstance(reported, dict):
+            reported = {**{key: payload[source] for key, source in (
+                ('input_tokens', 'total_input_tokens'), ('output_tokens', 'total_output_tokens'),
+                ('duration', 'duration_seconds'), ('model', 'model')) if source in payload}, **reported}
+            if 'duration' not in reported and 'duration_ms' in payload:
+                milliseconds = payload['duration_ms']
+                if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
+                    raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
+                reported['duration'] = milliseconds / 1000
+        normalize_usage(reported, None)
+    except ValueError:
+        reported = {}  # #905: usage the runtime got wrong is unmeasured; the finished result still counts
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
     measured = data.get('fast_checks', {}).get(record['repo'], {})
