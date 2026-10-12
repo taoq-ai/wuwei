@@ -125,13 +125,13 @@ def test_owner_answer_reads_yes_no_or_none(root):
     """Part 14: the latest recorded answer on one Owner step card; needs_owner is None only on Yes."""
     from fakes import owner
     command = 'bin/wuwei dispatch next A'
-    assert sessions.owner_answer(root, command, 'x', 't1') is None
+    assert sessions.owner_answer(root, command, 't1') is None
     owner.answer(root, command, 't1', reply='No')
-    assert sessions.owner_answer(root, command, 'x', 't1') == 'No'
+    assert sessions.owner_answer(root, command, 't1') == 'No'
     assert sessions.needs_owner(root, command, 'x', 't1') is not None
     owner.answer(root, command, 't1')
-    assert sessions.owner_answer(root, command, 'x', 't1') == 'Yes'
+    assert sessions.owner_answer(root, command, 't1') == 'Yes'
     assert sessions.needs_owner(root, command, 'x', 't1') is None
-    assert sessions.owner_answer(root, command, 'x', 't2') is None
+    assert sessions.owner_answer(root, command, 't2') is None
     owner.answer(root, command, 't1', reply='Something else')
-    assert sessions.owner_answer(root, command, 'x', 't1') is None
+    assert sessions.owner_answer(root, command, 't1') is None

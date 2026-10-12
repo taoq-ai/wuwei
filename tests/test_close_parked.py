@@ -132,6 +132,8 @@ def test_a_critical_scanner_finding_holds_the_close_until_the_owner_answers(case
     assert out.count('Owner step: bin/wuwei close (') == 1
     assert 'Read -> WebFetch' in out and 'Bash -> WebFetch' in out and 'Read.' not in out
     owner.answer_card(root, out)
+    from wuwei import closing
+    assert closing.scanner_hold(root)[0] == 0  # #856 F2: a hold check never spends the Yes
     assert main(['close']) == 0
     state.append_event('scanner.finding', {'chain': ['Edit', 'WebFetch'], 'risk_level': 'critical',
                                            'session_id': 's3'}, root)

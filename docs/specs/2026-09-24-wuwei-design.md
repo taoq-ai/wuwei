@@ -1458,6 +1458,15 @@ Bash call that runs `wuwei hook` is refused, so a session cannot feed the hook a
 card counts whatever `guards.enforce` says. The boundary is the one the terminal prompt had: friction
 against the planner and seats, not proof against a process running as the owner's user.
 
+Amended (for owner review, 2026-10-12, #856, #924): the answer binds the card's question, which
+is the exact command and its token, with the reply; the option text is shown for review and
+binds nothing. `config set` and `config add-repo` hash the command (key, value, `--add`) for the
+token, not the rendered diff, so adjacent keys are answered in one round. A Yes is spent once:
+the command that applies it records `owner.approved`, and a later run of the same command asks
+again (the close hold reads the Yes on the day's critical findings without spending it). A card answered on a question that does not match makes the refusal say so and ask for
+it verbatim. Once the card is answered Yes, the same command applies from the session or from
+the owner's own shell; nothing reads a terminal answer.
+
 ### 9.2 Process edges (owner, 2026-10-11, #789)
 
 An edge is an action WUWEI cannot take back: it changes what others see or leaves the

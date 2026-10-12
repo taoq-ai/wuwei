@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 
 from wuwei import workspace
@@ -36,39 +37,69 @@ def owner_card(command, detail, token='', no='Nothing changes.'):
             'record': command}
 
 
-def owner_topic(question, options, reply):
-    """The hashed answer to an Owner step question: the question, every option as asked, the
-    reply. An empty reply is the asked topic every answer carries, so the latest one decides."""
-    text = '\n'.join([question, *(f"{option['label']}: {option['description']}" for option in options), reply])
-    return card_topic(OWNER_STEP, text if reply else question)
+def owner_topic(question, reply=''):
+    """The hashed answer to an Owner step question: the question (the command and its token)
+    with the reply; the options are for review (#856). An empty reply is the asked topic every
+    answer carries, so the latest one decides; a bare command part or '(<token>)' only names a
+    card that did not match."""
+    return card_topic(OWNER_STEP, f'{question}\n{reply}' if reply else question)
 
 
-def owner_answer(root, command, detail, token='', no='Nothing changes.'):
-    """'Yes', 'No' or None: the owner's latest answer on this step's Owner step card today,
-    recorded by the hook; any other reply, or none, is None."""
-    card = owner_card(command, detail, token, no)
-    asked, *replies = (owner_topic(card['question'], card['options'], reply) for reply in ('', 'Yes', 'No'))
+def _rows(root):
+    """Today's (kind, payload) event rows, oldest first; a damaged row is skipped."""
     path = workspace.day_dir(root) / 'events.jsonl'
-    answer = None
     for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
         try:
             row = json.loads(line)
-            topics = row['payload']['topics'] if row['kind'] == 'gate.asked' else None
+            if isinstance(row['payload'], dict):
+                yield row['kind'], row['payload']
         except (ValueError, TypeError, KeyError):
             continue  # a damaged row is no answer
-        if isinstance(topics, list) and asked in topics:
-            answer = next((label for label, topic in zip(('Yes', 'No'), replies) if topic in topics), None)
+
+
+def _topics(root):
+    """Today's recorded gate.asked topic lists, oldest first."""
+    for kind, payload in _rows(root):
+        if kind == 'gate.asked' and isinstance(payload.get('topics'), list):
+            yield payload['topics']
+
+
+def owner_answer(root, command, token=''):
+    """'Yes', 'No' or None: the owner's latest answer on this step's Owner step card today,
+    recorded by the hook; any other reply, or none, is None. A Yes is spent once an
+    owner.approved row for this command and token follows it (#856)."""
+    question = owner_card(command, '', token)['question']
+    answer = None
+    for kind, payload in _rows(root):
+        if kind == 'owner.approved' and (payload.get('command'), payload.get('token')) == (command, token):
+            answer = None
+        elif kind == 'gate.asked' and isinstance(topics := payload.get('topics'), list) and owner_topic(question) in topics:
+            answer = next((reply for reply in ('Yes', 'No') if owner_topic(question, reply) in topics), None)
     return answer
+
+
+def step(question):
+    """The command part of an Owner step question: without the prefix and a trailing (...)."""
+    return re.sub(r' \([^()]*\)$', '', question.strip()).removeprefix(f'{OWNER_STEP}: ')
 
 
 def needs_owner(root, command, detail, token='', no='Nothing changes.'):
     """#831: None when the owner's latest answer on this step's card today (recorded by the
-    hook) is Yes, else the refusal naming the card to ask."""
-    if owner_answer(root, command, detail, token, no) == 'Yes':
-        return None
+    hook) is Yes; the approval is an owner.approved event, which spends it (#856). Else the
+    one-line refusal naming the card to ask."""
     card = owner_card(command, detail, token, no)
-    return (f'{command}: waits for the owner; ask this Owner step card with AskUserQuestion, '
-            f'then run the command again on Yes: {json.dumps(card)}')
+    if owner_answer(root, command, token) == 'Yes':
+        from wuwei import state
+        state.append_event('owner.approved', {'command': command, 'token': token}, root)
+        return None
+    hints = {owner_topic(step(command))} | ({owner_topic(f'({token})')} if token else set())
+    seen = any(hints & set(topics) and owner_topic(card['question']) not in topics for topics in _topics(root))
+    return (f'{command}: waits for the owner; '
+            + ('a card for this step was answered but did not match; ask it verbatim; ' if seen else '')
+            + 'ask this Owner step card with AskUserQuestion; once it is answered Yes, the same command '
+            'applies from here or from your own terminal'
+            + ('; for a config change you may also edit .wuwei/config.toml by hand' if command.startswith('bin/wuwei config ') else '')
+            + f'; card: {json.dumps(card)}')
 
 
 def owner_step_call(payload, root, *actions):

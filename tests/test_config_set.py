@@ -51,8 +51,9 @@ def test_one_value_lands_after_its_digest(workspace, capsys):
     assert config_set('owner.verbosity.default', '"standard"', confirm) == 0
     out = capsys.readouterr().out
     assert '+default = "standard"' in out
-    summary, after = out.split('Applied the change')
-    assert confirm.digests == [hashlib.sha256(summary.encode()).hexdigest()[:12]]
+    _, after = out.split('Applied the change')
+    command = "bin/wuwei config set owner.verbosity.default '\"standard\"'"  # #856: the token hashes the command
+    assert confirm.digests == [hashlib.sha256(command.encode()).hexdigest()[:12]]
     assert 'replaced: owner.verbosity.default = "standard" (was "brief")' in after
     assert load_config(workspace)['owner']['verbosity']['default'] == 'standard'
     assert config_set('owner.verbosity.default', '"standard"', confirm) == 0

@@ -608,7 +608,7 @@ def _asked(root, data, item, results, roles, round_name):
     detail = (f"Gate {role} says {results[role]['verdict']} on {item}: {_head(results[role])}. "
               'Yes opens a fix round; No parks the item.')
     command = 'bin/wuwei dispatch next ' + shlex.quote(item)
-    return (sessions.owner_answer(root, command, detail, token, PARKS),
+    return (sessions.owner_answer(root, command, token),
             sessions.owner_card(command, detail, token, PARKS))
 
 
@@ -656,7 +656,7 @@ def _blocked_card(root, data, item, build=False):
               + ('continues it on your answer' if build else 'sends it to its gates with your answer')
               + '; No parks the item.')
     token = hashlib.sha256(f'{agent}\n{line}'.encode()).hexdigest()[:12]
-    return (f'builder blocked: {line}', sessions.owner_answer(root, command, detail, token, PARKS),
+    return (f'builder blocked: {line}', sessions.owner_answer(root, command, token),
             sessions.owner_card(command, detail, token, PARKS), line)
 
 

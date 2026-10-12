@@ -90,8 +90,7 @@ def test_owner_answer_counts_with_enforce_off(ws):
 def test_only_a_recorded_gate_asked_row_counts(ws):
     """#831 F1: a note whose payload names gate.asked, or a damaged row, is not an answer."""
     question = f'Owner step: {OWNER_MERGE}'
-    card = sessions.owner_card(OWNER_MERGE, 'x')
-    topic = sessions.owner_topic(question, card['options'], 'Yes')
+    topic = sessions.owner_topic(question, 'Yes')
     state.append_event('note', {'via': 'gate.asked', 'topics': [topic]}, ws)
     path = workspace.day_dir(ws) / 'events.jsonl'
     path.chmod(0o644)
@@ -108,15 +107,6 @@ def test_the_latest_answer_decides(ws):
     owner.answer(ws, OWNER_MERGE, reply='No')
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
     owner.answer(ws, OWNER_MERGE)
-    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
-
-
-def test_a_swapped_description_does_not_count(ws):
-    """#831 F6: the answer binds the options the card printed, not only the question."""
-    from fakes import owner
-    owner.answer(ws, OWNER_MERGE, detail='something harmless')
-    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
-    owner.answer(ws, OWNER_MERGE, detail='x')
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
 
 
@@ -227,6 +217,148 @@ def test_a_forged_note_never_answers_for_the_owner(ws):
     """The reviewer's probe: a note with the answer's topic is not an answer."""
     command = 'bin/wuwei plan set A-1 owner_merge=false'
     card = sessions.owner_card(command, 'x')
-    topic = sessions.owner_topic(card['question'], card['options'], 'Yes')
+    topic = sessions.owner_topic(card['question'], 'Yes')
     state.append_event('note', {'via': 'gate.asked', 'topics': [topic]}, ws)
     assert sessions.needs_owner(ws, command, 'x') is not None
+
+
+# #924, #856: the card binds by its question; the owner's terminal applies.
+
+def approvals(root):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    return [json.loads(line)['payload']['command'] for line in path.read_text().splitlines()
+            if json.loads(line)['kind'] == 'owner.approved']
+
+
+def printed_card(err):
+    card, _ = json.JSONDecoder().raw_decode(err[err.index('{"question"'):])
+    return card
+
+
+def test_issue_924_a_yes_on_the_shortened_field_card_applies_when_run_again(ws, capsys, monkeypatch):
+    """#924 root cause: the planner asked the card with the Yes diff shortened (no hunk header, no
+    context) and the owner answered Yes; the Yes was bound to the options as asked, so the
+    owner's terminal run printed the same refusal. The answer binds the question now."""
+    from fakes import owner
+    for name in ('CLAUDECODE', 'WUWEI_SESSION_ID', 'WUWEI_SEAT_ROLE'):
+        monkeypatch.delenv(name, raising=False)
+    args = ('config', 'set', 'outward.allow', '["mcp__notion__notion-update-page"]', '--add')
+    assert main(*args) == 1
+    card = printed_card(capsys.readouterr().err)
+    card['options'][0]['description'] = 'Apply the change:\n-allow = []\n+allow = ["mcp__notion__notion-update-page"]'
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert main(*args) == 0, capsys.readouterr().err  # the session, or the owner's own shell
+    assert config(ws)['outward']['allow'] == ['mcp__notion__notion-update-page']
+    assert len(approvals(ws)) == 1
+
+
+def test_issue_856_a_shortened_option_counts(ws):
+    """#856 (supersedes #831 F6 at the owner's call): the question binds, the options are for review."""
+    from fakes import owner
+    owner.answer(ws, OWNER_MERGE, detail='shortened')
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+
+
+def test_issue_856_adjacent_keys_answer_in_one_round(ws, capsys):
+    """#856 field comment: three keys whose hunks share context, answered in one round."""
+    from fakes import owner
+    from pathlib import Path
+    template = Path(__file__).resolve().parents[1] / 'templates/workspace/config.toml'
+    (ws / '.wuwei/config.toml').write_text(template.read_text())
+    sets = [('codex.command', '["node", "c.mjs"]'), ('codex.timeout_seconds', '600'),
+            ('gates.second_opinion', '"codex:gpt-5"')]
+    refusals = []
+    for key, value in sets:
+        assert main('config', 'set', key, value) == 1
+        refusals.append(capsys.readouterr().err)
+    for err in refusals:
+        owner.answer_card(ws, err)
+    for key, value in sets:
+        assert main('config', 'set', key, value) == 0, capsys.readouterr().err
+    assert config(ws)['codex'] == {'command': ['node', 'c.mjs'], 'timeout_seconds': 600}
+    assert config(ws)['gates']['second_opinion'] == 'codex:gpt-5'
+
+
+def test_issue_856_a_reworded_question_names_the_mismatch(ws):
+    from fakes import owner
+    card = sessions.owner_card(OWNER_MERGE, 'x', 'abc123def456')
+    assert 'did not match' not in sessions.needs_owner(ws, OWNER_MERGE, 'x', 'abc123def456')
+    card['question'] = 'Owner step: release the merge hold on A (abc123def456)'
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    reason = sessions.needs_owner(ws, OWNER_MERGE, 'x', 'abc123def456')
+    assert 'a card for this step was answered but did not match; ask it verbatim' in reason
+    assert approvals(ws) == []
+
+
+def test_every_refusal_says_where_the_answered_command_applies(ws):
+    reason = sessions.needs_owner(ws, OWNER_MERGE, 'Release the owner merge hold on A')
+    assert 'once it is answered Yes, the same command applies from here or from your own terminal' in reason
+    assert '\n' not in reason and 'config.toml by hand' not in reason
+    assert 'edit .wuwei/config.toml by hand' in sessions.needs_owner(ws, 'bin/wuwei config set cap 5', 'x')
+
+
+def test_a_yes_is_spent_once(ws):
+    """#856 F2: an owner.approved row after the Yes spends it; a rerun asks again."""
+    from fakes import owner
+    owner.answer(ws, OWNER_MERGE)
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+    assert sessions.owner_answer(ws, OWNER_MERGE) is None
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
+    owner.answer(ws, OWNER_MERGE)
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+    assert len(approvals(ws)) == 2
+
+
+def test_a_config_yes_never_undoes_a_later_owner_change(ws, capsys):
+    """#856 F2 scenario: an old Yes does not apply the same command again after it applied."""
+    from fakes import owner
+    args = ('config', 'set', 'cap', '5')
+    assert main(*args) == 1
+    owner.answer_card(ws, capsys.readouterr().err)
+    assert main(*args) == 0 and config(ws)['cap'] == 5
+    (ws / '.wuwei/config.toml').write_text('cap = 6\n')
+    assert main(*args) == 1 and config(ws)['cap'] == 6
+
+
+def test_issue_856_a_reworded_card_without_a_token_names_the_mismatch(ws):
+    """#856 F4: the hint matches the command part of the question, token or not."""
+    from fakes import owner
+    command = 'bin/wuwei plan park A --reason x'
+    card = sessions.owner_card(command, 'x')
+    card['question'] = f'Owner step: {command} (park it)'
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert 'did not match; ask it verbatim' in sessions.needs_owner(ws, command, 'x')
+    card = sessions.owner_card(OWNER_MERGE, 'x', 'abc123def456')
+    card['question'] = f'Owner step: {OWNER_MERGE}'  # the token dropped
+    assert 'did not match' not in sessions.needs_owner(ws, OWNER_MERGE, 'x', 'abc123def456')
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert 'did not match; ask it verbatim' in sessions.needs_owner(ws, OWNER_MERGE, 'x', 'abc123def456')
+
+
+def test_a_pty_wrapped_run_without_an_answered_card_is_refused(ws):
+    """#924 review F1: a session that wraps the command in a pseudo-terminal, strips its
+    environment and types y gets the refusal; nothing reads a terminal answer."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    master, slave = os.openpty()
+    env = {name: value for name, value in os.environ.items()
+           if not name.startswith(('CLAUDE', 'CODEX')) and name not in ('WUWEI_SESSION_ID', 'WUWEI_SEAT_ROLE')}
+    env.update(PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'cli'), WUWEI_WORKSPACE=str(ws))
+    child = subprocess.Popen([sys.executable, '-m', 'wuwei', 'config', 'set', 'cap', '7'], cwd=ws, env=env,
+                             stdin=slave, stdout=slave, stderr=slave)
+    os.close(slave)
+    os.write(master, b'y\n')
+    out = b''
+    while True:
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+    os.close(master)
+    assert child.wait(timeout=60) == 1 and b'waits for the owner' in out
+    assert 'cap' not in config(ws) and approvals(ws) == []

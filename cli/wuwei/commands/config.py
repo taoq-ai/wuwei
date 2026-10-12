@@ -204,14 +204,15 @@ def proposal(root, raw, config, results):
     return text, diff, edits, summary, snapshot
 
 
-def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None, command=None):
-    """The one owner digest path: print, confirm on the owner's Owner step card, re-read, write."""
+def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None, command=None, identity=None):
+    """The one owner digest path: print, confirm on the owner's Owner step card, re-read, write.
+    identity (#856): what the card's token hashes when the command names the change, else the summary."""
     import hashlib
     import json
     from wuwei import sessions, workspace
 
     print(summary, end='')
-    digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
+    digest = hashlib.sha256((identity or summary).encode()).hexdigest()[:12]
     if confirm is None:  # #831
         if owner := sessions.needs_owner(root, command or f'bin/wuwei {label}', f'Apply the {what}:\n{summary}', digest):
             print(owner, file=sys.stderr)
@@ -285,7 +286,7 @@ def _edit(label, what, confirm, change, root=None, keys=(), add=False, command=N
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return FINDINGS
     try:
-        code = offer(root, raw, text, diff, label=label, what=what, confirm=confirm, command=command)
+        code = offer(root, raw, text, diff, label=label, what=what, confirm=confirm, command=command, identity=command)
     except (OSError, ValueError) as exc:
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
