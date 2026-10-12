@@ -91,6 +91,8 @@ def attention(directory, classified_state=None):
             tier, lane = classify(event, classified_state)
             if kind in ('pr.action', 'merge.policy_blocked') and isinstance(payload, dict):
                 key = (kind, payload.get('pr'))
+            elif kind == 'scanner.finding' and isinstance(payload, dict):  # #870: one row per chain class
+                key = (kind, str(payload.get('chain') or payload.get('rule')))
             elif tier == 'page':
                 key = (kind, number)
             else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it

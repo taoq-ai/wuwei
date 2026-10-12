@@ -332,7 +332,8 @@ def test_trace_sweep_parks_and_pages(sweep_case, agent_id):
     assert item['status'] == 'blocked' and item['resume_phase'] == 'planned'
     assert item['disposition'] == {'kind': 'parked', 'reason': 'scanner chain Read -> WebFetch'}
     finding, = scanner_events(root, 'scanner.finding')
-    assert finding['payload'] == {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': session}
+    assert finding['payload'] == {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': session,
+                                  'reason': 'scanner chain Read -> WebFetch'}
     assert signal.classify(finding, state.read_state(root))[0] == 'page'
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
     for name in ('events.jsonl', 'state.json'):
