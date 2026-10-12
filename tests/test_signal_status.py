@@ -748,6 +748,23 @@ def test_attention_shows_current_conditions(attention_root):
     assert {row['source'] for row in rows} == {'decision.one_way', 'work.outside_goals'}
 
 
+def test_scanner_findings_are_one_row_per_chain_class(attention_root):
+    # #870: doctor lists a scanner finding once per chain (or rule), with its count.
+    from wuwei import state, workspace
+    from wuwei.commands.status import attention
+    root = attention_root
+    for chain, sessions in ((['Read', 'WebFetch'], 'abc'), (['Bash', 'WebFetch'], 'de')):
+        for session in sessions:
+            state.append_event('scanner.finding', {'chain': chain, 'risk_level': 'critical', 'session_id': session,
+                                                   'reason': 'scanner chain ' + ' -> '.join(chain)}, root)
+    for _ in range(2):
+        state.append_event('scanner.finding', {'tier': 'page', 'source': 'tool_trace', 'rule': 'security.honeytoken'}, root)
+    rows = [row for row in attention(workspace.day_dir(root)) if row['source'] == 'scanner.finding']
+    assert sorted((row['reason'], row['count'], row['tier']) for row in rows) == [
+        ('scanner chain Bash -> WebFetch', 2, 'page'), ('scanner chain Read -> WebFetch', 3, 'page'),
+        ('scanner.finding', 2, 'page')]
+
+
 def test_merge_policy_warning_is_per_pr_and_clears_on_merge(attention_root):
     from wuwei import state, workspace
     from wuwei.commands.status import attention
