@@ -714,3 +714,16 @@ def test_auth_status_ok_needs_no_probe(monkeypatch):
     calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH}])
     result = adapter().auth_status()
     assert (result.exit, result.reason, len(calls)) == (0, '', 1)
+
+
+@pytest.mark.parametrize('repo,expected', [({'full_name': 'someone/widget'}, 'someone/widget'), (None, None)])
+def test_pr_names_the_head_repository(monkeypatch, repo, expected):
+    # #879: a fork head (or a deleted fork, null) differs from the base repository.
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'pr'))
+    raw = json.loads(case['steps'][0]['stdout'])
+    raw['head']['repo'] = repo
+    case['steps'][0]['stdout'] = json.dumps(raw)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    result = adapter().pr(*case['args'])
+    assert result.exit == 0 and result.data['head_repo'] == expected
+    assert result.data['base_repo'] == 'acme/widget'  # review F4: the host's name, not the ref's

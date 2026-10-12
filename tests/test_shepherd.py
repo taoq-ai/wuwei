@@ -72,6 +72,11 @@ review_gate_check = "Review Gate"
     ]))
     ports = {'code_host': host, 'review_bot': bot, 'chat': chat, 'vcs': vcs}
     monkeypatch.setattr(registry, 'load', lambda kind, config: ports[kind])
+    from wuwei.commands import worktree
+    vcs.added = []  # #879: pr claim's worktree add, recorded; the git path is tested end to end
+    monkeypatch.setattr(worktree, 'add', lambda args, root, config, item: workspace._require_gate(root)
+                        or vcs.added.append((item, args.branch, args.repo))
+                        or {'branch': args.branch, 'path': f'worktrees/{item}'})
     state._write_state(lambda data: data.update(raised_prs=[REF]), tmp_path)
     return tmp_path, host, bot, chat, vcs
 
@@ -166,6 +171,76 @@ def test_claim_adopts_the_branch_worktree(case, monkeypatch, capsys):
     assert 'worktree not adopted: worktree has unrecorded changes' in capsys.readouterr().err
     vcs.responses['worktrees'] = Result(2, reason='git.worktrees: could not run')
     assert main(['pr', 'claim', '8']) == 2
+    assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
+
+
+def test_claim_adds_a_worktree_when_none_is_on_the_branch(case, capsys):
+    # #879: no local worktree on the PR branch: worktree add --branch makes one (it fetches).
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    state._write_state(lambda data: (data['items'].update(A={}), data['approved_items'].append('A')), root)
+    assert main(['pr', 'claim', '8', '--item', 'A']) == 0
+    assert vcs.added == [] and 'worktree not created: morning gate' in capsys.readouterr().err
+    adopted_day(root, ['G-1'])
+    assert main(['pr', 'claim', '8', '--item', 'A']) == 0
+    assert vcs.added == [('A', 'feature', 'acme/widget')]
+    assert '"path": "worktrees/A"' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('head_repo', ['someone/widget', None])
+def test_claim_refuses_a_fork_head(case, capsys, head_repo):
+    # #879: a fork's branch is not on brief.remote and a fix cannot be pushed back to it.
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8',
+                                   head_repo=head_repo)
+    adopted_day(root, ['G-1'])
+    assert main(['pr', 'claim', '8']) == 1
+    out = capsys.readouterr().out
+    assert vcs.added == [] and f'fork {head_repo or "(deleted)"}' in out
+    assert f'git -C {root / "repo"} fetch origin pull/8/head' in out
+    assert 'worktree add' not in out  # review F3: a read-only fetch; the item never gets a worktree
+    data = state.read_state(root)
+    assert data['claimed_prs'] == ['acme/widget#8'] and 'worktree' not in data['items']['PR-8']
+
+
+def test_claim_refuses_a_worktree_on_the_default_branch(case, capsys):
+    # review G4: every fix push to the default branch is refused, so no worktree is made for one.
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8', branch='main')
+    adopted_day(root, ['G-1'])
+    assert main(['pr', 'claim', '8']) == 1
+    assert vcs.added == [] and 'head is the default branch main' in capsys.readouterr().out
+    assert 'worktree' not in state.read_state(root)['items']['PR-8']
+
+
+def test_claim_reads_a_moved_repository_from_the_host_not_the_ref(case, capsys):
+    # review F4: after a transfer the host names the new base repository; the head is not a fork.
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8',
+                                   head_repo='New-Org/widget', base_repo='new-org/widget')
+    adopted_day(root, ['G-1'])
+    assert main(['pr', 'claim', '8']) == 0, capsys.readouterr()
+    assert vcs.added == [('PR-8', 'feature', 'acme/widget')]
+
+
+def test_a_failed_worktree_step_keeps_the_claim_and_names_the_rerun(case, capsys, monkeypatch):
+    # review F5: the claim is recorded; the fetch failure says to rerun the claim.
+    from wuwei.__main__ import main
+    from wuwei.commands import worktree
+    root, host, _, _, _ = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    adopted_day(root, ['G-1'])
+
+    def fail(args, root, config, item):
+        raise ValueError('git exited 128 (fetch origin feature)')
+    monkeypatch.setattr(worktree, 'add', fail)
+    assert main(['pr', 'claim', '8']) == 0
+    assert ('worktree not created: git exited 128 (fetch origin feature); rerun bin/wuwei pr claim '
+            'acme/widget#8') in capsys.readouterr().err
     assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
 
 

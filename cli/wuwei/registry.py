@@ -53,7 +53,7 @@ PARAMETERS = {
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
-            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
+            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path', 'remote')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

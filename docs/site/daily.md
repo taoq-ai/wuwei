@@ -65,9 +65,9 @@ authored, for example `Claims PR-12 (owner/repo#12)`. Approving claims each one 
 [adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
 `wuwei pr claim owner/repo#12 --goal G-1`.
 
-The shepherd needs no checkout. When a fix round needs one, `wuwei worktree adopt <path>
---item <item>` registers a clean worktree you have, or `wuwei worktree add <item> --branch
-<branch>` checks the branch out.
+The claim gives the item a checkout of the PR branch: a clean worktree you have on it, or
+`worktrees/<item>`, fetched when the branch is only on the remote. A conflict, red checks or
+a fix asked in review then comes back from `wuwei next` as a fix-round builder.
 
 ## 4. Through the day
 

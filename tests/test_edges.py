@@ -281,6 +281,42 @@ def test_default_branch_push_edge(root, command, where, code, fragments):
     decide(root, command, where, code, fragments)
 
 
+def test_a_seat_push_to_a_claimed_pr_branch_is_refused(root):
+    # #879 review H2, J2: a claimed PR's branch takes only the gated push of bin/wuwei pr act --push,
+    # from any checkout and by any refspec; a push of another branch from the main checkout is allowed.
+    state._write_state(lambda data: (data['items']['DIV-1'].update(pr='example/project#9', branch='feature-y'),
+                                     data['claimed_prs'].append('example/project#9')), root)
+    tree = root / 'worktrees/DIV-1'
+    (tree / 'sub').mkdir()
+    (root / 'link').symlink_to(tree)
+    for command, where in (
+            ('git push origin HEAD:refs/heads/feature-y', 'worktrees/DIV-1/sub'),
+            ('cd worktrees/DIV-1 && git push origin feature-y', '.'),
+            ('git push origin feature-y', 'link'),
+            (f'git -C {tree} push origin feature-y', '.'),
+            (f'git --git-dir={tree}/.git --work-tree={tree} push', '.'),
+            (f'GIT_DIR={tree}/.git git push', '.'),
+            (f'GIT_WORK_TREE={tree} git push origin', '.'),
+            ('git -C repo push origin feature-y', '.'),
+            ('git push origin HEAD:refs/heads/feature-y', 'repo'),
+            ('git push origin feature-y:feature-y', 'repo'),
+            (f'bash -c "cd {tree}; git push origin feature-y"', '.'),
+            ('git push', 'worktrees/DIV-1'),
+            # review K2: exported GIT_DIR, short ref forms, every branch, a glob, --git-dir after -C
+            (f'export GIT_DIR={tree}/.git; git push origin', '.'),
+            (f'export GIT_DIR={tree}/.git && git push', '.'),
+            ('git -C repo push origin HEAD:heads/feature-y', '.'),
+            ('git -C repo push --all origin', '.'),
+            ('git -C repo push --branches origin', '.'),
+            ("git -C repo push origin 'refs/heads/*:refs/heads/*'", '.'),
+            ('git -C worktrees --git-dir=DIV-1/.git push', '.')):
+        decide(root, command, where, 1, ('DIV-1 is claimed PR example/project#9', 'bin/wuwei pr act example/project#9 --push'))
+    for command, where in (('git push origin HEAD:refs/heads/other', 'repo'), ('git status', 'worktrees/DIV-1'),
+                           ('export X=1; git push origin other', 'repo'),
+                           ('python3 -m pytest -q', 'worktrees/DIV-1')):
+        decide(root, command, where, 0, ())
+
+
 # Deploy (design 4.7): on the floor; the owner's Yes on the exact command's card lets it run (#816).
 @pytest.mark.parametrize(ROW, [
     *(refused(command, 'publish: ', 'Owner step: ', rule) for command, rule in [

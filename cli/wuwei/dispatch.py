@@ -734,6 +734,8 @@ def next_step(item, root=None):
 
 def raise_action(root, data, item, notes):
     """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
+    if (pr := data['items'][item].get('pr')) in data.get('claimed_prs', ()):  # #879: back to its branch
+        return {'action': 'run', 'command': f'wuwei pr act {pr} --push', 'notes': notes}
     name = f'shepherd-{item}'
     path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
     worktree = data['items'][item].get('worktree') or str(root)
@@ -763,6 +765,10 @@ def resolve_offer(root, launch):
         if action['action'] == 'fix':  # the fix round opened; its builder continues fresh (#614)
             record = state.read_state(root)['builds'][item]
             action = build.next_action(item, root / record['brief'], record['worktree'], root=root)
+    elif command.startswith('wuwei pr act '):  # #879: a claimed PR's fix round, else its plain run
+        from wuwei import pr_actions
+        action = pr_actions.launch(root, command.split()[-1])
+        launch = {**launch, 'kind': 'fix' if action['action'] in ('launch', 'continue') else 'pr'}
     else:
         action = {'action': 'run', 'command': command}
     if action['action'] in ('done', 'park', 'escalate', 'parked'):
@@ -845,7 +851,7 @@ def launch_set(root=None):
         entries.append({'item': name, 'goal': goal(name), **value})
 
     offered = [launch for launch in derive.offers(data, root, config)['launches']  # seat steps only
-               if launch['command'].startswith(('wuwei build next ', 'wuwei dispatch next '))]
+               if derive.seated(data, launch)]
     for launch in sorted((launch for launch in offered if launch['command'] != 'wuwei dispatch next --all'),
                          key=lambda launch: launch['command'].startswith('wuwei build next ')):
         add(launch['item'], lambda: resolve_offer(root, launch), launch['kind'])

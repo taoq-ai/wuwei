@@ -74,7 +74,7 @@ CALLS = [
     ('vcs', 'recent_commits', ('repo',), True),
     ('vcs', 'default_branch', ('repo',), True),
     ('vcs', 'worktrees', ('repo',), True),
-    ('vcs', 'worktree_checkout', ('repo', 'branch', 'path'), False),
+    ('vcs', 'worktree_checkout', ('repo', 'branch', 'path', 'remote'), False),
     ('tracker', 'backlog', ('filter',), True),
     ('tracker', 'claim', ('item',), False),
     ('tracker', 'transition', ('item', 'state'), False),

@@ -319,10 +319,11 @@ def resolve(row, root):
     with its widget list. Called by the next command only; it never loops."""
     import shlex
     if row['state'] == 'set':
-        from wuwei import dispatch
+        from wuwei import derive, dispatch
         value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        data = state.read_state(root)
         runs = [launch for launch in row['launches']  # PR, merge, seat stop and finding steps run as is
-                if not launch['command'].startswith(('wuwei build next ', 'wuwei dispatch next '))]
+                if not derive.seated(data, launch)]
         launches = [{**launch, 'action': 'run'} for launch in runs] + value['entries']
         if (launches and all(launch['action'] == 'wait' for launch in launches) and not row['duties']
                 and not row['decision'] and any(launch.get('until') for launch in launches)):

@@ -223,3 +223,53 @@ def test_duties_follow_the_configured_channels(root):
     assert [row['duty'] for row in derive.duties(root, workspace.load_config(root))] == ['ping', 'summary']
     path.write_text(path.read_text() + '[duties]\non = ["summary"]\n')
     assert [row['duty'] for row in derive.duties(root, workspace.load_config(root))] == ['summary']
+
+
+def claimed(root, build=None):
+    """#879: a claimed PR whose item has a worktree, and its fix-round build when given."""
+    state._write_state(lambda data: data.update(
+        gate_approved=True, approved_items=['A'], claimed_prs=['example/project#1'],
+        items={'A': {'phase': 'raised', 'status': 'running', 'pr': 'example/project#1',
+                     'worktree': 'worktrees/A'}}, **({'builds': {'A': build}} if build else {})),
+        root, kind='plan.approved')
+
+
+def offered(root, **pull):
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending', 'labels': [], **pull}]}))
+    data = state.read_state(root)
+    launches = derive.offers(data, root, workspace.load_config(root))['launches']
+    return [(row['kind'], row['command'], derive.seated(data, row)) for row in launches]
+
+
+ACT = 'wuwei pr act example/project#1'
+
+
+@pytest.mark.parametrize('pull,build,expected', [
+    ({'mergeable': 'conflicting'}, None, [('fix', ACT, True)]),
+    ({'checks': 'red'}, None, [('fix', ACT, True)]),
+    ({'checks': 'red'}, {'status': 'done'}, [('fix', ACT, True)]),
+])
+def test_a_claimed_pr_with_a_worktree_is_a_fix_round_step(root, pull, build, expected):
+    # #879: the launch set resolves the step into the builder (a round opens in implement).
+    claimed(root, build)
+    assert offered(root, **pull) == expected
+
+
+def test_a_claimed_pr_with_due_review_activity_is_a_fix_round_step(root):
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n'
+        '[adapters]\ncode_host = "github"\n')
+    claimed(root)
+    activity = {'activity_at': '2026-10-11T09:30:00Z'}
+    assert offered(root, **activity) == [('pr', ACT, True)]  # G3: resolved to a builder or a plain run
+    state.append_event('duty.done', {'item': 'A', 'duty': 'shepherd'}, root)
+    assert offered(root, **activity) == []  # answered: the PR waits on people
+
+
+def test_a_raised_or_worktreeless_claimed_pr_keeps_its_pr_act_run(root):
+    raised(root)
+    assert offered(root, mergeable='conflicting') == [('pr', ACT, False)]
+    claimed(root)
+    state._write_state(lambda data: data['items']['A'].pop('worktree'), root)
+    assert offered(root, mergeable='conflicting') == [('pr', ACT, False)]
