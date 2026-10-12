@@ -376,10 +376,11 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         return 2
 
 
-def claim_pr(root, ref, item=None, goal=None):
+def claim_pr(root, ref, item=None, goal=None, built=False):
     """Claim a fresh, externally verified PR. With no item in the plan, create one (source
     adopted, #510); adopt the PR branch's worktree when a clean one exists, else create
-    worktrees/<item> on the branch, fetched when it is only on the remote (#879)."""
+    worktrees/<item> on the branch, fetched when it is only on the remote (#879). built (#901):
+    the claimed work still takes its checks and gates (state.record_pr)."""
     import json
     from pathlib import Path
     import sys
@@ -401,7 +402,7 @@ def claim_pr(root, ref, item=None, goal=None):
             merge.require(goal, f'name the goal: bin/wuwei pr claim {ref} --goal <one of '
                                 f'{", ".join(data["goals"]) or "the approved goals"}>')
             plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
-        state.record_pr(root, item, ref, raised=False, head=pr['head'], branch=pr['branch'])
+        state.record_pr(root, item, ref, raised=False, head=pr['head'], branch=pr['branch'], built=built)
         print(ref)
         from wuwei import dispatch
         moved = dispatch.tracker_call(item, 'in_review', root)  # #842: the duty, as on pr raise
@@ -421,21 +422,13 @@ def claim_pr(root, ref, item=None, goal=None):
                 print(f'{ref} head is the default branch {pr["branch"]}; WUWEI never pushes to it, so '
                       f'{item} gets no worktree')
                 return 1
-            vcs = registry.load('vcs', config)
-            path = workspace.branch_worktree(vcs, source, pr['branch'], root)
+            from wuwei.commands import worktree
             try:
-                if path:
-                    print(json.dumps(workspace.adopt_worktree(root, item, path, vcs)))
-                else:  # #879: fetched and checked out as bin/wuwei worktree add --branch does
-                    from types import SimpleNamespace
-                    from wuwei.commands import worktree
-                    print(json.dumps(worktree.add(SimpleNamespace(repo=repo['name'], branch=pr['branch']),
-                                                  root, config, item)))
+                print(json.dumps(worktree.checkout(root, config, item, repo, pr['branch'])))
             except state.StateError as exc:
-                print(f'worktree not {"adopted" if path else "created"}: {exc}', file=sys.stderr)
+                print(f'worktree not ready: {exc}', file=sys.stderr)
             except ValueError as exc:  # the claim is recorded; a rerun retries the worktree
-                print(f'worktree not {"adopted" if path else "created"}: {exc}; rerun bin/wuwei pr '
-                      f'claim {ref}', file=sys.stderr)
+                print(f'worktree not ready: {exc}; rerun bin/wuwei pr claim {ref}', file=sys.stderr)
         return 0
     except (merge.Refused, state.StateError) as exc:
         print(exc)

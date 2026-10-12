@@ -16,9 +16,14 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, RACE
 
 def register(subparsers):
     parser = subparsers.add_parser('build', help='Select the next builder action')
-    parser.add_argument('operation', help='next, check, analysis, classes, or legacy Codex item')
+    parser.add_argument('operation', help='next, check, reconcile, analysis, classes, or legacy Codex item')
     parser.add_argument('arguments', nargs='*', metavar='item/brief/worktree')
     parser.add_argument('--file', help="analysis: read the spec-kit analysis report from PATH instead of stdin")
+    # #901: reconcile brings work done outside the record back in
+    parser.add_argument('--worktree', help='reconcile: the existing worktree that holds the work')
+    parser.add_argument('--pr', help='reconcile: the open PR of the work, owner/repo#n')
+    parser.add_argument('--repo', help='reconcile: the repository of --branch')
+    parser.add_argument('--branch', help='reconcile: the existing branch that holds the work')
     parser.set_defaults(func=run)
 
 
@@ -34,6 +39,8 @@ def run(args):
             print('build: usage: build analysis <item> [--file PATH] or build classes <worktree>; run bin/wuwei build analysis <item> with the report on stdin', file=sys.stderr)
             return 2
         return (run_analysis if args.operation == 'analysis' else classes)(args.arguments[0], args.file)
+    if args.operation == 'reconcile':
+        return run_reconcile(args)
     try:
         if args.operation in ('next', 'check'):
             root = workspace.find_workspace()
@@ -275,6 +282,15 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
+    if record is None and data['items'][item]['phase'] == 'planned' and data['cap_bound']:
+        # #901: a new build takes a CAP slot, as wuwei next counts it; the launch guard sends a
+        # builder with no build record here, so past CAP this waits instead of starting one
+        from wuwei.commands.next import approved
+        building = sum(data['items'][name]['phase'] in state.BUILD_PHASES and not state.held(data, name)
+                       for name in approved(data))
+        if building >= data['cap']:
+            raise ValueError(f'CAP {data["cap"]} reached ({building} building); wait for a build to finish, '
+                             f'then run bin/wuwei build next {item} (bin/wuwei next names the seat expected to free first)')
     repo = _repo(root, tree, config)
     policy = data['seat_policy'].get('builder', {})
     if runtime is None and policy.get('alternate'):
@@ -669,8 +685,10 @@ def check(item, *, root=None):
     record = state.read_state(root).get('builds', {}).get(item)
     if record is None or record['status'] != 'check':
         found = 'no build yet' if record is None else f'build {record["status"]}'
+        outside = (f'; work done outside the record: bin/wuwei build reconcile {item} --worktree <path>'
+                   if record is None else '')  # #901
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
-                         'for its current step')
+                         f'for its current step{outside}')
     _busy(item, record)
     from wuwei import fast_checks  # complete on the configured fast checks
     config = workspace.load_config(root)
@@ -822,6 +840,135 @@ def run_loop(item, brief, worktree, *, root=None):
     except (OSError, ValueError, RuntimeError) as exc:
         print(f'build: {exc}', file=sys.stderr)
         return 2
+
+
+def run_reconcile(args):
+    from wuwei.brief import Refused
+    if len(args.arguments) != 1:
+        print('build: usage: build reconcile <item> [--worktree PATH] [--pr owner/repo#n] '
+              '[--repo NAME --branch BRANCH]; run bin/wuwei build reconcile <item> --worktree <path>',
+              file=sys.stderr)
+        return 2
+    try:
+        print(json.dumps(reconcile(args.arguments[0], worktree=args.worktree, pr=args.pr,
+                                   repo=args.repo, branch=args.branch)))
+        return 0
+    except (state.StateError, Refused) as exc:
+        print(f'build reconcile: {exc}', file=sys.stderr)
+        return 1
+    except (OSError, ValueError, RuntimeError, PortExit) as exc:
+        print(f'build reconcile: {exc}', file=sys.stderr)
+        return 2
+
+
+UNMEASURED = ['gates: not run on this work yet', 'owner approval: none recorded',
+              'tests or reviews the outside work ran: not counted']
+
+
+def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None):
+    """#901: bring work done outside the record back in: the item's worktree, its PR and, before
+    the gates, a build record that starts at the fast checks (no builder seat is invented). Each
+    step reads what is recorded first, so a rerun finishes an interrupted one and an unchanged
+    one writes nothing. Nothing outside counts as tested or approved: the checks and gates run."""
+    from wuwei import merge, shepherd
+    from wuwei.brief import identifier, read, status
+    from wuwei.commands import worktree as worktrees
+    root = workspace.find_workspace(root)
+    identifier(item)
+    config = workspace.load_config(root)
+    vcs = registry.load('vcs', config)
+    data = state.read_state(root)
+    row = data['items'].get(item)
+    if row is None or item not in data['approved_items']:
+        raise state.StateError(f"{item} is not in the approved plan; on the owner's word admit it with "
+                               f'bin/wuwei plan add {item} --goal <G-n>, then rerun')
+    if row['phase'] in ('parked', 'escalated'):
+        raise state.StateError(f'{item} is {row["phase"]}; resume it with bin/wuwei plan resume {item}, then rerun')
+    repo = repo or row.get('repo')
+    if worktree:
+        workspace.adopt_worktree(root, item, worktree, vcs, dirty=True, repo=repo)
+    elif branch and not row.get('worktree'):
+        rows = [found for found in config['repos'] if found['name'] == repo or not repo and len(config['repos']) == 1]
+        if len(rows) != 1:
+            raise state.StateError(f'{branch} names no single repository; pass --repo <one of '
+                                   f'{", ".join(found["name"] for found in config["repos"])}>')
+        worktrees.checkout(root, config, item, rows[0], branch, dirty=True)
+    if pr:
+        ref = merge.reference(pr, root, config, repo=config['repos'][0]['name'] if len(config['repos']) == 1 else None)
+        data = state.read_state(root)
+        row = data['items'][item]
+        if row.get('pr') != ref or not row.get('worktree') and ref not in data['raised_prs']:
+            code = shepherd.claim_pr(root, ref, item, built=True)
+            if code:
+                raise (state.StateError if code == 1 else ValueError)(
+                    f'pr claim {ref} exited {code}; the line above says why, then rerun')
+    row = state.read_state(root)['items'][item]
+    if not row.get('worktree'):
+        raise state.StateError(f'{item} has no worktree; pass --worktree <path>, --repo <name> --branch <branch> '
+                               'or --pr <owner/repo#n>')
+    tree = (root / row['worktree']).resolve(strict=True)
+    if row['phase'] in ('planned', *state.BUILD_PHASES):
+        _reconcile_build(item, root, config, vcs, tree, row)
+    data = state.read_state(root)
+    row, record = data['items'][item], data.get('builds', {}).get(item) or {}
+    head = read(vcs.head, str(tree), root=root)['sha']
+    measured = data.get('fast_checks', {}).get(record.get('repo'), {})
+    phase = row['phase']
+    return {'item': item, 'phase': phase, 'worktree': str(tree), 'head': head, 'start': record.get('start'),
+            'pr': row.get('pr'), 'build': record.get('status'),
+            'dirty': [change['path'] for change in status(vcs, str(tree), root)],
+            'changed': read(vcs.touched, str(tree), record['start'], root=root) if record.get('start') else [],
+            'verified': [f'{command}: exit {measured[command]["exit"]} at {head[:12]}'
+                         for command in record.get('commands', ())
+                         if measured.get(command, {}).get('sha') == head],
+            'unmeasured': UNMEASURED + (['fast checks: none configured'] if record and not record['commands'] else []),
+            'action': record.get('action'),
+            'next': (f'wuwei build next {item}' if phase in state.BUILD_PHASES
+                     else f'wuwei dispatch next {item}' if phase in ('gate', 'delta')
+                     else None if phase == 'merged' else 'wuwei next')}
+
+
+def _reconcile_build(item, root, config, vcs, tree, row):
+    """The build step of reconcile: a build record at the fast checks on a brief at HEAD; an
+    existing record keeps its start head, runtime and fix rounds."""
+    from wuwei import brief as briefs, derive, dispatch
+    record = state.read_state(root).get('builds', {}).get(item)
+    if record and record['status'] == 'running':
+        raise state.StateError(f'builder seat {record.get("seat")} is running on {item}; wait for its stop '
+                               f'hook, then rerun')
+    head = briefs.read(vcs.head, str(tree), root=root)['sha']
+    snapshot = {'head': head, 'dirty': sorted(change['path'] for change in briefs.status(vcs, str(tree), root))}
+    if record and (record['status'] in ('done', 'parked') or record['action']['action'] == 'wait'
+                   or {key: (record.get('reconciled') or {}).get(key) for key in snapshot} == snapshot
+                   and record['status'] != 'check'):
+        return
+    if not record or record['status'] != 'check':
+        name = f'{item}-reconcile-{head[:12]}'
+        relative = str((workspace.day_dir(root) / 'briefs' / f'{name}.md').relative_to(root))
+        if not any(event['kind'] == 'brief written' and event['payload'].get('path') == relative
+                   for event in briefs.events(root)):
+            relative = briefs.write('builder', item, name, (
+                f'Reconciled: {item} was built outside the WUWEI record in this worktree, at HEAD {head}. '
+                'Nothing it ran outside counts: WUWEI runs the fast checks, then the gates. When WUWEI '
+                'sends you their failures, fix them here, commit, and stop. Uncommitted at reconcile: '
+                + (', '.join(snapshot['dirty']) or 'none') + '.'), worktree=str(tree), pr=row.get('pr'), root=root)
+        base = re.search(r'^Merge-base: (\S+)', (root / relative).read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
+        repo = _repo(root, tree, config)
+        fresh = {**{key: record[key] for key in ('fix_rounds',) if record and key in record},
+                 'brief': relative, 'worktree': str(tree),
+                 'start': (record or {}).get('start') or (base[1] if base and derive.SHA.fullmatch(base[1]) else None),
+                 'runtime': (record or {}).get('runtime') or registry.runtime_config('builder', config, root)['adapters']['runtime'],
+                 'repo': repo['name'], 'commands': list(repo['fast_checks']), 'iteration': 0, 'repeats': 0,
+                 'signature': None, 'status': 'check', 'reconciled': {**snapshot, 'at': workspace.now().isoformat()}}
+        fresh['action'] = recheck(item, fresh)
+
+        def implement(data):  # in the same write: the record and the build phase
+            if data['items'][item]['phase'] in ('planned', 'spec'):
+                state._move(data, item, 'implement')
+        _save(item, fresh, root, 'build.reconciled', record,
+              {'brief': relative, 'start': fresh['start'], **snapshot}, also=implement)
+    dispatch.tracker_call(item, 'claim', root)  # the duty is done once, on any day
+    check(item, root=root)
 
 
 def run_analysis(item, file):

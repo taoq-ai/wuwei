@@ -385,8 +385,9 @@ def in_flight_text(rows):
                      for at, role, item in rows)
 
 
-def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False, branch=None):
-    """Link one owned PR to its item in the same write as day ownership."""
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False, branch=None, built=False):
+    """Link one owned PR to its item in the same write as day ownership. built (#901, build
+    reconcile): a claimed planned item goes to implement, so its checks and gates still run."""
     from wuwei.references import pull_request
     ref = pull_request(ref)
     def update(data):
@@ -410,7 +411,7 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False
         if raised and data['items'][item]['phase'] in ('gate', 'delta'):
             _move(data, item, 'raised')
         if not raised and data['items'][item]['phase'] == 'planned':
-            _move(data, item, 'raised')  # #510: a claimed PR is never built afresh.
+            _move(data, item, 'implement' if built else 'raised')  # #510: a claimed PR is never built afresh.
     payload = {'pr': ref, 'item': item}
     if head is not None:
         payload['head'] = head

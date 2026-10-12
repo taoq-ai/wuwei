@@ -445,12 +445,11 @@ def test_pr_act_shepherds_without_a_worktree(case, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)[0]['state'] == 'threads_unanswered'
 
 
-@pytest.mark.parametrize('listing,command', [
-    ([], 'bin/wuwei worktree add A --branch feature --repo acme/widget'),
-    ([{'path': 'HOUSE', 'branch': 'feature', 'head': 'a' * 40}], 'bin/wuwei worktree adopt HOUSE --item A'),
-])
+@pytest.mark.parametrize('listing', [[], [{'path': 'HOUSE', 'branch': 'feature', 'head': 'a' * 40}]])
 @pytest.mark.parametrize('change', ['ci_red', 'conflicted', 'review_fix'])
-def test_fix_without_a_worktree_returns_the_adopt_command(case, capsys, listing, command, change):
+def test_fix_without_a_worktree_returns_the_adopt_command(case, capsys, listing, change):
+    # #901: one re-entry command, which adopts the branch's worktree or checks the branch out
+    command = 'bin/wuwei build reconcile A --repo acme/widget --branch feature'
     root, host, vcs, _ = adopted(case)
     vcs.results['worktrees'] = Result(0, listing)
     if change == 'ci_red':

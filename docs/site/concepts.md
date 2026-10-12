@@ -110,6 +110,7 @@ An item needs none to start, build, pass its gates or raise its PR.
 
 An item made from work begun outside WUWEI.
 `pr claim` on an open PR creates it, and `worktree adopt` registers an existing worktree as its checkout.
+`build reconcile` brings a plan item's outside work in: its worktree, its PR and a build that starts at the fast checks.
 
 ## Roles
 

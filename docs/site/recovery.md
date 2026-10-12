@@ -56,6 +56,8 @@ Review the files the integrity row names first. The command prints the installat
 
 The prompt carries the line `WUWEI brief: <path>`, relative to the workspace root, such as `.wuwei/days/<date>/briefs/builder-1.md`. A note you add before or after it stays on the seat. The launch guard still needs the logged, unchanged brief, the matching role and free capacity.
 
+A builder launch needs its build record: the guard refuses one with none and names `bin/wuwei build next <item>`, whose launch then registers. Work already done outside the record comes back with `bin/wuwei build reconcile <item> --worktree <path>`.
+
 To brief a seat by hand, write and log the brief with `bin/wuwei seat brief <role> <item> <name> --body TEXT`, or `--file PATH` (`-` reads stdin).
 
 A WUWEI seat type launched without the line is refused while `guards.enforce` is on, naming `seat brief`. With it off, the launch is registered as an adhoc seat with a warning, which WUWEI can trace and stop but not continue. An agent of another type is an adhoc seat once the day has records. Record it first with `bin/wuwei seat start --role <role> --adhoc "<prompt>"` to label it.

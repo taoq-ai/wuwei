@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 import json
-from pathlib import Path
 import re
 import shlex
 import sys
@@ -408,12 +407,8 @@ def _adopt(root, ref, item, pr, why):
 
 def _adoption(root, ref, item, pr, why):
     from wuwei.shepherd import _settings
-    config = workspace.load_config(root)
-    repo = _settings(config, ref)
-    path = workspace.branch_worktree(registry.load('vcs', config),
-                                     (root / Path(repo['path']).expanduser()).resolve(), pr['branch'], root)
-    command = (['bin/wuwei', 'worktree', 'adopt', path, '--item', item] if path else
-               ['bin/wuwei', 'worktree', 'add', item, '--branch', pr['branch'], '--repo', repo['name']])
+    repo = _settings(workspace.load_config(root), ref)  # #901: the one re-entry command
+    command = ['bin/wuwei', 'build', 'reconcile', item, '--repo', repo['name'], '--branch', pr['branch']]
     return {'action': 'adopt', 'pr': ref, 'item': item, 'command': shlex.join(command),
             'why': f'{why} needs a checkout of {pr["branch"]}; the item has no worktree',
             'then': f'bin/wuwei pr act {ref}'}
