@@ -14,7 +14,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\", \"requested_reviewers\": [{\"login\": \"reviewer\"}], \"requested_teams\": [], \"merged\": false, \"merged_at\": null, \"merge_commit_sha\": null, \"created_at\": \"2026-09-28T10:00:00Z\", \"title\": \"Add a widget option\", \"body\": \"## How to use\\nSet the option.\"}"
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\", \"repo\": {\"full_name\": \"acme/widget\"}}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"repo\": {\"full_name\": \"acme/widget\"}}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\", \"requested_reviewers\": [{\"login\": \"reviewer\"}], \"requested_teams\": [], \"merged\": false, \"merged_at\": null, \"merge_commit_sha\": null, \"created_at\": \"2026-09-28T10:00:00Z\", \"title\": \"Add a widget option\", \"body\": \"## How to use\\nSet the option.\"}"
       }
     ],
     "data": {
@@ -28,6 +28,8 @@
       "base": "main",
       "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "branch": "feature",
+      "head_repo": "acme/widget",
+      "base_repo": "acme/widget",
       "mergeable": true,
       "merge_state": "clean",
       "additions": 4,

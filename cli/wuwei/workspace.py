@@ -753,7 +753,7 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     if existing:
         state.record_worktree(root, Path(path).name, str(path), None, check=True)
     if existing:
-        result = data(vcs.worktree_checkout(str(repo), branch, str(path), root=root))
+        result = data(vcs.worktree_checkout(str(repo), branch, str(path), remote, root=root))
     else:
         result = data(vcs.worktree_add(str(repo), branch, str(path), remote, base, root=root))
         state.append_event('worktree.created', {'item': Path(path).name, 'worktree': str(path),

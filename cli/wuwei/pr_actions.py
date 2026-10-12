@@ -321,17 +321,10 @@ def _rebase(root, ref, item, tree, *, resume=False):
     base = commit_push.data(vcs.merge_base(str(tree), base_sha, root=root))['sha']
     if base != base_sha:
         raise ValueError('resolved rebase does not contain the current PR base; run bin/wuwei pr act --run again so the rebase starts from the current base')
-    push = commit_push.data(vcs.push_context(str(tree), config['brief']['remote'],
-        ['HEAD:refs/heads/' + pr['branch']], root=root))
-    # The push context has no force refspec; the expected PR head is the lease guard.
-    code, reason = commit_push.push_check(repo, actual, push, root, vcs)
+    code, reason = _push(root, tree, pr, repo, actual, vcs, config)
     if code:
         print(reason)
         return code
-    result = vcs.push(str(tree), config['brief']['remote'], pr['branch'], pr['head'], root=root)
-    if result.exit:
-        print(result.reason or 'push did not complete')
-        return result.exit
     episode = state.read_state(root).get('watch', {}).get('actions', {}).get(ref)
     if not isinstance(episode, dict) or episode.get('state') != 'conflicted':
         raise ValueError(f'conflict action changed before completion; {RACE}')
@@ -344,8 +337,76 @@ def _rebase(root, ref, item, tree, *, resume=False):
     return 0
 
 
+def _push(root, tree, pr, repo, actual, vcs, config, head=None):
+    """(exit, reason) of pushing the item worktree's HEAD to the PR branch. The push context has
+    no force refspec; the expected PR head is the lease guard. head: the HEAD that must be pushed."""
+    from wuwei import commit_push
+    push = commit_push.data(vcs.push_context(str(tree), config['brief']['remote'],
+                                             ['HEAD:refs/heads/' + pr['branch']], root=root))
+    if head is not None and push['head']['sha'] != head:  # #879 H3: a commit landed after the gate check
+        return 1, (f'worktree HEAD {push["head"]["sha"][:12]} is not the head the gates passed ({head[:12]}); '
+                   'run bin/wuwei next so the gates read it')
+    code, reason = commit_push.push_check(repo, actual, push, root, vcs)
+    if code:
+        return code, reason
+    result = vcs.push(str(tree), config['brief']['remote'], pr['branch'], pr['head'], root=root)
+    return result.exit, result.reason or 'push did not complete'
+
+
+def _gated_push(root, ref, item, tree):
+    """#879: a claimed PR's fix reaches its branch only after every gate passed at the worktree
+    head (the owner's gates hold on a taken-over PR too); the item is raised again."""
+    from wuwei import commit_push, derive, merge
+    config, data = workspace.load_config(root), state.read_state(root)
+    if ref not in data['claimed_prs'] or tree is None:
+        raise ValueError(f'--push applies to a claimed PR with a worktree; run bin/wuwei pr act {ref}')
+    phase, gated = data['items'][item]['phase'], derive.head(tree)  # H3: the head the gates read
+    kind, why = (derive._gate(root, data, config, item) if phase in ('gate', 'delta')
+                 else (phase, f'{item} is in {phase}'))
+    if kind != 'raise':
+        print(f'{ref}: no push before every gate passes ({why}); run bin/wuwei dispatch next {item}')
+        return 1
+    pr = merge.checked_pr(registry.load('code_host', config), ref, root)
+    vcs = registry.load('vcs', config)
+    repo, actual, _ = commit_push.context(tree, {}, {}, root)
+    if repo['name'] != pr['repo'] or commit_push.data(vcs.branch(str(tree), root=root))['name'] != pr['branch']:
+        raise ValueError(f'item worktree is not on {pr["branch"]} of {pr["repo"]}; switch it to the PR branch, then rerun bin/wuwei pr act {ref} --push')
+    remote = config['brief']['remote']
+    commit_push.data(vcs.fetch(str(tree), remote, pr['branch'], pr['head'], root=root))
+    if commit_push.data(vcs.merge_base(str(tree), pr['head'], root=root))['sha'] != pr['head']:
+        # H1: a teammate pushed after the round started; the lease would overwrite it. Merge it first.
+        from wuwei import dispatch
+        from wuwei.commands import build
+        cap, granted = dispatch.max_rounds(config, data['items'][item]), dispatch._resumed(root, item)
+        if dispatch.rounds_used(data, item) >= cap and not granted:  # J1, K1: the owner's resume grants one
+            reason = f'round cap {cap} reached: PR {ref} moved to {pr["head"][:12]} again'
+            dispatch._parked(root, item, reason)
+            print(f'{ref}: {reason}; nothing is pushed; {item} parks and the owner decides on the Owner '
+                  f'step card of bin/wuwei plan resume {item}')
+            return 1
+        action = build.open_fix(item, _merge_feedback(root, ref, f'PR {ref} moved to {pr["head"][:12]} '
+                                                      'while this round ran.', pr['branch']), root=root, granted=granted)
+        print(f'{ref}: the PR moved to {pr["head"][:12]}, which this worktree does not contain; nothing '
+              f'is pushed. A fix round merges it, the gates read it, then pr act --push:')
+        print(json.dumps(action, sort_keys=True))
+        return 1
+    code, reason = _push(root, tree, pr, repo, actual, vcs, config, gated)
+    if code:
+        print(reason)
+        return code
+    state._write_state(lambda data: state._move(data, item, 'raised'), root, kind='pr.pushed',
+                       payload={'pr': ref, 'item': item})  # next reads the listing again
+    print(json.dumps({'action': 'pushed', 'pr': ref, 'item': item}))
+    return 0
+
+
 def _adopt(root, ref, item, pr, why):
     """The exact command that gives the item a checkout of the PR branch (#510, #551)."""
+    print(json.dumps(_adoption(root, ref, item, pr, why)))
+    return 1
+
+
+def _adoption(root, ref, item, pr, why):
     from wuwei.shepherd import _settings
     config = workspace.load_config(root)
     repo = _settings(config, ref)
@@ -353,30 +414,89 @@ def _adopt(root, ref, item, pr, why):
                                      (root / Path(repo['path']).expanduser()).resolve(), pr['branch'], root)
     command = (['bin/wuwei', 'worktree', 'adopt', path, '--item', item] if path else
                ['bin/wuwei', 'worktree', 'add', item, '--branch', pr['branch'], '--repo', repo['name']])
-    print(json.dumps({'action': 'adopt', 'pr': ref, 'item': item, 'command': shlex.join(command),
-                      'why': f'{why} needs a checkout of {pr["branch"]}; the item has no worktree',
-                      'then': f'bin/wuwei pr act {ref}'}))
-    return 1
+    return {'action': 'adopt', 'pr': ref, 'item': item, 'command': shlex.join(command),
+            'why': f'{why} needs a checkout of {pr["branch"]}; the item has no worktree',
+            'then': f'bin/wuwei pr act {ref}'}
+
+
+SCOPE = re.compile(r'\b(scope|out of scope|disagree|instead)\b', re.I)
+FIXES = re.compile(r'\b(fix|change|update|correct)\b', re.I)
+FIX_STATES = ('conflicted', 'ci_red', 'changes_requested', 'threads_unanswered')
+
+
+def _merge_feedback(root, ref, why, branch):
+    """#879: a claimed PR's conflict or moved head is a fix round: merge (a rebase would rewrite the
+    teammate's commits), then the gates, then pr act --push."""
+    remote = workspace.load_config(root)['brief']['remote']
+    return (f'{why} Merge it: git fetch {remote} {branch}, then git merge FETCH_HEAD; resolve each '
+            'conflict, commit the merge and run the fast checks. Do not rebase and do not push: once '
+            f'the gates pass, wuwei pr act {ref} --push pushes it.')
+
+
+def _conflict(root, ref, measured):
+    return _merge_feedback(root, ref, f'PR {ref} conflicts with its base {measured["pr"]["base"]}.',
+                           measured['pr']['base'])
+
+
+def launch(root, ref):
+    """#879: next's fix step for a claimed PR: the builder launch of its fix round, opened only
+    for a conflict, red checks or a fix asked in review, else the pr act run the planner does.
+    It never merges, posts, replies or marks a PR ready (review F1)."""
+    run = {'action': 'run', 'command': f'wuwei pr act {ref}'}
+    _, rows = evaluate(root, [ref])
+    row, = rows
+    if row['exit'] != 1 or row['parked'] or row['state'] not in FIX_STATES:
+        return run
+    try:
+        item, tree = _item(root, ref)
+        if tree is None:
+            return run
+        measured = watch.evidence(registry.load('code_host', workspace.load_config(root)), ref, root)
+        feedback = None
+        if row['state'] == 'conflicted':
+            feedback = _conflict(root, ref, measured)
+        elif row['state'] != 'ci_red':
+            owed = _owed(root, ref, measured)
+            feedback = owed[3]['body'] if owed else ''
+            if SCOPE.search(feedback) or not FIXES.search(feedback):
+                return run  # a scope card, a question or a reply: pr act shows it
+        _, action = _fix_round(root, ref, item, tree, measured, feedback)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return run
+    if state.read_state(root)['items'][item]['phase'] == 'parked':  # G4: the cap parked it; no run parks again
+        return {'action': 'parked', 'reason': action}
+    return action if isinstance(action, dict) and action.get('action') in ('launch', 'continue') else run
 
 
 def _fix(root, ref, item, tree, measured, feedback=None):
+    code, out = _fix_round(root, ref, item, tree, measured, feedback)
+    print(json.dumps(out, sort_keys=True) if isinstance(out, dict) else out)
+    return code
+
+
+def _fix_round(root, ref, item, tree, measured, feedback=None):
+    """(exit, output) of a fix round: its builder action (a dict) or what stops it. The caller
+    prints it; next's launch set returns the action (#879)."""
+    from wuwei import dispatch
     from wuwei.commands import build
-    if state.read_state(root)['items'][item]['phase'] == 'delta':
-        print(json.dumps({'action': 'gate', 'item': item, 'gate': 'arch_delta'}))
-        return 1
-    red = [row for row in measured['checks'] if row['state'] == 'completed'
-           and row['conclusion'] not in ('success', 'neutral', 'skipped')]
+    data = state.read_state(root)
+    row = data['items'][item]
+    if row['phase'] == 'delta':
+        return 1, {'action': 'gate', 'item': item, 'gate': 'arch_delta'}
+    red = [check for check in measured['checks'] if check['state'] == 'completed'
+           and check['conclusion'] not in ('success', 'neutral', 'skipped')]
     if feedback is None and red:
-        feedback = '\n'.join(f'{row["name"]}: {row["conclusion"]} {row.get("url", "")}' for row in red)
+        feedback = '\n'.join(f'{check["name"]}: {check["conclusion"]} {check.get("url", "")}' for check in red)
     elif feedback is None:
-        feedback = '\n'.join(row['body'] for row in measured['reviews']
-                             if row['state'] == 'changes_requested' and row['body'].strip())
+        feedback = '\n'.join(review['body'] for review in measured['reviews']
+                             if review['state'] == 'changes_requested' and review['body'].strip())
         if not feedback:
             raise ValueError('review fix request has no feedback; pass the review findings to the fix round, or run bin/wuwei pr state for a fresh action')
     if tree is None:
-        return _adopt(root, ref, item, measured['pr'], 'a fix round')
-    if item not in state.read_state(root).get('builds', {}):
-        # #510: an adopted item has no build to resume; its first builder brief is the fix.
+        return 1, _adoption(root, ref, item, measured['pr'], 'a fix round')
+    if item not in data.get('builds', {}):
+        # #510: an adopted item has no build to resume; its first builder brief is the fix. #879:
+        # it builds in implement, so its gates run before pr act --push puts it on the PR.
         from wuwei import brief
         try:
             if not (workspace.day_dir(root) / 'briefs' / f'{item}-adopted-fix.md').exists():
@@ -384,25 +504,32 @@ def _fix(root, ref, item, tree, measured, feedback=None):
                             f'Fix feedback:\n{feedback}', worktree=str(tree), pr=ref, root=root)
             action = build.next_action(item, root=root)
         except brief.Refused as exc:
-            print(exc)
-            return 1
+            return 1, str(exc)
         except build.PortExit as exc:
-            print(f'{ref}: {exc}')
-            return exc.code
-        print(json.dumps(action, sort_keys=True))
-        return 1
-    from wuwei import dispatch
-    data = state.read_state(root)
-    cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
+            return exc.code, f'{ref}: {exc}'
+        state.transition(item, 'implement', root)
+        return 1, action
+    if row['phase'] == 'implement':  # #879: the claimed round in flight answers its current step
+        return 1, build.next_action(item, root=root)
+    cap = dispatch.max_rounds(workspace.load_config(root), row)
     if dispatch.rounds_used(data, item) >= cap:  # #844: the owner decides on plan resume's card
         reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
         dispatch._parked(root, item, reason)
-        print(f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
-              f'bin/wuwei plan resume {item}')
-        return 1
-    action = build.open_fix(item, feedback, root=root)
-    print(json.dumps(action, sort_keys=True))
-    return 1
+        return 1, (f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
+                   f'bin/wuwei plan resume {item}')
+    return 1, build.open_fix(item, feedback, root=root)
+
+
+def _owed(root, ref, measured):
+    """(surface, target, thread or None, the comment answered) of the first owed reply, or None."""
+    me = obligations._owner_login(workspace.load_config(root))
+    owed = obligations._replies(measured['reviews'], measured['threads'], me,
+                                obligations._ledger(state.read_state(root)).get(ref, {}))
+    for key in owed:
+        surface, target = key.split(':', 1)
+        if surface in ('thread', 'review', 'comment'):
+            return (surface, target, *_latest(measured, surface, target))
+    return None
 
 
 def _latest(measured, surface, target):
@@ -416,17 +543,9 @@ def _latest(measured, surface, target):
 
 
 def _thread(root, ref, item, tree, measured, reply=None):
-    config = workspace.load_config(root)
-    me = obligations._owner_login(config)
-    owed = obligations._replies(measured['reviews'], measured['threads'], me,
-                                obligations._ledger(state.read_state(root)).get(ref, {}))
-    for key in owed:
-        surface, target = key.split(':', 1)
-        if surface not in ('thread', 'review', 'comment'):
-            continue
-        thread, latest = _latest(measured, surface, target)
+    for surface, target, thread, latest in filter(None, [_owed(root, ref, measured)]):
         text, answer = latest['body'], {}
-        if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
+        if SCOPE.search(text):
             from wuwei import sessions  # the owner decides a scope change on the card of pr act
             command = f'bin/wuwei pr act {ref}'
             detail = (f'Reviewer asks a scope change on {ref} ({target}): {json.dumps(text[:200])}. '
@@ -439,7 +558,7 @@ def _thread(root, ref, item, tree, measured, reply=None):
                 print(sessions.needs_owner(root, command, detail, token, no), file=sys.stderr)
                 return 1
             answer = {'option': 'defer'}
-        elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):
+        elif FIXES.search(text):
             return _fix(root, ref, item, tree, measured, feedback=text)
         if reply is None:
             print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface,
@@ -468,7 +587,7 @@ def _ready(root, ref, ready):
     return 0
 
 
-def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
+def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=False):
     """Execute safe PR actions and surface work requiring a builder or owner."""
     ref = pull_request(ref)
     _, rows = evaluate(root, [ref])
@@ -476,6 +595,12 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
     if row['exit'] == 2:
         print(row['reason'])
         return 2
+    if push:
+        try:
+            return _gated_push(root, ref, *_item(root, ref))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            print(f'{ref}: PR action unmeasured: {exc}')
+            return 2
     if ready and not row.get('draft'):
         print(f'{ref}: already ready for review')
         return 0
@@ -515,6 +640,9 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
             if row['state'] == 'conflicted':
                 if run or complete:
                     return _rebase(root, ref, item, tree, resume=complete)
+                if ref in state.read_state(root)['claimed_prs']:  # #879: a builder rebases a taken-over PR
+                    measured = watch.evidence(registry.load('code_host', config), ref, root)
+                    return _fix(root, ref, item, tree, measured, feedback=_conflict(root, ref, measured))
                 print(json.dumps({'action': 'rebase', 'pr': ref, 'item': item,
                                   'worktree': str(tree), 'steps': row['dispatch']['steps'],
                                   'run': f'wuwei pr act {ref} --run',

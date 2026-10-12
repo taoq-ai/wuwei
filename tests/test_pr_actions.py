@@ -461,7 +461,7 @@ def test_adopted_fix_round_writes_the_builder_brief(case, capsys):
     brief = next(e['payload'] for e in events if e['kind'] == 'brief written')
     assert brief['name'] == 'A-adopted-fix' and brief['worktree'] == str(tree)
     assert 'tests: failure' in (root / brief['path']).read_text()
-    assert state.read_state(root)['items']['A']['phase'] == 'raised'
+    assert state.read_state(root)['items']['A']['phase'] == 'implement'  # #879 G1: its gates run next
 
 
 def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):

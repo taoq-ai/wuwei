@@ -377,12 +377,15 @@ def worktree_add(repo, branch, path, remote, base, root=None):
 
 
 @_operation
-def worktree_checkout(repo, branch, path, root=None):
-    """A worktree on an existing branch (#510); worktree_add creates a new one."""
+def worktree_checkout(repo, branch, path, remote=None, root=None):
+    """A worktree on an existing branch (#510); worktree_add creates a new one. A branch that is
+    only on remote is fetched first, so the checkout tracks it (#879)."""
     branch = _revision(branch)
     path = os.fspath(path)
     if not path:
         raise ValueError('missing worktree path')
+    if remote and not _run(repo, 'branch', '--list', '--format=%(refname:short)', '--', branch).strip():
+        _run(repo, 'fetch', '--no-tags', remote, branch)
     _run(repo, 'worktree', 'add', '--', path, branch)
     return {'branch': branch, 'path': path}
 

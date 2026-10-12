@@ -397,7 +397,6 @@ def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
 
 
 def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
-    import shlex
     from fakes.code_host import Fake as Host
     root, repo, house = adopt_workspace(tmp_path, monkeypatch, 'fast_checks = ["true"]\n')
     config = root / '.wuwei/config.toml'
@@ -418,12 +417,7 @@ def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
     ref = 'acme/widget#7'
     assert main(['pr', 'claim', ref, '--goal', 'G-1']) == 0, capsys.readouterr()
-    capsys.readouterr()
-    assert main(['pr', 'act', ref]) == 1
-    action = json.loads(capsys.readouterr().out)
-    assert action['command'] == 'bin/wuwei worktree add PR-7 --branch feature-x --repo acme/widget'
-    assert main(shlex.split(action['command'])[1:]) == 0, capsys.readouterr().err
-    capsys.readouterr()
+    capsys.readouterr()  # #879: the claim checked out the local branch; no adopt step remains
     assert main(['pr', 'act', ref]) == 1
     tree = root / 'worktrees/PR-7'
     launched = json.loads(capsys.readouterr().out)
@@ -431,6 +425,176 @@ def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
     committed, _ = commit_and_push(tree)
     assert committed.returncode == 0, committed.stderr
     assert (root / 'marker.txt').read_text().split() == ['pre-commit']
+
+
+def remote_only_claim(tmp_path, monkeypatch, capsys):
+    """#879: a teammate's PR whose branch feature-y exists only on the bare origin; claimed."""
+    from fakes.code_host import Fake as Host
+    root, repo, _ = adopt_workspace(tmp_path, monkeypatch, 'fast_checks = ["true"]\n')
+    config = root / '.wuwei/config.toml'
+    config.write_text('[owner]\nhandles = ["builder"]\n'
+                      + config.read_text().replace('name = "app"', 'name = "acme/widget"'))
+    teammate = root / 'teammate'
+    subprocess.run(['git', 'clone', '-q', str(root / 'origin.git'), str(teammate)], check=True)
+    git(teammate, 'checkout', '-q', '-b', 'feature-y')
+    git(teammate, '-c', 'user.name=T', '-c', 'user.email=t@example.test', 'commit', '-q',
+        '--allow-empty', '-m', 'teammate')
+    assert git(teammate, 'push', '-q', 'origin', 'feature-y').returncode == 0
+    head = git(teammate, 'rev-parse', 'HEAD').stdout.strip()
+    assert git(repo, 'branch', '-a', '--list', '*feature-y').stdout == ''  # never fetched
+    state._write_state(lambda data: data.update(goals=['G-1']), root)
+    host = Host()
+    host.results['pr'].data.update(branch='feature-y', merged=False, head=head)
+    host.results['reviews'] = registry.Result(0, [])
+    host.results['threads'] = registry.Result(0, {'comments': [], 'threads': []})
+    host.results['checks'] = registry.Result(0, [])
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
+    assert main(['pr', 'claim', 'acme/widget#7', '--goal', 'G-1']) == 0, capsys.readouterr()
+    capsys.readouterr()
+    return root, host, head
+
+
+def test_claim_fetches_a_remote_only_branch(tmp_path, monkeypatch, capsys):
+    # #879 acceptance 1: the claimed item has a worktree on the PR head.
+    root, _, head = remote_only_claim(tmp_path, monkeypatch, capsys)
+    tree = root / 'worktrees/PR-7'
+    assert state.read_state(root)['items']['PR-7']['worktree'] == str(tree)
+    assert state.read_state(root)['items']['PR-7']['branch'] == 'feature-y'  # review J2: the guard reads it
+    assert git(tree, 'branch', '--show-current').stdout.strip() == 'feature-y'
+    assert git(tree, 'rev-parse', 'HEAD').stdout.strip() == head
+    assert git(tree, 'rev-parse', '--abbrev-ref', '@{u}').stdout.strip() == 'origin/feature-y'
+
+
+def test_next_launches_a_builder_for_a_claimed_conflict(tmp_path, monkeypatch, capsys):
+    # #879 acceptance 2: a claimed PR that conflicts is a fix-round builder launch, not a pr act run.
+    from wuwei import dispatch
+    root, host, head = remote_only_claim(tmp_path, monkeypatch, capsys)
+    host.results['pr'].data.update(mergeable=False, merge_state='dirty')
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'acme/widget#7', 'number': 7, 'state': 'open', 'head': head, 'checks': 'green',
+         'mergeable': 'conflicting', 'labels': []}]}))
+    [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'PR-7']
+    assert (entry['kind'], entry['action'], entry['agent_type']) == ('fix', 'launch', 'wuwei:builder'), entry
+    assert entry['worktree'] == str(root / 'worktrees/PR-7')
+    text = Path(entry['brief']).read_text()
+    assert 'git merge FETCH_HEAD' in text and 'pr act acme/widget#7 --push' in text  # G1: gates first
+    assert state.read_state(root)['items']['PR-7']['phase'] == 'implement'
+
+
+def test_next_never_merges_posts_or_readies_a_claimed_pr(tmp_path, monkeypatch, capsys):
+    # review F1: an approved claimed PR with fresh activity stays a pr act run the planner does.
+    from wuwei import derive, dispatch, merge, pr_actions, shepherd
+    from wuwei.commands import next as next_command
+    root, host, head = remote_only_claim(tmp_path, monkeypatch, capsys)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[adapters]\ncode_host = "github"\n')
+    host.results['pr'].data.update(mergeable=True, merge_state='clean', author='teammate')
+    host.results['reviews'] = registry.Result(0, [{'id': 11, 'author': 'reviewer', 'state': 'approved',
+        'body': '', 'sha': head, 'submitted_at': '2026-09-28T11:00:00Z', 'is_bot': False}])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'acme/widget#7', 'number': 7, 'state': 'open', 'head': head, 'checks': 'green',
+         'mergeable': 'mergeable', 'labels': [], 'activity_at': '2026-09-28T11:00:00Z'}]}))
+    calls = []
+    monkeypatch.setattr(merge, 'execute', lambda *args, **kwargs: calls.append('merge'))
+    monkeypatch.setattr(shepherd, 'post_review_request', lambda *args, **kwargs: calls.append('post'))
+    monkeypatch.setattr(pr_actions, '_ready', lambda *args, **kwargs: calls.append('ready'))
+    found = [row for row in derive.offers(state.read_state(root), root, workspace.load_config(root))['launches']
+             if row['item'] == 'PR-7']
+    assert [(row['kind'], row['command']) for row in found] == [('pr', 'wuwei pr act acme/widget#7')]
+    [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'PR-7']
+    assert (entry['kind'], entry['action'], entry['command']) == ('pr', 'run', 'wuwei pr act acme/widget#7')
+    row = {'state': 'set', 'action': 'set', 'launches': found, 'duties': [], 'decision': None,
+           'parks': [], 'rows': [], 'why': '', 'then': ''}
+    assert [launch['action'] for launch in next_command.resolve(row, root)['launches']
+            if launch['item'] == 'PR-7'] == ['run']
+    assert calls == []
+
+
+def test_a_claimed_pr_at_the_round_cap_parks_once(tmp_path, monkeypatch, capsys):
+    # review G4: the turn that parks at the cap returns no pr act run that would park again.
+    from wuwei import dispatch
+    root, host, head = remote_only_claim(tmp_path, monkeypatch, capsys)
+    host.results['pr'].data.update(mergeable=False, merge_state='dirty')
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'acme/widget#7', 'number': 7, 'state': 'open', 'head': head, 'checks': 'green',
+         'mergeable': 'conflicting', 'labels': []}]}))
+    state._write_state(lambda data: data.setdefault('builds', {}).update(
+        {'PR-7': {'status': 'done', 'fix_rounds': 2}}), root)
+    [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'PR-7']
+    assert (entry['kind'], entry['action']) == ('pr', 'refused') and 'round cap 2' in entry['reason']
+    assert state.read_state(root)['items']['PR-7']['phase'] == 'parked'
+
+
+def gated(root, monkeypatch, gate=lambda *args: ('raise', 'every gate passed at the current head')):
+    """The claimed item past its gates (the gate flow itself is tests/test_e2e_day.py); pushes spied."""
+    from wuwei import derive, pr_actions
+    state._write_state(lambda data: state._move(data, 'PR-7', 'gate'), root)
+    monkeypatch.setattr(derive, '_gate', gate)
+    pushed, real = [], pr_actions._push
+    monkeypatch.setattr(pr_actions, '_push', lambda *args, **kwargs: pushed.append(args) or real(*args, **kwargs))
+    return pushed
+
+
+def test_a_gated_push_never_overwrites_a_teammate_commit(tmp_path, monkeypatch, capsys):
+    # review H1: the teammate pushed after the round started; no push, nothing lost, a merge round opens.
+    from wuwei.commands import build
+    root, host, _ = remote_only_claim(tmp_path, monkeypatch, capsys)
+    tree, teammate = root / 'worktrees/PR-7', root / 'teammate'
+    git(tree, '-c', 'user.name=Builder', '-c', 'user.email=builder@example.test', 'commit', '-q',
+        '--allow-empty', '-m', 'gated fix')
+    git(teammate, '-c', 'user.name=T', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty',
+        '-m', 'teammate again')
+    assert git(teammate, 'push', '-q', 'origin', 'feature-y').returncode == 0
+    moved = git(teammate, 'rev-parse', 'HEAD').stdout.strip()
+    host.results['pr'].data.update(head=moved)
+    pushed, opened = gated(root, monkeypatch), []
+    monkeypatch.setattr(build, 'open_fix', lambda item, feedback, root, granted=False: opened.append(feedback) or {'action': 'continue'})
+    assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
+    assert pushed == [] and f'moved to {moved[:12]}' in capsys.readouterr().out
+    assert git(root / 'origin.git', 'rev-parse', 'feature-y').stdout.strip() == moved
+    assert 'git merge FETCH_HEAD' in opened[0] and 'feature-y' in opened[0]
+
+
+def test_a_moved_claimed_pr_at_the_round_cap_parks_for_the_owner(tmp_path, monkeypatch, capsys):
+    # review J1: no round is left for the merge: the item parks on the plan resume card, exit 1.
+    root, host, _ = remote_only_claim(tmp_path, monkeypatch, capsys)
+    teammate = root / 'teammate'
+    git(teammate, '-c', 'user.name=T', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty',
+        '-m', 'teammate again')
+    assert git(teammate, 'push', '-q', 'origin', 'feature-y').returncode == 0
+    host.results['pr'].data.update(head=git(teammate, 'rev-parse', 'HEAD').stdout.strip())
+    pushed = gated(root, monkeypatch)
+    state._write_state(lambda data: data.setdefault('builds', {}).update({'PR-7': {'status': 'done', 'fix_rounds': 2}}), root)
+    assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
+    assert pushed == [] and 'round cap 2 reached' in capsys.readouterr().out
+    row = state.read_state(root)['items']['PR-7']
+    assert row['phase'] == 'parked' and row['disposition']['reason'].startswith('round cap 2 reached: PR acme/widget#7 moved')
+    # review K1: the owner's Yes on plan resume grants the merge round; the push never re-parks it.
+    from wuwei import plan, sessions
+    from wuwei.commands import build
+    monkeypatch.setattr(sessions, 'needs_owner', lambda *args, **kwargs: None)
+    plan.resume('PR-7', root)
+    opened = []
+    monkeypatch.setattr(build, 'open_fix', lambda item, feedback, root, granted=False:
+                        opened.append(granted) or {'action': 'continue'})
+    assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
+    assert opened == [True] and pushed == [] and state.read_state(root)['items']['PR-7']['phase'] == 'gate'
+
+
+def test_a_commit_after_the_gate_check_is_not_pushed(tmp_path, monkeypatch, capsys):
+    # review H3: the head the gates passed is the head that is pushed, or nothing is.
+    root, _, head = remote_only_claim(tmp_path, monkeypatch, capsys)
+    tree = root / 'worktrees/PR-7'
+
+    def gate(*args):
+        git(tree, '-c', 'user.name=Builder', '-c', 'user.email=builder@example.test', 'commit', '-q',
+            '--allow-empty', '-m', 'landed after the gates')
+        return 'raise', 'every gate passed at the current head'
+    gated(root, monkeypatch, gate)
+    assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
+    assert 'not the head the gates passed' in capsys.readouterr().out
+    assert git(root / 'origin.git', 'rev-parse', 'feature-y').stdout.strip() == head
 
 
 def test_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):

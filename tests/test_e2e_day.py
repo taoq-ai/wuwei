@@ -120,6 +120,80 @@ def test_fix_round_and_delta_with_fresh_agents(day):
     assert 'seat stop unmatched' not in [row['kind'] for row in day.events]
 
 
+def claimed_round_passed(day):
+    """#879 G1: a claimed PR with red checks goes implement, gate, FIX, fix, delta and PASS; the
+    claimed head, with nothing pushed before the gates pass."""
+    import os
+    import subprocess
+    from wuwei import registry, state
+    from wuwei.registry import Result
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    subprocess.run(['git', '-C', str(day.repo), 'checkout', '-q', '-b', 'feature'], env=dict(os.environ),
+                   capture_output=True, check=True)
+    claimed = day.head
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(day.repo)), day.root)
+    day.host.results['pr'].data.update(head=claimed, branch='feature', mergeable=True)
+    day.run('pr', 'claim', day.ref, '--item', 'A')
+    day.host.results['checks'] = Result(0, [{'name': 'tests', 'sha': claimed, 'state': 'completed',
+                                             'conclusion': 'failure', 'url': 'https://example.test/c'}])
+    action = json.loads(day.run('pr', 'act', day.ref, expected=1))
+    assert day.data['items']['A']['phase'] == 'implement'
+    assert 'git push' not in (day.root / action['brief']).read_text()
+    day.steps(action)
+    assert day.data['items']['A']['phase'] == 'gate'
+    assert 'no push before every gate passes' in day.run('pr', 'act', day.ref, '--push', expected=1)
+    for role in ('arch', 'quality', 'security'):
+        day.gate(role, 'FIX' if role == 'quality' else 'PASS')
+    day.fix()
+    assert day.data['items']['A']['phase'] == 'delta'
+    day.gate('quality', 'PASS', round_name='delta')
+    assert day.next() == {'action': 'run', 'command': f'wuwei pr act {day.ref} --push', 'notes': []}
+    vcs = registry.load('vcs', None)
+    assert not [call for call in vcs.calls if call[0] in ('push', 'push_context')]
+    from wuwei import commit_push
+    context = commit_push.context  # the scripted day has no git identity
+    day.patch.setattr(commit_push, 'context', lambda *args, **kwargs: context(*args, identity=False))
+    return claimed, vcs
+
+
+def test_a_claimed_pr_fix_round_is_gated_before_its_push(day):
+    # #879 G1: then pr act --push, leased on the PR head the worktree contains.
+    from wuwei import commit_push, derive, workspace
+    from wuwei.registry import Result
+    claimed, vcs = claimed_round_passed(day)
+    vcs.results['fetch'] = Result(0, {'sha': claimed})
+    vcs.results['push_context'] = Result(0, {'head': {'sha': day.head}, 'force': False, 'updates': []})
+    vcs.results['push'] = Result(0, {'pushed': True})
+    checked = []
+    day.patch.setattr(commit_push, 'push_check', lambda *args: checked.append(args) or (0, ''))
+    day.patch.setenv('WUWEI_NOW', '2026-09-29T12:05:00Z')
+    (day.directory / 'prs.json').write_text(json.dumps({'fetched_at': '2026-09-29T12:04:30+00:00', 'pulls': []}))
+    assert not derive.stale(day.root, workspace.load_config(day.root), day.data)
+    assert '"action": "pushed"' in day.run('pr', 'act', day.ref, '--push')
+    # the listing still shows the old head: next reads it again before any moved-head round
+    assert derive.stale(day.root, workspace.load_config(day.root), day.data)
+    [push] = [call for call in vcs.calls if call[0] == 'push']
+    assert push[1] == (str(day.repo), 'origin', 'feature', claimed) and len(checked) == 1
+    assert day.data['items']['A']['phase'] == 'raised'
+
+
+def test_a_moved_claimed_pr_opens_a_merge_round_instead_of_a_push(day):
+    # #879 H1: the teammate pushed after the round started; nothing is pushed and the item goes
+    # back to a fix round that merges the new head, then its gates again.
+    from wuwei.registry import Result
+    _, vcs = claimed_round_passed(day)
+    moved = 'c' * 40
+    day.host.results['pr'].data.update(head=moved)
+    day.host.results['checks'].data[0]['sha'] = moved
+    vcs.results['fetch'] = Result(0, {'sha': moved})
+    out = day.run('pr', 'act', day.ref, '--push', expected=1)
+    assert f'moved to {moved[:12]}' in out and 'git merge FETCH_HEAD' in day.data['builds']['A']['action']['prompt']
+    assert day.data['items']['A']['phase'] == 'fix'
+    assert not [call for call in vcs.calls if call[0] in ('push', 'push_context')]
+
+
 def test_light_item_skips_spec(day):
     day.runtime.spec = False
     day.plan(tier='light')

@@ -385,7 +385,7 @@ def in_flight_text(rows):
                      for at, role, item in rows)
 
 
-def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False, branch=None):
     """Link one owned PR to its item in the same write as day ownership."""
     from wuwei.references import pull_request
     ref = pull_request(ref)
@@ -400,6 +400,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False
         if ref in data[other]:
             raise StateError('PR is already owned today; run bin/wuwei pr state to see its item')
         data['items'][item]['pr'] = ref
+        if branch:  # #879: the claimed PR's head branch, which the edges guard keeps to the gated push
+            data['items'][item]['branch'] = branch
         field = 'raised_prs' if raised else 'claimed_prs'
         if ref not in data[field]:
             data[field].append(ref)

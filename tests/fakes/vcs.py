@@ -87,5 +87,5 @@ class Fake(Recorder):
     def worktrees(self, repo, root=None):
         return self._call('worktrees', (repo,), root)
 
-    def worktree_checkout(self, repo, branch, path, root=None):
-        return self._call('worktree_checkout', (repo, branch, path), root)
+    def worktree_checkout(self, repo, branch, path, remote=None, root=None):
+        return self._call('worktree_checkout', (repo, branch, path, remote), root)

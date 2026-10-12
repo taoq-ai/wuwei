@@ -221,6 +221,8 @@ def pr(ref, root=None):
         'state': _field(value, 'state', str), 'merged': _field(value, 'merged', bool), 'draft': _field(value, 'draft', bool),
         'head': _sha(value['head']['sha']), 'base': _field(value['base'], 'ref', str),
         'base_sha': _sha(value['base']['sha']), 'branch': _field(value['head'], 'ref', str),
+        'head_repo': (value['head'].get('repo') or {}).get('full_name'),  # #879: None for a deleted fork
+        'base_repo': (value['base'].get('repo') or {}).get('full_name'),
         'merged_at': _field(value, 'merged_at', str, nullable=True),
         'created_at': _field(value, 'created_at', str),
         'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),

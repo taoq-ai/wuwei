@@ -378,7 +378,8 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
 
 def claim_pr(root, ref, item=None, goal=None):
     """Claim a fresh, externally verified PR. With no item in the plan, create one (source
-    adopted, #510) and adopt the PR branch's worktree when a clean one exists."""
+    adopted, #510); adopt the PR branch's worktree when a clean one exists, else create
+    worktrees/<item> on the branch, fetched when it is only on the remote (#879)."""
     import json
     from pathlib import Path
     import sys
@@ -400,21 +401,41 @@ def claim_pr(root, ref, item=None, goal=None):
             merge.require(goal, f'name the goal: bin/wuwei pr claim {ref} --goal <one of '
                                 f'{", ".join(data["goals"]) or "the approved goals"}>')
             plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
-        state.record_pr(root, item, ref, raised=False, head=pr['head'])
+        state.record_pr(root, item, ref, raised=False, head=pr['head'], branch=pr['branch'])
         print(ref)
         from wuwei import dispatch
         moved = dispatch.tracker_call(item, 'in_review', root)  # #842: the duty, as on pr raise
         if config['adapters']['tracker'] != 'none' and moved.exit:
             print(f'tracker: {moved.reason}', file=sys.stderr)
         if not state.read_state(root)['items'][item].get('worktree'):
+            source = (root / Path(repo['path']).expanduser()).resolve()
+            # #879: the host's own names (a moved repository keeps its PRs); a fix cannot reach a fork
+            head, base = pr.get('head_repo', pr['repo']), pr.get('base_repo') or pr['repo']
+            if (head or '').casefold() != base.casefold():
+                remote = config['brief']['remote']
+                print(f'{ref} head is on the fork {head or "(deleted)"}; WUWEI pushes only to {remote}, '
+                      f'so {item} gets no worktree. To read it outside WUWEI: git -C {source} fetch '
+                      f'{remote} pull/{pr["number"]}/head')
+                return 1
+            if pr['branch'] == repo['default_branch']:  # every fix push to it would be refused
+                print(f'{ref} head is the default branch {pr["branch"]}; WUWEI never pushes to it, so '
+                      f'{item} gets no worktree')
+                return 1
             vcs = registry.load('vcs', config)
-            path = workspace.branch_worktree(vcs, (root / Path(repo['path']).expanduser()).resolve(),
-                                             pr['branch'], root)
-            if path:
-                try:
+            path = workspace.branch_worktree(vcs, source, pr['branch'], root)
+            try:
+                if path:
                     print(json.dumps(workspace.adopt_worktree(root, item, path, vcs)))
-                except state.StateError as exc:
-                    print(f'worktree not adopted: {exc}', file=sys.stderr)
+                else:  # #879: fetched and checked out as bin/wuwei worktree add --branch does
+                    from types import SimpleNamespace
+                    from wuwei.commands import worktree
+                    print(json.dumps(worktree.add(SimpleNamespace(repo=repo['name'], branch=pr['branch']),
+                                                  root, config, item)))
+            except state.StateError as exc:
+                print(f'worktree not {"adopted" if path else "created"}: {exc}', file=sys.stderr)
+            except ValueError as exc:  # the claim is recorded; a rerun retries the worktree
+                print(f'worktree not {"adopted" if path else "created"}: {exc}; rerun bin/wuwei pr '
+                      f'claim {ref}', file=sys.stderr)
         return 0
     except (merge.Refused, state.StateError) as exc:
         print(exc)

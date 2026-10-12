@@ -181,9 +181,9 @@ Fix rounds are bounded. At the cap, `next` asks you instead of opening another r
 
 After the morning gate, `bin/wuwei worktree add <item>` creates `worktrees/<item>` on a new branch named after the item in lower case. Pass `--repo <name>` when several repositories are configured. It first fetches the default branch from `brief.remote` (default `origin`) and starts at the fetched commit. When the fetch fails it exits 2 and creates nothing. A repository with no remote can set `brief.remote = "."`. It anchors the worktree, writes the configured identity and prints JSON with `branch`, `path` and `start`. The `worktree.created` event records the start commit.
 
-`worktree add <item> --branch <name>` checks an existing branch out instead and records it (`worktree.adopted`).
+`worktree add <item> --branch <name>` checks an existing branch out instead and records it (`worktree.adopted`). A branch that is only on `brief.remote` is fetched first and the checkout tracks it.
 
-`worktree adopt <path> --item <item>` registers an existing clean worktree. It records the path and HEAD and prints `item`, `path` and `head`. It exits 1 and changes nothing for a path that is not a linked worktree of a configured repository. The same holds for uncommitted or untracked files, an item outside the approved plan, or an item that already has a worktree. `pr claim` runs it for a clean worktree on the PR branch.
+`worktree adopt <path> --item <item>` registers an existing clean worktree. It records the path and HEAD and prints `item`, `path` and `head`. It exits 1 and changes nothing for a path that is not a linked worktree of a configured repository. The same holds for uncommitted or untracked files, an item outside the approved plan, or an item that already has a worktree. `pr claim` runs it for a clean worktree on the PR branch. With none, `pr claim` runs `worktree add <item> --branch <PR branch>`. A PR whose head is on a fork gets no worktree: `pr claim` exits 1 and prints a read-only fetch of it.
 
 Without gate approval both subcommands exit 1 and create nothing.
 
@@ -195,7 +195,7 @@ Without gate approval both subcommands exit 1 and create nothing.
 | `raise REPO --base B --title T --body-file F --item I [--draft]` | Raises a prepared, pushed branch. |
 | `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one. |
 | `ping <ref>` | Requests reviewers and posts when the gates clear. |
-| `act <ref> [--run \| --complete \| --ready \| --reply TEXT]` | Executes the next owned PR action. |
+| `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --push]` | Executes the next owned PR action. |
 | `disposition <ref> parked\|carried --comment TEXT` | Records a verified disposition on the PR. |
 
 ### Raising a PR
@@ -205,6 +205,8 @@ Without gate approval both subcommands exit 1 and create nothing.
 Reviewers are the top committers to the changed source paths, plus `shepherd.lead_login`. Ties within `shepherd.tie_commits` add a third. `shepherd.reviewers` replaces the ranking, and `shepherd.reviewers_exclude` removes logins. With nobody left, the PR is raised with `reviewers: none (solo)` and `pr ping` requests nothing.
 
 `--draft` opens a draft. An `owner_merge` item opens as a draft without the flag. `pr act <ref> --ready` marks a draft ready. On a PR that is not a draft it prints `already ready for review` and exits 0.
+
+On a claimed PR with a worktree, a conflict, red checks or a fix asked in review opens a fix round, and `wuwei next` returns its builder as a launch. For a conflict the builder merges the base; it never rebases the teammate's commits. The round runs the normal gates. Once every gate passes at the worktree head, `pr act <ref> --push` pushes the branch, leased on the PR head, and the item is raised again. Before that, `--push` exits 1. It also pushes nothing when the PR moved past what the worktree holds, so a teammate's newer commit is never overwritten: a fix round merges it and the gates run again. It refuses a head that changed after the gate check. A seat's own `git push` to a claimed PR's branch, or from its worktree, is refused. When the PR moved and no fix round is left, the item parks for the owner. `wuwei next` never merges, posts or marks a claimed PR ready; those stay a `pr act` run. A PR whose head branch is the default branch gets no worktree.
 
 ## merge
 
