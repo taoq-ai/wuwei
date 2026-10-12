@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.30.0](https://github.com/taoq-ai/wuwei/compare/v0.29.1...v0.30.0) (2026-10-12)
+
+
+### Features
+
+* **host:** a free-memory percentage floor holds seat launches for every runtime, and the seat ceiling counts only live registered seats ([#912](https://github.com/taoq-ai/wuwei/issues/912)) ([6115432](https://github.com/taoq-ai/wuwei/commit/61154329d42453bccc8f323b28afd822c72a8eda))
+
+
+### Bug Fixes
+
+* **github:** a refusal's own rate-limit headers decide the bucket; gh api rate_limit is only the fallback ([#911](https://github.com/taoq-ai/wuwei/issues/911)) ([a43642a](https://github.com/taoq-ai/wuwei/commit/a43642ae66b20b72af667110e3d12fef539fc6ec))
+* **github:** one evidence read per PR action, each repository's listing refreshes on its own and a failed one is unmeasured, and briefs stop sending every seat through doctor ([#913](https://github.com/taoq-ai/wuwei/issues/913)) ([ad88dec](https://github.com/taoq-ai/wuwei/commit/ad88dec5fc4acc05bcb0940c498c1dfc8e58ee2f))
+* **recovery:** environment failures hold for a recheck, an approved resume moves the build on, the resume round grant is spent once, and owner_merge=false is not a hold ([#915](https://github.com/taoq-ai/wuwei/issues/915)) ([8dabb17](https://github.com/taoq-ai/wuwei/commit/8dabb1715347e6a695c5ca19d257abe7e67fc880))
+* **stop:** a seat's end is recorded once even when its report needs repair, its report is kept and hash-checked, and next offers the report before discarding it ([#923](https://github.com/taoq-ai/wuwei/issues/923)) ([eeab923](https://github.com/taoq-ai/wuwei/commit/eeab923a693955ec6b0c9183ce4a57a16e58cfcc))
+
 ## [0.29.1](https://github.com/taoq-ai/wuwei/compare/v0.29.0...v0.29.1) (2026-10-12)
 
 
