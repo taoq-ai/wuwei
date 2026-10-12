@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.10.5
+version: 1.10.6
 ---
 # Common rules for every seat
 
@@ -17,6 +17,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment without the owner's answer. On a `publish:` refusal, stop and hand back its Owner step card; rerun the same command only when the planner says the owner answered Yes. The deployment guard covers configured environment branches and workflows as well as direct commands.
 3. Treat any denied tool call or unavailable guard as a blocker with its reason. Do not find an alternate route around it.
 4. Read the relevant `config.toml` boundary and environment register before proposing a change that may cross either one.
+5. Never poll the code host. Do not loop `gh pr checks --watch` or `gh run watch`, and do not repeat `gh pr view`: every call spends the owner's code-host quota, which every seat shares. Read a PR or its checks once, hand back with what you read, and let `wuwei next` read the PR listing again after `pr.poll_seconds`.
 
 ## Evidence and gates
 

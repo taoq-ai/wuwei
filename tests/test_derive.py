@@ -78,7 +78,7 @@ class Host:
 
 def test_listing_absent_is_empty_and_stale_once_an_item_has_a_pr(root):
     data = {'items': {'A': {'pr': 'example/project#1'}}}
-    assert derive.listing(workspace.day_dir(root)) == {'fetched_at': None, 'pulls': {}}
+    assert derive.listing(workspace.day_dir(root)) == {'fetched_at': None, 'pulls': {}, 'repos': {}}
     assert derive.stale(root, workspace.load_config(root), data)
     assert not derive.stale(root, workspace.load_config(root), {'items': {'A': {}}})
 
@@ -92,9 +92,76 @@ def test_refresh_writes_the_listing_and_a_failed_call_keeps_it(root, monkeypatch
     pulls = derive.listing(workspace.day_dir(root))['pulls']
     assert pulls['example/project#1']['checks'] == 'green'
     monkeypatch.setattr(registry, 'load', lambda kind, config: Host(Result(2, None, 'gh exited 1')))
-    assert derive.refresh(root, config) == 'gh exited 1'
+    assert derive.refresh(root, config) == 'example/project: gh exited 1'
     assert derive.listing(workspace.day_dir(root))['pulls'] == pulls
     assert not derive.stale(root, config, {'items': {'A': {'pr': 'example/project#1'}}})
+
+
+REPOS = ('example/one', 'example/two', 'example/three')
+
+
+class Counted:
+    """#907: a code host whose listing of example/two fails (#900: an HTTP 502); counts calls."""
+    def __init__(self):
+        self.calls = []
+
+    def pulls(self, repo, root=None):
+        self.calls.append(repo)
+        if repo == 'example/two':
+            return Result(2, None, 'gh: HTTP 502')
+        return Result(0, [{'number': 1, 'state': 'open', 'head': SHA, 'checks': 'green', 'labels': []}])
+
+
+def three(root, monkeypatch):
+    from wuwei import registry
+    (root / '.wuwei/config.toml').write_text(''.join(
+        f'[[repos]]\nname = "{name}"\npath = "{name[8:]}"\ndefault_branch = "main"\n' for name in REPOS))
+    host = Counted()
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host)
+    return workspace.load_config(root), host
+
+
+def test_each_repository_refreshes_alone_and_a_failed_one_keeps_its_retry_time(root, monkeypatch):
+    # #907: a failed repository no longer makes the whole listing stale: the others stay read,
+    # nothing is called again inside pr.poll_seconds, and the failed one retries after it.
+    config, host = three(root, monkeypatch)
+    data = {'items': {'A': {'pr': 'example/one#1'}}}
+    assert derive.stale(root, config, data)
+    assert derive.refresh(root, config, derive.stale(root, config, data)) == 'example/two: gh: HTTP 502'
+    assert host.calls == list(REPOS)
+    found = derive.listing(workspace.day_dir(root))
+    assert sorted(found['pulls']) == ['example/one#1', 'example/three#1']
+    assert found['repos']['example/two'] == {'at': '2026-10-11T10:00:00+00:00', 'failed': 'gh: HTTP 502'}
+    assert not derive.stale(root, config, data)  # inside pr.poll_seconds: no call at all
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-11T10:02:00+00:00')
+    assert derive.stale(root, config, data) == list(REPOS)
+    host.calls.clear()
+    assert derive.refresh(root, config, derive.stale(root, config, data))
+    assert host.calls == list(REPOS)
+    config['repos'] = [repo for repo in config['repos'] if repo['name'] != 'example/three']
+    assert derive.refresh(root, config, []) is None  # a repository out of config leaves the listing
+    found = derive.listing(workspace.day_dir(root))
+    assert sorted(found['pulls']) == ['example/one#1'] and sorted(found['repos']) == ['example/one', 'example/two']
+
+
+def test_a_failed_repository_leaves_its_pr_rows_unmeasured_and_the_others_usable(root, monkeypatch):
+    # #900: a stale listing never decides: the PR of the failed repository gets no merge, gate or
+    # fix step, and its row names the repository and when next reads it again.
+    config, host = three(root, monkeypatch)
+    state._write_state(lambda data: data.update(
+        gate_approved=True, approved_items=['A', 'B'], raised_prs=['example/one#1', 'example/two#1'],
+        items={'A': {'phase': 'raised', 'status': 'running', 'pr': 'example/one#1'},
+               'B': {'phase': 'raised', 'status': 'running', 'pr': 'example/two#1'}}),
+        root, kind='plan.approved')
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/two#1', 'state': 'open', 'checks': 'red', 'labels': []}]}))
+    derive.refresh(root, config)
+    found = derive.offers(state.read_state(root), root, config)
+    assert [(row['kind'], row['item']) for row in found['launches']] == [('merge', 'A')]
+    assert found['decision'] is None
+    row, = [row for row in found['rows'] if row['item'] == 'B']
+    assert row['state'] == 'unmeasured'
+    assert 'example/two' in row['why'] and 'gh: HTTP 502' in row['why'] and '2026-10-11T10:02:00+00:00' in row['why']
 
 
 def test_the_github_listing_maps_one_call(monkeypatch):
@@ -273,3 +340,21 @@ def test_a_raised_or_worktreeless_claimed_pr_keeps_its_pr_act_run(root):
     claimed(root)
     state._write_state(lambda data: data['items']['A'].pop('worktree'), root)
     assert offered(root, mergeable='conflicting') == [('pr', ACT, False)]
+
+
+def test_overlapping_refreshes_never_restore_a_failed_repositorys_old_rows(root, monkeypatch):
+    # #907 review F2: next B reads example/one while next A reads example/two, fails and writes.
+    # B merges into the listing as it is under the lock, so example/two stays failed.
+    config, host = three(root, monkeypatch)
+    derive.refresh(root, config, ['example/one', 'example/three'])
+    reads = host.pulls
+
+    def pulls(repo, root=None):
+        if repo == 'example/one' and len(host.calls) == 2:
+            derive.refresh(root, config, ['example/two'])  # A runs while B is on the network
+        return reads(repo, root=root)
+    monkeypatch.setattr(host, 'pulls', pulls)
+    assert derive.refresh(root, config, ['example/one']) is None
+    found = derive.listing(workspace.day_dir(root))
+    assert found['repos']['example/two']['failed'] == 'gh: HTTP 502'
+    assert sorted(found['pulls']) == ['example/one#1', 'example/three#1']

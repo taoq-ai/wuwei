@@ -854,3 +854,44 @@ def test_a_set_held_only_by_a_spent_window_is_a_timed_wait(root, capsys, monkeyp
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:30:00+00:00')
     code, found = row(capsys)
     assert found['state'] == 'set' and [launch['action'] for launch in found['launches']] == ['start']
+
+
+def test_issue_acceptance_907_an_unchanged_next_makes_no_remote_call(root, capsys, monkeypatch):
+    # #907, #900: a three-repository day with thirteen PR lanes. The first next reads each
+    # repository's listing once; one repository fails (HTTP 502) and the other two stay usable.
+    # An unchanged next inside pr.poll_seconds calls nothing; the failed repository's PR rows are
+    # unmeasured and next names it and when it reads it again.
+    from wuwei import registry
+    from wuwei.registry import Result
+    repos = ('example/one', 'example/two', 'example/three')
+    calls = []
+
+    class Host:
+        def __getattr__(self, name):
+            def call(*args, **kwargs):
+                calls.append((name, args[0]))
+                if name == 'pulls' and args[0] != 'example/two':
+                    return Result(0, [{'number': n, 'state': 'open', 'head': 'a' * 40, 'checks': 'pending',
+                                       'mergeable': 'mergeable', 'labels': []} for n in range(1, 6)])
+                return Result(2, None, 'gh: HTTP 502')
+            return call
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Host())
+    approved(root, {f'I{i}': ('raised', {'pr': f'{repos[i % 3]}#{i // 3 + 1}'}) for i in range(13)}, cap=13)
+    (root / '.wuwei/config.toml').write_text(''.join(
+        f'[[repos]]\nname = "{name}"\npath = "{name[8:]}"\ndefault_branch = "main"\n' for name in repos))
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({  # an hour old, written before #907
+        'fetched_at': '2026-09-30T09:00:00+00:00', 'pulls': [
+            {'ref': f'{name}#{n}', 'number': n, 'state': 'open', 'head': 'a' * 40, 'checks': 'red',
+             'mergeable': 'mergeable', 'labels': []} for name in repos for n in range(1, 6)]}))
+    code, found = row(capsys)
+    assert sorted(calls) == sorted(('pulls', name) for name in repos)
+    assert found['state'] == 'wait'
+    unmeasured = [entry['item'] for entry in found['rows'] if entry['state'] == 'unmeasured']
+    assert unmeasured == ['I1', 'I4', 'I7', 'I10']
+    assert 'example/two' in found['why'] and 'HTTP 502' in found['why'] and '10:02:00' in found['why']
+    shown = next_command.text({**found, 'state': 'set', 'launches': [], 'duties': [], 'decision': None})
+    assert 'unmeasured I1: PR example/two#1 is unmeasured' in shown
+    calls.clear()
+    for _ in range(3):
+        assert row(capsys)[1] == found
+    assert calls == []

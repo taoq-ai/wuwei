@@ -772,7 +772,7 @@ def test_issue_reference_registers_with_a_warning(day, monkeypatch, capsys):
     state._write_state(lambda data: data.update(tickets={'X': {'id': 'acme/widget#24'}}), day[0])
     assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'tk') == 0
     text = (day[1] / 'briefs/tk.md').read_text()
-    assert 'Warning: acme/widget#24 is no pull request the host could read (' in text
+    assert "Counterpart acme/widget#24: not in the day's measured PR listing; kept as a reference" in text
     assert 'Ticket: acme/widget#24' in text
     assert any(e['kind'] == 'brief written' for e in events(day[1]))
     capsys.readouterr()
@@ -780,27 +780,26 @@ def test_issue_reference_registers_with_a_warning(day, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['ticket'] == 'acme/widget#24'
 
 
-def test_counterpart_pr_line_is_unchanged(day, monkeypatch):
+def test_a_counterpart_reads_the_days_listing_never_the_host(day, monkeypatch):
+    # #907: a counterpart reference is optional evidence read from the day's PR listing; the
+    # brief makes no code-host call for it, and one the listing lacks stays a reference (#740).
     (day[0] / '.wuwei/config.toml').write_text(WIDGET)
-    day[3].results['pr'] = registry.Result(0, {'head': 'a' * 40})
-    assert brief(monkeypatch, 'see acme/widget#7', 'builder', 'X', 'cp') == 0
+    pull = {'number': 7, 'state': 'open', 'head': 'a' * 40, 'checks': 'green', 'ref': 'acme/widget#7'}
+    (day[1] / 'prs.json').write_text(json.dumps({'fetched_at': '2026-09-28T11:59:00+00:00', 'pulls': [pull]}))
+    assert brief(monkeypatch, 'see acme/widget#7 and acme/widget#24', 'builder', 'X', 'cp') == 0
     text = (day[1] / 'briefs/cp.md').read_text()
-    assert 'Counterpart acme/widget#7 head (no-cache): {"head": "' + 'a' * 40 + '"}' in text
-    assert 'Warning:' not in text
-
-
-@pytest.mark.parametrize('reason', [DENIED, NOT_FOUND])
-def test_unreadable_counterpart_is_a_warning(day, monkeypatch, capsys, reason):
-    # #740, #837: a counterpart reference is optional evidence; it never refuses the brief.
-    (day[0] / '.wuwei/config.toml').write_text(WIDGET)
-    day[3].results['pr'] = registry.Result(2, None, reason)
-    assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'ps') == 0
-    assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
-        day[1] / 'briefs/ps.md').read_text()
+    assert f'Counterpart acme/widget#7 (PR listing 2026-09-28T11:59:00+00:00): {json.dumps(pull)}' in text
+    assert "Counterpart acme/widget#24: not in the day's measured PR listing; kept as a reference" in text
+    assert [call for call in day[3].calls if call[0] == 'pr'] == []
+    (day[1] / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [pull], 'repos': {
+        'acme/widget': {'at': '2026-09-28T11:59:00+00:00', 'failed': 'gh: HTTP 502'}}}))
+    assert brief(monkeypatch, 'see acme/widget#7', 'builder', 'X', 'cq') == 0
+    assert "Counterpart acme/widget#7: not in the day's measured PR listing" in (day[1] / 'briefs/cq.md').read_text()
 
 
 def test_every_brief_names_the_doctor_and_the_install_rule(day, monkeypatch):
-    """#645: one doctor for every seat; install findings are the owner's."""
+    """#645: one doctor for every seat; install findings are the owner's. #907: only after a
+    failure whose refusal names no fix, never as a start step."""
     root, directory, vcs, host = day
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
     assert brief(monkeypatch, 'per D-ABC-1', 'sentinel-arch', 'X', 's1', '--worktree', 'tree') == 0
@@ -808,6 +807,7 @@ def test_every_brief_names_the_doctor_and_the_install_rule(day, monkeypatch):
         assert brief_module.DOCTOR in (directory / f'briefs/{name}.md').read_text().split('\n\n', 1)[0], name
     for text in ('.wuwei/executable', 'doctor', 'owner', 'Next:'):
         assert text in brief_module.DOCTOR, text
+    assert brief_module.DOCTOR.startswith('Doctor: only when a WUWEI command fails and its refusal names no fix')
 
 
 # Issue #733: a CI-fix item's briefs list every run step of the job it names.
