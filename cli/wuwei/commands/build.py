@@ -57,17 +57,12 @@ def run(args):
                     elif action.get('action') in ('continue', 'wait'):
                         print(action.get('feedback') or action['reason'], file=sys.stderr)
                 return code
-            action = next_action(item, *paths, root=root)
-            row = state.read_state(root)['items'][item]
-            if action['action'] == 'done' and row['phase'] in ('gate', 'delta', 'parked', 'escalated'):
-                from wuwei import dispatch  # #666: past the build, answer what dispatch next decides
-                try:
-                    action = dispatch.next_step(item, root)
-                except dispatch.Refused as exc:
-                    print(f'build: {exc}', file=sys.stderr)
-                    return 1
-                if action['action'] == 'fix':  # the round just opened: its builder action
-                    action = state.read_state(root)['builds'][item]['action']
+            from wuwei import dispatch
+            try:
+                action = step(item, root, *paths)
+            except dispatch.Refused as exc:
+                print(f'build: {exc}', file=sys.stderr)
+                return 1
             print(json.dumps(action))
             return 1 if action['action'] == 'escalate' else 0
         if len(args.arguments) not in (0, 2):
@@ -220,6 +215,37 @@ def _busy(item, record):
     marker = state.check_running(record)
     if marker:
         raise ValueError(f'fast checks for {item} are running since {marker["started_at"][11:16]} (pid {marker["pid"]}); run bin/wuwei build next {item} when that command exits')
+
+
+def step(item, root, *paths):
+    """#902: the one resolver of build next and of next's build launches: the build loop's
+    action; a build at its checks whose builder stopped Blocked asks the owner first (Yes
+    continues it on the answer, No parks the item); past the build (#666), what dispatch next
+    decides."""
+    from wuwei import dispatch
+    data = state.read_state(root)
+    record = data.get('builds', {}).get(item)
+    phase = (data['items'].get(item) or {}).get('phase')
+    blocked = (record and record['status'] == 'check' and phase in state.BUILD_PHASES
+               and dispatch._blocked_card(root, data, item, build=True))
+    if blocked and record.get('answered') != blocked[3]:  # one continue per answered line
+        reason, answer, card, line = blocked
+        if answer == 'No':
+            return dispatch._parked(root, item, reason, ask=False)
+        if answer != 'Yes':
+            return {'action': 'escalate', 'reason': reason, 'command': 'wuwei build next ' + shlex.quote(item),
+                    'card': card}
+        action = _continue(root, record, (
+            f'The owner answered Yes to your Blocked: line: {line}. Go on as you recommended, record it '
+            "under Assumptions in the item's spec, commit, and stop."))
+        _save(item, {**record, 'status': 'ready', 'action': action, 'answered': line}, root, 'build.answered',
+              record, {'line': line})
+        return action
+    action = next_action(item, *paths, root=root)
+    if action['action'] == 'done' and state.read_state(root)['items'][item]['phase'] in (
+            'gate', 'delta', 'parked', 'escalated'):
+        return dispatch.gate_step(item, root)
+    return action
 
 
 def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):

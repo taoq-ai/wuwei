@@ -180,24 +180,27 @@ def newer_template(root, payload, config):
 
 
 def config_failure(event, payload, reason):
-    """A config.toml that does not load (#326): PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
-    Owner step card through so the session can show and repair the line, and refuses
-    everything else with the error."""
-    if repair_read(payload) or config_set(payload):  # #831: repaired in the session
+    """A config.toml that does not load (#326): PreToolUse lets ToolSearch, reads of the config and
+    charters, config check, and config set and doctor --fix with their Owner step cards through so
+    the session can show and repair the line (#902: the recovery page's commands), and refuses
+    everything else with the error and those commands."""
+    if repair_read(payload) or repair_call(payload):  # #831: repaired in the session
         return CLEAN
-    return refuse(event, reason, cwd=payload.get('cwd'),
+    return refuse(event, f'{reason}; bin/wuwei config check names the fix, and bin/wuwei doctor --fix '
+                  'applies the ones it can on its Owner step card', cwd=payload.get('cwd'),
                   record=payload.get('session_id') != PROBE_SESSION, payload=payload)
 
 
-def config_set(payload):
-    """#831: config set by the workspace launcher, or its Owner step card."""
+def repair_call(payload):
+    """#831, #902: config check, config set or doctor --fix by the workspace launcher, or the
+    Owner step card of one."""
     from wuwei import workspace
     from wuwei.sessions import owner_step_call
     try:
         root = workspace.find_workspace(Path(payload['cwd']).resolve(), use_environment=False)
     except (OSError, ValueError, RuntimeError):
         return False
-    return owner_step_call(payload, root, ('config', 'set'))
+    return owner_step_call(payload, root, ('config', 'set'), ('config', 'check'), ('doctor', '--fix'))
 
 
 def repair_read(payload):

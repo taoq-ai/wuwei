@@ -112,7 +112,7 @@ Optional keys:
 - `tier` (`light`, `standard` or `full`) raises the review tier `dispatch next` computes from the diff. A lower one is refused. A docs-only diff keeps one reviewer.
 - `paths` lists repository-relative files, so the CLI can name the item's repository.
 - `ticket` names an existing ticket such as `ENG-12` or `owner/repo#12`. Any other value refuses the proposal.
-- `owner_actions` lists owner-only steps the gate pre-approves.
+- `owner_actions` lists owner-only steps, one `{"action", "target"}` each. The plan lists them as owner steps; the morning gate does not pre-approve them.
 
 An empty `ticket` or `tier` counts as absent.
 

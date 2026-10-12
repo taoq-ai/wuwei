@@ -525,15 +525,15 @@ def test_a_claimed_pr_at_the_round_cap_parks_once(tmp_path, monkeypatch, capsys)
     state._write_state(lambda data: data.setdefault('builds', {}).update(
         {'PR-7': {'status': 'done', 'fix_rounds': 2}}), root)
     [entry] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'PR-7']
-    assert (entry['kind'], entry['action']) == ('pr', 'refused') and 'round cap 2' in entry['reason']
+    assert (entry['kind'], entry['action']) == ('pr', 'parked') and 'round cap 2' in entry['reason']  # #902: kept
     assert state.read_state(root)['items']['PR-7']['phase'] == 'parked'
 
 
-def gated(root, monkeypatch, gate=lambda *args: ('raise', 'every gate passed at the current head')):
+def gated(root, monkeypatch, gate=lambda *args: {'step': 'raise', 'why': 'every gate passed at the current head'}):
     """The claimed item past its gates (the gate flow itself is tests/test_e2e_day.py); pushes spied."""
-    from wuwei import derive, pr_actions
+    from wuwei import dispatch, pr_actions
     state._write_state(lambda data: state._move(data, 'PR-7', 'gate'), root)
-    monkeypatch.setattr(derive, '_gate', gate)
+    monkeypatch.setattr(dispatch, 'decide', gate)
     pushed, real = [], pr_actions._push
     monkeypatch.setattr(pr_actions, '_push', lambda *args, **kwargs: pushed.append(args) or real(*args, **kwargs))
     return pushed
@@ -594,7 +594,7 @@ def test_a_commit_after_the_gate_check_is_not_pushed(tmp_path, monkeypatch, caps
     def gate(*args):
         git(tree, '-c', 'user.name=Builder', '-c', 'user.email=builder@example.test', 'commit', '-q',
             '--allow-empty', '-m', 'landed after the gates')
-        return 'raise', 'every gate passed at the current head'
+        return {'step': 'raise', 'why': 'every gate passed at the current head'}
     gated(root, monkeypatch, gate)
     assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
     assert 'not the head the gates passed' in capsys.readouterr().out

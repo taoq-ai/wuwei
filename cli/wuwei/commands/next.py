@@ -15,10 +15,10 @@ ENFORCE = {
             'let the call through. Records (state, events, config, verdicts, decisions) still refuse; '
             'deploys, releases and approve-tier messages ask on a card; merges and approvals stay '
             "owner-only. The day report's ## Shadow section lists the would-be refusals."),
-    True: ('Guards enforce: records, publishing, plugin integrity and seat launches without a '
-           'matching brief block; deploys, releases and approve-tier messages ask on a card; merges '
-           'and approvals stay owner-only; outward text, scratch paths and seat capacity '
-           'are logged. A refusal names its reason and the accepted form: '
+    True: ('Guards enforce: records, publishing and seat launches without a matching brief '
+           'block; plugin integrity only warns; deploys, releases and approve-tier messages ask on '
+           'a card; merges and approvals stay owner-only; outward text, scratch paths and seat '
+           'capacity are logged. A refusal names its reason and the accepted form: '
            'use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
@@ -343,7 +343,17 @@ def resolve(row, root):
             reasons = '; '.join(dict.fromkeys(launch['reason'] for launch in launches))
             return _row('wait', f'{reasons}; running seats finish. wuwei next offers them again after the reset.',
                         f'sleep {seconds}', 'background', until=until)
-        return {**row, 'launches': launches, **({'capacity': value['capacity']} if value.get('capacity') else {})}
+        decision = row['decision']
+        asked = next((launch for launch in launches if launch['action'] == 'escalate'), None)
+        # #902: a launch that resolved to a park, a finished build or an owner step is no launch;
+        # the first owner step is the set's decision, the rest come back on the next derivation
+        launches = [launch for launch in launches if launch['action'] not in ('escalate', 'parked', 'done')]
+        if decision is None and asked:
+            decision = {'item': asked['item'], 'why': f"{asked['item']}: {asked['reason']}",
+                        'command': asked['command'], **({'card': asked['card']} if asked.get('card') else {}),
+                        'then': THEN['decide'] if asked.get('card') else THEN['owner-step']}
+        return {**row, 'launches': launches, 'decision': decision,
+                **({'capacity': value['capacity']} if value.get('capacity') else {})}
     name = row['state']
     keep = {'state': name, **({'item': row['item']} if row.get('item') else {})}
     if row['action'] == 'launch':

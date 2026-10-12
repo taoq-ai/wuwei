@@ -2297,8 +2297,7 @@ def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monk
     assert state.read_state(root)['items']['A']['phase'] == 'delta'
     # #904: the owner's Yes grants one more round (docs/site/concepts.md, Fix rounds), once;
     # review F2: next offers that round too, not the cap card again
-    from wuwei import derive
-    assert derive._gate(root, state.read_state(root), workspace.load_config(root), 'A')[0] == 'fix'
+    assert dispatch.decide(root, state.read_state(root), workspace.load_config(root), 'A')['step'] == 'fix'
     assert dispatch.next_step('A', root) == _fix_action(['security'])
     assert len(fix_events(root)) == 3
     state.transition('A', 'delta', root)
@@ -2526,9 +2525,8 @@ def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys
     assert 'commands' not in found
     state._write_state(lambda data: data['seats'].update({'shepherd-A': {
         'item': 'A', 'role': 'shepherd', 'status': 'running'}}), root)
-    found = both()
-    assert found['seats'] == [] and 'commands' not in found
-    assert all(part in found['reason'] for part in ('shepherd-A', 'running', 'bin/wuwei why A'))
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')  # #902: a running shepherd is a wait
+    assert (code, found['action']) == (0, 'wait') and 'shepherd-A is raising the PR' in found['reason']
 
 
 def live_head(monkeypatch, sha):
@@ -3449,8 +3447,9 @@ def test_create_runs_again_only_while_the_item_has_no_ticket(root, monkeypatch):
 
 
 def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
-    # #844, #669: a PASS received at an older head is no pass; its seat re-reads at the current
-    # head and the new receipt replaces the stale one.
+    # #844, #669: a PASS received at an older head is no pass; #902: a fresh seat re-reads at
+    # the current head (the launch guard refuses a reused brief outside a delta), and its receipt
+    # replaces the stale one (tests/test_one_action.py runs the whole chain).
     from wuwei import dispatch
     state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root)
     record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n', agent_id='agent-q')
@@ -3462,15 +3461,9 @@ def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
     (tree / '.git/HEAD').write_text(current + '\n')
     state._write_state(lambda data: data['items']['A'].update(worktree='tree'), root)
     found = dispatch.next_step('A', root)
-    assert (found['action'], found['roles']) == ('gates', ['quality'])
-    [seat] = found['seats']
-    assert (seat['action'], seat['resume']) == ('continue', 'agent-q')
-    assert seat['feedback'].startswith('Re-read:') and current in seat['feedback']
-    path = workspace.day_dir(root) / 'decisions/gate-quality-1.md'
-    path.write_text(path.read_text().replace('abc1234', 'def5678'))
-    assert dispatch.next_step('A', root)['commands'] == ['wuwei dispatch receive A quality quality-1']
-    dispatch.receive('A', 'quality', 'quality-1', root=root)
-    assert dispatch.next_step('A', root)['action'] == 'raise'
+    assert (found['action'], found['roles'], found['seats']) == ('gates', ['quality'], [])
+    [command] = found['commands']
+    assert command.startswith('wuwei seat brief quality A quality-A-def5678 --gate --worktree tree --body ')
 
 
 def test_receive_runs_the_trace_sweep(root, monkeypatch):

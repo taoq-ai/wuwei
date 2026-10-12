@@ -1699,12 +1699,16 @@ def test_recorded_second_opinion_is_a_required_gate(gates):
     assert code == 1 and 'quality@codex' in reason
 
 
-def test_second_opinion_verdict_is_linted_as_quality(gates):
+def test_the_receipt_is_the_record_at_merge(gates):
+    # #902, #844 F3: receive linted the verdict file when it recorded it; merge reads the receipt,
+    # so a file changed or removed afterwards changes nothing (as derive reads it).
     root, _, decisions = gates
     records, items = second_opinion_records(
         root, decisions, evidence().replace('Simplicity: checked\nDesign: checked\n', ''))
-    with pytest.raises(ValueError, match='quality@codex verdict'):
-        policy()._recorded_gates(root, SHA, records, '9', items)
+    assert policy()._recorded_gates(root, SHA, records, '9', items) == (0, '')
+    for path in decisions.glob('gate-9-*.md'):
+        path.unlink()
+    assert policy()._recorded_gates(root, SHA, records, '9', items) == (0, '')
 
 
 def test_recorded_gates_after_more_than_one_fix_round(gates):

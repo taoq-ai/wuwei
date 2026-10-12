@@ -514,17 +514,16 @@ def test_build_launches_return_the_build_loop_action(root, capsys, monkeypatch):
     assert found['launches'] == [{'kind': 'build', 'item': 'A', 'goal': 'unplanned', **launch}]
     # #614: a continue is a fresh Agent with the returned prompt; resume only where offered
     assert 'fresh Agent' in next_command.THEN['set'] and 'resume' in next_command.THEN['set']
-    # #844: the build loop's done never reaches the planner; the launch names it and next asks again
+    # #902: the build loop's done is no launch and no retry line; the next derivation reads it
     monkeypatch.setattr(build, 'next_action', lambda item, root=None: {'action': 'done'})
     code, found = row(capsys)
-    [entry] = found['launches']
-    assert code == 1 and entry['action'] == 'refused' and 'run wuwei next again' in entry['reason']
+    assert code == 0 and found['launches'] == []
 
 
 @pytest.mark.parametrize('answer,action', [
     ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei seat brief arch A arch-A']}, 'gates'),
     ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A'},
-     'refused'),  # #844: an owner decision is the set's decision, never a launch
+     'decision'),  # #844, #902: an owner decision is the set's decision, never a launch
     ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
       'skip': 'wuwei dispatch skip-polish A'}, 'polish'),
 ])
@@ -532,14 +531,31 @@ def test_gate_launches_resolve_through_dispatch_next(root, capsys, monkeypatch, 
     from wuwei import dispatch
     approved(root, {'A': ('gate', {'worktree': str(root)})})
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: answer)
-    [entry] = row(capsys)[1]['launches']
+    found = row(capsys)[1]
+    if action == 'decision':
+        assert found['launches'] == [] and found['decision']['command'] == answer['command']
+        assert answer['reason'] in found['decision']['why']
+        return
+    [entry] = found['launches']
     assert (entry['kind'], entry['action']) == ('gates', action)
     if action == 'gates':
         assert 'wuwei seat brief arch A arch-A' in last_event(root)['payload']['named']
-    if action == 'refused':
-        assert answer['reason'] in entry['reason']
     if action == 'polish':  # #723
         assert (entry['command'], entry['skip']) == ('wuwei dispatch polish A', 'wuwei dispatch skip-polish A')
+
+
+def test_an_owner_step_behind_the_sets_decision_is_not_a_launch(root, capsys, monkeypatch):
+    # #902 review F4: with a decision already in the set, a launch that resolved to a park for the
+    # owner's resume is not left as a command to run; the next derivation asks it.
+    from wuwei import dispatch
+    approved(root, {'A': ('gate', {'worktree': str(root)}),
+                    'B': ('parked', {'status': 'blocked', 'resume_phase': 'delta',
+                                     'disposition': {'kind': 'parked', 'reason': 'round cap 2 reached: x'}})})
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {
+        'action': 'escalate', 'reason': 'round cap 2 reached: y', 'command': 'wuwei plan resume A'})
+    found = row(capsys)[1]
+    assert found['decision']['item'] == 'B' and found['launches'] == []
+    assert 'wuwei plan resume A' not in json.dumps(found['launches'])
 
 
 def test_shepherd_launch_then_its_reason(root, capsys, monkeypatch):
@@ -553,8 +569,8 @@ def test_shepherd_launch_then_its_reason(root, capsys, monkeypatch):
     [entry] = row(capsys)[1]['launches']
     assert entry['action'] == 'raise' and entry['seats'] == [brief.seat_action('shepherd', path, str(root), root)]
     day(root, seats={'shepherd-A': {'status': 'stopped', 'role': 'shepherd', 'item': 'A'}})
-    [entry] = row(capsys)[1]['launches']
-    assert 'shepherd-A is stopped and the PR is not raised' in entry['reason']
+    [entry] = row(capsys)[1]['launches']  # #902: stopped with no PR: a fresh shepherd seat
+    assert entry['action'] == 'raise' and 'shepherd-A-2' in entry['commands'][0]
 
 
 def test_a_parked_verdict_asks_the_day_again(root, capsys, monkeypatch):
@@ -566,7 +582,7 @@ def test_a_parked_verdict_asks_the_day_again(root, capsys, monkeypatch):
         return {'action': 'parked', 'reason': 'gate quality PARK: - P1', 'command': 'wuwei plan resume A'}
     approved(root, {'A': ('gate', {})})
     monkeypatch.setattr(dispatch, 'next_step', parked)
-    assert row(capsys)[1]['launches'][0]['action'] == 'refused'
+    assert row(capsys)[1]['launches'] == []  # #902: a park is no launch, and no retry line
     assert row(capsys)[1]['state'] == 'close'
 
 
