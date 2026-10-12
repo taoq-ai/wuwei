@@ -475,6 +475,40 @@ def test_checked_event_counts_passed_and_failed(seat):
     assert record['status'] == 'check'
 
 
+def checked(seat):
+    root = seat[0]
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    if state.read_state(root)['builds']['A']['status'] != 'check':
+        state._write_state(lambda data: data['builds']['A'].update(status='check'), root)
+    return root, [registry.Result(0)] * len(state.read_state(root)['builds']['A']['commands'])
+
+
+def test_park_during_passing_checks_keeps_the_item_parked(seat, monkeypatch):
+    # #872 F1: a park that lands between the phase read and the move write wins.
+    from wuwei import derive, plan
+    root, results = checked(seat)
+    real = derive.head
+
+    def head(path):
+        plan.park('A', 'scanner chain a -> b', root)
+        return real(path)
+    monkeypatch.setattr(derive, 'head', head)
+    build.complete_checks('A', results, root=root)
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['resume_phase']) == ('parked', 'implement')
+
+
+def test_checks_passing_while_parked_still_run_the_spec_step(seat, monkeypatch):
+    # #872 F3: the spec-step check runs for the phase the item paused in.
+    from wuwei import plan, specmode
+    root, results = checked(seat)
+    plan.park('A', 'scanner chain a -> b', root)
+    monkeypatch.setattr(specmode, 'check', lambda *args, **kwargs: (1, 'tasks step missing'))
+    assert build.complete_checks('A', results, root=root) == 1
+    assert state.read_state(root)['builds']['A']['status'] != 'done'
+
+
 def test_check_in_flight_refuses_next_and_a_second_check(seat, capsys):
     import subprocess
     import sys
