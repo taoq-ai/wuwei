@@ -256,6 +256,9 @@ def _owner_prs(config, root, candidates):
 
 def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
+    # P4: refused before discovery, so a slow scanner is never paid for a refusal.
+    if state.day_started(workspace.day_dir(root)) and state.read_state(root).get('gate_approved'):
+        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
     recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
@@ -301,8 +304,6 @@ def propose(data, root=None):
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
-    if state.day_started(directory) and state.read_state(root).get('gate_approved'):
-        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm',

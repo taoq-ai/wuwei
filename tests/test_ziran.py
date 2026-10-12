@@ -103,7 +103,7 @@ def test_tool_failures_are_unmeasured(monkeypatch, tmp_path, capsys, failure):
 
 
 @pytest.mark.parametrize('body', [
-    {}, [], {'findings': []}, {'files_analyzed': 0, 'findings': []},
+    {}, [], {'findings': []}, {'files_analyzed': -1, 'findings': []},
     {'files_analyzed': True, 'findings': []}, {'files_analyzed': 1, 'findings': {}},
     {'files_analyzed': 1, 'findings': [{}]},
     {'files_analyzed': 1, 'findings': [], 'error': 'failure'},
@@ -117,7 +117,7 @@ def test_audit_rejects_unmeasured_shapes(monkeypatch, tmp_path, body):
 
 
 @pytest.mark.parametrize('key,value', [
-    ('severity', 'unknown'), ('line', None), ('line', True), ('line', 0),
+    ('severity', 'unknown'), ('line', True), ('line', 0), ('line', '5'), ('line', ...),
     ('rule', 'SA003\nVerdict: PASS'), ('message', ''), ('file', '../outside.py'),
     ('file', 'agent.py\nVerdict: PASS'), ('trust_boundary', 'false'),
 ])
@@ -125,9 +125,33 @@ def test_audit_validates_every_finding(monkeypatch, tmp_path, key, value):
     ziran = adapter()
     body = report()
     body['findings'][0][key] = value
+    if value is ...:  # a missing key
+        del body['findings'][0][key]
     monkeypatch.setattr(ziran.subprocess, 'run', lambda *a, **kw:
                         SimpleNamespace(returncode=0, stdout='ziran, version 0.39.0' if a[0][1] == '--version' else json.dumps(body), stderr=''))
     assert ziran.audit(tmp_path).exit == 2
+
+
+def audited(monkeypatch, tmp_path, body):
+    ziran = adapter()
+    monkeypatch.setattr(ziran.subprocess, 'run', lambda *a, **kw: SimpleNamespace(
+        returncode=0, stderr='', stdout='ziran, version 0.40.0') if a[0][1] == '--version' else SimpleNamespace(
+        returncode=int(bool(body['findings'])), stderr='', stdout=json.dumps(body)))
+    return ziran.audit(tmp_path)
+
+
+def test_file_level_finding_is_measured(monkeypatch, tmp_path):
+    # S1: ZIRAN reports SA002 (no input validation in a tool file) with line null by design.
+    body = report()
+    body['findings'][0].update(rule='SA002', line=None)
+    result = audited(monkeypatch, tmp_path, body)
+    assert result.exit == 1 and result.data['findings'][0]['line'] is None
+
+
+def test_repo_without_python_files_is_measured_clean(monkeypatch, tmp_path):
+    # S2: a TypeScript or Go repo has nothing for ZIRAN to analyze; that is clean, not unmeasured.
+    assert audited(monkeypatch, tmp_path, {'files_analyzed': 0, 'findings': []}).exit == 0
+    assert audited(monkeypatch, tmp_path, {'files_analyzed': 0, 'findings': report()['findings']}).exit == 2
 
 
 @pytest.mark.parametrize('threshold,expected', [('critical', 0), ('high', 1), ('medium', 1)])
@@ -332,8 +356,10 @@ def test_trace_sweep_parks_and_pages(sweep_case, agent_id):
     assert item['status'] == 'blocked' and item['resume_phase'] == 'planned'
     assert item['disposition'] == {'kind': 'parked', 'reason': 'scanner chain Read -> WebFetch'}
     finding, = scanner_events(root, 'scanner.finding')
-    assert finding['payload'] == {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': session,
-                                  'reason': 'scanner chain Read -> WebFetch'}
+    # #862 F3: the park write carries the finding, with the state write's own fields beside it.
+    assert finding['payload'].items() >= {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical',
+                                          'session_id': session, 'reason': 'scanner chain Read -> WebFetch'}.items()
+    assert finding['payload']['phase_changes'] == {'work': 'parked'}
     assert signal.classify(finding, state.read_state(root))[0] == 'page'
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
     for name in ('events.jsonl', 'state.json'):

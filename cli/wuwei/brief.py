@@ -430,6 +430,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
     output.parent.mkdir(exist_ok=True)
     if output.parent.resolve() != output.parent:
         raise ValueError(f'brief directory must not be a symlink; {SYMLINK}')
+    lead = candidates(root) if role == 'lead' else ''  # S5: the scanner audit runs outside brief.lock
     # ponytail: serialize brief publication for this day.
     with (directory / 'brief.lock').open('a') as lock:
         state.lock_ex(lock, 'brief.lock')
@@ -583,8 +584,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         # reference is optional evidence, so it never refuses.
                         header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
                                       'kept as a reference')
-        if role == 'lead':  # #848: the lead reads the day's candidates here
-            block += candidates(root)
+        block += lead  # #848: the lead reads the day's candidates here
         text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))
         import hashlib

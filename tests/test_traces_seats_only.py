@@ -111,15 +111,15 @@ def test_seat_wins_over_registration(day):
         items={'work': {'phase': 'planned', 'status': 'queued'}},
         seats={'builder': {'item': 'work', 'role': 'builder', 'status': 'stopped',
                            'brief': 'x', 'trace_sessions': ['P']}}), root)
-    assert sweep(root)['scanner_owed'] == 4
+    assert sweep(root)['scanner_owed'] == 1  # S6: four rows of one session and chain page once
     item = state.read_state(root)['items']['work']
     assert item['phase'] == 'parked' and item['disposition']['reason'] == 'scanner chain Read -> WebFetch'
     assert decisions(root) == []
-    assert len(events(root, 'scanner.finding')) == 4
+    assert len(events(root, 'scanner.finding')) == 1
     assert not events(root, 'traces.noted')
 
 
-def test_unreadable_events_are_unmeasured(day):
+def test_unreadable_events_are_unmeasured(day, capsys):
     root = day(findings=rows('U'))
     path = workspace.day_dir(root) / 'events.jsonl'
     path.chmod(0o644)
@@ -127,6 +127,8 @@ def test_unreadable_events_are_unmeasured(day):
         stream.write('{"partial"')
     counts = sweep(root)
     assert counts['scanner'] == 'unmeasured' and counts['unreadable'] == 1
+    err = capsys.readouterr().err  # P1: the reason and the switch-off, not a bare doctor pointer
+    assert 'incomplete event line' in err and f'run {scanner.OFF} to switch the scanner off' in err
 
 
 def test_event_tiers():
@@ -214,3 +216,41 @@ def test_local_chain_after_a_credential_read_still_parks(day, read, hashed):
     assert state.read_state(root)['items']['work']['disposition'] == {'kind': 'parked', 'reason': reason}
     finding, = events(root, 'scanner.finding')
     assert finding['reason'] == reason
+
+
+def test_a_resumed_item_is_not_parked_again_by_the_next_sweep(day, monkeypatch, capsys):
+    # S6: the sweep reads the whole day's traces; a chain already recorded today never parks again.
+    from fakes import owner
+    from wuwei import plan
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    root = seat_day(day, [{'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': 'B'}])
+    state._write_state(lambda data: data['items']['work'].update(phase='implement', status='running'), root)
+    assert sweep(root)['scanner_owed'] == 1
+    assert state.read_state(root)['items']['work']['phase'] == 'parked'
+    with pytest.raises(state.StateError) as refused:
+        plan.resume('work', root)
+    owner.answer_card(root, str(refused.value))
+    plan.resume('work', root)
+    for _ in range(2):
+        assert sweep(root)['scanner_owed'] == 0
+        assert state.read_state(root)['items']['work']['phase'] == 'implement'
+    assert len(events(root, 'scanner.finding')) == 1
+
+
+def test_a_failed_park_leaves_no_finding_so_the_next_sweep_parks(day, monkeypatch):
+    # #862 F3: the finding and the park are one write; a state.lock timeout loses neither alone.
+    root = seat_day(day, [{'chain': ['Read', 'WebFetch'], 'risk_level': 'critical', 'session_id': 'B'}])
+    state._write_state(lambda data: data['items']['work'].update(phase='implement', status='running'), root)
+    real, calls = state._write_state, []
+
+    def flaky(update, *args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError('state.lock remained locked for 30s')
+        return real(update, *args, **kwargs)
+    monkeypatch.setattr(state, '_write_state', flaky)
+    assert sweep(root)['scanner'] == 'unmeasured'
+    assert not events(root, 'scanner.finding')
+    assert sweep(root)['scanner_owed'] == 1
+    assert state.read_state(root)['items']['work']['phase'] == 'parked'
+    assert len(events(root, 'scanner.finding')) == 1

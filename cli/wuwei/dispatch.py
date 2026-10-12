@@ -1245,8 +1245,12 @@ def receive(item, role, name, round_name='initial', root=None):
         from wuwei import scanner
         if not trees or trees[0] == 'none':
             raise OSError('scanner: unmeasured: missing reviewed worktree; write the security brief again with --worktree <absolute path>, then receive the verdict again')
+        merge_base = re.findall(r'^Merge-base: ([0-9a-fA-F]+)', brief_text, re.M)
+        if not merge_base:
+            raise OSError('scanner: unmeasured: the security brief has no Merge-base line; write the security brief again with --worktree <absolute path>, then receive the verdict again')
+        changed = {row['path'] for row in brief.read(vcs.diff_stat, str(tree), merge_base[0], current_head, root=root)}
         findings = scanner.rows(tree, item, data['items'][item]['flags'],
-                                workspace.load_config(root), root)
+                                workspace.load_config(root), root, changed)
         measured_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
                                    str(tree), root=root)['sha']
         if measured_head != current_head:

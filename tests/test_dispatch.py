@@ -353,14 +353,18 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
     directory = workspace.day_dir(root)
     (directory / 'briefs').mkdir(exist_ok=True)
     (directory / 'decisions').mkdir(exist_ok=True)
-    (directory / 'briefs/security.md').write_text('Head: abc1234\nWorktree: ' + str(tree) + '\n')
+    (directory / 'briefs/security.md').write_text('Head: abc1234\nMerge-base: bbb1234 (origin/main)\n'
+                                                  'Worktree: ' + str(tree) + '\n')
     (directory / 'decisions/gate-security.md').write_text(PASS)
     state._write_state(lambda data: data['seats'].update(security={
         'item': 'A', 'role': 'sentinel-security', 'status': 'stopped',
         'brief': str((directory / 'briefs/security.md').relative_to(root))}), root)
     real_load = registry.load
     vcs = SimpleNamespace(head=lambda *args, **kwargs: Result(0, {'sha': 'abc1234'}),
-                          status=lambda *args, **kwargs: Result(0, []))
+                          status=lambda *args, **kwargs: Result(0, []),
+                          diff_stat=lambda repo, base, head, root=None: Result(0, [
+                              {'path': 'vulnerable.py', 'additions': 1, 'deletions': 0}]
+                              if (base, head) == ('bbb1234', 'abc1234') else None))
     monkeypatch.setattr(registry, 'load', lambda kind, config:
                         vcs if kind == 'vcs' else real_load(kind, config))
     calls = []
@@ -462,7 +466,72 @@ def test_agent_surface_failure_never_records_pass(root, monkeypatch, capsys, fai
                                    stderr='')
         monkeypatch.setattr(subprocess, 'run', run)
     assert main(['dispatch', 'receive', 'A', 'security', 'security']) == 2
-    assert 'unmeasured' in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert 'unmeasured' in err
+    if failure == 'timeout':  # P1: the place and the fix, not doctor (which never runs ZIRAN)
+        assert str(root / 'tree') in err and 'plan park A' in err and 'doctor' not in err
+    assert state.read_state(root)['gate_verdicts'] == {}
+
+
+def test_agent_surface_judges_only_the_items_changed_files(root, monkeypatch):
+    # S8: a finding already on main in a file the item did not change does not block it.
+    from wuwei import dispatch
+    from wuwei.registry import Result
+
+    payload, calls, vcs = agent_gate(root, monkeypatch)
+    vcs.diff_stat = lambda *args, **kwargs: Result(0, [{'path': 'other.py', 'additions': 1, 'deletions': 0}])
+    result = dispatch.receive('A', 'security', 'security', root=root)
+    assert result['verdict'] == 'PASS' and not result['blocks'] and len(calls) == 2
+    assert 'ZIRAN' not in (root / result['file']).read_text()
+    assert 'scanner.finding' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
+
+
+def test_agent_surface_symlink_in_the_diff_to_an_unchanged_file_still_blocks(root, monkeypatch):
+    # #862 F2: the item adds tools/agent_tool.py -> ../vulnerable.py; ZIRAN reports the link's
+    # path, which resolves to a file already on main. The diff names the link, so it blocks.
+    from wuwei import dispatch
+    from wuwei.registry import Result
+
+    payload, _, vcs = agent_gate(root, monkeypatch)
+    (root / 'tree/tools').mkdir()
+    (root / 'tree/tools/agent_tool.py').symlink_to('../vulnerable.py')
+    payload['findings'][0]['file'] = str((root / 'tree').resolve() / 'tools/agent_tool.py')
+    vcs.diff_stat = lambda *args, **kwargs: Result(0, [{'path': 'tools/agent_tool.py', 'additions': 1, 'deletions': 0}])
+    result = dispatch.receive('A', 'security', 'security', root=root)
+    assert result['verdict'] == 'FIX' and result['blocks']
+
+
+def test_agent_surface_note_when_ziran_analyzed_nothing(root, monkeypatch):
+    # #862 F5: files_analyzed 0 is measured, and the verdict says ZIRAN covered no file.
+    from wuwei import dispatch, verdict
+
+    payload, _, _ = agent_gate(root, monkeypatch, findings=False)
+    payload['files_analyzed'] = 0
+    result = dispatch.receive('A', 'security', 'security', root=root)
+    text = (root / result['file']).read_text()
+    assert result['verdict'] == 'PASS' and not result['blocks']
+    assert 'ZIRAN analyzed no file in this worktree' in text
+    assert verdict.lint(text, class_sweep=True)[0] == 0
+
+
+def test_agent_surface_file_level_finding_has_no_line(root, monkeypatch):
+    # S1: SA002 has line null; the row names the file at line 1, the file:line a verdict needs.
+    from wuwei import dispatch
+
+    payload, _, _ = agent_gate(root, monkeypatch)
+    payload['findings'][0].update(rule='SA002', line=None)
+    result = dispatch.receive('A', 'security', 'security', root=root)
+    assert result['blocks'] and '| vulnerable.py:1 | ZIRAN SA002' in (root / result['file']).read_text()
+
+
+def test_agent_surface_brief_without_merge_base_is_unmeasured(root, monkeypatch):
+    from wuwei import dispatch
+
+    agent_gate(root, monkeypatch)
+    brief = workspace.day_dir(root) / 'briefs/security.md'
+    brief.write_text(brief.read_text().replace('Merge-base: bbb1234 (origin/main)\n', ''))
+    with pytest.raises(OSError, match='unmeasured: .*Merge-base'):
+        dispatch.receive('A', 'security', 'security', root=root)
     assert state.read_state(root)['gate_verdicts'] == {}
 
 

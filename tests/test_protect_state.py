@@ -40,6 +40,7 @@ def payload(root, tool, **tool_input):
     ('state.json', 0), ('events.jsonl', 0),
     ('.wuwei/days/2026-09-28/state.json', 1),
     ('.wuwei/days/2020-01-01/events.jsonl', 1),
+    ('.wuwei/days/2026-09-28/scanner-audit.json', 1),  # #862 F1: discovery's audit cache
     ('inside/../state.json', 0), ('alias', 1),
     ('notes.md', 0), ('state.json.bak', 0),
     ('', 2), (None, 2), (123, 2), ('bad\0path', 2),

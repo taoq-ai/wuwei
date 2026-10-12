@@ -8,7 +8,7 @@ One switch sets how the guards act: `guards.enforce`. It is true by default. Wit
 
 ## ZIRAN integration
 
-The ZIRAN scanner adapter provides runtime trace analysis (S2) and agent-surface gates (S4). An item whose diff changes prompts, tool definitions, agent tool permissions or MCP config is flagged `agent_surface`. Its security gate reads the scanner findings. Do not treat an unavailable scanner as a clean audit. With `adapters.scanner = "none"`, the default, trace and agent-surface checks report unmeasured, never clean. WUWEI does not watch attached MCP servers for tool drift, and it declares no MCP server of its own.
+The ZIRAN scanner adapter provides runtime trace analysis (S2) and agent-surface gates (S4). An item whose diff changes prompts, tool definitions, agent tool permissions or MCP config is flagged `agent_surface`. Its security gate reads the scanner findings in the files the item changed. The morning discovery audits each configured repository once per HEAD per day and lists its findings as candidates. Do not treat an unavailable scanner as a clean audit. With `adapters.scanner = "none"`, the default, trace and agent-surface checks report unmeasured, never clean. WUWEI does not watch attached MCP servers for tool drift, and it declares no MCP server of its own.
 
 ## S1: Reviewed role grants in CI
 
