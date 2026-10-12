@@ -300,3 +300,10 @@ def lint_file(path, *, role='', root=None):
     except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         code, message = UNRUN, f'verdict lint: could not read {path}: {exc}'
     return record_rejection(path, code, message, root=root)
+
+
+def retro_contract():
+    """#871: the retro note a seat's last message ends with, from FORMAT: the lines
+    guards.verdict.check_retro reads on a Codex result."""
+    return ('End your final message with the retro note, one line each: '
+            + '; '.join(FORMAT[key][0] for key in RETRO_KEYS) + '.')

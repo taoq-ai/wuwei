@@ -80,7 +80,8 @@ def _protected_name(path, directories=False):
             return True
         if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'proposal.json', 'plan.md', 'goals.md',
+                                                                'scanner-audit.json'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True

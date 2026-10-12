@@ -215,19 +215,21 @@ def unresolved(root, rows, open_items=None, notes=None):
 
 def scanner_hold(root):
     """#834: a critical tool sequence today holds the close until the owner answers Yes on the
-    Owner step card of close, one card per finding."""
+    Owner step card of close; S7: one card for all of today's critical findings."""
     import hashlib
     from wuwei import sessions
-    for row in watch.records(workspace.day_dir(root) / 'events.jsonl'):
-        payload = row['payload']
-        if row['kind'] != 'scanner.finding' or payload.get('risk_level') != 'critical':
-            continue
-        token = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
-        chain = ' -> '.join(map(str, payload.get('chain', [])))
-        if reason := sessions.needs_owner(root, 'bin/wuwei close', f'A critical tool sequence ran today: {chain}. '
-                                          'Yes closes the day with it investigated; No keeps the day open.',
-                                          token, 'The day stays open.'):
-            return 1, reason
+    found = sorted({json.dumps(row['payload'], sort_keys=True)
+                    for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+                    if row['kind'] == 'scanner.finding' and row['payload'].get('risk_level') == 'critical'})
+    if not found:
+        return 0, ''
+    token = hashlib.sha256('\n'.join(found).encode()).hexdigest()[:12]
+    chains = list(dict.fromkeys(' -> '.join(map(str, json.loads(row).get('chain', []))) for row in found))
+    shown = '; '.join(chains[:5]) + (f'; and {len(chains) - 5} more' if len(chains) > 5 else '')
+    if reason := sessions.needs_owner(root, 'bin/wuwei close', f'Critical tool sequences ran today: {shown}. '
+                                      'Yes closes the day with them investigated; No keeps the day open.',
+                                      token, 'The day stays open.'):
+        return 1, reason
     return 0, ''
 
 

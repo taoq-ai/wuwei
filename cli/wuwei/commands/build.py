@@ -217,7 +217,7 @@ def _busy(item, record):
 def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     """Return one stable action. Executing it belongs to the caller. runtime (#845): the runtime
     a new build binds, routed by the launch set; else routed here on fresh window room."""
-    from wuwei.brief import events, identifier, seat_action
+    from wuwei.brief import events, identifier, read, seat_action
     root = workspace.find_workspace(root)
     identifier(item)
     data = state.read_state(root)
@@ -240,12 +240,38 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
         raise ValueError(f'builder brief needs a worktree; create one with bin/wuwei worktree add {item} and pass it with --worktree. Or run bin/wuwei build next {item} <brief> <worktree>')
     tree = (root / worktree).resolve(strict=True)
     path = (root / brief).resolve(strict=True)
+    relative = str(path.relative_to(root))
+    # #892: a builder launched straight from its brief ran outside the build record; one brief
+    # is one seat, so the build continues that seat instead of handing the brief out again
+    def ran(path):  # the builder seats that ran a brief of this item
+        return [name for name, seat in data.get('seats', {}).items() if seat.get('role') == 'builder'
+                and seat.get('item') == item and seat.get('brief') == path]
+    used = next(iter(ran(relative)), None)
+    if used and (record is None or record.get('seat') != used):
+        status = data['seats'][used]['status']
+        if status == 'running':
+            raise ValueError(f'builder seat {used} is still running; wait for its stop hook, then run bin/wuwei build next {item}')
+        if status != 'stopped':
+            raise ValueError(f'brief {used} already ran a seat that is {status}; write a fresh brief with bin/wuwei seat brief, then run bin/wuwei build next {item}')
+    unbound = bool(used) and record is not None and record.get('seat') != used
+    stale, logged = False, []
     if record is not None:
-        if str(path.relative_to(root)) == record['brief'] and str(tree) == record['worktree']:
+        if relative == record['brief'] and str(tree) == record['worktree'] and not unbound:
             if record['action']['action'] == 'wait' and not state.held(data, item):
                 return _release(item, record, data, root)
             return record['action']
-        if record['status'] not in ('done', 'parked'):
+        if record['status'] == 'ready' and record['action']['action'] == 'launch' and str(tree) == record['worktree']:
+            # #889: an unlaunched brief the worktree moved past is one the launch guard refuses
+            # (unlogged today, or logged at another HEAD); a new brief replaces it, and the build
+            # keeps its start head (a record from before start heads takes the old brief's),
+            # its fix rounds and its fix feedback
+            logged = [row['payload'].get('head') for row in events(root) if row['kind'] == 'brief written'
+                      and row['payload'].get('path') == record['brief']]
+            # D1: a seat other than the build's already ran the recorded brief: the guard refuses it
+            stale = (unbound or not logged or bool(set(ran(record['brief'])) - {record.get('seat')})
+                     or (logged[-1] is not None and logged[-1] != read(
+                         registry.load('vcs', config).head, tree, root=root)['sha']))
+        if record['status'] not in ('done', 'parked') and not stale:
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
@@ -257,11 +283,34 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
         runtime = dispatch.route(policy, config['adapters']['runtime'], {name: row['room'] for name, row in rooms.items()})
     action = seat_action('builder', path, tree, root, runtime)
     previous = record
+    feedback = stale and previous['action'].get('feedback')
+    if feedback:
+        action['feedback'] = feedback
+        action['prompt'] += '\n\n' + feedback + previous['action']['prompt'].partition('\n\n' + feedback)[2]
     commands = list(repo['fast_checks'])
-    record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
+    from wuwei import derive  # #871 L2: the head the build must move past
+    if used:  # #892: the head the seat launched at
+        start = data['seats'][used].get('head')
+    elif stale:
+        start = previous.get('start') or next(iter(logged), None)
+    else:  # #889 F4: a new record counts the commits its branch holds over the brief's base
+        base = previous is None and re.search(r'^Merge-base: (\S+)', path.read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
+        start = derive.head(tree)
+        if base and derive.SHA.fullmatch(base[1]):
+            try:  # D3: a base a rebase left behind is no ancestor of HEAD; HEAD stays the start
+                if read(registry.load('vcs', config).merge_base, tree, base[1], root=root)['sha'] == base[1]:
+                    start = base[1]
+            except ValueError:
+                pass
+    record = {**(previous if stale else {}), 'brief': relative, 'worktree': str(tree), 'start': start,
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
+    if used:
+        record.update(seat=used, agent_id=data['seats'][used].get('agent_id'))
+        record['action'] = action = _continue(root, record, (
+            f'Seat {used} ran this brief before WUWEI recorded its build. Finish what the brief '
+            'asks, commit it, and stop; WUWEI runs the fast checks next.'))
     _save(item, record, root, 'build.started', previous,
           None if commands else {'checks': 'none configured'})
     if data['items'][item]['phase'] == 'planned':
@@ -333,11 +382,11 @@ def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
             fresh['items'][item]['polish'] = polish
         fresh['items'][item]['phase'] = 'fix'
         from wuwei import derive  # #844: the head each fix round starts from and leaves
-        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []),
-                                             [start or derive.head(record['worktree']), None]]
+        head = start or derive.head(record['worktree'])
+        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []), [head, None]]
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
-        fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
+        fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)), 'start': head,
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
@@ -507,19 +556,11 @@ def complete_checks(item, results, *, root, expected=None):
                                       build=True, where='gates')
         if code:
             failures.append(('spec', {'error': reason}))
+        failures += _unbuilt(record, root, config)
     if not failures:
         record.update(status='done', action={'action': 'done'})
-    else:
-        signature = _signature(failures)
-        record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
-        record['signature'] = signature
-        reason = ('same fast-check failure repeated' if record['repeats'] >= config['build']['stuck_after']
-                  else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
-        if reason:
-            _park(root, item, record, reason, expected)
-            return 1
-        feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
-        record.update(status='ready', action=_continue(root, record, feedback))
+    elif _retry(root, config, item, record, failures, expected):
+        return 1
     _save(item, record, root, 'build.checked', expected,
           {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = AFTER.get(state.read_state(root)['items'][item]['phase'])  # a paused item: plan resume moves it
@@ -532,6 +573,62 @@ def complete_checks(item, results, *, root, expected=None):
 
 
 AFTER = {'implement': 'gate', 'fix': 'delta'}
+
+
+REPEATED = {'change': 'no change over the start head', 'private': 'private files repeated',
+            'commit': 'commit refused repeated', 'dirty': 'uncommitted changes repeated'}
+
+
+def _private(paths):
+    """#871: the paths a build never hands to the gates: the credential locations of the #870
+    trace check (scanner._credential_path), the one rule; .env templates pass."""
+    from wuwei.scanner import _credential_path
+    return [path for path in paths if _credential_path('./' + path)]
+
+
+def _retry(root, config, item, record, failures, expected):
+    """A failed iteration: the builder continues with the failures, or the item parks on a
+    repeat. True when parked. #871 B5: an unchanged head parks on its first repeat."""
+    signature = _signature(failures)
+    record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
+    record['signature'] = signature
+    names = {name for name, _ in failures}
+    cause = REPEATED.get(*names) if len(names) == 1 else None  # #871: a park names its cause
+    stuck = 2 if names == {'change'} else config['build']['stuck_after']
+    reason = ((cause or 'same fast-check failure repeated') if record['repeats'] >= stuck
+              else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
+    if reason:
+        _park(root, item, record, reason, expected)
+        return True
+    feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
+    record.update(status='ready', action=_continue(root, record, feedback))
+    return False
+
+
+def _unbuilt(record, root, config):
+    """#871 L2: a build that leaves uncommitted changes, commits a private file, or makes no
+    commit over the head it started from did not build; the gates never get those heads."""
+    from wuwei import derive
+    from wuwei.brief import read, status
+    vcs = registry.load('vcs', config)
+    dirty = status(vcs, record['worktree'], root)
+    if dirty:
+        return [('dirty', {'error': 'uncommitted changes: ' + ', '.join(row['path'] for row in dirty)
+                            + '; remove what does not belong to the change (WUWEI commits a Codex '
+                            'build; a Claude builder commits its own)'})]
+    if not record.get('start'):
+        return []
+    if derive.head(record['worktree']) != record['start']:
+        # A16: any commit since start, a file deleted again included; the push sends them all
+        private = _private(read(vcs.touched, record['worktree'], record['start'], root=root))
+        if private:
+            return [('private', {'error': (
+                f'private files {", ".join(private)} in the commits since the start head; these '
+                f'commits are not pushed yet, so rewrite them locally: git reset --soft {record["start"]}, '
+                'remove the files, add them to .gitignore, and commit again')})]
+        return []
+    return [('change', {'error': f'no change over the start head {record["start"][:12]}; '
+                                 'make the change the brief asks for'})]
 
 
 def built(data, item, after, end):
@@ -589,11 +686,50 @@ def wait(runtime, job, config, root):
             raise ValueError(f'invalid runtime status; {ADAPTER_DATA}')
         if status['status'] == 'completed':
             return status
-        if status['status'] in ('failed', 'cancelled'):
-            raise RuntimeError(f'runtime seat {status["status"]}; rerun the same bin/wuwei build command to resume, and run bin/wuwei doctor if it fails again')
+        if status['status'] in ('failed', 'cancelled'):  # #871: the caller frees the seat; a rerun relaunches
+            raise RuntimeError(f'runtime seat {status["status"]}' + (f': {status["error"]}' if status.get('error') else '')
+                               + '; rerun the same command to relaunch it, and run bin/wuwei doctor if it fails again')
         if time.monotonic() >= deadline:
             raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set')
         time.sleep(config['build']['poll_interval_seconds'])
+
+
+def _commit(item, root, config):
+    """#871 L2: commit a completed runtime job's changes with the repository identity. The
+    job's sandbox cannot write the worktree's git metadata (it lives in the main repository's
+    .git/worktrees), so it leaves them uncommitted. Returns the failure that stopped the commit
+    (B1, B2: a private file, a rejecting hook, a timeout), which goes back to the builder; an
+    unset identity raises, for the owner."""
+    from wuwei import commit_push
+    from wuwei.brief import status
+    record = state.read_state(root)['builds'][item]
+    vcs = registry.load('vcs', config)
+    dirty = status(vcs, record['worktree'], root)
+    if not dirty:
+        return None
+    index, repo = next(((index, row) for index, row in enumerate(config['repos'])
+                        if row['name'] == record['repo']), ('<n>', {}))
+    unset = commit_push.unset_identity(repo.get('identity'), index)
+    if unset:
+        raise ValueError(f'{unset[0]}; WUWEI commits a Codex build with it. The owner runs {unset[1]}, '
+                         'then rerun the same command')
+    private = _private(row['path'] for row in dirty)
+    if private:
+        return ('private', {'error': f'private files {", ".join(private)}: remove them or add them to '
+                                     '.gitignore; WUWEI does not commit them'})
+    try:
+        _data(vcs.commit_all(record['worktree'], item,
+                             repo['identity']['name'], repo['identity']['email'], root=root), 'commit')
+    except PortExit as exc:
+        return ('commit', {'error': str(exc)})
+    return None
+
+
+def _refuse(item, record, root, config, failure):
+    """B1, B2: a commit WUWEI could not make is the builder's next iteration, like a failed check."""
+    retried = dict(record)
+    if not _retry(root, config, item, retried, [failure], record):
+        _save(item, retried, root, 'build.checked', record, {'passed': 0, 'failed': 1})
 
 
 def run_loop(item, brief, worktree, *, root=None):
@@ -642,9 +778,17 @@ def run_loop(item, brief, worktree, *, root=None):
                 previous = dict(record)
                 record.update(status='running', job=job, started_at=workspace.now().isoformat())
                 _save(item, record, root, 'build.launched', previous)
-            status = wait(runtime, job, config, root)
-            record_result(item, _data(runtime.result(job, root=root), 'result'),
-                          root=root, model=status.get('model'))
+            try:
+                status = wait(runtime, job, config, root)
+            except RuntimeError as exc:  # #871: a failed job frees the build; the rerun relaunches
+                running = state.read_state(root)['builds'][item]
+                _save(item, {**running, 'status': 'ready'}, root, 'build.failed', running, {'reason': str(exc)})
+                raise
+            refused = _commit(item, root, config)
+            recorded = record_result(item, _data(runtime.result(job, root=root), 'result'),
+                                     root=root, model=status.get('model'))
+            if refused and recorded:
+                _refuse(item, recorded, root, config, refused)
     except PortExit as exc:
         print(f'build: {exc}', file=sys.stderr)
         return exc.code

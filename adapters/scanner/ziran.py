@@ -87,8 +87,10 @@ def _object(data):
 
 def _report(data):
     _object(data)
-    if (type(data.get('files_analyzed')) is not int or data['files_analyzed'] < 1
-            or not isinstance(data.get('findings'), list)):
+    # S2: no Python or agent file (a TypeScript or Go repo) is measured and clean.
+    if (type(data.get('files_analyzed')) is not int or data['files_analyzed'] < 0
+            or not isinstance(data.get('findings'), list)
+            or data['files_analyzed'] == 0 and data['findings']):
         raise ValueError('invalid or empty audit measurement')
     for finding in data['findings']:
         _object(finding)
@@ -98,7 +100,8 @@ def _report(data):
                 or not isinstance(finding.get('file'), str)
                 or not re.fullmatch(r'[A-Za-z0-9_./ -]+\.[A-Za-z]+', finding['file'])
                 or '..' in Path(finding['file']).parts
-                or type(finding.get('line')) is not int or finding['line'] < 1
+                # S1: a file-level finding (SA002) has line null by design.
+                or finding.get('line', 0) is not None and (type(finding.get('line')) is not int or finding['line'] < 1)
                 or not isinstance(finding.get('message'), str) or not finding['message'].strip()
                 or type(finding.get('trust_boundary', False)) is not bool):
             raise ValueError('invalid audit finding')

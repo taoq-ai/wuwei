@@ -256,6 +256,9 @@ def _owner_prs(config, root, candidates):
 
 def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
+    # P4: refused before discovery, so a slow scanner is never paid for a refusal.
+    if state.day_started(workspace.day_dir(root)) and state.read_state(root).get('gate_approved'):
+        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
     recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
@@ -301,8 +304,6 @@ def propose(data, root=None):
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
-    if state.day_started(directory) and state.read_state(root).get('gate_approved'):
-        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm',
@@ -334,7 +335,7 @@ def propose(data, root=None):
                 if data['adopt'] else []),
               '## Gate proposal', f'CAP: {data["capacity"]["text"]}; host.seats {data["capacity"]["seats"]}',
               'Seats per goal: ' + seats_text(data['seats'], data['cap']),
-              'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
+              'Seat policy: ' + _policy(config, data),
               'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(directory / 'proposal.json', json.dumps(data, allow_nan=False, indent=2) + '\n')
@@ -347,6 +348,13 @@ def propose(data, root=None):
     return path
 
 
+def _policy(config, data):
+    """The seat policy as the gate shows it; #860: with why an empty codex.command matters."""
+    from wuwei.commands.doctor import codex_gap
+    gap = codex_gap(config, data['seat_policy'].values())
+    return json.dumps(data['seat_policy'], sort_keys=True) + (f' ({gap})' if gap else '')
+
+
 def gate_widget(root=None, *, import_yesterday=False):
     """The one morning gate question for today's proposal and the command that approves it."""
     from wuwei import decision
@@ -357,7 +365,8 @@ def gate_widget(root=None, *, import_yesterday=False):
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
     adopt = data.get('adopt', [])
     ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
-    shown = _tickets(workspace.load_config(root), data)
+    config = workspace.load_config(root)
+    shown = _tickets(config, data)
     approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals'])
@@ -367,7 +376,7 @@ def gate_widget(root=None, *, import_yesterday=False):
         *(['claims ' + ', '.join(f'{row["id"]} ({row["pr"]})' for row in adopt)] if adopt else []),
         seats_text(_seats(data), data['cap']),
         *([data['capacity']['text']] if 'capacity' in data else []),
-        'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
+        'seat policy ' + _policy(config, data),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
         *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
     return decision.widget(

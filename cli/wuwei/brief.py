@@ -430,6 +430,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
     output.parent.mkdir(exist_ok=True)
     if output.parent.resolve() != output.parent:
         raise ValueError(f'brief directory must not be a symlink; {SYMLINK}')
+    lead = candidates(root) if role == 'lead' else ''  # S5: the scanner audit runs outside brief.lock
     # ponytail: serialize brief publication for this day.
     with (directory / 'brief.lock').open('a') as lock:
         state.lock_ex(lock, 'brief.lock')
@@ -561,9 +562,14 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header.append(f'Gate row: {json.dumps(row)}')
         if gate:
             verdict = (directory / 'decisions' / ('gate-' + name + '.md')).relative_to(root)
-            header.append(f'Verdict file: {verdict} (the only file you write; an out-of-scope bug you '
-                          'find you file yourself with bin/wuwei tracker create --bug, common rule 7). '
-                          'Include the retro note here.')
+            if second_opinion:  # #871 L1: a sandboxed runtime seat cannot write the day directory
+                header.append(f'Verdict file: {verdict} (WUWEI writes your final message there; write no '
+                              'file, and put your whole verdict, retro note and any out-of-scope bug '
+                              'included, in your final message).')
+            else:
+                header.append(f'Verdict file: {verdict} (the only file you write; an out-of-scope bug you '
+                              'find you file yourself with bin/wuwei tracker create --bug, common rule 7). '
+                              'Include the retro note here.')
             header.append("Assumptions: review the item's Assumptions: in its spec and PR body as "
                           'findings of kind Assumption: (severity, file:line, failure scenario, '
                           'blocks yes or no).')
@@ -583,8 +589,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         # reference is optional evidence, so it never refuses.
                         header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
                                       'kept as a reference')
-        if role == 'lead':  # #848: the lead reads the day's candidates here
-            block += candidates(root)
+        block += lead  # #848: the lead reads the day's candidates here
         text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))
         import hashlib

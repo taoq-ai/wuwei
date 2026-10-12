@@ -17,3 +17,7 @@ def result(job, *, root=None):
 
 def continue_job(job, feedback, *, root=None):
     return registry.record_none('runtime', 'continue_job', root, measurement=False)
+
+
+def cancel(job, *, root=None):
+    return registry.record_none('runtime', 'cancel', root, measurement=False)

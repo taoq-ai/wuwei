@@ -55,13 +55,19 @@ def operation(name):
 class RateLimited(Failure):
     """#738: a GitHub rate limit and its reset (epoch seconds); the text is numbers and fixed words."""
 
-    def __init__(self, reset, remaining=None, limit=None, resource=None):
+    def __init__(self, reset, remaining=None, limit=None, resource=None, where=None, after=None, note=None):
         self.reset = reset
         # #867: calls left on the named resource means a secondary limit, not an empty bucket.
-        left = (f" ({'secondary limit, ' if remaining else ''}{remaining} of {limit} {resource} calls left)"
-                if None not in (remaining, limit, resource) else '')
-        super().__init__(f'GitHub rate limit until {time.strftime("%H:%M:%S", time.gmtime(reset))} UTC'
-                         f'{left}; retry after it')
+        # #891: it names the endpoint GitHub refused and GitHub's Retry-After when one was read.
+        secondary = (f"secondary limit{f' on {where}' if where else ''}"
+                     f"{f', Retry-After {after} s' if after else ''}, ") if remaining else ''
+        left = (f" ({secondary}{remaining} of {limit} {resource} calls left)"
+                if None not in (remaining, limit, resource) else f' ({note})' if note else '')
+        super().__init__(f'GitHub rate limit until {_hms(reset)} UTC{left}; retry after it')
+
+
+def _hms(epoch):
+    return time.strftime('%H:%M:%S', time.gmtime(epoch))
 
 
 def cap(root=None):
@@ -75,39 +81,35 @@ def cap(root=None):
         return 120
 
 
-def gh_limit(stderr, env=None, resource='core'):
+def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=None):
     """A RateLimited when gh's stderr names a rate limit, read from gh api rate_limit for the
-    resource the failed call spends (#867: its X-RateLimit-Resource; gh prints no headers)."""
+    resource the failed call spends. An empty bucket waits for its reset. #891: calls left is a
+    secondary limit only when GitHub says so (the word, or Retry-After as after); on the primary
+    wording both readings are named, with the refused reply's headers (seen: resource, remaining,
+    limit, reset) when an --include read holds them, and neither is guessed away."""
     if not re.search(r'rate limit', stderr or '', re.I):
         return None
     try:
         result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
                                 capture_output=True, text=True, timeout=30, env=env)
         resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
-        name, row = resource, resources[resource]
+        row = resources[resource]
         if not all(type(row[key]) is int for key in ('remaining', 'limit', 'reset')):
             raise TypeError
-        # Calls left means a secondary limit, which gives no reset.
-        return RateLimited(row['reset'] if row['remaining'] == 0 else time.time() + WAIT,
-                           row['remaining'], row['limit'], name)
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-        return RateLimited(time.time() + WAIT)
+        return RateLimited(time.time() + (after or WAIT))
+    if row['remaining'] == 0:
+        return RateLimited(row['reset'], 0, row['limit'], resource)
+    if after or re.search(r'secondary', stderr, re.I):
+        return RateLimited(time.time() + (after or WAIT), row['remaining'], row['limit'], resource, where, after)
+    # Fixed words and numbers only: GitHub's primary wording is matched, never echoed.
+    said = re.search(r'API rate limit (?:already )?exceeded for (?:user|installation) ID \d+', stderr)
+    note = (f"GitHub refused {where or resource} with a rate limit (gh: {said[0] if said else 'rate limit'})"
+            + (f', its headers say {seen[0]} {seen[1]} of {seen[2]} until {_hms(int(seen[3]))} UTC' if seen else '')
+            + f", but rate_limit shows {row['remaining']} of {row['limit']} {resource} calls left, reset "
+            f"{_hms(row['reset'])} UTC; check that WUWEI and gh use the same token (GH_TOKEN/GITHUB_TOKEN)")
+    return RateLimited(time.time() + WAIT, note=note)
 
-
-
-def included_limit(text):
-    """#867: a RateLimited from a gh api --include reply's own X-RateLimit headers, else None."""
-    import email.parser
-    head = re.split(r'\r?\n\r?\n', text or '', maxsplit=1)[0].replace('\r\n', '\n')
-    status, _, rest = head.partition('\n')
-    code = re.match(r'HTTP/\S+ (\d{3})\b', status)
-    if not code:
-        return None
-    try:
-        _github_limit(int(code[1]), email.parser.Parser().parsestr(rest, headersonly=True))
-    except RateLimited as limit:
-        return limit
-    return None
 
 def retry(call, root=None):
     """Run call; on a RateLimited whose reset is within the cap, wait for it and run call once more.
