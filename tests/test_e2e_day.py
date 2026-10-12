@@ -149,6 +149,7 @@ def claimed_round_passed(day):
     day.fix()
     assert day.data['items']['A']['phase'] == 'delta'
     day.gate('quality', 'PASS', round_name='delta')
+    day.gate('arch', 'PASS', round_name='delta')  # #903: after the PR opens, the delta is arch's too
     assert day.next() == {'action': 'run', 'command': f'wuwei pr act {day.ref} --push', 'notes': []}
     vcs = registry.load('vcs', None)
     assert not [call for call in vcs.calls if call[0] in ('push', 'push_context')]

@@ -378,9 +378,17 @@ def test_rebase_port_failure_does_not_record_done(case, monkeypatch, capsys):
     assert REF not in state.read_state(root).get('pr_action_done', {})
 
 
+def run_started(root, host):
+    """#903: --run recorded the PR head it started from; --complete is leased on it."""
+    pr_actions.evaluate(root, [REF])
+    state._write_state(lambda data: data['watch']['actions'][REF].update(
+        run_head=host.results['pr'].data['head']), root)
+
+
 def test_conflict_can_complete_after_manual_resolution(case, monkeypatch):
     root, host, vcs, tree = linked(case)
     host.results['pr'].data['mergeable'] = False
+    run_started(root, host)
     vcs.results['head'] = Result(0, {'sha': 'b' * 40})
     vcs.results['branch'] = Result(0, {'name': 'feature'})
     vcs.results['push'] = Result(0, {'pushed': True})
@@ -403,6 +411,7 @@ def test_conflict_complete_push_is_checked_with_identity(case, monkeypatch):
         'default_branch = "main"\nfast_checks = ["test"]\n'
         'identity = {name = "Builder", email = "builder@example.test"}\n')
     host.results['pr'].data['mergeable'] = False
+    run_started(root, host)
     owner = {'name': 'Builder', 'email': 'builder@example.test'}
     head = {'sha': 'b' * 40, 'author': owner, 'committer': owner}
     repository = {'path': str(tree / '.git'), 'common_dir': str(tree / '.git')}

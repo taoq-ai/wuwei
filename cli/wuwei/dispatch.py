@@ -1,5 +1,6 @@
 """Planner decisions from recorded seats and gate verdicts."""
 
+import itertools
 import os
 from pathlib import Path
 import re
@@ -408,14 +409,16 @@ def capped(root, config, data, item):
 
 def rotate(data, item, used):
     """#623: the next round answers each gate's delta verdict, so it becomes the gate's initial
-    record and the record it replaces is kept as round<used>. Every verdict reader keeps
-    reading initial and delta."""
+    record and the record it replaces is kept as round<used> (the next free number: #903 a PR fix
+    round counts from zero again). Every verdict reader keeps reading initial and delta."""
     verdicts = data['gate_verdicts']
     for gate in gate_set(data['items'][item]):
         (verdicts.get(f'{item}:{gate}:initial') or {}).pop('late', None)  # #902 D1: this round answers it
         delta = verdicts.pop(f'{item}:{gate}:delta', None)
         if delta is not None:
-            verdicts[f'{item}:{gate}:round{used}'] = verdicts[f'{item}:{gate}:initial']
+            kept = next(key for number in itertools.count(used)
+                        if (key := f'{item}:{gate}:round{number}') not in verdicts)
+            verdicts[kept] = verdicts[f'{item}:{gate}:initial']
             verdicts[f'{item}:{gate}:initial'] = delta
 
 
@@ -432,10 +435,11 @@ def polish_offer(config, row, roles, results, used):
 
 
 def rechecks(data, item, role, root=None):
-    """#723: role runs the item's delta: its initial verdict was not PASS (#732), or it is the
-    gate of the item's open polish round (before the PR). One rule for next_step, delta_due, receive and
-    opinion. With root (#844, design 5.3) a PASS also reruns when the worktree HEAD moved past it
-    other than by a recorded fix round."""
+    """#723: role runs the item's delta: its initial verdict was not PASS (#732), it is the
+    gate of the item's open polish round (before the PR), or (#903) it is the item's post-PR
+    delta gate once the item has a PR. One rule for next_step, delta_due, receive and opinion.
+    With root (#844, design 5.3) a PASS also reruns when the worktree HEAD moved past it other
+    than by a recorded fix round."""
     row = data['items'][item]
     first = _record(data, item, role, 'initial')
     polish = row.get('polish') or {}
@@ -443,8 +447,17 @@ def rechecks(data, item, role, root=None):
         from wuwei import derive
         if not derive.at_head(row, first['head'], derive.head(Path(root) / row['worktree'])):
             return True
+    # #903 review F2: a late initial read the current fix head already; no second review of it
     return bool(first) and (first['verdict'] != 'PASS' or (
+        row.get('pr') and role == post_pr_gate(row) and not first.get('late')) or (
         polish.get('status') == 'opened' and polish.get('gate') == role and not row.get('pr')))
+
+
+def post_pr_gate(row):
+    """#903, charters/_common.md Evidence 4: after a PR opens a fix round's delta is arch's, else
+    the one gate of a set without arch (a docs or light item)."""
+    gates = gate_set(row)
+    return 'arch' if 'arch' in gates else gates[0]
 
 
 # #567: the builder's class sweep at standard covers the classes whose files the diff touches.
@@ -834,7 +847,7 @@ def _act(root, item, found, data=None):
 
 def raise_action(root, data, item, notes):
     """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
-    if (pr := data['items'][item].get('pr')) in data.get('claimed_prs', ()):  # #879: back to its branch
+    if pr := data['items'][item].get('pr'):  # #879, #903: a linked PR is updated, never raised again
         return {'action': 'run', 'command': f'wuwei pr act {pr} --push', 'notes': notes}
     # #902: a raise shepherd that stopped with no PR is retried on a second seat, once more per
     # owner resume; then the owner decides on the resume card. ponytail: a count, not a reason.

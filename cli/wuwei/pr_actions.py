@@ -166,6 +166,10 @@ def observe(root, host, ref, config, measured, as_of=None):
     def update(data):
         value = data.setdefault('watch', {})
         actions, reviews = value.setdefault('actions', {}), value.setdefault('reviews', {})
+        if reason:  # #903 review F1: next leaves a head red at its base too to the gates
+            value.setdefault('base_red', {})[ref] = measured['pr']['head']
+        else:
+            value.get('base_red', {}).pop(ref, None)
         if not isinstance(actions, dict) or not isinstance(reviews, dict):
             raise ValueError(f'invalid PR action or review ledger; {DAMAGED}')
         episode = actions.get(ref)
@@ -298,6 +302,14 @@ def _rebase(root, ref, item, tree, measured, *, resume=False):
     repo, actual, _ = commit_push.context(tree, {}, {}, root)
     if repo['name'] != pr['repo']:
         raise ValueError('item worktree belongs to another PR repository; use the worktree made for this PR item (bin/wuwei worktree add <item>), then retry')
+    started = ((state.read_state(root).get('watch') or {}).get('actions', {}).get(ref) or {}).get('run_head')
+    if resume and started != pr['head']:  # #903: the lease is the head --run started from
+        raise ValueError(f'PR head moved to {pr["head"][:12]} since --run started from {str(started)[:12]}; '
+                         'nothing is pushed, so a teammate commit is not overwritten. Bring the worktree to the '
+                         'PR head, then rerun bin/wuwei pr act --run' if started else
+                         'no --run started this conflict resolution, so its start head is unknown; reset the '
+                         f'worktree to the PR head (git rebase --abort, or git reset --keep {pr["head"]}), '
+                         'then run bin/wuwei pr act --run')
     local = commit_push.data(vcs.head(str(tree), root=root))['sha']
     if not resume and local != pr['head']:
         raise ValueError('item worktree HEAD differs from PR head; bring the worktree to the PR head first, then rerun bin/wuwei pr act --run')
@@ -310,6 +322,12 @@ def _rebase(root, ref, item, tree, measured, *, resume=False):
     if not isinstance(base_sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base_sha):
         raise ValueError(f'invalid PR base SHA; {DAMAGED}')
     if not resume:
+        def lease(data):
+            episode = data.get('watch', {}).get('actions', {}).get(ref)
+            if not isinstance(episode, dict) or episode.get('state') != 'conflicted':
+                raise ValueError(f'conflict action changed before the rebase; {RACE}')
+            episode['run_head'] = pr['head']
+        state._write_state(lease, root, payload={'pr': ref, 'run_head': pr['head']})
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
@@ -362,12 +380,12 @@ def _push(root, tree, pr, repo, actual, vcs, config, head=None):
 
 
 def _gated_push(root, ref, item, tree):
-    """#879: a claimed PR's fix reaches its branch only after every gate passed at the worktree
-    head (the owner's gates hold on a taken-over PR too); the item is raised again."""
+    """#879, #903: a raised or claimed PR's fix reaches its branch only after every gate passed at
+    the worktree head (the owner's gates hold on a taken-over PR too); the item is raised again."""
     from wuwei import commit_push, derive, dispatch, merge
     config, data = workspace.load_config(root), state.read_state(root)
-    if ref not in data['claimed_prs'] or tree is None:
-        raise ValueError(f'--push applies to a claimed PR with a worktree; run bin/wuwei pr act {ref}')
+    if tree is None:
+        raise ValueError(f'--push applies to a PR item with a worktree; run bin/wuwei pr act {ref}')
     phase, gated = data['items'][item]['phase'], derive.head(tree)  # H3: the head the gates read
     found = (dispatch.decide(root, data, config, item) if phase in ('gate', 'delta')
              else {'step': phase, 'why': f'{item} is in {phase}'})
@@ -437,16 +455,17 @@ def _conflict(root, ref, measured):
 
 
 def launch(root, ref):
-    """#879: next's fix step for a claimed PR: the builder launch of its fix round, opened only
-    for a conflict or red checks, else the pr act run the planner does (#906: a review thread is
-    the shepherd seat's to classify, never a keyword's). It never merges, posts, replies or marks a
-    PR ready (review F1)."""
+    """#879, #903: next's fix step for a raised or claimed PR: the builder launch of its fix round,
+    opened only for red checks or a claimed PR's conflict, else the pr act run the planner does
+    (#906: a review thread is the shepherd seat's to classify, never a keyword's). It never
+    merges, posts, replies or marks a PR ready (review F1)."""
     run = {'action': 'run', 'command': f'wuwei pr act {ref}'}
     read = {}
     _, rows = evaluate(root, [ref], read)
     row, = rows
-    if row['exit'] != 1 or row['parked'] or row['state'] not in ('conflicted', 'ci_red'):
-        return run
+    if row['exit'] != 1 or row['parked'] or row['state'] not in ('conflicted', 'ci_red') or (
+            row['state'] == 'conflicted' and ref not in state.read_state(root)['claimed_prs']):
+        return run  # #903: a raised PR's conflict is its rebase run
     try:
         item, tree = _item(root, ref)
         if tree is None:
@@ -470,12 +489,12 @@ def _fix(root, ref, item, tree, measured, feedback=None):
 def _fix_round(root, ref, item, tree, measured, feedback=None):
     """(exit, output) of a fix round: its builder action (a dict) or what stops it. The caller
     prints it; next's launch set returns the action (#879)."""
-    from wuwei import dispatch
+    from wuwei import derive, dispatch
     from wuwei.commands import build
     data = state.read_state(root)
     row = data['items'][item]
-    if row['phase'] == 'delta':
-        return 1, {'action': 'gate', 'item': item, 'gate': 'arch_delta'}
+    if row['phase'] == 'delta' and (tree is None or derive.head(tree) != measured['pr']['head']):
+        return 1, {'action': 'gate', 'item': item, 'gate': 'arch_delta'}  # #903: the fix on top is in review
     red = [check for check in measured['checks'] if check['state'] == 'completed'
            and check['conclusion'] not in ('success', 'neutral', 'skipped')]
     if feedback is None and red:

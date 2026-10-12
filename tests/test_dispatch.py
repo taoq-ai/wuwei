@@ -2973,7 +2973,7 @@ def test_rechecks_rule():
     opened = {'status': 'opened', 'gate': 'quality', 'notes': ['n']}
     assert [r for r in ALL if dispatch.rechecks(data(opened), 'P', r)] == ['quality']
     assert [r for r in ALL if dispatch.rechecks(data({**opened, 'status': 'skipped'}), 'P', r)] == []
-    assert [r for r in ALL if dispatch.rechecks(data(opened, pr=7), 'P', r)] == []
+    assert [r for r in ALL if dispatch.rechecks(data(opened, pr=7), 'P', r)] == ['arch']  # #903: arch's post-PR delta
     assert [r for r in ALL if dispatch.rechecks(data(), 'P', r)] == []
     empty = data(opened)
     empty['gate_verdicts'].clear()
