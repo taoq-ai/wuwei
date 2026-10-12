@@ -310,11 +310,20 @@ def test_a_seat_push_to_a_claimed_pr_branch_is_refused(root):
             ('git -C repo push --branches origin', '.'),
             ("git -C repo push origin 'refs/heads/*:refs/heads/*'", '.'),
             ('git -C worktrees --git-dir=DIV-1/.git push', '.')):
-        decide(root, command, where, 1, ('DIV-1 is claimed PR example/project#9', 'bin/wuwei pr act example/project#9 --push'))
+        decide(root, command, where, 1, ('DIV-1 owns PR example/project#9', 'bin/wuwei pr act example/project#9 --push'))
     for command, where in (('git push origin HEAD:refs/heads/other', 'repo'), ('git status', 'worktrees/DIV-1'),
                            ('export X=1; git push origin other', 'repo'),
                            ('python3 -m pytest -q', 'worktrees/DIV-1')):
         decide(root, command, where, 0, ())
+
+
+def test_a_seat_push_from_a_raised_pr_worktree_is_refused(root):
+    # #903: a WUWEI-raised PR takes the same gated push as a claimed one
+    state._write_state(lambda data: (data['items']['DIV-1'].update(pr='example/project#9'),
+                                     data['raised_prs'].append('example/project#9')), root)
+    for command, where in (('git push origin HEAD', 'worktrees/DIV-1'), ('git push', 'worktrees/DIV-1')):
+        decide(root, command, where, 1, ('DIV-1 owns PR example/project#9', 'bin/wuwei pr act example/project#9 --push'))
+    decide(root, 'git push origin HEAD:refs/heads/other', 'repo', 0, ())
 
 
 # Deploy (design 4.7): on the floor; the owner's Yes on the exact command's card lets it run (#816).

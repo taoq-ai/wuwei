@@ -424,7 +424,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None):
     def update(fresh):
         if fresh.get('builds', {}).get(item) != record:
             raise ValueError(f'build changed before fix round; run bin/wuwei build next {item} again')
-        if phase == 'delta':
+        if phase in ('delta', 'raised'):  # #903: a pre-PR delta never stands in for a PR fix's review
             dispatch.rotate(fresh, item, used)
         if polish:
             if fresh['items'][item].get('polish'):

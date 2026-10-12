@@ -300,6 +300,17 @@ def offers(data, root, config, merges=None):
                 continue  # never a gate before the builder (or a gate seat) stops
             decided = dispatch.decide(root, data, config, name)  # #902: the one gate decision
             kind, why = decided['step'], decided['why']
+            # #903: red checks at the head the item holds are a fix in place of a review of that head;
+            # red at the base too (base_red, recorded by pr act) is not the item's to fix
+            if (kind in ('gates', 'fix', 'raise', 'polish') and (pull or {}).get('checks') == 'red'
+                    and not repo.get('failed') and row.get('worktree')
+                    and pull.get('head') == head(Path(root) / row['worktree'])
+                    and (data.get('watch') or {}).get('base_red', {}).get(pr) != pull.get('head')):
+                if dispatch.capped(root, config, data, name):
+                    ask(name, f'PR {pr} checks are red at the round cap.', f'wuwei pr act {pr}')
+                else:
+                    launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red at its head.')
+                continue
             if kind == 'gone':
                 park(name, why)
             elif kind in ('ask', 'cap'):  # dispatch next asks the card, or parks for the owner's resume
@@ -353,12 +364,11 @@ def shepherding(data, item):
 
 def seated(data, launch):
     """True for a launch the launch set resolves: the build and gate steps, the shepherd seat
-    (#906), and the pr act step of a claimed PR with a worktree, a fix-round builder or else its
-    plain run (#879)."""
+    (#906), and the pr act step of a raised or claimed PR with a worktree, a fix-round builder or
+    else its plain run (#879, #903)."""
     command, row = launch['command'], data['items'].get(launch['item']) or {}
     return launch['kind'] == 'shepherd' or command.startswith(('wuwei build next ', 'wuwei dispatch next ')) or (
-        command == f"wuwei pr act {row.get('pr')}"
-        and bool(row.get('worktree')) and row.get('pr') in data.get('claimed_prs', ()))
+        command == f"wuwei pr act {row.get('pr')}" and bool(row.get('worktree')))
 
 
 def _days(root, directory):
