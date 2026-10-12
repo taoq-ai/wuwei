@@ -151,6 +151,40 @@ def test_commit_all_commits_every_change_with_the_given_identity(monkeypatch):
                                             identity + ['commit', '--quiet', '-m', 'chore(A): Codex builder changes']]
 
 
+def test_touched_names_every_path_of_every_commit_since_base(tmp_path):
+    # #871 A16: a file added and deleted again is still in the history a push sends
+    git = ['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@e']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
+    base = subprocess.run([*git, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    (tmp_path / '.env').write_text('KEY=1\n')
+    (tmp_path / 'a b.py').write_text('x = 1\n')
+    subprocess.run([*git, 'add', '--all'], check=True)
+    subprocess.run([*git, 'commit', '-q', '-m', 'one'], check=True)
+    subprocess.run([*git, 'rm', '-q', '.env'], check=True)
+    subprocess.run([*git, 'commit', '-q', '-m', 'two'], check=True)
+    result = adapter().touched(str(tmp_path), base)
+    assert result.exit == 0 and result.data == ['.env', 'a b.py']
+    assert adapter().touched(str(tmp_path), '--all').exit == 2
+
+
+def test_commit_all_identity_wins_over_the_environment(tmp_path, monkeypatch):
+    # #871 B3: -c user.* loses to GIT_AUTHOR_* and GIT_COMMITTER_*; the port sets them too
+    git = ['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@e']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
+    (tmp_path / 'code.py').write_text('x = 1\n')
+    for key, value in (('GIT_AUTHOR_NAME', 'Evil'), ('GIT_AUTHOR_EMAIL', 'evil@x'),
+                       ('GIT_COMMITTER_NAME', 'Evil'), ('GIT_COMMITTER_EMAIL', 'evil@x')):
+        monkeypatch.setenv(key, value)
+    assert adapter().commit_all(str(tmp_path), 'A', 'Builder', 'builder@example.test').exit == 0
+    for key in ('GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'):
+        monkeypatch.delenv(key)
+    log = subprocess.run(['git', '-C', str(tmp_path), 'log', '-1', '--format=%an|%ae|%cn|%ce|%s'],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    assert log == 'Builder|builder@example.test|Builder|builder@example.test|chore(A): Codex builder changes'
+
+
 @pytest.mark.parametrize('operation,args', [
     ('merge_base', ['/repo', '--help']),
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),

@@ -51,7 +51,7 @@ PARAMETERS = {
             'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'unhook': ('repo', 'write'),
             'worktree_identity': ('repo', 'name', 'email'),
-            'commit_all': ('repo', 'item', 'name', 'email'),
+            'commit_all': ('repo', 'item', 'name', 'email'), 'touched': ('repo', 'base'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
             'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path', 'remote')},

@@ -71,6 +71,7 @@ CALLS = [
     ('vcs', 'unhook', ('repo', 'write'), False),
     ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
     ('vcs', 'commit_all', ('repo', 'item', 'name', 'email'), False),
+    ('vcs', 'touched', ('repo', 'base'), True),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('vcs', 'recent_commits', ('repo',), True),
     ('vcs', 'default_branch', ('repo',), True),

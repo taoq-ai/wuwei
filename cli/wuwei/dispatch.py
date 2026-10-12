@@ -1381,7 +1381,8 @@ def opinion(item, root=None):
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set')
             feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
                         'Your verdict was rejected by the verdict lint. Reply with your whole verdict, '
-                        'rewritten to the verdict format, as your final message; WUWEI writes it to '
+                        'rewritten to the verdict format, as your final message, in plain lines, not '
+                        'in a code block; WUWEI writes it to '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md.')  # #871 L1
             ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
             feedback += '\n' + ci if ci else ''  # #733

@@ -137,13 +137,31 @@ unchanged head to the gates.
   worktree change with the configured `repos[].identity` through a new vcs port operation
   `commit_all(repo, item, name, email)` (`git add --all`, then `git commit --quiet -m
   "chore(<item>): Codex builder changes"`, both with `-c user.name` and `-c user.email`). The
-  builder prompt says WUWEI commits. An unset identity refuses with the doctor's fix line; the
-  build stays `running` on its completed job, so the rerun commits after the owner sets it.
+  builder prompt says WUWEI commits (role `builder` only; review B6). An unset identity refuses
+  with the doctor's fix line; the build stays `running` on its completed job, so the rerun
+  commits after the owner sets it. Review B1: a changed or untracked path that matches the
+  credential-location rule of the #870 trace check (`scanner._credential_path`: `.ssh`, `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.gnupg`, `.aws/credentials`, `gh/hosts.yml`, `*.pem`, `*.key`, `.wuwei/env`, `.env` or `.env.*` other than `.example`, `.sample` and `.template`)
+  is never committed; redaction keeps its own, broader rule. Review B2: that (a `private`
+  failure), or a failed `commit_all` (a rejecting hook, a timeout; a `commit` failure), goes
+  back to the builder like a failed check. Review B3: the identity is also passed as `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*`, which outrank `-c user.*`.
 - **FR-008** (L2b): Every build record carries `start`, the worktree HEAD when the build (or
   fix round) began. `complete_checks`, the one place a build becomes done for every runtime,
-  adds a `commit` failure when the tree is dirty or HEAD equals `start`. A failure is check
+  adds a `dirty` failure when the tree is dirty, a `private` failure when any commit in
+  `start..HEAD` touched a path that matches the same credential rule (vcs port `touched`:
+  `git log --format= --name-only -z --no-renames <start>..HEAD --`), so a file the builder
+  committed itself, or committed and deleted again, is caught too; the push would send those
+  commits, so the builder rewrites them locally (`git reset --soft <start>`, remove the file,
+  add it to `.gitignore`, commit again), and a `change` failure
+  when HEAD equals `start`. A park names its cause: `no change over the start head` (first
+  repeat), `private files repeated`, `commit refused repeated`, `uncommitted changes
+  repeated`. A failure is check
   feedback: the builder continues with the reason, `stuck_after` repeats park the item, and
-  the item never moves to `gate` or `delta` on an unchanged head.
+  the item never moves to `gate` or `delta` on an unchanged head. Review B5: the unchanged
+  head is its own failure (`change`) and parks on its first repeat with the reason `no change
+  over the start head`. Review B4: the feedback words fit both runtimes. Review B7: the gate
+  prompt and the lint-rejection continuation say the verdict is plain lines, not a code block
+  (the lint drops fenced text).
 
 ## Success Criteria
 

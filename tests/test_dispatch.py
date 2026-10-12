@@ -1372,8 +1372,9 @@ def test_rejected_opinion_continues_the_same_job(root, monkeypatch):
     continued = [call for call in runtime.calls if call[0] == 'continue']
     # #871 L1: the sandboxed seat answers with its final message; WUWEI writes the file
     assert continued == [('continue', 'j1', 'Your verdict was rejected by the verdict lint. Reply with '
-                          'your whole verdict, rewritten to the verdict format, as your final message; '
-                          'WUWEI writes it to .wuwei/days/2026-09-29/decisions/gate-q-1-codex.md.')]
+                          'your whole verdict, rewritten to the verdict format, as your final message, '
+                          'in plain lines, not in a code block; WUWEI writes it to '
+                          '.wuwei/days/2026-09-29/decisions/gate-q-1-codex.md.')]  # B7
     assert (workspace.day_dir(root) / 'decisions/gate-q-1-codex.md').read_text() == OPINION_TEXT + '\n'
     assert [call[0] for call in runtime.calls].count('dispatch') == 1
 

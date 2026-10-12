@@ -48,6 +48,9 @@ class Fake(Recorder):
     def diff_stat(self, repo, base, head, root=None):
         return self._call('diff_stat', (repo, base, head), root)
 
+    def touched(self, repo, base, root=None):
+        return self._call('touched', (repo, base), root)
+
     def log_since(self, repo, sha, root=None):
         return self._call('log_since', (repo, sha), root)
 

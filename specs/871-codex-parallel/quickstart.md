@@ -241,8 +241,13 @@ build exit 0
 ```
 
 A build that ends with HEAD still at its start head, or with uncommitted changes, is not done:
-the loop continues the job with `no new commit over the start head` or `uncommitted changes`
-and parks C after `build.stuck_after` repeats; C never reaches `gate` on an unchanged head.
+the loop continues the job with `no change over the start head` or `uncommitted changes`. A
+second unchanged head parks C with `no change over the start head`; repeated uncommitted
+changes park it after `build.stuck_after`. C never reaches `gate` on an unchanged head. A
+credential file the job left (for example `.env`) is never committed: the job continues with
+`private files .env: remove them or add them to .gitignore`. One the job committed itself, even
+if a later commit deletes it, is caught too, before the gates: the job continues with `git reset
+--soft <start>`, remove the files, add them to .gitignore, and commit again.
 
 A `build exit 2` with `runtime seat failed: <error>` leaves the build `ready`; rerunning the
 same `wuwei build` command dispatches a new job.

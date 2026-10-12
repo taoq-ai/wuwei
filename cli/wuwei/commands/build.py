@@ -511,17 +511,8 @@ def complete_checks(item, results, *, root, expected=None):
         failures += _unbuilt(record, root, config)
     if not failures:
         record.update(status='done', action={'action': 'done'})
-    else:
-        signature = _signature(failures)
-        record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
-        record['signature'] = signature
-        reason = ('same fast-check failure repeated' if record['repeats'] >= config['build']['stuck_after']
-                  else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
-        if reason:
-            _park(root, item, record, reason, expected)
-            return 1
-        feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
-        record.update(status='ready', action=_continue(root, record, feedback))
+    elif _retry(root, config, item, record, failures, expected):
+        return 1
     _save(item, record, root, 'build.checked', expected,
           {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = AFTER.get(state.read_state(root)['items'][item]['phase'])  # a paused item: plan resume moves it
@@ -536,19 +527,60 @@ def complete_checks(item, results, *, root, expected=None):
 AFTER = {'implement': 'gate', 'fix': 'delta'}
 
 
+REPEATED = {'change': 'no change over the start head', 'private': 'private files repeated',
+            'commit': 'commit refused repeated', 'dirty': 'uncommitted changes repeated'}
+
+
+def _private(paths):
+    """#871: the paths a build never hands to the gates: the credential locations of the #870
+    trace check (scanner._credential_path), the one rule; .env templates pass."""
+    from wuwei.scanner import _credential_path
+    return [path for path in paths if _credential_path('./' + path)]
+
+
+def _retry(root, config, item, record, failures, expected):
+    """A failed iteration: the builder continues with the failures, or the item parks on a
+    repeat. True when parked. #871 B5: an unchanged head parks on its first repeat."""
+    signature = _signature(failures)
+    record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
+    record['signature'] = signature
+    names = {name for name, _ in failures}
+    cause = REPEATED.get(*names) if len(names) == 1 else None  # #871: a park names its cause
+    stuck = 2 if names == {'change'} else config['build']['stuck_after']
+    reason = ((cause or 'same fast-check failure repeated') if record['repeats'] >= stuck
+              else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
+    if reason:
+        _park(root, item, record, reason, expected)
+        return True
+    feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
+    record.update(status='ready', action=_continue(root, record, feedback))
+    return False
+
+
 def _unbuilt(record, root, config):
-    """#871 L2: a build that leaves uncommitted changes, or no commit over the head it started
-    from, did not build; the gates never get an unchanged head."""
+    """#871 L2: a build that leaves uncommitted changes, commits a private file, or makes no
+    commit over the head it started from did not build; the gates never get those heads."""
     from wuwei import derive
-    from wuwei.brief import status
-    dirty = status(registry.load('vcs', config), record['worktree'], root)
+    from wuwei.brief import read, status
+    vcs = registry.load('vcs', config)
+    dirty = status(vcs, record['worktree'], root)
     if dirty:
-        return [('commit', {'error': 'uncommitted changes: ' + ', '.join(row['path'] for row in dirty)
-                            + '; commit the change or remove what does not belong to it'})]
-    if record.get('start') and derive.head(record['worktree']) == record['start']:
-        return [('commit', {'error': f'no new commit over the start head {record["start"][:12]}; '
-                                     'make and commit the change the brief asks for'})]
-    return []
+        return [('dirty', {'error': 'uncommitted changes: ' + ', '.join(row['path'] for row in dirty)
+                            + '; remove what does not belong to the change (WUWEI commits a Codex '
+                            'build; a Claude builder commits its own)'})]
+    if not record.get('start'):
+        return []
+    if derive.head(record['worktree']) != record['start']:
+        # A16: any commit since start, a file deleted again included; the push sends them all
+        private = _private(read(vcs.touched, record['worktree'], record['start'], root=root))
+        if private:
+            return [('private', {'error': (
+                f'private files {", ".join(private)} in the commits since the start head; these '
+                f'commits are not pushed yet, so rewrite them locally: git reset --soft {record["start"]}, '
+                'remove the files, add them to .gitignore, and commit again')})]
+        return []
+    return [('change', {'error': f'no change over the start head {record["start"][:12]}; '
+                                 'make the change the brief asks for'})]
 
 
 def built(data, item, after, end):
@@ -617,22 +649,39 @@ def wait(runtime, job, config, root):
 def _commit(item, root, config):
     """#871 L2: commit a completed runtime job's changes with the repository identity. The
     job's sandbox cannot write the worktree's git metadata (it lives in the main repository's
-    .git/worktrees), so it leaves them uncommitted. ponytail: every change in the worktree goes
-    in, as the builder left it (the prompt forbids other writes; the gates review the diff)."""
+    .git/worktrees), so it leaves them uncommitted. Returns the failure that stopped the commit
+    (B1, B2: a private file, a rejecting hook, a timeout), which goes back to the builder; an
+    unset identity raises, for the owner."""
     from wuwei import commit_push
     from wuwei.brief import status
     record = state.read_state(root)['builds'][item]
     vcs = registry.load('vcs', config)
-    if not status(vcs, record['worktree'], root):
-        return
+    dirty = status(vcs, record['worktree'], root)
+    if not dirty:
+        return None
     index, repo = next(((index, row) for index, row in enumerate(config['repos'])
                         if row['name'] == record['repo']), ('<n>', {}))
     unset = commit_push.unset_identity(repo.get('identity'), index)
     if unset:
         raise ValueError(f'{unset[0]}; WUWEI commits a Codex build with it. The owner runs {unset[1]}, '
                          'then rerun the same command')
-    _data(vcs.commit_all(record['worktree'], item,
-                         repo['identity']['name'], repo['identity']['email'], root=root), 'commit')
+    private = _private(row['path'] for row in dirty)
+    if private:
+        return ('private', {'error': f'private files {", ".join(private)}: remove them or add them to '
+                                     '.gitignore; WUWEI does not commit them'})
+    try:
+        _data(vcs.commit_all(record['worktree'], item,
+                             repo['identity']['name'], repo['identity']['email'], root=root), 'commit')
+    except PortExit as exc:
+        return ('commit', {'error': str(exc)})
+    return None
+
+
+def _refuse(item, record, root, config, failure):
+    """B1, B2: a commit WUWEI could not make is the builder's next iteration, like a failed check."""
+    retried = dict(record)
+    if not _retry(root, config, item, retried, [failure], record):
+        _save(item, retried, root, 'build.checked', record, {'passed': 0, 'failed': 1})
 
 
 def run_loop(item, brief, worktree, *, root=None):
@@ -687,9 +736,11 @@ def run_loop(item, brief, worktree, *, root=None):
                 running = state.read_state(root)['builds'][item]
                 _save(item, {**running, 'status': 'ready'}, root, 'build.failed', running, {'reason': str(exc)})
                 raise
-            _commit(item, root, config)
-            record_result(item, _data(runtime.result(job, root=root), 'result'),
-                          root=root, model=status.get('model'))
+            refused = _commit(item, root, config)
+            recorded = record_result(item, _data(runtime.result(job, root=root), 'result'),
+                                     root=root, model=status.get('model'))
+            if refused and recorded:
+                _refuse(item, recorded, root, config, refused)
     except PortExit as exc:
         print(f'build: {exc}', file=sys.stderr)
         return exc.code

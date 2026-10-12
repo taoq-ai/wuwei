@@ -49,11 +49,14 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
         # the worktree's git metadata (in the main repository's .git) are outside it
         prompt += f' Write no file outside {tree}, except temporary files under $TMPDIR, your scratchpad. '
         if role.startswith('sentinel-'):
-            prompt += ('Your final message is your whole verdict: WUWEI writes it to the verdict file '
-                       'your brief names and lints it.\n\n' + section() + '\n')
+            prompt += ('Your final message is your whole verdict, in plain lines, not in a code block: '
+                       'WUWEI writes it to the verdict file your brief names and lints it.\n\n'
+                       + section() + '\n')
         else:
-            prompt += ('Leave your changes uncommitted: the git metadata is outside your sandbox, so '
-                       'WUWEI commits them when your job completes. ' + retro_contract() + ' ')
+            if role == 'builder':  # B6: nothing commits after another role's job
+                prompt += ('Leave your changes uncommitted: the git metadata is outside your sandbox, '
+                           'so WUWEI commits them when your job completes. ')
+            prompt += retro_contract() + ' '
         prompt += mandate(root)
         options = ['--fresh', '--background']
         if write:

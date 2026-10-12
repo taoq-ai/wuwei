@@ -48,5 +48,25 @@
   `build._unbuilt`, `start` in `next_action` and `open_fix`); T016 green. Existing fakes that
   pass a build get a clean `status` (`test_commit_push.workspace_case`,
   `test_pr_actions.test_fix_round_returns_to_delta_gate`).
+- [X] T019 [B1-B7] Tests, red first: `test_build`: a private file is never
+  committed and goes back to the builder, a rejecting hook goes back to the builder and the
+  next job commits, an unchanged head parks on its first repeat with its own reason;
+  `test_vcs`: GIT_AUTHOR_* and GIT_COMMITTER_* in the environment do not change the commit
+  identity; `test_runtime`: the gate prompt says plain lines and no commit line, a steward
+  prompt has no commit line; `test_dispatch`: the continuation says plain lines.
+- [X] T020 [B1-B7] Implement: `build._commit` returns its refusal,
+  `build._refuse` and `build._retry` (lifted from `complete_checks`), `git.commit_all` env,
+  prompt and continuation wording.
+- [X] T021 [round 3] Tests, red first (`test_build`): a `.env` the job committed itself is not
+  done and parks as `private files repeated`; `.ssh/id_rsa` is refused while
+  `secret_scanner.py` and `docs/credentials.md` are committed; a hook that keeps rejecting
+  parks as `commit refused repeated`. Implement: `build._private` over
+  `scanner._credential_path`, the `start..HEAD` check in `_unbuilt`, causes in `_retry`;
+  `redact.py` back as on main.
+- [X] T022 [A16] Tests, red first: `test_vcs.test_touched_names_every_path_of_every_commit_since_base`
+  (a real repo: `.env` committed, then deleted), `test_adapters` lists `vcs.touched`,
+  `test_build`: a `.env` committed and deleted again is not done and the continuation names
+  `git reset --soft <start>`. Implement the allowlisted `touched` read and use it in `_unbuilt`
+  instead of the net diff. WUWEI does not rewrite history itself: the continuation is enough.
 - [X] T018 [L3] Quickstart: the broker note in step 7, the verdict and commit expectations in
   steps 8 and 9.

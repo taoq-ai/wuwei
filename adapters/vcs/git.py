@@ -125,6 +125,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
                 allowed = bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', tip) and (
                     re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base) or '..' not in base
                     and re.fullmatch(r'refs/remotes/[^\s~^:?*\[\\]+', base)))
+        case ('log', '--format=', '--name-only', '-z', '--no-renames', rev, '--'):  # #871 touched
+            allowed = (isinstance(rev, str) and rev.endswith('..HEAD')
+                       and bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', rev[:-6])))
         case ('log', '--format=', '--name-only', '-z', since, until, 'HEAD', '--'):
             allowed = bool(re.fullmatch(r'--since=\d{4}-\d{2}-\d{2}T00:00:00', since)
                            and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
@@ -639,8 +642,11 @@ def commit_all(repo, item, name, email, root=None):
                 or any(char in value for char in '\n\r\0<>')):
             raise ValueError('invalid identity')
     settings = {'user.name': name, 'user.email': email}
-    _run(repo, 'add', '--all', settings=settings, env={})
-    _run(repo, 'commit', '--quiet', '-m', message, settings=settings, env={})
+    # B3: GIT_AUTHOR_* and GIT_COMMITTER_* outrank -c user.*, so the identity sets them too
+    env = {f'GIT_{kind}_{field.upper()}': value for kind in ('AUTHOR', 'COMMITTER')
+           for field, value in (('name', name), ('email', email))}
+    _run(repo, 'add', '--all', settings=settings, env=env)
+    _run(repo, 'commit', '--quiet', '-m', message, settings=settings, env=env)
     return {}
 
 
@@ -701,6 +707,16 @@ def changes_on(repo, day, root=None):
     date.fromisoformat(day)
     output = _run(repo, 'log', '--format=', '--name-only', '-z',
                   '--since=' + day + 'T00:00:00', '--until=' + day + 'T23:59:59', 'HEAD', '--')
+    return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
+
+
+@_operation
+def touched(repo, base, root=None):
+    """#871 A16: every path any commit in base..HEAD touched, a file deleted again included,
+    since a push sends each of those commits."""
+    if not isinstance(base, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base):
+        raise ValueError('expected a full commit sha')
+    output = _run(repo, 'log', '--format=', '--name-only', '-z', '--no-renames', base + '..HEAD', '--')
     return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
 
 

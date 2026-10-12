@@ -370,6 +370,7 @@ def test_codex_gate_prompt_makes_the_final_message_the_verdict(tmp_path, monkeyp
     assert adapter.dispatch('sentinel-quality', str(brief), str(root), True, root=root).exit == 0
     prompt = calls[0][-2]
     assert verdict.section() in prompt and 'final message is your whole verdict' in prompt
+    assert 'plain lines, not in a code block' in prompt and 'WUWEI commits' not in prompt  # B6, B7
     assert f'Write no file outside {root}' in prompt
 
 
@@ -378,6 +379,22 @@ def test_codex_builder_prompt_leaves_the_commit_to_wuwei(tmp_path, monkeypatch):
     root, _, job, calls = codex_task(tmp_path, monkeypatch, 'Item: A\n\nBuild it.')
     assert job.exit == 0 and 'WUWEI commits them' in calls[0][-2]
     assert f'Write no file outside {root}' in calls[0][-2]
+
+
+def test_codex_commit_line_is_for_builders_only(tmp_path, monkeypatch):
+    # #871 B6: nothing commits after a steward job
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'steward.md'
+    brief.write_text('Item: A\n\nRetro.')
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads, calls = companion_payloads(root), []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payloads[argv[1]]), stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    assert adapter.dispatch('steward', str(brief), str(root), True, root=root).exit == 0
+    assert 'WUWEI commits' not in calls[0][-2]
 
 
 def test_codex_cancel_calls_the_companion_in_the_worktree(tmp_path, monkeypatch):

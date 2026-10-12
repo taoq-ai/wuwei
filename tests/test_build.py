@@ -52,7 +52,7 @@ def setup(tmp_path, monkeypatch, checks, spec='[spec]\nengine="none"\n'):
                           status=lambda *a, **kw: registry.Result(0, []),
                           repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}),
-                          commits=[])
+                          touched=lambda *a, **kw: registry.Result(0, []), commits=[])
     vcs.commit_all = lambda *a, **kw: vcs.commits.append(a) or registry.Result(0, {})
     runtime.vcs = vcs
 
@@ -179,6 +179,99 @@ def test_codex_build_commit_needs_the_repo_identity(tmp_path, monkeypatch, capsy
     assert runtime.vcs.commits == [] and state.read_state(tmp_path)['builds']['A']['status'] == 'running'
 
 
+@pytest.mark.parametrize('path,committed', [
+    ('.env', False), ('config/.env.local', False), ('deploy.pem', False), ('.ssh/id_rsa', False),
+    ('.env.example', True), ('secret_scanner.py', True), ('docs/credentials.md', True)])
+def test_codex_build_never_commits_a_private_file(tmp_path, monkeypatch, path, committed):
+    # #871 B1: a private file the job left is not committed; the builder is told to remove it
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=["test"]\n' + IDENTITY))
+    vcs = runtime.vcs
+    vcs.status = lambda *a, **kw: registry.Result(0, [] if vcs.commits else [
+        {'path': row, 'index': '?', 'worktree': '?', 'original_path': None} for row in (path, 'code.py')])
+    code = build.run_loop('A', str(brief), str(repo), root=tmp_path)
+    feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
+    if committed:
+        assert (code, len(vcs.commits), feedback) == (0, 1, [])
+    else:
+        assert vcs.commits == [] and code == 1
+        assert feedback and f'private files {path}' in feedback[0] and '.gitignore' in feedback[0]
+        # round 3: a repeat parks with its own cause, not the fast-check reason
+        assert state.read_state(tmp_path)['builds']['A']['action']['reason'] == 'private files repeated'
+
+
+@pytest.mark.parametrize('deleted', [False, True])
+def test_a_private_file_the_builder_committed_is_not_done(tmp_path, monkeypatch, deleted):
+    # #871 round 3, A16: a .env the job committed itself is caught before the gates, even when a
+    # later commit deletes it, because the push sends every commit since the start head
+    import importlib
+    import subprocess
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@e']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
+    runtime.vcs.touched = importlib.import_module('adapters.vcs.git').touched
+    done, rounds = runtime.result, []
+
+    def result(job, *, root=None):
+        rounds.append(job)
+        (repo / '.env').write_text('KEY=1\n')
+        (repo / 'code.py').write_text(f'x = {len(rounds)}\n')
+        subprocess.run([*git, 'add', '--all'], check=True)
+        subprocess.run([*git, 'commit', '-q', '-m', 'change'], check=True)
+        if deleted:
+            subprocess.run([*git, 'rm', '-q', '.env'], check=True)
+            subprocess.run([*git, 'commit', '-q', '-m', 'drop it'], check=True)
+        return done(job, root=root)
+    runtime.result = result
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    record = state.read_state(tmp_path)['builds']['A']
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
+    assert record['action']['reason'] == 'private files repeated'
+    feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
+    assert feedback and 'private files .env' in feedback[0]
+    assert f'git reset --soft {record["start"]}' in feedback[0] and 'not pushed yet' in feedback[0]
+
+
+def test_a_repeated_commit_refusal_parks_with_its_cause(tmp_path, monkeypatch):
+    # #871 round 3: a hook that keeps rejecting parks as a commit refusal
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=["test"]\n' + IDENTITY))
+    runtime.vcs.status = lambda *a, **kw: registry.Result(0, [
+        {'path': 'code.py', 'index': '?', 'worktree': '?', 'original_path': None}])
+    runtime.vcs.commit_all = lambda *a, **kw: registry.Result(2, None, 'git exited 1: lint failed')
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert state.read_state(tmp_path)['builds']['A']['action']['reason'] == 'commit refused repeated'
+
+
+def test_failed_codex_commit_goes_back_to_the_builder(tmp_path, monkeypatch):
+    # #871 B2: a rejecting pre-commit hook is the builder's to fix, not a dead end
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=["test"]\n' + IDENTITY))
+    vcs, tries = runtime.vcs, []
+    vcs.status = lambda *a, **kw: registry.Result(0, [] if vcs.commits else [
+        {'path': 'code.py', 'index': '?', 'worktree': '?', 'original_path': None}])
+
+    def commit_all(*args, **kwargs):
+        tries.append(args)
+        if len(tries) == 1:
+            return registry.Result(2, None, 'git.commit_all: could not run: git exited 1: lint failed: ruff')
+        vcs.commits.append(args)
+        return registry.Result(0, {})
+    vcs.commit_all = commit_all
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
+    assert len(feedback) == 1 and 'commit: ' in feedback[0] and 'lint failed: ruff' in feedback[0]
+    assert len(tries) == 2 and state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+
+
 def test_a_build_with_a_dirty_tree_is_not_done(tmp_path, monkeypatch):
     # #871 L2: uncommitted changes after a build never reach the gates
     from wuwei.commands import build
@@ -211,9 +304,10 @@ def test_a_build_with_no_new_commit_is_not_done(tmp_path, monkeypatch, commits):
     feedback = [call[1] for call in runtime.calls if call[0] == 'continue']
     if commits:
         assert (code, phase, feedback) == (0, 'gate', [])
-    else:
-        assert (code, phase) == (1, 'parked')
-        assert feedback and 'no new commit over the start head' in feedback[0]
+    else:  # #871 B5: parks on the first repeat, with its own reason
+        assert (code, phase, len(feedback)) == (1, 'parked', 1)
+        assert 'no change over the start head' in feedback[0]
+        assert state.read_state(tmp_path)['builds']['A']['action']['reason'] == 'no change over the start head'
 
 
 def test_local_check_exposes_failing_ids_and_error(monkeypatch):

@@ -19,6 +19,10 @@ CRITICAL 0, HIGH 0 open.
 | A12 | MEDIUM | L2: `git add --all` may take stray files the job left. | Accepted with a `ponytail:` note: the prompt forbids other writes, the repository's hooks and `.gitignore` apply, and the gates review the diff. |
 | A13 | LOW | L3: a broker started under a broken `CODEX_HOME` is reused by the relaunch. | Quickstart note; the companion has no stop command. |
 
+| A14 | HIGH | Delta review B1, B2: WUWEI could commit a private file the job left, and a failed commit left the loop with no next action. | Resolved: T019-T021. The rule is the scanner's credential-location check; both refusals are builder feedback. |
+| A15 | MEDIUM | A private file a builder committed itself, and false parks on names such as `secret_scanner.py` under redaction's broad rule. | Resolved: T021. `complete_checks` checks every path changed since `start` with the narrow credential rule; redaction is unchanged. |
+| A16 | LOW | A credential file removed in a new commit stays in the branch history the push sends. | Resolved: T022. The check reads every path any commit since `start` touched (vcs `touched`); the builder rewrites the unpushed commits with `git reset --soft <start>`. |
+
 Coverage: FR-001 T001-T002, FR-002 T003-T004, FR-003 T003-T004, FR-004 T005-T006, FR-005
 T007-T008, FR-006 T014-T015, FR-007 and FR-008 T016-T017, 100 percent. SC-001 and SC-002 are also exercised by `quickstart.md` against the
 real companion.
