@@ -302,7 +302,7 @@ def _append_jsonl(path, *records):
             path.chmod(0o444)
 
 
-def _write_state(update, root=None, *, kind='state.write', payload=None, directory=None):
+def _write_state(update, root=None, *, kind='state.write', payload=None, directory=None, timeout=30):
     """Apply a callback that mutates fresh state while holding the writer lock."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     payload = _event_payload(kind, payload)
@@ -310,7 +310,7 @@ def _write_state(update, root=None, *, kind='state.write', payload=None, directo
     directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
-        lock_ex(lock, 'state.lock')
+        lock_ex(lock, 'state.lock', timeout)
         data, started, legacy = _fold(directory)
         log = _fold(directory, cache=False)[0] if legacy else workspace.copy_data(data)
         data = _validate(data)
@@ -350,6 +350,11 @@ def check_running(build):
     return marker
 
 
+def looping(build):
+    """#845: a routed build's background loop (`wuwei build`) while its process lives."""
+    return check_running({'check': build.get('loop')}) if isinstance(build, dict) else None
+
+
 def held(data, name):
     """#648: the fix item a held build waits on while that item has not ended, else None."""
     action = (data.get('builds', {}).get(name) or {}).get('action') or {}
@@ -370,6 +375,8 @@ def in_flight(data):
             if isinstance(seat, dict) and seat.get('status') == 'running']
     rows += [(marker['started_at'], 'checks', item) for item, build in data.get('builds', {}).items()
              if (marker := check_running(build))]
+    rows += [(marker['started_at'], 'builder', item) for item, build in data.get('builds', {}).items()
+             if (marker := looping(build))]
     return sorted(rows, key=lambda row: row[0])
 
 
@@ -378,7 +385,7 @@ def in_flight_text(rows):
                      for at, role, item in rows)
 
 
-def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False, branch=None):
     """Link one owned PR to its item in the same write as day ownership."""
     from wuwei.references import pull_request
     ref = pull_request(ref)
@@ -393,6 +400,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False
         if ref in data[other]:
             raise StateError('PR is already owned today; run bin/wuwei pr state to see its item')
         data['items'][item]['pr'] = ref
+        if branch:  # #879: the claimed PR's head branch, which the edges guard keeps to the gated push
+            data['items'][item]['branch'] = branch
         field = 'raised_prs' if raised else 'claimed_prs'
         if ref not in data[field]:
             data[field].append(ref)

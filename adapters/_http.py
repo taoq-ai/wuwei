@@ -57,30 +57,34 @@ class RateLimited(Failure):
 
     def __init__(self, reset, remaining=None, limit=None, resource=None):
         self.reset = reset
-        left = (f' ({remaining} of {limit} {resource} calls left)'
+        # #867: calls left on the named resource means a secondary limit, not an empty bucket.
+        left = (f" ({'secondary limit, ' if remaining else ''}{remaining} of {limit} {resource} calls left)"
                 if None not in (remaining, limit, resource) else '')
         super().__init__(f'GitHub rate limit until {time.strftime("%H:%M:%S", time.gmtime(reset))} UTC'
                          f'{left}; retry after it')
 
 
 def cap(root=None):
-    """The longest wait for a reset (host.rate_limit_wait_seconds); 120 with no readable workspace."""
+    """The longest wait for a reset: WUWEI_RATE_LIMIT_WAIT (doctor sets 0, #867), else
+    host.rate_limit_wait_seconds; 120 with no readable workspace."""
+    if (value := os.environ.get('WUWEI_RATE_LIMIT_WAIT', '')).isdigit():
+        return int(value)
     try:
         return settings(root)['host']['rate_limit_wait_seconds']
     except (OSError, ValueError, KeyError):
         return 120
 
 
-def gh_limit(stderr, env=None):
-    """A RateLimited when gh's stderr names a rate limit, its reset read from gh api rate_limit."""
+def gh_limit(stderr, env=None, resource='core'):
+    """A RateLimited when gh's stderr names a rate limit, read from gh api rate_limit for the
+    resource the failed call spends (#867: its X-RateLimit-Resource; gh prints no headers)."""
     if not re.search(r'rate limit', stderr or '', re.I):
         return None
     try:
         result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
                                 capture_output=True, text=True, timeout=30, env=env)
         resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
-        name, row = min(((name, resources[name]) for name in ('core', 'graphql')),
-                        key=lambda pair: pair[1]['remaining'])
+        name, row = resource, resources[resource]
         if not all(type(row[key]) is int for key in ('remaining', 'limit', 'reset')):
             raise TypeError
         # Calls left means a secondary limit, which gives no reset.
@@ -89,6 +93,21 @@ def gh_limit(stderr, env=None):
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
         return RateLimited(time.time() + WAIT)
 
+
+
+def included_limit(text):
+    """#867: a RateLimited from a gh api --include reply's own X-RateLimit headers, else None."""
+    import email.parser
+    head = re.split(r'\r?\n\r?\n', text or '', maxsplit=1)[0].replace('\r\n', '\n')
+    status, _, rest = head.partition('\n')
+    code = re.match(r'HTTP/\S+ (\d{3})\b', status)
+    if not code:
+        return None
+    try:
+        _github_limit(int(code[1]), email.parser.Parser().parsestr(rest, headersonly=True))
+    except RateLimited as limit:
+        return limit
+    return None
 
 def retry(call, root=None):
     """Run call; on a RateLimited whose reset is within the cap, wait for it and run call once more.

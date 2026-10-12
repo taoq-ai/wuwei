@@ -129,11 +129,12 @@ def mandate(root):
                       'assumed, why, what would overturn it).', owner])
 
 
-def seat_action(role, brief_path, worktree, root):
-    """The launch action every Claude seat caller hands to the planner."""
+def seat_action(role, brief_path, worktree, root, runtime=None):
+    """The launch action every Claude seat caller hands to the planner; `runtime` (#845) is a
+    routed builder's, else the role's policy runtime."""
     config = workspace.load_config(root)
     return {'action': 'launch', 'brief': str(brief_path), 'worktree': str(worktree),
-            'runtime': registry.runtime_config(role, config, root)['adapters']['runtime'],
+            'runtime': runtime or registry.runtime_config(role, config, root)['adapters']['runtime'],
             'agent_type': 'wuwei:' + role,
             'prompt': launch_prompt(brief_path, security.agent_path(root, role), root=root)}
 

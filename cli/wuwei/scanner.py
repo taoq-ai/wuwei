@@ -1,5 +1,6 @@
 """S2 trace response and mandatory S4 security measurement."""
 
+import json
 import re
 import sys
 
@@ -9,6 +10,8 @@ from wuwei.exits import ADAPTER_DATA
 
 # Static checks for secrets, unvalidated input, execution and data exposure.
 TRUST_RULES = {'SA001', 'SA002', 'SA003', 'SA007', 'SA008', 'SA009', 'SA010'}
+# Tools that stay on the machine; Bash egress and deploys are the edges guards' (#870).
+LOCAL = frozenset({'Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'})
 
 
 def rows(tree, item, flags, config, root):
@@ -58,7 +61,52 @@ def merge(text, findings):
     return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit\n'
 
 
-def _trace_response(finding, root):
+# #870: where credentials live; redact's broader name check stays for redaction only.
+CREDENTIAL_PARTS = ('.ssh', '.netrc', '.npmrc', '.pypirc', '.git-credentials', '.gnupg')
+CREDENTIAL_ENDS = ('.aws/credentials', 'gh/hosts.yml', '.pem', '.key', '.wuwei/env')
+
+
+# ponytail: a name match on recorded arguments; globs (cred*), quote splitting (cred''entials),
+# python string building, base64, `gh auth token`, and what the recorder's redaction hides
+# (heredoc bodies, curl -d @file, the tail of commands over 2048 chars) pass. The canary, honeytoken and edges stay the floor;
+# a read check at PreToolUse is the upgrade.
+def _credential_path(text):
+    """A path-like word (a '/', or a leading '~' or '.') naming a credential location."""
+    for word in re.split(r'[\s\'"=@<>|;&()]+', text.replace('\\', '/').lower()):
+        if '/' not in word and not word.startswith(('~', '.')):
+            continue
+        parts = word.split('/')
+        if (any(part in CREDENTIAL_PARTS or part == '.env' or part.startswith('.env.')
+                and not part.endswith(('example', 'sample', 'template')) for part in parts)
+                or word.endswith(CREDENTIAL_ENDS)):
+            return True
+    return False
+
+
+def _private_read(path, session):
+    """#870: a span of this session (its raw id, or the sha256 trace_sweep gives a redacted one)
+    names a credential location in a path or shell command."""
+    import hashlib
+    with path.open(encoding='utf-8') as stream:
+        for line in stream:
+            try:
+                for resource in json.loads(line)['resourceSpans']:
+                    for scope in resource['scopeSpans']:
+                        for span in scope['spans']:
+                            found = {row['key']: row['value']['stringValue'] for row in span['attributes']}
+                            raw = found['session.id']
+                            if session not in (raw, hashlib.sha256(raw.encode()).hexdigest()):
+                                continue
+                            arguments = json.loads(found['gen_ai.tool.arguments'])
+                            if any(isinstance(arguments.get(key), str) and _credential_path(arguments[key])
+                                   for key in ('file_path', 'path', 'command')):
+                                return True
+            except (ValueError, KeyError, TypeError, AttributeError):
+                continue  # not a recorder span; ZIRAN skips it too
+    return False
+
+
+def _trace_response(finding, root, traces):
     """Seats: page and park the affected items. A registered session: one silent traces.noted
     per day. Unknown: one traces.unmatched per day (#352). Returns True when the finding paged."""
     import hashlib
@@ -78,8 +126,36 @@ def _trace_response(finding, root):
             extra = {'role': role, 'summary': f'traces: {role} session, chain noted'} if role else {}
             state.append_event(kind, {'session_digest': digest, 'chain': finding['chain'], **extra}, root)
         return False
-    state.append_event('scanner.finding', finding, root)
     reason = 'scanner chain ' + ' -> '.join(finding['chain'])
+    # #870: a chain of local file and shell tools only is the builder loop (edit, test, write),
+    # unless the session touched a private file (a credential read, then curl from Bash).
+    # ponytail: a write outside the worktree is not told apart; check the spans' paths if it must park.
+    if LOCAL.issuperset(finding['chain']):
+        if not _private_read(traces, session):
+            return False
+        reason += ' after a credential read'
+    _park(finding, reason, root)
+    return True
+
+
+def honeytoken(session, root, timeout=30):
+    """#878: an item seat's honeytoken read parks its items and holds the close
+    (closing.scanner_hold) like a critical chain; other sessions keep the security page."""
+    from wuwei import brief
+    finding, reason = {'chain': ['security.honeytoken'], 'risk_level': 'critical', 'session_id': session}, 'security.honeytoken read'
+    try:
+        if any(session in seat.get('trace_sessions', []) for seat in brief.seats(state.read_state(root)).values()
+               if seat['role'] != 'adhoc'):
+            _park(finding, reason, root, timeout)
+    except Exception:
+        # Fail closed: the close holds when the seat check or the park failed; the same payload is one card.
+        state.append_event('scanner.finding', {**finding, 'reason': reason}, root, timeout=timeout)
+        raise
+
+
+def _park(finding, reason, root, timeout=30):
+    from wuwei import brief
+    state.append_event('scanner.finding', {**finding, 'reason': reason}, root, timeout=timeout)
 
     def update(data):
         items = {seat['item'] for seat in brief.seats(data).values()
@@ -89,8 +165,7 @@ def _trace_response(finding, root):
             if item is not None and 'parked' in state.PHASES[item['phase']]:
                 item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
-    state._write_state(update, root)
-    return True
+    state._write_state(update, root, timeout=timeout)
 
 
 def trace_sweep(root, config):
@@ -123,7 +198,7 @@ def trace_sweep(root, config):
             if safe['session_id'] != finding['session_id']:
                 import hashlib
                 safe['session_id'] = hashlib.sha256(finding['session_id'].encode()).hexdigest()
-            owed += _trace_response(safe, root)
+            owed += _trace_response(safe, root, path)
         counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1

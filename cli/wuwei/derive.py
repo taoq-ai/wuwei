@@ -81,7 +81,8 @@ def listing(directory):
 
 
 # WUWEI's own PR steps: the listing is refreshed on the next call after one of them
-LISTING_EVENTS = (b'"pr.raised"', b'"pr.claimed"', b'"merge.auto"', b'"merge.completed"', b'"merge.revert"')
+LISTING_EVENTS = (b'"pr.raised"', b'"pr.claimed"', b'"pr.pushed"', b'"merge.auto"', b'"merge.completed"',
+                  b'"merge.revert"')
 
 
 def stale(root, config, data):
@@ -311,6 +312,7 @@ def offers(data, root, config, merges=None):
             owner = row.get('owner_merge') or 'owner-merge' in ((pull or {}).get('labels') or ())
             blocked, held = merges.get(pr) or (None, None)
             fetched = when(listing_at) if listing_at else None
+            claimed = pr in data.get('claimed_prs', ()) and bool(row.get('worktree'))  # #879
             if pull is not None and moved(root, data, name, pull.get('head')):  # F1: re-read first
                 if (dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row)
                         and not dispatch._resumed(root, name)):  # D3: the owner's resume grants one round
@@ -327,12 +329,24 @@ def offers(data, root, config, merges=None):
             elif checks == 'red':
                 launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red.')
             elif pull.get('mergeable') == 'conflicting':
-                launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} conflicts with its base.')
+                launch('fix' if claimed else 'pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} conflicts with its base.')
+            elif claimed and any(duty['duty'] == 'shepherd' and duty['item'] == name
+                                 for duty in duties(root, config, data=data)):
+                launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} has review activity.')
             elif checks == 'green' and held and (fetched is None or when(held) >= fetched):
                 pass  # G1: the merge policy holds it (approvals, threads, soak); it waits on people
             elif checks == 'green':
                 launch('merge', name, f'wuwei merge {pr}', f'{name}: PR {pr} is green.')
     return {'launches': launches, 'decision': decision, 'parks': parks, 'rows': rows + waiting}
+
+
+def seated(data, launch):
+    """True for a launch the launch set resolves: the build and gate steps, and the pr act step of
+    a claimed PR with a worktree, a fix-round builder or else its plain run (#879)."""
+    command, row = launch['command'], data['items'].get(launch['item']) or {}
+    return command.startswith(('wuwei build next ', 'wuwei dispatch next ')) or (
+        command == f"wuwei pr act {row.get('pr')}"
+        and bool(row.get('worktree')) and row.get('pr') in data.get('claimed_prs', ()))
 
 
 def _days(root, directory):

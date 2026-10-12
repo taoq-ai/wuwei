@@ -48,8 +48,8 @@ def host(root, config, running=0, free=None, policy=None):
     """Capacity (#528, #658): CAP and the seat ceiling. Claude subagent seats take host.seats,
     else one per core, and never read free memory; seats that are separate processes take the
     median of today's last five memory readings (the seats that fit above the floor, one per
-    core). Then the owner's values and the token budget; `bound` names what set CAP. `free` is
-    MiB when the caller already measured it; `policy` the day's seat policy when held."""
+    core). Then the owner's values; `bound` names what set CAP. `free` is MiB when the caller
+    already measured it; `policy` the day's seat policy when held."""
     import statistics  # lazy: dispatch is on the hook path (#346)
 
     from wuwei import metrics, state, workspace
@@ -99,28 +99,120 @@ def host(root, config, running=0, free=None, policy=None):
     cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
     text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
             if owner_cap else f'cap {cap} ({bound}): {measured}')
-    budget = config['budget']['tokens_per_day']
-    if budget:
-        # ponytail: counts tokens already spent today, not what running seats will still spend;
-        # reserve a per-seat share at launch if this overshoots.
-        try:
-            per_seat = None if damaged else next((statistics.median(tokens) for day in days
-                                                  if (tokens := metrics.seat_tokens(metrics._events(day) or []))), None)
-            used = sum(metrics.seat_tokens(metrics._events(workspace.day_dir(root)) or []))
-        except ValueError as exc:
-            per_seat, damaged = None, damaged or exc
-        if per_seat is None:
-            text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
-        else:
-            per_seat = max(1, round(per_seat))
-            fits = max(1, (budget - used) // per_seat)
-            if fits < cap:
-                cap, bound = fits, 'budget'
-                text = f'cap {cap} (budget): {measured}'
-            text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
     if damaged:
         text += f'; warning: {damaged}'
     return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
+
+
+WINDOWS = {'five_hour': 300, 'seven_day': 10080}  # #845: minutes; the usage windows both runtimes share
+
+
+def _readings(root):
+    """The saved readings, runtime to window to reading (.wuwei/windows.json, a cache)."""
+    import json
+    path = Path(root) / '.wuwei/windows.json'
+    try:
+        found = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(f'windows.json: {exc}') from exc
+    if not isinstance(found, dict) or not all(isinstance(rows, dict) for rows in found.values()):
+        raise ValueError('windows.json: not a table of runtimes; remove it, the next readings rewrite it')
+    return found
+
+
+def save_windows(root, runtime, readings):
+    """#845: merge a runtime's valid readings ({window: {used_percent, resets_at ISO}}) into the
+    cache; anything else is outside data and dropped. Writes only on a change."""
+    import json
+    import math
+    from wuwei import derive
+    keep = {window: {'used_percent': row['used_percent'], 'resets_at': row['resets_at']}
+            for window, row in (readings.items() if isinstance(readings, dict) else ())
+            if window in WINDOWS and isinstance(row, dict)
+            and type(row.get('used_percent')) in (int, float) and math.isfinite(row['used_percent'])
+            and row['used_percent'] >= 0 and getattr(derive.when(row.get('resets_at')), 'tzinfo', None)}
+    try:
+        saved = _readings(root)
+    except ValueError:
+        saved = {}  # a damaged cache is replaced
+    merged = {**saved, runtime: {**saved.get(runtime, {}), **keep}}
+    if keep and merged != saved:
+        workspace.atomic_write(Path(root) / '.wuwei/windows.json', json.dumps(merged, sort_keys=True) + '\n')
+
+
+def windows(root, config, runtimes):
+    """#845: room in whole seats per budgeted runtime of `runtimes`, {name: {room, until, text}}.
+    A window's used tokens are the larger of its counted seat.usage tokens and the live reading's
+    percent of its budget; room is (budget - used) // per-seat tokens, 0 at a reading of 100
+    percent, None (no bound) without a budget and per-seat cost. The runtime takes its smallest
+    room and the latest reset among its spent windows, else its binding window's reset.
+    ponytail: only measured seats count (Claude gate sentinels report none); readings catch them."""
+    import functools
+    import statistics
+    from datetime import timedelta
+    from wuwei import derive, metrics
+    now, default = workspace.now(), config['adapters']['runtime']
+    days = sorted((Path(root) / '.wuwei/days').glob('*'), reverse=True)
+    events = functools.cache(lambda day: metrics._events(day) or [])
+    try:
+        readings, warning = _readings(root), None
+    except ValueError as exc:  # a damaged cache is ignored, never a blocked launch
+        readings, warning = {}, exc
+    found = {}
+    for name in runtimes:
+        if name not in config['budget']:
+            continue
+        parts, rooms, damaged, per_seat = [], [], None, False
+        for window, minutes in WINDOWS.items():
+            budget, length = config['budget'][name][window], timedelta(minutes=minutes)
+            reading = readings.get(name, {}).get(window)
+            reset = derive.when(reading.get('resets_at')) if isinstance(reading, dict) else None
+            percent = reading.get('used_percent') if reset and reset > now else None
+            if type(percent) not in (int, float):
+                percent = reset = None
+            if not budget and percent is None:
+                continue
+            if budget and per_seat is False:  # the history scan only for a budgeted window
+                try:
+                    tokens = lambda runtime: next((t for day in days if (t := metrics.seat_tokens(events(day), runtime, default))), None)
+                    per_seat = tokens(name) or tokens(None)
+                    per_seat = per_seat and max(1, round(statistics.median(per_seat)))
+                except ValueError as exc:
+                    per_seat, damaged = None, exc
+            start, counted, earliest = (reset or now) - length, None, None
+            if not damaged:
+                try:
+                    mine = [row for day in days if day.name >= str((start - timedelta(days=1)).date())
+                            for row in events(day) if row['kind'] == 'seat.usage'
+                            and row['payload'].get('runtime', default) == name and derive.when(row['ts']) >= start]
+                    counted = sum(metrics.seat_tokens(mine))
+                    earliest = min((derive.when(row['ts']) for row in mine), default=None)
+                except (ValueError, KeyError, TypeError) as exc:
+                    damaged = exc
+            used = max(counted or 0, int(budget * percent // 100)) if percent is not None else counted
+            room = (0 if percent is not None and percent >= 100 else
+                    max(0, (budget - used) // per_seat) if budget and per_seat and not damaged else None)
+            until = reset or (earliest or now) + length
+            parts.append(f'{name} {window}' + (f' {used} of {budget} used' if budget and used is not None else '')
+                         + (f' (reported {percent:g}%)' if percent is not None else '')
+                         + (', per-seat tokens unmeasured' if budget and not per_seat and not damaged else '')
+                         + ('' if room is None else f', room {room}' + (f' until {until.isoformat()}' if room == 0 else '')))
+            if room is not None:
+                rooms.append((room, until))
+        parts += [f'warning: {exc}' for exc in (damaged, warning) if exc]
+        spent = [until for room, until in rooms if room == 0]
+        until = max(spent) if spent else min(rooms)[1] if rooms else None
+        found[name] = {'room': min(rooms)[0] if rooms else None, 'until': until and until.isoformat(),
+                       'text': '; '.join(parts)}
+    return found
+
+
+def route(row, default, left):
+    """#845: the runtime a new build starts on: the policy row's runtime when it has room (or no
+    bound), else its alternate when that has room, else the policy runtime, to wait."""
+    primary, alternate = row.get('runtime') or default, row.get('alternate')
+    fits = lambda name: left.get(name) is None or left[name] > 0
+    return alternate if not fits(primary) and alternate and fits(alternate) else primary
 
 
 def gate_set(row):
@@ -443,7 +535,7 @@ def _record(data, item, role, round_name):
 def _parked(root, item, reason, ask=True):
     """Park the item in code (plan.park). At the round cap the owner decides on plan resume's
     Owner step card (ask); a PARK verdict or the owner's No parks with no card."""
-    from wuwei import plan
+    from wuwei import plan, specmode
     plan.park(item, reason, root)
     return {'action': 'escalate' if ask else 'parked', 'reason': reason,
             'command': 'wuwei plan resume ' + shlex.quote(item)}
@@ -642,6 +734,8 @@ def next_step(item, root=None):
 
 def raise_action(root, data, item, notes):
     """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
+    if (pr := data['items'][item].get('pr')) in data.get('claimed_prs', ()):  # #879: back to its branch
+        return {'action': 'run', 'command': f'wuwei pr act {pr} --push', 'notes': notes}
     name = f'shepherd-{item}'
     path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
     worktree = data['items'][item].get('worktree') or str(root)
@@ -671,6 +765,10 @@ def resolve_offer(root, launch):
         if action['action'] == 'fix':  # the fix round opened; its builder continues fresh (#614)
             record = state.read_state(root)['builds'][item]
             action = build.next_action(item, root / record['brief'], record['worktree'], root=root)
+    elif command.startswith('wuwei pr act '):  # #879: a claimed PR's fix round, else its plain run
+        from wuwei import pr_actions
+        action = pr_actions.launch(root, command.split()[-1])
+        launch = {**launch, 'kind': 'fix' if action['action'] in ('launch', 'continue') else 'pr'}
     else:
         action = {'action': 'run', 'command': command}
     if action['action'] in ('done', 'park', 'escalate', 'parked'):
@@ -684,6 +782,7 @@ def launch_set(root=None):
     build steps first, then planned items; builders within CAP, launches within the free
     host.seats."""
     from collections import Counter
+    from datetime import timedelta
     from wuwei import derive
     from wuwei.commands import build
     from wuwei.commands.next import approved
@@ -693,6 +792,18 @@ def launch_set(root=None):
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
     limits = host(root, config, running=len(running), policy=data['seat_policy'])
+    # #845: seats each runtime's windows still carry, less its running seats and build loops
+    policies = [row for row in data['seat_policy'].values() if isinstance(row, dict)]
+    rooms = windows(root, config, {config['adapters']['runtime'], *(row.get(key) for row in policies
+                                                                    for key in ('runtime', 'alternate'))} - {None})
+    taken = Counter([(seat['role'] == 'builder' and (data.get('builds', {}).get(seat.get('item')) or {}).get('runtime'))
+                     or seat.get('runtime') or data['seat_policy'].get(seat['role'], {}).get('runtime')
+                     or config['adapters']['runtime'] for seat in running]
+                    + [build['runtime'] for build in data.get('builds', {}).values() if state.looping(build)])
+    windows_left = {name: row['room'] and max(0, row['room'] - taken[name]) for name, row in rooms.items()}
+    hold = lambda runtime: {'action': 'wait', 'reason': f"{runtime} usage window has no room for a seat "
+                            f"({rooms[runtime]['text']})" + (f"; it resets at {rooms[runtime]['until']}" if rooms[runtime]['until'] else ''),
+                            **({'until': rooms[runtime]['until']} if rooms[runtime]['until'] else {})}
     cap, bound = limits['cap'], limits['bound']
     ceiling = limits['seats']
     # #658: under the memory rule every sweep records its reading; CAP smooths over them
@@ -713,18 +824,34 @@ def launch_set(root=None):
             value = {'kind': kind, **call()}
         except (Refused, ValueError, build.PortExit) as exc:
             value = {'kind': kind, 'action': 'refused', 'reason': str(exc)}
+        if value['action'] in ('launch', 'continue') and value.get('runtime') not in ('claude', None):
+            # #845: a builder bound to another runtime runs its own loop, in the background
+            value = {'kind': kind, 'action': 'run', 'runtime': value['runtime'], 'command': 'wuwei build ' + ' '.join(
+                map(shlex.quote, (name, value['brief'], value['worktree'])))}
+        started = derive.when(((data.get('builds', {}).get(name) or {}).get('loop') or {}).get('started_at'))
+        if value['action'] == 'run' and started and (again := started + timedelta(seconds=121)) > workspace.now():
+            # #845 D2, E1: a loop that ended within two minutes of its start runs again after them
+            value = {'action': 'wait', 'until': again.isoformat(),
+                     'reason': f'{name} build loop ended right after it started; it runs again at {again.isoformat()}'}
         launches = len(value.get('seats', [])) if 'seats' in value else int(
-            value['action'] in ('launch', 'continue', 'start'))
-        if launches > free:
+            value['action'] in ('launch', 'continue', 'start') or value['action'] == 'run' and 'runtime' in value)
+        need = Counter(seat.get('runtime') for seat in value.get('seats', [])) if 'seats' in value else Counter(
+            [value.get('runtime')] if launches else [])
+        held = next((name for name, count in need.items() if windows_left.get(name) is not None
+                     and windows_left[name] < count), None)
+        if held:
+            value = hold(held)
+        elif launches > free:
             value = {'action': 'wait', 'reason': (
                 f'{launches} launch(es) do not fit the {max(free, 0)} free of host.seats={ceiling}; '
                 'they launch together next turn, after running seats stop')}
         else:
             free -= launches
+            windows_left.update({key: windows_left[key] - count for key, count in need.items() if windows_left.get(key) is not None})
         entries.append({'item': name, 'goal': goal(name), **value})
 
     offered = [launch for launch in derive.offers(data, root, config)['launches']  # seat steps only
-               if launch['command'].startswith(('wuwei build next ', 'wuwei dispatch next '))]
+               if derive.seated(data, launch)]
     for launch in sorted((launch for launch in offered if launch['command'] != 'wuwei dispatch next --all'),
                          key=lambda launch: launch['command'].startswith('wuwei build next ')):
         add(launch['item'], lambda: resolve_offer(root, launch), launch['kind'])
@@ -753,21 +880,28 @@ def launch_set(root=None):
         if starts[name][0].startswith('wuwei plan park '):  # #603: a park takes no seat, whatever the seats and CAP
             skip.append(name)
             entries.append({'item': name, 'goal': goal(name), 'action': 'park', 'commands': starts[name]})
-    for index, name in enumerate(name for name in first + rest if name not in skip):
+    index = 0
+    for name in (name for name in first + rest if name not in skip):
+        runtime = route(data['seat_policy'].get('builder', {}), config['adapters']['runtime'], windows_left)
         if gate_waits:
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 'a gate waits for seats; gates launch before new builds so ready items merge first')})
+        elif windows_left.get(runtime) == 0:  # F4: held before build next binds, moves or claims it
+            entries.append({'item': name, 'goal': goal(name), **hold(runtime)})
+            continue
         elif building + index >= cap:
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 f'CAP {cap} reached ({building} building); bin/wuwei next names the seat '
                 'expected to free first')})
         elif name in briefed:
-            add(name, lambda: build.next_action(name, root=root))
+            add(name, lambda: build.next_action(name, root=root, runtime=runtime))
         else:
-            add(name, lambda: {'action': 'start', 'commands': starts[name]})
+            add(name, lambda: {'action': 'start', 'commands': starts[name], 'runtime': runtime})
+        index += 1
     for entry in entries:
         entry.setdefault('kind', 'build')
-    return {'action': 'set', 'cap': cap, 'bound': bound, 'capacity': limits['text'],
+    return {'action': 'set', 'cap': cap, 'bound': bound,
+            'capacity': limits['text'] + ''.join(f"; {row['text']}" for row in rooms.values() if row['text']),
             'building': building, 'free_seats': start,
             'entries': entries}
 
@@ -783,19 +917,29 @@ def candidate(root, name):
 
 def _start(root, name, repos):
     """The exact commands that start a planned item: its worktree, then its builder brief."""
+    from wuwei import plan, specmode
     row = candidate(root, name)
+    item = state.read_state(root)['items'].get(name, {})
     body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
             else f"Implement {name} as today's plan records it.")
     tree = f'worktrees/{name}'
+    repo = item.get('repo') or (row or {}).get('repo')  # #868: the owner's plan add names it
     add = [] if (root / tree).exists() else [f'wuwei worktree add {name}']
     if add and len(repos) > 1:  # #603: worktree add exits 2 without --repo here
         names = [repo['name'] for repo in repos]
-        repo = (row or {}).get('repo')
         if repo not in names:
             return [f'wuwei plan park {name} --reason ' + shlex.quote(
-                f'names no configured repository ({", ".join(names)}); the lead names repo for it '
-                'when it is proposed again')]
+                f'names no configured repository ({", ".join(names)}); run wuwei worktree add {name} '
+                f'--repo <one of {", ".join(names)}>, then wuwei plan resume {name}')]
         add = [add[0] + ' --repo ' + shlex.quote(repo)]
+    checkout = plan.checkout(root, repos, repo, tree)
+    try:  # #864: a brief that cannot be written parks the item, so it holds no CAP seat
+        if 'governed_by' in item and checkout is not None:  # the brief's own read of it
+            specmode.brief_block(workspace.load_config(root), name, item, checkout)
+    except ValueError as exc:
+        return [f'wuwei plan park {name} --reason ' + shlex.quote(
+            f'{name}: governed_by {item["governed_by"]}: {str(exc).split(";")[0]}; the owner fixes it '
+            f'with wuwei plan set {name} governed_by=<path>, then wuwei plan resume {name}')]
     return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
@@ -1200,7 +1344,8 @@ def opinion(item, root=None):
         else:
             # continue_job resumes the latest thread of this runtime in the worktree, which is
             # the builder's own thread when the builder runs on the same runtime.
-            if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
+            if ((data.get('builds', {}).get(item) or {}).get('runtime')  # #845: a routed build's record
+                    or data['seat_policy'].get('builder', {}).get('runtime')) == second['runtime']:
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set')
             feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
@@ -1232,7 +1377,10 @@ def opinion(item, root=None):
     def stop(fresh):
         fresh['seats'][name].update(status='stopped', stopped_at=workspace.now().isoformat(), usage=usage)
     state._write_state(stop, root, kind='seat.usage',
-                       payload={'item': item, 'role': sentinel, 'gate': gate, 'usage': usage})
+                       payload={'item': item, 'role': sentinel, 'gate': gate, 'usage': usage,
+                                'runtime': second['runtime']})
+    if result.get('windows'):
+        save_windows(root, second['runtime'], result['windows'])
     state.append_event('seat stopped', {'name': name}, root)
     return receive(item, gate, name, round_name, root)
 

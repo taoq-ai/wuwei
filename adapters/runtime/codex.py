@@ -1,6 +1,7 @@
 """Codex companion subprocess and workspace-root verification."""
 
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -126,6 +127,9 @@ def result(job, *, root=None):
         output = {'text': text}
         if 'usage' in result_data:
             output['usage'] = result_data['usage']
+        windows = _windows(result_data.get('threadId'))
+        if windows:
+            output['windows'] = windows
         role = job.get('role', 'builder')
         from wuwei.guards.verdict import check_retro
         retro_code, retro_reason = check_retro({'cwd': str(tree), 'agent_id': job_id,
@@ -145,6 +149,34 @@ def result(job, *, root=None):
         return registry.Result(0, output)
     except (OSError, ValueError, KeyError) as exc:
         return registry.Result(2, reason=f'Codex result could not run: {exc}')
+
+
+def _windows(thread):
+    """#845: the window readings of the thread's rollout file (its last token_count event with
+    rate_limits), matched by window length. ponytail: the rollout format is no documented
+    contract; any failure is no reading, never an error."""
+    from datetime import datetime, timezone
+    names = {300: 'five_hour', 10080: 'seven_day'}
+    if not isinstance(thread, str) or not re.fullmatch(r'[0-9A-Za-z-]+', thread):
+        return {}
+    home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex')
+    try:
+        for path in sorted(home.glob(f'sessions/*/*/*/rollout-*-{thread}.jsonl'), reverse=True):
+            for line in reversed(path.read_text(encoding='utf-8').splitlines()):
+                try:
+                    payload = json.loads(line).get('payload') or {}
+                except ValueError:
+                    continue  # a torn line never hides the reading before it
+                limits = payload.get('rate_limits') if payload.get('type') == 'token_count' else None
+                if isinstance(limits, dict):
+                    return {names[row['window_minutes']]: {
+                        'used_percent': row['used_percent'],
+                        'resets_at': datetime.fromtimestamp(row['resets_at'], timezone.utc).isoformat()}
+                        for row in (limits.get('primary'), limits.get('secondary'))
+                        if isinstance(row, dict) and row.get('window_minutes') in names}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
+        pass
+    return {}
 
 
 def continue_job(job, feedback, *, root=None):

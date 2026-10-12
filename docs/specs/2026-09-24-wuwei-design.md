@@ -547,6 +547,16 @@ red checks at the cap, `owner_merge` and a merge the policy does not clear are t
   seats share one process, so free memory does not track their count: CAP and `host.seats`
   are the configured `host.seats`, else one per core, bound `host.seats`, and free memory is
   not read. The free-memory floor still refuses a launch under either rule.
+  Amended (owner, 2026-10-11, #845): `budget.tokens_per_day` is retired. Seats follow each
+  runtime's usage windows (5-hour and 7-day): `budget.<runtime>.<window>` sets a token budget,
+  and a window's used tokens are the larger of the runtime's counted `seat.usage` tokens and
+  its live reading (Claude Code's status line input, the Codex seat's session file) as a
+  share of the budget; a reading of 100 percent holds launches without a budget. The launch
+  set bounds each runtime's new seats by its window room less the seats already running there.
+  A seat launch on a spent runtime waits with the reset time, running seats finish, and when
+  every launch waits `next` returns a background sleep past the reset. A builder seat policy
+  row may name an `alternate` runtime for new builds; a build keeps the runtime its record
+  binds.
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
 - Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,

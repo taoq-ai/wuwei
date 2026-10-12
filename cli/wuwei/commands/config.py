@@ -105,7 +105,7 @@ def run(args):
     print('Host protections:')
     for repo in config['repos']:
         status = max(status, _protection(host, repo, config['shepherd']['min_reviewers'] == 0,
-                                         config['shepherd']['review_gate_check']))
+                                         config['shepherd']['review_gate_check'], root))
     print('Seat credentials:')
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
         status = max(status, _token(host, name))
@@ -430,10 +430,19 @@ def add_repo(args, confirm=None):
     return _edit('config add-repo', 'repository', confirm, change, command=command)
 
 
-def _protection(host, repo, solo, gate):
+def _protection(host, repo, solo, gate, root=None):
+    """#867: a clean read is kept for the day in protection.json and reused; findings and errors
+    are read again, so the owner's fix shows on the next run."""
     branch = repo['default_branch']
     label = f"  {repo['name']} {branch}"
-    result = host.protection(repo['name'], branch)
+    key, path = f"{repo['name']}@{branch}", workspace.day_dir(root) / 'protection.json' if root else None
+    try:
+        kept = json.loads(path.read_text(encoding='utf-8'))
+        kept = kept if isinstance(kept, dict) else {}
+    except (AttributeError, OSError, ValueError):
+        kept = {}
+    cached = isinstance(kept.get(key), dict)
+    result = registry.Result(0, kept[key]) if cached else host.protection(repo['name'], branch)
     try:
         if result.exit:
             raise ValueError(result.reason)
@@ -466,6 +475,9 @@ def _protection(host, repo, solo, gate):
     for name, state, fix in rows:
         print(f'{label}: {name}: {state or f"missing ({fix})"}')
     if all(state for _, state, _ in rows):
+        if path and not cached:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            workspace.atomic_write(path, json.dumps({**kept, key: data}) + '\n')
         return CLEAN
     print(f"{label}: fix in https://github.com/{repo['name']}/settings/branches")
     if not data['classic']:  # Nothing to overwrite: one PUT sets the whole recommended layout.

@@ -266,6 +266,16 @@ def enforce(payload, refusals, root, warned=None):
     warned, when given, collects the launch refusals let through (#660)."""
     from wuwei import state, workspace
     from wuwei.guards import floor, logs
+    if root is not None and any(reason.startswith('outward: security.') and 'security.honeytoken' in reason
+                                for _, reason, _ in refusals):
+        try:  # #878: a refused honeytoken send never reaches PostToolUse; the seat parks here,
+            # with a 1 s lock wait so the park never holds the refusal past the hook timeout
+            from wuwei import scanner
+            from wuwei.guards.traces import seat_session
+            scanner.honeytoken(seat_session(payload), root, timeout=1)
+        except Exception as exc:
+            print(f'wuwei hook: {type(exc).__name__}: could not park the item of a honeytoken send; '
+                  'run bin/wuwei doctor', file=sys.stderr)
     try:
         if root is None:
             raise LookupError('no workspace; run bin/wuwei init')

@@ -392,10 +392,16 @@ def _calibration(root, config):
 def _gates(root, config):
     from wuwei.commands import config as config_command
     code, text = _capture(config_command.run, Namespace())
-    rows = [_row('gates', 'config check', ('ok', 'fail', 'unmeasured')[code], f'exit {code}',
-                 'apply the fix each detail line names', docs='docs/site/configuration.md',
-                 detail=[line.strip() for line in text.splitlines() if line.strip()] if code else ())]
-    return rows
+    detail = [line.strip() for line in text.splitlines() if line.strip()] if code else ()
+    # #867: a rate limit waits only when no protection finding is due (F2: the finding wins).
+    limited = (next((line for line in detail if LIMITED in line), None)
+               if code == 2 and not any('missing (' in line for line in detail) else None)
+    row = _limited('gates', 'config check', limited) if limited else None  # #867
+    if row:
+        row['detail'] = detail
+    return [row or _row('gates', 'config check', ('ok', 'fail', 'unmeasured')[code], f'exit {code}',
+                        'apply the fix each detail line names', docs='docs/site/configuration.md',
+                        detail=detail)]
 
 
 NONE = {'tracker': 'none: discovery reads no tracker backlog',
@@ -588,7 +594,20 @@ def _guards(root, probes):
 
 
 def diagnose(section=None):
-    """Every row (or one section's), in section order; reads only."""
+    """Every row (or one section's), in section order; reads only. #867: a GitHub rate limit is
+    reported as waiting, never waited for (adapters/_http.cap reads WUWEI_RATE_LIMIT_WAIT)."""
+    before = os.environ.get('WUWEI_RATE_LIMIT_WAIT')
+    os.environ['WUWEI_RATE_LIMIT_WAIT'] = '0'
+    try:
+        return _diagnose(section)
+    finally:
+        if before is None:
+            os.environ.pop('WUWEI_RATE_LIMIT_WAIT', None)
+        else:
+            os.environ['WUWEI_RATE_LIMIT_WAIT'] = before
+
+
+def _diagnose(section):
     error = None
     try:
         root = workspace.find_workspace()

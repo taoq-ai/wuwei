@@ -95,6 +95,14 @@ def _record(payload, root, findings=(), transcript_path=None):
     return 0, ''
 
 
+def seat_session(payload):
+    """#878: the session id check binds to a seat: the subagent suffix, hashed when redaction changes it."""
+    import hashlib
+    from wuwei.redact import redact
+    session = payload['session_id'] + (':' + payload['agent_id'] if 'agent_id' in payload else '')
+    return session if redact(session) == session else hashlib.sha256(session.encode()).hexdigest()
+
+
 def check(payload):
     started = time.monotonic()
     import sys
@@ -142,6 +150,12 @@ def check(payload):
             inspect, reason = True, f'wuwei traces: {type(exc).__name__}: could not read {step}'
         else:
             code, reason = _record(payload, root, findings, transcript_path)
+            if not code and 'honeytoken' in findings:  # #878: after _record binds the session to its seat
+                try:
+                    from wuwei import scanner
+                    scanner.honeytoken(payload['session_id'], root)
+                except Exception as exc:  # the span is written and the close holds
+                    code, reason = 1, f'wuwei traces: {type(exc).__name__}: could not park the item of a honeytoken read (the span is recorded)'
             if not code:
                 return 0, ''
     except BaseException as exc:

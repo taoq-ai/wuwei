@@ -9,7 +9,7 @@ import subprocess
 import sys
 from urllib.parse import quote
 
-from .._http import RateLimited, gh_limit, retry
+from .._http import RateLimited, gh_limit, included_limit, retry
 from wuwei.registry import Result, outward_operation
 from wuwei.redact import reply
 from wuwei.references import pull_request, repository as _repo
@@ -86,6 +86,9 @@ def _run(args, payload=None, *, json_output=True, env=None):
             if re.fullmatch(r'search/commits\?q=author-email%3A[A-Za-z0-9._%+-]+'
                             r'%20repo%3A[A-Za-z0-9._%-]+&per_page=1', endpoint):
                 allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
+            if re.fullmatch(r'search/issues\?q=is%3Apr%20is%3Aopen%20repo%3A[A-Za-z0-9._%-]+'
+                            r'%20author%3A[A-Za-z0-9-]+&per_page=100', endpoint):  # #867: open_prs
+                allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
             match = re.fullmatch(r'repos/([^/]+/[^/]+)(?:/(.+))?', endpoint)
             if match and match[2] is None:
                 _repo(match[1])
@@ -113,11 +116,17 @@ def _run(args, payload=None, *, json_output=True, env=None):
     if args[0] == 'api':
         args = [*args, '--hostname', 'github.com']
 
+    # #867: the bucket this call spends; gh pr merge and ready run GraphQL.
+    endpoint = args[1] if args[0] == 'api' else 'graphql' if args[0] == 'pr' else ''
+    resource = 'graphql' if endpoint == 'graphql' else 'search' if endpoint.startswith('search/') else 'core'
+
     def call():
         result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                                 capture_output=True, text=True, timeout=TIMEOUT, env=env)
-        if result.returncode and (limit := gh_limit(result.stderr, env)):
-            raise limit
+        if result.returncode and re.search(r'rate limit', result.stderr, re.I):
+            limit = _headers_limit(args, payload, result, env) or gh_limit(result.stderr, env, resource)
+            if limit:
+                raise limit
         return result
     try:
         result = retry(call)
@@ -157,6 +166,29 @@ def _run(args, payload=None, *, json_output=True, env=None):
         _errors(json.loads(result.stdout))
     return result.stdout
 
+
+
+def _headers_limit(args, payload, result, env):
+    """#867: the limit from the failed response's own X-RateLimit headers. A read already run with
+    --include carries them; another read (REST GET or GraphQL query) is asked once more with
+    --include and no pagination (a refused request spends no quota), after a primary limit only.
+    A write is never repeated,
+    and gh pr merge, gh pr ready and gh auth status print no headers: those fall back to rate_limit."""
+    if '--include' in args:
+        return included_limit(result.stdout)
+    if re.search(r'secondary', result.stderr, re.I):
+        return None  # D1: GitHub says wait out a secondary limit; another request can extend it
+    query = isinstance(payload, dict) and args[1] == 'graphql' and payload.get('query') != _REVERT
+    if args[0] != 'api' or not (query or payload is None and '--method' not in args):
+        return None
+    again = [arg for arg in args if arg not in ('--paginate', '--slurp')]
+    try:
+        shown = subprocess.run(['gh', *again[:2], '--include', *again[2:]],
+                               input=json.dumps(payload) if query else None,
+                               capture_output=True, text=True, timeout=TIMEOUT, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return included_limit(shown.stdout)
 
 def _api(endpoint, *, pages=False, payload=None):
     if payload is not None:
@@ -221,6 +253,8 @@ def pr(ref, root=None):
         'state': _field(value, 'state', str), 'merged': _field(value, 'merged', bool), 'draft': _field(value, 'draft', bool),
         'head': _sha(value['head']['sha']), 'base': _field(value['base'], 'ref', str),
         'base_sha': _sha(value['base']['sha']), 'branch': _field(value['head'], 'ref', str),
+        'head_repo': (value['head'].get('repo') or {}).get('full_name'),  # #879: None for a deleted fork
+        'base_repo': (value['base'].get('repo') or {}).get('full_name'),
         'merged_at': _field(value, 'merged_at', str, nullable=True),
         'created_at': _field(value, 'created_at', str),
         'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),
@@ -378,9 +412,18 @@ def pulls(repo, root=None):
 
 
 @_operation
-def open_prs(repo, root=None):
+def open_prs(repo, author, root=None):
+    """#867: the author's open PRs in the repository from one search, not every open PR."""
+    if not isinstance(author, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', author):
+        raise ValueError('invalid author login')
+    query = quote(f'is:pr is:open repo:{_repo(repo)} author:{author}', safe='')
+    value = _api(f'search/issues?q={query}&per_page=100')
+    items = _list(value['items'])
+    # ponytail: one page of 100 per author and repository; fails closed beyond it.
+    if _field(value, 'incomplete_results', bool) or _field(value, 'total_count', int) != len(items):
+        raise ValueError('incomplete PR search')
     return [{'number': _field(v, 'number', int), 'title': _field(v, 'title', str), 'author': _login(v['user'])}
-            for v in _pages(f'repos/{_repo(repo)}/pulls')]
+            for v in items]
 
 
 def _aware(text):

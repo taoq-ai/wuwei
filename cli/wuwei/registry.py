@@ -33,7 +33,7 @@ PARAMETERS = {
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha', 'method'), 'ready': ('ref',),
-                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'pulls': ('repo',), 'probe': ('ref', 'tags'),
+                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo', 'author'), 'pulls': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'deployments': ('repo', 'since'),
                   'issue': ('repo', 'title', 'body'), 'label': ('ref', 'name', 'present')},
     'vcs': {'workspace_init': ('repo',),
@@ -53,7 +53,7 @@ PARAMETERS = {
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
-            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
+            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path', 'remote')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

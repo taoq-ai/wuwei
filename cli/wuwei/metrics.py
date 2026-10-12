@@ -630,10 +630,12 @@ def seat_cost(events):
     return cost if cost > 0 else UNMEASURED
 
 
-def seat_tokens(events):
-    """Input plus output tokens of each measured `seat.usage` row (#528)."""
+def seat_tokens(events, runtime=None, default=None):
+    """Input plus output tokens of each measured `seat.usage` row (#528); with `runtime`, only
+    that runtime's rows, a row naming none counting as `default` (#845)."""
     return [usage['input_tokens'] + usage['output_tokens'] for row in events
             if row['kind'] == 'seat.usage' and isinstance(usage := row['payload'].get('usage'), dict)
+            and (runtime is None or row['payload'].get('runtime', default) == runtime)
             and type(usage.get('input_tokens')) is int and type(usage.get('output_tokens')) is int]
 
 

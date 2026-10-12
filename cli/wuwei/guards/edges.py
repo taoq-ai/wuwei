@@ -349,10 +349,12 @@ def _default(name, cwd, root):
                f'<owner/repo> --base {name} --title <title> --body-file <file> --item {item or "<item>"}')
 
 
-def _git_edge(args, cwd, root, config):
+def _git_edge(args, cwd, root, config, env=None):
     verb, rest = _git(args)
     if verb != 'push':
         return 0, ''
+    if claimed := _claimed(args[:len(args) - len(rest) - 1], rest, env or {}, cwd, root):
+        return claimed
     if _forced(rest):
         return 1, ('force-push is refused; commit the change on top and run '
                    f'git push origin HEAD:refs/heads/{_branch(cwd, root)[1]}')
@@ -361,6 +363,33 @@ def _git_edge(args, cwd, root, config):
     # protected base branch holds it (design 9.1).
     name = next((name for name in _pushed(rest) if name in defaults), None)
     return _default(name, cwd, root) if name else (0, '')
+
+
+def _claimed(options, rest, env, cwd, root):
+    """#879: a push to a claimed PR's branch, or from its worktree (-C, --git-dir, --work-tree,
+    GIT_DIR, GIT_WORK_TREE included): only bin/wuwei pr act --push puts a gated head on it."""
+    from wuwei import state
+    base = Path(cwd)
+    places = [base / env[key] for key in ('GIT_DIR', 'GIT_WORK_TREE') if env.get(key)]
+    for index, option in enumerate(options):
+        name, equals, value = option.partition('=')
+        value = value if equals else options[index + 1] if index + 1 < len(options) else ''
+        if name == '-C':
+            base = base / value  # K2: a relative --git-dir after -C is read from there
+        if name in ('-C', '--git-dir', '--work-tree'):
+            places.append(base if name == '-C' else base / value)
+    places = [place.resolve() for place in [Path(cwd), *places]]
+    targets, data = {target.removeprefix('heads/') for target in _pushed(rest)}, state.read_state(root)
+    every = bool({'--all', '--branches'} & set(rest)) or any('*' in target for target in targets)
+    for name, row in data['items'].items():
+        tree = row.get('worktree')
+        if row.get('pr') in data.get('claimed_prs', ()) and (
+                (row.get('branch') and (every or row['branch'] in targets)) or (
+                isinstance(tree, str) and tree
+                and any(place.is_relative_to((root / tree).resolve()) for place in places))):
+            return 1, (f'{name} is claimed PR {row["pr"]}: its branch takes only the gated push; run '
+                       f'bin/wuwei pr act {row["pr"]} --push once every gate passed')
+    return None
 
 
 def _approved(fields, values, cwd):
@@ -463,9 +492,12 @@ def check_bash(payload):
         except ValueError:
             return 2, UNPARSED
         config = workspace.load_config(root)
-        for argv, _, cwd in found:
+        exported = {}  # K2: an exported GIT_DIR or GIT_WORK_TREE reaches the later git push
+        for argv, env, cwd in found:
             program = PurePosixPath(argv[0]).name
-            result = (_git_edge(argv[1:], cwd, root, config) if program == 'git'
+            if program == 'export':
+                exported.update(word.split('=', 1) for word in argv[1:] if '=' in word)
+            result = (_git_edge(argv[1:], cwd, root, config, {**exported, **env}) if program == 'git'
                       else _gh_edge(argv, cwd, root, config) if program == 'gh' else (0, ''))
             if result[0]:
                 return result

@@ -35,6 +35,7 @@ def register(subparsers):
     mode.add_argument('--complete', action='store_true', help='Finish a manually resolved rebase')
     mode.add_argument('--ready', action='store_true', help='Mark a draft PR ready for review')
     mode.add_argument('--reply', help='Composed answer to the next unanswered review question')
+    mode.add_argument('--push', action='store_true', help="Push a claimed PR's fix once its gates pass")
     act.set_defaults(func=run_act)
     record = commands.add_parser('disposition')
     record.add_argument('ref')
@@ -73,4 +74,4 @@ def run_ping(args):
 
 def run_act(args):
     return pr_actions.act(workspace.find_workspace(), args.ref, run=args.run,
-                          complete=args.complete, reply=args.reply, ready=args.ready)
+                          complete=args.complete, reply=args.reply, ready=args.ready, push=args.push)

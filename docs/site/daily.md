@@ -53,7 +53,9 @@ again. Nothing launches before your answer.
 
 An item that comes up later needs no second gate. Say what it is and which goal it serves;
 the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"`. Every brief for it
-quotes your words under `Approved as:`, and `wuwei why <item>` shows them.
+quotes your words under `Approved as:`, and `wuwei why <item>` shows them. With several
+repositories it adds `--repo <name>`. Say FULL, a flag or a governing document, and it adds
+`--track FULL`, `--trust-surface` and the like, or `--governed-by <path>`.
 
 To keep an item's merge for yourself, say so at the gate or later. The planner records
 `wuwei plan set <item> owner_merge=true`, and that PR then always comes to you.
@@ -65,9 +67,9 @@ authored, for example `Claims PR-12 (owner/repo#12)`. Approving claims each one 
 [adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
 `wuwei pr claim owner/repo#12 --goal G-1`.
 
-The shepherd needs no checkout. When a fix round needs one, `wuwei worktree adopt <path>
---item <item>` registers a clean worktree you have, or `wuwei worktree add <item> --branch
-<branch>` checks the branch out.
+The claim gives the item a checkout of the PR branch: a clean worktree you have on it, or
+`worktrees/<item>`, fetched when the branch is only on the remote. A conflict, red checks or
+a fix asked in review then comes back from `wuwei next` as a fix-round builder.
 
 ## 4. Through the day
 

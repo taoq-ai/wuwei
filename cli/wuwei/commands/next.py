@@ -319,11 +319,21 @@ def resolve(row, root):
     with its widget list. Called by the next command only; it never loops."""
     import shlex
     if row['state'] == 'set':
-        from wuwei import dispatch
+        from wuwei import derive, dispatch
         value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        data = state.read_state(root)
         runs = [launch for launch in row['launches']  # PR, merge, seat stop and finding steps run as is
-                if not launch['command'].startswith(('wuwei build next ', 'wuwei dispatch next '))]
+                if not derive.seated(data, launch)]
         launches = [{**launch, 'action': 'run'} for launch in runs] + value['entries']
+        if (launches and all(launch['action'] == 'wait' for launch in launches) and not row['duties']
+                and not row['decision'] and any(launch.get('until') for launch in launches)):
+            # #845: every launch waits, one for a usage window; sleep past the earliest reset, then next
+            from datetime import datetime
+            until = min((launch['until'] for launch in launches if launch.get('until')), key=datetime.fromisoformat)
+            seconds = max(60, int((datetime.fromisoformat(until) - workspace.now()).total_seconds()) + 61)
+            reasons = '; '.join(dict.fromkeys(launch['reason'] for launch in launches))
+            return _row('wait', f'{reasons}; running seats finish. wuwei next offers them again after the reset.',
+                        f'sleep {seconds}', 'background', until=until)
         return {**row, 'launches': launches, **({'capacity': value['capacity']} if value.get('capacity') else {})}
     name = row['state']
     keep = {'state': name, **({'item': row['item']} if row.get('item') else {})}
