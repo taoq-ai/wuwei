@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.31.0](https://github.com/taoq-ai/wuwei/compare/v0.30.0...v0.31.0) (2026-10-12)
+
+
+### Features
+
+* **reconcile:** build reconcile brings outside work back in at verification, the launch guard refuses a builder with no build record, and gates review only the checked head ([#925](https://github.com/taoq-ai/wuwei/issues/925)) ([322c205](https://github.com/taoq-ai/wuwei/commit/322c205390674aa45a1963dbf393a1acab71d39d))
+* **shepherd:** pr wait wakes the planner when a PR needs a step, and the shepherd duty is a launch the seat answers by thread ([#927](https://github.com/taoq-ai/wuwei/issues/927)) ([438ae8d](https://github.com/taoq-ai/wuwei/commit/438ae8ded91e459eb1a2c77efa2a26de5371604a))
+
+
+### Bug Fixes
+
+* **admit:** findings, adopted PRs and broken-main items keep their repository, goal, parent and title, and adopted ids name the whole repository ([#929](https://github.com/taoq-ai/wuwei/issues/929)) ([49ba86f](https://github.com/taoq-ai/wuwei/commit/49ba86feeff83f822bd42c0e443100049234eebf))
+* **cards:** an owner's Yes binds the card's question, applies from the session or the owner's shell, and counts once ([#928](https://github.com/taoq-ai/wuwei/issues/928)) ([e5996ff](https://github.com/taoq-ai/wuwei/commit/e5996ff952aab992c68fbfdad204e351693d7bc9))
+* **gates:** the gate seats that fit launch first, and one build-slot count serves derive, dispatch and the launch guard ([#933](https://github.com/taoq-ai/wuwei/issues/933)) ([20937e2](https://github.com/taoq-ai/wuwei/commit/20937e2e529190f2866e4b776f09b52349938896))
+* **next:** next and every refusal carry one executable action, one gate decision, and the refusals that pointed at each other are closed ([#934](https://github.com/taoq-ai/wuwei/issues/934)) ([2eae839](https://github.com/taoq-ai/wuwei/commit/2eae8394d280e385f462b4d6359cda7a66e86b61))
+* **pr:** raised and claimed PRs share one post-PR path; a PR fix always gets its delta review, red checks raise a fix, and --complete is leased on the run's head ([#935](https://github.com/taoq-ai/wuwei/issues/935)) ([ed21efe](https://github.com/taoq-ai/wuwei/commit/ed21efe227b666b522c70b35fb40ff4c820757c1))
+* **scanner:** the trace sweep reads only new spans in windows that keep every chain, parks say when a credential was read, and discovery candidates are repo-relative and capped ([#936](https://github.com/taoq-ai/wuwei/issues/936)) ([c8edecd](https://github.com/taoq-ai/wuwei/commit/c8edecdfc04d7eee745869e768efeaca89f70372))
+
 ## [0.30.0](https://github.com/taoq-ai/wuwei/compare/v0.29.1...v0.30.0) (2026-10-12)
 
 
