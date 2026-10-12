@@ -1,14 +1,13 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
 from collections import namedtuple
-from functools import lru_cache
-from itertools import count, product
-from math import prod
+from itertools import count
 from pathlib import Path, PurePosixPath
 import re
+import os
 import shlex
 
-from wuwei.exits import DAMAGED
+from wuwei.exits import DAMAGED, PAYLOAD
 
 
 class ParseError(ValueError):
@@ -93,8 +92,6 @@ _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'trunca
 # #508: a whole word, never a directory component (a '/' later in the same path segment),
 # so a path such as 508-git-in/bin/wuwei or ~/git/x is no mention.
 _GUARDED = re.compile(r'(?<![.\w])(?:git|gh)\b(?![\w.-]*/)')
-# git and gh options whose value is a directory or repository, never a verb.
-_VALUES = ('-C', '-R', '--repo', '--git-dir', '--work-tree')
 _QUOTED_PART = re.compile(r''' '[^']*'|"(?:\\[\s\S]|[^"\\])*"|\\[\s\S]|[^'"\\]+ ''', re.VERBOSE)
 
 
@@ -107,59 +104,6 @@ def _expands(raw):
 def _reject_mentions(text):
     if _GUARDED.search(text) or _GUARDED.search(re.sub(r'''['"\\]''', '', text)):
         raise ParseError('unaccounted git/gh mention; remove the mention, or run git or gh as its own plain command')
-
-
-@lru_cache(maxsize=64)
-def _names(names):
-    """One compiled pattern per name list, built once per process (#626)."""
-    return re.compile(r'(?<![.\w])(?:' + '|'.join(map(re.escape, names)) + r')\b')
-
-
-def mentions(raw, names, *, script=False) -> bool:
-    """Conservative relevance check, including obfuscated and constructed names.
-
-    With script=True the text is a script file and only literal tokens count.
-    """
-    pattern = _names(tuple(names))
-    # ANSI-C quoting can hide every character of a name.
-    if "$'" in raw and not script:
-        return True
-    unquoted = re.sub(r'''\\\n|['"\\]''', '', raw)  # #671: the shell joins continuations
-    if pattern.search(raw) or pattern.search(unquoted):
-        return True
-    if script:
-        # ponytail: names constructed inside a script (${g}t push, $'\x67it') are not
-        # seen here; the worktree pre-push hook (pushes) and server-side branch
-        # protection (gh merges) are the anchors.
-        return False
-    substitutions = r'\$\(([^()]*)\)|`([^`]*)`'
-    for match in re.finditer(substitutions, unquoted):
-        if mentions(match[1] if match[1] is not None else match[2], names):
-            return True
-    unquoted = re.sub(substitutions, '$substitution', unquoted)
-    if '$(' in unquoted or '`' in unquoted:
-        return True
-    # Redirect targets do not construct a Git verb. Their bodies were checked above.
-    unquoted = re.sub(r'(?:[0-9]*[<>]+[!&|]?|&>>?)\s*[^\s;&|]+', '', unquoted)
-    # A word built at run time can be a git or gh verb; a directory or repository value cannot.
-    # ponytail: an unquoted value can still word-split into a verb (r='. push'; git -C $r
-    # origin main); the worktree pre-push hook and protected refs anchor that (spec 4.5).
-    words = unquoted.split()
-    if _GUARDED.search(unquoted) and any(
-            # A flag whose value is itself a value flag (-C -C $v) leaves $v in the verb slot.
-            not _literal(word) and not (index and words[index - 1] in _VALUES
-                                        and (index < 2 or words[index - 2] not in _VALUES))
-            and not re.match(r'-[CR]|--(?:repo|git-dir|work-tree)=', word)
-            for index, word in enumerate(words)):
-        return True
-    # An assignment prefix is not a command name; the word after it is. #730: a variable from
-    # the leading assignment statement is judged by its value.
-    variables = leading_variables(raw)
-    return any(not _literal(word) and not ((name := _VARIABLE.fullmatch(word)) and name[1] in variables
-                                           and not pattern.search(variables[name[1]]))
-               for word in re.findall(
-        r'(?:^|[;&|(\n])\s*(?:[A-Za-z_]\w*=[^\s;&|()]*\s+)*([^\s;&|()]+)', unquoted)
-        if not _ASSIGNMENT.match(word))
 
 
 def _launcher(path, cwd):
@@ -181,47 +125,45 @@ def _launcher(path, cwd):
         return False
 
 
+def _text(value, name):
+    if not isinstance(value, str) or not value or '\0' in value:
+        raise ValueError(f'missing or invalid {name}; {PAYLOAD}')
+    return value
+
+
+def _cwd(payload):
+    cwd = Path(_text(payload.get('cwd'), 'cwd'))
+    if not cwd.is_absolute():
+        raise ValueError(f'cwd must be absolute; {PAYLOAD}')
+    return cwd.resolve()
+
+
+def _cd_target(command):
+    args = command.argv[1:]
+    while args and args[0] in ('-L', '-P'):
+        args = args[1:]
+    if args and args[0] == '--':
+        args = args[1:]
+    elif args and args[0].startswith('-') and args[0] != '-':
+        raise ValueError('unsupported cd option; use git -C or a subshell')
+    if len(args) > 1:
+        raise ValueError('cd requires a single literal directory; pass one literal directory to cd')
+    env = {**os.environ, **command.env}
+    target = args[0] if args else _text(env.get('HOME'), 'HOME')
+    if target == '~' or target.startswith('~/'):
+        target = _text(env.get('HOME'), 'HOME') + target[1:]
+    if target == '-':
+        target = _text(env.get('OLDPWD'), 'OLDPWD')
+    if env.get('CDPATH') and not Path(target).is_absolute() and not target.startswith(('./', '../')):
+        raise ValueError('CDPATH directory search is opaque; use an absolute path')
+    return target
+
+
 def known_cli(word, cwd):
     """#348: wuwei on PATH, the running plugin's bin/wuwei or the recorded executable."""
     return word == 'wuwei' or (cwd is not None and '/' in word
                                and PurePosixPath(word).name == 'wuwei'
                                and _launcher(Path(cwd, word), cwd))
-
-
-def script_path(raw, cwd):
-    """Identify a locally invoked script without reading it; the wuwei launcher is the CLI."""
-    if not isinstance(raw, str):
-        return None
-    try:
-        argv = shlex.split(raw)
-    except ValueError:
-        return None
-    if not argv:
-        return None
-    name = PurePosixPath(argv[0]).name
-    if name in ('sh', 'bash', 'zsh'):
-        if len(argv) < 2 or argv[1].startswith('-'):
-            return None
-        target = argv[1]
-    elif '/' in argv[0] or argv[0].endswith('.sh'):
-        target = argv[0]
-    else:
-        return None
-    path = Path(cwd) / target
-    return None if _launcher(path, cwd) else path
-
-
-def script_text(raw, cwd):
-    """Read a small text script for guard relevance; never execute it."""
-    path = script_path(raw, cwd)
-    if path is None:
-        return None
-    try:
-        if not path.is_file() or path.stat().st_size > 65536:
-            return None
-        return path.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError):
-        return None
 
 
 def _literal(raw, allow_globs=False):
@@ -626,55 +568,17 @@ _SNIPPET_WRITES = re.compile(
     r'|(?<![\w/-])(?<![^\w.]\.)wuwei(?![\w/-])', re.I)  # the CLI imported; not .wuwei/ or cli/wuwei/
 
 
-def is_opaque(argv: list[str], stdin: bool = True) -> bool:
-    """Flag hidden git/gh argv and interpreter snippets for guard refusal.
-
-    stdin=False: the list does not feed this command's standard input, so an
-    interpreter without a snippet cannot read guarded text from it.
-
-    ponytail: constructed names such as "gi" + "t" remain opaque to this heuristic;
-    the repository pre-push hook is the enforcement anchor for that residual.
-    """
-    if not argv:
-        return False
-    if any(PurePosixPath(word).name in ('git', 'gh') for word in argv[1:]):
-        return True
-    program = PurePosixPath(argv[0]).name or argv[0]
-    if not re.fullmatch(_INTERPRETER, program):
-        return False
-    flags = 'c' if program.startswith(('python', 'pypy')) else _SNIPPET[program]
-    has_snippet = False
-    for index, arg in enumerate(argv[1:], 1):
-        match = re.fullmatch(r'-[a-zA-Z]*?[' + flags + r']([\s\S]*)', arg)
-        if program == 'node' and (arg == '--eval' or arg.startswith('--eval=')):
-            snippet = arg.partition('=')[2]
-        elif match:
-            snippet = match[1]
-        else:
-            continue
-        has_snippet = True
-        if index + 1 < len(argv):
-            snippet += '\n' + argv[index + 1]
-        if re.search(r'\b(?:git|gh)\b', snippet):
-            return True
-    # Without a snippet, only a leading path proves input is not stdin. Option
-    # operands might otherwise look like paths; conservatively flag those forms.
-    return stdin and not has_snippet and (len(argv) == 1 or argv[1].startswith('-'))
-
-
-# Every cd, pushd and popd refusal of the state guard; the hook warns it in every posture.
+# Every cd, pushd and popd refusal of the state guard; the hook warns it whatever guards.enforce says.
 WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the workspace; '
                   'run it in a subshell, (cd <dir> && <command>), or use git -C <dir>')
-# A relevant call the guards could not read and that names no publisher (#347).
+# A relevant call a guard could not read; the hook logs it, never refuses it (#347, #839).
 UNPARSED = ('unparsed: write the commands to a file with the Write tool and run bash <file>; '
             'a plain git or gh command stays plain')
 # #616: checksum tools only read their operands and print digests; none writes or runs code.
 READ_ONLY = frozenset({'ls', 'cat', 'less', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff',
                        'find', 'cd', 'pushd', 'popd', 'echo', 'shasum', 'sha1sum', 'sha256sum',
                        'sha512sum', 'md5sum', 'cksum'})
-PUBLISHERS = ('gh', 'glab', 'hub')
-# #470: git subcommands by outcome (data; tests/test_shell.py pins them). The deploy guard
-# passes reads and writes; the classifier publishes anything not a read; any other
+# #470: git subcommands by outcome (data; tests/test_shell.py pins them); any other
 # subcommand, an alias included, is unknown (spec A3).
 # ponytail: reflog and symbolic-ref with extra operands edit local refs; a local ref is not
 # a publish, and the pre-push hook and protected refs anchor pushes (spec 4.5).
@@ -703,178 +607,8 @@ _GIT_WRITES = frozenset({
 _GIT_RUNS = ('-O', '--open-files-in-pager', '--upload-pack')
 # gh subcommands (second word) that only read.
 _GH_READS = ('list', 'view', 'status', 'checks', 'diff')
-# The deploy guard's reason for an unknown subcommand starts with this; the hook levels it.
-UNKNOWN_GIT = 'unknown git subcommand '
-_GIT_PUBLISH = ('push', 'commit', 'tag', 'merge', 'rebase', 'reset', 'checkout', 'switch', 'branch')
-_KEYWORDS = frozenset({'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', '!',
-                       '{', '}', 'esac'})
-_WRAPPERS = frozenset({'env', 'command', 'exec', 'nohup', 'time', 'nice', 'timeout', 'sudo',
-                       'stdbuf', 'setsid', 'xargs'})
-_SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 _FIND_ACTIONS = frozenset({'-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0',
                            '-fprintf', '-fls'})
-_OPERATOR = re.compile(r'&&|\|\||;;|;&|[;()]|\|&|\||&>>|&>|>>|>&|>\||<>|<<<|<<|<&|[<>&]')
-_SUBSTITUTED = re.compile(r'\$_(\d+)')
-
-
-# parsed: normalize read the whole command; readonly: every command word is read-only and
-# nothing is written; inline: an interpreter runs code given inline (-c, -e, ...) or in a
-# here-doc; publishes: a publisher word, or a word the walk cannot pin to a safe form;
-# written: the text a write in this call can target, '' when readonly. All bool but written.
-Shape = namedtuple('Shape', 'parsed readonly inline publishes written')
-
-
-def _close(text, position):
-    """The index of the ')' closing a $( whose body starts at position."""
-    depth, quote = 1, None
-    while position < len(text):
-        char = text[position]
-        if quote == "'":
-            quote = None if char == "'" else quote
-        elif char == '\\':
-            position += 1
-        elif char == '`':
-            position = _tick(text, position)
-        elif quote == '"':
-            if char == '"':
-                quote = None
-            elif text.startswith('$(', position):
-                depth += 1
-                position += 1
-        elif char in '\'"':
-            quote = char
-        elif char in '()':
-            depth += 1 if char == '(' else -1
-            if not depth:
-                return position
-        position += 1
-    raise ValueError('unbalanced command substitution; add the missing ) for each $( so the guard can read the command')
-
-
-def _tick(text, position):
-    """The index of the backtick closing the one at position."""
-    position += 1
-    while position < len(text) and text[position] != '`':
-        position += 2 if text[position] == '\\' else 1
-    if position >= len(text):
-        raise ValueError('unbalanced backticks; close each backtick, or use a literal value instead of the substitution')
-    return position
-
-
-def _cut(text, bodies):
-    """One quote-aware pass: substitutions become $_<n> (bodies appended), here-doc bodies
-    are cut, comments dropped and newlines become ';'. Raises ValueError when unbalanced."""
-    out, pending, quote, position = [], [], None, 0
-    while position < len(text):
-        char = text[position]
-        if quote == "'":
-            quote = None if char == "'" else quote
-        elif text.startswith('\\\n', position):
-            position += 2
-            continue
-        elif char == '\\':
-            out.append(text[position:position + 2])
-            position += 2
-            continue
-        elif text.startswith(('$(', '<(', '>('), position) or char == '`':
-            # Process substitution <(...) and >(...) is walked like $(...).
-            end = _close(text, position + 2) if char != '`' else _tick(text, position)
-            body = text[position + 2:end] if char != '`' else text[position + 1:end].replace('\\`', '`')
-            out.append(f'$_{len(bodies)}')
-            bodies.append(body)
-            position = end + 1
-            continue
-        elif quote == '"':
-            quote = None if char == '"' else quote
-        elif char in '\'"':
-            quote = char
-        elif char == '#' and (not position or text[position - 1] in ' \t\n;&|()'):
-            position = text.find('\n', position) % (len(text) + 1)
-            continue
-        elif text.startswith('<<', position) and not text.startswith('<<<', position):
-            match = re.match(r'''<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|(\\?)([^\s;&|()<>]+))''',
-                             text[position:])
-            if not match:
-                raise ValueError('unreadable here-doc; end the here-doc with its delimiter alone on a line, or write the text to a file first')
-            quoted = match[2] is not None or match[3] is not None or bool(match[4])
-            pending.append((match[2] or match[3] or match[5], bool(match[1]), quoted))
-            out.append(' << - ')
-            position += match.end()
-            continue
-        elif char == '\n':
-            out.append(';')
-            position += 1
-            for delimiter, tabs, quoted in pending:
-                end = re.compile('^' + ('\t*' if tabs else '') + re.escape(delimiter) + '$',
-                                 re.M).search(text, position)
-                if not end:
-                    raise ValueError('unterminated here-doc; write the delimiter alone on its own line after the body')
-                if not quoted and re.search(r'\$\(|`', text[position:end.start()]):
-                    raise ValueError('expanding here-doc; write the delimiter quoted (<<\'EOF\') so the body stays literal')
-                position = end.end()
-            pending.clear()
-            continue
-        out.append(char)
-        position += 1
-    if quote or pending:
-        raise ValueError('unbalanced quotes or unterminated here-doc; add the closing quote, or write the here-doc delimiter alone on its own line')
-    return ''.join(out)
-
-
-def _simple(text):
-    """[(argv, write targets, fed)] per simple command; fed is 'pipe' or 'heredoc' or ''."""
-    lexer = shlex.shlex(text, posix=True, punctuation_chars=';&|()<>')
-    lexer.whitespace_split, lexer.commenters = True, ''
-    commands, argv, writes, fed, redirect = [], [], [], '', None
-    for token in lexer:
-        if redirect is not None:
-            if ('>' in redirect and token not in ('/dev/null', '/dev/stdout', '/dev/stderr')
-                    and not ('&' in redirect and re.fullmatch(r'[0-9]+-?|-', token))):
-                writes.append(token)
-            redirect = None
-            continue
-        if not token or token.strip(';&|()<>'):
-            argv.append(token)
-            continue
-        operators = _OPERATOR.findall(token)
-        if ''.join(operators) != token:
-            raise ValueError('unreadable operator; split the line into plain commands joined by ;, && or ||')
-        for operator in operators:
-            if '<' in operator or '>' in operator:
-                redirect = operator
-                if operator in ('<<', '<<<'):
-                    fed = 'heredoc'
-                elif operator == '<':
-                    fed = 'pipe'
-                continue
-            if argv or writes:
-                commands.append((argv, writes, fed))
-            argv, writes, fed = [], [], 'pipe' if operator in ('|', '|&') else ''
-    if redirect is not None:
-        raise ValueError('missing redirect target; write the file name after the redirect')
-    if argv or writes:
-        commands.append((argv, writes, fed))
-    return commands
-
-
-def _strip(argv):
-    """(assignments, argv, pinned): leading assignments, keywords and wrappers removed;
-    xargs takes its arguments from input, so it is not pinned."""
-    assignments, pinned = [], True
-    while argv:
-        name = PurePosixPath(argv[0]).name
-        if _ASSIGNMENT.match(argv[0]):
-            assignments.append(tuple(argv[0].split('=', 1)))
-        elif name in _WRAPPERS:
-            pinned &= name != 'xargs'
-            while len(argv) > 1 and argv[1].startswith('-'):
-                argv = argv[1:]
-            if name == 'timeout' and len(argv) > 1 and re.fullmatch(r'[0-9.]+[smhd]?', argv[1]):
-                argv = argv[1:]
-        elif argv[0] not in _KEYWORDS:
-            break
-        argv = argv[1:]
-    return assignments, argv, pinned
 
 
 def _variable_read(argv, raw_argv, words):
@@ -924,20 +658,6 @@ def git_kind(args):
     return 'write' if verb in _GIT_WRITES else 'unknown'
 
 
-def _names_publisher(text, publishers=PUBLISHERS):
-    return mentions(text, publishers, script=True) or (
-        mentions(text, ('git',), script=True) and mentions(text, _GIT_PUBLISH, script=True))
-
-
-def _shell_script(args):
-    for index, arg in enumerate(args):
-        if not arg.startswith(('-', '+')) or arg == '--':
-            return None
-        if arg.startswith('-') and not arg.startswith('--') and 'c' in arg:
-            return args[index + 1] if index + 1 < len(args) else None
-    return None
-
-
 def snippet_write(argv):
     """#643: the first write-like token of python [-flags] -c <code>; '' when the code only
     reads; None for any other form (attached -c<code>, -i, -W, -X, -m, a script, stdin)."""
@@ -954,11 +674,9 @@ def snippet_write(argv):
     return None
 
 
-def reads(argv, cwd=None):
-    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action), a
-    python -c snippet with no write-like token (#643) or a read-only call of the known CLI.
-    Shared by the classifier and the state guard."""
-    from wuwei import commands
+def reads(argv):
+    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action) or a
+    python -c snippet with no write-like token (#643). Shared by the classifier and the state guard."""
     if not argv:
         return False
     name, args = PurePosixPath(argv[0]).name, argv[1:]
@@ -972,8 +690,7 @@ def reads(argv, cwd=None):
         if args[:2] == ['-m', 'json.tool']:
             return len(args) < 4  # no operand reads stdin; a second operand is json.tool's outfile
         return snippet_write(argv) == ''  # #643
-    return name in READ_ONLY or bool(not any('$' in word for word in args)
-                                     and known_cli(argv[0], cwd) and commands.read_only(args))
+    return name in READ_ONLY
 
 
 def inline_code(argv):
@@ -986,156 +703,3 @@ def inline_code(argv):
                or arg == '--eval' or arg.startswith('--eval=') for arg in argv[1:])
 
 
-@lru_cache(maxsize=32)
-def classify(command, publishers=(), cwd=None):
-    """#347: the one lenient walk every Bash guard shares; never executes or expands."""
-    try:
-        normalize(command)
-        parsed = True
-    except ParseError:
-        parsed = False
-    try:
-        return _classify(command, (*PUBLISHERS, *publishers), cwd)._replace(parsed=parsed)
-    except (ValueError, RecursionError):
-        return Shape(parsed, False, False, True, command)
-
-
-def _classify(command, publishers, cwd=None):
-    bodies = []
-    texts = [_cut(command, bodies)]
-    while len(texts) <= len(bodies):
-        texts.append(_cut(bodies[len(texts) - 1], bodies))
-
-    def expand(word):
-        return _SUBSTITUTED.sub(lambda m: f'$({bodies[int(m[1])]})' if int(m[1]) < len(bodies)
-                                else m[0], word)
-
-    stripped, assigned, assignments, written, dirs = [], {}, [], [], []
-    readonly, inline, publishes, whole = True, False, False, False
-    for argv, writes, fed in (item for text in texts for item in _simple(text)):
-        found, argv, pinned = _strip(argv)
-        publishes |= not pinned
-        assignments += found
-        for key, value in found:
-            assigned.setdefault(key, []).append(expand(value))
-        if argv[:1] in (['for'], ['select']) and len(argv) > 1:
-            assigned.setdefault(argv[1], []).append(expand(' '.join(argv[2:])))
-        elif argv[:1] != ['case'] and (argv or writes):
-            stripped.append((argv, writes, fed))
-    # ponytail: a variable is followed only to its assigned text, not into what a command in
-    # it prints (W=$(cat file)), and a name built at run time from words that look literal is
-    # not evaluated; the pre-push hook, protected refs and credentials kept out of seats are
-    # the anchors (spec 4.5).
-    for argv, writes, fed in stripped:
-        name = PurePosixPath(argv[0]).name if argv else ''
-        args = argv[1:]
-        literal = not any('$' in word for word in (*args, *writes))
-        safe = reads(argv, cwd)
-        if name in ('cd', 'pushd'):
-            dirs.append(expand(' '.join(argv)))  # a later write can land under its target
-        if '$' in name:
-            variable = re.fullmatch(r'\$\{?(\w+)\}?', argv[0])
-            values = assigned.get(variable[1]) if variable else None
-            publishes |= (not values or not literal
-                          or any(mentions(value, (*publishers, 'git'), script=True) for value in values)
-                          or any(arg in (*publishers, 'git', *_GIT_PUBLISH) for arg in args))
-        elif name in _SHELLS:
-            script = _shell_script(args)
-            if script is None:
-                publishes = True
-            else:
-                inner = _classify(script, publishers, cwd)
-                safe, inline, publishes = inner.readonly, inline or inner.inline, publishes or inner.publishes
-        elif name in ('eval', 'source', '.'):
-            publishes = True
-        elif re.fullmatch(_INTERPRETER, name):
-            if fed == 'heredoc' or inline_code(argv):
-                inline = True
-                publishes |= _names_publisher(command, publishers)
-            elif fed == 'pipe' and all(arg.startswith('-') for arg in args):
-                publishes = True  # the code comes from input, never from this text
-        elif name == 'git':
-            publishes |= git_kind(args) != 'read'
-        elif name in publishers:
-            publishes = True
-        if writes or not safe:
-            readonly = False
-            text = expand(' '.join([*argv, *writes]))
-            publishes |= _names_publisher(text, publishers)
-            whole |= not literal or fed in ('heredoc', 'pipe')  # #470: piped text may be run
-            written.append(text)
-    if readonly and not publishes and not inline:
-        return Shape(False, True, False, False, '')
-    written += dirs
-    for key, value in assignments:
-        written.append(f'{key}=' + _SUBSTITUTED.sub(
-            lambda m: '' if int(m[1]) >= len(bodies) or _classify(bodies[int(m[1])], publishers, cwd).readonly
-            else f'$({bodies[int(m[1])]})', value))
-    return Shape(False, False, inline, publishes, command if whole else '\n'.join(written))
-
-
-def unread(command, publishers=(), cwd=None):
-    """#347 decision table for a relevant call a guard cannot read: (0, '') when every word
-    is read-only; UNPARSED when the parser could not read it, or it runs inline code, and
-    no publisher word appears; None when the guard decides as before."""
-    shape = classify(command, tuple(publishers), cwd)
-    if shape.readonly:
-        return 0, ''
-    if not shape.publishes and (not shape.parsed or shape.inline):
-        return 2, UNPARSED
-    return None
-
-
-def constructed(command):
-    """#671: the git and gh commands this call runs under a name its text does not spell
-    plainly ('git push; gh pr merge'), else ''. When the call does not parse, a program word
-    built from variables counts if assignments in the call give it a git or gh value; it is
-    named for the refusal, never resolved to one value."""
-    try:
-        runs = [item.argv for item in normalize(command)]
-    except ParseError:
-        runs = []
-        try:
-            stages = [_strip(argv) for argv, _, _ in _simple(_cut(command, []))]
-        except ValueError:
-            stages = []
-        values = {}
-        for found, _, _ in stages:
-            for key, value in found:
-                values.setdefault(key, set()).add(value)
-        variable = r'\$\{?([A-Za-z_]\w*)\}?'
-        for _, argv, _ in stages:
-            names = list(dict.fromkeys(re.findall(variable, argv[0]))) if argv else []
-            # One value per variable per run; over 64 combinations the refusal stands (#346 budget).
-            if names and all(name in values for name in names) \
-                    and prod(len(values[name]) for name in names) <= 64:
-                for chosen in product(*(sorted(values[name]) for name in names)):
-                    value = dict(zip(names, chosen))
-                    runs.append([re.sub(variable, lambda m: value[m[1]], argv[0]), *argv[1:]])
-    plain = ' '.join(command.split())
-    found = []
-    for argv in runs:
-        name = PurePosixPath(argv[0]).name if argv else ''
-        if name in ('git', 'gh'):
-            found.append(' '.join([name, *argv[1:3 if name == 'gh' else 2]]))
-    return '; '.join(dict.fromkeys(text for text in found if text not in plain))
-
-
-def unreadable(command, cwd=None):
-    """#530: what a guard cannot read in this call, '' when it can read all of it."""
-    if constructed(command):  # #671: it names the command it runs
-        return ''
-    path = script_path(command, cwd)
-    if path is not None:
-        return f'script {path.name}'
-    if classify(command, cwd=None if cwd is None else str(cwd)).inline:  # before normalize hides it
-        return 'inline interpreter code'
-    try:
-        commands = normalize(command)
-    except ParseError as exc:
-        return str(exc).split(';', 1)[0]
-    for index, found in enumerate(commands):
-        fed = bool(found.reads) or index > 0 and commands[index - 1].separator == '|'
-        if found.argv and is_opaque(found.argv, fed):
-            return f'{PurePosixPath(found.argv[0]).name} code from input'
-    return ''

@@ -2,7 +2,7 @@
 
 import json
 
-from wuwei import merge, obligations, pr_actions, shepherd, workspace
+from wuwei import pr_actions, shepherd, workspace
 from wuwei.exits import DAMAGED
 
 
@@ -28,13 +28,6 @@ def register(subparsers):
     ping = commands.add_parser('ping', help='Request reviewers and post when gates clear')
     ping.add_argument('ref')
     ping.set_defaults(func=run_ping)
-    reviewers = commands.add_parser('reviewers', help='Show the reviewers pr ping would request')
-    reviewers.add_argument('ref')
-    reviewers.add_argument('--explain', action='store_true', help='Show the ranking behind the selection')
-    reviewers.set_defaults(func=run_reviewers)
-    ping_check = commands.add_parser('ping-check', help='Measure review ping gate')
-    ping_check.add_argument('ref')
-    ping_check.set_defaults(func=run_ping_check)
     act = commands.add_parser('act', help='Execute the next owned PR action')
     act.add_argument('ref')
     mode = act.add_mutually_exclusive_group()
@@ -46,14 +39,12 @@ def register(subparsers):
     record = commands.add_parser('disposition')
     record.add_argument('ref')
     record.add_argument('kind', choices=('parked', 'carried'))
-    record.add_argument('--decision', required=True)
     record.add_argument('--comment', type=int, required=True)
     record.set_defaults(func=run)
 
 
 def run(args):
-    return pr_actions.record_disposition(workspace.find_workspace(), args.ref, args.kind,
-                                         args.decision, args.comment)
+    return pr_actions.record_disposition(workspace.find_workspace(), args.ref, args.kind, args.comment)
 
 
 def run_state(args):
@@ -78,26 +69,6 @@ def run_claim(args):
 
 def run_ping(args):
     return shepherd.post_review_request(workspace.find_workspace(), args.ref)
-
-
-def run_reviewers(args):
-    lines = [] if args.explain else None
-    try:
-        selected = shepherd.select_reviewers(workspace.find_workspace(), args.ref, explain=lines)
-    except merge.Refused as exc:
-        print(exc)
-        return 1
-    except shepherd.ERRORS as exc:
-        print(f'reviewer selection unmeasured: {exc}')
-        return 2
-    print('\n'.join([*(lines or []), 'reviewers: ' + ' '.join(selected) if selected else obligations.SOLO]))
-    return 0
-
-
-def run_ping_check(args):
-    result = shepherd.ping_gate(workspace.find_workspace(), args.ref)
-    print(result.reason or 'review ping gate clear')
-    return result.exit
 
 
 def run_act(args):

@@ -19,14 +19,29 @@ class Refused(ValueError):
     """Measured policy finding, distinct from missing evidence."""
 
 
+class Wait(Refused):
+    """#816: a pacing rule the policy clears later (daily cap, quiet hours)."""
+
+
 class Routed(Refused):
-    """#675: a refusal whose route no grant changes (a gate to wait on, an owner path); its
-    text is the whole reason after `merge: `."""
+    """#675: a refusal with its own route (a gate to wait on); its text is the whole reason
+    after `merge: `."""
 
 
 def require(condition, reason):
     if not condition:
         raise Refused(reason)
+
+
+def wait(condition, reason):
+    if not condition:
+        raise Wait(reason)
+
+
+def owner(held, condition, reason):
+    """#816: a rule the owner decides (eligibility, never a precondition): held, not refused."""
+    if not condition:
+        held.append(reason)
 
 
 def sha(value):
@@ -87,6 +102,14 @@ def journals(root):
             obligations._time(item['at'])
             entries.append((directory, ref, item))
     return entries, breakers
+
+
+def supervised(root):
+    """#847: the merge journal's refs poll still supervises: not failed, and unmerged or merged
+    under 28 days ago."""
+    now = workspace.now()
+    return [ref for _, ref, entry in journals(root)[0] if entry['status'] != 'failed'
+            and (not entry.get('merged_at') or now - obligations._time(entry['merged_at']) < timedelta(days=28))]
 
 
 def checked_pr(host, ref, root):
@@ -172,14 +195,12 @@ def risk_evidence(root, name, rows=None):
             and name in row['payload'].get('flags', {})]
 
 
-def item_evidence(root, ref, data, granted=False):
+def item_evidence(root, ref, data, held):
     from wuwei.watch import records, days
     items = [(name, value) for name, value in data['items'].items() if value.get('pr') == ref]
     require(len(items) == 1, 'PR needs one linked item')
     name, item = items[0]
-    if granted:  # #524: the plan, risk and cycle rules are auto-merge eligibility
-        return name
-    require(name in data['approved_items'], 'item is not in the approved plan')
+    owner(held, name in data['approved_items'], 'item is not in the approved plan')
     rows = [row for directory in days(root) for row in records(directory / 'events.jsonl')]
     approved = risk_evidence(root, name, rows)
     if not approved:
@@ -189,18 +210,18 @@ def item_evidence(root, ref, data, granted=False):
         if set(flags) != set(state.ITEM_DEFAULTS['flags']) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'invalid item risk evidence; {DAMAGED}')
         # #675: trust_surface asks for the security gate (checked at the head in check), not the owner
-        require(not (flags['boundary_relevant'] or flags['agent_surface']), 'item carries a risk flag')
+        owner(held, not (flags['boundary_relevant'] or flags['agent_surface']), 'item carries a risk flag')
     if any(flags['trust_surface'] for flags in [item['flags'], *approved]):
         from wuwei.dispatch import gate_set
-        require('security' in gate_set(item), 'trust_surface needs the security gate and the recorded '
-                f'gate set of {name} has none; run bin/wuwei dispatch next {name}')
+        owner(held, 'security' in gate_set(item), 'trust_surface needs the security gate and the recorded '
+              f'gate set of {name} has none')
     for phase in ('fix', 'delta'):
         count = sum((row['kind'].startswith('state.') and
                     row['payload'].get('phase_changes', {}).get(name) == phase)
                     if 'phase_changes' in row['payload'] else
                     (row['kind'] == 'state.transition' and row['payload'].get('item') == name
                      and row['payload'].get('phase') == phase) for row in rows)
-        require(count <= 1, 'item exceeds cycle budget')
+        owner(held, count <= 1, 'item exceeds cycle budget')
     return name
 
 
@@ -209,7 +230,7 @@ def bot_evidence(config, policy, discussion, ref, head, root):
         return None
     login = policy['bot_login']
     if not login:
-        raise ValueError('merge.bot_login required for a configured review bot; the owner sets merge.bot_login with bin/wuwei config set in a host terminal')
+        raise ValueError('merge.bot_login required for a configured review bot; the owner sets merge.bot_login with bin/wuwei config set')
     bot = registry.load('review_bot', config)
     score = read(bot.score, ref, root=root)
     integer(score)
@@ -284,12 +305,14 @@ def uncounted(root, repo, files):
     return result
 
 
-def check(ref, root=None, *, cwd=None, repo=None, granted=False):
-    """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #524:
-    granted (the owner's merge grant) skips only auto-merge eligibility and pacing."""
+def check(ref, root=None, *, cwd=None, repo=None):
+    """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #816: a
+    PR ready but for the rules the owner decides is exit 1 with {'owner': True, 'evidence'}."""
+    held = []
     try:
         root = workspace.find_workspace(root)
-        config = workspace.load_config(root)
+        found = []
+        config = workspace.load_config(root, warnings=found)
         ref = reference(ref, root, config, cwd, repo)
         repo_name = ref.split('#')[0]
         data = state.read_state(root)
@@ -299,20 +322,24 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                               f'clear it with bin/wuwei plan set {name} owner_merge=false')
         settings = next((r for r in config['repos'] if r['name'] == repo_name), None)
         require(settings is not None, 'merge policy requires a configured repository')
+        index = config['repos'].index(settings)  # #799: a typo here would loosen the policy unseen
+        typo = next((text for text in found if re.match(rf'config\.toml: unknown key (merge\.|repos\.{index}\.merge)', text)), None)
+        from wuwei import integrity  # a newer plugin's keys are unknown here, not typos
+        require(typo is None or integrity.newer_template(config), f'{typo}; the owner fixes it in config.toml (bin/wuwei config check validates)')
         policy = settings['merge']
-        require(granted or policy['auto'], 'merge.auto is off')
+        owner(held, policy['auto'], 'merge.auto is off')
         require(settings['merge_deploys'] is False, 'explicit merge_deploys = false is required')
         entries, breakers = journals(root)
         breaker = breakers.get(repo_name)
-        require(granted or not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
+        owner(held, not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
         if any(r.split('#')[0] == repo_name and entry.get('monitor_error') for _, r, entry in entries):
             raise ValueError('post-merge observations are unmeasured; run the watch')
         require(not any(r == ref and entry['status'] != 'failed' for _, r, entry in entries), 'PR already has a merge intent')
-        require(granted or sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
+        wait(sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
                     for directory, r, entry in entries if entry['status'] != 'failed') < policy['max_per_day'],
                 'repository daily merge cap reached')
-        require(granted or not quiet(policy, workspace.now()), 'merge is in quiet hours')
-        item = item_evidence(root, ref, data, granted)
+        wait(not quiet(policy, workspace.now()), 'merge is in quiet hours')
+        item = item_evidence(root, ref, data, held)
         host = registry.load('code_host', config)
         pr = checked_pr(host, ref, root)
         head = pr['head']
@@ -333,10 +360,10 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
             raise ValueError(f'invalid merge method evidence; {DAMAGED}')
         setting = settings['merge_method']
         method = method_for(setting, allowed)
-        require(method, f'{repo_name} allows no merge method into {pr["base"]}: ask the owner to merge it in a host terminal'
+        require(method, f'{repo_name} allows no merge method into {pr["base"]}: the owner enables one in the repository settings'
                 if setting == 'auto' else
                 f'{repo_name} does not allow the {setting} method into {pr["base"]} (repos.merge_method = {setting}): '
-                'the owner sets an allowed method with bin/wuwei config set or merges it in a host terminal')
+                'the owner sets an allowed method with bin/wuwei config set')
         require(pr['merge_state'] != 'behind' or protection['merge_queue'], 'mergeable_state=behind')
         if pr['mergeable'] is None or pr['merge_state'] == 'unknown':
             raise ValueError('mergeability unmeasured; wait a minute and retry; if it persists, run bin/wuwei doctor')
@@ -347,7 +374,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         deletions = sum(integer(f['deletions']) for f in files)
         if additions != integer(pr['additions']) or deletions != integer(pr['deletions']):
             raise ValueError('incomplete diff size; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
-        owner = None
+        paths = []
         for file in files:
             if not isinstance(file['path'], str) or not file['path']:
                 raise ValueError(f'invalid changed file path; {DAMAGED}')
@@ -356,22 +383,21 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                     continue
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
-                require(granted or matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+                owner(held, matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
                 hit = matched(path, config['merge']['owner_paths'])
-                if hit is not None and owner is None:
-                    owner = (path, hit)
+                if hit is not None and not paths:
+                    paths.append(f'{path} matches merge.owner_paths {hit}')
         # #615, #657: a file counts toward the size rule unless merge.uncounted names it.
         skip = uncounted(root, settings, files)
         changed = sum(file['additions'] + file['deletions'] for file in files if file['path'] not in skip)
         excluded = additions + deletions - changed
-        require(granted or changed <= policy['max_changed_lines'],
+        owner(held, changed <= policy['max_changed_lines'],
                 f'diff exceeds max changed lines: {changed} count over {policy["max_changed_lines"]}'
                 + (f' ({excluded} generated or data excluded)' if excluded else ''))
         from wuwei.dispatch import gate_set
-        from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
         if code:  # #675: the PR waits on its gates, never on the owner
-            raise Routed(f'waits on the gate: {reason}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
+            raise Routed(f'waits on the gate: {reason}; run bin/wuwei pr act {ref} once it holds')
         verdicts = []
         for gate in gate_set(data['items'][item]):
             first = data['gate_verdicts'].get(f'{item}:{gate}:initial')
@@ -407,7 +433,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         last = max([obligations._time(pr['updated_at']),
                     *[obligations._time(r['submitted_at']) for r in approvals]])
         end, soak = last + timedelta(minutes=policy['soak_minutes']), None
-        if not granted and workspace.now() < end:
+        if workspace.now() < end:
             fixed = policy['soak_skip'] == 'base_fix' and fixes_base(
                 checks_at(host, ref, pr['base_sha'], root), checks)
             if not fixed:
@@ -419,22 +445,23 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         require(all(fresh[key] == pr[key] for key in ('head', 'base_sha', 'base', 'updated_at',
                     'merge_state', 'mergeable', 'state', 'draft')), 'PR changed during check')
         require(workspace.load_config(root) == config, 'configuration changed during check')
-        if owner:  # #675: no grant, standing line or default_tier lifts an owner path
-            raise Routed(f'{ref} is ready at {head}; {owner[0]} matches merge.owner_paths {owner[1]}: '
-                         f'the owner merges: ask the owner to run {owner_command(ref, head, method)} in a host terminal')
-        return Result(0, {'pr': ref, 'method': method, 'item': item, 'head': head, 'base': pr['base'],
+        evidence = {'pr': ref, 'method': method, 'item': item, 'head': head, 'base': pr['base'],
             'base_sha': pr['base_sha'], 'at': workspace.now().isoformat(), 'verdicts': verdicts,
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
             'protection': protection, 'bot': bot, 'soak': soak,
-            'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
+            'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]}
+        if held or paths:  # #675, #816: an owner path or an eligibility rule: the owner decides
+            why = '; '.join(paths + held)
+            return Result(1, {'owner': True, 'why': why, 'evidence': evidence, 'next': f'run bin/wuwei merge {ref}'},
+                          f'merge policy: owner decides: {why}; run bin/wuwei merge {ref}: '
+                          'it asks the owner on its Owner step card and merges on Yes')
+        return Result(0, evidence)
     except Routed as exc:
         return Result(1, None, f'merge: {exc}')
+    except Wait as exc:
+        return Result(1, None, f'merge policy: waits: {exc}; run bin/wuwei pr act {ref} once it holds')
     except Refused as exc:
-        if granted:  # #524: never the owner wall; the condition, then the retry
-            return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
-        return Result(1, {'next': f"run bin/wuwei merge {ref}: it merges under the owner's grant, "
-                                  'or asks the owner on a card'},
-                      f"merge policy: owner merges: {exc}; run bin/wuwei merge {ref}: it merges under the owner's grant, or asks the owner on a card")
+        return Result(1, None, f'merge policy: refused: {exc}; run bin/wuwei pr act {ref} once it holds')
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 
@@ -453,49 +480,9 @@ def locked(root):
 
 def save_entry(root, directory, ref, entry, kind):
     state._write_state(lambda data: data.setdefault('merges', {}).update({ref: entry}),
-                       root, directory=directory, reserved=False, kind=kind,
+                       root, directory=directory, kind=kind,
                        payload={'pr': ref, 'head': entry['head'], 'status': entry['status'],
                                 'evidence': entry['evidence']})
-
-
-def undo(root, directory, ref, entry):
-    from wuwei.watch import records
-    path = directory / 'undo.jsonl'
-    existing = records(path)
-    if not any(row['payload'].get('pr') == ref for row in existing):
-        state.append_jsonl(path, {'kind': 'merge.undo', 'ts': workspace.now().isoformat(),
-            'payload': {'pr': ref, 'head': entry['head'], 'operation': 'revert_pr'}})
-
-
-def owner_command(ref, head, method):
-    repo, number = ref.split('#')
-    return f'gh pr merge https://github.com/{repo}/pull/{number} --{method} --match-head-commit {head}'
-
-
-def by_grant(ref, root, cwd=None):
-    """#524: the owner's merge grant replaces auto-merge eligibility and pacing, never the 4.6
-    preconditions; with no grant, the card (ask) or the host-terminal command (owner_only)."""
-    import shlex
-    from wuwei import grants, sessions
-    result = check(ref, root, cwd=cwd, granted=True)
-    if result.exit:
-        return result
-    config, ref, head = workspace.load_config(root), result.data['pr'], result.data['head']
-    repo = ref.split('#')[0]
-    if grants.merge_tier(config) == 'owner_only' and not any(
-            grants.active(config, state.read_state(root), 'merge', target)
-            for target in (f'repo:{repo}', f'pr:{ref}')):
-        return Result(1, None, f'merge: {ref} is ready at {head}; merges are owner-only here '
-                               f'(merge.default_tier = owner_only): ask the owner to run '
-                               f'{owner_command(ref, head, result.data["method"])} in a host terminal')
-    argv = ['bin/wuwei', 'merge', ref]
-    payload = {'session_id': sessions.current() or '', 'cwd': str(Path(cwd or Path.cwd())),
-               'tool_input': {'command': shlex.join(argv)}}
-    code, use = grants.gate(payload, root, config, argv, f'merge: {ref} at {head}', repo, pr=ref)
-    if code:
-        return Result(1, None, use)
-    use()
-    return result
 
 
 def execute(ref, root=None, *, cwd=None):
@@ -506,12 +493,25 @@ def execute(ref, root=None, *, cwd=None):
     try:
         root = workspace.find_workspace(root)
         with locked(root):
+            try:  # #816: the event names the PR as the item records it
+                shown = str(reference(ref, root, workspace.load_config(root), cwd))
+            except ERRORS:
+                shown = str(ref)
             result = check(ref, root, cwd=cwd)
-            if result.exit == 1:  # #524: the auto policy refused; the owner's grant may still clear it
-                result = by_grant(ref, root, cwd)
+            held = bool(result.data and result.data.get('owner'))
+            if held:  # #816: the owner decides on one Owner step card per PR and head
+                from wuwei import sessions
+                evidence, why = result.data['evidence'], result.data['why']
+                reason = sessions.needs_owner(root, f"bin/wuwei merge {evidence['pr']}",
+                                              f"Merge {evidence['pr']} at {evidence['head'][:12]}: {why}",
+                                              evidence['head'][:12])
+                result = (Result(0, evidence) if reason is None else Result(
+                    1, {**result.data, 'next': f"ask the card, then on Yes run bin/wuwei merge {evidence['pr']} again"},
+                    f'merge policy: owner decides: {why}; wait for the Owner step card: {reason}'))
             if result.exit:
-                state.append_event('merge.policy_blocked', {'pr': str(ref), 'exit': result.exit,
-                                                            'reason': result.reason}, root)
+                state.append_event('merge.policy_blocked', {
+                    'pr': shown, 'exit': result.exit,
+                    'reason': result.reason, 'owner': held}, root)
                 return result
             evidence = result.data
             ref = evidence['pr']
@@ -519,7 +519,6 @@ def execute(ref, root=None, *, cwd=None):
             entry = {'head': evidence['head'], 'at': evidence['at'], 'status': 'intent',
                      'evidence': evidence}
             save_entry(root, directory, ref, entry, 'merge.intent')
-            undo(root, directory, ref, entry)
             host = registry.load('code_host', workspace.load_config(root))
             accepted = read(host.merge, ref, evidence['head'], evidence['method'], root=root)
             if accepted.get('accepted') is not True or accepted.get('sha') != evidence['head']:
@@ -542,7 +541,7 @@ def trip(root, repo, policy, reason, *, ref=None, kind='merge.breaker', incident
     entry = {'epoch': max(policy['reset_epoch'], integer(prior['epoch']) if prior else 0),
              'reason': reason, 'at': workspace.now().isoformat(), 'incidents': [*seen, incident]}
     state._write_state(lambda data: data.setdefault('merge_breakers', {}).update({repo: entry}),
-                       root, reserved=False, kind=kind,
+                       root, kind=kind,
                        payload={'repo': repo, 'pr': ref, 'reason': reason, 'tier': 'page'})
 
 
@@ -637,12 +636,12 @@ def baseline(root):
     text = (root / '.wuwei/memory/notes/baseline.md').read_text(encoding='utf-8')
     values = re.findall(r'^Escaped-defect-rate: *([0-9]+(?:\.[0-9]+)?) *$', text, re.M)
     if len(values) != 1 or not 0 <= float(values[0]) <= 1:
-        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1; ask the owner to add that line to the baseline in a host terminal')
+        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1; ask the owner to add that line to the baseline')
     return float(values[0])
 
 
 def revert(root, directory, ref, entry, host):
-    """Open the merge's revert PR once (the red-base watch and #557 wuwei undo); its URL."""
+    """Open the merge's revert PR once (the red-base watch); its URL."""
     if not entry.get('revert_pr'):
         result = read(host.revert_pr, ref, root=root)
         repo = ref.split('#')[0]
@@ -677,16 +676,7 @@ def monitor(root, directory, ref, entry, host, settings):
         raise ValueError('merge commit changed; run bin/wuwei pr state for the current merge commit, then retry')
     if 'merge_commit' not in entry:
         entry.update(status='merged', merge_commit=merge_commit, merged_at=pr['merged_at'])
-        undo(root, directory, ref, entry)
         save_entry(root, directory, ref, entry, 'merge.completed')
-        from wuwei import dispatch
-        items = state.read_state(directory=directory)['items']
-        item = next((name for name, row in items.items() if row.get('pr') == ref), None)
-        if item is not None:
-            dispatch.tracker_call(item, 'done', root)
-        else:
-            state.append_event('tracker.call', {'item': '', 'pr': ref, 'action': 'done',
-                               'exit': 2, 'reason': 'no item linked to merged PR'}, root)
     age = workspace.now() - obligations._time(entry['merged_at'])
     if age >= timedelta(days=28):
         return 0, None
@@ -734,7 +724,8 @@ def monitor(root, directory, ref, entry, host, settings):
 
 
 def poll(root):
-    """Reconcile merge intents and supervise base checks from the existing watch."""
+    """Reconcile merge intents and supervise base checks; next (with each PR listing refresh)
+    and report run it."""
     result, cohort, unreadable_repos = 0, {}, set()
     try:
         config = workspace.load_config(root)
@@ -789,3 +780,122 @@ def poll(root):
         print(f'merge watch unmeasured: {exc}', flush=True)
         return 2
     return result
+
+
+GATES = ('arch', 'quality', 'security')
+
+
+def _recorded_gates(root, sha, records, item, items=None):
+    """Check the bounded fix and delta path recorded by the receive producer."""
+    from wuwei import verdict
+    from wuwei.dispatch import base, depth, gate_set
+    candidates = [item] if item is not None else sorted({
+        key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
+    failures = []
+    for candidate in candidates:
+        roles = gate_set((items or {}).get(candidate, {}))
+        light = depth((items or {}).get(candidate, {}), gate=True) == 'light'  # #567
+        initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
+        missing = [role for role, row in zip(roles, initial) if row is None]
+        if missing:
+            failures.append((candidate, missing))
+            continue
+        # #623: a later fix round moves a gate's delta record to initial; only round one's agree
+        if len({row['head'] for row in initial if row.get('round', 'initial') == 'initial'}) > 1:
+            raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
+        complete = True
+        missing = []
+        # #723: a gate is judged on its delta whenever it has one (FIX, or the polish re-check)
+        rechecked = {role for role, first in zip(roles, initial)
+                     if first['verdict'] == 'FIX' or f'{candidate}:{role}:delta' in records}
+        for role, first in zip(roles, initial):
+            row = records.get(f'{candidate}:{role}:delta') if role in rechecked else first
+            if row is None or (row['verdict'] != 'PASS' and not (
+                    role in rechecked and row['verdict'] == 'FIX'
+                    and row['blocks'] is False)):
+                complete = False
+                missing.append(role)
+                continue
+            path = root / row['file']
+            expected = workspace.day_dir(root) / 'decisions'
+            if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
+                raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
+            text = path.read_text(encoding='utf-8')
+            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True, light=light)
+            if code:
+                raise ValueError(f'{role} verdict: {reason}')
+            active = verdict.active_text(text)
+            heads = verdict.rows(active, 'Head')
+            decisions = re.findall(verdict.VERDICT_ROW, active, re.M)
+            if heads != [row['head']] or decisions != [row['verdict']]:
+                raise ValueError(f'{role} recorded verdict differs from file; receive the verdict again with bin/wuwei dispatch receive')
+            actual_blocks = any(re.search(verdict.BLOCKS_YES, block, re.I)
+                                for block in verdict.finding_blocks(active))
+            if row['blocks'] is not actual_blocks:
+                raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
+            # #844, design 5.3: a PASS counts at HEAD, or at the head a recorded fix round made
+            # from it; a head moved any other way is stale (#669)
+            from wuwei import derive
+            if not derive.at_head((items or {}).get(candidate, {}), row['head'], sha):
+                complete = False
+                missing.append(role)
+        if complete:
+            return 0, ''
+        failures.append((candidate, missing))
+    candidate, missing = min(failures, key=lambda row: len(row[1])) if failures else (item, list(GATES))
+    label = f' for item {candidate}' if candidate else ''
+    return 1, f'pre-PR gates not passed at current HEAD {sha}{label}: {", ".join(missing or GATES)}; run the named gate for this HEAD'
+
+
+def gate_check(root, cwd, config, *, sha=None, item=None):
+    """(0, '') when every gate passed at the head; else (1, the gates to run)."""
+    from wuwei import verdict
+    vcs = registry.load('vcs', config)
+    if sha is None:
+        sha = registry.data(vcs.head(str(cwd), root=root)).get('sha')
+    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
+        raise ValueError(f'invalid current HEAD; {DAMAGED}')
+    current = state.read_state(root)
+    recorded = current['gate_verdicts']
+    if recorded:
+        return _recorded_gates(root, sha, recorded, item, current['items'])
+    groups = {}
+    for path in sorted((workspace.day_dir(root) / 'decisions').glob('gate-*.md')):
+        match = re.fullmatch(r'gate-(.+)-(arch|quality|security)\.md', path.name)
+        if not match:
+            continue
+        found_item, gate = match.groups()
+        if item is not None and found_item != item:
+            continue
+        passed = groups.setdefault(found_item, set())
+        try:
+            text = path.read_text(encoding='utf-8')
+            active = verdict.active_text(text)
+            heads = verdict.rows(active, 'Head')
+            if len(heads) != 1 or not re.fullmatch(r'[0-9a-fA-F]{7,64}', heads[0].strip()):
+                raise ValueError(f'expected exactly one valid Head row; {DAMAGED}')
+            head = heads[0].strip().lower()
+            if len(head) < len(sha):
+                resolved = registry.data(vcs.resolve(str(cwd), head, root=root)).get('sha')
+                if (not isinstance(resolved, str)
+                        or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', resolved)
+                        or not resolved.startswith(head)):
+                    raise ValueError(f'invalid resolved Head; {DAMAGED}')
+                head = resolved
+            if head != sha:
+                continue
+            decisions = re.findall(r'^(?:## |- )?Verdict:? *(\w+)\b', active, re.M)
+            if len(decisions) == 1 and decisions[0] in ('FIX', 'PARK', 'ESCALATE'):
+                continue
+            code, reason = verdict.lint(text, quality=gate == 'quality', class_sweep=True)
+            if code:
+                raise ValueError(reason)
+            if decisions == ['PASS']:
+                passed.add(gate)
+        except (OSError, ValueError) as exc:
+            raise ValueError(f'{gate} verdict: {exc}') from exc
+    if any(all(gate in passed for gate in GATES) for passed in groups.values()):
+        return 0, ''
+    best = max(groups.values(), key=len, default=set())
+    missing = ', '.join(gate for gate in GATES if gate not in best)
+    return 1, f'pre-PR gates not passed at current HEAD {sha}: {missing}; run the named gate for this HEAD'

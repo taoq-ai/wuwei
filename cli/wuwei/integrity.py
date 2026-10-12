@@ -69,8 +69,8 @@ def development():
 def registered(root=None, config=None):
     """The install directory Claude Code registered for wuwei (the first wuwei@* entry with
     bin/wuwei), or None when the plugins file is missing or lists none; other errors raise."""
-    from wuwei import mcp
-    name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
+    name = (config['scanner']['mcp']['plugins_file'] if config
+            else workspace.SCHEMA['scanner']['mcp']['plugins_file'][1])
     try:
         data = json.loads(((Path(root) if root else Path.cwd()) / Path(name).expanduser()).read_text())
     except FileNotFoundError:
@@ -211,7 +211,7 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
                 actual[name] = hashlib.sha256((plugin / relative).read_bytes()).hexdigest()
             unlinked()
             result = Result(1, reason='development checkout requires host reconfirmation; '
-                                      'run wuwei integrity reconfirm on the host')
+                                      'run wuwei doctor --fix --apply integrity-reconfirm')
         if result.exit == 2:
             return result
         reasons = [result.reason] if result.exit else []
@@ -241,7 +241,7 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
     except (OSError, UnicodeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
     except ValueError as exc:
-        return Result(1, reason=f'page: plugin integrity: {exc}; reinstall the signed release, or run bin/wuwei integrity reconfirm in a host terminal')
+        return Result(1, reason=f'page: plugin integrity: {exc}; reinstall the signed release, or run bin/wuwei doctor --fix --apply integrity-reconfirm')
 
 
 def _path(root, name):
@@ -292,7 +292,7 @@ def check(root):
                                      'reason': 'plugin integrity measurement incomplete'})
         checkout = _checkout(root)
         result = (Result(1, reason='page: plugin integrity: dirty development checkout; restore a clean commit '
-                                 'and run wuwei integrity reconfirm on the host')
+                                 'and run wuwei doctor --fix --apply integrity-reconfirm')
                   if checkout is not None and not checkout['clean'] else
                   measure(pinned=_path(root, 'pinned.pub'), checkout=checkout, root=root))
         confirmation = _path(root, 'confirmation.json')
@@ -314,7 +314,7 @@ def confirmed(other):
     """#362: the refusal when this workspace confirmed another plugin copy than the running one."""
     return (f'plugin integrity: this workspace confirmed the plugin at {other}, but this session runs '
             f'{PLUGIN}; start Claude Code with that copy (claude --plugin-dir {other}), or run bin/wuwei '
-            'integrity reconfirm in a host terminal to confirm this one')
+            'doctor --fix --apply integrity-reconfirm to confirm this one')
 
 
 def cached(root):
@@ -330,15 +330,15 @@ def cached(root):
                 and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN)):
             return Result(2, reason=confirmed(record['plugin']))
         if record['exit']:
-            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei integrity check, which measures it again')
+            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
         if record.get('checkout') is not None:
             current = _checkout(root)
             if current != record['checkout'] or not current or not current['clean']:
                 return Result(2, reason='plugin integrity: checkout HEAD or tree changed; '
-                              'restore a clean commit and run wuwei integrity reconfirm on the host')
+                              'restore a clean commit and run wuwei doctor --fix --apply integrity-reconfirm')
         return Result(0)
     except (OSError, ValueError, TypeError) as exc:
-        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check on the host')
+        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
 
 
 def fresh(root):
@@ -363,34 +363,10 @@ def fresh(root):
                 file = Path(directory) / name
                 if not name.endswith('.pyc') and file.lstat().st_mtime > since:
                     return Result(1, reason=f'page: plugin integrity: {file.relative_to(PLUGIN).as_posix()} '
-                                  'changed after the cached verdict; run wuwei integrity check on the host')
+                                  'changed after the cached verdict; run wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
         return result
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
-
-
-HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
-
-
-def _host_confirm(fingerprint, *, prompt=None):
-    # A local friction boundary, not proof against a same-uid process (spec 9.1). The caller
-    # computes, records and compares the digest; the owner answers y/N and never types it (#354).
-    try:
-        reader = open('/dev/tty', 'r')
-    except OSError:
-        raise OSError(HOST_TERMINAL) from None
-    with reader:
-        try:
-            terminal = open('/dev/tty', 'w')
-        except OSError:
-            raise OSError(HOST_TERMINAL) from None
-        with terminal:
-            if not reader.isatty() or not terminal.isatty():
-                raise OSError(HOST_TERMINAL)
-            terminal.write((prompt or f'Plugin installation {fingerprint[:12]} on this host.')
-                           + '\nConfirm? [y/N] ')
-            terminal.flush()
-            return reader.readline().strip().lower() in ('y', 'yes')
 
 
 def reconfirm(root, *, confirm=None):
@@ -399,12 +375,18 @@ def reconfirm(root, *, confirm=None):
         result = check(root)
         if result.exit == 2 or not result.data:
             return result
-        if not (confirm or _host_confirm)(result.data):
-            return Result(1, reason='integrity re-confirmation declined; rerun bin/wuwei integrity reconfirm in a host terminal and answer y')
-        # Re-measure after the terminal interaction to avoid confirming a changed tree.
+        if confirm is None:  # #831: the owner's answer on the Owner step card
+            from wuwei import sessions
+            if reason := sessions.needs_owner(root, 'bin/wuwei doctor --fix --apply integrity-reconfirm',
+                                              f'Confirm plugin installation {result.data[:12]} on this host.',
+                                              result.data[:12]):
+                return Result(1, reason=reason)
+        elif not confirm(result.data):
+            return Result(1, reason='integrity re-confirmation declined; run bin/wuwei doctor --fix --apply integrity-reconfirm again')
+        # Re-measure after the owner's answer to avoid confirming a changed tree.
         current = check(root)
         if current.exit == 2 or current.data != result.data:
-            return Result(2, reason='integrity changed during confirmation; retry on the host')
+            return Result(2, reason='integrity changed during confirmation; run bin/wuwei doctor --fix --apply integrity-reconfirm again')
         verdict = json.loads(_path(root, 'verdict.json').read_text())
         _record(root, 'confirmation.json', {'fingerprint': result.data,
                                           'checkout': verdict.get('checkout'), 'plugin': str(PLUGIN)})
@@ -436,8 +418,7 @@ def workspace_check(root):
             raise ValueError(f'invalid workspace history evidence; {DAMAGED}')
         lines = []
         for path in result.data:
-            severity = 'page' if path.startswith(('charters/', 'voice/')) or path in (
-                'memory/voice.md', 'voice') else 'nudge'
+            severity = 'page' if path.startswith('charters/') else 'warn'
             lines.append(f'{severity}: workspace integrity: {path} uncommitted or without Promoted-by: wuwei')
         return Result(int(bool(lines)), reason='\n'.join(lines))
     except (OSError, ValueError, TypeError) as exc:

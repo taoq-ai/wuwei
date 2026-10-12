@@ -16,19 +16,24 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, RACE
 
 def register(subparsers):
     parser = subparsers.add_parser('build', help='Select the next builder action')
-    parser.add_argument('operation', help='next, check, or legacy Codex item')
+    parser.add_argument('operation', help='next, check, analysis, classes, or legacy Codex item')
     parser.add_argument('arguments', nargs='*', metavar='item/brief/worktree')
+    parser.add_argument('--file', help="analysis: read the spec-kit analysis report from PATH instead of stdin")
     parser.set_defaults(func=run)
 
 
 def parked_line(item, action):
-    """#661: a parked item names its card, never a host-terminal command."""
-    ident = Path(action['decision']).stem
-    return (f'build: parked {item}: {action["reason"]}; decision {ident}; ask the owner with '
-            f'bin/wuwei decision show {ident} --widget and run its record command, then resume the item')
+    """A parked build names the command that resumes it; that command asks the owner its card."""
+    return (f'build: parked {item}: {action["reason"]}; run wuwei plan resume {item} after revising '
+            'its brief; it asks the owner its Owner step card')
 
 
 def run(args):
+    if args.operation in ('analysis', 'classes'):
+        if len(args.arguments) != 1:
+            print('build: usage: build analysis <item> [--file PATH] or build classes <worktree>; run bin/wuwei build analysis <item> with the report on stdin', file=sys.stderr)
+            return 2
+        return (run_analysis if args.operation == 'analysis' else classes)(args.arguments[0], args.file)
     try:
         if args.operation in ('next', 'check'):
             root = workspace.find_workspace()
@@ -46,8 +51,7 @@ def run(args):
                 return code
             action = next_action(item, *paths, root=root)
             row = state.read_state(root)['items'][item]
-            if action['action'] == 'done' and (row['phase'] in ('gate', 'delta') or (  # #732: or parked on a record
-                    row['phase'] in ('parked', 'escalated') and row.get('decision'))):
+            if action['action'] == 'done' and row['phase'] in ('gate', 'delta', 'parked', 'escalated'):
                 from wuwei import dispatch  # #666: past the build, answer what dispatch next decides
                 try:
                     action = dispatch.next_step(item, root)
@@ -104,15 +108,9 @@ def _signature(failures):
 def _repo(root, tree, config):
     repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
     if repo is None:
-        from wuwei.guards.commit_push import context
+        from wuwei.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
-    # #600: no fast checks is a state (CI and the gates are the evidence); strict asks once
-    from wuwei import calibrate
-    name = repo['name']
-    if (not repo['fast_checks'] and workspace.posture(config)[0] == 'strict'
-            and not calibrate.checks_answered(root, name)):
-        raise ValueError(f'posture strict: {name} has no fast checks and no answer on its fast-checks card; ask it with wuwei calibrate --questions --repo {name}, then rerun bin/wuwei build next <item>')
-    return repo
+    return repo  # #600, #832: no fast checks is a state; CI and the gates are the evidence
 
 
 def _save(item, record, root, kind, expected, extra=None, also=None):
@@ -123,7 +121,7 @@ def _save(item, record, root, kind, expected, extra=None, also=None):
         builds[item] = record
         if also:
             also(data)
-    state._write_state(update, root, reserved=False, kind=kind, payload={'item': item, **(extra or {})})
+    state._write_state(update, root, kind=kind, payload={'item': item, **(extra or {})})
 
 
 def _continue(root, record, feedback):
@@ -168,7 +166,7 @@ def _main_broken(root, config, data, item, record, failures):
 
 
 def _admit(root, row, broken):
-    """#648: the fix item through plan add (the owner-item path, no ticket below strict)."""
+    """#648: the fix item through plan add (the owner-item path, no ticket)."""
     check, path, fix = broken
     if fix in state.read_state(root)['items']:
         return True
@@ -234,7 +232,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         matches = [row['payload'] for row in events(root) if row['kind'] == 'brief written'
                    and row['payload'].get('item') == item and row['payload'].get('role') == 'builder']
         if not matches:
-            raise ValueError(f'no logged builder brief for {item}; write one with bin/wuwei brief, or pass the paths: bin/wuwei build next {item} <brief> <worktree>')
+            raise ValueError(f'no logged builder brief for {item}; write one with bin/wuwei seat brief, or pass the paths: bin/wuwei build next {item} <brief> <worktree>')
         brief = root / matches[-1]['path']
         worktree = matches[-1].get('worktree') or data['items'][item].get('worktree')
     if worktree is None:
@@ -249,16 +247,11 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         if record['status'] not in ('done', 'parked'):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
-            raise ValueError(f'{item} is parked; resume the parked item before starting a new build (answer its decision, then run bin/wuwei build next {item})')
-    from wuwei import tracker
-    status, reason = tracker.check(data, config, item, data['items'][item])
-    if status == 'missing':
-        raise PortExit(1, reason)
+            raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
-    from wuwei import fast_checks  # #600: no fast checks still runs repos.tests at careful pace
-    commands = repo['fast_checks'] or fast_checks.commands(root, config, repo, tree)
+    commands = list(repo['fast_checks'])
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
@@ -273,7 +266,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     return action
 
 
-def open_fix(item, feedback, *, root, polish=None):
+def open_fix(item, feedback, *, root, polish=None, start=None, granted=False):
     """Resume the linked builder once with measured gate or PR feedback. polish (#723) is the
     item's polish record, written in the same state write."""
     from wuwei.brief import ci_block, ci_jobs, launch_prompt
@@ -282,7 +275,7 @@ def open_fix(item, feedback, *, root, polish=None):
         raise ValueError('fix round needs measured feedback; run the gates first, then pass their findings to the fix round')
     data = state.read_state(root)
     if item not in data['items']:
-        raise ValueError(f'unknown item {item}; check the name with bin/wuwei status, or admit it with bin/wuwei plan add {item}')
+        raise ValueError(f'unknown item {item}; check the name with bin/wuwei next, or admit it with bin/wuwei plan add {item}')
     record = data.get('builds', {}).get(item)
     if record is None:
         next_action(item, root=root)
@@ -298,7 +291,7 @@ def open_fix(item, feedback, *, root, polish=None):
     from wuwei import dispatch
     cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
     used = dispatch.rounds_used(data, item)
-    if used >= cap:  # #623: one round cap for gate and PR fixes alike
+    if used >= cap and not granted:  # #623: one round cap for gate and PR fixes alike; granted: the owner's resume
         raise ValueError(f'round cap {cap} reached (gates.max_rounds); park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised', 'delta'):
@@ -333,13 +326,16 @@ def open_fix(item, feedback, *, root, polish=None):
                 raise ValueError(f'polish round already recorded for {item}; run bin/wuwei dispatch next {item}')
             fresh['items'][item]['polish'] = polish
         fresh['items'][item]['phase'] = 'fix'
+        from wuwei import derive  # #844: the head each fix round starts from and leaves
+        fresh['items'][item]['fix_heads'] = [*fresh['items'][item].get('fix_heads', []),
+                                             [start or derive.head(record['worktree']), None]]
         if refs:
             fresh['items'][item]['ci_jobs'] = refs
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
-    state._write_state(update, root, reserved=False, kind='build.fix_opened',
+    state._write_state(update, root, kind='build.fix_opened',
                        payload={'item': item, 'round': used + 1, 'cap': cap,
                                 **({'polish': True} if polish else {})})
     return next_action(item, brief, record['worktree'], root=root)
@@ -401,7 +397,7 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
                        result=result, action={'action': 'check',
                        'command': 'wuwei build check ' + shlex.quote(item),
                        'worktree': record['worktree'], 'checks': record['commands']})
-    updated = state._write_state(update, root, reserved=False, kind='seat.usage',
+    updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage})
     if agent_id is not None:
         state.append_event('seat stopped', {'name': record['seat']}, root)
@@ -473,12 +469,12 @@ def complete_checks(item, results, *, root, expected=None):
         raise ValueError(f'build is not awaiting checks; run bin/wuwei build next {item} for the current step')
     failures = []
     if len(results) != len(record['commands']):
-        raise ValueError('incomplete fast checks; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
+        raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}; if it repeats, run bin/wuwei doctor')
     for command, result in zip(record['commands'], results):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
             raise ValueError(f'invalid check result; {ADAPTER_DATA}')
         if result.exit == 2:
-            raise ValueError(result.reason or 'fast check could not run; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
+            raise ValueError(result.reason or f'fast check could not run; rerun bin/wuwei build check {item}; if it repeats, run bin/wuwei doctor')
         if result.exit == 1:
             if isinstance(result.data, dict) and 'environment' in result.data:
                 reason = result.data['environment']
@@ -518,7 +514,16 @@ def complete_checks(item, results, *, root, expected=None):
           {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
     if not failures and after:
-        state.transition(item, after, root)
+        from wuwei import derive
+        end = derive.head(record['worktree'])
+
+        def move(data):
+            heads = data['items'][item].get('fix_heads') or []
+            if after == 'delta' and heads and heads[-1][1] is None:
+                heads[-1][1] = end  # #844: the head this fix round produced
+            state._move(data, item, after)
+        state._write_state(move, root, kind='state.transition',
+                           payload={'item': item, 'phase': after})
     return 1 if failures else 0
 
 
@@ -530,10 +535,10 @@ def check(item, *, root=None):
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
                          'for its current step')
     _busy(item, record)
-    from wuwei import fast_checks  # #579: complete on the checks the day's pace runs
+    from wuwei import fast_checks  # complete on the configured fast checks
     config = workspace.load_config(root)
     repo = next((row for row in config['repos'] if row['name'] == record['repo']), None)
-    commands = fast_checks.commands(root, config, repo, record['worktree']) if repo else record['commands']
+    commands = repo['fast_checks'] if repo else record['commands']
     marked = {**record, 'commands': commands,
               'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
     _save(item, marked, root, 'build.check_started', record)
@@ -541,39 +546,20 @@ def check(item, *, root=None):
     fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
     if any(command not in measured for command in record['commands']):
-        raise ValueError(f'incomplete fast checks; rerun bin/wuwei fast-checks in the worktree, then bin/wuwei build check {item}')
+        raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}')
     results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
                for row in (measured[command] for command in record['commands'])]
     return complete_checks(item, results, root=root, expected=marked)
 
 
 def _park(root, item, record, reason, expected):
-    from wuwei import decision
-    text = (
-        f'Question: Park build {item}?\nClass: park\nContext: Iteration {record["iteration"]}: {reason}.\n'
-        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-        '| defer | Defer and investigate | Respects the iteration limits and preserves budget. | '
-        'The item parks until the failure is investigated. |\n'
-        '| retry | Retry the build | Fails the iteration limit must. | The build keeps spending budget. |\n'
-        'Musts:\n| Criterion | defer | retry |\n| --- | --- | --- |\n'
-        '| Respect iteration limits | pass | fail |\n'
-        'Wants:\n| Criterion | Weight | defer | retry |\n| --- | --- | --- | --- |\n'
-        '| Preserve budget | 10 | 10 | 0 |\n'
-        'Recommendation: defer\nReasoning: Preserving the budget decided it; a new brief would flip it.\n'
-        'Confidence: high\nReversibility: two-way\n'
-        'Blast radius: own branch\nPre-mortem: Repeated failures consume the remaining budget.\n'
-        'Revisit: After investigating the failure and revising the brief.\n'
-        f'Decided-by: seat\nOutcome: parked {item}\n')
     def update(data):
         if data['builds'][item] != expected:
             raise ValueError(f'build changed before parking; {RACE}')
-        path = decision.write(text, root)
-        data.setdefault('decision_outcomes', {})[path.stem] = decision.seat_outcome(*decision.evaluate(text))
-        record.update(status='parked', action={'action': 'park', 'reason': reason,
-                                               'decision': str(path.relative_to(root))})
+        record.update(status='parked', action={'action': 'park', 'reason': reason})
         data['builds'][item] = record
-        data['items'][item].update(phase='parked', status='blocked')
-    state._write_state(update, root, reserved=False, kind='build.parked',
+        data['items'][item].update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
+    state._write_state(update, root, kind='build.parked',
                        payload={'item': item, 'iteration': record['iteration'], 'reason': reason})
 
 
@@ -589,7 +575,7 @@ def wait(runtime, job, config, root):
         if status['status'] in ('failed', 'cancelled'):
             raise RuntimeError(f'runtime seat {status["status"]}; rerun the same bin/wuwei build command to resume, and run bin/wuwei doctor if it fails again')
         if time.monotonic() >= deadline:
-            raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set in a host terminal')
+            raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set')
         time.sleep(config['build']['poll_interval_seconds'])
 
 
@@ -599,7 +585,7 @@ def run_loop(item, brief, worktree, *, root=None):
         config = workspace.load_config(root)
         runtime_config = registry.runtime_config('builder', config, root)
         if runtime_config['adapters']['runtime'] == 'claude':
-            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set in a host terminal')
+            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set')
         if brief is None or worktree is None:
             raise ValueError('usage: build <item> <brief> <worktree> (Codex only); run bin/wuwei build <item> <brief> <worktree> with all three arguments')
         runtime = registry.load('runtime', runtime_config)
@@ -637,3 +623,76 @@ def run_loop(item, brief, worktree, *, root=None):
     except (OSError, ValueError, RuntimeError) as exc:
         print(f'build: {exc}', file=sys.stderr)
         return 2
+
+
+def run_analysis(item, file):
+    """#614: a Claude Code subagent cannot write analysis.md; this saves the seat's report."""
+    try:
+        print(write_analysis(item, Path(file).read_text(encoding='utf-8') if file else sys.stdin.read()))
+        return 0
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'wuwei build analysis: {exc}', file=sys.stderr)
+        return 2
+
+
+def write_analysis(item, text, root=None):
+    """Write text as analysis.md in the item's one spec-kit directory; the path relative to
+    its worktree."""
+    from wuwei import specmode
+    root = workspace.find_workspace(root)
+    items = state.read_state(root)['items']
+    # The step line formats {item} lowercased, like every spec step.
+    names = [item] if item in items else [name for name in items if name.lower() == item.lower()]
+    if len(names) != 1:
+        raise ValueError(f'unknown item {item}; use the item id from the brief (bin/wuwei next lists them)')
+    name, = names
+    worktree = items[name].get('worktree')
+    if not isinstance(worktree, str) or not worktree:
+        raise ValueError(f'no worktree recorded for {name}; the planner creates it with bin/wuwei worktree add {name}')
+    tree = (root / worktree).resolve()
+    location, reason = specmode._location(tree, 'speckit', name)
+    if location is None:
+        raise ValueError(f'no single spec directory: {reason}; run /speckit.specify first, or remove the extra directory')
+    directory = tree / location
+    if directory.is_symlink() or not directory.resolve().is_relative_to(tree):
+        raise ValueError(f'{location} is a symlink or leaves the worktree; replace it with the directory itself')
+    if not (directory / 'spec.md').is_file():
+        raise ValueError(f'{location} has no spec.md yet; run /speckit.specify first')
+    target = directory / 'analysis.md'
+    if target.is_symlink():
+        raise ValueError(f'{location}/analysis.md is a symlink; remove the link, then run this again')
+    if not text.strip():
+        raise ValueError('empty report; pass the /speckit.analyze report on stdin or with --file PATH')
+    found = specmode.governing(tree, items[name], location)  # #664
+    gap = found and specmode.governed(text, (directory / 'spec.md').read_text(encoding='utf-8'))
+    if gap:
+        reference, first, last, _ = found
+        raise ValueError(f'{name} is governed by {reference} (lines {first}-{last}) and {gap}; add one row '
+                         'per assumption: | <assumption> | agrees, conflicts or not covered | <path>:<line> |, '
+                         'then run this again')
+    workspace.atomic_write(target, text if text.endswith('\n') else text + '\n', mode=0o644)
+    return target.relative_to(tree).as_posix()
+
+
+def classes(worktree, _file=None):
+    """#567: the builder's class sweep: the classes whose files the item's diff touches."""
+    from wuwei import dispatch
+    try:
+        root = workspace.find_workspace()
+        tree = (root / worktree).resolve()
+        items = state.read_state(root)['items']
+        item = next((name for name, row in sorted(items.items()) if row.get('worktree')
+                     and (root / row['worktree']).resolve() == tree), None)
+        if item is None:
+            raise ValueError(f'no item has the worktree {worktree}; pass the --worktree of its builder brief')
+        record, found = dispatch.classes(root, workspace.load_config(root), items[item])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f'wuwei build classes: {exc}', file=sys.stderr)
+        return 2
+    if record.get('depth', record['tier']) == 'light':
+        print('Depth: light; no class sweep')
+        return 0
+    print(f"Depth: {record['tier']}")
+    for name, paths in found.items():
+        print(f"{name}: {', '.join(paths) or 'none changed'}")
+    return 0

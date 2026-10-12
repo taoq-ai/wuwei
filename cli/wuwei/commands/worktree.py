@@ -50,7 +50,7 @@ def add(args, root, config, item):
             raise ValueError(f'several repositories configured ({", ".join(repo["name"] for repo in repos)}); '
                              'pass --repo <name>')
     if not repos:
-        raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo in a host terminal')
+        raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo')
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()
     tree = root / 'worktrees' / item
     result = workspace.create_worktree(repo, args.branch or item.lower(), tree, root,

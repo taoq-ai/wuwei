@@ -11,16 +11,16 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 from wuwei.workspace import ConfigError
 
-# The watch heartbeat's probe calls; their refusals are measurements, not seat refusals.
-HEARTBEAT_SESSION = 'wuwei-heartbeat'
+# Doctor's probe calls; their refusals are measurements, not seat refusals.
+PROBE_SESSION = 'wuwei-probe'
 # #326: events whose answer to a config.toml that does not load is config_failure.
-CONFIG_EVENTS = ('PreToolUse', 'Stop')
+CONFIG_EVENTS = ('PreToolUse',)
 # #326: with a broken config these reads still pass, so the session can show the line.
 REPAIR_READS = {'Read': 'file_path', 'Grep': 'path', 'Glob': 'path'}
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('hook', help='Run guards for a Claude Code hook')
+    parser = subparsers.add_parser('hook')  # no help: unlisted plumbing Claude Code runs
     parser.add_argument('event', choices=EVENTS)
     parser.set_defaults(func=run)
 
@@ -57,7 +57,7 @@ def run(args):
                 except OSError:
                     pass  # A missing or unreadable file stays the guards' to measure, as before.
                 else:
-                    if args.event == 'PreToolUse' and payload['session_id'] != HEARTBEAT_SESSION:
+                    if args.event == 'PreToolUse' and payload['session_id'] != PROBE_SESSION:
                         newer_template(root, payload, config)
         if args.event == 'SubagentStop' and root is not None:
             fill_stop_text(payload)
@@ -114,14 +114,17 @@ def run(args):
             refusals.append((guard.check, message, code))
         elif message:
             context.append(message)
-    # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
+    # #362: the most specific refusal first: a finding before a could-not-run.
     if args.event != 'SessionStart':
-        refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
-    enforced, warned = [(module(check), message, '', code) for check, message, code in refusals], []
-    if (refusals and args.event != 'SessionStart'
-            and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = posture(payload, refusals, root, warned)
-    reasons = [f'{message}\n{line}' if line else message for _, message, line, _ in enforced]
+        refusals.sort(key=lambda row: row[2])
+    enforced, warned = [(module(check), message, code) for check, message, code in refusals], []
+    if refusals and args.event != 'SessionStart':
+        if payload.get('session_id') != PROBE_SESSION:
+            enforced = enforce(payload, refusals, root, warned)
+        else:  # #839: the probes measure walls; a call a guard could not read is never one
+            from wuwei.shell import UNPARSED
+            enforced = [row for row in enforced if row[1] != UNPARSED]
+    reasons = [message for _, message, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
         parts = sorted(context + reasons, key=lambda text: not text.startswith(HEADER))
@@ -130,25 +133,14 @@ def run(args):
         if reasons:
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
-    if reasons and args.event == 'PreToolUse' and payload.get('tool_name') == 'Bash':
-        from wuwei.shell import constructed  # #671: only once a Bash call is refused
-        inputs = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
-        try:
-            runs = constructed(str(inputs.get('command', '')))
-        except Exception:  # the refusal stands without the name
-            runs = ''
-        if runs:
-            reasons[0] += f'\nresolved: {runs}'
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
-                      record=payload.get('session_id') != HEARTBEAT_SESSION,
-                      refusals=[(guard, message, code) for guard, message, _, code in enforced],
+                      record=payload.get('session_id') != PROBE_SESSION,
+                      refusals=enforced,
                       payload=payload)
-    if warned:  # #660: a launch refusal the posture lets through is shown to the session.
+    if warned:  # #660: a launch refusal the hook lets through is shown to the session.
         print(json.dumps({'hookSpecificOutput': {'hookEventName': args.event,
                                                  'additionalContext': '\n'.join(warned)}}))
-    if args.event == 'Stop' and context:
-        print('\n'.join(context), file=sys.stderr)
     return CLEAN
 
 
@@ -188,16 +180,24 @@ def newer_template(root, payload, config):
 
 
 def config_failure(event, payload, reason):
-    """A config.toml that does not load (#326): Stop prints it and lets the turn end;
-    PreToolUse lets ToolSearch and reads of the config and charters through so the session
-    can show the line, and refuses everything else with the error."""
-    if event == 'Stop':
-        print(reason, file=sys.stderr)
-        return CLEAN
-    if repair_read(payload):
+    """A config.toml that does not load (#326): PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
+    Owner step card through so the session can show and repair the line, and refuses
+    everything else with the error."""
+    if repair_read(payload) or config_set(payload):  # #831: repaired in the session
         return CLEAN
     return refuse(event, reason, cwd=payload.get('cwd'),
-                  record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)
+                  record=payload.get('session_id') != PROBE_SESSION, payload=payload)
+
+
+def config_set(payload):
+    """#831: config set by the workspace launcher, or its Owner step card."""
+    from wuwei import workspace
+    from wuwei.sessions import owner_step_call
+    try:
+        root = workspace.find_workspace(Path(payload['cwd']).resolve(), use_environment=False)
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return owner_step_call(payload, root, ('config', 'set'))
 
 
 def repair_read(payload):
@@ -259,80 +259,45 @@ def module(check):
     return check.__module__.rsplit('.', 1)[-1]
 
 
-def posture(payload, refusals, root, warned=None):
-    """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
-    guard.would_refuse and lets the call through, block enforces it with its posture line.
-    Returns (guard, reason, line, exit); the config is read only because a guard refused.
-    warned, when given, collects the launch refusals warn let through (#660)."""
+def enforce(payload, refusals, root, warned=None):
+    """#837: per refusal, block when guards.enforce is on (unless the B5 lead call keeps it
+    logging) or the refusal is on the floor; else record guard.would_refuse and let the call
+    through. Returns (guard, reason, exit); an unreadable config blocks every refusal.
+    warned, when given, collects the launch refusals let through (#660)."""
     from wuwei import state, workspace
-    from wuwei.guards import MERGE, NO_REVIEWER, RAISE, RECORDS_FLOOR, level
+    from wuwei.guards import floor, logs
     try:
         if root is None:
             raise LookupError('no workspace; run bin/wuwei init')
         config = workspace.load_config(root)
-        name, levels = workspace.posture(config)
-    except BaseException:  # No workspace or an unreadable config enforces, as before #331.
-        return [(module(check), reason, '', code) for check, reason, code in refusals]
-    from wuwei.shell import UNKNOWN_GIT, UNPARSED, WORKSPACE_ROOT
-    enforced, shown, seen, opaque = [], None, set(), None
-
-    def opaque_reason():
-        """#530: what the guards could not read in a call naming no publish target, else ''."""
-        try:
-            from wuwei import shell
-            from wuwei.guards import deploy
-            command, cwd = payload['tool_input']['command'], payload['cwd']
-            what = shell.unreadable(command, cwd)
-            if not what or deploy.floor_named(command + '\n' + (shell.script_text(command, cwd) or ''), config):
-                return ''
-            return f'opaque: {what}; the guards could not read it, so it ran with this warning (strict refuses it)'
-        except Exception:  # fail closed: the refusal stands
-            return ''
+        on = config['guards']['enforce']
+    except BaseException:
+        return [(module(check), reason, code) for check, reason, code in refusals]
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    enforced, shown, seen = [], None, set()
     for check, reason, code in refusals:
-        guard, area, decided, line = level(check, levels)
-        if reason.startswith(RECORDS_FLOOR):  # #725: the floor blocks, not only labels
-            decided, line = 'block', 'posture: records = block (floor; no setting lowers it)'
-        elif line.endswith('(owner-only action; no setting lowers it)') and name != 'strict' \
-                and not reason.startswith(MERGE):
-            line = ''  # #530: below strict an owner-only refusal names its card or its fix
-        if guard == 'pr' and (reason == NO_REVIEWER or reason.startswith(RAISE)):
-            # #530: raising a PR is gated by evidence under the publish area, never owner-only.
-            decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'
-        if reason == NO_REVIEWER or reason.startswith('publish: '):
-            line = ''  # It names its own ways out (#478: the owner's card); still blocked.
-        if guard == 'outward' and reason.startswith('outward: draft '):
-            line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
-        # #347, #470: decided by the reason, not the area; only deploy says unknown git
-        if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
+        guard = module(check)
+        blocks = floor(check, reason) or on and not logs(check, reason)
+        # #347, #839: a call a guard could not read is logged once, never refused.
+        if reason in (UNPARSED, WORKSPACE_ROOT):
             if reason in seen:
                 continue
             seen.add(reason)
-            decided = 'block' if reason != WORKSPACE_ROOT and name == 'strict' else 'warn'
-            line = ''
-        elif (area == 'publish' and code == UNRUN and name != 'strict'
-              and payload.get('tool_name') == 'Bash'
-              and (opaque := opaque_reason() if opaque is None else opaque)):
-            if opaque in seen or UNPARSED in seen:
-                continue
-            seen.update((opaque, UNPARSED))
-            reason, decided, line = opaque, 'warn', ''
-        if decided == 'off':
-            continue
-        if decided == 'block':
-            enforced.append((guard, reason, line, code))
+            blocks = False
+        if blocks:
+            enforced.append((guard, reason, code))
             continue
         try:
             if shown is None:
                 shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
-                'guard': guard, 'area': area, 'level': decided, 'posture': name,
-                'reason': reason, 'exit': code, 'target': shown, 'session': payload['session_id'],
-                'item': claimed(root, payload['session_id'])}, root)
+                'guard': guard, 'reason': reason, 'exit': code, 'target': shown,
+                'session': payload['session_id']}, root)
             if warned is not None and guard == 'agent_launch':
-                warned.append(f'{reason}\n{line}' if line else reason)
+                warned.append(reason)
         except BaseException as exc:
-            print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
-            enforced.append((guard, reason, line, code))
+            print(f'wuwei hook: could not record a logged refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
+            enforced.append((guard, reason, code))
     return enforced
 
 
@@ -356,16 +321,6 @@ def target(payload):
     return next((inputs[key] for key in ('file_path', 'notebook_path', 'path')
                  if isinstance(inputs.get(key), str)),
                 payload.get('tool_name') or payload['hook_event_name'])
-
-
-def claimed(root, session):
-    """The first item this session claims, or None; never blocks a shadowed refusal."""
-    from wuwei import state
-    try:
-        claims = state.read_state(root).get('claims', {})
-        return next((item for item, holder in sorted(claims.items()) if holder == session), None)
-    except Exception:
-        return None
 
 
 def invalid_constant(value):
@@ -427,7 +382,6 @@ def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=()
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': event, 'permissionDecision': 'deny',
             'permissionDecisionReason': reason}}))
-    elif event in ('Stop', 'SubagentStop'):
+    elif event == 'SubagentStop':
         print(json.dumps({'decision': 'block', 'reason': reason}))
-    # Ordinary PreCompact findings must not prevent compaction (design 4.1).
-    return FINDINGS if event == 'PreCompact' and not malformed else UNRUN
+    return UNRUN

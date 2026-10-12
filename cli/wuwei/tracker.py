@@ -1,4 +1,4 @@
-"""Tracker hygiene (5.11): the ticket rule, the one ticket creator and the one comment writer.
+"""Tracker hygiene (5.11): the lifecycle duties, the one ticket creator and the one comment writer.
 
 Hook paths import this lazily; keep top-level imports to what they already load.
 """
@@ -12,6 +12,9 @@ from wuwei import state, workspace
 
 CLASSES = workspace.TRACKER_CLASSES
 KINDS = workspace.TRACKER_KINDS
+# ponytail: a one-segment /name (a slash command) is not a path; a path-shaped CODEOWNERS key
+# such as /src/api/ is dropped, which is conservative.
+ABSOLUTE = re.compile(r'''(?:^|[\s"'`=(,])(?:~/|[A-Za-z]:[\\/]|/[^\s/]+/)''')
 
 
 def ticket(data, item):
@@ -28,7 +31,7 @@ def full_id(config, ticket):
     if not re.fullmatch(r'[\w.-]+/[\w.-]+', repo):
         raise ValueError(f'ticket {ticket} names no repository; pass owner/repo#{ticket}, or the '
                          'owner sets tracker.project to the GitHub owner/repo with bin/wuwei '
-                         'config set tracker.project <owner/repo> in a host terminal')
+                         'config set tracker.project <owner/repo>')
     return f'{repo}#{ticket}'
 
 
@@ -38,7 +41,7 @@ def upgrade(root, config, write=True):
     from wuwei import watch
     if config['adapters']['tracker'] != 'github':
         return []
-    day = next((path for path in watch.days(root) if (path / 'state.json').exists()), None)
+    day = next((path for path in watch.days(root) if state.day_started(path)), None)
     if day is None:
         return []
     try:
@@ -59,50 +62,84 @@ def upgrade(root, config, write=True):
             def update(data, item=item, old=old, new=new):
                 if data['tickets'][item]['id'] == old:
                     data['tickets'][item]['id'] = new
-            state._write_state(update, root, reserved=False, kind='plan.set', directory=day,
+            state._write_state(update, root, kind='plan.set', directory=day,
                                payload={'item': item, 'ticket': new, 'was': old})
         lines.append(f'{day.name}/state.json: ticket {item} {old} to {new}')
     return lines
 
 
-def in_force(config):
-    return config['adapters']['tracker'] != 'none' and config['tracker']['required']
+def _duties(rows):
+    """{(item, duty): (last duty kind, its payload)} over event rows, in first due order."""
+    last = {}
+    for row in rows:
+        if row.get('kind') in ('duty.due', 'duty.done', 'duty.skipped'):
+            payload = row['payload']
+            key = (payload.get('item'), payload.get('duty'))
+            if key in last or row['kind'] == 'duty.due':
+                last[key] = (row['kind'], payload)
+    return last
 
 
-def pending(data, item):
-    """A pending tracker draft that would open the item's ticket, or None."""
-    return next((key for key, row in data.get('drafts', {}).items()
-                 if row.get('status') == 'pending' and row.get('channel') == 'tracker'
-                 and row.get('operation') == 'create'
-                 and row.get('inputs', {}).get('draft', {}).get('category') == 'items'
-                 and row['inputs']['draft'].get('item') == item), None)
+def open_duties(rows):
+    """#842, pure: the (item, duty, command) of each duty.due with no later duty.done or
+    duty.skipped for the same pair, in due order."""
+    return [(item, duty, payload.get('command', ''))
+            for (item, duty), (kind, payload) in _duties(rows).items() if kind == 'duty.due']
 
 
-def check(data, config, item, row=None):
-    """The 5.11 rule, pure: (off|ticket|skipped|later|missing, reason)."""
-    if not in_force(config):
-        return 'off', ''
-    if ticket(data, item):
-        return 'ticket', ''
-    row = row or {}
-    tier = row.get('gates', {}).get('tier') or row.get('tier')
-    if (tier in config['tracker']['skip_tiers']
-            or data.get('tickets', {}).get(item, {}).get('source') == 'none'):  # #636: the owner's none
-        return 'skipped', ''
-    if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
-        return 'later', ''
-    strict = workspace.posture(config)[0] == 'strict'
-    draft = pending(data, item)
-    if draft:
-        return 'missing', (f'{item} has no ticket: the owner runs bin/wuwei drafts approve {draft} '
-                           'in a host terminal' if strict else
-                           f'{item} has no ticket: draft {draft} opens it once the owner answers '
-                           f'Send on its card (bin/wuwei drafts show {draft} --widget)')
-    return 'missing', (f"{item} has no ticket: the owner runs bin/wuwei tracker create {item} (opens "
-                       f"one from the item's record) or bin/wuwei plan set {item} ticket=<id> in a "
-                       'host terminal' if strict else
-                       f"{item} has no ticket: the planner proposes one on the item's card (an "
-                       "existing ticket or a new one from its record) and records the owner's answer")
+def duty_done(root, item, duty, ticket):
+    """#842: True when any day's events hold duty.done for (item, duty) on this ticket, so a duty
+    run again by merge.monitor, pr state or a carried day never posts twice, while a later item
+    reusing the id with another ticket still gets its update."""
+    for path in (root / '.wuwei/days').glob('*/events.jsonl'):
+        for text in path.read_text(encoding='utf-8').splitlines():
+            if '"duty.done"' in text:
+                payload = json.loads(text).get('payload') or {}
+                if (payload.get('item'), payload.get('duty'), payload.get('ticket')) == (item, duty, ticket):
+                    return True
+    return False
+
+
+def duty_comment(root, config, port, number, key, kind, text):
+    """#842: a duty's comment through tracker log's ledger: claimed before the send, so a retry
+    after a crash never posts it twice, and within tracker.max_per_item_per_day."""
+    from wuwei import registry
+    logged = state.read_state(root).get('tracker_log', {})
+    entry = logged.get(key)
+    if entry and entry['outcome'] == 'written':
+        return registry.Result(0)
+    if entry and entry['outcome'] == 'sending':
+        return registry.Result(1, reason=f'{key}: an earlier send was interrupted, so it is not posted '
+                                         f'again; check ticket {number} and add the line there if it is missing')
+    if entry:
+        return registry.Result(1, reason=f'{key}: {entry.get("reason", "refused")}')
+    used = sum(row.get('ticket') == number and 'kind' in row
+               and row['outcome'] in ('sending', 'written', 'drafted') for row in logged.values())
+    if used >= config['tracker']['max_per_item_per_day']:
+        return registry.Result(1, reason=f'{key}: ticket {number} already has its '
+                                         'tracker.max_per_item_per_day comments today; retry the duty tomorrow with the '
+                                         'command the day report names')
+
+    def claim(fresh):
+        rows = fresh.setdefault('tracker_log', {})
+        if key in rows:
+            raise state.StateError(f'tracker: {key} already claimed; another run is writing it, '
+                                   'so wait for it to finish')
+        rows[key] = {'outcome': 'sending', 'ticket': number, 'kind': kind}
+    state._write_state(claim, root, kind='tracker.logged', payload={'key': key})
+    result = port.comment(number, text, kind, root=root)
+    if result.exit == 2:
+        _settle(root, key, lambda rows: rows.pop(key, None), exit=2)
+        return result
+    outcome = ({'outcome': 'written'} if result.exit == 0 else
+               {'outcome': 'refused', 'reason': result.reason or 'refused'})
+    _settle(root, key, lambda rows: rows[key].update(outcome), outcome=outcome['outcome'])
+    return result
+
+
+def skipped_duties(rows):
+    """#842, pure: the duty.skipped payloads still standing, for the report."""
+    return [payload for kind, payload in _duties(rows).values() if kind == 'duty.skipped']
 
 
 def _key(category, subject, title):
@@ -115,32 +152,19 @@ def _candidate(root, data, item):
             if path.is_file() and not path.is_symlink() else [])
     found = data.get('seat_findings', {}).get(item)  # #646: a seat's finding added as an item
     return next((row for row in rows if row.get('id') == item),
-                data.get('discovery_candidates', {}).get(item)
-                or found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
-
-
-def _held(root, config, subject, draft_id):
-    """#644: a held ticket is the planner's card below strict, a host-terminal approve under strict."""
-    from wuwei import drafts, outward
-    rule = drafts.read(state.read_state(root))[draft_id]['tier_reason'].removeprefix(
-        outward.APPROVAL_REQUIRED + ': ')
-    if workspace.posture(config)[0] == 'strict':
-        return (f'{subject}: ticket held ({rule}): the owner runs bin/wuwei drafts approve '
-                f'{draft_id} in a host terminal')
-    return (f'{subject}: ticket held ({rule}): the planner asks it on its card '
-            f'(bin/wuwei drafts show {draft_id} --widget)')
+                found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
 
 
 def create(root, subject, category='items', title=None, evidence=(), row=None, seat=None):
     """The one ticket creator: tracker create <item> and --bug|--triage|--follow-up; row is
     an item record not in today's proposal (#636: an owner-named item from plan add); seat is
     the role a seat declares, recorded on the event (#644)."""
-    from wuwei import profiles, registry
+    from wuwei import registry
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
     if config['adapters']['tracker'] == 'none':
         return registry.Result(2, reason='tracker adapter is none; the owner sets adapters.tracker '
-                               '(linear, jira or github) with bin/wuwei config set in a host terminal')
+                               '(linear, jira or github) with bin/wuwei config set')
     if category not in CLASSES:
         return registry.Result(2, reason=f'tracker create: unknown class {category}; '
                                          'use --bug, --triage or --follow-up')
@@ -148,7 +172,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         allowed = json.dumps([*config['tracker']['create'], category])
         return registry.Result(1, reason=(
             f'tracker.create: {category} is not in tracker.create; the owner adds it with '
-            f"bin/wuwei config set tracker.create '{allowed}' in a host terminal"))
+            f"bin/wuwei config set tracker.create '{allowed}'"))
     data = state.read_state(root)
     parent = None
     by_hand = (f', then run bin/wuwei plan set {subject} ticket=<id>' if category == 'items'
@@ -160,7 +184,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         row = row or _candidate(root, data, subject)
         if not isinstance(row, dict) or not isinstance(row.get('scope'), str):
             return registry.Result(2, reason=f'tracker create: unknown item {subject}; use an id '
-                                             "from today's plan or proposal (bin/wuwei status lists them)")
+                                             "from today's plan or proposal (bin/wuwei next lists them)")
         title = ' '.join(row['scope'].split())
         lines = [f'Evidence: {row.get("evidence", "")}', f'Goal: {row.get("goal", "unplanned")}',
                  f'Track: {row.get("track", "")}']
@@ -172,35 +196,26 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         title = ' '.join(title.split())
         lines = [f'Evidence: {line}' for line in evidence]
         parent = ticket(data, subject)
-    if any(profiles.ABSOLUTE.search(text) for text in (title, *lines)):
+    if any(ABSOLUTE.search(text) for text in (title, *lines)):
         return registry.Result(1, reason='tracker create: refused: absolute path in title or evidence; '
                                          'write paths relative to the repository, such as cli/x.py:12')
     draft = {'title': title, 'description': '\n'.join(lines), 'item': subject,
              'category': category, **({'parent': parent} if parent else {})}
     key = _key(category, subject, title)
     entry = data.get('tracker_log', {}).get(key)
-    queued = next((row['id'] for row in data.get('drafts', {}).values()
-                   if row.get('channel') == 'tracker' and row.get('status') in ('pending', 'sent')
-                   and row.get('inputs', {}).get('draft') == draft), None)
     if entry and entry['outcome'] == 'written':
         return registry.Result(0, {'id': entry['ticket']}, f'{subject}: ticket {entry["ticket"]}')
     if entry and entry['outcome'] == 'refused':
         return registry.Result(1, reason=f'tracker create: refused: {entry["reason"]}; create the ticket by hand{by_hand}')
-    if queued:
-        return registry.Result(1, {'draft': queued}, _held(root, config, subject, queued))
     result = registry.load('tracker', config).create(draft, root=root)
     if result.exit == 0:
         record(draft, result.data, root=root, seat=seat)
         return registry.Result(0, result.data, f'{subject}: ticket {result.data["id"]} {result.data["url"]}')
     if result.exit == 1:
-        stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
-        outcome = ({'outcome': 'drafted', 'draft': stored[1]} if stored
-                   else {'outcome': 'refused', 'reason': result.reason or 'refused'})
+        outcome = {'outcome': 'refused', 'reason': result.reason or 'refused'}
         state._write_state(lambda fresh: fresh.setdefault('tracker_log', {}).update({key: outcome}),
-                           root, reserved=False, kind='tracker.logged',
+                           root, kind='tracker.logged',
                            payload={'key': key, 'outcome': outcome['outcome']})
-        if stored:
-            return registry.Result(1, {'draft': stored[1]}, _held(root, config, subject, stored[1]))
         return registry.Result(1, reason=f'tracker create: refused: {outcome["reason"]}; create the ticket by hand{by_hand}')
     return result
 
@@ -208,31 +223,19 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
 def _entries(day, data, kinds):
     """Today's comment entries (key, item, kind, text) for items with a ticket, in event order."""
     from datetime import date, timedelta
-    from wuwei import decision, verdict, watch
-    from wuwei.commands.why import question
+    from wuwei import verdict, watch
     items = [name for name in data['items'] if ticket(data, name)]
-    named = decision.naming(day, items)
     after = (date.fromisoformat(day.name) + timedelta(days=1)).isoformat()
     entries = []
     for n, row in enumerate(watch.records(day / 'events.jsonl'), 1):
         kind, payload, found = row['kind'], row['payload'], []
         for item, phase in payload.get('phase_changes', {}).items():
-            if phase == 'merged':
-                found.append((item, 'close', f'Merged in {data["items"][item].get("pr")}.'))
-            else:
+            if phase != 'merged':  # #842: the done duty writes the merged note
                 found.append((item, 'progress', f'Phase: {phase}.'))
-        if kind == 'decision.decided':
-            verb, _, subject = str(payload.get('item_disposition', '')).partition(' ')
-            if verb in ('carried', 'parked'):
-                found.append((subject, 'close', f'Carried to {after} ({payload.get("id")}).'
-                              if verb == 'carried' else f'Parked ({payload.get("id")}).'))
-            else:
-                text = question(day, payload.get('id'))
-                text += '' if text.endswith(('.', '?', '!')) else '.'
-                found.extend((item, 'decisions',
-                              f'Decision {payload.get("id")}: {text} Outcome: {payload.get("option")}.')
-                             for item in {payload.get('item'), *named.get(payload.get('id'), [])}
-                             if item)
+        if kind == 'plan.disposed':
+            reason = payload.get('reason')
+            found.append((payload.get('item'), 'close', f'Carried to {after}.' if payload.get('outcome') == 'carried'
+                          else f'Parked: {reason}.' if reason else 'Parked.'))
         elif kind in ('seat launched', 'seat stopped'):
             seat = data['seats'].get(payload.get('name'), {})
             role = str(seat.get('role', ''))
@@ -251,8 +254,6 @@ def _entries(day, data, kinds):
                            for finding in record.get('findings', []))
             found.append((item, 'verdicts', f'Review {role} ({round_name}): '
                           f'{payload.get("verdict")}, {blocking} blocking findings.'))
-        elif kind in ('pr.raised', 'pr.claimed'):
-            found.append((payload.get('item'), 'pr', f'Pull request: {payload.get("pr")}.'))
         seen = {}
         for item, entry_kind, text in found:
             if item in items and entry_kind in kinds:
@@ -264,14 +265,13 @@ def _entries(day, data, kinds):
 
 
 def _settle(root, key, update, **payload):
-    state._write_state(lambda fresh: update(fresh.setdefault('tracker_log', {})), root,
-                       reserved=False, kind='tracker.logged', payload={'key': key, **payload})
+    state._write_state(lambda fresh: update(fresh.setdefault('tracker_log', {})), root, kind='tracker.logged', payload={'key': key, **payload})
 
 
 def log(root):
     """The only comment writer: today's story per ticket, once per key, with the daily cap.
     Each comment is claimed before the port call, so a crash is never posted twice."""
-    from wuwei import profiles, registry
+    from wuwei import registry
     config = workspace.load_config(root)
     if config['adapters']['tracker'] == 'none':
         return 0
@@ -300,11 +300,10 @@ def log(root):
             summary = ', '.join(f'{kind} {count}' for kind, count in counts.items())
             sends.append((f'fold:{number}:{folded[0][0]}', 'fold',
                           f'[{day.name} {folded[0][1]}] Folded {len(folded)} updates: {summary}.',
-                          next((kind for kind in counts if kind not in settings['auto']),
-                               next(iter(counts))),
+                          next(iter(counts)),
                           [key for key, *_ in folded]))
         for key, kind, text, category, keys in sends:
-            if profiles.ABSOLUTE.search(text):
+            if ABSOLUTE.search(text):
                 code = 1
                 print(f'tracker log: {key}: refused: absolute path in the comment; remove the path '
                       'from the record it quotes (this comment is not retried)', file=sys.stderr)
@@ -321,10 +320,10 @@ def log(root):
                 rows[key] = {'outcome': 'sending', 'ticket': number, 'kind': kind}
                 rows.update({name: {'outcome': 'folded', 'ticket': number} for name in keys})
             if keys:
-                state._write_state(claim, root, reserved=False, kind='tracker.folded', payload={
+                state._write_state(claim, root, kind='tracker.folded', payload={
                     'item': folded[0][1], 'ticket': number, 'counts': counts})
             else:
-                state._write_state(claim, root, reserved=False, kind='tracker.logged',
+                state._write_state(claim, root, kind='tracker.logged',
                                    payload={'key': key})
             port = port or registry.load('tracker', config)
             result = port.comment(number, text, category, root=root)
@@ -333,9 +332,7 @@ def log(root):
                         exit=2)
                 print(f'tracker log: {result.reason}', file=sys.stderr)
                 return 2
-            stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
             outcome = ({'outcome': 'written'} if result.exit == 0 else
-                       {'outcome': 'drafted', 'draft': stored[1]} if stored else
                        {'outcome': 'refused', 'reason': result.reason or 'refused'})
             if outcome['outcome'] == 'refused':
                 code = 1
@@ -345,10 +342,10 @@ def log(root):
 
 
 def creates_labels(config):
-    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
-    below strict; setup and init --upgrade from a host terminal create on any tracker."""
+    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker;
+    init --upgrade creates one on an external tracker only from a tty."""
     from wuwei import outward
-    return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
+    return not outward._external_tracker(config)
 
 
 def labels(root, config, create, port=None):
@@ -380,15 +377,20 @@ def relabel(port, root, config, item, ticket, failed):
         return port.transition(ticket, name, root=root)
     if found.data['missing']:
         quoted = ', '.join(f'"{label}"' for label in found.data['missing'])
+        if not creates_labels(config):  # #842: someone else's tracker; its owner adds the label
+            return registry.Result(1, reason=(
+                f'{item} not moved to {name}: the tracker label {quoted} is missing on a tracker '
+                'WUWEI does not own. The duty stays skipped in the day report until its owner adds '
+                f'it; ask them to, then run bin/wuwei tracker move {item} in_review'))
         return registry.Result(1, reason=(
-            f'{item} not moved to {name}: the tracker label {quoted} is missing; the owner runs '
-            'bin/wuwei init --upgrade in a host terminal, which creates it, then bin/wuwei '
+            f'{item} not moved to {name}: the tracker label {quoted} is missing; run '
+            'bin/wuwei init --upgrade, which creates it, then bin/wuwei '
             f'tracker move {item} in_review'))
     return failed
 
 
 def ensure_labels(root, prefix, create):
-    """The lines setup and init --upgrade print after creating the missing labels."""
+    """The lines init --upgrade prints after creating the missing labels."""
     result = labels(root, workspace.load_config(root), create)
     if result.exit:
         return [f'tracker labels not created: {result.reason}; run bin/wuwei doctor']
@@ -408,6 +410,6 @@ def record(draft, created, *, root=None, directory=None, seat=None):
             data.setdefault('tickets', {})[subject] = {'id': created['id'], 'source': 'create'}
         data.setdefault('tracker_log', {})[_key(category, subject, draft['title'])] = {
             'outcome': 'written', 'ticket': created['id']}
-    state._write_state(update, root, reserved=False, kind='tracker.created', directory=directory,
+    state._write_state(update, root, kind='tracker.created', directory=directory,
                        payload={'class': category, 'subject': subject,
                                 'ticket': created['id'], 'parent': parent, **({'seat': seat} if seat else {})})

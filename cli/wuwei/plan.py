@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import re
-import sys
 
 from wuwei import discovery, dispatch, goals, rank, sessions, state, workspace
 from wuwei.exits import PAYLOAD, PLAN_JSON, SYMLINK
@@ -30,7 +29,7 @@ def session(session_id, root=None, *, take_over=False):
         data['planner_session_id'] = session_id
         sessions.record(data, session_id, hook='plan session', cwd=str(Path.cwd()))
 
-    return state._write_state(update, root, reserved=False, kind='plan.session',
+    return state._write_state(update, root, kind='plan.session',
                               payload={'session_id': session_id,
                                        **({'previous': previous} if previous else {})})
 
@@ -75,7 +74,7 @@ def _proposal(data, goals_text, framework="wsjf"):
     for item in data['candidates']:
         if not isinstance(item, dict):
             raise ValueError(f'candidate must be an object; {PLAN_JSON}')
-        for key in ('ticket', 'tier', 'docs'):  # #640: empty means absent; in place, callers reuse item
+        for key in ('ticket', 'tier'):  # #640: empty means absent; in place, callers reuse item
             if key in item and isinstance(item[key], str) and not item[key].strip():
                 item.pop(key)  # a null ticket stays: it is the owner's none (#636)
             elif key != 'ticket' and key in item and item[key] is None:
@@ -114,17 +113,37 @@ def _proposal(data, goals_text, framework="wsjf"):
     return data
 
 
+REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+# #518: every owner-only step a lead may list, with its target shape.
+OWNER_ACTIONS = {'deploy': 'repo:' + REPO, 'release': 'repo:' + REPO, 'publish': 'repo:' + REPO,
+                 'merge': f'(?:repo:{REPO}|pr:{REPO}#[0-9]+)',
+                 'message': r'(?:channel|dm):[A-Za-z0-9_-]+',
+                 'secret-set': f'secret:{REPO}/[A-Za-z0-9_]+'}
+
+
+def understood(entry):
+    """'' for a known action with a well-formed target, else why not (never an exception)."""
+    if (not isinstance(entry, dict) or set(entry) != {'action', 'target'}
+            or not all(isinstance(value, str) for value in entry.values())):
+        return 'needs exactly action and target as strings'
+    shape = OWNER_ACTIONS.get(entry['action'])
+    if shape is None:
+        return f'action {entry["action"]} not understood; known: {", ".join(OWNER_ACTIONS)}'
+    if not re.fullmatch(shape, entry['target']):
+        return f'target {entry["target"]} is not in the shape for {entry["action"]}'
+    return ''
+
+
 def owner_steps(item):
-    """#518: plan lines for owner actions that are not grant cards: known owner steps (message,
-    secret-set) and entries the CLI does not understand, which the gate asks as written."""
-    from wuwei import grants
+    """#518, #816: plan lines for the owner actions the lead lists; an entry the CLI does not
+    understand is asked at the gate as written."""
     lines = []
     for entry in item.get('owner_actions', []):
-        reason = grants.understood(entry)
+        reason = understood(entry)
         if reason:
             lines.append(f'Owner-only: {json.dumps(entry, sort_keys=True)} (not understood: {reason}; '
                          'the gate asks for it as written)')
-        elif entry['action'] not in grants.ACTIONS:
+        else:
             lines.append(f'Owner-only: {entry["action"]} {entry["target"]} (owner step)')
     return lines
 
@@ -145,24 +164,15 @@ def proposed(row, found=()):
     return None
 
 
-def _skipped(name, row):
-    """The tracker.skipped payload: the owner's none, else the skipped tier."""
-    return ({'item': name, 'ticket': 'none'} if 'ticket' in row and row['ticket'] is None
-            else {'item': name, 'tier': row['tier']})
-
-
 def _tickets(config, data):
-    """#636: {item: '<id> (existing)' | 'new <title>' | 'none'} for the plan and the gate card."""
-    from wuwei import tracker
-    if not tracker.in_force(config):
+    """#636: {item: '<id> (existing)' | 'none'} for the plan and the gate card; #842: an item
+    with no ticket shows none and gets none."""
+    if config['adapters']['tracker'] == 'none':
         return {}
     found, texts = tracked(data), {}
     for row in data['candidates']:
-        if row.get('tier') in config['tracker']['skip_tiers']:
-            continue
-        record = proposed(row, found)
-        texts[row['id']] = ('new ' + ' '.join(row['scope'].split()) if record is None else
-                            'none' if record['id'] is None else f'{record["id"]} (existing)')
+        if record := proposed(row, found):
+            texts[row['id']] = 'none' if record['id'] is None else f'{record["id"]} (existing)'
     return texts
 
 
@@ -208,32 +218,20 @@ def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
-    goals_text, provisional = goals.proposed(
-        (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
-        data.get('goals') if isinstance(data, dict) else None)
+    recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    goals_text, provisional = goals.proposed(recorded, data.get('goals') if isinstance(data, dict) else None)
     goal_list = goals.parse(goals_text)
-    if provisional:
-        data = {**data, 'goals': list(goal_list)}
+    if provisional:  # #848: blocks over recorded goals replace them; name the ids they replace
+        data = {**data, 'goals': list(goal_list),
+                'replaces': list(goals.parse(recorded)) if goals.defined(recorded) else []}
     found = discovery.discover(root)
-    day = workspace.day_dir(root)
-    prior = sorted((path for path in (root / '.wuwei/days').glob('*')
-                    if path.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name)
-                    and path.name < day.name), reverse=True)
-    carried = []
-    if prior:
-        earlier = state.read_state(directory=prior[0])
-        carried = [proposal['candidate'] for proposal in
-                   earlier.get('intraday_proposals', {}).values()
-                   if proposal.get('decision') == 'tomorrow']
-    discovered_ids = {row['id'] for row in found['candidates']}
-    found['candidates'].extend(row for row in carried if row['id'] not in discovered_ids)
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
     config = workspace.load_config(root)
-    from wuwei import calibrate
+    from wuwei.dispatch import host
     # #528: CAP derives; the lead's cap is not used. #658: the proposal's seat policy picks the rule
-    limits = calibrate.host(root, config, policy=data.get('seat_policy'))
+    limits = host(root, config, policy=data.get('seat_policy'))
     data = {**data, 'cap': limits['cap'],
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']
@@ -242,14 +240,6 @@ def propose(data, root=None):
     for row in data['candidates']:  # #741: the lead's tickets, in the one id format
         if row.get('ticket'):
             row['ticket'] = tracker.full_id(config, row['ticket'])
-    from wuwei import mcp
-    measured = mcp.check(root)
-    gate = mcp.cached(root)  # The posture decides refusal; the sweep shows the measurement.
-    if gate.exit:
-        raise (state.StateError if gate.exit == 1 else OSError)(gate.reason)
-    if measured.exit or measured.reason == mcp.NO_SCANNER:  # #351, #424: printed, not only filed.
-        print(measured.reason, file=sys.stderr)
-    data['sweep']['mcp'] = measured.reason or gate.reason or 'MCP registry: no attached servers'
     from wuwei.commands.doctor import pr_flow
     warned = [row['name'] for row in pr_flow(workspace.load_config(root)) if row['status'] != 'ok']
     data['sweep']['pr-flow'] = (f"measured: {len(warned)} warn ({', '.join(warned)}); "
@@ -265,26 +255,19 @@ def propose(data, root=None):
                 item['repo'] = found[0]
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
-    from wuwei import pace  # #579: the recommended pace, its reasoning and the binding input
-    advice = pace.advise(root, config, data, goal_list, limits, workspace.now())
-    data.update(pace=advice['pace'], pace_reasoning=advice['lines'], pace_advice=advice)
     directory = workspace.day_dir(root)
-    if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
-        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import grants, shepherd
-    planned = grants.plan(root, workspace.load_config(root), data['candidates'])
-    from wuwei import cruise
-    cruise.propose(root, workspace.load_config(root))  # #283: raise and weekly sample cards
-    pace.propose_default(root, workspace.load_config(root))  # #579: once ten days ran two paces
+    if state.day_started(directory) and state.read_state(root).get('gate_approved'):
+        raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
-             *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
              '## Goals to confirm',
-             *([f'Provisional: proposed by the lead; the planner records days/{directory.name}/'
-                'goals.md on approval.'] if provisional else []),
+             *([f'Replaces the recorded goals {", ".join(data["replaces"])}; plan approve records '
+                f'days/{directory.name}/goals.md.' if data.get('replaces') else
+                f'Provisional: proposed by the lead; plan approve records days/{directory.name}/'
+                'goals.md.'] if provisional else []),
              *[line for goal in data['goals'] for line in (
-                 [f'- {goal} (provisional)', *(f'  {key}: {goal_list[goal][key]}'
-                                               for key in goals.FIELDS)]
+                 [f'- {goal}' + ('' if data.get('replaces') else ' (provisional)'),
+                  *(f'  {key}: {goal_list[goal][key]}' for key in goals.FIELDS)]
                  if provisional else [f'- {goal}'])], '',
              '## Measured sweep', *[f'- {key}: {value}' for key, value in data['sweep'].items()], '',
              '## Proposed queue']
@@ -298,9 +281,8 @@ def propose(data, root=None):
                      'match none or several), then the planner runs wuwei plan propose again'] if names else []),
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
                   *([f'Ticket: {shown[item["id"]]}'] if item['id'] in shown else []),
-                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
                   *owner_steps(item), '']
-    lines += ['## Discovery intake',
+    lines += ['## Discovered',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
               *(['## Open PRs to claim', *(f'- {row["id"]}: {row["pr"]} {row["title"]} (claimed under '
                                            f'{data["goals"][0]})' for row in data['adopt']), '']
@@ -308,8 +290,7 @@ def propose(data, root=None):
               '## Gate proposal', f'CAP: {data["capacity"]["text"]}; host.seats {data["capacity"]["seats"]}',
               'Seats per goal: ' + seats_text(data['seats'], data['cap']),
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
-              'Envelope: ' + json.dumps(data['envelope'], sort_keys=True),
-              f'Pace: {data["pace"]} (recommended)', *data['pace_reasoning'], '']
+              'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(directory / 'proposal.json', json.dumps(data, allow_nan=False, indent=2) + '\n')
     if provisional:
@@ -327,14 +308,15 @@ def gate_widget(root=None, *, import_yesterday=False):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
     data = json.loads((directory / 'proposal.json').read_text(encoding='utf-8'))
-    draft = directory / 'goals.md'  # propose writes it only for provisional goals
+    draft = directory / 'goals.md'  # propose writes it only for proposed goal blocks
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
     adopt = data.get('adopt', [])
     ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
-    shown = _tickets(workspace.load_config(root), data)  # #636: Approve opens the new ones
+    shown = _tickets(workspace.load_config(root), data)
     approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
-                             for goal in data['goals']),
+                             for goal in data['goals'])
+        + (f' (replaces {", ".join(data["replaces"])})' if provisional and data.get('replaces') else ''),
         'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
         *(['tickets ' + ', '.join(f'{name} {text}' for name, text in shown.items())] if shown else []),
         *(['claims ' + ', '.join(f'{row["id"]} ({row["pr"]})' for row in adopt)] if adopt else []),
@@ -343,21 +325,16 @@ def gate_widget(root=None, *, import_yesterday=False):
         'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
         *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
-    from wuwei import pace
-    advised = data.get('pace')  # #579: the pace is option rows on the one card, advice first
-    paces = [('Approve', f'{approves}. Pace {advised}. ' + ' '.join(data.get('pace_reasoning', [])))] + [
-        (f'Approve at {other}', f'{approves}. Pace {other}.') for other in pace.PACES if other != advised]
     return decision.widget(
         decision.gate(root) + "Approve today's plan as proposed?",
         'Goals' if provisional else 'Plan',
-        [*(paces if advised else [('Approve', approves + '.')]),
+        [('Approve', approves + '.'),
          ('Change something', 'Ask the separate questions on goals, queue, tickets, seat policy, '
                               'CAP and seats per goal, envelope and carry-over. CAP is derived. '
                               'A changed CAP is recorded as config cap. Name any item you merge '
                               'yourself; the planner records it with wuwei plan set <item> owner_merge=true.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
-                  *(['--import-yesterday'] if import_yesterday else []),
-                  *(['--pace "<label>"'] if advised else [])]))
+                  *(['--import-yesterday'] if import_yesterday else [])]))
 
 
 def _approval(scope, note):
@@ -366,7 +343,7 @@ def _approval(scope, note):
     return '; '.join(part for part in (' '.join(scope.split()), note and f'owner: "{note}"') if part)
 
 
-def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, pace_label=None, note=None):
+def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, note=None):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
     if not goals_confirmed:
@@ -380,29 +357,25 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     config = workspace.load_config(root)
     framework = config['prioritisation']['framework']
     text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-    if not goals.defined(text) and (directory / 'goals.md').is_file():
-        text = (directory / 'goals.md').read_text(encoding='utf-8')  # #603: the provisional goals the gate card showed
+    if (directory / 'goals.md').is_file():  # #603, #848: the proposed goals the gate card showed
+        text = (directory / 'goals.md').read_text(encoding='utf-8')
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')), text, framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError(f'approved items must be a unique list; {PLAN_JSON}')
-    from wuwei import pace  # #579: the owner's pick on the gate card, recorded as given
-    wish = config['pace']['default']
-    recommended = data.get('pace') or wish
-    chosen = recommended if pace_label is None else pace.label(pace_label, recommended)
     adopted = {row['id']: row for row in data.get('adopt', [])}  # #510: claimed after the gate
     claims, items = [name for name in items if name in adopted], [name for name in items if name not in adopted]
     candidates = {item['id']: item for item in data['candidates']}
     if any(name not in candidates for name in items):
-        raise state.StateError('approved item is absent from proposal; approve only ids from the proposal (bin/wuwei status lists them), or run bin/wuwei plan propose again')
+        raise state.StateError('approved item is absent from proposal; approve only ids from the proposal (bin/wuwei next lists them), or run bin/wuwei plan propose again')
     from wuwei import tracker
     imported, carried = {}, {}
-    found, skipped = tracked(data), []
+    found = tracked(data)
     if import_yesterday:
         days = root / '.wuwei/days'
         prior = sorted((path for path in days.iterdir() if path.is_dir() and
                         path.name < directory.name and re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name)),
                        reverse=True)
-        if not prior or not (prior[0] / 'state.json').is_file():
+        if not prior or not state.day_started(prior[0]):
             raise ValueError('no prior day state to import; run bin/wuwei plan approve without --import-yesterday')
         earlier = state.read_state(directory=prior[0])
         imported = {name: {**item, 'phase': 'planned', 'status': 'queued', 'gates': {}}
@@ -414,42 +387,26 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             item.pop('resume_phase', None)
         if set(imported) & set(items):
             raise state.StateError('imported and approved item ids overlap; remove the overlapping ids from --items, or run without --import-yesterday')
-    current, reasons = state.read_state(root), []
-    if (tracker.in_force(config) and workspace.posture(config)[0] != 'strict'
-            and not current.get('gate_approved')):
-        from wuwei import drafts
-        for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
-            status = tracker.check(current, config, name, candidates[name])[0]
-            if proposed(candidates[name], found) is not None or status not in ('missing', 'later'):
-                continue
-            result = tracker.create(root, name)
-            if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
-                result = drafts.approve(root, result.data['draft'])
-            if result.exit and status == 'missing':  # #646: a small item is approved without it
-                reasons.append(f'{name}: {result.reason}')
-    if reasons:
-        raise state.StateError('\n'.join(reasons))
+    current = state.read_state(root)
+    if not current.get('gate_approved'):  # #833: the gate answer records the goals it approved
+        from wuwei import promotion
+        try:
+            promotion.save_goals(root, text)
+        except OSError as exc:
+            raise OSError(f'{exc}; the goals are not recorded and the day stays unapproved; '
+                          'run bin/wuwei doctor, then plan approve again') from exc
 
     def update(current):
         if current.get('gate_approved'):
             raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item')
         if set(current['items']) & (set(imported) | set(items)):
-            raise state.StateError('day item already exists; remove the existing ids from --items (bin/wuwei status lists them)')
+            raise state.StateError('day item already exists; remove the existing ids from --items (bin/wuwei next lists them)')
         tickets = {**current.get('tickets', {}), **carried}
         for name in items:
             if name not in tickets and (record := proposed(candidates[name], found)):
                 tickets[name] = record
         if tickets:
             current['tickets'] = tickets
-        reasons = []
-        for name in items:
-            status, reason = tracker.check(current, config, name, candidates[name])
-            if status == 'missing':
-                reasons.append(reason)
-            elif status == 'skipped':
-                skipped.append(name)
-        if reasons:
-            raise state.StateError('\n'.join(reasons))
         current['items'].update(imported)
         current['items'].update({name: {'goal': candidates[name].get('goal', 'unplanned'),
                                        'track': candidates[name]['track'],
@@ -463,16 +420,18 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
                        seat_policy=data['seat_policy'], goal_seats=_seats(data),
                        envelope=data['envelope'], goals=data['goals'],
-                       approved_items=items, gate_approved=True, pace=chosen)
+                       approved_items=items, gate_approved=True)
 
     kind = 'state.import' if import_yesterday else 'plan.approved'
-    written = state._write_state(update, root, reserved=False, kind=kind,
+    written = state._write_state(update, root, kind=kind,
                                  payload={'items': sorted(imported) if import_yesterday else items,
                                           'approved_items': items,
-                                          'flags': {name: candidates[name]['flags'] for name in items},
-                                          'pace': chosen, 'recommended': recommended, 'wish': wish})
-    for name in skipped:
-        state.append_event('tracker.skipped', _skipped(name, candidates[name]), root)
+                                          'flags': {name: candidates[name]['flags'] for name in items}})
+    if config['adapters']['tracker'] != 'none':  # #842: a new item's ticket opens as a duty
+        from wuwei import dispatch
+        for name in items:
+            if proposed(candidates[name], found) is None:
+                dispatch.tracker_call(name, 'create', root)
     from wuwei import shepherd
     for name in claims:  # claim_pr prints the claim or its refusal; the gate stays approved.
         shepherd.claim_pr(root, adopted[name]['pr'], name, data['goals'][0])
@@ -480,15 +439,15 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
 
 
 def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None):
-    """Admit one item after the gate: a discovered candidate through the intraday
-    policy, or an item the owner names under a goal (the owner naming it is the decision)."""
+    """Admit one item after the gate: an item the owner names under a goal (the owner naming it
+    is the decision) or a seat's finding."""
     root = workspace.find_workspace(root)
     day = state.read_state(root)
     if not day['gate_approved']:
         raise state.StateError('morning gate has not been approved; run the morning gate first (/wuwei:wuwei-plan)')
     if item in day['items'] and _approval('', note):  # #731: the approval is recorded once, at admission
-        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; record the "
-                               "owner's new words as a scope decision: bin/wuwei decision template")
+        raise state.StateError(f"item {item} is already in the plan and its approval is recorded; write the "
+                               "owner's new words into the item's spec as a scope change")
     if item in day['items']:  # #615: an item admitted without risk evidence records it once
         from wuwei.merge import risk_evidence
         if risk_evidence(root, item):
@@ -496,85 +455,29 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         state.append_event('plan.added', {'item': item, 'source': 'replan',
                                           'flags': {item: day['items'][item]['flags']}}, root)
         return {'action': 'risk recorded', 'item': item}
-    if source == 'finding':  # #646: a seat's finding joins as a small item, its ticket later
+    if source == 'finding':  # #646: a seat's finding joins as a small item
         finding = day.get('seat_findings', {}).get(item)
         if finding is None:
             raise state.StateError(f'{item} is not a seat finding; wuwei next lists the findings to add')
         goal, title = goal or day['goals'][0], finding['scope']
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
-    candidate = day.get('discovery_candidates', {}).get(item)
-    owner_item = candidate is None
-    if owner_item:
-        if goal is None:
-            raise state.StateError(f"{item} is not a discovery candidate; to add it as the owner's item "
-                                   f'run bin/wuwei plan add {item} --goal G-n')
-        if goal not in day['goals']:
-            raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
-                                   f'run bin/wuwei plan add {item} --goal <one of them>')
-        candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
-                     'flags': {key: False for key in FLAGS},
-                     'title': title or item, 'score': {size_key: 1 if size is None else size},
-                     **({'ticket': ticket} if ticket else {}),
-                     **({'tier': 'light'} if source == 'finding' else {})}
-    else:
-        goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-        _proposal({'goals': day['goals'], 'cap': day['cap'],
-                   'seat_policy': day['seat_policy'], 'envelope': day['envelope'],
-                   'sweep': {'discovery': 'measured: candidate'},
-                   'candidates': [candidate]}, goals_text,
-                  config['prioritisation']['framework'])
+    if goal is None:
+        raise state.StateError(f"{item} is not in the plan; to add it as the owner's item "
+                               f'run bin/wuwei plan add {item} --goal G-n')
+    if goal not in day['goals']:
+        raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
+                               f'run bin/wuwei plan add {item} --goal <one of them>')
+    candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
+                 'flags': {key: False for key in FLAGS},
+                 'title': title or item, 'score': {size_key: 1 if size is None else size},
+                 **({'ticket': ticket} if ticket else {}),
+                 **({'tier': 'light'} if source == 'finding' else {})}
     from wuwei import tracker
     if candidate.get('ticket'):  # #741: one id format, before anything is written
         candidate = {**candidate, 'ticket': tracker.full_id(config, candidate['ticket'])}
     chosen = proposed(candidate)
-    status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
-                                   config, item, candidate)
-    if status == 'missing' and owner_item and workspace.posture(config)[0] != 'strict':
-        # #636: draft the owner item's ticket for its Send card; a seat can reach plan add, so never send here.
-        opened = tracker.create(root, item, row={'scope': candidate['title'], 'goal': goal,
-                                                 'track': candidate['track'],
-                                                 'evidence': 'named by the owner'})
-        if opened.exit == 0:
-            status = 'ticket'
-        elif isinstance(opened.data, dict):
-            reason = tracker.check(state.read_state(root), config, item, candidate)[1]
-        else:
-            reason = opened.reason
-    if status == 'missing':
-        raise state.StateError(reason)
     size = candidate['score'][size_key]
-    decision = 'start'
-    if not owner_item:
-        committed = sum(row.get('budget_size', float('inf')) for row in day['items'].values())
-        within_budget = committed + size <= day['envelope']['net_build_hours']
-        running = sum(seat.get('status') == 'running' and seat.get('role') == 'builder'
-                      for seat in day['seats'].values())
-        within_cap = running < day['cap']
-        above_cut = True
-        if config['discovery']['autostart'] == 'strict' and day['approved_items']:
-            proposal_path = workspace.day_dir(root) / 'proposal.json'
-            if proposal_path.is_symlink():
-                raise ValueError(f'proposal.json must not be a symlink; {SYMLINK}')
-            proposal = json.loads(proposal_path.read_text(encoding='utf-8'))
-            approved = [row for row in proposal['candidates']
-                        if row['id'] in day['approved_items']]
-            if approved:
-                ordered = rank.rank([*approved, candidate], config['prioritisation']['framework'],
-                                    goals.parse(goals_text))
-                above_cut = [row['id'] for row in ordered].index(item) < len(approved)
-        decision = discovery.start_decision(candidate, config, set(day['goals']),
-                                            within_budget=within_budget and within_cap,
-                                            above_cut=above_cut)
-    if decision != 'start':
-        def propose(current):
-            if item in current['items']:
-                raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
-            current.setdefault('intraday_proposals', {})[item] = {
-                'decision': decision, 'candidate': candidate}
-        state._write_state(propose, root, reserved=False, kind='plan.proposed',
-                           payload={'item': item, 'decision': decision})
-        return {'action': decision, 'item': item}
 
     def admit(current):
         if item in current['items']:
@@ -587,12 +490,22 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
-    state._write_state(admit, root, reserved=False, kind='plan.added',
-                       payload={'item': item, 'source': candidate.get('source', 'discovery'),
+    state._write_state(admit, root, kind='plan.added',
+                       payload={'item': item, 'source': candidate['source'],
                                 'flags': {item: candidate['flags']}})
-    if status == 'skipped':
-        state.append_event('tracker.skipped', _skipped(item, candidate), root)
+    if not chosen and config['adapters']['tracker'] != 'none':  # #842: best effort, never a wall
+        from wuwei import dispatch
+        dispatch.tracker_call(item, 'create', root, row={
+            'scope': candidate['title'], 'goal': candidate['goal'], 'track': candidate['track'],
+            'evidence': 'named by the owner'})
     return {'action': 'build next', 'item': item}
+
+
+def _owner_confirm(root, argv, detail, token=''):
+    """#800, #831: only the owner's Yes on this step's Owner step card lets it run."""
+    import shlex
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'set', *argv]), detail, token):
+        raise state.StateError(reason)
 
 
 def set_spec(item, assignment, reason=None, root=None):
@@ -605,13 +518,15 @@ def set_spec(item, assignment, reason=None, root=None):
     reason = ' '.join((reason or '').split())  # one line, as plan carry and park
     if value == 'skipped' and not reason:
         raise ValueError(f'spec=skipped needs a reason; run bin/wuwei plan set {item} spec=skipped --reason <why>')
+    if value == 'skipped':  # #800: spec before gates; only the owner skips it
+        _owner_confirm(root, [item, 'spec=skipped', '--reason', reason], f'Skip the spec for {item}: {reason}')
 
     def update(data):
         if item not in data['items']:
             raise state.StateError(f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
         data['items'][item]['spec'] = {'value': value, 'reason': reason}
-    state._write_state(update, root, reserved=False, kind='spec.override',
+    state._write_state(update, root, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
 
@@ -624,6 +539,12 @@ def set_owner_merge(item, value, root=None):
                          'owner_merge=true|false')
     on = value == 'true'
     by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
+    if not on:  # #800: releasing the hold lets WUWEI merge it; only the owner does
+        from wuwei.watch import records  # #831: the answer is bound to this hold, the item's nth hold today
+        held = sum(row['kind'] == 'plan.set' and row['payload'].get('item') == item
+                   and row['payload'].get('owner_merge') is True
+                   for row in records(workspace.day_dir(root) / 'events.jsonl'))
+        _owner_confirm(root, [item, 'owner_merge=false'], f'Release the owner merge hold on {item}', f'hold {held}')
     linked = []
 
     def update(data):
@@ -632,7 +553,7 @@ def set_owner_merge(item, value, root=None):
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
         data['items'][item]['owner_merge'] = {'value': on, 'by': by, 'at': workspace.now().isoformat()}
         linked.append(data['items'][item].get('pr'))
-    state._write_state(update, root, reserved=False, kind='plan.set',
+    state._write_state(update, root, kind='plan.set',
                        payload={'item': item, 'owner_merge': on, 'by': by})
     config = workspace.load_config(root)
     if linked[-1] and config['adapters']['code_host'] != 'none':
@@ -648,21 +569,6 @@ def set_owner_merge(item, value, root=None):
     return f'{item}: owner_merge {value}'
 
 
-def set_pace(value, root=None):
-    """#579: plan set pace=<p>: the day's pace from now on; items tiered already keep theirs."""
-    from wuwei import pace
-    root = workspace.find_workspace(root)
-    if value not in pace.PACES:
-        raise ValueError(f'unknown pace {value!r}; run bin/wuwei plan set pace=<p> with one of careful, steady or fast')
-    payload = {'pace': value}
-
-    def update(data):
-        payload['previous'] = pace.current(data, workspace.load_config(root))
-        data['pace'] = value
-    state._write_state(update, root, reserved=False, kind='pace.set', payload=payload)
-    return f"pace {value} (was {payload['previous']})"
-
-
 def set_ticket(item, ticket, root=None):
     """plan set <item> ticket=<id>: record an existing ticket once the tracker confirms it."""
     from wuwei import registry
@@ -676,7 +582,7 @@ def set_ticket(item, ticket, root=None):
                   json.loads(proposal.read_text(encoding='utf-8')).get('candidates', [])}
     if item not in names:
         raise state.StateError(f"unknown item {item}; use an id from today's plan or proposal "
-                               '(bin/wuwei status lists them)')
+                               '(bin/wuwei next lists them)')
     from wuwei import tracker
     config = workspace.load_config(root)
     ticket = tracker.full_id(config, ticket)  # #741: one id format, confirmed and stored
@@ -686,55 +592,68 @@ def set_ticket(item, ticket, root=None):
             result.reason or f'tracker could not confirm {ticket}; check the id in the tracker, then '
                              f'run bin/wuwei plan set {item} ticket=<id> again')
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
-        {item: {'id': ticket, 'source': 'set'}}), root, reserved=False, kind='plan.set',
+        {item: {'id': ticket, 'source': 'set'}}), root, kind='plan.set',
         payload={'item': item, 'ticket': ticket})
     return ticket
 
 
 def dispose(item, outcome, reason=None, root=None):
-    """plan carry|park: write and route a two-way record that carries or parks one item at
-    day close; return its D-n. Park pauses an active item, carry changes no phase."""
-    from wuwei import decision
+    """plan carry|park: record on the item that it carries or parks at day close, with one
+    plan.disposed event. Park pauses an active item; carry changes no phase."""
     root = workspace.find_workspace(root)
-    verb = {'carried': 'carry', 'parked': 'park'}[outcome]
-    reason = ' '.join((reason or '').split())  # one line, so a reason cannot start a field
+    reason = ' '.join((reason or '').split())  # one line, as plan set reasons
 
-    def known(data):
+    def update(data):
         if item not in data['items']:
             raise state.StateError((f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids"))
-        return data['items'][item]
-
-    current = known(state.read_state(root))
-    action = {'carry': 'Carry to tomorrow', 'park': 'Park the item'}[verb]
-    consequence = {'carry': "It joins tomorrow's plan and its phase does not change.",
-                   'park': 'It pauses until someone resumes it.'}[verb]
-    text = (
-        f'Question: {verb.title()} {item} at day close?\n'
-        f'Class: {"defer" if verb == "carry" else "park"}\n'
-        f'Context: {item} is {current["status"]}/{current["phase"]} at day close.'
-        f'{" Reason: " + reason if reason else ""}\n'
-        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-        f'| {verb} | {action} | Reversible and lets the day close. | {consequence} |\n'
-        '| keep | Do nothing, keep working | Reversible but the day cannot close. | The item stays open today. |\n'
-        f'Musts:\n| Criterion | {verb} | keep |\n| --- | --- | --- |\n'
-        '| Reversible | pass | pass |\n'
-        f'Wants:\n| Criterion | Weight | {verb} | keep |\n| --- | --- | --- | --- |\n'
-        '| Day can close | 10 | 10 | 0 |\n'
-        f'Recommendation: {verb}\nReasoning: Closing the day decided it; urgent work on the item would flip it.\n'
-        'Confidence: high\nReversibility: two-way\n'
-        'Blast radius: own branch\nPre-mortem: The item needed attention today and waits a day.\n'
-        "Revisit: At tomorrow's morning gate.\n"
-        f'Decided-by: seat\nOutcome: {outcome} {item}\n')
-    payload = {'item': item}
-
-    def update(data):
-        record = known(data)
-        path = decision.write(text, root)
-        outcome_record = decision.seat_outcome(*decision.evaluate(text))
-        data.setdefault('decision_outcomes', {})[path.stem] = outcome_record
+        record = data['items'][item]
+        record['disposition'] = {'kind': outcome, 'reason': reason}
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
-            record.update(phase='parked', status='blocked', decision=path.stem)
-        payload.update(id=path.stem, **outcome_record)
-    state._write_state(update, root, reserved=False, kind='decision.decided', payload=payload)
-    return payload['id']
+            record.update(phase='parked', status='blocked')
+    state._write_state(update, root, kind='plan.disposed',
+                       payload={'item': item, 'outcome': outcome, 'reason': reason})
+
+
+def park(item, reason, root=None):
+    """Park one item in code (the round cap, a PARK verdict, the owner's No)."""
+    dispose(item, 'parked', reason, root)
+
+
+def resume_token(root, item, data=None):
+    """The token of plan resume's Owner step card: each resume takes a fresh Yes."""
+    import hashlib
+    from wuwei.watch import records
+    data = state.read_state(root) if data is None else data
+    row = data['items'][item]
+    why = (row.get('disposition') or {}).get('reason') or row['phase']
+    resumed = sum(event['kind'] == 'plan.resumed' and event['payload'].get('item') == item
+                  for event in records(workspace.day_dir(root) / 'events.jsonl'))
+    return hashlib.sha256(f'{why}\n{resumed}'.encode()).hexdigest()[:12]
+
+
+def resume(item, root=None):
+    """plan resume <item>: only the owner's Yes on its Owner step card returns a parked or
+    escalated item to the phase it paused in, queued."""
+    import shlex
+    root = workspace.find_workspace(root)
+    data = state.read_state(root)
+    row = data['items'].get(item)
+    if row is None or row['phase'] not in ('parked', 'escalated') or row['status'] != 'blocked':
+        raise state.StateError(f'{item} is not parked; plan resume returns a parked item to its phase '
+                               "(bin/wuwei next lists today's items)")
+    why = (row.get('disposition') or {}).get('reason') or row['phase']
+    if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'resume', item]),
+                                      f'Resume {item}: {why}', resume_token(root, item, data)):
+        raise state.StateError(reason)
+
+    def update(fresh):
+        current = fresh['items'][item]
+        if current['phase'] != row['phase']:
+            raise state.StateError(f'{item} changed during plan resume; run bin/wuwei plan resume {item} again')
+        current.update(phase=current['resume_phase'], status='queued')
+        current.pop('disposition', None)
+        current.pop('decision', None)
+    state._write_state(update, root, kind='plan.resumed', payload={'item': item})
+    return f'{item}: resumed'
+

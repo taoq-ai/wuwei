@@ -42,18 +42,6 @@ Wikipedia: Signs of AI writing
   Licence: credit only, no text copied
   Used: the source humanizer is based on, so an indirect source of the checklist.
 
-Model Context Protocol
-  Source: https://modelcontextprotocol.io
-  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
-  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
-  Used: the protocol the board server implements (cli/wuwei/commands/board.py).
-
-MCP Apps
-  Source: https://github.com/modelcontextprotocol/ext-apps
-  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
-  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
-  Used: the ui:// resource convention the board serves (ui://wuwei/board.html).
-
 release-please
   Source: https://github.com/googleapis/release-please
   Licence: Apache-2.0
@@ -104,15 +92,5 @@ MIT CISR decision framework
 Verifiably Safe Autonomous Decision-Making (vGOAL)
   Source: https://www.kuleuven.be/
   Author: KU Leuven
-  Used: the invariant table and its exhaustive test, without the model checker (design
-  spec 9.2).
-
-Error budgets
-  Source: https://sre.google/sre-book/embracing-risk/
-  Author: Google, Site Reliability Engineering, "Embracing Risk"
-  Used: the error budget per decision class (design spec 5.8.1).
-
-Brier score
-  Source: https://doi.org/10.1175/1520-0493%281950%29078%3C0001%3AVOFEIT%3E2.0.CO%3B2
-  Author: Glenn W. Brier, Monthly Weather Review, 1950
-  Used: confidence calibration per decision class and role (design spec 5.8.1).
+  Used: a table of safety properties, each with its own test, without the model checker
+  (design spec 9.2).

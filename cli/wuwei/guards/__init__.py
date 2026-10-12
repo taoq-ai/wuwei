@@ -10,77 +10,71 @@ import sys
 from wuwei.exits import CLEAN, FINDINGS, PAYLOAD
 
 
-EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompact', 'Stop')
+EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart')
 # Each built-in guard module's events and, per event, the tools its matchers select
 # (None: any tool). discover() skips a module the hook's event and tool cannot run;
 # a module missing here is imported for every event. tests/test_hooks.py pins this
 # to the modules' GUARDS.
 MODULES = {
     'agent_launch': {'PreToolUse': 'Agent', 'SubagentStop': None},
-    'commit_push': {'PreToolUse': 'Bash'},
-    'decision': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash|AskUserQuestion',
-                 'PreToolUse': 'AskUserQuestion', 'SubagentStop': None},
-    'deploy': {'PreToolUse': 'Bash'},
-    'integrity': {'PreToolUse': None, 'SessionStart': None},
-    'lifecycle': {'SessionStart': None, 'PreCompact': None, 'Stop': None,
-                  'SubagentStop': None},
+    'answers': {'PostToolUse': 'AskUserQuestion'},
+    'edges': {'PreToolUse': None},
+    'integrity': {'SessionStart': None},
+    'lifecycle': {'SessionStart': None},
     'outward': {'PreToolUse': None},
-    'pr': {'PreToolUse': 'Bash'},
     'protect_state': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash'},
-    'spec': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit',
-             'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
-    'stop': {'Stop': None},
+    'spec': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
-# #331: the posture area of each guard check; 'module.function' overrides its module. A test
-# pins the keys to MODULES. None: the check applies its own posture (the MCP launch gate in
-# mcp.cached; spec mode's own mode setting), so the hook enforces it as returned.
-AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
-         'decision': 'records', 'decision.check_question': 'outward', 'deploy': 'publish',
-         'integrity': 'integrity', 'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
-         'protect_state': 'records', 'protect_state.check_scratch': 'seats',
-         'spec': None, 'stop': 'publish', 'traces': 'records',
-         'verdict': 'records'}
-# Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
-# policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).
-# #530: below strict hook.posture drops their owner-only line (the reason names its card or
-# fix), except MERGE; RECORDS_FLOOR reasons read as the records floor in every posture.
-OWNER_ONLY = frozenset({'deploy', 'pr', 'outward.check_tier'})
-# The missing-reviewer refusal names its ways out, so the hook adds no posture line to it.
+# #837: one switch, guards.enforce. The floor blocks whatever it says (constitution VII):
+# records written by the workflow and the owner's edges (#839): deploy and outward send here,
+# merge, approve, admin and branch protection by their MERGE prefix. Keys are modules or
+# 'module.function'; a LOG_ONLY function is not on its module's floor.
+FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'protect_state', 'edges.check_deploy',
+                   'edges.check_send'})
+# B5 lead call (#837): no new walls. With guards.enforce on these still only log, as under the
+# old guarded default: the outward lint, another item's scratch directory,
+# the traces recorder (it never refuses, even when it raises) and the launch capacity
+# refusals (next never offers a launch past CAP).
+LOG_ONLY = frozenset({'outward', 'protect_state.check_scratch', 'traces'})
+# Launch refusal text that only logs: CAP, the host seat ceiling, free memory.
+CAPACITY = ('running build seats', 'host seat ceiling', 'free memory')
+# The missing-reviewer refusal names its ways out.
 REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
                      "bin/wuwei config set shepherd.reviewers '[\"login\"]'")
-# This guard never reads shepherd.reviewers, so that way out goes through pr raise.
-NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
-               'bin/wuwei config set shepherd.min_reviewers 0; or set '
-               'shepherd.reviewers and raise with bin/wuwei pr raise')
 
-# #530: the prefix of every PR create refusal; the hook levels it as publish, not owner-only.
+# #530: the prefix of the PR create refusal; raising is gated by evidence, not the floor.
 RAISE = 'pr raise: '
 # #530, #524: a session merge goes through bin/wuwei merge; approval and override stay
-# the owner's (design 9.2, I1 exempt).
-MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection',
-         'a shepherd seat never merges')
-# #530: canary and honeytoken egress and owner disposition markers are the records floor;
-# #725: so is a seat launch naming a brief that does not exist.
+# the owner's (design 9.2, I1 exempt). The floor.
+MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection')
+# Canary and honeytoken egress, owner disposition markers and (#725) a seat launch naming a
+# brief that does not exist: the records floor.
 RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner',
                  'brief .wuwei/days/')
 
 
-def level(check, levels):
-    """(module, area, level, line) for one guard check under resolved area levels. A check
-    with no area blocks with no posture line."""
+def _keys(check):
     module = check.__module__.rsplit('.', 1)[-1]
-    key = f'{module}.{getattr(check, "__name__", "")}'
-    area = AREAS.get(key, AREAS.get(module))
-    if area is None:
-        return module, None, 'block', ''
-    if key in OWNER_ONLY or module in OWNER_ONLY:
-        return module, area, 'block', f'posture: {area} = block (owner-only action; no setting lowers it)'
-    from wuwei.workspace import FLOORS
-    if area in FLOORS:
-        return module, area, 'block', f'posture: {area} = block (floor; no setting lowers it)'
-    return module, area, levels[area], f'posture: {area} = {levels[area]} (set security.areas.{area})'
+    return module, f'{module}.{getattr(check, "__name__", "")}'
+
+
+def floor(check, reason):
+    """True when the refusal blocks whatever guards.enforce says."""
+    if reason.startswith(MERGE + RECORDS_FLOOR):
+        return True
+    module, key = _keys(check)
+    return key in FLOOR or module in FLOOR and key not in LOG_ONLY
+
+
+def logs(check, reason):
+    """True when the refusal only logs with guards.enforce on (B5 lead call)."""
+    module, key = _keys(check)
+    return (key in LOG_ONLY or module in LOG_ONLY
+            or module == 'agent_launch' and any(part in reason for part in CAPACITY))
+
+
 # ponytail: the hook's (event, tool_name) travels in context, not as discover()
 # arguments, because tests replace hook.discover with zero-argument stubs; make it a
 # parameter when those stubs take arguments.

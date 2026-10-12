@@ -13,7 +13,7 @@ import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 from wuwei import env, integrity, security, workspace
-from wuwei.guards.deploy import PERMISSIONS_DENY
+from wuwei.guards.edges import PERMISSIONS_DENY
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
   protect each repository's default_branch: required status checks including the test jobs,
@@ -29,32 +29,17 @@ def register(subparsers):
     parser.add_argument("path", nargs="?", default=".")
     parser.add_argument("--upgrade", action="store_true", help="upgrade an existing workspace")
     parser.add_argument("--dry-run", action="store_true", help="show the upgrade plan")
-    parser.add_argument("--posture", choices=tuple(workspace.POSTURES),
-                        help="security posture for a new workspace: observe, guarded or strict")
-    parser.add_argument("--shadow", action="store_true", help="same as --posture observe")
-    parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
+    parser.add_argument("--shadow", action="store_true",
+                        help="a new workspace with guards.enforce = false: guards log what they would refuse")
     parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
                         help="decoy credentials path relative to .wuwei")
     parser.set_defaults(func=run)
 
 
 def run(args):
-    posture = 'observe' if getattr(args, 'shadow', False) else getattr(args, 'posture', None)
-    if posture and (getattr(args, 'upgrade', False) or getattr(args, 'menu_bar', False)):
-        flag = '--shadow' if getattr(args, 'shadow', False) else '--posture'
-        raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
-    if getattr(args, 'menu_bar', False):
-        if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
-            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run; run bin/wuwei init --menu-bar on its own')
-        if sys.platform != 'darwin':
-            print('SwiftBar menu bar is macOS only')
-            return CLEAN
-        template = Path(__file__).resolve().parents[3] / 'templates/swiftbar/wuwei.1m.sh'
-        print(f'Copy {template} into your SwiftBar Plugins folder as wuwei.1m.sh.')
-        print('Add this line near the top of the copied script:')
-        print(f'export WUWEI_WORKSPACE={shlex.quote(str(Path(args.path).expanduser().resolve()))}')
-        print('Install SwiftBar first if it is absent. No menu bar plugin runs until installed.')
-        return CLEAN
+    shadow = getattr(args, 'shadow', False)
+    if shadow and getattr(args, 'upgrade', False):
+        raise ValueError('--shadow applies to a new workspace; run bin/wuwei config set guards.enforce false')
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
         raise ValueError('--dry-run requires --upgrade; run bin/wuwei init --upgrade --dry-run')
     if getattr(args, 'upgrade', False):
@@ -81,16 +66,11 @@ def run(args):
         write_workspace(template.parents[1], Path(staging))
         executable = integrity.launcher(destination.parent)
         (Path(staging) / "executable").write_text(str(executable) + "\n")
-        if posture:
-            config = Path(staging) / 'config.toml'
-            text = config.read_text(encoding='utf-8').replace(
-                'posture = "guarded"', f'posture = "{posture}"', 1)
-            if posture == 'observe':
-                text = text.replace(
-                    'shadow_since = ""', f'shadow_since = "{workspace.now().date().isoformat()}"', 1)
-            config.write_text(text, encoding='utf-8')
         config = Path(staging) / 'config.toml'
-        config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
+        text = config.read_text(encoding='utf-8')
+        if shadow:
+            text = text.replace('enforce = true', 'enforce = false', 1)
+        config.write_text(_stamp(text), encoding='utf-8')
         integrity.initialize(Path(staging))
         settings_path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
@@ -98,24 +78,98 @@ def run(args):
     finally:
         if os.path.exists(staging):
             shutil.rmtree(staging)
-    guide_path, _ = _guide(destination.parent)
     print(f"Created {destination.resolve()}")
-    if getattr(args, 'status_line', True):
-        _status_line(executable)
+    _status_line(executable)
     if (destination.parent / '.git').exists():
         print('This project is a Git repository; add these lines to its .gitignore:')
         print('.wuwei/\n.claude/')
-    if guide_path:
-        print(f'Guide: {guide_path.relative_to(destination.parent)} block written')
     print(LAYOUT)
     return _finish(destination.parent)
 
 
+# #838: the register comment init --upgrade wrote above config sections; removed on upgrade.
+GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
+                 'bin/wuwei who walks it.')
+# Paths under .wuwei/ (files or directories) no code reads or writes; init --upgrade removes
+# them, never through a symlink and never under days/ (history).
+RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
+                 'memory/cruise.json', 'memory/forget.json',  # #814, #815, #833
+                 'memory/voice.md', 'memory/digests', 'inbox', 'graph.json', 'ziran',  # #810, #833, #838, #840
+                 *(f'{name}.{suffix}' for name in ('watch', 'shepherd', 'listen')  # #810, #847
+                   for suffix in ('lock', 'stdout.log', 'stderr.log')))
+RETIRED_UNITS = ('listen', 'watch', 'shepherd')  # #810, #847: user services no longer shipped
+# #800: the guide block an older init wrote into the memory.export_to file.
+GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
+
+
+def _retired(destination, generated):
+    """(names to remove, (name, reason) left): each RETIRED_FILES path present and each stale
+    generated copy; a symlink, or a path that resolves outside .wuwei/, is left and named."""
+    remove, left = [], []
+    for name in (*RETIRED_FILES, *generated):
+        path = destination / name
+        if not (path.exists() or path.is_symlink()):
+            continue
+        if destination.is_symlink() or path.is_symlink():
+            left.append((name, 'a symlink'))
+        elif not path.resolve().is_relative_to(destination.resolve()):
+            left.append((name, 'resolves outside .wuwei'))
+        else:
+            remove.append(name)
+    return remove, left
+
+
+def _stale_generated(plugin, destination):
+    """#848: generated copies of a skill, agent or charter the plugin no longer ships."""
+    generated = destination / 'generated'
+    if generated.is_symlink() or not generated.is_dir() or security.load(destination.parent) is None:
+        return []
+    from wuwei.commands.agents import workspace_files
+    current = workspace_files(plugin, destination)
+    kinds = {name.split('/')[0] for name in current}  # agents, charters, skills; never the config cache
+    return sorted(name for name in (path.relative_to(generated).as_posix() for path in generated.rglob('*')
+                                    if path.is_file() or path.is_symlink())
+                  if name.split('/')[0] in kinds and '/' in name and name not in current)
+
+
+def _remove(destination, name):
+    path = destination / name
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    for parent in path.parents:  # an emptied generated/<kind>/<name>/ goes with its last file
+        if parent == destination / 'generated' or not parent.is_relative_to(destination / 'generated'):
+            break
+        if any(parent.iterdir()):
+            break
+        parent.rmdir()
+
+
+def _remove_unit(path, name):
+    """Stop a retired user service and delete its unit; service failures are warnings."""
+    from wuwei import registry
+    service = registry.watch_service()
+
+    def call(argv):
+        try:
+            service.call(argv)
+        except (OSError, ValueError) as exc:
+            print(f'wuwei init: {name} service: warning: {exc}; run bin/wuwei doctor', file=sys.stderr)
+    if sys.platform == 'darwin':
+        call(['launchctl', 'bootout', f'gui/{os.getuid()}', str(path)])
+    else:
+        call(['systemctl', '--user', 'disable', '--now', path.name])
+    path.unlink(missing_ok=True)
+    if sys.platform == 'linux':
+        call(['systemctl', '--user', 'daemon-reload'])
+
+
 def _guide(root, **kwargs):
-    """guide.export, but a block that cannot be written warns and never stops init (#476)."""
-    from wuwei import guide
+    """Remove the old guide block; a file that cannot be written warns and never stops init (#476)."""
+    from wuwei import memory
     try:
-        return guide.export(root, **kwargs)
+        return memory.write_block(root, *GUIDE, '', 'bin/wuwei init --upgrade', **kwargs)
     except (OSError, ValueError) as exc:
         print(f'wuwei init: warning: guide block not written: {exc}; '
               'run bin/wuwei doctor for the fix', file=sys.stderr)
@@ -135,50 +189,8 @@ def settings(root, name='settings.json'):
     return path, data
 
 
-# #530: the reads and local commits the planner and seats run directly; never a push, merge,
-# release, deploy or gh api (design 9.2 I18). Adapters inside the CLI need only the executable's rule.
-# Prefix rules rely on the PreToolUse guards for program-running options (git diff --output, --upload-pack).
-ALLOW = {('vcs', 'git'): ('git status*', 'git diff*', 'git log*', 'git show*', 'git rev-parse*', 'git fetch',
-                          'git add *', 'git commit *', 'git worktree list*'),
-         ('code_host', 'github'): ('gh pr view*', 'gh pr list*', 'gh pr checks*', 'gh pr diff*', 'gh pr status*',
-                                   'gh issue view*', 'gh issue list*', 'gh run view*', 'gh run list*')}
-
-
-def allow_rules(config, executable):
-    """The Claude Code permissions.allow rules WUWEI's own commands and the configured adapters need."""
-    return [f'Bash({executable} *)', *(f'Bash({pattern})' for (key, value), patterns in ALLOW.items()
-                                       if config['adapters'][key] == value for pattern in patterns)]
-
-
-def allow(root):
-    """Add the missing allow rules to .claude/settings.local.json, keeping every other key and rule;
-    returns the rules added. Called only after the owner's answer (#530)."""
-    pointer = Path(root) / '.wuwei/executable'
-    if pointer.is_symlink():
-        raise ValueError(f'.wuwei/executable must not be a symlink; {SYMLINK}')
-    rules = allow_rules(workspace.load_config(root), pointer.read_text(encoding='utf-8').strip())
-    path, data = settings(root, 'settings.local.json')
-    allowed = data.setdefault('permissions', {}).setdefault('allow', [])
-    if not isinstance(allowed, list) or not all(isinstance(rule, str) for rule in allowed):
-        raise ValueError(f'workspace permissions.allow must be a list of strings; {DAMAGED}')
-    added = [rule for rule in rules if rule not in allowed]
-    if added:
-        allowed += added
-        path.parent.mkdir(exist_ok=True)
-        workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
-    return added
-
-
 def _status_command(executable):
     return {"type": "command", "command": shlex.quote(str(executable)) + " status --line"}
-
-
-def status_line(root):
-    """Write the statusLine key into the project's .claude/settings.json, keeping every other key."""
-    path, data = settings(root)
-    data['statusLine'] = _status_command(Path(__file__).resolve().parents[3] / 'bin/wuwei')
-    path.parent.mkdir(exist_ok=True)
-    workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
 
 
 def _status_line(executable):
@@ -188,32 +200,63 @@ def _status_line(executable):
 
 
 def _finish(root):
-    code = _register_mcp(root)
     print(integrity.check(root).reason or 'plugin integrity: clean')
-    return code
+    return 0
 
 
-def _worktree_hooks(root):
-    """Rewrite every item worktree's git hooks; the scripts follow the repository's hooks (#472)."""
-    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
-    if not trees:
-        return
-    from wuwei import registry
-    from wuwei.commands.git_hook import install
-    vcs = registry.load('vcs', workspace.load_config(root))
-    for tree in trees:
+def _linked_worktrees(root, vcs, config):
+    """Every linked worktree of each configured repository, and any under worktrees/."""
+    from wuwei import brief
+    trees = {tree.resolve() for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file()}
+    for repo in config['repos']:
+        path = (root / Path(repo['path']).expanduser()).resolve()
         try:
-            install(tree, root, vcs)
+            rows = brief.read(vcs.worktrees, str(path), root=root)
+            if not isinstance(rows, list) or not all(isinstance(row, dict) and isinstance(row.get('path'), str)
+                                                     for row in rows):
+                raise ValueError(f'invalid worktree list; {DAMAGED}')
         except ValueError as exc:
-            print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
+            print(f"wuwei init warning: {repo['name']}: worktrees unread: {exc}", file=sys.stderr)
+            continue
+        trees |= {Path(row['path']).resolve() for row in rows if (Path(row['path']) / '.git').is_file()}
+    return sorted(trees)
 
 
-def _register_mcp(root):
-    from wuwei import mcp
-    result = mcp.check(root)
-    if result.reason:
-        print(result.reason, file=sys.stderr)
-    return result.exit
+def _unhook(root, dry_run, config):
+    """#847: unset the core.hooksPath WUWEI set in every linked worktree of each configured
+    repository (an owner's own value stays), rewrite its anchor and remove the managed hooks
+    once no worktree may still point at them; the repository's hooks run natively. True when
+    it changed (or, dry, would change) something."""
+    from wuwei import registry
+    vcs = registry.load('vcs', config)
+    root = root.resolve()
+    changed, stuck = False, []
+    for tree in _linked_worktrees(root, vcs, config):
+        name = tree.relative_to(root).as_posix() if tree.is_relative_to(root) else str(tree)
+        try:
+            found = registry.data(vcs.unhook(str(tree), not dry_run, root=root))
+            if found['unset']:
+                changed = True
+                print(f"{'Would upgrade' if dry_run else 'Upgraded'} worktree {name}: unset core.hooksPath")
+            anchor = Path(found['git_dir']) / 'wuwei-workspace'
+            if not dry_run and (anchor.is_file() or tree.parent == root / 'worktrees'):
+                workspace.atomic_write(anchor, str(root) + '\n')
+        except ValueError as exc:
+            stuck.append(name)
+            print(f'wuwei init warning: {name}: {exc}', file=sys.stderr)
+    shims = root / '.wuwei/git-hooks'
+    if shims.is_dir() and not shims.is_symlink():
+        if stuck:
+            for name in stuck:
+                print(f'left .wuwei/git-hooks: worktree {name} may still point at it')
+            return changed
+        changed = True
+        if dry_run:
+            print('Would upgrade .wuwei/git-hooks: remove (no longer installed)')
+        else:
+            shutil.rmtree(shims)
+            print('Upgraded .wuwei/git-hooks: remove (no longer installed)')
+    return changed
 
 
 def _sections(raw):
@@ -259,31 +302,112 @@ def _without_empty_repos(raw):
     return ''.join(''.join(lines) for _, lines in sections)
 
 
-def _retired_mode(raw):
-    """guards.mode = "shadow" becomes security.posture = "observe"; "enforce" is dropped (#355)."""
-    present = tomllib.loads(raw)
-    mode = present.get('guards', {}).get('mode')
-    if mode is None:
+def _today_tier(raw, before):
+    """#816: merge.default_tier = "today" merged on each repository; merge.auto = true keeps
+    that for a repository that does not set merge.auto itself; "today" never applied under strict."""
+    if (before.get('merge', {}).get('default_tier') != 'today'
+            or before.get('security', {}).get('posture') == 'strict'):
         return raw, []
-    sections = _sections(raw)
-    for label, lines in sections:
-        if label == 'guards':
-            lines[:] = [line for line in lines if not re.match(r'\s*mode\s*=', line)]
-        elif label == 'security' and mode == 'shadow':
-            for index, line in enumerate(lines):
-                if re.match(r'\s*posture\s*=', line):
-                    lines[index] = re.sub(r'=\s*("[^"\n]*"|\'[^\'\n]*\')', '= "observe"', line, count=1)
-                    break
-    result = ''.join(''.join(lines) for _, lines in sections)
+    from wuwei.commands.config import write_value
+    lines = []
+    for index, repo in enumerate(tomllib.loads(raw).get('repos', [])):
+        if 'auto' not in repo.get('merge', {}):
+            raw = write_value(raw, f'repos.{index}.merge.auto', True)
+            lines.append(f'repos.{index}.merge.auto = true (was merge.default_tier = "today")')
+    return raw, lines
+
+
+def _enforce(raw, before):
+    """#837: security.posture = "observe" or guards.mode = "shadow" in the file as loaded
+    (before) becomes guards.enforce = false; an explicit guards.enforce stays the owner's."""
+    guards = before.get('guards', {})
+    if before.get('security', {}).get('posture') == 'observe':
+        was = 'security.posture = "observe"'
+    elif guards.get('mode') == 'shadow':
+        was = 'guards.mode = "shadow"'
+    else:
+        return raw, []
+    if 'enforce' in guards:
+        return raw, []
+    from wuwei.commands.config import write_value
+    return write_value(raw, 'guards.enforce', False), [f'guards.enforce = false (was {was})']
+
+
+def _unread_keys(raw, warnings):
+    """Remove the keys load_config reported as unknown (#799). A likely typo (a "did you
+    mean" match) not in workspace.RETIRED is kept for the owner to fix; returns (text,
+    removed, kept)."""
+    present = tomllib.loads(raw)
+    paths, removed, kept = [], [], []
+    for warning in warnings:
+        match = re.match(r'config\.toml: unknown key (.+?)(?: at line \d+)?; (?:did you mean (.+)\?)?', warning)
+        name = re.sub(r'\.\d+(?=\.|$)', '', match.group(1)) if match else ''  # repos.0.tests is repos.tests
+        retired = match and any(name == key or name.startswith(key + '.') for key in workspace.RETIRED)
+        if match and match.group(2) and not retired:
+            kept.append((match.group(1), match.group(2)))
+        elif match:
+            removed.append(match.group(1))
+    if not removed:
+        return raw, [], kept
+    refusal = ValueError(f'cannot safely remove {", ".join(removed)} in this TOML layout; delete them '
+                         'from config.toml by hand, then run bin/wuwei init --upgrade again')
     expected = copy.deepcopy(present)
-    expected['guards'].pop('mode')
-    if mode == 'shadow':
-        expected.setdefault('security', {})['posture'] = 'observe'
-    if tomllib.loads(result) != expected:
-        raise ValueError('cannot safely retire guards.mode in this TOML layout; '
-                         'set security.posture = "observe" and delete guards.mode')
-    return result, ['guards.mode = "shadow" becomes security.posture = "observe"' if mode == 'shadow'
-                    else f'remove guards.mode = "{mode}" (the default)']
+    for key in removed:
+        path, node = [], expected
+        try:
+            for part in key.split('.'):
+                path.append(int(part) if isinstance(node, list) else part)
+                parent, node = node, node[path[-1]]
+            parent.pop(path[-1])
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise refusal from None
+        paths.append(tuple(path))
+
+    def unread(path):
+        return any(path[:len(gone)] == gone for gone in paths)
+
+    counts, result = {}, []
+    for label, lines in _sections(raw):
+        if label.startswith('[['):
+            name = label[2:-2]
+            counts[name] = counts.get(name, -1) + 1
+            section = (*name.split('.'), counts[name])
+        else:
+            section = tuple(label.split('.')) if label else ()
+            name = next((name for name in counts if label.startswith(name + '.')), None)
+            if name:  # [repos.merge] after [[repos]] belongs to the latest entry
+                section = (*name.split('.'), counts[name], *label[len(name) + 1:].split('.'))
+        if section and unread(section):
+            tail = len(lines)  # comments and blank lines at the end belong to the next header
+            while tail > 1 and re.fullmatch(r'\s*(#.*)?\n?', lines[tail - 1]):
+                tail -= 1
+            result.extend(lines[tail:])
+            continue
+        index = 0
+        while index < len(lines):
+            match = re.match(r'^\s*([A-Za-z0-9_."\' -]+?)\s*=', lines[index])
+            if not match or index == 0 and section:
+                result.append(lines[index])
+                index += 1
+                continue
+            end = index + 1
+            while end < len(lines):
+                try:
+                    tomllib.loads(''.join(lines[index:end]))
+                    break
+                except tomllib.TOMLDecodeError:
+                    end += 1
+            key = tuple(part.strip().strip('"\'') for part in match.group(1).split('.'))
+            if not unread((*section, *key)):
+                result.extend(lines[index:end])
+            index = end
+    text = ''.join(result)
+    try:
+        if tomllib.loads(text) != expected:
+            raise refusal
+    except tomllib.TOMLDecodeError:
+        raise refusal from None
+    return text, removed, kept
 
 
 def _migrated_config(raw, template):
@@ -359,22 +483,19 @@ def upgrade(args):
         config = workspace.load_config(destination.parent, raw=text, warnings=found)
         for warning in found:
             print(f'wuwei init: warning: {warning}; run bin/wuwei doctor for the fix', file=sys.stderr)
+        from wuwei import integrity  # #799: an older plugin never removes a newer plugin's keys
+        pruned, removed, kept = (text, [], []) if integrity.newer_template(config) else _unread_keys(text, found)
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
-        migrated, added = _migrated_config(text, template)
-        migrated, retired = _retired_mode(migrated)
+        migrated, added = _migrated_config(pruned, template)
+        migrated, retired = _enforce(migrated, tomllib.loads(text))
+        migrated, today = _today_tier(migrated, tomllib.loads(text))
+        retired += today
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
-        from wuwei import graph  # #552: the register the modeled sections are views of
-        annotated = graph.annotate(migrated)
-        named, migrated = annotated.count(graph.COMMENT) - migrated.count(graph.COMMENT), annotated
-        try:
-            previous = graph.load(destination.parent)
-            register = graph.build(workspace.load_config(destination.parent, raw=migrated), previous)
-        except ValueError as exc:  # A13: the register decides nothing, so it never stops the upgrade.
-            graph.warn('init', exc)
-            previous = register = None
-        graph_changed = register != previous
+        uncommented = ''.join(line for line in migrated.splitlines(keepends=True)
+                              if line.rstrip('\r\n') != GRAPH_COMMENT)  # #838: the register is gone
+        graph_comments, migrated = uncommented != migrated, uncommented
         executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -390,8 +511,9 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
-        from wuwei import novelty
-        seeded = novelty.seed(destination.parent, write=not args.dry_run)  # #556
+        stale, left = _retired(destination, ['generated/' + name for name in _stale_generated(plugin, destination)])
+        for name in [] if args.dry_run else stale:
+            _remove(destination, name)
         from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
         tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
                                   write=not args.dry_run)
@@ -400,8 +522,6 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
-            if graph_changed:
-                graph.save(destination.parent, register)
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             try:  # #735: the checkouts find the workspace from anywhere
@@ -412,65 +532,66 @@ def upgrade(args):
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
             if guide_changed:
                 guide_path, guide_changed = _guide(destination.parent, raw=text)
+            from wuwei import memory  # #848: the index the deleted index command wrote
+            try:
+                memory.write_index(destination.parent)
+            except (OSError, ValueError) as exc:
+                print(f'wuwei init: warning: memory index not written: {exc}; run bin/wuwei doctor for the fix', file=sys.stderr)
         if security_data is None:
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
             print(f'{prefix} private .wuwei/env and Git ignore rule')
         if text != raw:
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
+        for key in removed:
+            print(f'{prefix} config.toml: remove {key} (no longer read)')
+        for key, near in kept:
+            print(f'config.toml: kept {key}, maybe a typo of {near}; fix it by hand')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
         for line in retired:
             print(f'{prefix} config.toml: {line}')
         if stamp_changed:
             print(f'{prefix} config.toml: template_version {integrity.version()}')
-        if named:
-            print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
-        if graph_changed:
-            print(f"{prefix} .wuwei/{graph.NAME}: {len(register['nodes'])} nodes and "
-                  f"{len(register['edges'])} edges from config.toml")
+        if graph_comments:
+            print(f'{prefix} config.toml: remove the graph comments')
         if pointer_changed:
             print(f'{prefix} executable pointer')
-        if seeded:
-            print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
+        for name in stale:
+            print(f'{prefix} .wuwei/{name}: remove (no longer read)')
+        for name, reason in left:
+            print(f'left .wuwei/{name}: {reason}')
         if guide_changed:
-            print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+            print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
+        units = [name for name in RETIRED_UNITS if sys.platform in ('darwin', 'linux')
+                 and workspace.watch_unit(destination.parent, name=name)[1].exists()]
+        for name in units:
+            if args.dry_run:
+                print(f'Would remove the {name} service (no longer shipped)')
+            else:
+                _remove_unit(workspace.watch_unit(destination.parent, name=name)[1], name)
+                print(f'Removed the {name} service (no longer shipped)')
+        unhooked = _unhook(destination.parent, args.dry_run,
+                           workspace.load_config(destination.parent, raw=migrated))
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,
             tracker.creates_labels(workspace.load_config(destination.parent)) or sys.stdin.isatty())
         for line in labelled:
             print(line)
-        from wuwei import undo
-        unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
-        if unrehearsed:
-            print(f'Undo not rehearsed: {", ".join(unrehearsed)}; run wuwei undo rehearse <kind> '
-                  '(a merge counts after its first wuwei undo)')
-        from wuwei import interview  # #530: a read, so it prints under --dry-run too and counts no change
-        try:
-            loaded = workspace.load_config(destination.parent, raw=migrated)
-            count = len(interview.unanswered(destination.parent, [repo['name'] for repo in loaded['repos']]))
-            if count:
-                print(f'setup: {count} questions unanswered: {interview.HOW}')
-            if 'mode' not in tomllib.loads(migrated).get('nudges', {}):  # #742: the default, not written
-                print(f'nudges.mode unset, so nudges follow autonomy.mode: {workspace.nudge_mode(loaded)}; '
-                      'set nudges.mode = "next" or "all" in config.toml to see more')
-        except (OSError, ValueError) as exc:
-            print(f'setup: unanswered questions unmeasured: {exc}')
         for name, local_version, base_version in conflicts:
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and not named and not graph_changed and text == raw
-                and not tickets and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
+        if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
+                and not guide_changed and not stale and not graph_comments and text == raw
+                and not tickets and not units and not unhooked and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
-        _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
         if integrity.other_versions():  # #353: another version's hooks still run
             print(integrity.RESTART)

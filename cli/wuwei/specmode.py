@@ -12,8 +12,6 @@ INSTALL = {
 }
 # The directory that shows an engine is set up in a repository; superpowers is a plugin.
 MARKER = {'speckit': '.specify', 'openspec': 'openspec'}
-# The engine's own directories: edits there are the spec work itself.
-OWN = {'speckit': ('specs', '.specify'), 'superpowers': ('docs/superpowers',), 'openspec': ('openspec',)}
 # Where the item's artifacts live, relative to the worktree; {item} is the id lowercased.
 LOCATION = {'speckit': ('specs/{item}', 'specs/*-{item}'),
             'openspec': ('openspec/changes/{item}', 'openspec/changes/archive/*-{item}'),
@@ -26,7 +24,7 @@ STEPS = {
                 ('plan', 'plan.md', 'one', '/speckit.plan'),
                 ('tasks', 'tasks.md', 'one', '/speckit.tasks'),
                 ('analyze', 'analysis.md', 'clean', '/speckit.analyze, then save its report with '
-                 'bin/wuwei spec analysis {item} < report (a subagent cannot write analysis.md)'),
+                 'bin/wuwei build analysis {item} < report (a subagent cannot write analysis.md)'),
                 ('checklist', 'checklists/*.md', 'checked', '/speckit.checklist'),
                 ('implement', 'tasks.md', 'checked', '/speckit.implement')),
     'superpowers': (('brainstorming', f'docs/superpowers/specs/{DATE}-{{item}}-design.md', 'one',
@@ -45,7 +43,7 @@ STEPS = {
                  ('apply', 'tasks.md', 'checked', '/openspec:apply'),
                  ('archive', None, 'archived', 'openspec archive {item} --yes')),
 }
-# The first implementation row of each engine; the rows before it gate source edits.
+# The first implementation row of each engine; the spec steps come before it.
 IMPLEMENT = ('implement', 'executing-plans', 'apply')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # #664: the item's governing document: governed_by on the plan item, else this line in spec.md.
@@ -182,18 +180,13 @@ def done(tree, engine, item):
     return result
 
 
-def own(engine, tree, path):
-    """True when path lies in one of the engine's own directories in the worktree."""
-    return any(Path(path).is_relative_to(Path(tree) / name) for name in OWN[engine])
-
-
 def mode(config):
-    """The effective mode: off, advisory or strict; strict runs as advisory under observe."""
+    """The effective mode: off, advisory or strict; strict runs as advisory while
+    guards.enforce = false."""
     spec = config['spec']
     if spec['engine'] == 'none' or spec['mode'] == 'off':
         return 'off'
-    from wuwei import workspace
-    if spec['mode'] == 'advisory' or workspace.posture(config)[0] == 'observe':
+    if spec['mode'] == 'advisory' or not config['guards']['enforce']:
         return 'advisory'
     return 'strict'
 
@@ -342,9 +335,13 @@ def governing(tree, row, location=None):
     return reference, first, last, ''.join(lines[first - 1:last])
 
 
+def _sections(text, names):
+    found = dict(re.findall(r'^## ([^\n]+)\n(.*?)(?=^## |\Z)', text, re.M | re.S))
+    return '\n'.join(f'## {name}\n{found[name].strip()}\n' for name in names if name in found)
+
+
 def governed(report, spec_text):
     """None when the report has a ## Governing table with a row per spec.md assumption, else the gap."""
-    from wuwei.docs import _sections
     table = _sections(report, ('Governing',))
     if not table:
         return 'the report has no ## Governing table'
@@ -368,7 +365,7 @@ def brief_block(config, item, row, tree):
     return (f'\n## Governing document\n\n{reference} (lines {first}-{last}) governs this item. Give the text '
             'below to /speckit.analyze with the spec, and end the report with a ## Governing table: '
             '| Assumption | Verdict | Line |, one row per assumption in spec.md, the verdict agrees, '
-            'conflicts or not covered, the line cited as <path>:<n>. bin/wuwei spec analysis refuses a '
+            'conflicts or not covered, the line cited as <path>:<n>. bin/wuwei build analysis refuses a '
             f'report without it.\n\n{text}')
 
 
@@ -398,9 +395,3 @@ def brief_line(config, item, row, tree, gate):
               f'--short-name {item.lower()}' if engine == 'speckit' else '')
     return (f'Spec: {engine} {effective}; artifacts in {where}{create}; steps in order: {steps}; '
             'name the artifacts in your final message.')
-
-
-def detect(paths, config):
-    """The engine setup proposes: spec-kit, then OpenSpec, then superpowers where found; else spec-kit."""
-    return next((engine for engine in ('speckit', 'openspec', 'superpowers')
-                 if any(present(path, engine, config) for path in paths)), 'speckit')

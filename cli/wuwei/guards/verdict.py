@@ -67,9 +67,21 @@ def check_write(payload):
             command = required_text(tool_input, 'command', blank=True)
             if 'gate-' not in command.lower():
                 return CLEAN, ''
-            from wuwei.shell import classify
-            if classify(command, cwd=cwd).readonly:
-                return CLEAN, ''  # #616: a call that only reads (cat, grep, shasum) writes no gate
+            from wuwei import shell
+            try:
+                commands = shell.normalize(command)
+            except shell.ParseError:
+                commands = []
+            # #616: a call that only reads (cat, grep, shasum) writes no gate.
+            if commands and all(not c.writes and shell.reads(c.argv) and not shell.inline_code(c.argv)
+                                for c in commands):
+                return CLEAN, ''
+            # #800: the plugin's own CLI and plain readers, with no redirect, write no gate file.
+            cli = [bool(c.argv) and shell.known_cli(c.argv[0], cwd) for c in commands]
+            if any(cli) and all(not c.writes and (own or not c.argv or shell.reads(c.argv)
+                                                  and not shell.inline_code(c.argv))
+                                for c, own in zip(commands, cli)):
+                return CLEAN, ''
             path = '<opaque gate file>'
             # Refuse literal interpreter snippets without parsing shell paths.
             for program, flags in INTERPRETERS:

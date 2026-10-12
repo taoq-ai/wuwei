@@ -35,41 +35,40 @@ MERGE_SCHEMA = {
 }
 
 LEVELS = ("brief", "standard", "full")
-SURFACES = ("decisions", "digest", "nudges", "dm", "report")
-# #331: what warns and what blocks, per area, by where the plugin runs.
-AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
-AREA_LEVELS = ('off', 'warn', 'block')
-POSTURES = {
-    'observe': {**{area: 'warn' for area in AREAS}, 'records': 'block'},
-    'guarded': {'integrity': 'block', 'mcp': 'warn', 'publish': 'block', 'records': 'block',
-                'outward': 'warn', 'seats': 'warn'},
-    'strict': {area: 'block' for area in AREAS},
-}
-# Floors no posture or override lowers; a lower override is a config finding.
-FLOORS = {'records': 'block'}
-
+SURFACES = ("report",)
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
-AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
-TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
+# #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
+# A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
+RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
+           'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
+           'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
+           'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest',
+           'autonomy', 'decisions', 'steward', 'owner.verbosity.digest',
+           'security.posture', 'security.areas', 'guards.mode', 'guards.shadow_days', 'guards.shadow_since',
+           'outbound.tiers', 'outbound.default_tier', 'outbound.learn', 'outbound.people',
+           'outbound.channel_classes', 'outbound.work_channels', 'outbound.external_channels',
+           'outbound.company_domains', 'outbound.sensitive_keywords', 'outbound.sensitive_patterns',
+           'outbound.commitment_patterns', 'outbound.disagreement_patterns',
+           'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
+           'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
+           'scanner.mcp.block', 'docs', 'adapters.docs',
+           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
+           'watch', 'sessions', 'worktree',  # #847
+           'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo',  # #848
+           'adapters.calendar', 'adapters.tts', 'calendar')  # #848 review: nothing reads them
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
-                "mcp": {"project_file": (str, ".mcp.json"),
-                        "plugins_file": (str, "~/.claude/plugins/installed_plugins.json"),
-                        "user_file": (str, "~/.claude.json"),
-                        "timeout_seconds": (int, 60, 1),
-                        "block": [(str, None, ("critical", "high", "medium", "low", "unmeasured")), []]}},
-    "security": {"required": (bool, False), "posture": (str, "guarded", tuple(POSTURES)),
-                 "areas": {area: (str, "", ("", *AREA_LEVELS)) for area in AREAS}},
+                "mcp": {"plugins_file": (str, "~/.claude/plugins/installed_plugins.json")}},
+    "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
               "timezone": (str, ""),
               "verbosity": {"default": (str, "brief", LEVELS),
                             **{name: (str, "", ("", *LEVELS)) for name in SURFACES}}},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
-               "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
                "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
@@ -82,61 +81,30 @@ SCHEMA = {
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
-    "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
-    # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
-    # #530: "today" (the owner's autonomous answer) lets a merge on a configured repository through below strict.
-    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today")),
-              "owner_paths": [(str, None)]},  # #675: globs only the owner merges, whatever the grant
-    # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
-    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
-                             "target": (str, None), "scope": (str, "always", ("always",)),
-                             "decision": (str, None), "date": (str, None)}]},
+    "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
-    "pace": {"default": (str, "steady", ("careful", "steady", "fast"))},  # #579
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
-    "discovery": {"min_queue": (int, 2, 1),
-                  "autostart": (str, "strict", ("off", "strict", "goal"))},
     "tracker": {"backlog_filter": (str, ""),
                 "states": {"in_review": (str, "In Review"), "done": (str, "Done")},
-                "required": (bool, True),
-                "skip_tiers": [(str, None, ("light", "standard", "full")), []],
-                "strict_close": (bool, True),
                 "create": [(str, None, ("bugs", "triage", "follow-ups")),
                            ["bugs", "triage", "follow-ups"]],
                 "log": [(str, None, TRACKER_KINDS), list(TRACKER_KINDS)],
-                "auto": [(str, None, (*TRACKER_CLASSES, *TRACKER_KINDS)), ["progress", "pr", "close"]],
                 "max_per_item_per_day": (int, 10, 1),
                 "project": (str, ""), "board": (str, ""),
                 "auth": (str, "token", ("token", "gh"))},
-    "docs": {"system": (str, "none"),
-             "required_tiers": [(str, None, ("light", "standard", "full")), ["standard", "full"]],
-             "space": (str, ""), "root": (str, "docs"),
-             "publish": [(str, None, ("report", "retro")), ["report", "retro"]],
-             "auto": [(str, None, ("page", "report", "retro")), []],
-             "strict_close": (bool, True)},
-    "calendar": {"url": (str, "")},
-    "brief": {"lead_minutes": (int, 30, 1),
-              "style": {"length": (str, "standard", ("concise", "standard")),
-                        "speed": (int, 180, 120, 240)},
-              "remote": (str, "origin"),
+    "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
              "reservation_timeout_seconds": (int, 14400, 1),
              "rate_limit_wait_seconds": (int, 120, 0)},
-    "consolidation": {"archive_after_days": (int, 30, 0),
-                      "similarity_threshold": (float, 0.85)},
-    "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
-               "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1),
-               "digest": (str, "week", ("week", "off")), "budget_tokens": (int, 6000, 1),
-               "export_to": (str, "CLAUDE.md")},
+    "memory": {"budget_tokens": (int, 6000, 1), "export_to": (str, "CLAUDE.md")},
     "metrics": {"transcripts": (str, "~/.claude/projects"), "band_margin": (float, 0.2)},
-    "voice": {"sources": {"*": [(str, None)]}, "review_prs": [(str, None)]},
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
@@ -146,95 +114,44 @@ SCHEMA = {
               "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
                                   "full": (int, 0, 0)},
               "polish": (str, "offer", ("never", "offer", "always"))},  # #723: one notes-only round after a pass
-    "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
-              "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
-              "ping_url": (str, "")},
-    "sessions": {"stale_seconds": (int, 3600, 1),
-                 "rotate_after": {"turns": (int, 0, 0), "compactions": (int, 0, 0),
-                                  "clock": (str, "")}},
-    "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
-    "responder": {"enabled": (bool, True)},
-    "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
-                "loop_threshold": (int, 9, 1)},
-    "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
-    "nudges": {"mode": (str, "", ("", "off", "next", "all")),  # #742: "" follows autonomy.mode
-               "ttl_hours": (int, 24, 1), "max_open": (int, 20, 1)},  # #786
-    "decisions": {"wait_hours": (int, 24, 1),
-                  "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
-                             "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
-                             "promote_agreements": (int, 10, 1), "promote_days": (int, 14, 1),
-                             "shadow_days": (int, 5, 1), "shadow_min": (int, 5, 1),
-                             "budget_share": (float, 0.1), "budget_window_days": (int, 14, 1),
-                             "burn_warn": (float, 2.0),
-                             "calibration_threshold": (float, 0.15), "calibration_min": (int, 10, 1),
-                             "levels": {"*": (int, None, 0, 3)}},
-                  "lenses": {"*": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
+    # #844: the outward duties next lists until recorded
+    # G7: a duty is due while its channel is configured; on only turns one off
+    "duties": {"on": [(str, None, ("ping", "shepherd", "tracker", "summary")),
+                      ["ping", "shepherd", "tracker", "summary"]]},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
                  "reviewers": [(str, None)], "reviewers_exclude": [(str, None)],
                  "review_gate_check": (str, "Review Gate"),
                  "min_reviewers": (int, 1, 0),
                  "author_windows_days": [(int, None, 1), [90, 180]],
-                 "tie_commits": (int, 2, 0), "autostart": (bool, True),
+                 "tie_commits": (int, 2, 0),
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
                  "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
-    "retro": {"repo": (str, "."),
-              "charter_paths": [(str, None), [".wuwei/charters"]],
+    "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
-    "guards": {"mode": (str, "enforce", ("enforce", "shadow")), "shadow_days": (int, 7, 1),
-               "shadow_since": (str, "")},
+    "guards": {"enforce": (bool, True)},  # #837: false logs what a guard would refuse
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
     "outbound": {
-        "work_channels": [(str, None)], "external_channels": [(str, None)],
-        "company_domains": [(str, None)], "code_host_orgs": [(str, None)],
-        "people": {"*": {"email": (str, ""), "org": (str, ""), "class": (str, "", ("", *AUDIENCES))}},
-        # #496: any class for a channel id, over work_channels (team) and external_channels (client).
-        "channel_classes": {"*": (str, None, AUDIENCES)},
-        # #496: the owner's tier rows, before the defaults; the first match wins.
-        "tiers": [{"tool": (str, ""), "person": (str, ""), "channel": (str, ""),
-                   "audience": (str, "", ("", *AUDIENCES)), "topic": (str, "", ("", *TOPICS)),
-                   "tier": (str, None, ("send", "ask", "block"))}, []],
+        "code_host_orgs": [(str, None)],  # part 20 decides it with tracker label creation
+        # #838: the owner's identity per surface; a write whose every destination is the owner's is local.
         "owner": {"slack": {"user": (str, ""), "dm": (str, "")}, "mail": (str, ""),
-                  "code_host": (str, "")},
+                  "code_host": (str, ""), "pages": [(str, None), []]},
         "owner_channel": (str, "session", ("session", "dm")),
-        "sensitive_keywords": [(str, None), [
-            "performance", "feedback", "compensation", "salary", "pay", "bonus",
-            "hiring", "interview", "firing", "personal", "health", "medical",
-            "conflict", "legal", "hr", "harassment", "promotion", "illness",
-        ]],
-        "sensitive_patterns": [(str, None), [r"\bmental\s+health\b"]],
-        "commitment_patterns": [(str, None), [
-            r"\b(?:i|we)\s*(?:['\u2019]ll|will|shall|can|promise|commit)\b",
-            r"\b(?:by|before|after)\s+(?:\w+day|tomorrow|noon|\d)",
-            r"\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\b",
-        ]],
-        "disagreement_patterns": [(str, None), [
-            r"\bdisagree\b", r"\b(?:you|that)\s*(?:are|['\u2019]re|is)\s+wrong\b",
-            r"\b(?:i|we)\s+(?:object|oppose)\b",
-        ]],
-        # #492: card asks the owner, auto writes under observe and guarded, off never learns.
-        "learn": (str, "card", ("card", "auto", "off")),
-        # #527: the umbrella. What no narrower row holds gets this tier (chat, code host, mail,
-        # other); docs and tracker writes keep docs.auto and tracker.auto. With send, the broad
-        # default rows (commitment, disagreement, company) drop out and the owner's rows narrow.
-        "default_tier": (str, "send", ("send", "ask", "block")),
     },
     "outward": {
-        # #533 (owner, 2026-10-05): no built-in internal-state words; real messages say "agents" and
-        # "phase". An owner who wants the old list adds it; the matched word is named in the reason.
-        "patterns": [(str, ""), []],
+        # #838: exact MCP tool names that may send to other people; an unlisted write is refused.
+        "allow": [(str, None), []],
         "banned_characters": [(str, ""), ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"]],
         "max_length": {"*": (int, 1, 1)},
         "humanize": (bool, True),
         "humanize_kinds": [(str, None, ("dm", "tracker", "docs", "pr", "review")),
                            ["dm", "tracker", "docs", "pr", "review"]],
         "humanize_strict": (bool, False),
-        "draft_ttl": (int, 3600, 60),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
             # #492: the brand anywhere in the name, so mcp__<uuid>__slack_send_message matches.
             {"pattern": r"mcp__(?=.*slack).*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
@@ -245,17 +162,12 @@ SCHEMA = {
         ]],
         # #492: the owner's alias of an MCP server id to its channel.
         "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other", "local"))},
-        # #492: the owner's approval mode of an MCP server id; absent is the class default.
-        "modes": {"*": (str, None, ("send", "draft", "refuse"))},
-        # #496: a connector's default audience class for what it has not seen, by server id.
-        "classes": {"*": (str, None, AUDIENCES)},
     },
     "telemetry": {"enabled": (bool, True),
                   "share": (str, "", ("", "off", "anonymous", "attributed")),
                   "endpoint": (str, ""), "repository": (str, "taoq-ai/wuwei"),
                   "otlp": {"endpoint": (str, ""), "headers_env": (str, "")}},
     "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
-    "control_plane": {"content": (str, "summary", ("summary", "none")), "owner": (str, "")},
     "spec": {"engine": (str, "speckit", ("speckit", "superpowers", "openspec", "none")),
              "mode": (str, "strict", ("strict", "advisory", "off")),
              "skip_tiers": [(str, None, ("light", "standard", "full")), ["light"]]},
@@ -263,9 +175,7 @@ SCHEMA = {
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
-                 "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
-                 "calendar": (str, "none"), "transcripts": (str, "none"),
-                 "inbound": (str, "none"), "redactor": (str, "builtin")},
+                 "checks": (str, "local"), "transcripts": (str, "none")},
 }
 
 
@@ -388,7 +298,7 @@ def owner_cli(root):
 
 
 def worktree_workspace(path):
-    """Read the local anchor installed by wuwei git-hook in managed worktrees."""
+    """Read the anchor worktree creation writes."""
     for parent in (path, *path.parents):
         # Explicit --git-dir targets may already name the anchored metadata directory.
         gitdir = parent if (parent / 'wuwei-workspace').is_file() else parent / '.git'
@@ -480,18 +390,13 @@ def zone(config):
     try:
         return ZoneInfo(name)
     except (KeyError, ValueError):
-        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone in a host terminal') from None
+        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone') from None
 
 
 def verbosity(config, surface):
     """The owner's level for one surface: its own setting, else owner.verbosity.default."""
     levels = config['owner']['verbosity']
     return levels[surface] or levels['default']
-
-
-def nudge_mode(config):
-    """The effective nudges.mode (#742): an empty setting follows autonomy.mode."""
-    return config['nudges']['mode'] or ('off' if config['autonomy']['mode'] == 'autonomous' else 'next')
 
 
 def now():
@@ -509,15 +414,10 @@ def now():
         raise ValueError("WUWEI_NOW must be an ISO datetime with a time component; set it like 2026-10-03T09:00:00Z, or unset it") from exc
 
 
-# ponytail: process-wide day pin for the headless sweep, which is its own process; pass the
-# directory through if a long-lived caller ever needs two days. Never read from the environment.
-_DAY = None
-
-
 def day_dir(root=None):
-    """Return today's day directory (or the pinned day) without creating it."""
+    """Return today's day directory without creating it."""
     root = find_workspace() if root is None else Path(root)
-    return root / ".wuwei/days" / (_DAY or now().date().isoformat())
+    return root / ".wuwei/days" / now().date().isoformat()
 
 
 def _unit_directory(platform):
@@ -528,24 +428,11 @@ def _unit_directory(platform):
 
 
 def watch_unit(root, platform=sys.platform, name="watch"):
-    """Service label and the unit file `<name> install` writes for this workspace."""
+    """Service label and unit file of a retired user service (watch, shepherd, listen) of this workspace; init --upgrade removes them."""
     import hashlib
     label = "wuwei-" + ("" if name == "watch" else f"{name}-") + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
     suffix = ".plist" if platform == "darwin" else ".service"
     return label, _unit_directory(platform) / f"{label}{suffix}"
-
-
-def unit_installed(root, name="watch"):
-    """watch_unit(root, name=name)[1].exists(); with no WUWEI unit installed at all (the
-    common case) it lists the directory instead of loading hashlib for the label."""
-    try:
-        if not any(entry.startswith("wuwei-") for entry in os.listdir(_unit_directory(sys.platform))):
-            return False
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    except OSError:
-        pass  # An unlistable directory: check the unit file itself, as before.
-    return watch_unit(root, name=name)[1].exists()
 
 
 def _key_line(raw, path):
@@ -594,11 +481,11 @@ def _validate(value, schema, path, raw, unknown=None):
         line = _key_line(raw, path) or _key_line(raw, path[:-1])
         location = f' at line {line}' if line is not None else ''
         key = _dotted(path)
-        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value> in a host terminal')
+        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value>')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value>")
     if isinstance(schema, dict):
         for name in value:
             if name not in schema and "*" not in schema:
@@ -632,7 +519,7 @@ def _validate(value, schema, path, raw, unknown=None):
         else:
             return value
         key = _dotted(path)
-        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value>")
     return value
 
 
@@ -686,11 +573,10 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 17  # Bump when the parse, the schema, the defaults or the checks change.
-# #624: steward.every_tool_calls default 250.
+CONFIG_CACHE_VERSION = 26  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
-# doctor, why and the board stay read-only.
+# doctor and why stay read-only.
 CONFIG_CACHE_WRITES = False
 
 
@@ -745,8 +631,8 @@ def _decode_error():
 
 def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
-    return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
-    texts are appended to warnings when it is a list. In a hook or status line process, a
+    return fresh defaults. Unknown keys never refuse (#799); their texts are appended
+    to warnings when it is a list. In a hook or status line process, a
     parse of the file after its parsed copy missed rewrites the copy (#346); a hit writes
     nothing."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
@@ -766,7 +652,6 @@ def load_config(root=None, *, raw=None, warnings=None):
             if warnings is not None:
                 warnings.extend(f'config.toml: {text}' for text in unknown)
             return marshal.loads(config)
-        from datetime import date
         import tomllib
         parsed = tomllib.loads(raw)
         unknown = []
@@ -776,55 +661,14 @@ def load_config(root=None, *, raw=None, warnings=None):
             if unknown:  # A typo usually explains the error after it, as before #353.
                 raise ConfigError(unknown[0]) from None
             raise
-        config['adapters']['docs'] = config['docs']['system']  # #419: the registry reads adapters.
         for pattern in config['deploy']['deny']:
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
                 raise ConfigError('deploy.deny: start each pattern with a literal executable name')
-        if bad := next((text for text in unknown if text.startswith('unknown key outbound.tiers.')), None):
-            raise ConfigError(bad)  # #496: a typo would widen the row to match everything.
-        for index, row in enumerate(config['outbound']['tiers']):
-            try:
-                re.compile(row['tool'])
-            except re.error:
-                raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
-                                  'with bin/wuwei config set in a host terminal') from None
-        since = config['guards']['shadow_since']
-        if since:
-            try:
-                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', since):
-                    raise ValueError
-                date.fromisoformat(since)
-            except ValueError:
-                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since in a host terminal') from None
-        for area, floor in FLOORS.items():
-            value = config['security']['areas'][area]
-            if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
-                raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
-                                  f'{area} always blocks, remove the override')
-        if not 0 < config['decisions']['cruise']['margin'] <= 1:
-            raise ConfigError('decisions.cruise.margin: expected a number above 0 and at most 1; the owner fixes it with bin/wuwei config set decisions.cruise.margin <value> in a host terminal')
-        if not 0 < config['decisions']['cruise']['budget_share'] <= 0.5:
-            raise ConfigError('decisions.cruise.budget_share: expected a number above 0 and at most 0.5; the owner fixes it with bin/wuwei config set decisions.cruise.budget_share <value> in a host terminal')
-        if not 0 < config['decisions']['cruise']['calibration_threshold'] < 1:
-            raise ConfigError('decisions.cruise.calibration_threshold: expected a number above 0 and below 1; the owner fixes it with bin/wuwei config set decisions.cruise.calibration_threshold <value> in a host terminal')
-        for name, value in config['decisions']['cruise']['levels'].items():
-            from wuwei.decision import CLASSES
-            if name not in CLASSES:
-                raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
-                                  + ', '.join(CLASSES))
-            if value > CLASSES[name][1]:
-                raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}; the owner lowers it with bin/wuwei config set in a host terminal')
-        for name in config['decisions']['lenses']:
-            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
-                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set in a host terminal')
-        for index, line in enumerate(config['grants']['standing']):
-            if not (re.fullmatch(r'repo:[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+', line['target'])
-                    and re.fullmatch(r'D-[1-9][0-9]*', line['decision'])
-                    and re.fullmatch(r'\d{4}-\d{2}-\d{2}', line['date'])):
-                raise ConfigError(f'grants.standing.{index}: expected target repo:<org>/<name>, decision '
-                                  f'D-n and date YYYY-MM-DD; the owner fixes it with bin/wuwei grants '
-                                  f'revoke {index + 1} in a host terminal')
+        for index, tool in enumerate(config['outward']['allow']):
+            if not re.fullmatch(r'mcp__[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+', tool):
+                raise ConfigError(f'outward.allow.{index}: not an MCP tool name; the owner fixes it '
+                                  'with bin/wuwei config set outward.allow')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
@@ -839,7 +683,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if repo['name'] in repo_names:
                 line = _key_line(raw, ('repos', index, 'name'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_names.add(repo['name'])
             try:
                 resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
@@ -848,22 +692,16 @@ def load_config(root=None, *, raw=None, warnings=None):
             if resolved in repo_paths:
                 line = _key_line(raw, ('repos', index, 'path'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
+                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in config.toml (bin/wuwei config check validates)')
             repo_paths.add(resolved)
 
         for kind, name in config['adapters'].items():
             try:
                 registry.validate(kind, name, for_config=True)
             except ValueError as exc:
-                key = ('docs', 'system') if kind == 'docs' else ('adapters', kind)
-                line = _key_line(raw, key)
+                line = _key_line(raw, ('adapters', kind))
                 location = f' at line {line}' if line is not None else ''
-                text = str(exc).replace('adapters.docs:', 'docs.system:')
-                raise ConfigError(f'{text}{location}') from exc
-        if unknown and posture(config)[0] == 'strict':
-            from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
-            if not integrity.newer_template(config):
-                raise ConfigError(unknown[0])
+                raise ConfigError(f'{exc}{location}') from exc
         _CONFIGS[path, raw] = (marshal.dumps(config), tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
             _cache(path.parent / 'generated', raw, config, unknown)
@@ -879,20 +717,6 @@ def load_config(root=None, *, raw=None, warnings=None):
         raise ConfigError(f"config.toml: {exc}{hint}; run bin/wuwei config check after the fix") from exc
 
 
-def posture(config):
-    """The posture name and each area's level (#331); guards.mode = "shadow" (#308,
-    deprecated) is observe."""
-    name = 'observe' if config['guards']['mode'] == 'shadow' else config['security']['posture']
-    return name, {area: config['security']['areas'][area] or level
-                  for area, level in POSTURES[name].items()}
-
-
-def posture_source(config):
-    """The key the effective posture comes from (#355); guards.mode is retired."""
-    return ('guards.mode = "shadow", deprecated; run doctor --fix'
-            if config['guards']['mode'] == 'shadow' else 'security.posture')
-
-
 def _require_gate(root):
     from wuwei import state
     if not (Path(root) / '.wuwei').is_dir():
@@ -902,10 +726,13 @@ def _require_gate(root):
 
 
 def _anchor(path, root, vcs, identity):
-    """Hooks (chained, #472), the pre-push anchor and the commit identity of an item worktree."""
-    from wuwei.commands.git_hook import install
+    """The workspace anchor (<git dir>/wuwei-workspace) and the commit identity of an item
+    worktree; no managed Git hooks (#847)."""
     from wuwei.registry import data
-    install(path, root, vcs)
+    git_dir = Path(data(vcs.repo_context(str(path), root=root))['path'])
+    if not git_dir.is_absolute():
+        raise ValueError(f'invalid worktree Git directory; {DAMAGED}')
+    atomic_write(git_dir / 'wuwei-workspace', str(Path(root).resolve()) + '\n')
     if identity and identity['name'] and identity['email']:
         written = vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root)
         if written.exit == 1:
@@ -918,12 +745,11 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     """Create and anchor a WUWEI worktree before handing it to a seat; existing checks out
     an existing branch and records the worktree as the item's (#510)."""
     from wuwei.registry import data
-    from wuwei import sessions, state
+    from wuwei import state
 
     _require_gate(root)
     if existing:
         state.record_worktree(root, Path(path).name, str(path), None, check=True)
-    sessions.claim_item(Path(root), Path(path).name)
     if existing:
         result = data(vcs.worktree_checkout(str(repo), branch, str(path), root=root))
     else:
@@ -939,9 +765,9 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
 
 def adopt_worktree(root, item, path, vcs):
     """Register an existing clean linked worktree of a configured repository as the item's (#510)."""
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     from wuwei.registry import data
-    from wuwei import sessions, state
+    from wuwei import state
 
     _require_gate(root)
     path = Path(path).resolve()
@@ -967,7 +793,6 @@ def adopt_worktree(root, item, path, vcs):
             + f'; commit them, or run git -C {path} stash push --include-untracked, then rerun '
             f'bin/wuwei worktree adopt {path} --item {item}')
     state.record_worktree(root, item, path, None, check=True)
-    sessions.claim_item(Path(root), item)
     _anchor(path, root, vcs, repo['identity'])
     head = data(vcs.head(str(path), root=root))['sha']
     state.record_worktree(root, item, path, head)

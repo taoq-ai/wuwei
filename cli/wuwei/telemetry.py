@@ -1,5 +1,5 @@
-"""Design 5.13: the weekly aggregate off the hook path, its proposals, the shared payload and
-the owner's OpenTelemetry export.
+"""Design 5.13: the weekly aggregate off the hook path, the shared payload and the
+owner's OpenTelemetry export.
 
 Top-level imports are stdlib only and every wuwei import sits inside a function, so the
 collector (scripts/telemetry-worker/) can bundle this file and call validate on its own.
@@ -27,26 +27,30 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'escaped_by_tier', 'lead_time_merge_hours', 'lead_time_deploy_hours', 'deploys_per_week',
            'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
-GUARDS = ('agent_launch', 'commit_push', 'decision', 'deploy', 'integrity', 'lifecycle', 'outward', 'pr',
-          'protect_state', 'spec', 'stop', 'traces', 'verdict')
+GUARDS = ('agent_launch', 'answers', 'edges', 'integrity', 'lifecycle', 'outward', 'protect_state',
+          'spec', 'traces', 'verdict')
+RETIRED_GUARDS = ('commit_push', 'deploy', 'pr', 'stop')  # stored weeks (#839, #847)
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
            'dependency-bump', 'design', 'boundary', 'refactor', 'merge', 'message', 'other')
 AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
-POSTURES = ('observe', 'guarded', 'strict')
+POSTURES = ('observe', 'guarded', 'strict')  # the vocabulary of stored weeks (#837)
 PROFILES = ('strict', 'standard')
 OS = ('darwin', 'linux', 'other')
 ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
-            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
-            'calendar': ('ics', 'none'), 'transcripts': ('none',), 'inbound': ('none', 'slack'),
-            'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
-INNER = frozenset((*GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
-                   'merged', 'escaped', 'owner', 'seat', 'cruise'))
-OWNER_KINDS = ('remote.acknowledged', 'state.recovered', 'integrity_confirmation', 'mcp.decided',
+            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),  # tts, calendar: weeks before #848
+            'calendar': ('ics', 'none'), 'transcripts': ('none',),
+            'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
+            'redactor': ('builtin',),  # weeks recorded before #848 retired the redactor key
+            'docs': ('confluence', 'markdown', 'none', 'notion')}  # weeks recorded before #841 removed the docs port
+INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
+                   'merged', 'escaped', 'owner', 'seat',
+                   'cruise'))  # cruise: weeks stored before #814
+OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',  # state.recovered: days before #847
                'draft.sending', 'draft.dropped')
-PROBES = ('refused', 'allowed', 'state_write', 'read_loop')
+PROBES = ('refused', 'allowed', 'state_write', 'read_loop')  # heartbeat rows of days before #847
 SPAN_EVENTS = ('decision.routed', 'decision.decided', 'decision.reversed', 'negotiation.loop', 'gate.received',
                *OWNER_KINDS)
 VERSION = re.compile(r'\d+\.\d+(\.\d+)?')
@@ -60,6 +64,11 @@ class Skipped(Exception):
         super().__init__(reason)
         self.reason, self.week = reason, week_of(day)
 
+
+
+def posture_label(config):
+    """#837: the weekly record's config.posture label, kept for stored weeks."""
+    return 'guarded' if config['guards']['enforce'] else 'observe'
 
 def week_of(day):
     """The ISO week of a YYYY-MM-DD day name."""
@@ -98,7 +107,7 @@ def _rate(part, whole):
 
 
 def aggregate(root, config, week, days, start):
-    """Every 5.13 metric of one week, and the evidence the proposal rules need."""
+    """Every 5.13 metric of one week."""
     from wuwei import decision, integrity, metrics as day_metrics, verdict, workspace
     inside = {name: value for name, value in days.items() if week_of(name) == week}
     rows = [(name, row) for name, (_, records) in inside.items() for row in records]
@@ -173,21 +182,17 @@ def aggregate(root, config, week, days, start):
         classes[named if named in CLASSES else 'other'] += 1
     found['decisions_by_class'] = dict(classes)
     by = [str(payload.get('decided_by')) for payload in kind('decision.decided')]
-    found['decided_by'] = dict(Counter('cruise' if who.startswith('cruise') else who
-                                       for who in by if who in ('owner', 'seat') or who.startswith('cruise')))
+    found['decided_by'] = dict(Counter(who for who in by if who in ('owner', 'seat')))
     found['reversals'] = len(kind('decision.reversed'))
-    routed, waits, external = {}, [], []
-    zone = workspace.zone(config)
+    routed, waits = {}, []
     for name, row in every:
         payload = row['payload']
         if row['kind'] == 'decision.routed':
-            routed[payload['id']] = _time(row['ts']), 'item' in payload
+            routed[payload['id']] = _time(row['ts'])
         elif (row['kind'] in ('decision.decided', 'decision.reversed') and payload.get('decided_by') == 'owner'
               and payload.get('id') in routed and week_of(name) == week):
-            at, outside = routed.pop(payload['id'])
+            at = routed.pop(payload['id'])
             waits.append((_time(row['ts']) - at).total_seconds() / 3600)
-            if outside:
-                external.append(decision.weekday_hours(at, _time(row['ts']), zone))
     found['owner_wait_hours'] = _percentiles(waits, 'p50', 'p90')
     asks, unnecessary = Counter(), 0
     for directory, _ in inside.values():
@@ -201,7 +206,7 @@ def aggregate(root, config, week, days, start):
                            for identifier, route in routes.items())
     found['owner_asks_per_item'] = sum(asks.values()) / len(asks) if asks else UNMEASURED
     found['unnecessary_asks'] = unnecessary
-    found['owner_actions'] = sum(row['kind'].startswith('remote.') or row['kind'] in OWNER_KINDS for _, row in rows)
+    found['owner_actions'] = sum(row['kind'] in OWNER_KINDS for _, row in rows)
     found['escaped_by_tier'] = day_metrics._escaped_by_tier(root)
     # #586: the code host is read once, when the week is final, never on the daily refresh
     year, number = map(int, week.split('-W'))
@@ -213,10 +218,9 @@ def aggregate(root, config, week, days, start):
     return {'schema': SCHEMA, 'week': week,
             'versions': {'plugin': plugin, 'python': f'{sys.version_info[0]}.{sys.version_info[1]}',
                          'os': sys.platform if sys.platform in ('darwin', 'linux') else 'other'},
-            'config': {'posture': workspace.posture(config)[0], 'profile': config['profile'],
+            'config': {'posture': posture_label(config), 'profile': config['profile'],
                        'adapters': dict(config['adapters']), 'repositories': len(config['repos'])},
-            'metrics': {key: found[key] for key in METRICS if key in found},
-            'evidence': {'verdict_items': len(rounds), 'external_wait_hours': external}}
+            'metrics': {key: found[key] for key in METRICS if key in found}}
 
 
 def _round(value):
@@ -249,7 +253,7 @@ def load_week(root, week):
         return None
     found = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(found, dict) or found.get('week') != week:
-        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei metrics --week {week}')
+        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei report --week {week}')
     return found
 
 
@@ -261,15 +265,13 @@ def save_week(root, found):
 
 
 def week_file(root, config, week, days=None, *, start=None, write=True):
-    """Compute one week: final with proposals before the current week; keeps shared, ready, presented and otlp."""
+    """Compute one week: final before the current week; keeps shared, ready and otlp."""
     start = time.monotonic() if start is None else start
     days = read_days(root, start) if days is None else days
     found = _round(aggregate(root, config, week, days, start))
     found['final'] = week < current_week(root)
-    if found['final']:
-        found['proposals'] = proposals(found, config)
     previous = load_week(root, week) or {}
-    found.update({key: previous[key] for key in ('shared', 'ready', 'presented', 'otlp') if key in previous})
+    found.update({key: previous[key] for key in ('shared', 'ready', 'otlp') if key in previous})
     if write:
         save_week(root, found)
     return found
@@ -286,47 +288,8 @@ def latest_final(root):
     return next((found for found in map(lambda week: load_week(root, week), weeks(root)) if found.get('final')), None)
 
 
-def proposals(found, config):
-    """Design 5.13's five rules; each {rule, evidence, command}."""
-    from wuwei import guards, workspace
-    from wuwei.metrics import _percentile
-    metrics, evidence, result = found['metrics'], found['evidence'], []
-
-    def floor(rule, tier, line, target, at):
-        for index, repo in enumerate(config['repos']):
-            if at(TIERS.index(repo['gates']['floor'])):
-                result.append({'rule': rule, 'evidence': line, 'command':
-                               f"bin/wuwei config set repos.{index}.gates.floor '\"{target}\"'"})
-
-    tiers = metrics['escaped_by_tier'] if isinstance(metrics['escaped_by_tier'], dict) else {}
-    for tier, row in tiers.items():
-        if tier in TIERS[:-1] and row['merged'] >= 5 and row['escaped'] / row['merged'] >= 0.2:
-            floor('floor-raise', tier, f"{tier}: {row['escaped']} of {row['merged']} merged items escaped",
-                  TIERS[TIERS.index(tier) + 1], lambda at, tier=tier: at <= TIERS.index(tier))
-    full = tiers.get('full', {'merged': 0, 'escaped': 1})
-    if full['merged'] >= 10 and full['escaped'] == 0:
-        floor('floor-lower', 'full', f"full: {full['merged']} merged items, none escaped", 'standard',
-              lambda at: at == TIERS.index('full'))
-    warned = {guards.AREAS.get(guard) for guard in metrics['warnings']}
-    # ponytail: an area no guard module maps to (mcp applies its own posture) is never proposed.
-    for area, level in workspace.posture(config)[1].items():
-        if level == 'warn' and metrics['days'] >= 3 and area in guards.AREAS.values() and area not in warned:
-            result.append({'rule': 'area-block', 'evidence': f"{area} at warn, no warning in {metrics['days']} days",
-                           'command': f"bin/wuwei config set security.areas.{area} '\"block\"'"})
-    waits, limit = evidence['external_wait_hours'], config['decisions']['wait_hours']
-    if len(waits) >= 3 and _percentile(waits, .9) < limit / 2:
-        p90 = round(_percentile(waits, .9), 2)
-        result.append({'rule': 'wait-hours', 'evidence': f'{len(waits)} external waits, p90 {p90} h under {limit / 2:g} h',
-                       'command': f'bin/wuwei config set decisions.wait_hours {max(4, math.ceil(p90 * 1.5))}'})
-    fixes = metrics['fix_rounds_per_item']
-    if evidence['verdict_items'] >= 5 and isinstance(fixes, dict) and fixes['p50'] >= 1:
-        result.append({'rule': 'fast-checks', 'evidence': f"{evidence['verdict_items']} items with a verdict, "
-                       f"fix rounds p50 {fixes['p50']}", 'command': 'bin/wuwei calibrate --measure'})
-    return result
-
-
 def payload(found, *, token=None):
-    """The shareable subset of a final week: never final, evidence, proposals or marks."""
+    """The shareable subset of a final week: never final or marks."""
     return {**{key: found[key] for key in KEYS}, **({'token': token} if token else {})}
 
 
@@ -342,9 +305,9 @@ def _leaf(value):
 def validate(found):
     """Raise ValueError(rule) unless the payload keeps to the 5.13 anonymisation rules."""
     if not isinstance(found, dict) or set(found) not in (KEYS, KEYS | {'token'}):
-        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if found['schema'] != SCHEMA or not isinstance(found['week'], str) or not WEEK.fullmatch(found['week']):
-        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if 'token' in found and not (isinstance(found['token'], str) and TOKEN.fullmatch(found['token'])):
         raise ValueError('token')
     versions, config = found['versions'], found['config']
@@ -360,20 +323,20 @@ def validate(found):
         raise ValueError('config')
     metrics = found['metrics']
     if not isinstance(metrics, dict) or not set(metrics) <= set(METRICS):
-        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
 
     def check(value, depth):
         if isinstance(value, dict) and depth < 2:
             for key, inner in value.items():
                 if key not in INNER:
-                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
                 check(inner, depth + 1)
         elif not _leaf(value):
-            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     for value in metrics.values():
         check(value, 0)
     if len(json.dumps(found, sort_keys=True).encode()) > MAX_PAYLOAD:
-        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     return found
 
 
@@ -421,7 +384,7 @@ def spans(root, config, mark):
     from wuwei import watch, workspace
     # ponytail: allowed calls live in traces.jsonl with their tool arguments and are not exported;
     # hook-call spans are the refusal and warning records only.
-    posture, today = workspace.posture(config)[0], workspace.day_dir(root).name
+    label, today = posture_label(config), workspace.day_dir(root).name
     mark = mark or {'day': today, 'offset': 0}
     result, new = [], dict(mark)
     for directory in reversed(watch.days(root)):
@@ -448,17 +411,17 @@ def spans(root, config, mark):
                     code = refusal.get('exit', 1)
                     span('wuwei.hook', f'{at}:{index}', stamp, stamp, event='PreToolUse', guard=refusal['guard'],
                          outcome='unmeasured' if code == 2 else 'refuse', reason_code=f"{refusal['guard']}.{code}",
-                         posture=posture)
+                         posture=label)
             elif kind == 'guard.would_refuse':
                 span('wuwei.hook', at, stamp, stamp, event=kind, guard=payload.get('guard'), outcome='warn',
-                     reason_code=f"{payload.get('guard')}.{payload.get('exit', 1)}", posture=payload.get('posture'),
+                     reason_code=f"{payload.get('guard')}.{payload.get('exit', 1)}", posture=label,
                      item=payload.get('item'))
             elif kind == 'seat launched':
                 launched[payload.get('name')] = stamp, payload.get('item')
             elif kind == 'seat stopped' and payload.get('name') in launched:
                 start, item = launched.pop(payload['name'])
                 span('wuwei.seat', at, start, stamp, item=item)
-            elif kind in SPAN_EVENTS or kind.startswith('remote.'):
+            elif kind in SPAN_EVENTS:
                 events.append({'timeUnixNano': stamp, 'name': kind, 'attributes': _attributes(item=payload.get('item'))})
         if events:
             span('wuwei.day', 'day', events[0]['timeUnixNano'], events[-1]['timeUnixNano'])

@@ -1,9 +1,18 @@
 # Charter overrides and promote
 
-Shipped role rules live in the plugin's `charters/`. Workspace-specific overrides live in `.wuwei/charters/` with matching role filenames such as `builder.md`. Keep the plugin charter as the common baseline; local overrides add rules for this workspace.
+Shipped role rules live in the plugin's `charters/`. Workspace overrides live in `.wuwei/charters/` under the same file name, such as `builder.md`. The plugin charter stays the baseline; an override adds rules for this workspace.
 
-A seat or steward writes a JSON proposal in today's `.wuwei/days/YYYY-MM-DD/proposals/`. The proposal names `target`, `action`, `reason`, `evidence`, and for an add or patch, `text` or `delta`. Targets must be a local charter override or a memory note. Actions are `add`, `patch`, `fold` and `archive`. A patch also names the exact `old_text` to replace. Evidence points to an existing path inside `.wuwei/`.
+A seat or the steward proposes a change as a JSON file in today's `.wuwei/days/<date>/proposals/`. A proposal names:
 
-Run the installed CLI's `bin/wuwei promote` from the workspace. It validates proposals, writes accepted changes atomically and records landed or rejected outcomes in `.wuwei/memory/ledger.jsonl` and the changelog. Rejections return exit 1. `bin/wuwei init --upgrade --dry-run` previews template changes and flags overrides whose charter versions need review; `bin/wuwei init --upgrade` applies config additions.
+- `target`: a charter override under `.wuwei/charters/`;
+- `action`: `add` or `patch`;
+- `reason`: one line;
+- `evidence`: an existing file inside `.wuwei/`;
+- `text` (or `delta`): the rule to add or the replacement;
+- `old_text`, for a patch: the exact rule it replaces. A patch with empty `text` removes that rule.
 
-The steward runs at sweeps, at close and every `steward.every_tool_calls` tool calls through `/wuwei plan`; its proposals land through `bin/wuwei promote` like any other.
+`bin/wuwei retro --promote` lands today's proposals. It validates each one and writes accepted changes atomically. A duplicate add, an unknown `old_text` or an override over 200 lines is rejected. So is a target with uncommitted hand edits, so promotion never blesses them. Each landed change is committed with a `Promoted-by: wuwei` trailer, and each outcome goes to `.wuwei/memory/ledger.jsonl` and the changelog.
+
+After a landing it exports the rules block into the `memory.export_to` file and rewrites `.wuwei/memory/index.md`. It exits 0 when all landed, 1 when any was rejected and 2 when the export failed.
+
+The steward runs once at close through `bin/wuwei close`, and its proposals land the same way. `bin/wuwei init --upgrade --dry-run` flags overrides whose charter version differs from the shipped one, for you to review.

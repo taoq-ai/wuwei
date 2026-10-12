@@ -132,13 +132,6 @@ def finding_blocks(text):
     return blocks
 
 
-# #667: a finding that calls the item's docs value missing; the words must touch the value,
-# so a finding about the page's content ("docs path docs/x.md is missing a flag") never matches.
-DOCS_MISSING = re.compile(
-    r'\bdocs? (?:value|path):? (?:is |was )?(?:still )?(?:missing|not set|not recorded|unset|absent)\b'
-    r'|\b(?:missing|no|unset) docs? (?:value|path)\b|\bdoc\b[^\n]{0,40}\bvalue missing\b', re.I)
-
-
 CI_ROW = re.compile(r'^[ \t]*(?:[-*+][ \t]+)?CI step (\d+):[ \t]*(PASS|FAIL|NOT RUN)\b[ \t]*\S', re.I | re.M)
 
 
@@ -156,10 +149,9 @@ def ci_rows(text, verdict, steps):
     return failures
 
 
-def lint(text, *, quality=False, class_sweep=False, light=False, docs=None, steps=()):
+def lint(text, *, quality=False, class_sweep=False, light=False, steps=()):
     """light (#567, a light item's gate): Verdict:, Head: and findings; no probe row, class
     line, Simplicity or Design row, and no retro note unless one of its lines is written.
-    docs (#667): (item, recorded value) refuses a finding that calls that value missing.
     steps (#733): [(n, label)] the CI steps the item's briefs list, checked at every depth."""
     text = active_text(text)
     failures = []
@@ -208,9 +200,6 @@ def lint(text, *, quality=False, class_sweep=False, light=False, docs=None, step
         failures.append('no finding with severity (P0-P3, critical, high, medium, low or info)'
                         + _fix('Finding'))
     for number, block in enumerate(blocks, 1):
-        if docs and DOCS_MISSING.search(block):
-            failures.append(f'finding {number}: says the docs value is missing, but {docs[0]} records docs '
-                            f'{docs[1]} (bin/wuwei why {docs[0]} --json); drop or correct the finding')
         missing = [field for pattern, field in ((r'\b' + SEVERITY, 'severity'),
                                                 (CITATION, 'file:line'), (BLOCKS, 'blocks yes/no'),
                                                 (SCENARIO, 'failure scenario'))
@@ -272,21 +261,6 @@ def light(path, data):
         return False
 
 
-def recorded_docs(path, data, root=None):
-    """#667: (item, docs value) when the gate file's seat item records one at lint time; None
-    when the value is missing, not required or the seat, item or config cannot be resolved."""
-    from wuwei import brief, docs, workspace
-    try:
-        seat = brief.seats(data).get(Path(path).stem[len('gate-'):]) if data else None
-        if seat is None:
-            return None
-        config = workspace.load_config(root or workspace.find_workspace(Path(path).parent))
-        value = docs.shown(config, data['items'][seat['item']])
-        return None if value in ('missing', 'n/a') else (seat['item'], value)
-    except (KeyError, TypeError, ValueError, AttributeError, OSError):
-        return None
-
-
 def ci_steps(path, data):
     """#733: [(n, label)] the gate file's seat item must cite; () when the seat or item is
     unresolved or records no ci_jobs. A recorded workflow that cannot be read raises."""
@@ -307,7 +281,7 @@ def day_state(path):
     from wuwei import state
     day = Path(path).parent.parent
     try:
-        return state.read_state(directory=day) if (day / 'state.json').is_file() else None
+        return state.read_state(directory=day) if state.day_started(day) else None
     except (OSError, ValueError):
         return None
 
@@ -318,7 +292,7 @@ def lint_file(path, *, role='', root=None):
         role = role.rsplit(':', 1)[-1]
         data = day_state(path)
         code, message = lint(path.read_text(encoding='utf-8'), light=light(path, data),
-                    docs=recorded_docs(path, data, root), steps=ci_steps(path, data),
+                    steps=ci_steps(path, data),
                     quality=role == 'sentinel-quality' or is_quality(path) or is_quality(path.resolve()),
                     class_sweep=role in ('sentinel-arch', 'sentinel-quality', 'sentinel-security') or any(
                         {'arch', 'quality', 'security'} & set(re.split(r'[-_.]', p.name.lower()))

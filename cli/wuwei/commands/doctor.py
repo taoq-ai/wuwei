@@ -12,18 +12,18 @@ import shutil
 import sys
 import tempfile
 
-from wuwei import heartbeat, integrity, registry, workspace
+from wuwei import integrity, registry, workspace
 
 SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
             'gates': 'Gates and adapters', 'pr-flow': 'PR flow', 'day': 'Day and sessions',
             'guards': 'Guards'}
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
-        'host': 'docs/site/daily.md#1-install-the-signed-release',
+        'host': 'docs/site/index.md#start-here',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
-        'gates': 'docs/site/configuration.md#mcp-registry-checks-s3',
+        'gates': 'docs/site/security.md#ziran-integration',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
-        'day': 'docs/site/reference.md#watch-state',
-        'guards': 'docs/site/reference.md#heartbeat'}
+        'day': 'docs/site/reference.md#stuck-seats',
+        'guards': 'docs/site/reference.md#doctor'}
 CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2, 'waiting': 2}
 OUTSIDE = "python3 - <<'EOF'\nprint('gh pr list')\nEOF"  # #323: a heredoc that mentions gh
 REINSTALL = 'reinstall the signed release'
@@ -34,7 +34,7 @@ UNLOADED = 'config.toml does not load'
 
 def identity_row(repo, index, path, vcs):
     """#605: the commit and push guard's rule, reason and fix; the fix names what git resolves."""
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     identity, name = repo['identity'], f"{repo['name']} identity"
     if not commit_push.unset_identity(identity):
         return _row('workspace', name, 'ok', f"{identity['name']} <{identity['email']}>")
@@ -120,15 +120,17 @@ def _install(root, config):
     reason = result.reason
     if result.exit == 0:
         rows.append(_row('install', 'integrity', 'ok', reason or 'clean'))
-    elif 'run wuwei integrity check' in reason or not ('page:' in reason or 'reconfirm' in reason):
+    elif result.exit == 2 and 'page:' not in reason or not ('page:' in reason or 'reconfirm' in reason):
+        # #848: doctor reads the cached verdict; the reconfirm fix measures it again.
         rows.append(_row('install', 'integrity', 'fail' if result.exit == 1 else 'unmeasured', reason,
-                         'wuwei integrity check'))
+                         'wuwei doctor --fix --apply integrity-reconfirm, which measures it again',
+                         apply='integrity-reconfirm' if root is not None else None))
     elif _checkout() and root is not None:
-        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei integrity reconfirm',
+        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei doctor --fix --apply integrity-reconfirm',
                          apply='integrity-reconfirm'))
     else:
         rows.append(_row('install', 'integrity', 'fail', reason,
-                         'review the files named, then wuwei integrity reconfirm; or ' + REINSTALL))
+                         'review the files named, then wuwei doctor --fix --apply integrity-reconfirm; or ' + REINSTALL))
     markers = plugin / integrity.MARKERS
     count = len(list(markers.iterdir())) if markers.is_dir() else 0
     notice = integrity.restart(config)
@@ -165,7 +167,6 @@ def _invoked(root):
 
 
 def _hooks(root, config):
-    from wuwei import mcp
     plugin = integrity.PLUGIN
     try:
         hooks = json.loads((plugin / 'hooks/hooks.json').read_text())
@@ -173,7 +174,8 @@ def _hooks(root, config):
             raise ValueError('no PreToolUse hooks; reinstall the signed release, then run bin/wuwei doctor')
     except (OSError, ValueError, AttributeError) as exc:
         return _row('install', 'hooks', 'fail', f'hooks/hooks.json: {exc}', REINSTALL)
-    name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
+    name = (config['scanner']['mcp']['plugins_file'] if config
+            else workspace.SCHEMA['scanner']['mcp']['plugins_file'][1])
     try:
         listed = integrity.registered(root, config) is not None  # from either launcher (#601)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -236,8 +238,7 @@ def _host(root, config):
         (repo['identity']['name'] and repo['identity']['email'])
         or resolved((root / Path(repo['path']).expanduser()).resolve())[0] for repo in config['repos'])
     rows.append(_row('host', 'git identity', 'ok', f"{result.data['name']} <{result.data['email']}>") if good else
-                _row('host', 'git identity', 'ok', "not set globally; setup reads each repository's own identity"
-                     if root is None else 'not set globally; repositories set their own') if own else
+                _row('host', 'git identity', 'ok', 'not set globally; repositories set their own') if own else
                 _row('host', 'git identity', 'fail', result.reason or 'missing',
                      'git config --global user.name "<name>" and git config --global user.email "<email>"'))
     if adapters['scanner'] != 'ziran':
@@ -246,13 +247,6 @@ def _host(root, config):
         rows.append(_row('host', 'ziran', 'ok', 'on PATH (version checked by every call, minimum 0.39.0)'))
     else:
         rows.append(_row('host', 'ziran', 'fail', 'not on PATH', 'install ZIRAN 0.39.0 or newer'))
-    if shutil.which('claude'):
-        rows.append(_row('host', 'claude', 'ok', shutil.which('claude')))
-    elif adapters['inbound'] != 'none':
-        rows.append(_row('host', 'claude', 'fail', 'not on PATH',
-                         'install the Claude Code CLI (the listener starts headless sessions with it)'))
-    else:
-        rows.append(_row('host', 'claude', 'ok', 'not on PATH; only the listener needs it'))
     needed = adapters['runtime'] == 'codex' or config['gates']['second_opinion'].startswith('codex:')
     codex = shutil.which('codex')
     rows.append(_row('host', 'codex', 'fail', 'not on PATH', 'install the Codex CLI') if needed and not codex
@@ -269,10 +263,6 @@ def _host(root, config):
             rows.append(_row('host', 'memory', 'ok', f'{mib} MiB') if mib >= floor else
                         _row('host', 'memory', 'fail', f'{mib} MiB below {floor} MiB',
                              'free memory, or lower host.free_memory_mb in .wuwei/config.toml'))
-    manager = 'launchctl' if sys.platform == 'darwin' else 'systemctl'
-    rows.append(_row('host', 'service manager', 'ok', manager) if shutil.which(manager) else
-                _row('host', 'service manager', 'fail', f'{manager} not on PATH',
-                     'the watch and listener need launchd (macOS) or systemd --user (Linux)'))
     return rows
 
 
@@ -280,7 +270,7 @@ def _workspace(root, config, error, found):
     from wuwei.commands import init
     if root is None:
         return [_row('workspace', 'workspace', 'fail', error or f'no .wuwei/ found from {Path.cwd()}',
-                     'bin/wuwei setup --shadow in the directory that holds your repositories')]
+                     'bin/wuwei init --shadow in the directory that holds your repositories')]
     rows = [_row('workspace', 'workspace', 'ok', str(root / '.wuwei'))]
     if config is not None and found:
         rows.append(_row('workspace', 'config', 'warn', f'loads; {len(found)} unknown keys',
@@ -293,7 +283,7 @@ def _workspace(root, config, error, found):
         rows.append(_row('workspace', 'config', 'fail', error, f'edit .wuwei/config.toml: {error}'))
     code, text = _capture(init.upgrade, Namespace(path=str(root), dry_run=True))
     lines = text.splitlines()
-    upgrades = [line for line in lines if line.startswith('Would upgrade') and 'graph.json' not in line]
+    upgrades = [line for line in lines if line.startswith('Would upgrade')]
     charters = [line for line in lines if line.startswith('Charter override needs review')]
     if code:
         rows.append(_row('workspace', 'template', 'unmeasured', f'init --upgrade --dry-run exit {code}',
@@ -323,16 +313,6 @@ def _workspace(root, config, error, found):
                          detail=charters, docs='docs/site/charter-overrides.md'))
     if config is None:
         return rows
-    window = config['consolidation']['archive_after_days']
-    try:
-        from wuwei import consolidation
-        late = [path for path in consolidation.expired(root) if path.parent.name == 'days']
-        rows.append(_row('workspace', 'memory tiers', 'warn', f'{len(late)} raw days older than '
-                         f'consolidation.archive_after_days ({window}); consolidate has not run',
-                         'wuwei consolidate') if late else
-                    _row('workspace', 'memory tiers', 'ok', f'within {window} days'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'memory tiers', 'unmeasured', str(exc), 'wuwei consolidate'))
     vcs = registry.load('vcs', config)
     for index, repo in enumerate(config['repos']):
         name, branch = repo['name'], repo['default_branch']
@@ -347,23 +327,6 @@ def _workspace(root, config, error, found):
                              f'clone the repository at {path}, or fix repos.{index}.path'))
             continue
         rows.append(_row('workspace', f'{name} git', 'ok', 'git repository'))
-        mode, hooks = config['worktree']['git_hooks'], f'{name} git hooks'
-        found = vcs.hooks_target(str(path)) if mode != 'skip' else None
-        if found is None:
-            rows.append(_row('workspace', hooks, 'ok', 'skipped (worktree.git_hooks = "skip"); the '
-                             'PreToolUse guard still checks git commit and git push'))
-        elif found.exit == 2:
-            rows.append(_row('workspace', hooks, 'unmeasured', found.reason,
-                             f'run git -C {path} config --show-scope --get-all core.hooksPath and fix what it names'))
-        elif found.exit:
-            rows.append(_row('workspace', hooks, 'warn', found.reason,
-                             'fix what the value names, then run wuwei init --upgrade; or set '
-                             'worktree.git_hooks = "skip" in .wuwei/config.toml'))
-        else:
-            chain = (found.data or {}).get('chain', '')
-            rows.append(_row('workspace', hooks, 'ok',
-                             f'chained with {chain}' if chain and mode == 'chain' else
-                             f'replaces {chain} (worktree.git_hooks = "replace")' if chain else 'WUWEI hooks'))
         result = vcs.branches(str(path), branch)
         rows.append(_row('workspace', f'{name} branch', 'ok', branch) if result.exit == 0 and branch in result.data
                     else _row('workspace', f'{name} branch', 'unmeasured' if result.exit == 2 else 'fail',
@@ -391,194 +354,48 @@ def _workspace(root, config, error, found):
                     _row('workspace', f'{name} spec', 'unmeasured',
                          f"{config['scanner']['mcp']['plugins_file']} is unreadable",
                          f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
-    rows += _outbound(config)
-    rows.append(_register(root, config))
     rows += _calibration(root, config)
-    return rows + [_undo(root)]
-
-
-def _undo(root):
-    """#557: the kinds whose undo ran once in this workspace."""
-    from wuwei import undo
-    try:
-        done = undo.ledger(root)
-    except ValueError as exc:
-        return _row('workspace', 'undo rehearsals', 'fail', str(exc),
-                    'move .wuwei/memory/rehearsals.json aside, then run wuwei undo rehearse commit '
-                    'and wuwei undo rehearse decision')
-    rehearsed = [kind for kind in undo.REGISTRY if kind in done]
-    missing = [kind for kind in undo.REGISTRY if kind not in done]
-    return _row('workspace', 'undo rehearsals', 'ok', f'rehearsed: {", ".join(rehearsed) or "none"}; '
-                f'not rehearsed: {", ".join(missing) or "none"} (wuwei undo rehearse <kind>)')
-
-
-def _outbound(config):
-    """#496: people without a class and owner send rows for a client or public audience;
-    information, nothing refuses on them."""
-    from wuwei import outward
-    bare = [key for key, entry in config['outbound']['people'].items() if not entry['class']]
-    rows = [_row('workspace', 'outbound classes', 'warn', f'{len(bare)} people without a class',
-                 'nothing changes until you choose: the bin/wuwei outbound learn card asks the class of '
-                 'each person it adds',
-                 detail=[f'{key}: team while internal by outbound.company_domains or outbound.code_host_orgs, '
-                         'else the connector default class' for key in bare])
-            if bare else _row('workspace', 'outbound classes', 'ok', 'every person has a class')]
-    strict = workspace.posture(config)[0] == 'strict'
-    sends = [f'rule {number} is ignored under strict' if strict
-             else f'rule {number} can send to a client or public audience'
-             for number, (row, source, _) in enumerate(outward.table(config), 1)
-             if source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)]
-    rows.append(_row('workspace', 'outbound tiers', 'warn', f'{len(sends)} send rows for a client or public audience',
-                     'make the row ask, or remove it', detail=sends) if sends
-                else _row('workspace', 'outbound tiers', 'ok', 'no send row for a client or public audience'))
     return rows
 
 
-def _register(root, config):
-    """#552: the register against its config views; warn at most, it decides nothing (A13)."""
-    from wuwei import graph
-    try:
-        register = graph.load(root)
-    except ValueError as exc:
-        return _row('workspace', 'register', 'warn', str(exc), f'{graph.FIX.replace("bin/wuwei", "wuwei")}')
-    if register is None:
-        return _row('workspace', 'register', 'warn', 'no .wuwei/graph.json', 'wuwei init --upgrade',
-                    apply='init-upgrade')
-    drifted = graph.drift(register, config)
-    if drifted:
-        return _row('workspace', 'register', 'warn', f'config.toml differs from graph.json in {len(drifted)} keys',
-                    'wuwei init --upgrade', apply='init-upgrade', detail=drifted)
-    return _row('workspace', 'register', 'ok',
-                f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
-
-
 def _calibration(root, config):
-    from wuwei import calibrate, interview, profiles, watch
-    from wuwei.commands.status import SHADOW_NUDGE
+    from wuwei import calibrate, watch
     rows = []
     try:
         approved = calibrate.approved(root)
         rows.append(_row('workspace', 'calibration', 'ok', ', '.join(
             f"{name} {data.get('date', 'undated')}" for name, data in approved.items())) if approved else
-            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei calibrate, then wuwei config promote'))
+            _row('workspace', 'calibration', 'warn', 'never applied', 'wuwei config promote'))
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'calibration', 'unmeasured', str(exc), 'fix .wuwei/calibration.json'))
     try:
         drifted = sorted({row['payload'].get('repo', '?') for row in
                           watch.records(workspace.day_dir(root) / 'events.jsonl')
                           if row['kind'] == 'calibration.drift'})
-        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei calibrate',
-                         apply='calibrate') if drifted else _row('workspace', 'drift', 'ok', 'none today'))
+        rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei config promote')
+                    if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
-        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
-    try:
-        count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
-        rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
-                    if count else _row('workspace', 'interview', 'ok', 'all setup questions answered'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'interview', 'unmeasured', str(exc), 'wuwei calibrate --interview'))
-    try:
-        name, _ = profiles.load(root, config)
-        rows.append(_row('workspace', 'profile', 'ok',
-                         f"guards profile {config['profile']}; calibration profile {name or 'none'}"))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('workspace', 'profile', 'unmeasured', str(exc), 'wuwei calibrate import <profile>'))
-    guards, name = config['guards'], workspace.posture(config)[0]
-    shown = f'{name} (from {workspace.posture_source(config)})'
-    if guards['mode'] == 'shadow':
-        rows.append(_row('workspace', 'posture', 'warn', shown, 'wuwei init --upgrade', apply='init-upgrade'))
-    elif name != 'observe':
-        rows.append(_row('workspace', 'posture', 'ok', shown))
-    else:
-        from datetime import date
-        since = guards['shadow_since']
-        days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
-        left = guards['shadow_days'] - days
-        rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
-                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW_NUDGE.format(days=days),
-                         'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
-    if name == 'strict':  # #478: the guard ignores standing grants under strict.
-        rows += [_row('workspace', f'grant {index}', 'warn',
-                      f"{line['action']} {line['target']} ({line['decision']}) is ignored under strict",
-                      f'bin/wuwei grants revoke {index}')
-                 for index, line in enumerate(config['grants']['standing'], 1)]
+        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), "fix today's events.jsonl, then run wuwei doctor"))
+    rows.append(_row('workspace', 'guards', 'ok', 'enforce (guards.enforce = true)')
+                if config['guards']['enforce'] else
+                _row('workspace', 'guards', 'ok', "log only (guards.enforce = false); the day report's "
+                     '## Shadow section lists what would have been refused; to enforce, run '
+                     'bin/wuwei config set guards.enforce true'))
     telemetry = config['telemetry']
-    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
-                     'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']
+    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet',
+                     'bin/wuwei config set telemetry.share \'"anonymous"\' (or "attributed" or "off")') if telemetry['enabled'] and not telemetry['share']
                 else _row('workspace', 'telemetry', 'ok', f"share {telemetry['share'] or 'off'}"
                           if telemetry['enabled'] else 'disabled'))
     return rows
 
 
 def _gates(root, config):
-    from wuwei import mcp
     from wuwei.commands import config as config_command
     code, text = _capture(config_command.run, Namespace())
     rows = [_row('gates', 'config check', ('ok', 'fail', 'unmeasured')[code], f'exit {code}',
                  'apply the fix each detail line names', docs='docs/site/configuration.md',
                  detail=[line.strip() for line in text.splitlines() if line.strip()] if code else ())]
-    result = mcp.cached(root)
-    rows.append(_row('gates', 'mcp gate', ('ok', 'fail', 'unmeasured')[result.exit], result.reason or 'clean',
-                     '' if not result.exit else 'wuwei mcp check' if result.exit == 2
-                     else f'{mcp.command(mcp.pending(root))} in a host terminal'))
-    legacy = list(Path(root, '.wuwei/ziran').glob('report-*'))
-    if legacy:
-        rows.append(_row('gates', 'mcp reports', 'warn', f'{len(legacy)} report directories in the v0.12.0 layout',
-                         'wuwei doctor --fix', apply='mcp-reports'))
-    if config['adapters']['scanner'] == 'none':  # #424: no record rows; WUWEI's own servers stay covered.
-        try:
-            own = json.loads((integrity.PLUGIN / '.claude-plugin/plugin.json').read_text(encoding='utf-8'))
-            servers = own.get('mcpServers')
-            names = sorted(servers) if isinstance(servers, dict) else []
-        except (OSError, ValueError, AttributeError):
-            names = []  # the install section already reports an unreadable manifest
-        return rows + [_row('gates', f'mcp {name}', 'ok', 'covered by plugin integrity') for name in names]
-    try:
-        record = mcp._read(Path(root).resolve())
-    except (OSError, ValueError) as exc:
-        return rows + [_row('gates', 'mcp servers', 'unmeasured', str(exc), 'wuwei mcp check')]
-    if record and record['day'] == workspace.now().date().isoformat():
-        for name, _ in record['unmeasured']:
-            rows.append(_row('gates', f'mcp {name}', 'warn', 'unmeasured',
-                             f'wuwei mcp decide proceed-unmeasured {name} (or fix the server, then wuwei mcp check)'))
-        for name, _ in record['decided']:
-            rows.append(_row('gates', f'mcp {name}', 'ok', 'proceeding unmeasured by owner decision'))
-        for note in record['reason'].split('; '):
-            name, _, value = note.partition(': ')
-            if value == 'not attached (unapproved)':
-                rows.append(_row('gates', f'mcp {name}', 'ok', value))
     return rows
-
-
-def _docs(root, config):
-    """The docs system (#419): its space, credentials and a read of the space, or the markdown root."""
-    from wuwei import registry
-    from wuwei.commands import config as config_command
-    rules, link = config['docs'], 'docs/site/configuration.md#docs'
-
-    def docs_row(status, value, fix=''):
-        return [_row('gates', 'docs', status, value, fix, docs=link)]
-    if rules['system'] == 'none':
-        return docs_row('ok', 'not used')
-    if rules['system'] == 'markdown':
-        roots = [(root / Path(repo['path']).expanduser() / rules['root']) for repo in config['repos']]
-        if not any(path.is_dir() for path in roots):
-            return docs_row('fail', f"{rules['root']}/ is not a directory in any configured repository",
-                            f"create {rules['root']}/ in the repository or "
-                            "bin/wuwei config set docs.root '\"<dir>\"'")
-        if rules['publish']:
-            return docs_row('warn', 'publish has no effect under markdown',
-                            "bin/wuwei config set docs.publish '[]'")
-        return docs_row('ok', f"markdown: {rules['root']}/")
-    if not rules['space']:
-        return docs_row('fail', 'docs.space is empty', "bin/wuwei config set docs.space '\"<page link>\"'")
-    for alternatives in config_command.requirements(config).get(('docs', rules['system']), ()):
-        if not any(os.environ.get(name) for name in alternatives):
-            return docs_row('fail', f'{alternatives[0]} missing', f'add {alternatives[0]} to .wuwei/env')
-    result = registry.load('docs', config).read(rules['space'], root=root)
-    if result.exit:
-        return docs_row('fail', result.reason or 'docs.space unreadable', 'check docs.space and the credential')
-    return docs_row('ok', f"{rules['system']}: {result.data['title']}")
 
 
 NONE = {'tracker': 'none: discovery reads no tracker backlog',
@@ -604,8 +421,7 @@ def pr_flow(config):
                quoted('shepherd.lead_login', '<lead login>')),
               ('shepherd.authors', f"{len(shepherd['authors'])} mapped" if shepherd['authors'] else '',
                'reviewer mentions in the review ping at pr ping',
-               'bin/wuwei setup (maps your git email and the bot authors), or add '
-               '"<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
+               'add "<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
     if config['adapters']['chat'] != 'none':
         checks.append(('shepherd.review_channel', shepherd['review_channel'], 'the review ping at pr ping',
                        quoted('shepherd.review_channel', '<channel id>')))
@@ -619,107 +435,98 @@ def pr_flow(config):
 
 
 PROBE = {'ok': 'ok', 'failed': 'fail', 'unmeasured': 'unmeasured'}
+# #847: doctor's own probes, run on demand (exit codes only, no timings): two the edges refuse or
+# allow, one the records guard refuses, and the day read in process.
+PROBES = ('refused', 'allowed', 'state_write', 'state', 'seats')
+
+
+def _exit(result, want):
+    code, line, _ = result
+    if code is None:
+        return 'unmeasured', 'timeout'
+    if code == want:
+        return 'ok', f'exit {code}'
+    return 'failed', f'exit {code}' + (f': {line}' if line else '')
+
+
+def _hook(root, tool, inputs):
+    from wuwei.commands.hook import PROBE_SESSION
+    return ('hook', 'PreToolUse'), json.dumps({
+        'session_id': PROBE_SESSION, 'transcript_path': os.devnull, 'cwd': str(root / '.wuwei'),
+        'hook_event_name': 'PreToolUse', 'tool_name': tool, 'tool_input': inputs})
+
+
+def _state(root):
+    from wuwei import state
+    try:
+        state.read_state(root)
+    except ValueError as exc:
+        return 'failed', str(exc)
+    return 'ok', 'readable'
+
+
+def _seats(root):
+    from wuwei import brief, state
+    names = brief.stuck(state.read_state(root))
+    if not names:
+        return 'ok', 'none stuck'
+    return 'failed', (f'dead: {", ".join(names)}; run wuwei seat stop {names[0]} --verdict <file>, '
+                      'or --unmeasured "<reason>"')
+
+
+def measure(root):
+    """Every probe once: {name: {result: ok|failed|unmeasured, value}} in PROBES order."""
+    from wuwei import watch
+    root = Path(root)
+    calls = [_hook(root, 'Bash', {'command': 'git push --force origin main'}),
+             _hook(root, 'Read', {'file_path': str(root / '.wuwei/config.toml')}),
+             _hook(root, 'Write', {'file_path': str(workspace.day_dir(root) / 'events.jsonl'), 'content': ''})]
+    found = {}
+    for name, check in (('state', _state), ('seats', _seats)):
+        try:
+            found[name] = check(root)
+        except watch.ERRORS as exc:
+            found[name] = 'unmeasured', str(exc)
+    try:
+        (refused, allowed, written), _ = registry.watch_service().probe(calls, root / '.wuwei')
+        found.update(refused=_exit(refused, 2), allowed=_exit(allowed, 0), state_write=_exit(written, 2))
+    except (OSError, ValueError) as exc:
+        found.update({name: ('unmeasured', str(exc)) for name in ('refused', 'allowed', 'state_write')})
+    return {name: {'result': found[name][0], 'value': found[name][1]} for name in PROBES}
 
 
 def _day(root, config, probes):
-    from wuwei import watch
     from wuwei.commands import status
     rows = [_row('day', 'state', PROBE[probes['state']['result']], probes['state']['value'],
-                 'wuwei state recover in a host terminal'),
-            _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
-                 'wuwei plan session <session id> --take-over from the live session')]
+                 "fix today's .wuwei/days/<date>/events.jsonl or state.json, then run wuwei doctor")]
     try:
-        found, watch_health, listen_health, beat, _ = status.scan(workspace.day_dir(root))
+        found = status.attention(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover in a host terminal')]
-    for name, health in (('watch', watch_health), ('listener', listen_health)):
-        command = 'watch' if name == 'watch' else 'listen'
-        if name == 'listener' and config['adapters']['inbound'] == 'none':
-            rows.append(_row('day', name, 'ok', 'not used'))
-        elif health == 'alive':
-            rows.append(_row('day', name, 'ok', 'alive'))
-        elif health == 'off':
-            rows.append(_row('day', name, 'warn', 'not installed', f'wuwei {command} install',
-                             apply=f'{command}-install'))
-        elif health == 'dead':
-            rows.append(_row('day', name, 'fail', 'dead', f'wuwei {command} uninstall, then wuwei {command} '
-                             f'install (read .wuwei/{command}.stderr.log first)'))
-        else:
-            rows.append(_row('day', name, 'unmeasured', 'unmeasured', f'wuwei {command} names the problem'))
-    try:  # #511: an ok row either way; scheduling is the owner's choice.
-        from wuwei import shepherd
-        last = shepherd.last_swept(root)
-        rows.append(_row('day', 'shepherd', 'ok', (
-            f'scheduled ({"launchd" if sys.platform == "darwin" else "systemd"}), last swept {last or "not yet"}'
-            if workspace.unit_installed(root, name='shepherd') else
-            'runs only in a session; bin/wuwei shepherd schedule runs it overnight'
-            + (f'; last headless sweep {last}' if last else ''))))
-    except (OSError, ValueError, TypeError, KeyError) as exc:
-        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
-    rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
-                     beat or 'none today', 'wuwei heartbeat names the failed probe'))
-    try:  # #601: one credential reader; the heartbeat row reports a broken saved beat
-        theirs = watch.saved(root).get('heartbeat', {}).get('probes', {}).get('config')
-    except (OSError, ValueError, TypeError, AttributeError):
-        theirs = None
-    mine = probes.get('config')
-    if theirs and mine and theirs != mine:
-        rows.append(_row('day', 'credentials', 'warn',
-                         f"the watch's last heartbeat read {theirs.get('result')} {theirs.get('value')}; "
-                         f"doctor reads {mine['result']} {mine['value']}",
-                         'the next heartbeat rereads .wuwei/env; if this row stays, '
-                         'wuwei watch uninstall, then wuwei watch install'))
+        return rows + [_row('day', 'day', 'unmeasured', str(exc), "fix today's events.jsonl, then run wuwei doctor")]
     rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],
                      'wuwei seat stop <name> --verdict <file>, or wuwei seat stop <name> --unmeasured "<reason>"'))
     for page in found:
-        if page['tier'] == 'page':
-            rows.append(_row('day', page['source'] + (' page' if page['source'] == 'heartbeat' else ''), 'fail',
-                             str(page['reason']), 'wuwei nudges'))
-    mode, shown = status.surfaced(workspace.day_dir(root), found, config=config)  # #742
-    nudges = sum(page['tier'] == 'nudge' for page in shown)
-    rows.append(_row('day', 'nudges', 'ok',
-                     f'{nudges} shown, nudges.mode {mode} (wuwei nudges --all lists every open cause)'))
+        if page['tier'] == 'page':  # wuwei next acts on health pages only
+            fix = (f"wuwei why {page['reason']}" if page['source'] == 'item.escalated' else
+                   f"read the {page['source']} event in today's .wuwei/days/<date>/events.jsonl, "
+                   'act on it, then run wuwei doctor')
+            rows.append(_row('day', page['source'], 'fail', str(page['reason']), fix))
     gaps = sum(page.get('count', 1) for page in found if page['source'] == 'traces.gap')
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
-                     'read the traces.gap reasons in wuwei nudges --all, then run wuwei doctor'))
+                     "read the traces.gap events in today's .wuwei/days/<date>/events.jsonl, then run wuwei doctor"))
     untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
-                     'launch agents from a session inside the workspace after the morning plan; under strict '
+                     'launch agents from a session inside the workspace after the morning plan; '
                      'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
-    from wuwei import watch
-    try:  # #599: the last SessionStart says whether Bash calls carry WUWEI_SESSION_ID.
-        flags = [row['payload']['env_file'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-                 if row['kind'] == 'session.seen' and 'env_file' in row['payload']]
-        rows.append(_row('day', 'session id', 'ok', 'SessionStart exported it' if flags else 'not recorded today')
-                    if not flags or flags[-1] else
-                    _row('day', 'session id', 'warn', 'SessionStart had no CLAUDE_ENV_FILE, so Bash calls do not carry '
-                         'WUWEI_SESSION_ID; record commands for asked cards confirm through the planner in state',
-                         'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
-    except watch.ERRORS as exc:
-        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
-    try:
-        if ids := _legacy_traces(root):
-            rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
-                             'wuwei doctor --fix', apply='trace-decisions'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
-    try:
-        ids = _unrecorded(root)
-        rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
-                         f'{", ".join(ids)} answered on a card, not recorded' if ids else 'none',
-                         "the planner runs each card's record command (wuwei decision show <id> --widget "
-                         'names it); under strict you run it in a host terminal'))
-    except (OSError, ValueError) as exc:
-        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     return rows
 
 
 def _tracker(root, config):
-    """5.11: with tickets required, the tracker must answer a backlog read."""
+    """5.11: a configured tracker must answer a backlog read; #842: its duties need it."""
     name = config['adapters']['tracker']
-    if name == 'none' or not config['tracker']['required']:
-        return _row('day', 'tracker', 'ok', name if name == 'none' else f'{name}, tickets optional')
+    if name == 'none':
+        return _row('day', 'tracker', 'ok', name)
     from wuwei.commands.config import requirements
     names = ', '.join(key for keys in requirements(config).get(('tracker', name), ()) for key in keys)
     try:
@@ -735,15 +542,13 @@ def _tracker(root, config):
     if name == 'github':  # #602: the token, or the owner's gh login under tracker.auth = "gh"
         fix = (f'{fix}bin/wuwei config set tracker.auth \'"gh"\' to use your gh login, or ' if names else
                'run gh auth status (with tracker.board: gh auth refresh -s project), or ')
-    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set tracker.required false')
+    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set adapters.tracker \'"none"\'')
 
 
 def _tracker_labels(root, config):
     """#670: the lifecycle labels the tracker lacks; doctor reads, init --upgrade creates."""
     from wuwei import tracker
     result = tracker.labels(root, config, False)
-    if result.exit and not config['tracker']['required']:
-        return _row('day', 'tracker labels', 'ok', 'unmeasured, tickets optional')
     if result.exit:
         return _row('day', 'tracker labels', 'unmeasured', result.reason,
                     'fix the tracker row, then run wuwei doctor')
@@ -753,80 +558,23 @@ def _tracker_labels(root, config):
     return _row('day', 'tracker labels', 'ok', 'none missing')
 
 
-LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
-                'Context: Session has no matching item reservation.\n')
-SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
-
-
-def _legacy_traces(root):
-    """Today's pending, unanswered decisions the pre-#352 sweep wrote for a non-seat session."""
-    from wuwei import decision, state
-    data = state.read_state(root)
-    return [path.stem for path in sorted((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
-            if not path.is_symlink()
-            and (text := path.read_text(encoding='utf-8')).startswith(LEGACY_TRACE)
-            and re.search(r'^Outcome: pending$', text, re.M)
-            and decision.answered(data, path.stem) is None]
-
-
-def _unrecorded(root):
-    """#661: cards the owner answered whose record command never ran (Keep and Undo answers
-    on an undo card record nothing more)."""
-    from wuwei import decision, drafts, sessions, state
-    data = state.read_state(root)
-    topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
-    queue = drafts.read(data)
-    found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
-             and topic not in (sessions.card_topic(ident := topic.split('=')[0], 'Keep'),
-                               sessions.card_topic(ident, 'Undo'))
-             and decision.answered(data, ident) is None and not _owner_on_file(ident, root)}
-    found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
-              and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
-    return sorted(found)
-
-
-def _owner_on_file(ident, root):
-    """mcp.decide records the owner's option in the D-n file only, never in decision_outcomes."""
-    from wuwei import decision
-    try:
-        text = decision.today_path(ident, root).read_text(encoding='utf-8')
-    except (OSError, UnicodeError):
-        return False
-    return bool(re.search(r'^Decided-by: owner$', text, re.M) and re.search(r'^Outcome: (?!pending$)\S', text, re.M))
-
-
-TIMED = ('refused', 'allowed', 'state_write', 'read_loop')  # the heartbeat probes that carry ms
-
-
 def _probe_fix(name, probes):
-    """A failed guard probe row's fix. #782: a probe over its time is a busy host or a
-    missing cached line, never a reinstall; damaged files are the integrity row's."""
-    value = probes[name]['value']
-    if 'plugin integrity' in value:
+    """A failed guard probe row's fix; damaged files are the integrity row's."""
+    if 'plugin integrity' in probes[name]['value']:
         return 'fix the integrity row first'
-    if value != 'timeout' and ' ms over ' not in value:
-        return 'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL
-    budget = heartbeat.STATUS_LINE_BUDGET_MS
-    peers = {other: probes[other] for other in TIMED if other != name}
-    if all(row['value'] == 'timeout' or row.get('ms', 0) > budget for row in peers.values()):
-        fastest = min(((row['ms'], other) for other, row in peers.items() if 'ms' in row), default=None)
-        detail = f'fastest hook probe {fastest[1]} {fastest[0]} ms' if fastest else 'every hook probe timed out'
-        return (f'every launcher call in this run was slow ({detail}): the host is busy, not the '
-                'hook; rerun wuwei doctor when fewer seats run')
-    if name == 'status_line':
-        return ('only status --line was slow: it prints the line the watch heartbeat caches each '
-                'tick, and a dead watch caches none; fix the watch row, then rerun wuwei doctor')
-    return 'only this probe timed out in this run; rerun wuwei doctor'
+    if probes[name]['value'] == 'timeout':
+        return 'the hook did not answer in time; rerun wuwei doctor when fewer seats run'
+    return 'the hook no longer behaves as shipped; ' + REINSTALL
 
 
 def _guards(root, probes):
-    from wuwei.commands.hook import HEARTBEAT_SESSION
+    from wuwei.commands.hook import PROBE_SESSION
     rows = [_row('guards', name, PROBE[probes[name]['result']], probes[name]['value'], _probe_fix(name, probes))
-            for name in ('refused', 'allowed', 'state_write', 'read_loop', 'git_read', 'status_line')] if root is not None else []
+            for name in ('refused', 'allowed', 'state_write')] if root is not None else []
     fix = 'upgrade WUWEI: outside a workspace every hook must allow (#323)'
     try:
         with tempfile.TemporaryDirectory() as outside:
-            payload = json.dumps({'session_id': HEARTBEAT_SESSION, 'transcript_path': os.devnull, 'cwd': outside,
+            payload = json.dumps({'session_id': PROBE_SESSION, 'transcript_path': os.devnull, 'cwd': outside,
                                   'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
                                   'tool_input': {'command': OUTSIDE}})
             (result,), _ = registry.watch_service().probe([(('hook', 'PreToolUse'), payload)], outside)
@@ -840,7 +588,7 @@ def _guards(root, probes):
 
 
 def diagnose(section=None):
-    """Every row (or one section's), in section order; reads only (heartbeat's state.lock aside)."""
+    """Every row (or one section's), in section order; reads only."""
     error = None
     try:
         root = workspace.find_workspace()
@@ -859,14 +607,14 @@ def diagnose(section=None):
             _row('pr-flow', 'config', 'unmeasured', error or ('no workspace' if root is None else UNLOADED),
                  'fix config.toml first')]
     defaults = config or workspace._validate({}, workspace.SCHEMA, (), '')
-    probes = heartbeat.measure(root) if root is not None else None
+    probes = measure(root) if root is not None else None
     rows = [*_install(root, config), *_host(root, defaults), *_workspace(root, config, error, found)]
     if root is not None:
         if config is None:
             rows += [_row('gates', 'gates', 'unmeasured', UNLOADED, 'fix config.toml first'),
                      _row('day', 'day', 'unmeasured', UNLOADED, 'fix config.toml first')]
         else:
-            rows += [*_gates(root, config), *_docs(root, config), *pr_flow(config), *_day(root, config, probes),
+            rows += [*_gates(root, config), *pr_flow(config), *_day(root, config, probes),
                      _tracker(root, config)]
             if config['adapters']['tracker'] != 'none':
                 rows.append(_tracker_labels(root, config))
@@ -900,18 +648,10 @@ def _upgrade(root, dry):
     return init.upgrade, Namespace(path=str(root), dry_run=dry)
 
 
-def _service(name):
-    def make(root, dry):
-        from wuwei.commands import watch
-        return (lambda args: watch.service(args, name, None),
-                Namespace(**{f'{name}_action': 'install'}, once=False, dry_run=dry))
-    return make
-
-
 def _reconfirm_preview(root):
     result = integrity.check(root)
     if not result.data:
-        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei integrity check to see the current verdict')
+        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei doctor to see the current verdict')
     return f'installation fingerprint {result.data}\n', result.data
 
 
@@ -922,93 +662,23 @@ def _reconfirm(root, token):
     return result.exit
 
 
-def _supersede_preview(root):
-    ids = _legacy_traces(root)
-    if not ids:
-        raise ValueError('nothing to supersede; run bin/wuwei doctor without --apply supersede')
-    return ''.join(f'{ident}: Outcome: superseded ({SUPERSEDED})\n' for ident in ids), ids
-
-
-def _supersede(root, token):
-    """Close each previewed record: the Outcome line for the board, an owner outcome for close,
-    status and the steward queue."""
-    from wuwei import decision, state
-    if _legacy_traces(root) != token:
-        print('trace-decisions: changed since the preview; nothing applied')
-        return 1
-    for ident in token:
-        path = decision.today_path(ident, root)
-        text = path.read_text(encoding='utf-8')
-        fields, _ = decision.evaluate(text)
-        text = re.sub(r'^Outcome: pending$', 'Outcome: superseded', text, count=1, flags=re.M)
-        workspace.atomic_write(path, text + f'Notes: {SUPERSEDED}\n')
-        outcome = {'option': 'superseded', 'outcome': 'superseded', 'decided_by': 'owner',
-                   'reversibility': fields['Reversibility']}
-        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({ident: outcome}),
-                           root, reserved=False, kind='decision.decided',
-                           payload={'id': ident, 'option': 'superseded', 'decided_by': 'owner',
-                                    'reversibility': fields['Reversibility']})
-    return 0
-
-
-def _calibrate(root, token):
-    from wuwei.commands import calibrate
-    return calibrate.run(Namespace(action=None, target=None, repo=None, measure=False, skip=[],
-                                   interview=None, questions=False, answer=None))
-
-
-def _reports_preview(root):
-    from wuwei import mcp
-    plan = mcp.migrate(root)
-    return plan, plan
-
-
-def _reports(root, token):
-    from wuwei import mcp
-    if mcp.migrate(root, token) != token:
-        print('move legacy MCP reports: changed since the preview; nothing applied')
-        return 1
-    return 0
-
-
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (mcp decide, security.posture, state recover, the code host)
+# apply(root, token) -> exit). Decisions (guards.enforce, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
-    'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
+    'integrity-reconfirm': ('wuwei doctor --fix --apply integrity-reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
-    'calibrate': ('wuwei calibrate', lambda root: (
-        "profile the configured repositories; writes today's calibration.md and charter proposals; "
-        'config.toml unchanged\n', None), _calibrate),
-    'watch-install': _planned('wuwei watch install', _service('watch')),
-    'listen-install': _planned('wuwei listen install', _service('listen')),
-    'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
-    'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }
-
-
-def widgets(root, batch):
-    """The batch as multi-select widgets of at most four fixes; one fix gets a Skip option."""
-    from wuwei import decision
-    options = [(name, f'{FIXES[name][0]}: {(text.strip().splitlines() or [""])[0]}')
-               for name, text, _ in batch]
-    count = -(-len(options) // 4)
-    return [decision.widget(decision.gate(root) + 'Apply these doctor fixes'
-                            + (f' ({i + 1} of {count})' if count > 1 else '') + '?', 'Fixes',
-                            options[i::count] + [('Skip', 'Apply nothing now; doctor lists it again.')]
-                            * (len(options[i::count]) == 1),
-                            'wuwei doctor --fix --apply <labels>', multi=True)
-            for i in range(count)]
 
 
 def fix(rows, confirm=None, only=None, widget=False):
     """Preview the allow-listed fixes, ask for one digest, apply each bound to its preview, re-diagnose.
-    only narrows the batch to those fix ids; widget prints the batch as widgets and applies nothing."""
+    only narrows the batch to those fix ids; widget prints the batch's Owner step card and applies nothing."""
     import hashlib
     from wuwei import state
     wanted = {row['apply'] for row in rows if row.get('apply') in FIXES}
     if only is not None:
-        only = set(only) - {'Skip'}  # the widget's Skip option picked alongside fixes
+        only = set(only)
         unknown = sorted(only - set(FIXES))
         if unknown:
             print(f'wuwei doctor: unknown fix {", ".join(unknown)}; use one of: {", ".join(FIXES)}',
@@ -1028,28 +698,24 @@ def fix(rows, confirm=None, only=None, widget=False):
             continue
         batch.append((name, text, token))
     notes = 'Not applied:\n' + ''.join(f'  {line}\n' for line in held) if held else ''
-    if widget:
-        plan = workspace.day_dir(root) / 'plan.md' if root else None
-        if batch and not (plan and plan.is_file() and plan.resolve() == plan):
-            print('wuwei doctor: no plan today for the question to cite; '
-                  'run wuwei doctor --fix in a host terminal', file=sys.stderr)
-            return 1
-        print(notes, end='', file=sys.stderr)
-        print(json.dumps(widgets(root, batch), indent=2))
-        return outcome(rows)
     if not batch:
-        print(notes + 'Nothing to apply')
+        print(notes + 'Nothing to apply', file=sys.stderr if widget else sys.stdout)
+        if widget:
+            print('[]')
         return outcome(rows)
+    from wuwei import sessions
     text = ''.join(f'[{name}] {FIXES[name][0]}\n{preview.rstrip()}\n' for name, preview, _ in batch) + notes
+    digest = hashlib.sha256(text.encode()).hexdigest()[:12]
+    command = 'bin/wuwei doctor --fix' + (f" --apply {','.join(sorted(only))}" if only is not None else '')
+    if widget:  # #831: one card per batch, the Owner step card the fix itself asks
+        print(json.dumps([sessions.owner_card(command, text, digest)], indent=2))
+        return outcome(rows)
     print(text, end='')
-    try:
-        accepted = (confirm or (lambda value: integrity._host_confirm(
-            value, prompt='Apply the fixes above.')))(
-            hashlib.sha256(text.encode()).hexdigest()[:12])
-    except OSError as exc:
-        print(f'wuwei doctor: {exc}', file=sys.stderr)
-        return 2
-    if not accepted:
+    if confirm is None:  # #831: the owner's answer on the Owner step card
+        if owner := sessions.needs_owner(root, command, text, digest):
+            print(owner, file=sys.stderr)
+            return 1
+    elif not confirm(digest):
         print('wuwei doctor: declined; nothing applied; run bin/wuwei doctor --fix again when you are ready', file=sys.stderr)
         return 1
     for name, _, token in batch:
@@ -1096,7 +762,7 @@ def register(subparsers):
     mode.add_argument('--fix', action='store_true', help='apply the allow-listed fixes after one host confirmation')
     mode.add_argument('--json', action='store_true', help='print {"exit", "rows"} as JSON')
     parser.add_argument('--widget', action='store_true',
-                        help='with --fix: print the batch as AskUserQuestion widgets; apply nothing')
+                        help='with --fix: print the batch as its Owner step card for AskUserQuestion; apply nothing')
     parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
     parser.add_argument('--section', choices=['pr-flow'], help='print one section only')
     parser.set_defaults(func=run)

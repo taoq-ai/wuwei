@@ -1,4 +1,4 @@
-"""Design 5.13: preview what leaves, turn sharing off, send an attributed week, present proposals."""
+"""Design 5.13: preview what leaves, turn sharing off, send an attributed week."""
 
 from argparse import Namespace
 from hashlib import sha256
@@ -10,15 +10,13 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('telemetry', help='weekly usage counts: preview, off, send, proposals')
+    parser = subparsers.add_parser('telemetry', help='weekly usage counts: preview, off, send')
     actions = parser.add_subparsers(dest='action', required=True)
     for name, text in (('preview', 'print exactly what each sharing mode would send'),
-                       ('send', 'open the attributed issue for a final week (owner, host terminal)')):
+                       ('send', 'open the attributed issue for a final week (owner, asks on a card)')):
         action = actions.add_parser(name, help=text)
         action.add_argument('week', nargs='?')
     actions.add_parser('off', help='stop sharing: set telemetry.share to "off"')
-    proposals = actions.add_parser('proposals', help="the latest final week's proposals")
-    proposals.add_argument('--widget', action='store_true', help='one yes-or-no question per proposal, once')
     parser.set_defaults(func=run)
 
 
@@ -26,7 +24,7 @@ def run(args):
     try:
         root = workspace.find_workspace()
         config = workspace.load_config(root)
-        action = {'preview': _preview, 'off': _off, 'send': _send, 'proposals': _proposals}[args.action]
+        action = {'preview': _preview, 'off': _off, 'send': _send}[args.action]
         return action(root, config, args)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f'wuwei telemetry {args.action}: {exc}', file=sys.stderr)
@@ -62,18 +60,18 @@ def _preview(root, config, args):
 
 
 def _off(root, config, args):
-    from wuwei.commands import setup
+    from wuwei.commands.config import set_value
     if config['telemetry']['share'] == 'off':
         print('telemetry.share is already "off"')
         return CLEAN
-    code = setup.set_value(Namespace(key='telemetry.share', value='"off"'), confirm=lambda *_, **__: True)
+    code = set_value(Namespace(key='telemetry.share', value='"off"'), confirm=lambda *_, **__: True)
     if code == CLEAN:
         state.append_event('telemetry.off', {}, root)
     return code
 
 
 def _send(root, config, args):
-    from wuwei import integrity, registry, security
+    from wuwei import registry, security, sessions
     tele = config['telemetry']
     try:
         if tele['share'] != 'attributed':
@@ -90,9 +88,11 @@ def _send(root, config, args):
     if code:
         print(reason, file=sys.stderr)
         return code
-    if not integrity._host_confirm(sha256(f'{title}\n{body}'.encode()).hexdigest(), prompt=(
-            f"Open this issue on {tele['repository']} from your gh account (it shows your login):\n{title}\n{body}")):
-        print('wuwei telemetry send: declined; nothing sent', file=sys.stderr)
+    if owner := sessions.needs_owner(  # #831: the owner's answer on the Owner step card
+            root, f"bin/wuwei telemetry send {found['week']}",
+            f"Open this issue on {tele['repository']} from your gh account (it shows your login):\n{title}\n{body}",
+            sha256(f'{title}\n{body}'.encode()).hexdigest()[:12]):
+        print(owner, file=sys.stderr)
         return FINDINGS
     result = registry.load('code_host', config).issue(tele['repository'], title, body, root=root)
     if result.exit:
@@ -101,25 +101,4 @@ def _send(root, config, args):
     telemetry.save_week(root, {**found, 'shared': 'attributed'})
     state.append_event('telemetry.shared', {'week': found['week'], 'mode': 'attributed'}, root)
     print(f"Opened {(result.data or {}).get('url', title)}")
-    return CLEAN
-
-
-def _proposals(root, config, args):
-    from wuwei import decision
-    found = telemetry.latest_final(root)
-    if not args.widget:
-        rows = found.get('proposals', []) if found else []
-        print('\n'.join(f"{row['rule']}: {row['evidence']}\n  {row['command']}" for row in rows)
-              or 'No proposals')
-        return CLEAN
-    if not found or found.get('presented') or not found.get('proposals'):
-        print('[]')
-        return CLEAN
-    widgets = [decision.widget(
-        decision.gate(root) + f"Telemetry {found['week']}: {row['evidence']}. Apply it?", 'Telemetry',
-        [('Yes', f"Recommended. Run {row['command']} in a host terminal."), ('Skip', 'Nothing changes.')],
-        row['command']) for row in found['proposals']]
-    telemetry.save_week(root, {**found, 'presented': True})
-    state.append_event('telemetry.presented', {'week': found['week'], 'count': len(widgets)}, root)
-    print(json.dumps(widgets, indent=2))
     return CLEAN

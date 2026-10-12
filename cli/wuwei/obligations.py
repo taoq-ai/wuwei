@@ -7,12 +7,12 @@ import re
 from urllib.parse import urlsplit
 
 from wuwei import registry, state, verdict, workspace
-from wuwei.commands.event import FREE_KINDS
 from wuwei.references import pull_request
 from wuwei.verdict import VERDICTS
 from wuwei.exits import DAMAGED, ADAPTER_DATA
 
 SOLO = 'reviewers: none (solo)'
+FREE_KINDS = frozenset({'note'})  # event kinds that record no PR state
 
 
 def _read(operation, *args, root):
@@ -187,7 +187,7 @@ def _visibility(ref, pr, reviews, data, me, directory, config):
 
 
 def _check_empty_day(directory):
-    written = (directory / 'state.json').exists()
+    written = state.day_started(directory)
     path = directory / 'events.jsonl'
     if not (written or path.exists()):
         return
@@ -215,76 +215,8 @@ def _owner_login(config):
     handles = [handle for handle in config['owner']['handles']
                if not re.fullmatch(r'[UW][A-Z0-9]+', handle)]
     if len(handles) != 1 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', handles[0]):
-        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs); the owner sets owner.handles to one code-host login with bin/wuwei config set in a host terminal')
+        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs); the owner sets owner.handles to one code-host login with bin/wuwei config set')
     return handles[0]
-
-
-def evaluate(root=None):
-    """Calculate today's obligations without writing a summary event."""
-    root = workspace.find_workspace(root)
-    directory = workspace.day_dir(root)
-    counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
-    try:
-        data = state.read_state(directory=directory)
-        ledger = _ledger(data)
-        refs = []
-        for ref in data['raised_prs'] + data['claimed_prs']:
-            try:
-                if pull_request(ref) not in refs:
-                    refs.append(ref)
-            except ValueError as exc:
-                counts['unreadable'] += 1
-                print(f'day PR reference UNREADABLE: {exc}')
-        counts['prs'] = len(refs)
-        if not refs:
-            _check_empty_day(directory)
-        if refs:
-            config = workspace.load_config(root)
-            me = _owner_login(config)
-            host = registry.load('code_host', config)
-        for ref in refs:
-            try:
-                pr = _read(host.pr, ref, root=root)
-                if pr['state'] == 'closed':
-                    continue
-                if pr['state'] != 'open':
-                    raise ValueError(f'unknown PR state; {ADAPTER_DATA}')
-                reviews, discussion = _evidence(host, ref, root)
-                replies = _replies(reviews, discussion, me, ledger.get(ref, {}))
-                visibility = _visibility(ref, pr, reviews, data, me, directory, config)
-                counts['reply_owed'] += len(replies)
-                counts['visibility_owed'] += len(visibility)
-                for finding in replies + visibility:
-                    print(f'{ref} OWED {finding}')
-                for finding, reason in _not_applicable(config, data.get('pr_reviewers', {}).get(ref)).items():
-                    print(f'{ref} NOT APPLICABLE {finding}: {reason}')
-            except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
-                counts['unreadable'] += 1
-                print(f'{ref} UNREADABLE: {exc}')
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
-        counts['unreadable'] += 1
-        print(f'obligations UNREADABLE: {exc}')
-    counts['owed'] = counts['reply_owed'] + counts['visibility_owed'] + counts['unreadable']
-    counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
-    return counts
-
-
-def sweep(root=None):
-    """Sweep today's union once, retaining failures and recording one summary."""
-    root = workspace.find_workspace(root)
-    from wuwei import integrity
-    measured = integrity.check(root)
-    if measured.reason:
-        print(measured.reason)
-    directory = workspace.day_dir(root)
-    counts = evaluate(root)
-    counts['integrity_owed'] = int(measured.exit == 1)
-    counts['unreadable'] += int(measured.exit == 2)
-    counts['exit'] = max(counts['exit'], measured.exit)
-    state.append_event('watch: sweep', counts, directory=directory)
-    print(f'obligations: {counts["reply_owed"]} replies, {counts["visibility_owed"]} visibility, '
-          f'{counts["unreadable"]} unreadable')
-    return counts['exit']
 
 
 def reply(ref, surface, target_id, text, root=None):
@@ -295,7 +227,7 @@ def reply(ref, surface, target_id, text, root=None):
     if (surface not in ('comment', 'review', 'thread') or type(target_id) is not int or target_id <= 0
             or not isinstance(text, str) or not text.strip()):
         raise ValueError('reply needs a surface, positive ID and nonempty body; pass the surface, a positive ID and the reply text')
-    if not (directory / 'state.json').is_file():
+    if not state.day_started(directory):
         raise ValueError('day state missing; start the day with /wuwei:wuwei-plan')
     data = state.read_state(directory=directory)
     _ledger(data)
@@ -312,7 +244,7 @@ def reply(ref, surface, target_id, text, root=None):
     rows = discussion['comments'] if surface == 'comment' else reviews
     target = next((row for row in rows if row['id'] == target_id), None)
     if target is None or target['author'] == me or target['is_bot'] or not target['body'].strip():
-        raise ValueError('no human obligation with that surface and ID; run bin/wuwei nudges --all for the open obligations and their ids')
+        raise ValueError('no human obligation with that surface and ID; reread the PR on the code host for the comment id, then retry')
     fingerprint = _fingerprint(target)
     prior_replies = {row['id'] for row in discussion['comments']}
     result = host.comment(ref, text, None, root=root)
@@ -340,7 +272,7 @@ def reply(ref, surface, target_id, text, root=None):
             'fingerprint': fingerprint, 'reply_id': reply_id,
             'reply_fingerprint': _fingerprint(posted), 'me': me}
 
-    state._write_state(acknowledge, reserved=False, directory=directory,
+    state._write_state(acknowledge, directory=directory,
                        kind='reply: acknowledged', payload={'pr': ref, 'surface': surface,
                        'id': target_id, 'reply_id': reply_id})
     return 0
@@ -360,7 +292,7 @@ def _thread_reply(host, ref, target_id, text, me, root):
 
     first = target()
     if first is None or first['author'] == me:
-        raise ValueError('thread is resolved, missing or already answered; run bin/wuwei nudges --all for the threads still waiting')
+        raise ValueError('thread is resolved, missing or already answered; reread the PR threads on the code host, then retry')
     latest = target()
     if latest is None or latest['id'] != first['id'] or _fingerprint(latest) != _fingerprint(first):
         print('thread last word changed; reread before replying')

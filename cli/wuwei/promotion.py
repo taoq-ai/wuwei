@@ -1,98 +1,40 @@
-"""Validate memory proposals and record their outcomes."""
+"""Validate charter proposals and record their outcomes."""
 
-from datetime import date, timedelta
 import json
 from pathlib import Path
+import re
 
 from wuwei import registry, state, workspace
-from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 from wuwei.exits import DAMAGED, SYMLINK
 
+SLUG_RE = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*')
 
-def owner_edit(root, name, text):
-    """Validate and promote an owner's complete goals or voice document."""
+
+def save_goals(root, text):
+    """Validate and commit the owner's complete goals document (the gate approved it)."""
     root = workspace.find_workspace(root)
-    if name not in ('goals', 'voice'):
-        raise ValueError('unknown owner memory target; use goals or voice')
-    target = safe_path(root, f'.wuwei/memory/{name}.md', label='target')
+    target = safe_path(root, '.wuwei/memory/goals.md', label='target')
     if not target.is_file():
-        raise OSError(f'{name} target is missing; run bin/wuwei init --upgrade to restore the template')
-    if name == 'goals':
-        from wuwei.goals import parse
-        parse(text)
-    else:
-        from wuwei.voice import parse_profile
-        parse_profile(text)
+        raise OSError('goals target is missing; run bin/wuwei init --upgrade to restore the template')
+    from wuwei.goals import parse
+    parse(text)
     previous = target.read_text(encoding='utf-8')
     vcs = registry.load('vcs', workspace.load_config(root))
     if text == previous:
+        if not (root / '.wuwei/.git').is_dir():
+            return False  # no workspace history, so no unrecorded edit to commit
         result = vcs.workspace_changes(root / '.wuwei', root=root)
         if result.exit:
             raise OSError(result.reason)
-        if f'memory/{name}.md' not in result.data:
+        if 'memory/goals.md' not in result.data:
             return False
     # The producer writes only after validation and records the exact target.
     workspace.atomic_write(target, text)
-    result = vcs.workspace_owner_commit(root / '.wuwei', [f'memory/{name}.md'], root=root)
+    result = vcs.workspace_owner_commit(root / '.wuwei', ['memory/goals.md'], root=root)
     if result.exit:
         workspace.atomic_write(target, previous)
         raise OSError(result.reason)
     return True
-
-
-def cruise_level(root, name, level, reason, evidence, hold=None):
-    """#283: the one writer of the running cruise levels, with a ledger line as evidence. #558: a
-    budget lowering passes hold, the level it took away; any other write clears the hold."""
-    from wuwei.decision import CLASSES, CRUISE, running
-    if name not in CLASSES or type(level) is not int or not 0 <= level <= CLASSES[name][1]:
-        raise ValueError(f'cruise level: {name} at L{level} is outside its class range; pass a known class and a level from 0 to its ceiling')
-    root = Path(root)
-    data = running(root)
-    previous = data['levels'].get(name, CLASSES[name][0])
-    data['levels'][name] = level
-    data['changed'][name] = workspace.now().isoformat()
-    budget = data.pop('budget', {})
-    budget.pop(name, None)
-    data.get('shadow', {}).pop(name, None)  # #560: a level write ends the class's shadow
-    if not data.get('shadow', True):
-        data.pop('shadow')
-    if hold is not None:
-        budget[name] = hold
-    if budget:
-        data['budget'] = budget
-    _cruise_write(root, data, 'raise' if level > previous else 'lower', reason, evidence)
-
-
-def calibration(root, classes, roles, reason):
-    """#559: the steward stores the uncalibrated classes and roles, with a ledger line."""
-    from wuwei.decision import CRUISE, running
-    root = Path(root)
-    data = running(root)
-    data.pop('calibration', None)
-    if classes or roles:
-        data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
-    _cruise_write(root, data, 'calibration', reason, CRUISE)
-
-
-def cruise_shadow(root, name, row, reason, evidence=None):
-    """#560: the one writer of a class's shadow row in cruise.json, with a ledger line."""
-    from wuwei.decision import CRUISE, running
-    root = Path(root)
-    data = running(root)
-    data.setdefault('shadow', {})[name] = row
-    _cruise_write(root, data, 'shadow', reason, evidence or CRUISE)
-
-
-def _cruise_write(root, data, action, reason, evidence):
-    from uuid import uuid4
-    from wuwei.decision import CRUISE
-    path = safe_path(root, CRUISE, label='cruise levels')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
-    # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
-    state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
-        'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
-        'action': action, 'status': 'landed', 'reason': reason, 'evidence': evidence})
 
 
 def safe_path(root, raw, *, label):
@@ -112,28 +54,15 @@ def safe_path(root, raw, *, label):
 
 def _target(root, raw):
     path = safe_path(root, raw, label='target')
-    if path.parent == root / '.wuwei/charters':
-        if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
-            raise ValueError(f'invalid charter target; {DAMAGED}')
-    elif path.parent == root / '.wuwei/memory/notes':
-        if path.stem in OWNER_NOTES:
-            raise ValueError('baseline is maintained by the owner outside agent tools; write the change as a proposal; the owner edits the baseline in a host terminal')
-        if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
-            raise ValueError(f'invalid note target; {DAMAGED}')
-    elif path == root / '.wuwei/memory/voice.md':
-        pass
-    else:
-        raise ValueError('target must be a WUWEI charter override, note or voice profile; use a path under .wuwei/charters or .wuwei/memory/notes, or .wuwei/memory/voice.md')
+    if path.parent != root / '.wuwei/charters':
+        raise ValueError('target must be a WUWEI charter override; use a path under .wuwei/charters')
+    if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
+        raise ValueError(f'invalid charter target; {DAMAGED}')
     return path
 
 
 def _lines(text):
     return {line.strip().casefold() for line in text.splitlines() if line.strip()}
-
-
-def _working_days(created, today):
-    return sum((created + timedelta(days=i)).weekday() < 5
-               for i in range(1, max(0, (today - created).days) + 1))
 
 
 def _ensure_clean(root, target):
@@ -144,133 +73,51 @@ def _ensure_clean(root, target):
     if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
         raise OSError('workspace integrity evidence unreadable; run bin/wuwei doctor, which tests the workspace history')
     if target.relative_to(root / '.wuwei').as_posix() in result.data:
-        raise ValueError('target has unpromoted changes; the owner reviews the workspace history. Then the owner runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
+        raise ValueError('target has uncommitted changes in the workspace history; the owner commits or reverts them under .wuwei, then run bin/wuwei retro --promote again')
 
 
 def _changelog(root):
     return safe_path(root, workspace.load_config(root)['retro']['changelog'], label='changelog')
 
 
-def _snapshot(root):
-    """Keep pre-fold memory and charters under protected workspace history."""
-    import shutil
-    from uuid import uuid4
-    base = root / '.wuwei'
-    target = base / 'memory/snapshots' / uuid4().hex
-    for name in ('memory', 'charters'):
-        source = base / name
-        if source.is_symlink() or not source.is_dir():
-            raise ValueError(f'{name} must be a real directory before folding; replace it with a real directory (bin/wuwei doctor names it)')
-        if any(path.is_symlink() for path in source.rglob('*')):
-            raise ValueError(f'{name} contains a symlink; replace the link with a regular file (bin/wuwei doctor names it)')
-    if target.parent.is_symlink():
-        raise ValueError(f'snapshot directory must not be a symlink; {SYMLINK}')
-    target.mkdir(parents=True)
-    shutil.copytree(base / 'memory', target / 'memory',
-                    ignore=shutil.ignore_patterns('snapshots'))
-    shutil.copytree(base / 'charters', target / 'charters')
-    return [path for path in target.rglob('*') if path.is_file()]
-
-
 def _apply(root, proposal):
     raw = proposal.get('target')
     target = _target(root, raw)
     action = proposal.get('action')
-    if action not in ('add', 'patch', 'fold', 'archive'):
-        raise ValueError('action must be add, patch, fold or archive; set the proposal action to one of them')
+    if action not in ('add', 'patch'):
+        raise ValueError('action must be add or patch; set the proposal action to one of them')
     reason = proposal.get('reason')
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError('reason is required; add a one-line reason')
     evidence = safe_path(root, proposal.get('evidence'), label='evidence')
     if not evidence.is_file():
         raise ValueError('evidence does not exist; pass an existing evidence path')
-    if target.parent == root / '.wuwei/memory/notes' and action == 'add':
-        raise ValueError('new notes require wuwei note add')
     if target.exists():
         old = target.read_text(encoding='utf-8')
-    elif target.parent == root / '.wuwei/charters':
-        old = (Path(__file__).resolve().parents[2] / 'charters' / target.name).read_text(encoding='utf-8')
     else:
-        old = ''
+        old = (Path(__file__).resolve().parents[2] / 'charters' / target.name).read_text(encoding='utf-8')
     if action != 'add' and not target.is_file():
         raise ValueError('target does not exist; pass an existing target path')
-    if (action == 'patch' and proposal.get('text') == ''
-            and target.parent == root / '.wuwei/charters'):
+    if action == 'patch' and proposal.get('text') == '':
         return _drop(root, target, old, proposal.get('old_text'))
-    if action in ('add', 'patch'):
-        text = proposal.get('text', proposal.get('delta'))
-        if not isinstance(text, str) or not text.strip():
-            raise ValueError('text or delta is required; pass the text or the delta to apply')
-        if action == 'add':
-            if _lines(text) & _lines(old):
-                raise ValueError('duplicate add; use patch')
-            updated = old.rstrip('\n') + ('\n' if old else '') + text.rstrip('\n') + '\n'
-        else:
-            previous = proposal.get('old_text')
-            if not isinstance(previous, str) or not previous or old.count(previous) != 1:
-                raise ValueError('patch must name one existing old_text rule; pass the exact old_text of one existing rule')
-            updated = old.replace(previous, text, 1)
-        if len(updated.splitlines()) > 200:
-            raise ValueError('target exceeds 200 line cap; split the note or fold old notes first (bin/wuwei consolidate)')
-        if target.parent == root / '.wuwei/memory/notes':
-            parse_note(updated)
-        if target == root / '.wuwei/memory/voice.md':
-            from wuwei.voice import parse_profile
-            parse_profile(updated)
-        _ensure_clean(root, target)
-        if target.parent == root / '.wuwei/charters':
-            _ensure_clean(root, _changelog(root))
-        target.parent.mkdir(parents=True, exist_ok=True)
-        workspace.atomic_write(target, updated)
+    text = proposal.get('text', proposal.get('delta'))
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError('text or delta is required; pass the text or the delta to apply')
+    if action == 'add':
+        if _lines(text) & _lines(old):
+            raise ValueError('duplicate add; use patch')
+        updated = old.rstrip('\n') + ('\n' if old else '') + text.rstrip('\n') + '\n'
     else:
-        if target.parent == root / '.wuwei/charters':
-            raise ValueError('only notes can be archived or folded; pass a note under memory/notes as the target')
-        fields, _ = parse_note(old)
-        if fields['status'] != 'active':
-            raise ValueError('target is not active; pass an active note as the target')
-        created = (date.fromisoformat(fields['created']) if 'created' in fields
-                   else date.fromtimestamp(target.stat().st_mtime))
-        probation = workspace.load_config(root)['memory']['probation_days']
-        if _working_days(created, workspace.now().date()) < probation:
-            raise ValueError('note is in probation; wait until its probation ends, then retry')
-        if action == 'fold':
-            survivor = _target(root, proposal.get('survivor'))
-            if survivor == target or survivor.parent != target.parent or not survivor.is_file():
-                raise ValueError('fold requires a live note survivor; pass a live note as the survivor')
-            survivor_text = survivor.read_text(encoding='utf-8')
-            if parse_note(survivor_text)[0]['status'] != 'active':
-                raise ValueError('fold requires a live note survivor; pass a live note as the survivor')
-            _, retired_body = parse_note(old)
-            _, survivor_body = parse_note(survivor_text)
-            merged = survivor_text
-            if retired_body.strip() and retired_body.strip() not in survivor_body:
-                merged = (survivor_text.rstrip() + f'\n\n## Folded from {target.name}\n'
-                          + retired_body.strip() + '\n')
-            if len(merged.splitlines()) > workspace.load_config(root)['memory']['note_line_cap']:
-                raise ValueError('folded survivor exceeds note line cap; split the survivor or shorten it below the note line cap')
-            _ensure_clean(root, survivor)
-        from wuwei import memory
-        findings = memory.write_index(root)
-        if findings:
-            raise ValueError('; '.join(findings))
-        archive = root / '.wuwei/memory/archive'
-        if archive.is_symlink():
-            raise ValueError(f'archive path must not be a symlink; {SYMLINK}')
-        archive.mkdir(exist_ok=True)
-        destination = archive / target.name
-        if destination.exists() or destination.is_symlink():
-            raise ValueError('archive destination already exists; remove the existing archive file or pass another note')
-        # A move preserves the complete original note and does not delete its content.
-        _ensure_clean(root, target)
-        index = root / '.wuwei/memory/index.md'
-        snapshot = _snapshot(root) if action == 'fold' else []
-        if action == 'fold' and merged != survivor_text:
-            workspace.atomic_write(survivor, merged)
-        target.rename(destination)
-        findings = memory.write_index(root)
-        if findings:
-            raise ValueError('; '.join(findings))
-        return [target, destination, index, *([survivor] if action == 'fold' else []), *snapshot]
+        previous = proposal.get('old_text')
+        if not isinstance(previous, str) or not previous or old.count(previous) != 1:
+            raise ValueError('patch must name one existing old_text rule; pass the exact old_text of one existing rule')
+        updated = old.replace(previous, text, 1)
+    if len(updated.splitlines()) > 200:
+        raise ValueError('target exceeds 200 line cap; split the charter override')
+    _ensure_clean(root, target)
+    _ensure_clean(root, _changelog(root))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    workspace.atomic_write(target, updated)
     return [target]
 
 
@@ -370,64 +217,3 @@ def last_run(root):
     rejected = [f"{r['target']}: {r['reason']}" for r in selected if r['status'] == 'rejected']
     return (f"Last promote {latest['date']}: landed {len(landed)} ({', '.join(landed)}); "
             f"rejected {len(rejected)} ({', '.join(rejected)})")
-
-
-def _load_counts(root):
-    counts = {}
-    for path in sorted((Path(root) / '.wuwei/days').glob('*/traces.jsonl')):
-        if path.is_symlink():
-            raise ValueError(f'trace must not be a symlink; {SYMLINK}')
-        for line in path.read_text(encoding='utf-8').splitlines():
-            batch = json.loads(line)
-            for resource in batch['resourceSpans']:
-                for scope in resource['scopeSpans']:
-                    for span in scope['spans']:
-                        attrs = {a['key']: a['value']['stringValue'] for a in span['attributes']}
-                        if attrs.get('gen_ai.tool.name') != 'Read':
-                            continue
-                        args = json.loads(attrs['gen_ai.tool.arguments'])
-                        file = Path(args.get('file_path', ''))
-                        if not file.is_absolute():
-                            file = Path(root) / file
-                        slug = file.stem
-                        if (file.parent == Path(root) / '.wuwei/memory/notes'
-                                and file.suffix == '.md' and SLUG_RE.fullmatch(slug)):
-                            counts[slug] = counts.get(slug, 0) + 1
-    return counts
-
-
-def adherence_counts(root=None):
-    """Count note loads and recorded guard refusals from dedicated producer logs."""
-    root = workspace.find_workspace() if root is None else Path(root)
-    refusals = {}
-    for path in sorted((root / '.wuwei/days').glob('*/events.jsonl')):
-        if path.is_symlink():
-            raise ValueError(f'events must not be a symlink; {SYMLINK}')
-        for line in path.read_text(encoding='utf-8').splitlines():
-            event = json.loads(line)
-            if event.get('kind') == 'hook.refusal':
-                reason = event['payload']['reason']
-                refusals[reason] = refusals.get(reason, 0) + 1
-    return {'note_loads': _load_counts(root), 'guard_refusals': refusals}
-
-
-def archive_candidates(root=None):
-    root = workspace.find_workspace() if root is None else Path(root)
-    config = workspace.load_config(root)['memory']
-    loads = adherence_counts(root)['note_loads']
-    today = workspace.now().date()
-    active = []
-    for path in sorted((root / '.wuwei/memory/notes').glob('*.md')):
-        if path.is_symlink():
-            raise ValueError(f'note must not be a symlink; {SYMLINK}')
-        fields, _ = parse_note(path.read_text(encoding='utf-8'))
-        if fields['status'] != 'active':
-            continue
-        created = date.fromisoformat(fields['created']) if 'created' in fields else date.fromtimestamp(path.stat().st_mtime)
-        working = _working_days(created, today)
-        active.append((path.stem, loads.get(path.stem, 0), working))
-    eligible = sorted((item for item in active if item[2] >= config['probation_days']),
-                      key=lambda x: (x[1] / max(x[2], 1), x[0]))
-    overflow = max(0, len(active) - config['max_notes'])
-    return [(slug, count) for index, (slug, count, _) in enumerate(eligible)
-            if count == 0 or index < overflow]

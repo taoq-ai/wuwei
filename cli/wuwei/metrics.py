@@ -8,13 +8,12 @@ from pathlib import Path
 import re
 from statistics import mean, median
 
-from wuwei import registry, sessions, state, watch, workspace
+from wuwei import registry, state, watch, workspace
 from wuwei.exits import DAMAGED, SYMLINK, ADAPTER_DATA
 
 
 UNMEASURED = 'unmeasured'
 HOURS = ((5, 'morning'), (11, 'midday'), (14, 'afternoon'), (18, 'evening'))
-AGES = ('0-49 turns', '50-199 turns', '200+ turns', 'compacted', 'no planner')
 COUNTERS = ('gates', 'fix_verdicts', 'fix_rounds', 'lint_rejections', 'interventions')
 
 
@@ -140,33 +139,15 @@ def _hour_band(at):
     return next((name for start, name in reversed(HOURS) if at.hour >= start), 'evening')
 
 
-def _age_band(row):
-    if row is None:
-        return 'no planner'
-    if row.get('compactions'):
-        return 'compacted'
-    turns = row.get('turns', 0)
-    return AGES[0] if turns < 50 else AGES[1] if turns < 200 else AGES[2]
-
-
 def _bands(days, turns, zone):
-    """Quality counters per owner hour band and per planner session-age band."""
-    table = {'hour': {name: dict.fromkeys(COUNTERS, 0) for _, name in HOURS},
-             'session_age': {name: dict.fromkeys(COUNTERS, 0) for name in AGES}}
+    """Quality counters per owner hour band."""
+    table = {'hour': {name: dict.fromkeys(COUNTERS, 0) for _, name in HOURS}}
     seen = set()
     for name, events in days:
-        # The registry is day state, so session ages restart every day.
-        ages, planner = {}, None
         owner = [{'kind': 'owner.turn', 'ts': at.isoformat(), 'payload': {}} for at in turns
                  if at.astimezone(zone).date().isoformat() == name]
         for row in sorted([*events, *owner], key=lambda row: datetime.fromisoformat(row['ts'])):
             kind, payload = row['kind'], row['payload']
-            if kind == 'plan.session':
-                planner = payload.get('session_id')
-                continue
-            if kind == 'session.seen':
-                sessions.count(ages.setdefault(payload.get('session_id'), {}), payload.get('hook'))
-                continue
             hits = {'gates': kind == 'gate.received',
                     'fix_verdicts': kind == 'gate.received' and payload.get('verdict') == 'FIX',
                     'fix_rounds': sum(phase == 'fix' for phase in payload.get('phase_changes', {}).values()),
@@ -176,10 +157,9 @@ def _bands(days, turns, zone):
                 hits['lint_rejections'] = key not in seen
                 seen.add(key)
             at = datetime.fromisoformat(row['ts']).astimezone(zone)
-            for cell in (table['hour'][_hour_band(at)],
-                         table['session_age'][_age_band(ages.get(planner, {}) if planner else None)]):
-                for key, value in hits.items():
-                    cell[key] += value
+            cell = table['hour'][_hour_band(at)]
+            for key, value in hits.items():
+                cell[key] += value
     for cell in (cell for cells in table.values() for cell in cells.values()):
         cell['fix_rate'] = cell['fix_verdicts'] / cell['gates'] if cell['gates'] else UNMEASURED
         if not turns:
@@ -419,9 +399,8 @@ def cycles(root):
     """#567: one row per merged item: its tier, the minutes from its plan approve or add to its
     merge, and from its first sentinel launch to its last gate verdict, across days."""
     from wuwei.dispatch import depth
-    starts, launches, received, merged, tiers, sentinels, paces = {}, {}, {}, {}, {}, {}, {}
+    starts, launches, received, merged, tiers, sentinels = {}, {}, {}, {}, {}, {}
     for directory in reversed(watch.days(root)):  # oldest first
-        fresh = set(merged)
         for row in _events(directory) or []:
             kind, payload, ts = row['kind'], row['payload'], datetime.fromisoformat(row['ts'])
             names = (payload.get('items', []) if kind == 'plan.approved'
@@ -440,10 +419,8 @@ def cycles(root):
                     merged.setdefault(name, ts)
         data = _state(directory)
         tiers.update({name: depth(row) for name, row in (data['items'] if data else {}).items()})
-        # #579: the pace of the day the merge was seen; a day without one ran steady
-        paces.update(dict.fromkeys(set(merged) - fresh, (data or {}).get('pace') or 'steady'))
     minutes = lambda start, end: (end - start).total_seconds() / 60
-    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'pace': paces[name], 'merged_at': end,
+    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'merged_at': end,
              'cycle_minutes': minutes(starts[name], end),
              'gate_minutes': (minutes(launches[name], received[name])
                               if name in launches and name in received else UNMEASURED)}
@@ -458,25 +435,6 @@ def cycle_by_tier(rows):
     return {tier: {'median_minutes': median(values), 'items': len(values),
                    **({'target': CYCLE_TARGETS[tier]} if tier in CYCLE_TARGETS else {})}
             for tier, values in sorted(found.items())} or UNMEASURED
-
-
-def by_pace(root):
-    """#579: per pace: days, items merged, cycle minutes per tier, escaped defects (5.6) and
-    cards asked; unmeasured until a day records a pace. A day counts at its final pace."""
-    days = [data for data in map(_state, watch.days(root)) if data and data.get('pace')]
-    if not days:
-        return UNMEASURED
-    rows, (_, escaped) = cycles(root), _escaped(root)
-    result = {}
-    for data in days:
-        row = result.setdefault(data['pace'], {'days': 0, 'merged': 0, 'escaped': 0, 'cards': 0})
-        row['days'] += 1
-        row['cards'] += len(data.get('decision_routes', {}))
-    for pace, row in result.items():
-        mine = [cycle for cycle in rows if cycle['pace'] == pace]
-        row.update(merged=len(mine), escaped=sum(cycle['item'] in escaped for cycle in mine),
-                   cycle_by_tier=cycle_by_tier(mine))
-    return result
 
 
 DORA = (('lead_time_merge_hours', 'Lead time to merge', '{:.1f} hours'),
@@ -578,7 +536,7 @@ def _events(day):
 
 
 def _state(day):
-    return state.read_state(directory=day) if (day / 'state.json').exists() else None
+    return state.read_state(directory=day) if state.day_started(day) else None
 
 
 def _traces(day):
@@ -711,15 +669,10 @@ def _matches(command, pattern):
 
 
 def path(events, traces, planner):
-    """#551: the planner's turns (Stop), owner asks (AskUserQuestion spans) and the Bash commands
-    it ran that the governing next.action did not name; unmeasured without the evidence."""
-    if planner is None:
-        return dict.fromkeys(('planner_turns', 'planner_asks', 'off_path'), UNMEASURED)
-    turns = UNMEASURED if events is None else sum(
-        row['kind'] == 'session.seen' and row['payload'].get('session_id') == planner
-        and row['payload'].get('hook') == 'Stop' for row in events)
-    if traces is None or events is None:
-        return {'planner_turns': turns, 'planner_asks': UNMEASURED, 'off_path': UNMEASURED}
+    """#551: the planner's owner asks (AskUserQuestion spans) and the Bash commands it ran that
+    the governing next.action did not name; unmeasured without the evidence."""
+    if planner is None or traces is None or events is None:
+        return dict.fromkeys(('planner_asks', 'off_path'), UNMEASURED)
     actions = [row['payload'] for row in events if row['kind'] == 'next.action'
                and row['payload'].get('action') != 'pass']
     asks, off = 0, []
@@ -743,11 +696,11 @@ def path(events, traces, planner):
                 off.append(command)
         except ValueError:
             off.append(command)
-    return {'planner_turns': turns, 'planner_asks': asks, 'off_path': off}
+    return {'planner_asks': asks, 'off_path': off}
 
 
 def fix_rounds(events):
-    """Fix rounds per item from the day's phase changes; steward.review reads only this (#617)."""
+    """Fix rounds per item from the day's phase changes (#617)."""
     return dict(Counter(item for row in events for item, phase in
                         row['payload'].get('phase_changes', {}).items() if phase == 'fix'))
 
@@ -758,18 +711,19 @@ def collect(root=None, *, day=None):
     config = workspace.load_config(root)
     directory = workspace.day_dir(root) if day is None else Path(day)
     events, data = _events(directory), _state(directory)
-    from wuwei import drafts, outward
+    from wuwei import outward
     voice, ai_tells = defaultdict(list), {}
-    for row in drafts.read(data if data is not None else {}).values():
-        if row['status'] == 'sent':
+    # #838: nothing writes drafts now; the stored rows of past days still measure.
+    for row in ((data or {}).get('drafts') or {}).values():
+        if row.get('status') == 'sent':
             voice[row['audience']].append(row)
         if isinstance(row.get('style'), list):
             ai_tells[row['id']] = len(row['style'])
     for record in sorted((directory / 'decisions').glob('D-*.md')):
         if not record.is_symlink():
             ai_tells[record.stem] = len(outward.tells(record.read_text(encoding='utf-8')))
-    for index, row in enumerate(events or []):  # drafts count from their rows
-        if row['kind'] == 'outward.ai_tells' and row['payload'].get('draft') is False:
+    for index, row in enumerate(events or []):  # past drafts count from their rows
+        if row['kind'] == 'outward.ai_tells' and not row['payload'].get('draft'):
             ai_tells[f'outward-{index}'] = len(row['payload']['tells'])
     traces = _traces(directory)
     now = workspace.now()
@@ -847,9 +801,6 @@ def collect(root=None, *, day=None):
     event_metrics['cycle_minutes'] = {row['item']: row['cycle_minutes'] for row in rows} or UNMEASURED
     event_metrics['gate_minutes'] = {row['item']: row['gate_minutes'] for row in rows} or UNMEASURED
     event_metrics['cycle_by_tier'] = cycle_by_tier(rows)
-    event_metrics['by_pace'] = by_pace(root)
-    event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
-                                          if data is not None else UNMEASURED)
     event_metrics['voice_drafts'] = {
         audience: {'sent': len(rows),
                    'share_sent_unedited': sum(row['sent_unedited'] for row in rows) / len(rows),

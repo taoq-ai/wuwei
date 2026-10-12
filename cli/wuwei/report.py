@@ -3,28 +3,10 @@
 from collections import Counter
 from datetime import timedelta
 import json
-import re
 
-from wuwei import calibration_scores, cruise, metrics, novelty, signal, state, undo, watch, workspace
-from wuwei.exits import SYMLINK
+from wuwei import metrics, signal, state, watch, workspace
 
 FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
-
-
-def decisions(day, data):
-    """Every recorded decision outcome, pending ones included, seat outcomes last."""
-    outcomes = {}
-    for path in sorted((day / 'decisions').glob('D-*.md')):
-        if path.is_symlink():
-            raise ValueError(f'decision record must not be a symlink; {SYMLINK}')
-        values = re.findall(r'^Outcome:\s*(\S[^\n]*)$', path.read_text(encoding='utf-8'), re.M)
-        if len(values) > 1:
-            raise ValueError(f'duplicate decision outcome: {path.name}')
-        if values:
-            outcomes[path.stem] = values[0]
-    outcomes.update({ident: record.get('outcome', 'unmeasured')
-                     for ident, record in data.get('decision_outcomes', {}).items()})
-    return outcomes
 
 
 def shadow_lines(directories):
@@ -52,28 +34,6 @@ def shadow_lines(directories):
                   for (guard, form), position in first.items()
                   if forms[guard][form] > FALSE_POSITIVE_AFTER and last_page < position]
     return [*lines, '', 'Candidates for a guard fix or a calibration proposal:', *(candidates or ['none'])]
-
-
-CISR = ('Routine', 'Consequential', 'Exploratory', 'Strategic')
-
-
-def mandate_lines(data):
-    """#530: decisions taken under the mandate, Consequential first, with the reversal command."""
-    taken = sorted(((ident, row) for ident, row in data.get('decision_outcomes', {}).items()
-                    if row.get('decided_by') == 'mandate'),
-                   key=lambda pair: (pair[1].get('cisr') != 'Consequential', pair[0]))
-    return [f"- {ident} ({row.get('cisr')}): {row.get('option')}, decisions/{ident}.md; "
-            f'reverse: bin/wuwei decide {ident} <option>' for ident, row in taken] or ['none']
-
-
-def class_lines(data):
-    """#530: decisions and owner cards per class, from the CLI-written outcomes and routes."""
-    outcomes, routes = data.get('decision_outcomes', {}), data.get('decision_routes', {})
-    kinds = {ident: outcomes.get(ident, {}).get('cisr') or routes.get(ident, {}).get('cisr')
-             for ident in outcomes.keys() | routes.keys()}
-    return [*(f'- {kind}: {sum(value == kind for value in kinds.values())} decisions, '
-              f'{sum(kinds[ident] == kind for ident in routes)} cards' for kind in CISR),
-            'Target: cards only for Strategic and for floors (publish, merge).']
 
 
 def round_lines(rows):
@@ -118,30 +78,6 @@ def cycle_lines(root):
               f"{gates(row['gate_minutes'])}" for row in rows)]
 
 
-def costly(table):
-    """#579: the paces with more escaped defects per merged item than another pace."""
-    rate = {pace: row['escaped'] / row['merged'] for pace, row in table.items() if row['merged']}
-    return [pace for pace in rate if rate[pace] > min(rate.values())]
-
-
-def pace_lines(root, data):
-    """#579: the day's pace (chosen, recommended, binding), then one line per pace measured."""
-    path = workspace.day_dir(root) / 'proposal.json'
-    proposal = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
-    lines = [f"Pace: {data.get('pace') or 'steady'} (recommended {proposal.get('pace', 'unmeasured')}, "
-             f"binding {proposal.get('pace_advice', {}).get('binding', 'unmeasured')})"]
-    table = metrics.by_pace(root)
-    if table == metrics.UNMEASURED:
-        return lines + ['- per pace: unmeasured']
-    for pace, row in table.items():
-        tiers = row['cycle_by_tier'] if row['cycle_by_tier'] != metrics.UNMEASURED else {}
-        lines.append(f"- {pace}: {row['days']} days, {row['merged']} merged, " + ''.join(
-            f"{tier} median {value['median_minutes']:.0f}, " for tier, value in tiers.items())
-            + f"{row['escaped']} escaped, {row['cards']} cards")
-    return lines + [f"- {pace} costs escaped defects: {table[pace]['escaped']} of {table[pace]['merged']} merged"
-                    for pace in costly(table)]
-
-
 def dora_lines(rows):
     """#586: the DORA table, one row per key in metrics.DORA order."""
     def cells(label, form, row):
@@ -160,7 +96,7 @@ def dora_section(root, config, days=metrics.DORA_WINDOW):
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
-    if not (day / 'state.json').is_file():
+    if not state.day_started(day):
         raise ValueError('day state missing; report cannot infer open work; start the day with /wuwei:wuwei-plan')
     data = state.read_state(root)
     measured = metrics.collect(root)
@@ -181,19 +117,13 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
-    undone, one_way = undo.report_lines(day, data)  # #557
-    lines += ['', '## Taken under mandate', *mandate_lines(data), '', '## Decisions by class',
-              *class_lines(data), '', '## First time today', *novelty.today_lines(root),
-              '', '## Undone today', *undone, '', '## Cannot be undone', *one_way, '', '## Calibration',
-              *calibration_scores.lines(root, workspace.load_config(root)), '', '## Cruise shadow',
-              *cruise.shadow_lines(root), '', '## Merged']
+    lines += ['', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
     if lines[-1] == '## Merged':
         lines.append('none')
     lines += ['', '## Cycle time', *cycle_lines(root)]
-    lines += ['', '## Pace', *pace_lines(root, data)]
     lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
@@ -202,21 +132,9 @@ def build(root=None):
         lines.append('none')
     lines += ['', '## Parked']
     parked = [(name, item) for name, item in sorted(items.items()) if item['phase'] == 'parked']
-    for name, item in parked:
-        ident = item.get('decision')
-        record = day / 'decisions' / f'{ident}.md' if isinstance(ident, str) else None
-        if record is not None and record.is_symlink():
-            raise ValueError(f'parked decision must not be a symlink; {SYMLINK}')
-        reference = f'decisions/{ident}.md' if record is not None and record.is_file() else 'unmeasured'
-        lines.append(f'- {name}: decision {ident or "unmeasured"} ({reference})')
+    lines.extend(f"- {name}: {(item.get('disposition') or {}).get('reason') or item['phase']}"
+                 for name, item in parked)
     if not parked:
-        lines.append('none')
-    lines += ['', '## Decisions answered']
-    outcomes = {ident: outcome for ident, outcome in decisions(day, data).items()
-                if outcome.lower() != 'pending'}
-    path = ' (decisions/{}.md)' if level == 'full' else ''
-    lines.extend(f'- {ident}: {outcome}' + path.format(ident) for ident, outcome in sorted(outcomes.items()))
-    if not outcomes:
         lines.append('none')
     lines += ['', '## Carry']
     carry = [(name, item) for name, item in sorted(items.items()) if item['phase'] != 'merged']
@@ -229,36 +147,30 @@ def build(root=None):
     rounds = round_lines(watch.records(day / 'events.jsonl'))
     if rounds:
         lines += ['', '## Rounds', *rounds]
-    from wuwei import docs
-    documented = docs.report_lines(root, workspace.load_config(root), data)
-    if documented:
-        lines += ['', '## Docs', *documented]
     shadow = shadow_lines([day])
     if shadow:
         lines += ['', '## Shadow', *shadow]
     warned = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'spec.warned']
     if warned:
         lines += ['', '## Spec warnings', *(f"- {row['item']}: {row['step']} ({row['where']})" for row in warned)]
-    used = Counter((row['payload']['decision'], row['payload']['action'])
-                   for row in watch.records(day / 'events.jsonl') if row['kind'] == 'grant.used')
-    if used:  # #478
-        from wuwei.grants import ACTIONS
-        lines += ['', '## Grants', *(f'- {ACTIONS[action][1]} run under grant {key}: {count}'
-                                     for (key, action), count in sorted(used.items()))]
+    from wuwei import tracker
+    skipped = tracker.skipped_duties(watch.records(day / 'events.jsonl'))  # #842: listed, never dropped
+    if skipped:
+        lines += ['', '## Skipped duties', *(
+            f"- {row['item']}: {row['duty']} on {row['ticket'] or 'a new ticket'}: {row['error']}; "
+            f"retry: bin/wuwei tracker {'create' if row['duty'] == 'tracker.create' else 'move'} "
+            f"{row['item']}{'' if row['duty'] == 'tracker.create' else ' ' + row['duty'][8:]}"
+            for row in skipped)]
     runs = Counter(str(row['payload'].get('trigger')) for row in watch.records(day / 'events.jsonl')
                    if row['kind'] == 'steward.run')
-    config = workspace.load_config(root)
     lines += ['', '## Steward runs', *([f'- {trigger}: {count}' for trigger, count in sorted(runs.items())]
-                                       or ['none']),
-              f"Settings: steward.every_tool_calls = {config['steward']['every_tool_calls']}, "
-              f"watch.sweep_seconds = {config['watch']['sweep_seconds']}"]
+                                       or ['none'])]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']
     lines += ['', '## Quality by band', *(
         ['unmeasured'] if quality == metrics.UNMEASURED else
-        [*metrics.band_lines('Hour', quality['hour']), '',
-         *metrics.band_lines('Session age', quality['session_age'])])]
+        metrics.band_lines('Hour', quality['hour']))]
     lines += ['', '## Process metrics', json.dumps(measured, sort_keys=True, allow_nan=False), '']
     return '\n'.join(lines)
 

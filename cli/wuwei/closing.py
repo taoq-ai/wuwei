@@ -1,13 +1,10 @@
 """Day-close evidence for obligations and the retro landing."""
 
-from contextlib import redirect_stdout
-import io
 import json
 from pathlib import Path
 import re
-import sys
 
-from wuwei import decision, obligations, registry, state, verdict, watch, workspace
+from wuwei import obligations, registry, state, verdict, watch, workspace
 from wuwei.promotion import safe_path
 from wuwei.exits import DAMAGED, SYMLINK
 
@@ -16,12 +13,12 @@ def _settings(root):
     config = workspace.load_config(root)
     settings = config['retro']
     if not settings['charter_paths']:
-        raise ValueError('retro.charter_paths must not be empty; the owner lists the charter folders the retro may change with bin/wuwei config set retro.charter_paths in a host terminal')
+        raise ValueError('retro.charter_paths must not be empty; the owner lists the charter folders the retro may change with bin/wuwei config set retro.charter_paths')
     for raw in [*settings['charter_paths'], settings['changelog']]:
         path = Path(raw)
         if (path.is_absolute() or '..' in path.parts or raw.startswith(('-', ':'))
                 or any(c in raw for c in '*?[]\n\r\0')):
-            raise ValueError('retro paths must be literal repository-relative paths; the owner sets plain relative paths with bin/wuwei config set in a host terminal')
+            raise ValueError('retro paths must be literal repository-relative paths; the owner sets plain relative paths with bin/wuwei config set')
     return settings, registry.load('vcs', config), str((root / '.wuwei').resolve())
 
 
@@ -85,7 +82,7 @@ def retro(root):
         if proposal_dir.is_symlink():
             raise ValueError(f'proposals directory must not be a symlink; {SYMLINK}')
         if proposal_dir.exists() and any(proposal_dir.glob('*.json')):
-            findings.append('OWED: retro proposals await wuwei promote')
+            findings.append('OWED: retro proposals await wuwei retro --promote')
         if proposal_dir.exists():
             landed = set()
             for proposal in proposal_dir.glob('*.landed'):
@@ -150,7 +147,7 @@ def retro(root):
 
 
 def unresolved(root, rows, open_items=None, notes=None):
-    """Account for approved items, owner decisions and pushed item branches; open item names
+    """Account for approved items and pushed item branches; open item names
     are appended to open_items when given. A parked or carried item whose branch cannot be
     measured is a fact appended to notes, never a gate."""
     findings, code = [], 0
@@ -164,52 +161,19 @@ def unresolved(root, rows, open_items=None, notes=None):
     try:
         data = state.read_state(root)
         config = workspace.load_config(root)
-        outcomes = data.get('decision_outcomes', {})
-        routes = data.get('decision_routes', {})
-        if not isinstance(outcomes, dict) or not isinstance(routes, dict):
-            raise ValueError(f'invalid decision ledger; {DAMAGED}')
         prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
-        resolved = {data['pr_dispositions'][ref]['decision'] for ref, row in prs.items()
-                    if row.get('disposition') in ('parked', 'carried')}
-        dispositions = {}
-        directory = workspace.day_dir(root) / 'decisions'
-        identifiers = outcomes.keys() | routes.keys()
-        try:
-            if directory.is_symlink():
-                raise ValueError(f'decisions directory must belong to today; {SYMLINK}')
-            if directory.exists():
-                identifiers |= {p.stem for p in directory.iterdir()
-                                if p.name.startswith('D-') and p.suffix == '.md'}
-        except watch.ERRORS as exc:
-            unmeasured('decisions', exc)
-        for identifier in sorted(identifiers):
-            try:
-                fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
-                mandate = outcomes.get(identifier, {}).get('decided_by') == 'mandate'  # #530
-                if not mandate and (identifier in routes or decision.route(fields) == 'owner'):
-                    if identifier not in resolved and not decision.answered(data, identifier):
-                        findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
-                elif identifier in outcomes:
-                    record = outcomes[identifier]
-                    if (fields['Decided-by'] == record.get('rule', record['decided_by'])
-                            and record['decided_by'] in ('seat', 'mandate')
-                            and record.get('item_disposition') == fields['Outcome']):
-                        dispositions[fields['Outcome']] = fields['Context'].partition('Reason: ')[2]
-            except watch.ERRORS as exc:
-                unmeasured(identifier, exc)
         owned = data['raised_prs'] + data['claimed_prs']
-        from wuwei import tracker
-        done = ({row['payload'].get('item') for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-                 if row['kind'] == 'tracker.call' and row['payload'].get('action') == 'done'
-                 and row['payload'].get('exit') == 0} if tracker.in_force(config) else set())
+        from wuwei import derive  # #842, #844: a due duty holds close, also one carried from an unclosed day
+        findings.extend(f"{row['item']}: {row['duty']} not recorded: bin/{row['record']}"
+                        for row in derive.duties(root, config, data=data))
         for name in data['approved_items']:
             try:
                 item = data['items'][name]
                 ref = item.get('pr')
                 pr = prs.get(ref, {})
-                key = next((k for k in (f'parked {name}', f'carried {name}') if k in dispositions), None)
-                disposed = (f'{name}: {key.split()[0]}' + (f' ({dispositions[key]})' if dispositions[key] else '')
-                            if key else f'{name}: {pr["disposition"]}'
+                kept = item.get('disposition') or {}  # plan carry or park, or a park in code
+                disposed = (f"{name}: {kept['kind']}" + (f" ({kept['reason']})" if kept.get('reason') else '')
+                            if kept.get('kind') in ('parked', 'carried') else f'{name}: {pr["disposition"]}'
                             if pr.get('disposition') in ('parked', 'carried') else None)
                 if pr.get('state') != 'merged' and not disposed:
                     findings.append(f'{name} is still open ({item["status"]}/{item["phase"]}): carry it '
@@ -219,18 +183,6 @@ def unresolved(root, rows, open_items=None, notes=None):
                                     'Keep working: finish it, then run bin/wuwei close again.')
                     if open_items is not None:
                         open_items.append(name)
-                number = tracker.ticket(data, name)
-                line = None
-                if tracker.in_force(config) and item['phase'] == 'merged':
-                    if number and name not in done:
-                        line = f'{name}: ticket {number} is not done: bin/wuwei tracker done {name}'
-                    elif tracker.check(data, config, name, item)[0] == 'later':  # #646
-                        line = f'{name}: shipped without a ticket: bin/wuwei tracker create {name}'
-                if line:
-                    if config['tracker']['strict_close']:
-                        findings.append(line)
-                    else:
-                        print(line, file=sys.stderr)
                 tree = item.get('worktree')
                 if tree is not None and ref not in owned:
                     if not isinstance(tree, str) or not tree:
@@ -261,19 +213,35 @@ def unresolved(root, rows, open_items=None, notes=None):
     return max(code, int(bool(findings))), '\n'.join(findings)
 
 
+def scanner_hold(root):
+    """#834: a critical tool sequence today holds the close until the owner answers Yes on the
+    Owner step card of close, one card per finding."""
+    import hashlib
+    from wuwei import sessions
+    for row in watch.records(workspace.day_dir(root) / 'events.jsonl'):
+        payload = row['payload']
+        if row['kind'] != 'scanner.finding' or payload.get('risk_level') != 'critical':
+            continue
+        token = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+        chain = ' -> '.join(map(str, payload.get('chain', [])))
+        if reason := sessions.needs_owner(root, 'bin/wuwei close', f'A critical tool sequence ran today: {chain}. '
+                                          'Yes closes the day with it investigated; No keeps the day open.',
+                                          token, 'The day stays open.'):
+            return 1, reason
+    return 0, ''
+
+
 def check(root):
     """Recheck all closing conditions, retaining findings even when another read fails."""
     from wuwei import pr_actions
     _, rows = pr_actions.evaluate(root)
     results = [pr_actions.check(root, rows=rows), unresolved(root, rows)]
-    output = io.StringIO()
     try:
-        with redirect_stdout(output):
-            counts = obligations.evaluate(root)
-        results.append((counts['exit'], output.getvalue().strip()))
+        from wuwei import scanner
+        scanner.trace_sweep(root, workspace.load_config(root))
+        results.append(scanner_hold(root))
     except watch.ERRORS as exc:
-        results.append((2, f'obligations unmeasured: {exc}'))
-    from wuwei import docs
-    results.extend([docs.close(root), retro(root), pr_actions.check(root, closing=True, rows=rows)])
+        results.append((2, f'scanner findings unmeasured: {exc}'))
+    results.extend([retro(root), pr_actions.check(root, closing=True, rows=rows)])
     return max(code for code, _ in results), '\n'.join(dict.fromkeys(
         message for code, message in results if code and message))

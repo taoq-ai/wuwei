@@ -1,5 +1,6 @@
-"""Specification mode in item worktrees (design 5.10); the rules live in wuwei.specmode,
-imported only once a path lies in an item's recorded worktree (#346)."""
+"""Specification mode in item worktrees (design 5.10): the step recorder and the builder's
+stop check. The rules live in wuwei.specmode, imported only once a path lies in an item's
+recorded worktree (#346); the gates wait for the spec in dispatch and the build loop."""
 
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.guards import Guard
@@ -35,22 +36,6 @@ def _target(payload):
         return None
     value = inputs.get('notebook_path', inputs.get('file_path'))
     return value if isinstance(value, str) and value else None
-
-
-def check_edit(payload):
-    """PreToolUse: refuse a source edit while a step before implementation is not done."""
-    try:
-        found = _item(payload, _target(payload))
-        if found is None:
-            return CLEAN, ''
-        root, item, row, tree, path = found
-        from wuwei import specmode, workspace
-        config = workspace.load_config(root)
-        if specmode.mode(config) == 'off' or specmode.own(config['spec']['engine'], tree, path):
-            return CLEAN, ''
-        return specmode.check(root, config, item, row, tree, build=False, where='edit')
-    except ERRORS as exc:
-        return UNRUN, f'spec mode: {exc}'
 
 
 def check_record(payload):
@@ -93,6 +78,5 @@ def check_stop(payload):
         return UNRUN, f'spec mode: {exc}'
 
 
-GUARDS = [Guard('PreToolUse', WRITES, check_edit),
-          Guard('PostToolUse', WRITES + '|Bash', check_record),
+GUARDS = [Guard('PostToolUse', WRITES + '|Bash', check_record),
           Guard('SubagentStop', None, check_stop)]

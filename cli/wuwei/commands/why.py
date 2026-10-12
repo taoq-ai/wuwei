@@ -1,20 +1,75 @@
-"""Explain from recorded events why an item, a decision or a refusal is where it is."""
+"""Explain from recorded events why an item or a refusal is where it is."""
 
 import json
 import re
 import sys
 
-from wuwei import decision, novelty, references, security, state, verdict, watch, workspace
-from wuwei.commands.event import EVENT_PRODUCERS
+from wuwei import references, security, state, verdict, watch, workspace
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.redact import redact
 
 NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
-DRAFT = r'draft-[0-9a-f]{32}'
-GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'decision', 'phase', 'merge')
+GROUPS = ('queued', 'approved', 'worktree', 'seat', 'tier', 'gate', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
+
+
+# The command that writes each event kind, named in a phase line.
+EVENT_PRODUCERS = {
+    'outward.ai_tells': 'the outward port and hook (wuwei.outward.humanize_lint)',
+    'outward.lint': 'the outward port and hook (wuwei.outward.check_lint)',
+    'outward.to_owner': 'the outward port and hook (wuwei.outward.to_owner)',
+    'worktree.adopted': 'wuwei worktree adopt, wuwei worktree add --branch or wuwei pr claim',
+    'worktree.created': 'wuwei worktree add',
+    'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'gate.delta_head': 'wuwei dispatch next', 'build.launched': 'wuwei build',
+    'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
+    'polish.skipped': 'wuwei dispatch skip-polish',
+    'build.checked': 'wuwei build check', 'build.check_started': 'wuwei build check',
+    **{f'spec.{kind}': 'wuwei hook, wuwei build or wuwei dispatch next' for kind in ('step', 'skipped', 'warned')},
+    'spec.override': 'owner wuwei plan set',
+    'guard.would_refuse': 'wuwei hook (guards.enforce = false) or wuwei pr raise',
+    'traces.noted': 'wuwei dispatch receive or wuwei close', 'traces.unmatched': 'wuwei dispatch receive or wuwei close',
+    'seat.usage': 'wuwei build, wuwei dispatch opinion or SubagentStop',
+    'integrity': 'wuwei doctor', 'integrity_failed': 'wuwei doctor',
+    'integrity_confirmation': 'owner wuwei doctor --fix --apply integrity-reconfirm',
+    'state.transition': 'wuwei build next',
+    'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
+    'cap.derived': 'wuwei dispatch next --all',
+    'plan.added': 'wuwei plan add',
+    'finding.noted': 'wuwei seat note --fix',
+    'plan.session': 'wuwei plan session', 'gate.asked': 'wuwei hook PostToolUse', 'brief written': 'wuwei seat brief',
+    'seat launched': 'wuwei hook PreToolUse or wuwei dispatch opinion',
+    'seat stopped': 'wuwei hook SubagentStop, wuwei dispatch opinion or owner wuwei seat stop',
+    'traces.gap': 'wuwei hook PostToolUse',
+    'traces.slow': 'wuwei hook PostToolUse',
+    'seat stood down': 'wuwei hook SubagentStop',
+    'seat adhoc': 'wuwei seat start', 'subagent.untraced': 'wuwei hook SubagentStop',
+    'fast_checks.record': 'wuwei build check', 'reply: acknowledged': 'wuwei pr act',
+    'reply: thread_posted': 'wuwei pr act', 'pr.disposition': 'wuwei pr disposition',
+    'scanner.finding': 'wuwei dispatch receive',
+    'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',
+    'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
+    'pr.claimed': 'wuwei pr claim',
+    'pr.reviewers_selected': 'wuwei pr ping',
+    'reviewer.unresolved': 'wuwei pr raise or ping',
+    'day.close_requested': 'wuwei close', 'day.closed': 'wuwei close', 'next.action': 'wuwei next',
+    'build.parked': 'wuwei build', 'build.held': 'wuwei build', 'build.released': 'wuwei build',
+    'gate.received': 'wuwei dispatch receive',
+    'tracker.call': 'wuwei tracker move',
+    **{f'duty.{step}': 'wuwei next, wuwei duty or wuwei tracker move' for step in ('due', 'done', 'skipped')},
+    'tracker.created': 'wuwei tracker create or wuwei plan approve',
+    'tracker.folded': 'wuwei tracker log',
+    'tracker.logged': 'wuwei tracker log', 'plan.set': 'wuwei plan set or wuwei init --upgrade',
+    'steward.run': 'wuwei close',
+    'calibration.drift': 'wuwei close',
+    'plan.disposed': 'wuwei plan carry or park, wuwei dispatch next or wuwei build',
+    'plan.resumed': 'wuwei plan resume',
+    'doctor.fixed': 'owner wuwei doctor --fix',
+    'config.newer_template': 'wuwei hook PreToolUse',
+    **{f'telemetry.{action}': 'wuwei telemetry or wuwei report'
+       for action in ('skipped', 'unsent', 'shared', 'ready', 'off')},
+}
 
 
 class Missing(Exception):
@@ -22,11 +77,11 @@ class Missing(Exception):
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('why', help='Explain from records why an item, decision or refusal happened')
-    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, a target key, an event id or "last refusal"')
+    parser = subparsers.add_parser('why', help='Explain from records why an item or refusal happened')
+    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
     parser.add_argument('--json', action='store_true',
-                        help="print an item's live docs, ticket and spec values and its steps as JSON")
+                        help="print an item's live ticket and spec values and its steps as JSON")
     parser.set_defaults(func=run)
 
 
@@ -37,8 +92,7 @@ def level(root, full):
 def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
-    if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
-            EVENT_ID, decision.DECISION_ID, DRAFT, novelty.KEY))):
+    if args.json and (target == 'last refusal' or re.fullmatch(EVENT_ID, target)):
         print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
         return UNRUN
     try:
@@ -47,14 +101,8 @@ def run(args):
             return CLEAN
         if target == 'last refusal' or re.fullmatch(EVENT_ID, target):
             steps = refusal(root, target)
-        elif re.fullmatch(decision.DECISION_ID, target):
-            steps = decided(root, target)
-        elif re.fullmatch(DRAFT, target):  # #552
-            steps = [(line, None, []) for line in held(root, target)]
         elif target == 'adhoc':  # #676
             steps = adhoc(root)
-        elif re.fullmatch(novelty.KEY, target):  # #556
-            steps = [(line, None, []) for line in novelty.explain(root, workspace.load_config(root), target)]
         else:
             steps = item(root, target)
     except Missing as exc:
@@ -66,7 +114,7 @@ def run(args):
 
 def adhoc(root):
     """#676: today's adhoc seats, the agents launched outside the WUWEI seat types."""
-    path = workspace.day_dir(root) / 'state.json'
+    path = workspace.day_dir(root) / 'events.jsonl'
     steps = [(f"adhoc seat {name}: {seat.get('type', NOT)} as {seat.get('label', NOT)}, "
               f"launched by {seat.get('launcher', NOT)}, {seat['status']}; prompt: {seat.get('prompt', NOT)}; "
               f"traces: {', '.join(seat.get('trace_sessions', [])) or 'none yet'}",
@@ -80,18 +128,11 @@ def adhoc(root):
 def render(steps, level, root):
     """One line per step; at full, each line names its event id and evidence paths.
 
-    Record text is redacted as refusal targets are: a credential never reaches stdout or the board."""
+    Record text is redacted as refusal targets are: a credential never reaches stdout."""
     markers = security.load(root)
     return [security.redact(redact(text if level != 'full' else f'{text} (event {event or NOT}'
                                    + ''.join(f'; {path}' for path in paths) + ')'), markers)
             for text, event, paths in steps]
-
-
-def question(day, ident):
-    path = day / 'decisions' / f'{ident}.md'
-    if not path.is_file():
-        return NOT
-    return (verdict.rows(verdict.active_text(path.read_text(encoding='utf-8')), 'Question') or [NOT])[0].strip()
 
 
 def scored(score):
@@ -108,20 +149,17 @@ def proposed(day, name):
 
 
 def live(root, name, level):
-    """#667: the item's values as recorded now (docs, ticket, spec) and its steps."""
+    """#667: the item's values as recorded now (ticket, spec) and its steps."""
     from pathlib import Path
-    from wuwei import docs, specmode
+    from wuwei import specmode
     name, days = _days(root, name)
     day, data = days[-1]
     row = data['items'][name]
     config = workspace.load_config(root)
     markers = security.load(root)
     clean = lambda text: text if text is None else security.redact(redact(text), markers)
-    shown = docs.shown(config, row)
     spec = specmode.brief_line(config, name, row, Path(row['worktree']) if row.get('worktree') else None, True)
     return {'item': name, 'day': day.name,
-            'docs': {'value': clean(shown), 'reason': clean((row.get('docs') or {}).get('reason', '')),
-                     'command': None if shown == 'n/a' else docs.command(config, name)},
             'ticket': clean(((data.get('tickets') or {}).get(name) or {}).get('id')),
             'spec': clean(spec and spec.removeprefix('Spec: ')),
             'steps': render(item(root, name), level, root)}
@@ -139,7 +177,7 @@ def _days(root, name):
     days = [(day, data) for day in reversed(watch.days(root))
             if name in (data := state.read_state(directory=day))['items']]
     if not days:
-        raise Missing(f'no recorded item {name}; run bin/wuwei status for today\'s items')
+        raise Missing(f'no recorded item {name}; run bin/wuwei next for today\'s items')
     return name, days
 
 
@@ -150,11 +188,6 @@ def item(root, name):
     groups = {group: [] for group in GROUPS}
     for day, data in days:
         row = data['items'][name]
-        ids = {ident for ident, names in decision.naming(day, [name]).items()
-               if names and ident.startswith('D-')}
-        ids |= {value for value in (row.get('decision'), row.get('assumption', {}).get('decision'))
-                if isinstance(value, str)}
-        named = set()
         for number, event in enumerate(watch.records(day / 'events.jsonl'), 1):
             at, kind, payload = f'{day.name}:{number}', event['kind'], event['payload']
             add = lambda group, text, *paths: groups[group].append((text, at, list(paths)))
@@ -164,8 +197,8 @@ def item(root, name):
             elif kind == 'state.import' and name in payload.get('items', []):
                 add('queued', f'queued: carried over from an earlier day, goal {row.get("goal", NOT)}')
             if kind == 'plan.added' and payload.get('item') == name:
-                score = data.get('discovery_candidates', {}).get(name, {}).get('score')
-                add('queued', f'queued: goal {row.get("goal", NOT)}, {scored(score)}', rel(day / 'state.json'))
+                add('queued', f'queued: goal {row.get("goal", NOT)}, added by {payload.get("source", NOT)}',
+                    rel(day / 'events.jsonl'))
             if kind == 'worktree.created' and payload.get('item') == name:
                 add('worktree', f'worktree: branch {payload.get("branch", NOT)} from {payload.get("base", NOT)} '
                     f'at {str(payload.get("start", NOT))[:12]}')
@@ -173,10 +206,10 @@ def item(root, name):
                 seat = data.get('seats', {}).get(payload.get('name'), {})
                 if seat.get('planner_note'):  # #660: the planner's note around WUWEI's launch prompt
                     add('seat', f'seat {payload["name"]} ({seat.get("role")}): planner note: {seat["planner_note"]}',
-                        rel(day / 'state.json'))
+                        rel(day / 'events.jsonl'))
                 elif seat.get('role') == 'adhoc':
                     add('seat', f'seat {payload["name"]} ({seat.get("type")}, unbriefed): prompt: '
-                        f'{seat.get("prompt", NOT)}', rel(day / 'state.json'))
+                        f'{seat.get("prompt", NOT)}', rel(day / 'events.jsonl'))
             if kind == 'gate.tiered' and payload.get('item') == name:
                 reasons = payload.get('reasons') or []
                 add('tier', f'tier: {payload.get("tier", NOT)}' + (f' ({"; ".join(reasons)})' if reasons else ''))
@@ -191,17 +224,6 @@ def item(root, name):
                     add('gate', text + (', blocking: ' + '; '.join(blocking) if blocking else ''), rel(path))
                 else:
                     add('gate', text + f', blocking findings {NOT}')
-            if kind.startswith('decision.') and (payload.get('id') in ids or payload.get('item') == name):
-                ident, by = payload.get('id'), payload.get('decided_by') or NOT
-                outcome = {'decision.decided': f'{payload.get("option")} by {by}',
-                           'decision.reversed': f'reversed to {payload.get("option")} by {by}',
-                           'decision.routed': 'routed to the owner',
-                           'decision.waited': f'{payload.get("outcome")} by {EVENT_PRODUCERS["decision.waited"]}'
-                                              ' after decisions.wait_hours'}.get(kind)
-                if outcome:
-                    named.add(ident)
-                    add('decision', f'decision {ident}: {question(day, ident)}: {outcome}',
-                        rel(day / 'decisions' / f'{ident}.md'))
             if name in payload.get('phase_changes', {}):
                 add('phase', f'phase {payload["phase_changes"][name]} by {EVENT_PRODUCERS.get(kind, kind)}')
             if kind == 'merge.auto' and row.get('pr') and payload.get('pr') == row['pr']:
@@ -212,25 +234,21 @@ def item(root, name):
                     f'{str(evidence.get("head", NOT))[:12]}, checks {checks}, '
                     f'approvals {", ".join(evidence.get("approvals", [])) or "none"}',
                     *(entry['path'] for entry in evidence.get('verdicts', [])))
-        for ident in sorted(ids - named):
-            groups['decision'].append((f'decision {ident}: {question(day, ident)}: decided {NOT}', None,
-                                       [rel(day / 'decisions' / f'{ident}.md')]))
     day, data = days[-1]
     row = data['items'][name]
     if row.get('approved_as'):  # #731: the owner's recorded approval, once, from the latest day
-        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'state.json')]))
+        groups['approved'].append((f'approved as: {row["approved_as"]}', None, [rel(day / 'events.jsonl')]))
     steps = [step for group in GROUPS for step in groups[group] or (
         [(f'{REQUIRED[group]}: {NOT}', None, [])]
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]
-    now, wait = f'now: {row["phase"]} ({row["status"]})', row.get('assumption', {})
+    now = f'now: {row["phase"]} ({row["status"]})'
     action = data.get('watch', {}).get('actions', {}).get(row.get('pr'), {}).get('action')
-    if row['phase'] in ('parked', 'escalated'):
-        now += f', waiting on decision {row["decision"]}' if row.get('decision') else f', waiting on: {NOT}'
-    elif wait.get('status') == 'waiting':
-        now += f', waiting on external confirmation {wait.get("decision", NOT)}'
+    if row['phase'] in ('parked', 'escalated'):  # a park in code shows its reason; the owner resumes it
+        reason = (row.get('disposition') or {}).get('reason')
+        now += (f', {reason}' if reason else '') + f'; waiting on: wuwei plan resume {name}'
     elif action:
         now += f', waiting on {action}'
-    return steps + [(now, None, [rel(day / 'state.json')])]
+    return steps + [(now, None, [rel(day / 'events.jsonl')])]
 
 
 def refusal(root, target):
@@ -240,7 +258,7 @@ def refusal(root, target):
                       for number, event in reversed(list(enumerate(watch.records(day / 'events.jsonl'), 1)))
                       if event['kind'] in REFUSALS), None)
         if found is None:
-            raise Missing('no recorded refusal; nothing was refused today, so run bin/wuwei status for the day')
+            raise Missing('no recorded refusal; nothing was refused today, so run bin/wuwei next for the day')
     else:
         name, _, line = target.partition(':')
         day = next((day for day in watch.days(root) if day.name == name), None)
@@ -259,70 +277,4 @@ def refusal(root, target):
         # Messages carry no structured rule or fix; the first "; " splits them (Assumption A3).
         rule, _, fix = entry['reason'].partition('; ')
         lines += [f'guard: {entry.get("guard") or NOT}', f'rule: {rule}', f'fix: {fix or NOT}']
-        draft = re.search(DRAFT, rule) if rule.startswith('outward:') else None
-        if draft:  # #552: the register edge behind the hold
-            try:
-                tool = _draft(root, draft[0]).get('tool')
-            except ValueError:  # a damaged queue still shows the refusal
-                tool = None
-            lines += edges(root, rule, tool)
-    if shadowed and payload.get('area'):  # #331
-        lines.append(f'posture: {payload["area"]} = {payload.get("level")} ({payload.get("posture")})')
     return [(text, f'{day.name}:{number}', []) for text in lines]
-
-
-def _draft(root, draft_id):
-    from wuwei import drafts
-    return drafts.read(state.read_state(root)).get(draft_id) or {}
-
-
-def edges(root, reason, tool=None):
-    """#552: the edge lines of the register edges a hold's reason names."""
-    from wuwei import graph
-    try:
-        register = graph.load(root)
-    except ValueError:
-        register = None
-    found = graph.cite(register, reason, tool) if register else []
-    return [f'edge: {graph.line(edge)}' for edge in found] or [f'edge: {NOT}']
-
-
-def held(root, draft_id):
-    """#552: the rule that held a draft and the register edge behind it."""
-    from wuwei import outward
-    row = _draft(root, draft_id)
-    if not row:
-        raise Missing(f'no draft {draft_id} today; run bin/wuwei drafts for the queued ids')
-    rule = row['tier_reason'].removeprefix(outward.APPROVAL_REQUIRED + ': ')
-    return [f'held: {rule}', *edges(root, rule, row.get('tool'))]
-
-
-def decided(root, ident):
-    """Today's D-n: options and scores, weights, margin, class, level and who decided."""
-    path = decision.today_path(ident, root)
-    if not path.is_file():
-        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges --all for open decisions')
-    text = path.read_text(encoding='utf-8')
-    fields, scores = decision.evaluate(text)
-    _, _, wants, _ = decision._scored(fields)
-    margin = decision.margin(fields, scores)
-    kind = (verdict.rows(verdict.active_text(text), 'Class') or [''])[0].strip() or NOT
-    lines = [*decision.present(ident, fields, 'brief').splitlines(),
-             'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),
-             f'margin: {margin:.2f}', f'class: {kind}']
-    steps = [(line, None, [str(path.relative_to(root))]) for line in lines]
-    novel = novelty.routed(state.read_state(root), ident)
-    if novel:  # #556
-        steps.append((f'novel: first time for {", ".join(novel)}', None, []))
-    rows = list(enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl'), 1))
-    last = next(((number, event['payload']) for number, event in reversed(rows)
-                 if event['kind'] in ('decision.decided', 'decision.reversed')
-                 and event['payload'].get('id') == ident), None)
-    if last is None:
-        return steps + [(f'level: {NOT}', None, []), (f'decided: {NOT}', None, [])]
-    number, payload = last
-    by = str(payload.get('decided_by') or NOT)
-    cruise = re.search(r'@L(\d)', by)
-    at = f'{workspace.day_dir(root).name}:{number}'
-    return steps + [(f'level: L{cruise[1]}' if cruise else f'level: {NOT}', at if cruise else None, []),
-                    (f'decided: {payload.get("option")} by {by}', at, [])]

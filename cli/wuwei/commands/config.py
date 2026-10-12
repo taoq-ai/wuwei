@@ -1,7 +1,9 @@
 """Validate workspace configuration."""
 
+import json
 import os
 import re
+import shlex
 import sys
 
 from wuwei import configtext, env, outward, registry, workspace
@@ -10,7 +12,8 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN, SYMLINK
 from wuwei.workspace import ConfigError, load_config
 
 
-PIN_MISSING = 'control_plane.owner: missing (<team id>/<user id>; see remote operation section 3)'
+KEY = re.compile(r'[A-Za-z_][A-Za-z0-9_-]*(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+))*')
+IDENTITY = re.compile(r'(.+?) <([^<>\s]+@[^<>\s]+)>')
 
 
 def register(subparsers):
@@ -18,39 +21,29 @@ def register(subparsers):
     actions = parser.add_subparsers(dest="action", required=True)
     check = actions.add_parser("check", help="validate config.toml")
     check.set_defaults(func=run)
-    parser = actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)')
-    only = parser.add_mutually_exclusive_group()
-    only.add_argument('--measure', action='store_true',
-                      help='time each test runner once through the checks port (runs repository commands)')
-    only.add_argument('--keys', nargs='+', metavar='KEY',
-                      help="apply only these dotted keys of today's answers, also over a value already "
-                           'set (#604); no repository survey')
+    parser = actions.add_parser('promote', help='apply the calibration proposal (owner, asks on a card)')
+    parser.add_argument('--measure', action='store_true',
+                        help='time each test runner once through the checks port (runs repository commands)')
     parser.set_defaults(func=promote)
-    from wuwei.commands import setup
-    parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
-    parser.add_argument('key', nargs='?',
-                        help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
-                             'optional with --from-card, which reads it from the answered option')
-    parser.add_argument('value', nargs='?', help='one TOML value, for example \'"standard"\' or false')
+    parser = actions.add_parser('set', help='set one config value (owner, asks on a card)')
+    parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
+    parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--add', action='store_true',
                       help='add the items to the current list, or the entries to the current table, '
                            'instead of replacing it (#673)')
     mode.add_argument('--replace', action='store_true',
                       help='write the value as given; the default (#673)')
-    parser.add_argument('--from-card', dest='from_card', metavar='D-n',
-                        help="the decision card whose answer is this assignment (#529): the owner's "
-                             'answer is the confirmation outside strict')
-    parser.set_defaults(func=setup.set_value)
+    parser.set_defaults(func=set_value)
     parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
     parser.add_argument('key', help='dotted key, for example outward.tool_patterns')
     parser.set_defaults(func=show)
-    parser = actions.add_parser('add-repo', help='add one repository (owner, host terminal)')
+    parser = actions.add_parser('add-repo', help='add one repository (owner, asks on a card)')
     parser.add_argument('--name', required=True, help='owner/repo')
     parser.add_argument('--path', required=True, help='relative to the workspace, or absolute')
     parser.add_argument('--branch', required=True, help='the default branch')
     parser.add_argument('--identity', help='commit identity, "Name <email>"')
-    parser.set_defaults(func=setup.add_repo)
+    parser.set_defaults(func=add_repo)
 
 
 def run(args):
@@ -61,7 +54,7 @@ def run(args):
     except ConfigError as exc:
         print(f"wuwei config check: {exc}", file=sys.stderr)
         return FINDINGS
-    for text in found:  # #353: unknown keys warn below strict; the exit code ignores them.
+    for text in found:  # #799: unknown keys only warn; the exit code ignores them.
         print(f'wuwei config check: warning: {text}', file=sys.stderr)
     print('Credentials:')
     status = CLEAN
@@ -103,31 +96,10 @@ def run(args):
             print(f'  {label}: no credential variables required')
     # Reported, not a finding: the outward lint already fails closed without a name.
     print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
-    # Reported, not a finding (#331): a floor violation already failed load_config above.
-    name, levels = workspace.posture(config)
-    print(f'Posture: {name} (from {workspace.posture_source(config)})')
-    for area in workspace.AREAS:
-        mark = (' (floor)' if area in workspace.FLOORS else
-                ' (security.areas)' if config['security']['areas'][area] else '')
-        print(f'  {area}: {levels[area]}{mark}')
-    print('  owner-only actions ask on a card below strict (deploys, releases, approve-tier '
-          'messages); merges and approvals stay owner-only; records always block')
-    block = config['scanner']['mcp']['block']
-    if block:  # Reported, not a finding (#351): the list against the posture default.
-        ignored = levels['mcp'] == 'off' or name == 'observe' and levels['mcp'] == 'warn'
-        print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
-            f'no effect under {name} (mcp: {levels["mcp"]}); remove the key' if ignored else
-            f'blocks launches at these severities on top of the {name} default'))
-    if config['adapters']['inbound'] != 'none':
-        from wuwei.remote import PIN
-        pin = config['control_plane']['owner']
-        valid = bool(re.fullmatch(PIN, pin))
-        print('Control plane:\n  ' + ('control_plane.owner: set' if valid else
-              'control_plane.owner: invalid (expected <team id>/<user id>)' if pin else PIN_MISSING))
-        status = max(status, CLEAN if valid else FINDINGS)
-        # Reported, not a finding: without it a confirm reply is the second factor.
-        print('  WUWEI_TOTP_SECRET: ' + ('set' if os.environ.get('WUWEI_TOTP_SECRET') else
-                                        'missing (confirm replies are the only second factor)'))
+    # Reported, not a finding (#837): one switch.
+    enforce = config['guards']['enforce']
+    print('Guards: enforce (guards.enforce = true)' if enforce else
+          'Guards: log only (guards.enforce = false); records, merges, deploys and unlisted outward sends still refuse')
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')
@@ -142,8 +114,6 @@ def run(args):
 
 def show(args):
     """#492: the effective value of one key, one row per list item or table entry."""
-    import json
-    from wuwei.commands import setup
     try:
         config = load_config()
     except ConfigError as exc:
@@ -152,7 +122,7 @@ def show(args):
     parts = [int(part) if part.isdigit() else part for part in args.key.split('.')]
     rule = configtext.declared(parts)
     try:
-        value = setup.effective(config, parts) if rule is not None else None
+        value = effective(config, parts) if rule is not None else None
     except (KeyError, IndexError, TypeError):
         rule = None
     if rule is None:
@@ -179,11 +149,7 @@ def requirements(config):
         ('tracker', 'jira'): [('JIRA_SITE',), ('JIRA_EMAIL',), ('JIRA_API_TOKEN',)],
         ('tracker', 'github'): [('GITHUB_TRACKER_TOKEN',)],
         ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
-        ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
-        ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
-        ('docs', 'notion'): [('NOTION_TOKEN',)],
-        ('docs', 'confluence'): [('CONFLUENCE_EMAIL',), ('CONFLUENCE_API_TOKEN',)],
     }
     if config['chat']['identity'] == 'custom_app':
         needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
@@ -200,17 +166,13 @@ def _shape(name):
 
 
 def missing(config):
-    """Offline findings of config check: credential variables, codex.command, owner pin."""
-    from wuwei.remote import PIN
+    """Offline findings of config check: credential variables and codex.command."""
     needed = requirements(config)
     names = [' or '.join(alternatives) for kind, name in config['adapters'].items()
              for alternatives in needed.get((kind, name), ())
              if not any(os.environ.get(key) for key in alternatives)]
     if config['adapters']['runtime'] == 'codex' and not config['codex']['command']:
         names.append('codex.command')
-    if (config['adapters']['inbound'] != 'none'
-            and not re.fullmatch(PIN, config['control_plane']['owner'])):
-        names.append('control_plane.owner')
     return names
 
 
@@ -222,77 +184,45 @@ def read(root):
     return path, path.read_text(encoding='utf-8')
 
 
-def proposal(root, raw, base, config, results, extra=(), keys=None):
-    """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw.
+def proposal(root, raw, config, results):
+    """(text, diff, edits, summary, snapshot): the calibration survey proposed against raw."""
+    from wuwei import calibrate, workspace
 
-    #604: keys None (setup) applies every answer; () keeps a present key an answer would
-    change and lists it; named keys apply only those answer and profile settings."""
-    import difflib
-    import json
-    from wuwei import calibrate, interview, profiles, workspace
-
-    answers = interview.load(root, config)
-    name, imported = profiles.load(root, config)
-    asked = interview.settings(answers, config)
-    # An interview answer wins over the profile for the same key, and both over a setup default.
-    imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
-    skipped, missing = [], []
-    dotted = lambda s: '.'.join(map(str, (*s[0], s[1])))  # noqa: E731
-    if keys:
-        missing = [key for key in keys if key not in {dotted(s) for s in imported + asked}]
-        imported, asked = ([s for s in found if dotted(s) in keys] for found in (imported, asked))
-    elif keys is not None:
-        asked, skipped = calibrate.kept(base, asked)
-    owned = {s[:2] for s in imported + asked}
-    text, diff, edits = calibrate.propose(
-        base, results, [s for s in extra if s[:2] not in owned] + imported + asked)
-    if base != raw:
-        diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
-                                            'config.toml', 'config.toml (proposed)'))
+    text, diff, edits = calibrate.propose(raw, results)
     today = workspace.now().date().isoformat()
     snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
                                     'baseline': r['baseline'] or 'unmeasured', 'date': today}
                 for r in results}
     summary = (diff or 'No config.toml changes\n') + ''.join(
         f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + ''.join(
-        f'Skipped {key}: kept {json.dumps(current)}; to apply the answer run '
-        f'bin/wuwei config promote --keys {key}\n' for key, current in skipped) + ''.join(
-        f"Not in today's answers: {key}; use a key listed under Interview answers, or answer its "
-        'question first: bin/wuwei calibrate --questions\n' for key in missing) + (
-        'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
-        if answers else '') + ''.join(
-        f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
-        for path, key, value in imported) + ''.join(
         f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
         for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + ''.join(
         f'CI only, not proposed as a fast check: {repo}: {command} ({note})\n'
         for repo, command, note in calibrate.ci_only(results)) + (
         'Approved calibration for .wuwei/calibration.json:\n'
-        + json.dumps(snapshot, indent=2, sort_keys=True) + '\n' if not keys else '')
+        + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
     return text, diff, edits, summary, snapshot
 
 
-def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None):
-    """The one owner digest path: print, confirm on the host terminal, re-read, write."""
+def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None, command=None):
+    """The one owner digest path: print, confirm on the owner's Owner step card, re-read, write."""
     import hashlib
     import json
-    from wuwei import integrity, workspace
+    from wuwei import sessions, workspace
 
     print(summary, end='')
     digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
-    if not (confirm or integrity._host_confirm)(
-            digest, prompt=f'Apply the {what} above.'):
-        print(f'wuwei {label}: declined; nothing written; rerun it in a host terminal and answer y', file=sys.stderr)
+    if confirm is None:  # #831
+        if owner := sessions.needs_owner(root, command or f'bin/wuwei {label}', f'Apply the {what}:\n{summary}', digest):
+            print(owner, file=sys.stderr)
+            return FINDINGS
+    elif not confirm(digest, prompt=f'Apply the {what} above.'):
+        print(f'wuwei {label}: declined; nothing written; run it again', file=sys.stderr)
         return FINDINGS
     path = root / '.wuwei/config.toml'
     if path.read_text(encoding='utf-8') != raw:
         raise ValueError('config.toml changed during confirmation; nothing written, run it again')
     if text != raw:
-        from wuwei import graph  # #552: the register first, from the same validated text
-        try:
-            graph.sync(root, workspace.load_config(root, raw=text))
-        except (OSError, ValueError) as exc:  # A13: an explanation record never stops a write
-            graph.warn(label, exc)
         workspace.atomic_write(path, text)
         try:
             workspace.index(root, workspace.load_config(root, raw=text))  # #735: checkouts find it
@@ -306,35 +236,198 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
 
 
 def promote(args, confirm=None):
-    """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
+    """Owner action: recompute the calibration, show it, and apply it on the owner's card answer."""
     from wuwei import calibrate, workspace
 
     try:
         root = workspace.find_workspace()
         config = load_config(root)
         _, raw = read(root)
-        keys = tuple(getattr(args, 'keys', None) or ())  # doctor passes a bare Namespace()
-        if keys:  # #604: today's answers only: no survey, no calibration.json
-            text, _, _, summary, _ = proposal(root, raw, raw, config, [], keys=keys)
-            missing = "Not in today's answers: " in summary  # a named key no answer sets: nothing written
-            if text == raw or missing:
-                print(summary, end='')
-                return FINDINGS if missing else CLEAN
-            return offer(root, raw, text, summary, label='config promote', what='calibration',
-                         confirm=confirm)
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
-        results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
+        results = calibrate.survey(root, config, list(enumerate(config['repos'])),
                                    measure=getattr(args, 'measure', False))
-        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results, keys=())
-        return offer(root, raw, text, summary, label='config promote', what='calibration',
-                     confirm=confirm, snapshot=snapshot)
+        text, _, _, summary, snapshot = proposal(root, raw, config, results)
+        return offer(root, raw, text, summary, label='config promote', what='calibration', confirm=confirm,
+                     snapshot=snapshot, command='bin/wuwei config promote' + (' --measure' if getattr(args, 'measure', False) else ''))
     except ConfigError as exc:
         print(f'wuwei config promote: {exc}', file=sys.stderr)
         return FINDINGS
     except (OSError, ValueError, UnicodeError) as exc:
         print(f'wuwei config promote: {exc}', file=sys.stderr)
         return UNRUN
+
+
+def _edit(label, what, confirm, change, root=None, keys=(), add=False, command=None):
+    """The owner edit frame: validate change(root, raw) -> text, then the digest path; after the
+    write one replaced or added line per key in keys (#673)."""
+    import difflib
+
+    try:
+        root = workspace.find_workspace(root)
+        _, raw = read(root)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei {label}: {exc}', file=sys.stderr)
+        return UNRUN
+    try:
+        try:
+            before = load_config(root, raw=raw)
+        except ValueError:
+            before = None  # #831: a config that does not load is repaired here; the new text must load
+        text = change(root, raw)
+        if text == raw:
+            print('No config.toml changes')
+            return CLEAN
+        after = load_config(root, raw=text)
+        diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
+                                            'config.toml', 'config.toml (proposed)'))
+    except ValueError as exc:  # ConfigError, a TOML error and calibrate.LAYOUT included
+        print(f'wuwei {label}: {exc}', file=sys.stderr)
+        return FINDINGS
+    try:
+        code = offer(root, raw, text, diff, label=label, what=what, confirm=confirm, command=command)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei {label}: {exc}', file=sys.stderr)
+        return UNRUN
+    if code == CLEAN:
+        for line in filter(None, (changed(key, before, after, add) for key in keys)):
+            print(line)
+    return code
+
+
+def _settle(raw, settings):
+    """raw with the settings applied; a table set to a single value raises naming it."""
+    from wuwei import calibrate
+
+    additions, edits = calibrate.settle(raw, settings)
+    for dotted, current, _ in edits:  # settle lists only a table answered with a non-table
+        raise ValueError(f'{dotted}: a table; set one of its keys'
+                         + (f', for example {dotted}.default' if 'default' in current else ''))
+    return calibrate.apply(raw, additions)
+
+
+def _parts(key):
+    if not KEY.fullmatch(key):
+        raise ValueError(f'{key}: expected a dotted key such as owner.name or repos.0.merge_deploys; use a dotted key such as owner.name')
+    parts = [int(p) if p.isdigit() else p for p in key.split('.')]
+    if isinstance(parts[-1], int):
+        raise ValueError(f'{key}: name a key, not a list index; use the key itself, for example repos.0.merge_deploys')
+    return parts
+
+
+def write_value(raw, key, value, mode='replace'):
+    """The one config writer entry point (#494); #492 passes mode='append' for list keys."""
+    import tomllib
+
+    from wuwei import calibrate
+
+    parts = _parts(key)
+    path, name = tuple(parts[:-1]), parts[-1]
+    if mode not in ('replace', 'append'):
+        raise ValueError(f'{mode}: unknown mode; use replace or append')
+    if mode == 'append':
+        current = (calibrate._table(tomllib.loads(raw), path) or {}).get(name, [])
+        if not isinstance(current, list) or not isinstance(value, list):
+            raise ValueError(f'{key}: append needs a list; use replace')
+        value = [*current, *(v for v in value if v not in current)]
+    return _settle(raw, [(path, name, value)])
+
+
+def effective(config, parts):
+    """The loaded value at a dotted key's parts; KeyError or IndexError when it has none."""
+    for part in parts:
+        config = config[part]
+    return config
+
+
+def changed(key, before, after, add):
+    """#673: 'replaced: <key> = <new> (was <old>)', or 'added' for --add and a deploy list;
+    None when either value cannot be read, so the report never fails a done write."""
+    from wuwei import calibrate
+
+    parts = [int(part) if part.isdigit() else part for part in key.split('.')]
+    try:
+        old, new = effective(before, parts), effective(after, parts)
+    except (KeyError, IndexError, TypeError):
+        return None
+    verb = 'added' if add or calibrate.grows(tuple(parts[:-1]), old) else 'replaced'
+    return f'{verb}: {key} = {configtext.dumps(new, inline=True)} (was {configtext.dumps(old, inline=True)})'
+
+
+def merged(config, parts, value, add=False):
+    """The settings for one key: the value as given (#673); with add (#492) a list gets the
+    effective items plus the new ones, a named-entry table one setting per entry."""
+    rule = configtext.declared(parts)
+    table = isinstance(rule, dict) and '*' in rule
+    if add and isinstance(rule, list) and isinstance(value, list):
+        if not value:
+            return []
+        try:
+            current = effective(config, parts)
+        except (KeyError, IndexError):  # repos.<n> past the end: settle names the layout
+            current = []
+        return [(tuple(parts[:-1]), parts[-1], [*current, *(item for item in value if item not in current)])]
+    if add and table and isinstance(value, dict):
+        return [(tuple(parts), name, item) for name, item in value.items()]
+    if add:
+        raise ValueError(f"{'.'.join(map(str, parts))}: --add applies to a list or a "
+                         'named-entry table; remove --add')
+    return [(tuple(parts[:-1]), parts[-1], value)]
+
+
+def set_value(args, confirm=None):
+    """Owner action: set one config value on the owner's Owner step card answer (#831)."""
+    import tomllib
+
+    def change(root, raw):
+        parts = _parts(args.key)
+        node = configtext.declared(parts)
+        try:
+            parsed = tomllib.loads(f'value = {args.value}\n')
+        except tomllib.TOMLDecodeError:
+            if node is None:
+                parsed = {}
+            else:
+                kind, example = configtext.describe(node)
+                raise ValueError(f"{args.key}: {args.value!r} is not TOML; pass {kind}, for example '{example}'") from None
+        if list(parsed) != ['value']:
+            raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
+        add = getattr(args, 'add', False)  # only --add reads the current values
+        return _settle(raw, merged(load_config(root, raw=raw) if add else None, parts, parsed['value'], add))
+
+    add = getattr(args, 'add', False)
+    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value, *(['--add'] if add else [])])
+    return _edit('config set', 'change', confirm, change, keys=[args.key], add=add, command=command)
+
+
+def repo_tables(raw, repos):
+    """raw plus one [[repos]] table per repository; every value escaped through json.dumps."""
+    text = raw if raw.endswith('\n') else raw + '\n'
+    for repo in repos:
+        text += ''.join(f'\n[[repos]]\nname = {json.dumps(repo["name"])}\npath = {json.dumps(repo["path"])}\n'
+                        f'default_branch = {json.dumps(repo["default_branch"])}\n')
+        if repo.get('identity'):
+            text += (f'identity = {{name = {json.dumps(repo["identity"]["name"])}, '
+                     f'email = {json.dumps(repo["identity"]["email"])}}}\n')
+    return text
+
+
+def add_repo(args, confirm=None):
+    """Owner action: add one [[repos]] table on the owner's Owner step card answer (#831)."""
+    from wuwei import references
+
+    def change(root, raw):
+        repo = {'name': references.repository(args.name), 'path': args.path, 'default_branch': args.branch}
+        if args.identity is not None:
+            found = IDENTITY.fullmatch(args.identity)
+            if not found:
+                raise ValueError('--identity: expected "Name <email>"; pass --identity "Name <email>"')
+            repo['identity'] = {'name': found[1], 'email': found[2]}
+        return repo_tables(raw, [repo])
+
+    command = shlex.join(['bin/wuwei', 'config', 'add-repo', '--name', args.name, '--path', args.path,
+                          '--branch', args.branch, *(['--identity', args.identity] if args.identity is not None else [])])
+    return _edit('config add-repo', 'repository', confirm, change, command=command)
 
 
 def _protection(host, repo, solo, gate):
@@ -387,7 +480,7 @@ def _protection(host, repo, solo, gate):
                 *(['-F', 'required_status_checks[strict]=false',
                    *(arg for name in contexts for arg in ('-f', f'required_status_checks[contexts][]={name}'))]
                   if contexts else ['-F', 'required_status_checks=null'])]
-        print(f'{label}: or run in your own terminal: {shlex.join(argv)}')
+        print(f'{label}: or apply it with: {shlex.join(argv)}')
     return FINDINGS
 
 
@@ -411,5 +504,5 @@ def _token(host, name):
         print(f'  {name} ({source}): read-only')
         return CLEAN
     print(f"  {name} ({source}): write scopes {', '.join(scopes)}; remove it from {source}, "
-          "seats can read it (publish from the owner's own gh login)")
+          "seats can read it (publish from your own gh login)")
     return FINDINGS

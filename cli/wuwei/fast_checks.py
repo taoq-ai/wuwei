@@ -6,7 +6,8 @@ import shlex
 import time
 
 from wuwei import registry, state, workspace
-from wuwei.guards.commit_push import context, data
+from wuwei import commit_push  # D1: read context at call time, never a bound copy
+from wuwei.commit_push import data
 from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')
@@ -55,34 +56,10 @@ def interpreter(command, worktree, repo, root, config):
     return Path(worktree) / word, 'missing'
 
 
-def commands(root, config, repo, tree):
-    """#579: the checks the day's pace runs and the push guard takes as evidence: steady the
-    fast checks; careful the fast checks then repos.tests; fast repos.tests on the test files the
-    diff changes. Without repos.tests, a changed test file or a readable diff: the fast checks."""
-    from wuwei import dispatch, merge, pace
-    checks, tests = list(repo['fast_checks']), repo.get('tests', '')
-    try:
-        current = pace.current(state.read_state(root), config)
-    except (OSError, ValueError, KeyError, TypeError):
-        current = 'steady'
-    if not tests or current == 'steady':
-        return checks
-    if current == 'careful':
-        return checks + [tests]
-    globs = dict(dispatch.CLASS_PATHS)['TEST']
-    try:
-        _, changes = dispatch._changes(root, config, {'worktree': str(tree)})
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return checks
-    touched = [change['path'] for change in changes
-               if merge.matched(change['path'], globs) and (Path(tree) / change['path']).is_file()]
-    return [' '.join([tests, *map(shlex.quote, touched)])] if touched else checks
-
-
 def record(path):
     path = Path(path).resolve()
     root = workspace.find_workspace(path)
-    repo, actual, vcs = context(path, {}, {}, root, identity=False)
+    repo, actual, vcs = commit_push.context(path, {}, {}, root, identity=False)
     records = {}
     from wuwei.commands.build import check_binding
     builds = [check_binding(item, build) for item, build in state.read_state(root).get('builds', {}).items()
@@ -94,7 +71,7 @@ def record(path):
     def save():
         state._write_state(
             lambda value: value.setdefault('fast_checks', {}).update({repo['name']: records}),
-            root, reserved=False, kind='fast_checks.record', payload={'repo': repo['name']})
+            root, kind='fast_checks.record', payload={'repo': repo['name']})
 
     # Invalidate previous successes before any read or execution can fail.
     save()
@@ -106,7 +83,7 @@ def record(path):
     from wuwei.brief import status
     clean = not status(vcs, str(path), root) if binding else False
     code = 0
-    for command in commands(root, config, repo, path):
+    for command in repo['fast_checks']:
         started = time.monotonic()
         found = interpreter(command, path, repo, root, config)
         run = command

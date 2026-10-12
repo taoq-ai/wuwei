@@ -25,13 +25,12 @@ def register(subparsers):
     approve.add_argument('--items', nargs='*', required=True)
     approve.add_argument('--goals-confirmed', action='store_true')
     approve.add_argument('--import-yesterday', action='store_true')
-    approve.add_argument('--pace', help='The gate card answer: Approve or Approve at careful|steady|fast')
     approve.add_argument('--note', help="The owner's own words on the gate card; recorded on each approved "
                                         'item and quoted in its briefs as Approved as:')
-    add = actions.add_parser('add', help='Admit an item after the morning gate: a discovery candidate, '
-                                         'or an item the owner names with --goal')
+    add = actions.add_parser('add', help='Admit an item after the morning gate: an item the owner names '
+                                         "with --goal, or a seat's finding")
     add.add_argument('item')
-    add.add_argument('--goal', help='Goal id for an item the owner names (not a discovery candidate)')
+    add.add_argument('--goal', help='Goal id for an item the owner names')
     add.add_argument('--size', type=float, help="Its size in the framework's unit (default 1)")
     add.add_argument('--title', help='Short title for the record (default: the item id)')
     add.add_argument('--ticket', help='Existing tracker ticket id when a tracker is set')
@@ -39,19 +38,29 @@ def register(subparsers):
                      help="Admit a seat's finding (wuwei next lists them) as a small item; its ticket comes later")
     add.add_argument('--note', help="The owner's own words naming the item; recorded once and quoted in "
                                     'its briefs as Approved as:')
-    for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
-                       ('park', 'Park an open item and record the decision')):
+    for verb, text in (('carry', 'Carry an open item to tomorrow'), ('park', 'Park an open item')):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
-        command.add_argument('--reason', help='Why; written into the record on one line')
+        command.add_argument('--reason', help='Why; recorded on the item on one line')
+    actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
+                       ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false; '
-                                            'or the day: pace=<p>')
-    assign.add_argument('item', help='The item id, or pace=careful|steady|fast for the day')
-    assign.add_argument('assignment', nargs='?', help='spec=required|skipped, docs=<page>|new|none, '
-                                                      'ticket=<id> or owner_merge=true|false')
-    assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
+                                            'ticket=<id> or owner_merge=true|false')
+    assign.add_argument('item', help='The item id')
+    assign.add_argument('assignment', help='spec=required|skipped, ticket=<id> or owner_merge=true|false')
+    assign.add_argument('--reason', help='Why; required for spec=skipped')
     parser.set_defaults(func=run)
+
+
+def candidate_template(goal, framework):
+    components = ('value', 'time_criticality', 'risk_reduction', 'job_size') if framework == 'wsjf' else ('reach', 'impact', 'confidence', 'effort')
+    score = ({'value': 5, 'time_criticality': 3, 'risk_reduction': 2, 'job_size': 2}
+             if framework == 'wsjf' else
+             {'reach': 10, 'impact': 1, 'confidence': 0.8, 'effort': 2})
+    return {'id': 'EXAMPLE-1', 'goal': goal, 'evidence': 'Replace with source path',
+            'scope': 'Replace with scope', 'overlap': 'none', 'track': 'SLICE',
+            'flags': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': False},
+            'score': score, 'evidence_lines': {key: 'Replace with evidence' for key in components}}
 
 
 def run(args):
@@ -63,10 +72,9 @@ def run(args):
                     {'id': 'G-1', 'outcome': 'Replace with the outcome',
                      'measure': 'Replace with the measure', 'target': 'Replace with the target',
                      'date': workspace.now().date().isoformat(), 'priority': 1})
-            from wuwei.commands.rank import candidate_template
             framework = workspace.load_config(root)['prioritisation']['framework']
-            from wuwei import calibrate
-            print(json.dumps({'goals': [goal], 'cap': calibrate.host(root, workspace.load_config(root))['cap'],
+            from wuwei.dispatch import host
+            print(json.dumps({'goals': [goal], 'cap': host(root, workspace.load_config(root))['cap'],
                 'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
                 'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 6},
                 'sweep': {'manual': 'unmeasured: replace with discovery evidence'},
@@ -78,39 +86,34 @@ def run(args):
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))
         elif args.action == 'gate':
-            from wuwei import cruise, grants
             root = workspace.find_workspace()
-            config = workspace.load_config(root)
-            print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday),
-                              *grants.gate_widgets(root, config), *cruise.gate_widgets(root, config)], indent=2))
+            print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday)], indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
                                       title=args.title, ticket=args.ticket, note=args.note,
                                       source='finding' if args.from_finding else None)))
-        elif args.action == 'set' and args.assignment is None and args.item.startswith('pace='):
-            print(plan.set_pace(args.item.partition('=')[2]))
         elif args.action == 'set':
-            key, _, value = (args.assignment or '').partition('=')
+            key, _, value = args.assignment.partition('=')
             if key == 'spec':
                 print(plan.set_spec(args.item, args.assignment, args.reason))
-            elif key == 'docs' and value:
-                from wuwei import docs
-                print(docs.assign(args.item, value, args.reason))
             elif key == 'owner_merge':
                 print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
                 print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
-                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '
-                                 'ticket=<id> or owner_merge=true|false, or bin/wuwei plan set pace=careful|steady|fast. '
-                                 'Pass --reason "<why>" with spec=skipped or docs=none')
+                raise ValueError(f'plan set: {args.assignment} is not a spec, ticket or owner_merge value; run '
+                                 f'bin/wuwei plan set {args.item} spec=required|skipped, '
+                                 'ticket=<id> or owner_merge=true|false. '
+                                 'Pass --reason "<why>" with spec=skipped')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
-            print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')
+            plan.dispose(args.item, outcome, args.reason)
+            print(f'{outcome} {args.item}')
+        elif args.action == 'resume':
+            print(plan.resume(args.item))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
-                         import_yesterday=args.import_yesterday, pace_label=args.pace, note=args.note)
+                         import_yesterday=args.import_yesterday, note=args.note)
         return CLEAN
     except state.StateError as exc:
         print(f'wuwei plan: {exc}', file=sys.stderr)

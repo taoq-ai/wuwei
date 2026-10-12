@@ -3,102 +3,94 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
+SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
-          'brief.pack', 'brief.answer', 'session.seen', 'session.rotated', 'item.claimed', 'worktree.adopted', 'worktree.created',
-          'draft.sending', 'draft.approved', 'draft.sent', 'draft.dropped', 'outward.ai_tells', 'outward.lint', 'outward.to_owner',
+          'worktree.adopted', 'worktree.created',
+          'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'reviewer.unresolved',
-          'decision.decided', 'decision.closed',
-          'decision.routed', 'decision.digest', 'decision.replied', 'mcp.decided',
+          'decision.decided',
+          'decision.routed',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
-          'pr.reply.drafted', 'pr.action.decision',
-          'watch: clock', 'listen: clock', 'heartbeat: clock', 'listen: wake', 'remote.pending', 'remote.started',
-          'decision.escalated', 'remote.resumed', 'remote.stopped', 'remote.ignored',
-          'remote.confirmed', 'watch: heartbeat', 'watch: observation', 'session: compact',
-          'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
-          'gate.received', 'gate.tiered', 'gate.delta_head', 'gate.card', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
-          'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'finding.noted', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
+          'watch: observation', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
+          'gate.received', 'gate.tiered', 'gate.delta_head',
+          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
+          'finding.noted',
+          'discovery.requested', 'discovery.intake',  # days before #843
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
-          'build.started', 'build.launched', 'build.checked', 'build.check_started', 'build.held', 'build.released', 'verdict.rejected',
-          'inbox.redacted', 'shepherd.dispatched', 'shepherd.overnight', 'shepherd.swept', 'pr.notified', 'negotiation.notified',
-          'decision.notified', 'cruise.carded', 'decision.shadow', 'undo.rehearsed', 'undo.done',
+          'build.held', 'build.released',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
-          'telemetry.presented', 'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
-          'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
-          'cap.derived', 'pace.set', 'pace.carded')
+          'telemetry.off',
+          'docs.set', 'docs.written', 'docs.exempt',  # days before #841
+          'tracker.created', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'duty.due', 'duty.done', 'duty.skipped',  # #842: tracker.call carries the warning
+          'cap.derived',
+          'state.set', 'session.seen', 'session.rotated', 'item.claimed', 'watch: clock',  # days before #847
+          'heartbeat: clock', 'watch: heartbeat', 'session: compact', 'session: wake-seen',
+          'shepherd.overnight', 'shepherd.swept')
 
 
 def classify(event, state):
-    """Return one (tier, lane) pair; malformed events demand a nudge."""
+    """Return one (tier, lane) pair; malformed events demand a warning."""
     if not isinstance(event, dict) or not isinstance(event.get('kind'), str):
-        return 'nudge', 'Work'
+        return 'warn', 'Work'
     kind = event['kind']
     payload = event.get('payload', {})
     if not isinstance(payload, dict):
-        return 'nudge', 'Work'
+        return 'warn', 'Work'
     if kind == 'state.transition' and payload.get('phase') == 'escalated':
         kind = 'item.escalated'
     lane = 'People' if kind.startswith('person.') else (
-        'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
+        'Decisions' if kind.startswith('decision.') or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
-    if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
-        return ('nudge' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
-    if kind == 'negotiation.loop':
-        return ('page' if payload.get('past_goal') is True else 'nudge'), lane
-    if kind == 'mcp.finding':
-        return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
-    if kind == 'shepherd.finished':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
-    if kind == 'mcp.checked':
-        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
+    if kind == 'guard.would_refuse':  # #837: logged, read by why and the report
+        return 'silent', lane
+    if kind == 'traces.unmatched':  # #352
+        return 'warn', lane
     if kind == 'tracker.call':
         return ('silent' if payload.get('exit') == 0
-                or payload.get('reason') == 'tracker adapter is none' else 'nudge'), lane
+                or str(payload.get('reason')).startswith('tracker adapter is none') else 'warn'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
-        return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane
+        return (tier if tier in ('silent', 'warn', 'page') else 'warn'), lane
     if kind == 'item.escalated':
         seats = state.get('seats', {}) if isinstance(state, dict) else {}
         if not isinstance(seats, dict):
-            return 'nudge', lane
+            return 'warn', lane
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
-        return ('page' if blocking else 'nudge'), lane
-    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap', 'remote.refused'):
+        return ('page' if blocking else 'warn'), lane
+    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap'):
         return 'page', lane
     if kind == 'decision.one_way':
-        return ('page' if payload.get('blocking') is True else 'nudge'), lane
+        return ('page' if payload.get('blocking') is True else 'warn'), lane
     if kind == 'person.ask':
         due = payload.get('due')
         try:
             deadline = datetime.fromisoformat(due)
             now = datetime.fromisoformat(state["now"])
             if deadline.tzinfo is None:
-                return 'nudge', lane
-            return ('page' if deadline <= now else 'nudge'), lane
+                return 'warn', lane
+            return ('page' if deadline <= now else 'warn'), lane
         except (TypeError, ValueError, KeyError):
-            return 'nudge', lane
+            return 'warn', lane
     if kind == 'budget.usage':
         fraction = payload.get('fraction')
         if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and fraction >= 1:
             return 'page', lane
         if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and fraction < .8:
             return 'silent', lane
-        return 'nudge', lane
+        return 'warn', lane
     if kind == 'watch: sweep':
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
-                else 'nudge'), lane
+                else 'warn'), lane
     if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
-                'build.parked', 'steward.due'):
-        return 'nudge', lane
+                'build.parked'):
+        return 'warn', lane
     if kind in SILENT:
         return 'silent', lane
-    return 'nudge', lane
+    return 'warn', lane

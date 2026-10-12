@@ -59,18 +59,6 @@ def _defaults(value, defaults, path):
             raise StateError(f'{path}.{key}: expected {type(default).__name__}; {DAMAGED}')
 
 
-def _check_transition(item, target):
-    phase = item['phase']
-    allowed = PHASES[phase]
-    if phase in ('parked', 'escalated'):
-        allowed = (item['resume_phase'],)
-    if target not in allowed:
-        raise StateError((f'{phase} -> {target}: legal next phases: '
-                         f'{", ".join(allowed) or "none (terminal)"}'
-                         + (f'; state may already be at {target}' if phase == target else '')
-                         + '; run bin/wuwei why <item> for its current phase'))
-
-
 def _validate(data, previous=None):
     _defaults(data, DAY_DEFAULTS, 'state')
     if data['cap'] < 1:
@@ -91,7 +79,6 @@ def _validate(data, previous=None):
             raise StateError(f'{path}.phase: new items must start at planned; {DAMAGED}')
         if old is not None:
             if old['phase'] != item['phase']:
-                _check_transition(old, item['phase'])
                 if item['phase'] in ('parked', 'escalated'):
                     item['resume_phase'] = old['phase']
                 else:
@@ -108,27 +95,143 @@ def _validate(data, previous=None):
     return data
 
 
-SNAPSHOT = 'state.snapshot.json'
+def _diff(old, new):
+    """#844: the patch one write made: whole top-level values, and for object values only the
+    changed entries (merge) and the removed ones (drop)."""
+    patch = {}
+    for key, value in new.items():
+        before = old.get(key, _MISSING)
+        if before == value:
+            continue
+        if isinstance(value, dict) and isinstance(before, dict):
+            changed = {entry: row for entry, row in value.items() if before.get(entry, _MISSING) != row}
+            dropped = [entry for entry in before if entry not in value]
+            if changed:
+                patch.setdefault('merge', {})[key] = changed
+            if dropped:
+                patch.setdefault('drop', {})[key] = dropped
+        else:
+            patch.setdefault('set', {})[key] = value
+    if removed := [key for key in old if key not in new]:
+        patch['del'] = removed
+    return patch
 
 
-def _load(text):
-    data = json.loads(text)
-    json.dumps(data, allow_nan=False)
-    return _validate(data)
+_MISSING = object()
+
+
+def _apply(data, patch):
+    for key, value in patch.get('set', {}).items():
+        data[key] = value
+    for key, entries in patch.get('merge', {}).items():
+        if not isinstance(data.get(key), dict):
+            data[key] = {}
+        data[key].update(entries)
+    for key, entries in patch.get('drop', {}).items():
+        for entry in entries:
+            data.get(key, {}).pop(entry, None)
+    for key in patch.get('del', ()):
+        data.pop(key, None)
+
+
+CACHE_KEYS = ('log_size', 'log_head', 'digest')
+
+
+def _fingerprint(encoded):
+    """A deterministic fingerprint without hashlib on the hook path (#346): Python's integer
+    hash is not salted per process. ponytail: not cryptographic; it detects edits, not forgery."""
+    return format(hash(int.from_bytes(b'\x01' + encoded, 'big')) & 0xFFFFFFFFFFFFFFFF, 'x')
+
+
+def _digest(data):
+    """The records' fingerprint the cache carries: an edit to state.json breaks it (F7)."""
+    return _fingerprint(json.dumps(data, sort_keys=True, allow_nan=False).encode())
+
+
+def _log_head(log):
+    """The log's identity: its first line's fingerprint (F8); a replaced log has another."""
+    try:
+        with log.open('rb') as handle:
+            return _fingerprint(handle.readline())
+    except FileNotFoundError:
+        return ''
+
+
+def _fold(directory, cache=True):
+    """#844: (the day's records, whether the day started, whether they came from outside the
+    log); cache False folds the log alone. The event log is the truth and state.json its cache,
+    read only when its fingerprint holds (no hand edit), it names this log (the first line) and
+    the log reached its size; only the tail past that size is folded onto it. A state.json
+    without a log size is an old day's records, read only while the log holds no patch; the next
+    write's patch carries it into the log. A line that does not parse is a write that never
+    finished (it never reached the cache) and is skipped."""
+    path, log = directory / 'state.json', directory / 'events.jsonl'
+    try:
+        raw = json.loads(path.read_text(encoding='utf-8')) if cache else None
+    except FileNotFoundError:
+        raw = None
+    except ValueError:
+        if not day_started(directory, log_only=True):
+            raise
+        raw = None  # a torn cache: the log has the records
+    if raw is not None and not isinstance(raw, dict):
+        if not day_started(directory, log_only=True):
+            raise ValueError(f'expected object; {DAMAGED}')
+        raw = None
+    size = log.stat().st_size if log.is_file() else 0
+    if isinstance(raw, dict) and 'log_size' not in raw:
+        if not day_started(directory, log_only=True):
+            return raw, True, True
+        raw = None  # F6: once the log holds records it wins over an edited file
+    offset = -1
+    if isinstance(raw, dict):
+        meta = {key: raw.pop(key, None) for key in CACHE_KEYS}
+        if (isinstance(meta['log_size'], int) and meta['digest'] == _digest(raw)
+                and meta['log_head'] == _log_head(log)):
+            offset = meta['log_size']
+    if offset > size:  # the log lost lines the cache holds: keep the records, never fewer
+        return raw, True, True
+    if offset >= 0:
+        data, started = raw, True
+    else:
+        data, offset, started = workspace.copy_data(DAY_DEFAULTS), 0, False
+    if offset < size:
+        with log.open('rb') as handle:
+            handle.seek(offset)
+            tail = handle.read(size - offset)
+        for line in tail.splitlines():
+            if b'"patch"' not in line:
+                continue
+            try:
+                patch = json.loads(line).get('patch')
+            except (ValueError, AttributeError):
+                continue  # F4: a torn write recorded nothing
+            if isinstance(patch, dict):
+                _apply(data, patch)
+                started = True
+    return data, started, False
+
+
+def day_started(directory, log_only=False):
+    """#844: True once the day holds records (its log carries a patch, or an old day's
+    state.json exists); replaces every state.json existence check."""
+    directory = Path(directory)
+    if not log_only and (directory / 'state.json').is_file():
+        return True
+    log = directory / 'events.jsonl'
+    return log.is_file() and b'"patch"' in log.read_bytes()
 
 
 def read_state(root=None, *, directory=None):
-    """Read today's state; an absent file returns fresh defaults without writes."""
+    """Read today's records, folded from the event log (#844); a day without records returns
+    fresh defaults without writes."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
-    path = directory / 'state.json'
     try:
-        return _load(path.read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        if (directory / SNAPSHOT).exists():
-            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; run bin/wuwei state recover in a host terminal') from None
-        return workspace.copy_data(DAY_DEFAULTS)
+        data = _fold(directory)[0]
+        json.dumps(data, allow_nan=False)
+        return _validate(data)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f'{path}: {exc}; run bin/wuwei state recover in a host terminal') from exc
+        raise ValueError(f'{directory / "state.json"}: {exc}; run bin/wuwei doctor') from exc
 
 
 def _event_payload(kind, payload):
@@ -152,12 +255,13 @@ def append_event(kind, payload=None, root=None, *, directory=None, timeout=30):
         _append_event(kind, payload, directory)
 
 
-def _append_event(kind, payload, directory, more=()):
-    """Append validated event data, and any more (kind, payload) pairs in the same write,
-    while the caller holds state.lock."""
-    ts = workspace.now().isoformat()
-    _append_jsonl(directory / 'events.jsonl',
-                  *({'kind': k, 'payload': p, 'ts': ts} for k, p in ((kind, payload), *more)))
+def _append_event(kind, payload, directory, patch=None):
+    """Append validated event data while the caller holds state.lock. patch (#844): the
+    records a state write changed, carried beside the payload."""
+    row = {'kind': kind, 'payload': payload, 'ts': workspace.now().isoformat()}
+    if patch is not None:
+        row['patch'] = patch
+    _append_jsonl(directory / 'events.jsonl', row)
 
 
 def append_jsonl(path, record):
@@ -198,101 +302,34 @@ def _append_jsonl(path, *records):
             path.chmod(0o444)
 
 
-def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None, directory=None, more=()):
-    """Apply a callback that mutates fresh state while holding the writer lock; more is
-    (kind, payload) events appended with this write's event."""
+def _write_state(update, root=None, *, kind='state.write', payload=None, directory=None):
+    """Apply a callback that mutates fresh state while holding the writer lock."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     payload = _event_payload(kind, payload)
-    more = [(name, _event_payload(name, extra)) for name, extra in more]
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
         lock_ex(lock, 'state.lock')
-        data = read_state(directory=directory)
-        previous = workspace.copy_data(data) if (directory / 'state.json').exists() else None
-        before = workspace.copy_data(data) if reserved else None
+        data, started, legacy = _fold(directory)
+        log = _fold(directory, cache=False)[0] if legacy else workspace.copy_data(data)
+        data = _validate(data)
+        previous = workspace.copy_data(data) if started else None
         update(data)
-        if reserved:
-            protected = _protected(before, before)
-            changed = _protected(data, before)
-            for key in protected.keys() | changed.keys():
-                if (key not in protected or key not in changed
-                        or json.dumps(protected[key], sort_keys=True)
-                        != json.dumps(changed[key], sort_keys=True)):
-                    raise _producer_error((key,))
         data = _validate(data, previous)
-        encoded = json.dumps(data, allow_nan=False) + '\n'
-        # One directory fsync, after both renames, makes both durable (#516).
-        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444, sync_dir=False)
-        workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
+        json.dumps(data, allow_nan=False)
         changes = {name: item['phase'] for name, item in data['items'].items()
                    if previous is not None and name in previous['items']
                    and item['phase'] != previous['items'][name]['phase']}
         seen = bool(data['raised_prs'] or data['claimed_prs'])
+        # #844: the event carries the patch first; state.json is the cache of the fold after it.
         _append_event(kind, {**payload, 'prs_seen': seen, **({'phase_changes': changes} if changes else {})},
-                      directory, [(name, {**extra, 'prs_seen': seen}) for name, extra in more])
+                      directory, patch=_diff(log, data) or None)
+        log = directory / 'events.jsonl'
+        encoded = json.dumps({**data, 'log_size': log.stat().st_size, 'log_head': _log_head(log),
+                              'digest': _digest(data)}, allow_nan=False) + '\n'
+        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
         return data
-
-
-# Only these root settings are tunable, and only before morning approval.
-OWNER_FIELDS = frozenset({'cap', 'seat_policy'})
-STATE_PRODUCERS = {
-    'drafts': 'wuwei drafts and outward adapters',
-    'mcp': 'wuwei mcp check or owner host decision',
-    'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
-    'integrity_confirmation': 'owner host re-confirmation',
-    'cap': 'wuwei plan approve or wuwei dispatch next --all',
-    'cap_bound': 'wuwei plan approve or wuwei dispatch next --all', 'seat_policy': 'wuwei plan approve',
-    'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
-    'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
-    'goals': 'wuwei plan approve', 'goal_seats': 'wuwei plan approve',
-    'planner_session_id': 'wuwei plan session',
-    'builds': 'wuwei build and seat hooks',
-    'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
-    'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer) '
-                          'or wuwei watch and wuwei pr state (a merged PR closes its merge card)'),
-    'decision_routes': 'wuwei decision route',
-    'channel_posts': 'wuwei pr ping',
-    'pr_reviewers': 'wuwei pr raise or ping',
-    'author_logins': 'wuwei pr raise, ping or reviewers',
-    'scanner_decisions': 'wuwei sweep',
-    'watch': 'wuwei watch or wuwei listen', 'pr_dispositions': 'wuwei pr disposition',
-    'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
-    'pr_action_decisions': 'wuwei pr act',
-    'close_requested': 'wuwei close', 'merges': 'wuwei merge',
-    'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive or wuwei dispatch next',
-    'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
-    'steward_notes': 'wuwei steward run or wuwei hook SubagentStop',
-    'steward_acks': 'wuwei steward ack',
-    'negotiation_loops': 'wuwei steward run or wuwei dispatch next',
-    'discovery_candidates': 'wuwei dispatch discovery',
-    'intraday_proposals': 'wuwei plan add',
-    'seat_findings': 'wuwei note --fix',
-    'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session, wuwei listen (remote sessions) or wuwei hook PostToolUse (gate questions)',
-    'claims': 'wuwei brief builder or wuwei worktree add',
-    'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
-    'tracker_log': 'wuwei tracker create or log',
-    'outbound_learn': 'wuwei outbound learn or wuwei decide',
-    'outbound_threads': 'wuwei outbound learn',
-    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide'
-              ' or wuwei watch and wuwei pr state (a merged PR closes its merge card)',
-    'cruise_cards': 'wuwei plan propose',
-    'pace': 'wuwei plan approve or wuwei plan set pace=', 'pace_card': 'wuwei plan propose',
-    'decision_shadows': 'wuwei decision route',
-    'main_broken': 'wuwei build',
-}
-
-
-def running_by_goal(data):
-    """{goal: running builder seats}, goals sorted; an item without a goal is unplanned."""
-    from collections import Counter
-    counts = Counter(data['items'].get(seat.get('item'), {}).get('goal', 'unplanned')
-                     for seat in data.get('seats', {}).values()
-                     if isinstance(seat, dict) and seat.get('status') == 'running'
-                     and seat.get('role') == 'builder')
-    return dict(sorted(counts.items()))
 
 
 def check_running(build):
@@ -341,93 +378,6 @@ def in_flight_text(rows):
                      for at, role, item in rows)
 
 
-def goal_split(counts):
-    return ', '.join(f'{goal} {count}' for goal, count in counts.items())
-
-
-def _producer_error(parts):
-    key = parts[0]
-    producer = STATE_PRODUCERS.get(key, 'its dedicated command')
-    if key == 'items' and len(parts) > 2:
-        producer = {'phase': 'wuwei state transition',
-                    'resume_phase': 'wuwei state transition',
-                    'flags': 'wuwei plan approve', 'track': 'wuwei brief', 'depth': 'wuwei brief',
-                    'worktree': 'wuwei brief, wuwei worktree adopt or wuwei worktree add --branch',
-                    'source': 'wuwei plan add or wuwei pr claim',
-                    'title': 'wuwei plan add or wuwei pr claim',
-                    'pr': 'wuwei pr raise or wuwei pr claim',
-                    'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
-                    'approved_as': 'wuwei plan approve or wuwei plan add',
-                    'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
-                    'polish': 'wuwei dispatch polish or wuwei dispatch skip-polish',
-                    'docs': 'wuwei plan set or wuwei docs page',
-                    'assumption': 'wuwei decision route --external or wuwei sweep',
-                    'ci_jobs': 'wuwei brief or the fix round (wuwei build next, wuwei pr act)'}.get(
-                        parts[2], 'its dedicated command')
-    return StateError(f'{".".join(parts)}: reserved; written by {producer}')
-
-
-def _generic_allowed(parts, data):
-    return ((parts[0] in OWNER_FIELDS and not data['gate_approved']
-             and (len(parts) == 1 or parts[0] == 'seat_policy'))
-            or (len(parts) == 3 and parts[0] == 'items' and parts[2] == 'note'
-                and parts[1] in data['items']))
-
-
-def _protected(data, before):
-    """Everything except explicitly tunable fields is producer-owned by default."""
-    result = workspace.copy_data(data)
-    if not before['gate_approved']:
-        for key in OWNER_FIELDS:
-            result.pop(key, None)
-    items = result.get('items')
-    if isinstance(items, dict):
-        for name in before['items']:
-            if isinstance(items.get(name), dict):
-                items[name].pop('note', None)
-    return result
-
-
-def write_state(update, root=None, *, kind='state.write', payload=None):
-    """Generic writes may change only explicitly allowlisted owner fields."""
-    return _write_state(update, root, kind=kind, payload=payload)
-
-
-def _parts(path):
-    parts = path.split('.')
-    if not all(parts):
-        raise ValueError('path must contain nonempty dot-separated keys; pass a dotted key such as items.DIV-1.status')
-    return parts
-
-
-def get_state(path=None, root=None):
-    value = read_state(root)
-    if path is not None:
-        for key in _parts(path):
-            if not isinstance(value, dict) or key not in value:
-                raise KeyError(f'no state path: {path}')
-            value = value[key]
-    return value
-
-
-def set_state(path, value, root=None):
-    parts = _parts(path)
-
-    def update(data):
-        if not _generic_allowed(parts, data):
-            raise _producer_error(parts)
-        parent = data
-        for key in parts[:-1]:
-            if not isinstance(parent, dict):
-                raise ValueError(f'non-object parent in path: {path}')
-            parent = parent.setdefault(key, {})
-        if not isinstance(parent, dict):
-            raise ValueError(f'non-object parent in path: {path}')
-        parent[parts[-1]] = value
-
-    return write_state(update, root, kind='state.set', payload={'path': path, 'value': value})
-
-
 def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):
     """Link one owned PR to its item in the same write as day ownership."""
     from wuwei.references import pull_request
@@ -460,8 +410,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False
     if draft:
         payload['draft'] = True
     if raised:
-        return _write_state(update, root, reserved=False, kind='pr.raised', payload=payload)
-    return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)
+        return _write_state(update, root, kind='pr.raised', payload=payload)
+    return _write_state(update, root, kind='pr.claimed', payload=payload)
 
 
 def record_worktree(root, item, path, head, *, check=False):
@@ -481,13 +431,12 @@ def record_worktree(root, item, path, head, *, check=False):
         data['items'][item]['worktree'] = path
     if check:
         return update(read_state(root))
-    return _write_state(update, root, reserved=False, kind='worktree.adopted',
+    return _write_state(update, root, kind='worktree.adopted',
                         payload={'item': item, 'worktree': path, 'head': head})
 
 
 def _move(data, item, phase):
     current = data['items'][item]
-    _check_transition(current, phase)
     if current['phase'] == 'delta' and phase == 'raised' and item in data.get('builds', {}):
         data['builds'][item]['fix_rounds'] = 0
     current['phase'] = phase
@@ -501,14 +450,13 @@ def transition(item, phase, root=None):
             raise KeyError(f'no state item: {item}')
         _move(data, item, phase)
 
-    return _write_state(update, root, reserved=False, kind='state.transition',
+    return _write_state(update, root, kind='state.transition',
                        payload={'item': item, 'phase': phase})
 
 
-def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None, session=None):
+def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None):
     """Release a reservation while preserving the used brief and seat identity; with a reason
-    the seat is unmeasured: its report could not be recorded (#473). session (session_id, hook,
-    cwd) also records the session row in the same write (#516)."""
+    the seat is unmeasured: its report could not be recorded (#473)."""
     fields = {'reason': reason} if reason else {}
     if by:
         fields['by'] = by
@@ -521,44 +469,5 @@ def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by
                     **fields)
         if isinstance(agent_id, str) and agent_id.strip():
             seat['agent_id'] = agent_id
-        if session:
-            from wuwei import sessions
-            sessions.record(data, **session)
     payload = {'name': name, **({'status': 'unmeasured'} if reason else {}), **fields}
-    more = [('session.seen', {'session_id': session['session_id'], 'hook': session['hook']})] if session else ()
-    return _write_state(update, root, reserved=False, kind='seat stopped',
-                        payload=payload, directory=directory, more=more)
-
-
-def recover(root=None, *, confirm):
-    """Restore today's unreadable state from the writer's snapshot after host confirmation."""
-    from hashlib import sha256
-    directory = workspace.day_dir(root)
-    path = directory / 'state.json'
-
-    def measure():
-        try:
-            read_state(directory=directory)
-            reason = None if path.exists() else 'state.json missing'
-        except ValueError as exc:
-            reason = str(exc)
-        if reason is None:
-            raise StateError('state.json is readable; nothing to recover; run bin/wuwei doctor for other problems')
-        text = (directory / SNAPSHOT).read_text(encoding='utf-8')
-        try:
-            _load(text)
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f'unusable state snapshot: {exc}') from None
-        return reason, sha256(text.encode('utf-8')).hexdigest(), text
-
-    reason, digest, text = measure()
-    if not confirm(digest[:12]):
-        raise StateError('state recovery declined; rerun bin/wuwei state recover in a host terminal and answer y')
-    with (directory / 'state.lock').open('a') as lock:
-        lock_ex(lock, 'state.lock')
-        if measure()[1] != digest:
-            raise ValueError('state changed during confirmation; retry')
-        workspace.atomic_write(path, text, mode=0o444)
-        _append_event('state.recovered', {'snapshot': digest, 'reason': f'state recovered from snapshot {digest[:12]}',
-                                           'error': reason}, directory)
-    return digest
+    return _write_state(update, root, kind='seat stopped', payload=payload, directory=directory)

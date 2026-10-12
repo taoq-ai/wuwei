@@ -7,74 +7,48 @@ import re
 import shlex
 import sys
 
-from wuwei import decision, obligations, registry, state, watch, workspace
+from wuwei import obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
-from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
+from wuwei.exits import DAMAGED, RACE
 
 
 def _verify(root, host, ref, record, config):
-    kind, identifier, comment_id = record['kind'], record['decision'], record['comment_id']
+    """The owner-authored marker comment WUWEI <kind> <ref> <day>; a marker posted before the
+    upgrade, with its D-n and record fingerprint after the ref, still verifies."""
+    kind, comment_id = record['kind'], record['comment_id']
     day = workspace.day_dir(root).name
     if (kind not in ('parked', 'carried') or record['day'] != day
             or type(comment_id) is not int or comment_id <= 0):
         raise ValueError(f'invalid PR disposition; {DAMAGED}')
-    text = decision.today_path(identifier, root).read_text(encoding='utf-8')
-    fields, _ = decision.evaluate(text)
-    data = state.read_state(root)
-    if (decision.route(fields) != 'owner' or fields['Decided-by'] != 'owner'
-            or identifier in data.get('decision_outcomes', {}) and not decision.answered(data, identifier)):
-        raise ValueError('disposition needs an owner-routed decision without a seat outcome; route it with bin/wuwei decision route D-n. Wait for the owner answer, then rerun bin/wuwei pr disposition')
-    if obligations._fingerprint(text) != record['decision_fingerprint']:
-        raise ValueError('disposition decision changed; verify again; the owner posts a fresh marker comment, then rerun bin/wuwei pr disposition with its --comment id')
     discussion = obligations._read(host.threads, ref, root=root)
     comments = obligations._records(discussion['comments'])
-    expected = f'WUWEI {kind} {ref} {identifier} {day} {record["decision_fingerprint"]}'
+    expected = f'WUWEI {kind} {ref} {day}'
+    legacy = re.compile(rf'WUWEI {kind} {re.escape(ref)} D-[1-9][0-9]* {day} [0-9a-f]{{64}}')
     owner = obligations._owner_login(config)
     if not any(row['id'] == comment_id and row['author'] == owner and not row['is_bot']
-               and row['body'].strip() == expected for row in comments):
+               and (row['body'].strip() == expected or legacy.fullmatch(row['body'].strip()))
+               for row in comments):
         raise ValueError(f'disposition needs a fresh owner-authored comment: {expected}; the owner posts it on the PR, then rerun bin/wuwei pr disposition with its --comment id')
     return kind
 
 
-def record_disposition(root, ref, kind, identifier, comment_id):
+def record_disposition(root, ref, kind, comment_id):
     ref = pull_request(ref)
     config = workspace.load_config(root)
     host, refs = watch.owned(root, config)
     if ref not in refs:
         raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
-    text = decision.today_path(identifier, root).read_text(encoding='utf-8')
-    record = {'kind': kind, 'decision': identifier, 'comment_id': comment_id,
-              'day': workspace.day_dir(root).name,
-              'decision_fingerprint': obligations._fingerprint(text)}
+    record = {'kind': kind, 'comment_id': comment_id, 'day': workspace.day_dir(root).name}
     _verify(root, host, ref, record, config)
     def update(data):
         data.setdefault('pr_dispositions', {})[ref] = record
-    state._write_state(update, root, reserved=False, kind='pr.disposition',
+    state._write_state(update, root, kind='pr.disposition',
                        payload={'pr': ref, **record})
     return 0
 
 
-def _watched(root):
-    """True only when the watch read every owned PR recently and no episode is overdue."""
-    try:
-        data = state.read_state(root)
-        refs = {pull_request(ref) for ref in data['raised_prs'] + data['claimed_prs']}
-        record = data.get('watch', {})
-        age = (workspace.now() - obligations._time(record['measured_at'])).total_seconds()
-        limit = 2 * workspace.load_config(root)['pr']['poll_seconds']
-        actions = record.get('actions', {})
-        return (bool(refs) and 0 <= age <= limit and refs <= record['prs'].keys()
-                and all(ref not in actions
-                        or obligations._time(actions[ref]['deadline']) >= workspace.now()
-                        for ref in refs))
-    except watch.ERRORS:
-        return False
-
-
 def check(root, *, closing=False, rows=None):
-    """Stop checks fresh states, enforcing only overdue actions and day close."""
-    if rows is None and not closing and _watched(root):
-        return 0, ''
+    """Check fresh states, enforcing only overdue actions and day close."""
     if rows is None:
         _, rows = evaluate(root)
     findings, code = [], 0
@@ -90,7 +64,9 @@ def check(root, *, closing=False, rows=None):
             findings.append(f'{row["pr"]} {row["state"]}: overdue action: {row["action"]}')
         if closing:
             code = max(code, 1)
-            findings.append(f'{row["pr"]} {row["state"]}: must be merged, parked or carried to tomorrow')
+            owed = f' ({", ".join(row["owed"])})' if row.get('owed') else ''
+            todo = f'{row["action"]}{owed}; ' if row.get('action') else ''
+            findings.append(f'{row["pr"]} {row["state"]}: {todo}must be merged, parked or carried to tomorrow')
     return code, '\n'.join(findings)
 
 
@@ -99,12 +75,12 @@ ACTIONS = {
                    {'worktree': 'item', 'steps': ['rebase', 'resolve', 'fast_checks', 'push']}),
     'ci_red': ('start a fix round', {'worktree': 'item', 'steps': ['fix_round']}),
     'changes_requested': ('triage review threads', {'routes': {
-        'fix_request': 'fix_round', 'question': 'outbound_tier_then_reply',
+        'fix_request': 'fix_round', 'question': 'reply',
         'disagreement': 'owner_decision', 'scope_change': 'owner_decision'}}),
     'review_stale': ('re-request review, then post in the review channel',
                      {'steps': ['request_reviewers', 'post_review_channel']}),
     'approved': ('wuwei merge or merge decision',
-                 {'steps': ['wuwei merge'], 'fallback': 'merge_decision'}),
+                 {'steps': ['wuwei merge'], 'fallback': 'owner_decision'}),
     'closed': ('owner decision for closed unmerged PR', {'steps': ['owner_decision']}),
 }
 ACTIONS['threads_unanswered'] = ACTIONS['changes_requested']
@@ -162,7 +138,8 @@ def _base_red(host, ref, measured, root):
 def observe(root, host, ref, config, measured):
     """Produce an episode under the shared writer lock from a fresh port read."""
     data = state.read_state(root)
-    current = classify(measured, obligations._owner_login(config), obligations._ledger(data).get(ref, {}))
+    me, acks = obligations._owner_login(config), obligations._ledger(data).get(ref, {})
+    current = classify(measured, me, acks)
     reason = _base_red(host, ref, measured, root) if current == 'ci_red' else None
     current = 'base_red' if reason else current
     dispositions = data.get('pr_dispositions', {})
@@ -174,6 +151,8 @@ def observe(root, host, ref, config, measured):
            'draft': measured['pr']['draft'] is True}
     if reason:
         row['reason'] = reason
+    if current in ('changes_requested', 'threads_unanswered'):  # #847: close names what is owed
+        row['owed'] = obligations._replies(measured['reviews'], measured['threads'], me, acks)
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent', 'state': current}
     merged = []
@@ -188,7 +167,7 @@ def observe(root, host, ref, config, measured):
             created, deadline = (obligations._time(episode[key]) for key in ('created_at', 'deadline'))
             if (created > now or deadline <= created or episode['state'] not in ACTIONS
                     or episode['action'] != ACTIONS[episode['state']][0]
-                    or episode.get('tier', 'silent') not in ('silent', 'nudge', 'page')):
+                    or episode.get('tier', 'silent') not in ('silent', 'warn', 'page', 'nudge')):  # nudge: an episode written before #801
                 raise ValueError('invalid action record; run bin/wuwei pr state for a fresh action')
         head = measured['pr']['head']
         waiting = reviews.get(ref)
@@ -229,7 +208,7 @@ def observe(root, host, ref, config, measured):
                          and done['state'] == row['state']
                          and done['from_head'] == measured['pr']['head'])
             tier = ('page' if now >= deadline + (deadline - created) else
-                    'nudge' if now > deadline else 'silent')
+                    'warn' if now > deadline else 'silent')
             if not completed and not row['parked'] and tier != 'silent' and episode.get('tier', 'silent') != tier:
                 event.update(tier=tier, state=row['state'], action=action, deadline=episode['deadline'])
                 episode['tier'] = tier
@@ -243,14 +222,14 @@ def observe(root, host, ref, config, measured):
                 if item.get('pr') == ref and item['phase'] in ('raised', 'fix', 'delta'):
                     state._move(data, name, 'merged')
                     merged.append(name)
-    state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
+    state._write_state(update, root, kind='pr.action', payload=event)
     import shutil
     for name in merged:  # #647: the item's scratch goes with the confirmed merge
         # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
         shutil.rmtree(root / workspace.SCRATCH / name, ignore_errors=True)
-    if current == 'merged':  # #729: a merge card about this PR is now moot
-        from wuwei import grants
-        grants.close_merged(root, ref, measured['pr'])
+    from wuwei import dispatch
+    for name in merged:  # #842: a merge seen here (the owner merged on the host) runs the done duty
+        dispatch.tracker_call(name, 'done', root)
     return row
 
 
@@ -258,7 +237,7 @@ def evaluate(root, refs=None):
     """Return per-PR results, preserving each unreadable PR and its reason."""
     rows = []
     try:
-        if not (workspace.day_dir(root) / 'state.json').is_file():
+        if not state.day_started(workspace.day_dir(root)):
             raise ValueError('day state missing; start the day with /wuwei:wuwei-plan (bin/wuwei plan propose, then bin/wuwei plan approve)')
         config = workspace.load_config(root)
         host, owned = watch.owned(root, config)
@@ -297,7 +276,7 @@ def _item(root, ref):
 
 def _rebase(root, ref, item, tree, *, resume=False):
     from wuwei import fast_checks, registry
-    from wuwei.guards import commit_push
+    from wuwei import commit_push
     config = workspace.load_config(root)
     host = registry.load('code_host', config)
     measured = watch.evidence(host, ref, root)
@@ -326,7 +305,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
-            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
+            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set')
         result = vcs.rebase(str(tree), base_sha, root=root)
         if isinstance(result, registry.Result) and result.exit == 1:
             print(result.reason or 'rebase did not complete')
@@ -360,7 +339,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
               'created_at': episode['created_at'],
               'item': item}
     state._write_state(lambda data: data.setdefault('pr_action_done', {}).update({ref: record}),
-                       root, reserved=False, kind='pr.action.done', payload={'pr': ref, **record})
+                       root, kind='pr.action.done', payload={'pr': ref, **record})
     print(json.dumps({'action': 'done', 'pr': ref, 'item': item, 'head': head}))
     return 0
 
@@ -412,6 +391,15 @@ def _fix(root, ref, item, tree, measured, feedback=None):
             return exc.code
         print(json.dumps(action, sort_keys=True))
         return 1
+    from wuwei import dispatch
+    data = state.read_state(root)
+    cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
+    if dispatch.rounds_used(data, item) >= cap:  # #844: the owner decides on plan resume's card
+        reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
+        dispatch._parked(root, item, reason)
+        print(f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
+              f'bin/wuwei plan resume {item}')
+        return 1
     action = build.open_fix(item, feedback, root=root)
     print(json.dumps(action, sort_keys=True))
     return 1
@@ -428,12 +416,10 @@ def _latest(measured, surface, target):
 
 
 def _thread(root, ref, item, tree, measured, reply=None):
-    from wuwei import drafts, outward, registry
     config = workspace.load_config(root)
     me = obligations._owner_login(config)
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
                                 obligations._ledger(state.read_state(root)).get(ref, {}))
-    pending = None
     for key in owed:
         surface, target = key.split(':', 1)
         if surface not in ('thread', 'review', 'comment'):
@@ -441,44 +427,18 @@ def _thread(root, ref, item, tree, measured, reply=None):
         thread, latest = _latest(measured, surface, target)
         text, answer = latest['body'], {}
         if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
-            fingerprint = obligations._fingerprint(latest)
-            prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
-            if prior is None or prior.get('fingerprint') != fingerprint:
-                text = (
-                    f'Question: How should {ref} thread {target} change scope?\nClass: other\n'
-                    f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-                    '| change | Make the scope change | Fails the owner scope decision must. | '
-                    'The PR scope changes without owner review. |\n'
-                    '| defer | Defer to the owner | Passes every must and avoids unapproved scope. | '
-                    'The thread waits for the owner. |\nMusts:\n'
-                    '| Criterion | change | defer |\n| --- | --- | --- |\n'
-                    '| Owner scope decision | fail | pass |\nWants:\n'
-                    '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
-                    '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
-                    'Reasoning: Avoiding unapproved scope decided it; an owner approval would flip it.\n'
-                    'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
-                    'Pre-mortem: Scope changes without owner review.\n'
-                    'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n')
-                path = decision.write(text, root)
-                decision.route_owner(path.stem, decision.evaluate(text)[0], root)
-                relative = str(path.relative_to(root))
-                state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
-                                   .setdefault(ref, {}).update({key: {'path': relative,
-                                                                        'fingerprint': fingerprint}}),
-                                   root, reserved=False, kind='pr.action.decision',
-                                   payload={'pr': ref, 'surface': surface, 'target': target})
-                print(json.dumps({'action': 'owner_decision', 'decision': str(path.relative_to(root))}))
-                return 1
-            path = root / prior['path']
-            if not path.is_file():
-                raise ValueError('recorded scope decision is missing; restore the decision file named in the day state; bin/wuwei doctor shows what is missing')
-            option = decision.answered(state.read_state(root), path.stem)
-            if option is None:
-                pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
-                continue
-            if option == 'change':
+            from wuwei import sessions  # the owner decides a scope change on the card of pr act
+            command = f'bin/wuwei pr act {ref}'
+            detail = (f'Reviewer asks a scope change on {ref} ({target}): {json.dumps(text[:200])}. '
+                      'Yes makes it in a fix round; No leaves the thread for you.')
+            token, no = obligations._fingerprint(latest)[:12], 'The planner replies that the thread is deferred to you.'
+            owner = sessions.owner_answer(root, command, detail, token, no)
+            if owner == 'Yes':
                 return _fix(root, ref, item, tree, measured, feedback=text)
-            answer = {'decision': prior['path'], 'option': option}
+            if owner != 'No':
+                print(sessions.needs_owner(root, command, detail, token, no), file=sys.stderr)
+                return 1
+            answer = {'option': 'defer'}
         elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):
             return _fix(root, ref, item, tree, measured, feedback=text)
         if reply is None:
@@ -487,45 +447,9 @@ def _thread(root, ref, item, tree, measured, reply=None):
             return 1
         if not reply.strip():
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
-        context = {'ref': ref, 'thread': target} if thread else {'ref': ref}
-        channel_kind = 'code_host'
-        why = []
-        code, tier = outward.classify(reply, root, config, context, kind=channel_kind, why=why)
-        if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft', 'block'):
-            raise ValueError(f'invalid outward tier result; {ADAPTER_DATA}')
-        if tier == 'block':  # #496: refused with the row named; no draft.
-            print(outward.blocked(why[0]), file=sys.stderr)
-            return 1
-        if code == 0 and tier == 'send':
-            return obligations.reply(ref, surface,
-                thread['comments'][0]['id'] if thread else latest['id'], reply, root)
-        draft = {'surface': surface, 'thread': target, 'body': reply, 'source_id': latest['id']}
-        inputs = {'ref': ref, 'text': reply, 'thread': thread['comments'][0]['id'] if thread else None}
-        existing = next((key for key, row in drafts.read(state.read_state(root)).items()
-                         if row['status'] == 'pending' and row['channel'] == 'code_host'
-                         and row['inputs'] == inputs), None)
-        if existing is not None:
-            pending = pending or ({'action': 'draft_reply', 'pr': ref, **draft, 'draft': existing}, 1)
-            if code == 2:
-                pending = (pending[0], 2)
-            continue
-        humanized, reason = outward.humanize_lint(inputs, root, config, {channel_kind}, draft=True)
-        if humanized:
-            print(reason)
-            return humanized
-        draft_id = drafts.create(root, config, channel_kind, 'comment', config['adapters']['code_host'],
-                                 inputs, 'outward tier unmeasured; reply kept as a draft' if code == 2
-                                 else outward.APPROVAL_REQUIRED)
-        print(json.dumps({'action': 'draft_reply', 'pr': ref, **draft, 'draft': draft_id}))
-        if code == 2:
-            print('outward tier unmeasured; reply kept as a draft')
-        return 2 if code == 2 else 1
-    if pending is not None:
-        action, code = pending
-        print(json.dumps(action))
-        if code == 2:
-            print('outward tier unmeasured; reply kept as a draft')
-        return code
+        # #838: posted through the code-host port, which runs the canary check and the lint.
+        return obligations.reply(ref, surface,
+                                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)
     raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
 
 
@@ -576,7 +500,7 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
         from wuwei import merge
         result = merge.execute(ref, root=root)
         if result.exit:
-            print(f'{ref}: {result.reason}')  # #524: the card, the owner's command or the missing condition
+            print(f'{ref}: {result.reason}')  # #816: the wait, or the owner's Owner step card
         return result.exit
     if row['state'] == 'review_stale':
         from wuwei import shepherd

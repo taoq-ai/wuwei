@@ -54,10 +54,10 @@ def run(args):
                                       if line.startswith(f'{name} is still open')), 'open'))
         return code
     else:
-        if not (workspace.day_dir(root) / 'state.json').is_file():
+        if not state.day_started(workspace.day_dir(root)):
             print('Nothing to close today: no day has started. Start one with /wuwei:wuwei-plan.')
             return 0
-        state._write_state(lambda data: data.update(close_requested=True), root, reserved=False,
+        state._write_state(lambda data: data.update(close_requested=True), root,
                            kind='day.close_requested')
         # ponytail: owned PRs are read again by closing.check; close runs a few times a day.
         names, notes = [], []
@@ -66,9 +66,8 @@ def run(args):
             steward.run(root, trigger='close')
             code, reason = closing.check(root)
             if code == 0:
-                from wuwei import digest, tracker
-                digest.write(root, workspace.now().date(), 'week')
-                try:  # Comments are hygiene; strict_close is the close rule.
+                from wuwei import tracker
+                try:  # Comments are hygiene; open duties are the close rule (#842).
                     if tracker.log(root):
                         print('tracker log: some comments were not written; run bin/wuwei tracker log '
                               'to see why', file=sys.stderr)

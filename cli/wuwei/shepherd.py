@@ -1,7 +1,6 @@
 """Raise and shepherd PRs through the existing ports and policies."""
 
 from fnmatch import fnmatchcase
-import json
 import re
 import sys
 
@@ -18,7 +17,7 @@ def _settings(config, ref):
     repo = ref.split('#')[0]
     settings = next((row for row in config['repos'] if row['name'] == repo), None)
     if settings is None:
-        raise ValueError('PR repository is not configured; the owner adds it with bin/wuwei config add-repo in a host terminal')
+        raise ValueError('PR repository is not configured; the owner adds it with bin/wuwei config add-repo')
     return settings
 
 
@@ -86,7 +85,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
     source = str(source_path or (root / repo['path']).resolve())
     windows = config['shepherd']['author_windows_days']
     if not windows or windows != sorted(set(windows)):
-        raise ValueError('authorship windows must increase; the owner sets increasing shepherd.author_windows_days with bin/wuwei config set in a host terminal')
+        raise ValueError('authorship windows must increase; the owner sets increasing shepherd.author_windows_days with bin/wuwei config set')
     for days in (*windows, 0):
         counts = tally(merge.read(vcs.authorship, source, branch, paths, days, root=root))
         ranked = selected = sorted(counts, key=lambda login: (-counts[login], login))
@@ -113,7 +112,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
         explain.append('unresolved: ' + ' '.join(sorted(unresolved)))
     if fresh:
         state._write_state(lambda data: data.setdefault('author_logins', {}).update(fresh),
-                           root, reserved=False)
+                           root)
         for email in (email for email, login in fresh.items() if login is None):
             state.append_event('reviewer.unresolved',
                                {'repo': repo['name'], 'author': email.split('@', 1)[0]}, root)
@@ -128,7 +127,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
         if login in emails:
             verified = merge.read(host.author_login, repo['name'], emails[login], root=root)
             if verified['login'] != login:
-                raise ValueError('configured reviewer login differs from code host; the owner fixes its login under shepherd.authors with bin/wuwei setup in a host terminal')
+                raise ValueError('configured reviewer login differs from code host; the owner fixes its login with bin/wuwei config set shepherd.authors')
     return selected
 
 
@@ -212,7 +211,7 @@ def _mentions(config, reviewers):
     by_login = {row['login']: row['mention'] for row in config['shepherd']['authors'].values()}
     if any(login not in by_login or not re.fullmatch(r'[A-Z0-9]+', by_login[login])
            for login in reviewers):
-        raise ValueError('reviewer needs a configured chat mention; the owner adds its mention under shepherd.authors with bin/wuwei setup in a host terminal')
+        raise ValueError('reviewer needs a configured chat mention; the owner adds its mention with bin/wuwei config set shepherd.authors')
     return ' '.join('<@' + by_login[login] + '>' for login in reviewers)
 
 
@@ -239,7 +238,7 @@ def post_review_request(root, ref):
             if set(requested['requested']) != set(reviewers):
                 raise ValueError('requested reviewer set differs from selected set; retry once, then request the missing reviewers on the PR')
         state._write_state(lambda data: data.setdefault('pr_reviewers', {}).update({ref: reviewers}),
-                           root, reserved=False, kind='pr.reviewers_selected',
+                           root, kind='pr.reviewers_selected',
                            payload={'pr': ref, 'reviewers': reviewers})
         if not reviewers:
             print(obligations.SOLO)
@@ -250,7 +249,7 @@ def post_review_request(root, ref):
             return gate.exit
         channel = config['shepherd']['review_channel']
         if not re.fullmatch(r'[A-Z0-9]+', channel):
-            raise ValueError('shepherd.review_channel is required; the owner sets it with bin/wuwei config set in a host terminal')
+            raise ValueError('shepherd.review_channel is required; the owner sets it with bin/wuwei config set')
         pr = gate.data['pr']
         text = f'PR #{pr["number"]} ready for review: <{pr["url"]}|#{pr["number"]}> {_mentions(config, reviewers)}'
         chat = registry.load('chat', config)
@@ -265,7 +264,7 @@ def post_review_request(root, ref):
             data.setdefault('channel_posts', []).append({'pr': ref, 'status': 'posted',
                 'url': permalink, 'reviewers': reviewers, 'head': pr['head'],
                 'posted_at': workspace.now().isoformat()})
-        state._write_state(record, root, reserved=False, kind='pr.review_posted',
+        state._write_state(record, root, kind='pr.review_posted',
                            payload={'pr': ref, 'head': pr['head'], 'reviewers': reviewers})
         return 0
     except merge.Refused as exc:
@@ -279,7 +278,7 @@ def post_review_request(root, ref):
 def raise_pr(root, repo_name, base, title, body, item, draft=False):
     """Raise a prepared, pushed branch after the existing pre-PR gate."""
     try:
-        from wuwei.guards.pr import gate_check
+        from wuwei.merge import gate_check
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
         repo_name = repository(repo_name)
@@ -291,7 +290,7 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
                       'PR item must be in the approved plan')
         merge.require(data['items'][item].get('pr') is None, 'item already links another PR')
         if config['adapters']['code_host'] == 'none':
-            raise ValueError('code_host adapter is none; configure github; the owner sets adapters.code_host to github with bin/wuwei config set in a host terminal')
+            raise ValueError('code_host adapter is none; configure github; the owner sets adapters.code_host to github with bin/wuwei config set')
         tree = data['items'][item].get('worktree')
         if not isinstance(tree, str) or not tree:
             raise ValueError('item worktree is not recorded; write a brief with --worktree')
@@ -306,15 +305,14 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
-        use = None
-        if code == 1:  # #530: a warning, the owner's card or (strict) the refusal
-            import shlex
-            from wuwei import grants, sessions
-            argv = ['bin/wuwei', 'pr', 'raise', repo_name, '--item', item]
-            payload = {'session_id': sessions.current() or '', 'cwd': str(repo_path),
-                       'tool_input': {'command': shlex.join(argv)}}
-            code, reason = grants.evidence(payload, root, config, argv, reason, repo_name, record=True)
-            use = reason if callable(reason) else None
+        if code == 1 and not config['guards']['enforce']:  # #837: logged and raised
+            from wuwei import sessions
+            state.append_event('guard.would_refuse', {
+                'guard': 'pr', 'reason': reason, 'exit': 1,
+                'target': f'bin/wuwei pr raise {repo_name} --item {item}',
+                'session': sessions.current() or '', 'item': item}, root)
+            print(f'warning: {reason}', file=sys.stderr)
+            code = 0
         if code:
             print(reason)
             return code
@@ -360,8 +358,6 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers, draft=draft)
         if hold:
             merge.read(host.label, ref, merge.LABEL, True, root=root)
-        if use:
-            use()
         moved = dispatch.tracker_call(item, 'in_review', root)
         if config['adapters']['tracker'] != 'none' and moved.exit:  # #670: name why
             print(f'tracker: {moved.reason}', file=sys.stderr)
@@ -406,6 +402,10 @@ def claim_pr(root, ref, item=None, goal=None):
             plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
         state.record_pr(root, item, ref, raised=False, head=pr['head'])
         print(ref)
+        from wuwei import dispatch
+        moved = dispatch.tracker_call(item, 'in_review', root)  # #842: the duty, as on pr raise
+        if config['adapters']['tracker'] != 'none' and moved.exit:
+            print(f'tracker: {moved.reason}', file=sys.stderr)
         if not state.read_state(root)['items'][item].get('worktree'):
             vcs = registry.load('vcs', config)
             path = workspace.branch_worktree(vcs, (root / Path(repo['path']).expanduser()).resolve(),
@@ -424,249 +424,4 @@ def claim_pr(root, ref, item=None, goal=None):
         return 2
 
 
-_STOP = ' Never run wuwei merge. Stop after this action and report what ran.'
-_TRIAGE = ('Run wuwei pr act {ref}. For a reply action run wuwei pr act {ref} --reply '
-           '"<one-line acknowledgement>", which is stored as a draft; for owner_decision or '
-           'fix_round stop.')
-# The headless shepherd's brief per mechanical PR state; approved never starts a seat.
-HEADLESS = {
-    'conflicted': ('Run wuwei pr act {ref} --run. If it stops on a conflict, resolve the conflict '
-                   'in the item worktree named in this brief and run wuwei pr act {ref} --complete.'),
-    'ci_red': ('Run wuwei pr act {ref}; it opens the fix round brief with the failed checks as '
-               'feedback. Do not build the fix.'),
-    'changes_requested': _TRIAGE,
-    'threads_unanswered': _TRIAGE,
-    'review_stale': 'Run wuwei pr act {ref}; it re-requests review and drafts the channel post.',
-}
-
-
-def pending(root):
-    """(ref, episode) pairs a headless shepherd would act on, oldest first, each episode once."""
-    from wuwei import watch
-    actions = watch.saved(root).get('actions', {})
-    parked = {ref for ref, row in state.read_state(root).get('pr_dispositions', {}).items()
-              if row.get('kind') == 'parked'}
-    done = {(row['payload'].get('pr'), row['payload'].get('episode'))
-            for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-            if row['kind'] == 'shepherd.dispatched'}
-    return sorted(((ref, episode) for ref, episode in actions.items()
-                   if episode['state'] in HEADLESS and ref not in parked
-                   and (ref, episode['created_at']) not in done),
-                  key=lambda pair: pair[1]['created_at'])
-
-
-def headless(root, ref, episode, *, runtime=None):
-    """One headless shepherd seat for one PR action episode: 0 ran, 1 refused, 2 could not run."""
-    import json
-    import uuid
-    from wuwei import brief, pr_actions, sessions, watch
-    from wuwei.guards import agent_launch
-    record = {'pr': ref, 'state': episode['state'], 'episode': episode['created_at']}
-    # Recorded before any side effect: a crash drops an episode, it never runs one twice.
-    state.append_event('shepherd.dispatched', record, root)
-
-    def finish(code, text, **extra):
-        watch.mark_wake(root, prs=[ref], summaries=[f'PR {ref}: shepherd {record["state"]}: {text}'],
-                        kind='shepherd.finished', payload={**record, 'exit': code, **extra})
-        return code
-
-    try:
-        item, tree = pr_actions._item(root, ref)
-        name = 'shepherd-' + uuid.uuid4().hex[:12]
-        relative = brief.write('shepherd', item, name, HEADLESS[record['state']].format(ref=ref) + _STOP,
-                               pr=ref, root=root)
-        # Fixed selection, as remote commands: headless sessions exist only in the Claude adapter.
-        runtime = runtime or registry.load('runtime', {'adapters': {'runtime': 'claude'}})
-        job = runtime.dispatch('shepherd', str(root / relative), str(tree or root), True, root=root)
-        if job.exit or not isinstance(job.data, dict):
-            reason = job.reason or 'invalid dispatch result'
-            return finish(job.exit or 2, f'not started: {reason}', reason=reason)
-        code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
-            'subagent_type': 'wuwei:shepherd', 'name': name, 'description': f'shepherd {ref}',
-            'prompt': job.data['prompt']}})
-        if code:
-            return finish(code, f'not started: {reason}', reason=reason)
-        tools = json.loads((registry.ADAPTERS.parent / 'agents/allowlist.json').read_text(encoding='utf-8'))['shepherd']
-        try:
-            result = runtime.headless(job.data['prompt'], None, tools, root=root,
-                                      variables={'WUWEI_SEAT_ROLE': 'shepherd'})
-        finally:
-            state.stop_seat(name, root)
-        if result.exit == 2 or not isinstance(result.data, dict):
-            reason = result.reason or 'invalid headless result'
-            return finish(2, f'turn failed: {reason}', reason=reason)
-        sid = result.data['session_id']
-        sessions.touch(root, sid, hook=f'shepherd {record["state"]}', cwd=str(root), role='shepherd')
-        from wuwei.guards.decision import unrecorded
-        code, reason = unrecorded(str(result.data.get('result', '')), root)
-        if code:
-            return finish(code, f'asked without a decision record: {reason}', reason=reason, session=sid)
-        return finish(result.exit, f'turn ended (exit {result.exit}, session {sid[:8]})', session=sid)
-    except brief.Refused as exc:
-        return finish(1, f'not started: {exc}', reason=str(exc))
-    except watch.ERRORS as exc:
-        return finish(2, f'not started: {exc}', reason=str(exc))
-
-
 # #511: the CLI-only shepherd that runs without a session (no model, no seat, no reply).
-HEADLESS_SECONDS = 900  # ponytail: fixed interval; a config key if an owner needs another
-
-
-def owning_day(root, before=None):
-    """The newest approved day directory (today included), or the newest one before that name.
-    The watch writes clock state into every day, so state alone never makes a day the owner."""
-    from wuwei import watch
-    return next((day for day in watch.days(root) if (before is None or day.name < before)
-                 and (day / 'state.json').is_file() and state.read_state(directory=day).get('gate_approved')), None)
-
-
-def _live(root):
-    """True when a registered, fresh planner session owns this day's state (heartbeat's rule)."""
-    from wuwei import heartbeat
-    return bool(state.read_state(root).get('planner_session_id')) and heartbeat._planner(root)[0] == 'ok'
-
-
-def _evidence(root, config, ref, current):
-    """The lines a morning seat needs for a queued PR: owed replies, red checks, conflict, closed."""
-    from wuwei import pr_actions, watch
-    if current in ('conflicted', 'closed'):
-        return ['conflicts with its base' if current == 'conflicted' else 'closed without merge']
-    measured = watch.evidence(registry.load('code_host', config), ref, root)
-    if current == 'ci_red':
-        return [f'check {row["name"]}: {row["conclusion"]}' for row in measured['checks']
-                if row['state'] == 'completed' and row['conclusion'] not in ('success', 'neutral', 'skipped')]
-    acks = obligations._ledger(state.read_state(root)).get(ref, {})
-    lines = []
-    for key in obligations._replies(measured['reviews'], measured['threads'],
-                                    obligations._owner_login(config), acks):
-        surface, target = key.split(':', 1)
-        thread, latest = pr_actions._latest(measured, surface, target)
-        path = (thread or {}).get('path')
-        lines.append(f'{surface} {target} by {latest["author"]}' + (f' on {path}' if path else '')
-                     + ': ' + ' '.join(str(latest['body']).split()))
-    return lines
-
-
-def overnight(root):
-    """One CLI-only sweep of the owning day's PRs: check approved ones against the merge policy,
-    ping stale reviews under the outward tiers, queue the rest for the morning. 0 clean, 1 queued,
-    2 unmeasured."""
-    from collections import Counter
-    from wuwei import pr_actions, watch
-    from wuwei.commands.doctor import _capture
-    live = 'shepherd: planner live; the session shepherd owns the PRs'
-    try:
-        if _live(root):
-            print(live)
-            return 0
-        day = owning_day(root)
-        if day is None:
-            print('shepherd: no owned PRs')
-            return 0
-        workspace._DAY = day.name
-        try:
-            if _live(root):
-                print(live)
-                return 0
-            config = workspace.load_config(root)
-            if not watch.owned(root, config)[1]:
-                print('shepherd: no owned PRs')
-                return 0
-            _, rows = pr_actions.evaluate(root)
-            last = {row['payload']['pr']: row['payload'] for row in watch.records(day / 'events.jsonl')
-                    if row['kind'] == 'shepherd.overnight'}
-            counts = Counter()
-            for row in rows:
-                if 'pr' not in row:
-                    print(row['reason'])
-                    counts['unmeasured'] += 1
-                    continue
-                ref, current, reason, evidence = row['pr'], row.get('state', 'unmeasured'), '', []
-                if row['exit'] == 2:
-                    outcome, reason = 'unmeasured', row['reason']
-                elif row['parked'] or current in ('waiting', 'base_red') or last.get(ref, {}).get('outcome') == 'merged':
-                    continue
-                elif current == 'merged':
-                    outcome = 'merged'
-                elif current == 'approved':
-                    # ponytail: check only, the morning merges; merge.execute comes back here once
-                    # #524 (merge grants) is on main.
-                    result = merge.check(ref, root)
-                    outcome = ('queued', 'queued', 'unmeasured')[result.exit]
-                    reason = result.reason or 'merge cleared by policy; merge waits for the morning (#524)'
-                elif current == 'review_stale':
-                    code, text = _capture(post_review_request, root, ref)
-                    outcome, reason = ('pinged', 'queued', 'unmeasured')[code], text.strip()
-                else:
-                    try:
-                        outcome, reason = 'queued', row['action']
-                        evidence = _evidence(root, config, ref, current)
-                    except watch.ERRORS as exc:
-                        outcome, reason = 'unmeasured', f'evidence unmeasured: {exc}'
-                counts[outcome] += 1
-                if (last.get(ref, {}).get('state'), last.get(ref, {}).get('outcome')) != (current, outcome):
-                    state.append_event('shepherd.overnight', {'pr': ref, 'state': current, 'outcome': outcome,
-                                                              'reason': reason, 'evidence': evidence}, root)
-            code = 2 if counts['unmeasured'] else 1 if _queue(watch.records(day / 'events.jsonl')) else 0
-            summary = {'prs': len(rows), **{key: counts[key] for key in
-                       ('merged', 'pinged', 'queued', 'unmeasured')}, 'exit': code}
-            state.append_event('shepherd.swept', summary, root)
-            workspace.atomic_write(day / 'overnight.md', '\n'.join(overnight_lines(day)) + '\n')
-            print('shepherd: sweep ' + json.dumps(summary, sort_keys=True))
-            return code
-        finally:
-            workspace._DAY = None
-    except watch.ERRORS as exc:
-        print(f'shepherd: sweep unmeasured: {exc}')
-        return 2
-
-
-def _queue(rows):
-    """The latest overnight event per PR still owed to the owner, oldest first."""
-    latest = {}
-    for row in rows:
-        if row['kind'] == 'shepherd.overnight':
-            latest.pop(row['payload']['pr'], None)
-            latest[row['payload']['pr']] = row
-    return [row for row in latest.values() if row['payload']['outcome'] in ('queued', 'unmeasured')]
-
-
-def overnight_lines(directory):
-    """The Overnight report of one day, from producer-only events; [] when nothing ran."""
-    from wuwei import watch
-    rows = watch.records(directory / 'events.jsonl')
-    events = [row for row in rows if row['kind'] == 'shepherd.overnight']
-    if not events:
-        return []
-    sweeps = [row['ts'] for row in rows if row['kind'] == 'shepherd.swept']
-    lines = [f'## Overnight (days/{directory.name}: {len(sweeps)} sweeps'
-             + (f', last {sweeps[-1]})' if sweeps else ')'), '']
-    for row in events:
-        event = row['payload']
-        lines.append(f'- {row["ts"]} {event["pr"]} {event["state"]}: {event["outcome"]}'
-                     + (f': {event["reason"]}' if event['reason'] else ''))
-    queue = _queue(rows)
-    if queue:
-        lines += ['', 'Morning queue (first items today):']
-    for number, row in enumerate(queue, 1):
-        event = row['payload']
-        lines.append(f'{number}. {event["pr"]} {event["state"]}: {event["reason"] or event["outcome"]}. '
-                     f'Run: bin/wuwei pr act {event["pr"]}')
-        lines += [f'   - {line}' for line in event['evidence']]
-    return lines + ['']
-
-
-def loop(root=None, *, once=False):
-    """The scheduled shepherd: one sweep every HEADLESS_SECONDS under .wuwei/shepherd.lock."""
-    from wuwei import watch
-    return watch.serve(workspace.find_workspace(root), 'shepherd', overnight,
-                       0 if once else HEADLESS_SECONDS, once=once)
-
-
-def last_swept(root):
-    """The newest shepherd.swept time on the owning day, where the sweep writes, or None."""
-    from wuwei import watch
-    day = owning_day(root)
-    stamps = [row['ts'] for row in (watch.records(day / 'events.jsonl') if day else ())
-              if row['kind'] == 'shepherd.swept']
-    return max(stamps, key=obligations._time, default=None)

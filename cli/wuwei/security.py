@@ -16,7 +16,7 @@ def honeytoken_path(directory, value):
             or Path(value).is_absolute() or '..' in Path(value).parts
             or Path(value).parts[0] in {'generated', 'charters', 'memory', 'days', 'archive'}
             or len(Path(value).parts) < 2):
-        raise ValueError('honeytoken path must be a relative file in a private subdirectory; the owner sets one with bin/wuwei config set in a host terminal')
+        raise ValueError('honeytoken path must be a relative file in a private subdirectory; the owner sets one with bin/wuwei config set')
     path = directory / value
     if path.resolve() != directory.resolve() / value:
         raise ValueError(f'honeytoken path must not traverse symlinks; {SYMLINK}')
@@ -168,12 +168,13 @@ def reads_honeytoken(payload, root, data):
         raise ValueError(f'invalid shell tool input; {DAMAGED}')
     readers = ('cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'sed', 'awk', 'cp', 'dd',
                'base64', 'strings', 'od', 'xxd', 'hexdump')
-    if not shell.mentions(script, (*readers, target.name)):
+    words = r'(?<![\w.-])(?:' + '|'.join(map(re.escape, (*readers, target.name))) + r')(?![\w.-])'
+    if not re.search(words, re.sub(r'''['"\\]''', '', script)):
         return False
     try:
         commands = shell.normalize(script, protected=readers)
     except shell.ParseError:
-        if shell.mentions(script, (target.name,)):
+        if target.name in script:
             raise ValueError('cannot inspect honeytoken read; run the read as a plain command with a literal path') from None
         return False
     # ponytail: flattened shell groups retain possible directories conservatively.
@@ -182,7 +183,7 @@ def reads_honeytoken(payload, root, data):
     for command in commands:
         directories = directories | persistent if command.subshell else persistent
         if command.argv and Path(command.argv[0]).name == 'cd':
-            from wuwei.guards.protect_state import _cd_target
+            from wuwei.shell import _cd_target
             destinations = {(base / _cd_target(command)).resolve() for base in directories}
             directories = directories | destinations if command.subshell else destinations
             if len(directories) > 64:

@@ -11,12 +11,7 @@ from wuwei.exits import UNRUN, ADAPTER_DATA, DAMAGED
 
 
 PARAMETERS = {
-    'editor': {'edit': ('path', 'command')},
-    'tts': {'speak': ('text', 'rate', 'out')},
-    'calendar': {'events': ('since', 'until')},
     'transcripts': {'recent': ('since',)},
-    'inbound': {'poll': ('since',)},
-    'redactor': {'redact': ('text',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': (), 'hand_over': ('target', 'argv', 'env')},
     'checks': {'run': ('path', 'command', 'timeout')},
@@ -30,7 +25,7 @@ PARAMETERS = {
                 'status': ('job',), 'result': ('job',),
                 'continue_job': ('job', 'feedback')},
     'scanner': {'audit': ('path',), 'gate': ('result', 'threshold'),
-                'traces': ('file',), 'mcp': ('servers',)},
+                'traces': ('file',)},
     'code_host': {'auth_status': (), 'viewer_login': (), 'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
                   'commits': ('ref',),
                   'threads': ('ref',), 'protection': ('repo', 'branch'),
@@ -38,7 +33,7 @@ PARAMETERS = {
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha', 'method'), 'ready': ('ref',),
-                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'probe': ('ref', 'tags'),
+                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'pulls': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'deployments': ('repo', 'since'),
                   'issue': ('repo', 'title', 'body'), 'label': ('ref', 'name', 'present')},
     'vcs': {'workspace_init': ('repo',),
@@ -54,14 +49,11 @@ PARAMETERS = {
             'pushed_branches': ('repo',),
             'authorship': ('repo', 'branch', 'paths', 'days'), 'branch': ('repo',),
             'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
-            'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path', 'mode'),
-            'hooks_target': ('repo',),
+            'push_context': ('repo', 'remote', 'refspecs'), 'unhook': ('repo', 'write'),
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),
-            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path'),
-            'rehearse_revert': ('path',)},
-    'docs': {'read': ('ref',), 'write': ('draft',)},
+            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 
@@ -100,7 +92,7 @@ def validate(kind, name, *, for_config=False):
     names = known(kind)
     if name not in names:
         raise ValueError((f'adapters.{kind}: unknown adapter {name!r}; '
-                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set in a host terminal'))
+                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set'))
 
 
 def load(kind, config):
@@ -198,11 +190,7 @@ def outward_operation(kind):
                     inputs['is_dm'] = True
                 root = workspace.find_workspace(start)
                 config = workspace.load_config(root)
-                code, reason = outward.check_call(inputs, root, config, {kind}, port=True)
-                if code == 1 and reason.startswith(outward.APPROVAL_REQUIRED):
-                    from wuwei import drafts
-                    reason = drafts.hold(root, config, kind, operation.__name__,
-                                         operation.__module__.rsplit('.', 1)[-1], inputs, reason)
+                code, reason = outward.check_call(inputs, root, config, {kind})
                 if code:
                     return Result(code, inputs.get('text') if kind == 'chat' and code == 1
                                   and not reason.startswith('outward: security.') else None, reason)

@@ -1,6 +1,7 @@
 """S2 trace response and mandatory S4 security measurement."""
 
 import re
+import sys
 
 from wuwei import redact, registry, security, state, workspace
 from wuwei.exits import ADAPTER_DATA
@@ -57,13 +58,11 @@ def merge(text, findings):
     return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit\n'
 
 
-def _trace_response(finding, root, posture):
-    """Seats: page, park and one owner decision per chain. A registered session: one silent
-    traces.noted per day. Unknown: one traces.unmatched per day, or under strict a page and
-    one decision per session per day (#352). Returns True when the finding paged."""
+def _trace_response(finding, root):
+    """Seats: page and park the affected items. A registered session: one silent traces.noted
+    per day. Unknown: one traces.unmatched per day (#352). Returns True when the finding paged."""
     import hashlib
-    import json
-    from wuwei import brief, decision, sessions, watch
+    from wuwei import brief, sessions, watch
 
     session = finding['session_id']
     digest = hashlib.sha256(session.encode()).hexdigest()
@@ -72,17 +71,15 @@ def _trace_response(finding, root, posture):
     seat = any(session in seat.get('trace_sessions', []) for seat in brief.seats(data).values()
                if seat['role'] != 'adhoc')
     role = None if seat else sessions.registered(data, session)
-    if not seat and (role or posture != 'strict'):
+    if not seat:
         kind = 'traces.noted' if role else 'traces.unmatched'
         if not any(row['kind'] == kind and row['payload'].get('session_digest') == digest
                    for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-            extra = ({'role': role, 'summary': f'traces: {role} session, chain noted'} if role
-                     else {'posture': posture})
+            extra = {'role': role, 'summary': f'traces: {role} session, chain noted'} if role else {}
             state.append_event(kind, {'session_digest': digest, 'chain': finding['chain'], **extra}, root)
         return False
     state.append_event('scanner.finding', finding, root)
-    key = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest() if seat else digest
-    directory = workspace.day_dir(root) / 'decisions'
+    reason = 'scanner chain ' + ' -> '.join(finding['chain'])
 
     def update(data):
         items = {seat['item'] for seat in brief.seats(data).values()
@@ -90,49 +87,15 @@ def _trace_response(finding, root, posture):
         for name in items:
             item = data['items'].get(name)
             if item is not None and 'parked' in state.PHASES[item['phase']]:
-                item.update(phase='parked', status='blocked')
-        queued = data.setdefault('scanner_decisions', {})
-        if key in queued:
-            path = decision.today_path(queued[key], root)
-            if path.is_file():
-                return
-        else:
-            used = [int(path.stem[2:]) for path in directory.glob('D-*.md')
-                    if re.fullmatch(decision.DECISION_ID, path.stem)]
-            used.extend(int(value[2:]) for value in queued.values())
-            queued[key] = f'D-{max(used, default=0) + 1}'
-            path = decision.today_path(queued[key], root)
-        context = 'Affected reserved items parked where active.' if items else 'Session has no item reservation and no registration.'
-        body = (
-            'Question: How should this critical tool sequence be investigated?\n'
-            'Class: other\n'
-            f'Context: {context}\n'
-            + 'Chain: ' + ' -> '.join(finding['chain']) + '\n'
-            + 'Session digest: ' + digest + '\n'
-            'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
-            '| investigate | Investigate the session | Resolves the potential exposure while affected work stays paused. | '
-            'The session is reviewed and any exposure contained. |\n'
-            '| defer | Defer investigation | Keeps work paused but leaves the exposure unresolved. | '
-            'Affected work stays paused until someone investigates. |\n'
-            'Musts:\n| Criterion | investigate | defer |\n| --- | --- | --- |\n'
-            '| Keep affected work paused | pass | pass |\n'
-            'Wants:\n| Criterion | Weight | investigate | defer |\n| --- | --- | --- | --- |\n'
-            '| Resolve potential exposure | 10 | 10 | 0 |\n'
-            'Recommendation: investigate\n'
-            'Reasoning: Resolving the potential exposure decided it; nothing safer would flip it.\n'
-            'Confidence: high\nReversibility: unsure\n'
-            'Blast radius: workspace security\nPre-mortem: Further activity could expose data.\n'
-            'Revisit: Before resuming affected work.\nDecided-by: owner\nOutcome: pending\n')
-        decision.evaluate(body, decision.LENSES)
-        directory.mkdir(parents=True, exist_ok=True)
-        workspace.atomic_write(path, body)
+                item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     return True
 
 
 def trace_sweep(root, config):
-    """Return scanner counts for the watch summary, including empty-day status."""
+    """Page and park on today's scanner chains (dispatch receive and close run it); returns the
+    counts, including empty-day status."""
     counts = {'scanner': 'unmeasured', 'scanner_owed': 0, 'unreadable': 0}
     try:
         path = workspace.day_dir(root) / 'traces.jsonl'
@@ -148,25 +111,21 @@ def trace_sweep(root, config):
             return counts
         if config['adapters']['scanner'] == 'none':
             counts['scanner'] = 'not configured'
-            from wuwei import watch
-            if not any(row['kind'] == 'watch: sweep' and row['payload'].get('scanner') == 'not configured'
-                       for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-                print('watch scanner: not configured', flush=True)
             return counts
         result = registry.load('scanner', config).traces(str(path), root=root)
         if type(result.exit) is not int or result.exit not in (0, 1):
             raise ValueError(result.reason or 'scanner unavailable; retry; if it repeats, run bin/wuwei doctor')
         markers = security.load(root)
-        posture, owed = workspace.posture(config)[0], 0
+        owed = 0
         for finding in result.data['findings']:
             safe = redact.redact(security.redact(finding, markers))
             # Match the recorder's identity when redaction changes an opaque session id.
             if safe['session_id'] != finding['session_id']:
                 import hashlib
                 safe['session_id'] = hashlib.sha256(finding['session_id'].encode()).hexdigest()
-            owed += _trace_response(safe, root, posture)
+            owed += _trace_response(safe, root)
         counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1
-        print(f'watch scanner: unmeasured: {type(exc).__name__}', flush=True)
+        print(f'scanner: unmeasured: {type(exc).__name__}; run bin/wuwei doctor', file=sys.stderr)
     return counts
