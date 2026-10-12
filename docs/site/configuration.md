@@ -206,6 +206,8 @@ With `telemetry.otlp.endpoint` set, each report run posts the new records as tra
 | `adapters.checks` | `"local"` | Fast check runner: `local` or `none`. |
 | `adapters.transcripts` | `"none"` | Meeting transcript port. Only telemetry reads it. |
 | `scanner.severity_threshold` | `"high"` | Blocking threshold: `critical`, `high`, `medium` or `low`. |
+| `scanner.discovery_threshold` | `"low"` | Lowest severity the morning discovery lists as a candidate. |
+| `scanner.discovery_rows` | `50` | Candidate rows per repository, most severe first; the scanner source line counts the rest. |
 | `scanner.mcp.plugins_file` | `"~/.claude/plugins/installed_plugins.json"` | Claude Code's plugin registry, read to find WUWEI and the spec engine. |
 | `brief.remote` | `"origin"` | Git remote a brief and `worktree add` fetch from. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with the item lowercased. |

@@ -246,7 +246,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.add('watch: observation')  # watch.save's default kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
     expected = {'security.canary': 'page', 'security.honeytoken': 'page',
-                'scanner.finding': 'page', 'state.write': 'silent',
+                'scanner.finding': 'page', 'scanner.unmeasured': 'warn', 'state.write': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',

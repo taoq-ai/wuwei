@@ -27,3 +27,10 @@ def unread_deploys(monkeypatch):
     real = metrics._deploys
     monkeypatch.setattr(metrics, '_deploys', lambda root, config, since: ({}, 'code host not read in tests', False))
     return real
+
+
+@pytest.fixture(autouse=True)
+def unchecked_ziran():
+    # #896 P8: the adapter remembers a passed version check per process; each test fakes its own.
+    from wuwei import registry
+    registry.CHECKED.clear()

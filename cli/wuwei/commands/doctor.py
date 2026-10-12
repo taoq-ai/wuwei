@@ -244,7 +244,7 @@ def _host(root, config):
     if adapters['scanner'] != 'ziran':
         rows.append(_row('host', 'ziran', 'ok', 'not used'))
     elif shutil.which('ziran'):
-        rows.append(_row('host', 'ziran', 'ok', 'on PATH (version checked by every call, minimum 0.39.0)'))
+        rows.append(_row('host', 'ziran', 'ok', 'on PATH (version checked once per command, minimum 0.39.0)'))
     else:
         rows.append(_row('host', 'ziran', 'fail', 'not on PATH', 'install ZIRAN 0.39.0 or newer'))
     needed = adapters['runtime'] == 'codex' or config['gates']['second_opinion'].startswith('codex:')
@@ -571,6 +571,17 @@ def _day(root, config, probes):
     gaps = sum(page.get('count', 1) for page in found if page['source'] == 'traces.gap')
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
                      "read the traces.gap events in today's .wuwei/days/<date>/events.jsonl, then run wuwei doctor"))
+    try:  # #896: the last trace sweep failed; trace checks are unmeasured from its offset on
+        from wuwei.scanner import OFF, SWEEP
+        mark = json.loads((workspace.day_dir(root) / SWEEP).read_text(encoding='utf-8'))
+        if (config['adapters']['scanner'] == 'ziran' and isinstance(mark, dict)
+                and isinstance(mark.get('unmeasured'), str)):
+            rows.append(_row('day', 'trace sweep', 'unmeasured', mark['unmeasured'],
+                             'the next wuwei dispatch receive or wuwei close retries from the last measured span; '
+                             f'if it keeps failing, run {OFF} to switch the scanner off',
+                             docs='docs/site/security.md#ziran-integration'))
+    except (OSError, ValueError):
+        pass
     untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',

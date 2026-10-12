@@ -427,7 +427,7 @@ def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch
     path = workspace.day_dir(root) / 'decisions/gate-security.md'
     path.write_text(FIX)
     dispatch.receive('A', 'security', 'security', 'delta', root)
-    assert len(calls) == 4
+    assert [call[1] for call in calls] == ['--version', 'audit', 'audit']  # #896 P8: one version check
     assert 'cli/example.py:12' in path.read_text()
     assert 'ZIRAN SA003' in path.read_text()
     assert dispatch.next_step('A', root)['action'] == 'escalate'

@@ -354,11 +354,13 @@ def test_trace_sweep_parks_and_pages(sweep_case, agent_id):
     assert sweep(root) == {'scanner': 'measured', 'scanner_owed': 1, 'unreadable': 0}
     item = state.read_state(root)['items']['work']
     assert item['status'] == 'blocked' and item['resume_phase'] == 'planned'
-    assert item['disposition'] == {'kind': 'parked', 'reason': 'scanner chain Read -> WebFetch'}
+    # #896 review D2: the seat read .env before the chain, and the park says so.
+    reason = 'scanner chain Read -> WebFetch after a credential read'
+    assert item['disposition'] == {'kind': 'parked', 'reason': reason}
     finding, = scanner_events(root, 'scanner.finding')
     # #862 F3: the park write carries the finding, with the state write's own fields beside it.
     assert finding['payload'].items() >= {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical',
-                                          'session_id': session, 'reason': 'scanner chain Read -> WebFetch'}.items()
+                                          'session_id': session, 'reason': reason}.items()
     assert finding['payload']['phase_changes'] == {'work': 'parked'}
     assert signal.classify(finding, state.read_state(root))[0] == 'page'
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
@@ -414,3 +416,20 @@ def test_unconfigured_scanner_sweep_is_quiet(sweep_case, capsys):
     config.write_text(config.read_text().replace('scanner="ziran"', 'scanner="none"'))
     assert sweep(root)['scanner'] == 'not configured'
     assert capsys.readouterr() == ('', '')
+
+
+def test_version_is_checked_once_per_process(monkeypatch, tmp_path):
+    # #896 P8: a successful version check is remembered; a failed one is retried.
+    ziran = adapter()
+    calls, version = [], ['unknown']
+
+    def run(argv, **kwargs):
+        calls.append(argv[1])
+        return SimpleNamespace(returncode=0, stderr='', stdout=(f'ziran, version {version[0]}'
+            if argv[1] == '--version' else json.dumps({'files_analyzed': 1, 'findings': []})))
+    monkeypatch.setattr(ziran.subprocess, 'run', run)
+    assert ziran.audit(tmp_path).exit == 2
+    version[0] = '0.40.0'
+    for _ in range(3):
+        assert ziran.audit(tmp_path).exit == 0
+    assert calls == ['--version', '--version', 'audit', 'audit', 'audit']

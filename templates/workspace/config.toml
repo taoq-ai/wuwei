@@ -108,6 +108,8 @@ transcripts = "none"
 
 [scanner]
 severity_threshold = "high" # critical, high, medium or low; trust-boundary findings always block.
+discovery_threshold = "low" # Lowest severity the morning discovery lists as a candidate.
+discovery_rows = 50 # Candidate rows per repository; the scanner source line counts the rest.
 
 [scanner.mcp]
 # Installed plugin registry v2, read to find installed plugins.
