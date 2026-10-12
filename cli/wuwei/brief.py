@@ -28,10 +28,12 @@ LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, th
 # #667: the values the day changes under a seat are read live, never copied into the brief.
 LIVE = ('Live: run bin/wuwei why {item} --json when you start and again before your verdict or handoff; '
         'its ticket and spec fields are the record at that moment. This brief copies none of them.')
-# #645: one doctor for every seat; install findings belong to the owner.
-DOCTOR = ('Doctor: run the launcher in .wuwei/executable with doctor; another copy hands over '
-          "to it. Its Install rows and its workspace executable row are the owner's: name them "
-          'in your handoff, never as a Next: step, and never run their fix.')
+# #645: one doctor for every seat; install findings belong to the owner. #907: a diagnosis after an
+# actual failure, never a start step (doctor reads every adapter; a refusal already names its fix).
+DOCTOR = ('Doctor: only when a WUWEI command fails and its refusal names no fix, run the launcher in '
+          '.wuwei/executable with doctor once; another copy hands over to it. Its Install rows and its '
+          "workspace executable row are the owner's: name them in your handoff, never as a Next: step, "
+          'and never run their fix.')
 
 
 def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
@@ -578,17 +580,18 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             if current.get('approved_as'):  # #731: the owner's recorded approval settles the scope question
                 header.append(f"Approved as: {current['approved_as']}")
         header += rulings(body, directory, tree, data)
+        from wuwei import derive  # #907: a counterpart is optional evidence, read from the day's listing
+        found = derive.listing(directory)
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):
-                if other != pr:
-                    host = host or registry.load('code_host', config)
-                    try:
-                        header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
-                    except ValueError as exc:
-                        # #740: a ticket is an issue, which the pulls endpoint 404s on (#606); a
-                        # reference is optional evidence, so it never refuses.
-                        header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
-                                      'kept as a reference')
+                if other == pr:
+                    continue
+                listed = found['repos'].get(repo['name']) or {}
+                if other in found['pulls'] and not listed.get('failed'):  # #900: a failed read is unmeasured
+                    at = listed.get('at') or found['fetched_at']
+                    header.append(f"Counterpart {other} (PR listing {at}): {json.dumps(found['pulls'][other])}")
+                else:  # #740: a ticket is an issue, never in the listing; it stays a reference
+                    header.append(f"Counterpart {other}: not in the day's measured PR listing; kept as a reference")
         block += lead  # #848: the lead reads the day's candidates here
         text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))

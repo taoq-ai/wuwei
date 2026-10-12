@@ -175,3 +175,11 @@ def test_goals_change_only_through_the_gate():
     assert "Goals change only through the morning gate's goals block." in steward
     assert 'goals change at the morning gate' in steward
     assert 'owner-edited' not in steward and 'owner-controlled' not in steward
+
+
+def test_no_seat_polls_the_code_host():  # #907: one shared quota; next re-reads the listing
+    for role in ("builder", "shepherd", "sentinel-quality"):
+        text = (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8")
+        for phrase in ("Never poll the code host.", "`gh pr checks --watch`", "`gh run watch`", "`gh pr view`",
+                       "`pr.poll_seconds`"):
+            assert phrase in text, (role, phrase)

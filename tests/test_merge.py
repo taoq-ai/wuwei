@@ -1279,7 +1279,7 @@ def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path):
     host.results['label'] = Result(0, {'labels': ['owner-merge']})
     plan.set_owner_merge('item-7', 'true', root)
     approved = [{'pr': REF, 'exit': 1, 'state': 'approved', 'parked': False, 'action': 'merge'}]
-    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, approved))
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None, read=None: (1, approved))
     monkeypatch.chdir(root / 'repo')
     if path == 'merge check':
         result = policy().check(REF, root)

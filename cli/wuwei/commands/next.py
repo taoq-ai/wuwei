@@ -232,7 +232,7 @@ def step(root, ran=()):
     waiting = next((name for name in names if items[name]['phase'] == 'planned'), None)
     held = next(((name, fix) for name in names if items[name]['phase'] in state.BUILD_PHASES
                  and (fix := state.held(data, name))), None)
-    prs = [row for row in found['rows'] if row['state'] == 'pr']
+    prs = [row for row in found['rows'] if row['state'] in ('pr', 'unmeasured')]
     # #617: one steward at a time, on the newest brief; #624: and not while an item is mid fix round.
     if not state.mid_round(data) and not any(
             seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
@@ -255,8 +255,10 @@ def step(root, ran=()):
         return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
     if prs:  # #666: a PR waiting on people is a wait, never a row to run
-        return _row('wait', f"{', '.join(row['item'] for row in prs)}: the PR waits on people; the "
-                    'listing shows when it changes.', 'wuwei status --line', 'wait', rows=found['rows'])
+        waits = ', '.join(row['item'] for row in prs if row['state'] == 'pr')
+        why = [f'{waits}: the PR waits on people; the listing shows when it changes.'] if waits else []
+        why += [row['why'] + '.' for row in prs if row['state'] == 'unmeasured']  # #900
+        return _row('wait', ' '.join(why), 'wuwei status --line', 'wait', rows=found['rows'])
     if not data.get('close_requested'):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])
@@ -289,6 +291,7 @@ def text(row):
                   for duty in row['duties']]
         if row['decision']:
             lines.append(f"owner {row['decision']['item']}: {row['decision']['why']} {row['decision']['command']}")
+        lines += [f"unmeasured {entry['why']}" for entry in row['rows'] if entry['state'] == 'unmeasured']
         return '\n'.join(lines)
     command = row.get('command')
     if row['action'] in ('launch', 'continue') and row.get('agent_type'):
@@ -457,10 +460,10 @@ def run(args):
             config = workspace.load_config(root)
             refreshed = derive.stale(root, config, state.read_state(root))
             if refreshed:
-                failed = derive.refresh(root, config)  # a failed refresh keeps the old listing
+                failed = derive.refresh(root, config, refreshed)  # #907: each due repository on its own
                 if failed:
-                    print(f'wuwei next: PR listing not refreshed ({failed}); the last listing stays; run '
-                          'bin/wuwei doctor, which tests the code host adapter', file=sys.stderr)
+                    print(f'wuwei next: PR listing not refreshed ({failed}); those PR rows are unmeasured '
+                          'until wuwei next reads them again after pr.poll_seconds', file=sys.stderr)
             _supervise(root, config, refreshed)
         row = step(root, map(tuple, ran))
         if root is not None:

@@ -695,3 +695,26 @@ def test_pr_act_on_a_full_bucket_names_both_readings(case, monkeypatch, capsys):
             'rate limit (gh: API rate limit exceeded for user ID 1), but rate_limit shows 5000 of 5000 core '
             f'calls left, reset {hms(NOW + 3600)} UTC; check that WUWEI and gh use the same token') in out
     assert '(0 of 5000' not in out and len(calls) == 2
+
+
+@pytest.mark.parametrize('how', ['act', 'launch', 'thread'])
+def test_one_pr_action_collects_one_evidence_bundle(case, how):
+    # #907: evaluate reads the PR, its reviews, discussion and checks once; launch and act act on
+    # that read and never collect the bundle again.
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    if how == 'thread':
+        host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+            'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+                'body': 'Please fix the parser', 'created_at': workspace.now().isoformat()}]}]
+    else:
+        host.results['checks'] = Result(0, [{'name': 'tests', 'sha': 'a' * 40,
+            'state': 'completed', 'conclusion': 'failure', 'url': 'https://example.test/check'}])
+    host.calls.clear()
+    if how == 'launch':
+        assert pr_actions.launch(root, REF)['action'] in ('launch', 'continue')
+    else:
+        assert main(['pr', 'act', REF]) == 1
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+    reads = [call[0] for call in host.calls]
+    assert [reads.count(name) for name in ('pr', 'reviews', 'threads')] == [1, 1, 1], reads

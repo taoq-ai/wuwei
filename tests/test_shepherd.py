@@ -796,7 +796,7 @@ def test_review_gate_check_is_excluded(case):
 def test_approved_action_runs_existing_merge(case, monkeypatch):
     from wuwei import pr_actions
     root, _, _, _, _ = case
-    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, [
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None, read=None: (1, [
         {'pr': REF, 'state': 'approved', 'action': 'wuwei merge or merge decision',
          'exit': 1, 'parked': False}]))
     called = []
@@ -808,7 +808,7 @@ def test_approved_action_runs_existing_merge(case, monkeypatch):
 def test_uncleared_merge_keeps_owner_decision_due(case, monkeypatch, capsys):
     from wuwei import pr_actions
     root, _, _, _, _ = case
-    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, [
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None, read=None: (1, [
         {'pr': REF, 'state': 'approved', 'action': 'wuwei merge or merge decision',
          'exit': 1, 'parked': False}]))
     card = 'publish: bin/wuwei merge x on y is a merge; the owner decides: bin/wuwei decision show D-1 --widget'
