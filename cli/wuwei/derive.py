@@ -13,9 +13,10 @@ from wuwei import state, workspace
 
 SHA = re.compile(r'[0-9a-f]{40}|[0-9a-f]{64}')
 DUTIES = ('ping', 'shepherd', 'tracker', 'summary')
-# parks the owner decides on plan resume's card: the round cap, a stuck build loop
+# parks the owner decides on plan resume's card: the round cap, a stuck build loop, a shepherd
+# that stopped twice without a PR (#902)
 ASK_PARKS = ('round cap', 'fix round already used', 'same fast-check failure repeated',
-             'maximum build iterations reached', 'environment:')
+             'maximum build iterations reached', 'environment:', 'shepherd stopped')
 
 
 def head(path):
@@ -198,50 +199,6 @@ def moved(root, data, name, pull_head):
     return None
 
 
-def _gate(root, data, config, name):
-    """The gate offer of an item at gate or delta: ('gates' | 'fix' | 'raise' | 'park' |
-    'owner', reason). Precedence follows dispatch.next_step: a missing or stale gate, the round
-    cap, PARK, ESCALATE, FIX."""
-    from wuwei import dispatch
-    row = data['items'][name]
-    if tree := gone(root, row):
-        return 'gone', f'its worktree {tree} is gone or its HEAD unreadable'
-    if row['phase'] == 'gate' and not dispatch._resumed(root, name):
-        blocked = dispatch._blocked_card(root, data, name)
-        if blocked and blocked[1] == 'No':
-            return 'park', blocked[0]
-        if blocked and blocked[1] != 'Yes':
-            return 'owner', blocked[0]
-    gates = dispatch.gate_set(row)
-    round_name = 'initial' if row['phase'] == 'gate' else 'delta'
-    if round_name == 'delta' and any(dispatch._record(data, name, role, 'initial') is None for role in gates):
-        return 'gates', 'an initial verdict is missing'  # dispatch next names it
-    roles = list(gates) if round_name == 'initial' else [
-        role for role in gates if dispatch.rechecks(data, name, role, root)]
-    current = head(root / row['worktree']) if row.get('worktree') else None
-    results = {role: counted(root, row, dispatch._record(data, name, role, round_name), current)
-               for role in roles}
-    if missing := [role for role, record in results.items() if record is None]:
-        return 'gates', f"{', '.join(missing)} to run at the current head"
-    asked = [role for role in roles if results[role]['verdict'] in ('PARK', 'ESCALATE')]
-    blocking = [role for role in roles if role in asked or (
-        results[role]['verdict'] == 'FIX' if round_name == 'initial' else results[role]['blocks'])]
-    if not blocking:
-        return 'raise', 'every gate passed at the current head'
-    if dispatch.capped(root, config, data, name):  # #904: the owner's resume grants one round
-        return 'owner', f'round cap reached: {blocking[0]} still blocks'
-    resumed = dispatch._resumed(root, name)
-    if any(results[role]['verdict'] == 'PARK' for role in asked) and not resumed:
-        return 'park', f'gate {asked[0]} PARK'
-    if asked and not resumed:
-        answer = dispatch._asked(root, data, name, results, asked, round_name)[0]
-        if answer == 'No':
-            return 'park', f"gate {asked[0]} {results[asked[0]]['verdict']}"
-        if answer != 'Yes':
-            return 'owner', f"gate {asked[0]} {results[asked[0]]['verdict']}"
-    return 'fix', f"gate {blocking[0]} asks for a fix"
-
-
 def waits_on(root, data, name, pulls=None):
     """#637: the items name's proposal says it depends on that have not merged."""
     from wuwei import dispatch
@@ -341,15 +298,17 @@ def offers(data, root, config, merges=None):
             rows.append({'state': 'verdicts', 'item': name, 'command': f'wuwei dispatch next {name}'})
             if name in running:
                 continue  # never a gate before the builder (or a gate seat) stops
-            kind, why = _gate(root, data, config, name)
+            decided = dispatch.decide(root, data, config, name)  # #902: the one gate decision
+            kind, why = decided['step'], decided['why']
             if kind == 'gone':
                 park(name, why)
-            elif kind == 'owner':
+            elif kind in ('ask', 'cap'):  # dispatch next asks the card, or parks for the owner's resume
                 ask(name, why, f'wuwei dispatch next {name}')
-            elif kind == 'park':
+            elif kind == 'park':  # parked in code, no card
                 parks.append(name)
-            else:
-                launch(kind, name, f'wuwei dispatch next {name}', f'{name}: {why}.')
+            else:  # a build back at its checks takes the build step, never a gate dispatch next refuses
+                launch('build' if kind in ('build', 'recheck') else kind, name,
+                       f"wuwei {'build' if kind == 'build' else 'dispatch'} next {name}", f'{name}: {why}.')
         elif phase == 'raised':
             waiting.append({'state': 'pr', 'item': name, 'command': f'wuwei pr act {pr}'})
             checks = (pull or {}).get('checks')

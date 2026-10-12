@@ -75,5 +75,6 @@ step card after reviewing the checkout.
 
 Reconfirmation records the content fingerprint, HEAD commit and clean tree state.
 One confirmation holds while HEAD and the tree are unchanged. A pull that moves HEAD
-requires reconfirming the new clean commit. Uncommitted edits block tools and cannot
-be reconfirmed until the checkout is clean. Missing VCS evidence also fails closed.
+requires reconfirming the new clean commit. Uncommitted edits show as an integrity
+warning and cannot be reconfirmed until the checkout is clean; integrity never blocks a
+tool call. Missing VCS evidence reads as a finding, never as clean.

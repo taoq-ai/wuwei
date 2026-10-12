@@ -20,9 +20,9 @@ Every other row stays printed with the command that fixes it. See [doctor](refer
 
 ### config.toml does not load
 
-Every tool call is refused with the parse error. A `Read`, `Grep` or `Glob` of the config or charters still passes, and so does `config set` with its card. Run `bin/wuwei config check`; it names the key, the line and the fix.
+Every tool call is refused with the parse error. A `Read`, `Grep` or `Glob` of the config or charters still passes, and so do `bin/wuwei config check`, and `config set` and `doctor --fix` with their cards. Run `bin/wuwei config check`; it names the key, the line and the fix.
 
-A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei init --upgrade` removes the line, and `doctor --fix` offers it.
+A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei doctor --fix` offers `init-upgrade`, which removes the line, on its Owner step card.
 
 ### A stuck seat
 

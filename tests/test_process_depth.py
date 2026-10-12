@@ -241,8 +241,8 @@ def test_lint_file_outside_a_workspace_is_standard(tmp_path):
 SHA = 'a' * 40
 
 
-@pytest.mark.parametrize('tier,code', [('light', 0), ('standard', 1)])
-def test_pr_gate_check_accepts_recorded_light_verdicts(tmp_path, tier, code):
+@pytest.mark.parametrize('tier', ['light', 'standard'])
+def test_pr_gate_check_accepts_recorded_light_verdicts(tmp_path, tier):
     from wuwei import merge
     directory = workspace.day_dir(tmp_path) / 'decisions'
     directory.mkdir(parents=True)
@@ -251,11 +251,8 @@ def test_pr_gate_check_accepts_recorded_light_verdicts(tmp_path, tier, code):
     records = {'9:quality:initial': {'item': '9', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS',
                                      'head': SHA, 'blocks': False, 'notes': [],
                                      'file': str((directory / 'gate-9-quality.md').relative_to(tmp_path))}}
-    if code:
-        with pytest.raises(ValueError, match='quality verdict'):
-            merge._recorded_gates(tmp_path, SHA, records, '9', items)
-    else:
-        assert merge._recorded_gates(tmp_path, SHA, records, '9', items) == (0, '')
+    # #902: the receipt is the record; the tier's lint ran when receive recorded the file
+    assert merge._recorded_gates(tmp_path, SHA, records, '9', items) == (0, '')
 
 
 def test_obligation_verdict_is_met_by_a_light_verdict(root):

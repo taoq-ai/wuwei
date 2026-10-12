@@ -35,6 +35,8 @@ class Runtime:
         self.spec = True  # the builder runs the spec-kit steps (design 5.10)
         self.handback = False  # a background seat: SubagentHandback, no last_assistant_message (#473)
         self.fresh = False  # #614: Claude Code has no resume; a continue is a fresh agent
+        self.raises = True  # the shepherd raises its PR; False: it stops without one (#902)
+        self.blocked = None  # a builder's Blocked: line, an owner-only question (#902)
 
     def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
@@ -57,7 +59,9 @@ class Runtime:
             demo = {'tool_name': 'Write', 'tool_input': {'file_path': str(day.repo / 'memory/demo.py')}}
             if self.spec:
                 message = 'Spec: specs/001-a\n' + RETRO
-            if self.spec and self.builds == 1:
+            if self.blocked:
+                message = message.replace('Blocked: none', 'Blocked: ' + self.blocked)
+            if self.spec and not (day.repo / 'specs/001-a').exists():
                 for source in sorted(SPEC.rglob('*.md'), key=lambda path: path.name != 'spec.md'):
                     target = day.repo / 'specs/001-a' / source.relative_to(SPEC)
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +77,7 @@ class Runtime:
             assert result.exit == 0, result.reason
         elif role.startswith('sentinel-'):
             text = f'Verdict: {self.verdict}\nHead: {day.head}\n'
-            if self.verdict in ('FIX', 'ESCALATE'):
+            if self.verdict in ('FIX', 'ESCALATE', 'PARK'):
                 text += '- P1 | memory/demo.py:1 | fails when value is one | blocks: yes\n'
             if 'Depth: light;' in path.read_text():  # #567: three rows and no retro note
                 message = 'Verdict written.\n'
@@ -86,8 +90,10 @@ class Runtime:
             target.write_text(text)
         elif role == 'lead':
             message = json.dumps(day.proposal(['A'])) + '\n' + RETRO  # the lead answers with its proposal JSON
-        elif role == 'shepherd':
+        elif role == 'shepherd' and self.raises:
             day.raise_pr()  # the shepherd raises the PR it owns (#551)
+        elif role == 'shepherd':
+            pass
         else:
             assert role == 'steward'
         # A fresh agent has its own id and transcript.

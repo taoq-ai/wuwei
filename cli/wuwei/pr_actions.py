@@ -364,13 +364,14 @@ def _push(root, tree, pr, repo, actual, vcs, config, head=None):
 def _gated_push(root, ref, item, tree):
     """#879: a claimed PR's fix reaches its branch only after every gate passed at the worktree
     head (the owner's gates hold on a taken-over PR too); the item is raised again."""
-    from wuwei import commit_push, derive, merge
+    from wuwei import commit_push, derive, dispatch, merge
     config, data = workspace.load_config(root), state.read_state(root)
     if ref not in data['claimed_prs'] or tree is None:
         raise ValueError(f'--push applies to a claimed PR with a worktree; run bin/wuwei pr act {ref}')
     phase, gated = data['items'][item]['phase'], derive.head(tree)  # H3: the head the gates read
-    kind, why = (derive._gate(root, data, config, item) if phase in ('gate', 'delta')
-                 else (phase, f'{item} is in {phase}'))
+    found = (dispatch.decide(root, data, config, item) if phase in ('gate', 'delta')
+             else {'step': phase, 'why': f'{item} is in {phase}'})
+    kind, why = found['step'], found['why']
     if kind != 'raise':
         print(f'{ref}: no push before every gate passes ({why}); run bin/wuwei dispatch next {item}')
         return 1
@@ -383,7 +384,6 @@ def _gated_push(root, ref, item, tree):
     commit_push.data(vcs.fetch(str(tree), remote, pr['branch'], pr['head'], root=root))
     if commit_push.data(vcs.merge_base(str(tree), pr['head'], root=root))['sha'] != pr['head']:
         # H1: a teammate pushed after the round started; the lease would overwrite it. Merge it first.
-        from wuwei import dispatch
         from wuwei.commands import build
         if cap := dispatch.capped(root, config, data, item):  # J1, K1: the owner's resume grants one
             reason = f'round cap {cap} reached: PR {ref} moved to {pr["head"][:12]} again'
