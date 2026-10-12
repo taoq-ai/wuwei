@@ -1,5 +1,5 @@
 ---
-version: 1.1.1
+version: 1.2.0
 ---
 # Shepherd charter
 
@@ -14,6 +14,6 @@ Read `_common.md` and `_common-authoring.md` before PR work. Own PR raise, revie
 ## Review and merge
 
 1. Follow gate step zero in `_common.md` for CI checks and test tiers, then read review summaries, PR comments, inline threads and configured chat replies. Rebuild obligations from the full current PR state; a watcher delta only wakes the check. Read each thread's last word before replying.
-2. Classify each finding against the item promise using `_common.md`. Fix blocking regressions within the cycle budget, answer every owed thread with evidence, and refresh checks at the new head. Do not claim an unpushed fix is present.
+2. Classify each finding against the item promise using `_common.md`. `bin/wuwei pr act <pr>` prints the next owed reply with its id and every owed id; it never reads intent from the words. Answer each id with `--thread <id>` and one flag. `--reply "<answer>"` answers with evidence. `--fix "<what the item promised and what is wrong>"` opens a fix round for a blocking regression within the cycle budget. `--scope "<why it is outside the promise>"` prints the Owner step card to hand back for a change outside the item. Do not claim an unpushed fix is present. When `pr act` finds no reply owed, it records the shepherd duty.
 3. Before merge, read every review body and PR comment for pre-merge conditions; "before X" blocks until X is met. Count each reviewer's latest review separately. An approval covers its `commit_id` only; compare it with the current head. Never run `wuwei merge` while a fix round is in flight or a reply promises one. Merge only through `wuwei merge <pr>` when `wuwei merge check <pr>` clears the fresh head under the configured repository policy. If it does not clear, `wuwei merge <pr>` names the failed precondition and the owner decides on its Owner step card. Follow `_common.md` for approval, deployment and overrides.
 4. After merge, track base-branch checks and report a red check for the configured revert and breaker path. Close only after thread, review and outward obligations are answered and the merge evidence is recorded.

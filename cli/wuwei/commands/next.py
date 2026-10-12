@@ -51,6 +51,9 @@ THEN = {
     'wait': ('End the turn with the output of wuwei status --line; run wuwei next when a '
              'completion notification arrives.'),
     'done': 'The day is closed; tomorrow starts with wuwei next.',
+    # #887: the PR loop between owner messages
+    'pr-wait': ('Run the command through Bash in the background (or Monitor: one line per PR change); '
+                'run wuwei next when it exits. Then end the turn with the output of wuwei status --line.'),
     # Planner-facing lines of single rows; step formats {days} and {dm}.
     'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
@@ -210,7 +213,11 @@ def step(root, ran=()):
                  if ident not in data['items'] and ('finding', ident) not in returned]
     found = derive.offers(data, root, config, merges)
     launches += found['launches']
-    due = derive.duties(root, config, directory, data)
+    # #906: the shepherd duty is a launch; it stays a due row (pr act its step) only where a seat
+    # could have launched and did not: a raised item with no launch offered and nothing in flight
+    busy = {launch['item'] for launch in found['launches']} | {item for _, _, item in state.in_flight(data)}
+    due = [duty for duty in derive.duties(root, config, directory, data) if duty['duty'] != 'shepherd'
+           or (data['items'].get(duty['item']) or {}).get('phase') == 'raised' and duty['item'] not in busy]
     decision = found['decision']
     if decision:
         pr = decision['command'].split()[-1]
@@ -253,11 +260,11 @@ def step(root, ran=()):
     if held:
         return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
-    if prs:  # #666: a PR waiting on people is a wait, never a row to run
+    if prs:  # #666: a PR waiting on people is a wait, never a row to run; #887: pr wait wakes it
         waits = ', '.join(row['item'] for row in prs if row['state'] == 'pr')
-        why = [f'{waits}: the PR waits on people; the listing shows when it changes.'] if waits else []
+        why = [f'{waits}: the PR waits on people; wuwei pr wait exits when it changes.'] if waits else []
         why += [row['why'] + '.' for row in prs if row['state'] == 'unmeasured']  # #900
-        return _row('wait', ' '.join(why), 'wuwei status --line', 'wait', rows=found['rows'])
+        return _row('wait', ' '.join(why), 'wuwei pr wait', 'background', THEN['pr-wait'], rows=found['rows'])
     if not data.get('close_requested'):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])

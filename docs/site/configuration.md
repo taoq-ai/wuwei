@@ -153,7 +153,7 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | `pr.poll_seconds` | `120` | Age at which `wuwei next` refreshes its PR listing. |
 | `pr.action_minutes` | `30` | Minutes to act on a measured PR finding before a warning. |
 | `pr.review_window` | `120` | Minutes to await review before asking again. |
-| `duties.on` | `["ping", "shepherd", "tracker", "summary"]` | Outward duties `wuwei next` lists until each is recorded, each while its channel is configured. Remove a name to turn it off. `wuwei close` waits on an open one. Record one with `bin/wuwei duty <item> <duty> --evidence <link>`, or `--skipped "<why>"`. |
+| `duties.on` | `["ping", "shepherd", "tracker", "summary"]` | Outward duties `wuwei next` lists until each is recorded, each while its channel is configured. Remove a name to turn it off. `wuwei close` waits on an open one. Record one with `bin/wuwei duty <item> <duty> --evidence <link>`, or `--skipped "<why>"`. The `shepherd` duty records itself: `pr act` finds no reply owed. |
 | `shepherd.lead_login` | `""` | Lead's code host login, a reviewer when not the author. |
 | `shepherd.reviewers` | `[]` | Logins requested instead of the history ranking and the lead. |
 | `shepherd.reviewers_exclude` | `[]` | Logins never picked from history. |
