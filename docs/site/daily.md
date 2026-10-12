@@ -63,8 +63,8 @@ To keep an item's merge for yourself, say so at the gate or later. The planner r
 ## Starting with work in progress
 
 Your open PRs, branches and worktrees stay as they are. The gate card names the open PRs you
-authored, for example `Claims PR-12 (owner/repo#12)`. Approving claims each one as an
-[adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
+authored, for example `Claims PR-12 (owner/repo#12)`, or `PR-owner_repo-12` with several
+repositories. Approving claims each one as an [adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
 `wuwei pr claim owner/repo#12 --goal G-1`.
 
 The claim gives the item a checkout of the PR branch: a clean worktree you have on it, or

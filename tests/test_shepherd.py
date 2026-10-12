@@ -140,6 +140,43 @@ def test_claim_creates_an_adopted_item(case, capsys):
     assert [name for name in state.read_state(root)['items']] == ['PR-8']
 
 
+def test_claim_of_one_number_in_three_repositories_gives_three_items(case, monkeypatch):
+    # #908: the adopted id and the item's record name the PR's repository.
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    names = ('acme/widget', 'beta/widget', 'gamma/widget')
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + ''.join(
+        f'[[repos]]\nname = "{name}"\npath = "{name[:4]}"\ndefault_branch = "main"\n' for name in names[1:]))
+    adopted_day(root, ['G-1'])
+    base = host.results['pr'].data
+    monkeypatch.setattr(host, 'pr', lambda ref, root=None: Result(0, {
+        **base, 'number': 12, **dict.fromkeys(('repo', 'head_repo', 'base_repo'), ref.split('#')[0])}))
+    for name in names:
+        assert shepherd.claim_pr(root, f'{name}#12') == 0
+    items = state.read_state(root)['items']
+    assert {ident: (row['pr'], row['repo']) for ident, row in items.items()} == {
+        f'PR-{name.replace("/", "_")}-12': (f'{name}#12', name) for name in names}
+    assert [added[0] for added in vcs.added] == list(items)
+
+
+def test_a_linked_pr_admits_no_second_item(case, capsys):
+    # #908 F1: yesterday's PR-widget-12 links the PR; today's id for it admits nothing new.
+    from wuwei import shepherd
+    root, host, _, _, _ = case
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[[repos]]\nname = "beta/widget"\npath = "beta"\ndefault_branch = "main"\n')
+    adopted_day(root, ['G-1'])
+    host.results['pr'].data.update(number=12)
+    ref = 'acme/widget#12'
+    assert shepherd.claim_pr(root, ref, 'PR-widget-12') == 0
+    before = state.read_state(root)['items']
+    assert shepherd.claim_pr(root, ref, 'PR-acme_widget-12', 'G-1') == 1
+    assert f'{ref} already links PR-widget-12' in capsys.readouterr().out
+    assert shepherd.claim_pr(root, ref) == 0
+    assert state.read_state(root)['items'] == before
+
+
 def test_claim_bare_number_takes_the_only_goal(case):
     from wuwei.__main__ import main
     root, host, _, _, _ = case

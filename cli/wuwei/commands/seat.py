@@ -26,6 +26,7 @@ def register(subparsers):
     note = actions.add_parser('note', help='Record a small fix a seat found')
     note.add_argument('--fix', metavar='TITLE',
                       help='Record a small fix a seat found; wuwei next proposes it as an item')
+    note.add_argument('--item', help="The item the seat works on; the fix takes its goal and repository")
     note.set_defaults(func=run_fix)
     stop = actions.add_parser('stop', help='Record a stuck seat\'s report, or stop it as unmeasured')
     stop.add_argument('name')
@@ -84,13 +85,25 @@ def run_fix(args):
         return FINDINGS
     ident = 'fix-' + '-'.join(words[:6])
 
+    root = workspace.find_workspace()
+
     def update(data):
         if ident in data.get('seat_findings', {}) or ident in data['items']:
             raise state.StateError(f'{ident} is already recorded; wuwei next proposes it')
-        data.setdefault('seat_findings', {})[ident] = {
-            'scope': title, 'evidence': 'seat finding', 'track': 'SLICE', 'at': workspace.now().isoformat()}
+        found = {'scope': title, 'evidence': 'seat finding', 'track': 'SLICE', 'at': workspace.now().isoformat()}
+        if args.item is not None:  # #908: where the finding belongs, as its item records it
+            from wuwei import dispatch
+            row = data['items'].get(args.item)
+            if row is None:
+                raise state.StateError(f"no item {args.item} today; pass --item with one of today's items "
+                                       f"({', '.join(sorted(data['items'])) or 'none'}), or leave it out")
+            repo = row.get('repo') or (dispatch.candidate(root, args.item) or {}).get('repo')
+            found.update(evidence=f'seat finding in {args.item}', item=args.item,
+                         **({'goal': row['goal']} if row.get('goal') in data.get('goals', ()) else {}),
+                         **({'repo': repo} if repo else {}))
+        data.setdefault('seat_findings', {})[ident] = found
     try:
-        state._write_state(update, workspace.find_workspace(), kind='finding.noted',
+        state._write_state(update, root, kind='finding.noted',
                            payload={'id': ident, 'title': title})
     except state.StateError as exc:
         print(f'wuwei seat note: {exc}', file=sys.stderr)

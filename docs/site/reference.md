@@ -129,7 +129,7 @@ For `rice`, use `reach` (positive), `impact` (0.25, 0.5, 1, 2, 3), `confidence` 
 | Subcommand | Effect |
 | --- | --- |
 | `brief ROLE ITEM NAME [--worktree P] [--pr REF] [--gate] [--track T] (--body TEXT \| --file PATH)` | Writes and logs a seat brief. `--file -` reads stdin. With neither body option it exits 2. |
-| `note --fix "<title>"` | Records a small fix a seat found. `next` proposes it; `plan add <id> --from-finding` admits it. |
+| `note --fix "<title>" [--item I]` | Records a small fix a seat found. With `--item` the fix keeps that item's goal and repository. `next` proposes it; `plan add <id> --from-finding` admits it, and asks for `--goal` or `--repo` when the finding names none and the day has several. |
 | `start --role ROLE --adhoc PROMPT` | Records an ad-hoc seat before its Agent launch. |
 | `stop NAME (--verdict FILE \| --unmeasured REASON)` | Records a stuck seat's report, or stops it as unmeasured. |
 
@@ -196,7 +196,7 @@ Without gate approval both subcommands exit 1 and create nothing.
 | --- | --- |
 | `state [refs ...]` | Prints fresh state and dispatch data for owned PRs. |
 | `raise REPO --base B --title T --body-file F --item I [--draft]` | Raises a prepared, pushed branch. |
-| `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one. |
+| `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one, `PR-<n>`, or `PR-<owner>_<repo>-<n>` with several repositories, in the PR's repository. |
 | `ping <ref>` | Requests reviewers and posts when the gates clear. |
 | `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --fix WHY \| --scope WHY \| --push] [--thread ID]` | Executes the next owned PR action. |
 | `wait [--timeout SECONDS]` | Blocks until a raised or claimed PR changes in a way `next` acts on. |

@@ -3,7 +3,7 @@ version: 1.5.1
 ---
 # Builder charter
 
-Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei seat note --fix "<title>"` and the planner adds it as its own small item.
+Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei seat note --fix "<title>" --item <item>` and the planner adds it as its own small item.
 
 ## Spec and implementation
 

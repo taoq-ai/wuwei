@@ -173,15 +173,16 @@ def _main_broken(root, config, data, item, record, failures):
     return check, path, fix
 
 
-def _admit(root, row, broken):
-    """#648: the fix item through plan add (the owner-item path, no ticket)."""
+def _admit(root, row, broken, repo):
+    """#648: the fix item through plan add (the owner-item path, no ticket), in the held
+    build's repository (#908)."""
     check, path, fix = broken
     if fix in state.read_state(root)['items']:
         return True
     from wuwei import plan
     try:
         plan.add(fix, root, goal=row.get('goal'), title=f'Fix main: {path} fails {check}'[:120],
-                 source='main-broken')
+                 source='main-broken', repo=repo)
     except (OSError, ValueError):
         pass  # a refusal holds nothing, unless a concurrent hold admitted it first
     return fix in state.read_state(root)['items']
@@ -593,7 +594,7 @@ def complete_checks(item, results, *, root, expected=None):
     data = state.read_state(root)
     row = data['items'][item]
     broken = failures and _main_broken(root, config, data, item, record, failures)
-    if broken and _admit(root, row, broken):
+    if broken and _admit(root, row, broken, record['repo']):
         _hold(item, record, root, expected, broken)
         return 1
     if not failures and row.get('resume_phase', row['phase']) in ('implement', 'fix'):  # #872: paused too

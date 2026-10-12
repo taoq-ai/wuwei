@@ -22,7 +22,8 @@ def register(subparsers):
     raise_cmd.set_defaults(func=run_raise)
     claim = commands.add_parser('claim', help='Claim an existing PR; with no item, create one (adopted)')
     claim.add_argument('ref')
-    claim.add_argument('--item', help='Default: the item linked to the PR, else PR-<number>')
+    claim.add_argument('--item', help='Default: the item linked to the PR, else PR-<number> (PR-<owner>_<repo>-<number> '
+                       'with several repositories)')
     claim.add_argument('--goal', help="Goal of a new item; default: the day's only goal")
     claim.set_defaults(func=run_claim)
     ping = commands.add_parser('ping', help='Request reviewers and post when gates clear')

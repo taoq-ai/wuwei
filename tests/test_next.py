@@ -841,6 +841,21 @@ def test_finding_launch(root, capsys):
     assert coarse(root) == before
 
 
+def test_a_finding_launch_names_the_selection_it_needs(root, capsys):
+    # #908 F3: with several goals and repositories a finding that names neither is offered with
+    # both selections, so the planner never runs a step plan add refuses.
+    approved(root, {'A': ('implement', {'goal': 'G-2', 'repo': 'acme/web'})}, goals=['G-1', 'G-2'])
+    (root / '.wuwei/config.toml').write_text(''.join(
+        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in ('app', 'web')))
+    assert main(['seat', 'note', '--fix', 'Pin ruff in CI']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin black', '--item', 'A']) == 0
+    commands = {launch['item']: launch['command'] for launch in coarse(root)['launches'] if launch['kind'] == 'finding'}
+    assert commands == {
+        'fix-pin-ruff-in-ci': 'wuwei plan add fix-pin-ruff-in-ci --from-finding --goal <one of G-1, G-2> '
+                              '--repo <one of acme/app, acme/web>',
+        'fix-pin-black': 'wuwei plan add fix-pin-black --from-finding'}
+
+
 def due(root, item, action, then=None):
     payload = {'item': item, 'duty': f'tracker.{action}', 'ticket': 'ENG-7'}
     state.append_event('duty.due', {**payload, 'command': f'wuwei tracker move {item} {action}'}, root)

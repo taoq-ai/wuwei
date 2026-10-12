@@ -1005,12 +1005,14 @@ def candidate(root, name):
 def _start(root, name, repos):
     """The exact commands that start a planned item: its worktree, then its builder brief."""
     from wuwei import plan, specmode
-    row = candidate(root, name)
+    row = candidate(root, name) or {}
     item = state.read_state(root)['items'].get(name, {})
-    body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
+    scope = item.get('title') or row.get('scope')  # #908: the item's recorded promise first
+    evidence = item.get('evidence') or row.get('evidence')
+    body = (f"Implement {name}: {scope}." + (f' Evidence: {evidence}.' if evidence else '') if scope
             else f"Implement {name} as today's plan records it.")
-    tree = f'worktrees/{name}'
-    repo = item.get('repo') or (row or {}).get('repo')  # #868: the owner's plan add names it
+    tree = item.get('worktree') or f'worktrees/{name}'  # #908: an adopted worktree is the item's
+    repo = item.get('repo') or row.get('repo')  # #868: the owner's plan add names it
     add = [] if (root / tree).exists() else [f'wuwei worktree add {name}']
     if add and len(repos) > 1:  # #603: worktree add exits 2 without --repo here
         names = [repo['name'] for repo in repos]
@@ -1027,7 +1029,8 @@ def _start(root, name, repos):
         return [f'wuwei plan park {name} --reason ' + shlex.quote(
             f'{name}: governed_by {item["governed_by"]}: {str(exc).split(";")[0]}; the owner fixes it '
             f'with wuwei plan set {name} governed_by=<path>, then wuwei plan resume {name}')]
-    return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+    return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {shlex.quote(tree)} --body '
+                  + shlex.quote(body)]
 
 
 def _seats(root, data, item, roles, round_name, commands, note='', stale=(), current=None):

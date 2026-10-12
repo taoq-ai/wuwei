@@ -101,6 +101,7 @@ def test_one_broken_main_holds_both_items_on_one_fix_item(held_day):
     assert (entry['repo'], entry['check'], entry['path'], entry['items']) == ('app', 'test', 'cli/untouched.py', ['A', 'B'])
     assert data['items'][FIX]['phase'] == 'planned' and FIX in data['approved_items']
     assert data['items'][FIX]['title'].startswith('Fix main: cli/untouched.py')
+    assert data['items'][FIX]['repo'] == 'app'  # #908: the repository the hold already knows
     for name in 'AB':
         action = data['builds'][name]['action']
         assert action['action'] == 'wait' and action['fix'] == FIX and FIX in action['reason']

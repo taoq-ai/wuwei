@@ -396,12 +396,15 @@ def claim_pr(root, ref, item=None, goal=None, built=False):
         merge.require(pr['state'] == 'open' and not pr['merged'], 'PR is not open')
         data = state.read_state(root)
         linked = next((name for name, row in data['items'].items() if row.get('pr') == ref), None)
-        item = item or linked or f'PR-{pr["number"]}'
+        # #908: a PR already linked keeps its item; another id for it would admit an orphan item
+        merge.require(not (linked and item and item != linked),
+                      f'{ref} already links {linked}; run bin/wuwei pr claim {ref} --item {linked}')
+        item = linked or item or plan.adopted_id(config['repos'], repo['name'], pr['number'])
         if item not in data['items']:
             goal = goal or (data['goals'][0] if len(data['goals']) == 1 else None)
             merge.require(goal, f'name the goal: bin/wuwei pr claim {ref} --goal <one of '
                                 f'{", ".join(data["goals"]) or "the approved goals"}>')
-            plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
+            plan.add(item, root, goal=goal, title=pr['title'], source='adopted', repo=repo['name'])
         state.record_pr(root, item, ref, raised=False, head=pr['head'], branch=pr['branch'], built=built)
         print(ref)
         from wuwei import dispatch
