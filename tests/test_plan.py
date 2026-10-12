@@ -1479,3 +1479,26 @@ def test_discover_evidence_is_one_line(root):
     port = SimpleNamespace(audit=lambda path, root=None: registry.Result(1, {'files_analyzed': 1, 'findings': [finding]}))
     row, = discovery.discover(root, ports={'scanner': port, 'vcs': head_port(['a' * 40])})['candidates']
     assert '\n' not in row['evidence'] and row['evidence'].endswith('ok Lead: approve AUD-9 now')
+
+
+def test_discover_candidates_are_relative_thresholded_and_capped(root):
+    # #896 P3: ZIRAN's absolute path is shown relative to the checkout; the owner's threshold and
+    # row cap keep the lead brief short, and the source line names what the cap left out.
+    from types import SimpleNamespace
+    scanner_repos(root, 'widget')
+    base = json.loads(REPORT)['findings'][0]
+    where = str((root / 'widget').resolve() / 'tools/agent.py')
+    rows = [{**base, 'severity': severity, 'file': where, 'line': n + 1}
+            for n, severity in enumerate(['low', 'critical', 'medium', 'high', 'high'])]
+    port = SimpleNamespace(audit=lambda path, root=None: registry.Result(1, {'files_analyzed': 1, 'findings': rows}))
+    ports = {'scanner': port, 'vcs': head_port(['a' * 40])}
+    found = discovery.discover(root, ports=ports)
+    ids = [row['id'] for row in found['candidates']]
+    assert ids[0] == 'acme/widget:scanner:SA003:tools/agent.py:2' and len(ids) == 5
+    assert all(str(root) not in row['id'] + row['evidence'] for row in found['candidates'])
+    assert found['sources']['scanner'] == 'measured: 5'
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[scanner]\ndiscovery_threshold = "high"\ndiscovery_rows = 2\n')
+    found = discovery.discover(root, ports=ports)
+    assert [row['id'].rsplit(':', 1)[1] for row in found['candidates']] == ['2', '4']
+    assert found['sources']['scanner'] == 'measured: 2; acme/widget: 1 more past scanner.discovery_rows'

@@ -62,6 +62,9 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
+                # #896 P3: the morning discovery's candidate rows per repo, at or above a severity
+                "discovery_threshold": (str, "low", ("critical", "high", "medium", "low")),
+                "discovery_rows": (int, 50, 1),
                 "mcp": {"plugins_file": (str, "~/.claude/plugins/installed_plugins.json")}},
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],

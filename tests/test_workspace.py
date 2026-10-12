@@ -226,7 +226,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config == {
-        'scanner': {'severity_threshold': 'high', 'mcp': {
+        'scanner': {'severity_threshold': 'high', 'discovery_threshold': 'low', 'discovery_rows': 50, 'mcp': {
             'plugins_file': '~/.claude/plugins/installed_plugins.json'}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {

@@ -41,6 +41,7 @@ def payload(root, tool, **tool_input):
     ('.wuwei/days/2026-09-28/state.json', 1),
     ('.wuwei/days/2020-01-01/events.jsonl', 1),
     ('.wuwei/days/2026-09-28/scanner-audit.json', 1),  # #862 F1: discovery's audit cache
+    ('.wuwei/days/2026-09-28/trace-sweep.json', 1),  # #896: the trace sweep's offset
     ('.wuwei/days/2026-09-28/reports/quality.md', 1),  # #905 F1: a kept seat report
     ('inside/../state.json', 0), ('alias', 1),
     ('notes.md', 0), ('state.json.bak', 0),

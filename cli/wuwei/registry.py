@@ -86,6 +86,9 @@ def known(kind):
 
 
 _KNOWN = {}  # {directory: (stat stamp, names)}
+# #896 P8: tools whose version an adapter checked in this process; load() runs a fresh module
+# per call, so the memo lives here.
+CHECKED = set()
 
 
 def validate(kind, name, *, for_config=False):

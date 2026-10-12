@@ -1,6 +1,7 @@
 """Read discovery sources through ports for the morning plan."""
 
 import json
+from pathlib import Path
 import re
 from time import monotonic
 
@@ -177,7 +178,7 @@ def discover(root=None, *, ports=None, repo=None):
                                         'evidence': check.get('url') or 'red base check'})
                 if complete:
                     sources['base_checks'] = red
-    missing = []
+    missing, capped = [], []
     if config['repos'] and config['adapters']['scanner'] != 'none':
         scanner = ports.get('scanner') or registry.load('scanner', config)
         vcs = ports.get('vcs') or registry.load('vcs', config)
@@ -217,13 +218,25 @@ def discover(root=None, *, ports=None, repo=None):
                 missing.append(f'unmeasured: {checkout["name"]}: {" ".join(entry["reason"].split())}')
                 continue
             # Rows are already validated by the adapter (ziran._report); S1: a file-level finding has no line.
-            for row in entry['rows']:
+            # P3: the owner's threshold, most severe first, a cap per repo, paths relative to the checkout.
+            levels = ('critical', 'high', 'medium', 'low')
+            limit = levels.index(config['scanner']['discovery_threshold'])
+            rows = sorted((row for row in entry['rows'] if levels.index(row['severity']) <= limit),
+                          key=lambda row: levels.index(row['severity']))
+            cap = config['scanner']['discovery_rows']
+            if len(rows) > cap:
+                capped.append(f'{checkout["name"]}: {len(rows) - cap} more past scanner.discovery_rows')
+            for row in rows[:cap]:
+                file = Path(row['file'])
+                file = str(file.relative_to(path)) if file.is_relative_to(path) else row['file']
                 line = row.get('line')
-                where = f'{row["file"]}:{line}' if line else row['file']
-                found.append({'id': f'{checkout["name"]}:scanner:{row["rule"]}:{row["file"]}:{line or 0}',
+                where = f'{file}:{line}' if line else file
+                found.append({'id': f'{checkout["name"]}:scanner:{row["rule"]}:{file}:{line or 0}',
                               'evidence': ' '.join(f'{row["severity"]} {row["rule"]} {where}: {row["message"]}'.split())})
         sources['scanner'] = found
     found = dedupe(sources, day_ids=day['items'])
+    if capped:
+        found['sources']['scanner'] += '; ' + '; '.join(capped)
     if missing:  # S3: the measured repos' rows stay; each unmeasured repo is named
         from wuwei.scanner import OFF
         measured = found['sources']['scanner'] + '; ' if len(missing) < len(config['repos']) else ''
