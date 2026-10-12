@@ -446,6 +446,20 @@ def test_carried_item_is_skipped(root, capsys, kind):
     assert found['command'] != 'wuwei build next A'
 
 
+def test_resumed_item_whose_build_finished_goes_to_its_gates(root, capsys):
+    # #872: parked after its builder finished, resumed: the next round offers its gates.
+    from fakes import owner
+    from wuwei import plan
+    approved(root, {'A': ('implement', {'gates': {'tier': 'standard'}})},
+             builds={'A': {'status': 'done', 'action': {'action': 'done'}}})
+    plan.park('A', 'scanner chain a -> b', root)
+    assert main(['plan', 'resume', 'A']) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+    assert [(launch['kind'], launch['command']) for launch in coarse(root)['launches']] == [
+        ('gates', 'wuwei dispatch next A')]
+
+
 def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     assert 'Spec: speckit strict' in next_command.orientation(ROW, True, 'speckit strict').splitlines()

@@ -646,12 +646,19 @@ def resume(item, root=None):
     if reason := sessions.needs_owner(root, shlex.join(['bin/wuwei', 'plan', 'resume', item]),
                                       f'Resume {item}: {why}', resume_token(root, item, data)):
         raise state.StateError(reason)
+    from wuwei import derive
+    from wuwei.commands import build
+    record = data.get('builds', {}).get(item) or {}
+    end = derive.head(record['worktree']) if record.get('worktree') else None
 
     def update(fresh):
         current = fresh['items'][item]
         if current['phase'] != row['phase']:
             raise state.StateError(f'{item} changed during plan resume; run bin/wuwei plan resume {item} again')
+        after = build.AFTER.get(current['resume_phase'])
         current.update(phase=current['resume_phase'], status='queued')
+        if after and (fresh.get('builds', {}).get(item) or {}).get('status') == 'done':
+            build.built(fresh, item, after, end)  # #872: its checks passed while it was paused
         current.pop('disposition', None)
         current.pop('decision', None)
     state._write_state(update, root, kind='plan.resumed', payload={'item': item})

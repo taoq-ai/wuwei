@@ -984,6 +984,36 @@ def test_plan_resume_waits_for_the_owner(root, monkeypatch, capsys):
     assert main(['plan', 'resume', 'A']) == 1
 
 
+@pytest.mark.parametrize('phase,build,resumed', [
+    ('planned', None, 'planned'),
+    ('implement', 'ready', 'implement'),
+    ('implement', 'check', 'implement'),
+    ('implement', 'done', 'gate'),  # #872: the checks passed while it was parked
+    ('gate', 'done', 'gate'),
+    ('fix', 'check', 'fix'),
+    ('fix', 'done', 'delta'),
+])
+def test_plan_resume_continues_from_the_build_record(root, monkeypatch, capsys, tmp_path, phase, build, resumed):
+    # #872: park then resume in every phase; a build that finished while parked goes on to its gates.
+    from fakes import records
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    tree = tmp_path / 'tree'
+    (tree / '.git').mkdir(parents=True)
+    (tree / '.git/HEAD').write_text('b' * 40 + '\n')
+    records.write(root, {'items': {'A': {'phase': phase, 'status': 'queued', 'fix_heads': [['a' * 40, None]]}},
+                         'builds': {'A': {'status': build, 'action': {'action': build}, 'worktree': str(tree)}}
+                         if build else {}})
+    plan.park('A', 'scanner chain a -> b', root)
+    assert main(['plan', 'resume', 'A']) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    assert main(['plan', 'resume', 'A']) == 0
+    row = state.read_state(root)['items']['A']
+    assert (row['phase'], row['status']) == (resumed, 'queued')
+    assert row['fix_heads'] == [['a' * 40, 'b' * 40 if resumed == 'delta' else None]]
+
+
 def candidate(name='NEW', track='SLICE'):
     return {
         'id': name, 'goal': 'G-1', 'track': track, 'evidence': 'tracker item',

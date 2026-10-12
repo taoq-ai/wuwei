@@ -490,7 +490,7 @@ def complete_checks(item, results, *, root, expected=None):
     if broken and _admit(root, row, broken):
         _hold(item, record, root, expected, broken)
         return 1
-    if not failures and row['phase'] in ('implement', 'fix'):
+    if not failures and row.get('resume_phase', row['phase']) in ('implement', 'fix'):  # #872: paused too
         # Design 5.10: the move to the gates needs every spec step, implementation included.
         from wuwei import specmode
         code, reason = specmode.check(root, config, item, row, Path(record['worktree']),
@@ -512,19 +512,26 @@ def complete_checks(item, results, *, root, expected=None):
         record.update(status='ready', action=_continue(root, record, feedback))
     _save(item, record, root, 'build.checked', expected,
           {'passed': len(results) - len(failures), 'failed': len(failures)})
-    after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
+    after = AFTER.get(state.read_state(root)['items'][item]['phase'])  # a paused item: plan resume moves it
     if not failures and after:
         from wuwei import derive
         end = derive.head(record['worktree'])
-
-        def move(data):
-            heads = data['items'][item].get('fix_heads') or []
-            if after == 'delta' and heads and heads[-1][1] is None:
-                heads[-1][1] = end  # #844: the head this fix round produced
-            state._move(data, item, after)
-        state._write_state(move, root, kind='state.transition',
+        state._write_state(lambda data: built(data, item, after, end), root, kind='state.transition',
                            payload={'item': item, 'phase': after})
     return 1 if failures else 0
+
+
+AFTER = {'implement': 'gate', 'fix': 'delta'}
+
+
+def built(data, item, after, end):
+    """Move an item whose build passed past its build phase (complete_checks; plan resume, #872)."""
+    if AFTER.get(data['items'][item]['phase']) != after:
+        return  # #872: paused or moved since the caller read it; plan resume moves it
+    heads = data['items'][item].get('fix_heads') or []
+    if after == 'delta' and heads and heads[-1][1] is None:
+        heads[-1][1] = end  # #844: the head this fix round produced
+    state._move(data, item, after)
 
 
 def check(item, *, root=None):
