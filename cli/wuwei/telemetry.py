@@ -40,7 +40,7 @@ PROFILES = ('strict', 'standard')
 OS = ('darwin', 'linux', 'other')
 ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
-            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
+            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),  # tts, calendar: weeks before #848
             'calendar': ('ics', 'none'), 'transcripts': ('none',),
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
             'redactor': ('builtin',),  # weeks recorded before #848 retired the redactor key

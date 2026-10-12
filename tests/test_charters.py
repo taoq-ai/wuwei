@@ -167,3 +167,11 @@ def test_approval_wording_reaches_every_gate_and_the_planner():  # #731
     assert "--note" in (ROOT / "agents/planner.md").read_text(encoding="utf-8")
     assert "--note" in (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert "Approved as:" in (ROOT / "docs/site/daily.md").read_text(encoding="utf-8")
+
+
+def test_goals_change_only_through_the_gate():
+    # #848 review F6: no seat edits goals; the morning gate's goals block changes them.
+    steward = (ROOT / 'agents/steward.md').read_text(encoding='utf-8')
+    assert "Goals change only through the morning gate's goals block." in steward
+    assert 'goals change at the morning gate' in steward
+    assert 'owner-edited' not in steward and 'owner-controlled' not in steward

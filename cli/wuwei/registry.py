@@ -11,9 +11,6 @@ from wuwei.exits import UNRUN, ADAPTER_DATA, DAMAGED
 
 
 PARAMETERS = {
-    'editor': {'edit': ('path', 'command')},
-    'tts': {'speak': ('text', 'rate', 'out')},
-    'calendar': {'events': ('since', 'until')},
     'transcripts': {'recent': ('since',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': (), 'hand_over': ('target', 'argv', 'env')},

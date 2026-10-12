@@ -723,7 +723,7 @@ def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkey
     for name in removed:
         assert out.count(f'{prefix} .wuwei/{name}: remove (no longer read)') == 1, (name, out)
     assert 'left .wuwei/graph.json: a symlink' in out
-    for key in ('owner.verbosity.decisions', 'adapters.redactor', 'retro.repo'):
+    for key in ('owner.verbosity.decisions', 'adapters.redactor', 'retro.repo', 'adapters.calendar'):  # F5
         assert f'{prefix} config.toml: remove {key} (no longer read)' in out, out
     assert outside.exists() and history.exists() and (base / 'graph.json').is_symlink()
     if dry_run:
@@ -739,3 +739,25 @@ def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkey
             table = table.get(part, {})
         assert key.split('.')[-1] not in table, key
     assert (base / 'memory/index.md').is_file()
+
+
+def test_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):
+    # #848 review F2: the parsed config copy under generated/ is live, never a stale copy.
+    from wuwei import workspace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    cache = tmp_path / '.wuwei/generated' / workspace.CONFIG_CACHE
+    cache.write_text('{}')  # as a hook run leaves it
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert cache.exists() and 'No workspace changes needed' in capsys.readouterr().out
+
+
+def test_calendar_tts_and_editor_ports_are_retired():
+    # #848 review F5: nothing reads them; their keys leave config.toml on upgrade.
+    from wuwei import registry
+    assert {'adapters.calendar', 'adapters.tts', 'calendar'} <= set(workspace.RETIRED)
+    assert not {'calendar', 'tts', 'editor'} & set(registry.INTERFACES)
+    assert not {'calendar', 'tts'} & set(workspace.SCHEMA['adapters']) and 'calendar' not in workspace.SCHEMA

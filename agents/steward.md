@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.10.4
+version: 1.10.5
 ---
 # Common rules for every seat
 
@@ -31,7 +31,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
+2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals change only through the morning gate's goals block.
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ---
@@ -74,7 +74,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.1.0
+version: 1.1.1
 ---
 # Steward charter
 
@@ -85,5 +85,5 @@ Read `_common.md` before each sweep. Work outside dispatch. Observe the day, sur
 1. At each sweep and at close, read events, verdicts, traces and CLI metrics. If a prior day lacked a steward run, flag it in the next plan.
 2. Read the Metrics line in your brief. Measure fix rounds per item, handbacks per PR, phase time, verdict-lint rejections, owner decisions, unplanned work, ranking calibration, build iterations, stuck parks and reported cost per item, role and day. Distinguish an absent measurement from a clean result.
 3. Sample the two-way choices seats recorded under `Assumptions:` and surface reversals or expanding risk.
-4. Write the retro with recurring blockers, gaps and evidence. Suggest a smaller rule only when the evidence supports it. Charter changes go to `days/<date>/proposals/`; `wuwei retro --promote` alone lands them. Goal changes remain owner-controlled.
+4. Write the retro with recurring blockers, gaps and evidence. Suggest a smaller rule only when the evidence supports it. Charter changes go to `days/<date>/proposals/`; `wuwei retro --promote` alone lands them. Never propose a goals change: goals change at the morning gate.
 5. Never brief a seat, never dispatch, and never change item state. Leave operational action to the planner and lead. Include the common three-line retro note in the handoff.

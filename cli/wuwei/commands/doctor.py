@@ -120,9 +120,11 @@ def _install(root, config):
     reason = result.reason
     if result.exit == 0:
         rows.append(_row('install', 'integrity', 'ok', reason or 'clean'))
-    elif re.search(r'run wuwei doctor(?! --fix)', reason) or not ('page:' in reason or 'reconfirm' in reason):
+    elif result.exit == 2 and 'page:' not in reason or not ('page:' in reason or 'reconfirm' in reason):
+        # #848: doctor reads the cached verdict; the reconfirm fix measures it again.
         rows.append(_row('install', 'integrity', 'fail' if result.exit == 1 else 'unmeasured', reason,
-                         'wuwei doctor'))
+                         'wuwei doctor --fix --apply integrity-reconfirm, which measures it again',
+                         apply='integrity-reconfirm' if root is not None else None))
     elif _checkout() and root is not None:
         rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei doctor --fix --apply integrity-reconfirm',
                          apply='integrity-reconfirm'))

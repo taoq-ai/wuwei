@@ -267,7 +267,6 @@ def test_entry_paths(case, entry):
     ('tracker="linear"', '', ('LINEAR_API_KEY',)),
     ('chat="slack"', '', ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
-    ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
     ('tracker="jira"', '', ('JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
     ('tracker="github"', '', ('GITHUB_TRACKER_TOKEN',)),

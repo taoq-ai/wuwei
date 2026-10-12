@@ -20,7 +20,7 @@ An unknown key is a warning from `config check`, `doctor` and `init --upgrade`, 
 
 Upgrade also maps old settings onto the ones that replaced them. `security.posture = "observe"` or `guards.mode = "shadow"` becomes `guards.enforce = false`. A `repos = []` line next to `[[repos]]` tables is removed, since TOML rejects the two together.
 
-Recent removals include `adapters.redactor`, `owner.verbosity.decisions`, `retro.repo`, the `[watch]`, `[sessions]`, `[worktree]`, `[docs]` and `[discovery]` tables, and the outward tier, posture and draft keys.
+Recent removals include `adapters.redactor`, `adapters.calendar`, `adapters.tts`, `[calendar]`, `owner.verbosity.decisions`, `retro.repo`, the `[watch]`, `[sessions]`, `[worktree]`, `[docs]` and `[discovery]` tables, and the outward tier, posture and draft keys.
 
 ## Sections
 
@@ -32,7 +32,7 @@ Every table `config.toml` accepts, and the heading that documents its keys.
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]` | [Host, build and memory](#host-build-and-memory) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
-| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
+| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[brief]`, `[chat]` | [Adapters and brief](#adapters-and-brief) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outbound]` | [Outward sends](#outward-sends) |
@@ -190,12 +190,9 @@ With `telemetry.otlp.endpoint` set, each report run posts the new records as tra
 | `adapters.vcs` | `"git"` | Version control. |
 | `adapters.host` | `"local"` | Host measurement: `local` or `none`. |
 | `adapters.checks` | `"local"` | Fast check runner: `local` or `none`. |
-| `adapters.tts` | `"say"` on macOS | Speech port. Only telemetry reads it. |
-| `adapters.calendar` | `"none"` | `none` or `ics`. |
 | `adapters.transcripts` | `"none"` | Meeting transcript port. Only telemetry reads it. |
 | `scanner.severity_threshold` | `"high"` | Blocking threshold: `critical`, `high`, `medium` or `low`. |
 | `scanner.mcp.plugins_file` | `"~/.claude/plugins/installed_plugins.json"` | Claude Code's plugin registry, read to find WUWEI and the spec engine. |
-| `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides it. |
 | `brief.remote` | `"origin"` | Git remote a brief and `worktree add` fetch from. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with the item lowercased. |
 | `brief.full_path_patterns` | `[]` | Your regexes for paths that need full context. |

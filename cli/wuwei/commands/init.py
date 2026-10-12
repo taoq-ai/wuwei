@@ -126,8 +126,10 @@ def _stale_generated(plugin, destination):
         return []
     from wuwei.commands.agents import workspace_files
     current = workspace_files(plugin, destination)
+    kinds = {name.split('/')[0] for name in current}  # agents, charters, skills; never the config cache
     return sorted(name for name in (path.relative_to(generated).as_posix() for path in generated.rglob('*')
-                                    if path.is_file() or path.is_symlink()) if name not in current)
+                                    if path.is_file() or path.is_symlink())
+                  if name.split('/')[0] in kinds and '/' in name and name not in current)
 
 
 def _remove(destination, name):

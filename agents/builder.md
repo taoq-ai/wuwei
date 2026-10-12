@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write, Edit
 ---
 
 ---
-version: 1.10.4
+version: 1.10.5
 ---
 # Common rules for every seat
 
@@ -31,7 +31,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
+2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals change only through the morning gate's goals block.
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ---

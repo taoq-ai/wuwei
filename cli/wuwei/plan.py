@@ -218,12 +218,12 @@ def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
-    goals_text, provisional = goals.proposed(
-        (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
-        data.get('goals') if isinstance(data, dict) else None)
+    recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    goals_text, provisional = goals.proposed(recorded, data.get('goals') if isinstance(data, dict) else None)
     goal_list = goals.parse(goals_text)
-    if provisional:
-        data = {**data, 'goals': list(goal_list)}
+    if provisional:  # #848: blocks over recorded goals replace them; name the ids they replace
+        data = {**data, 'goals': list(goal_list),
+                'replaces': list(goals.parse(recorded)) if goals.defined(recorded) else []}
     found = discovery.discover(root)
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
@@ -261,11 +261,13 @@ def propose(data, root=None):
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm',
-             *([f'Provisional: proposed by the lead; plan approve records days/{directory.name}/'
+             *([f'Replaces the recorded goals {", ".join(data["replaces"])}; plan approve records '
+                f'days/{directory.name}/goals.md.' if data.get('replaces') else
+                f'Provisional: proposed by the lead; plan approve records days/{directory.name}/'
                 'goals.md.'] if provisional else []),
              *[line for goal in data['goals'] for line in (
-                 [f'- {goal} (provisional)', *(f'  {key}: {goal_list[goal][key]}'
-                                               for key in goals.FIELDS)]
+                 [f'- {goal}' + ('' if data.get('replaces') else ' (provisional)'),
+                  *(f'  {key}: {goal_list[goal][key]}' for key in goals.FIELDS)]
                  if provisional else [f'- {goal}'])], '',
              '## Measured sweep', *[f'- {key}: {value}' for key, value in data['sweep'].items()], '',
              '## Proposed queue']
@@ -313,7 +315,8 @@ def gate_widget(root=None, *, import_yesterday=False):
     shown = _tickets(workspace.load_config(root), data)
     approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
-                             for goal in data['goals']),
+                             for goal in data['goals'])
+        + (f' (replaces {", ".join(data["replaces"])})' if provisional and data.get('replaces') else ''),
         'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
         *(['tickets ' + ', '.join(f'{name} {text}' for name, text in shown.items())] if shown else []),
         *(['claims ' + ', '.join(f'{row["id"]} ({row["pr"]})' for row in adopt)] if adopt else []),

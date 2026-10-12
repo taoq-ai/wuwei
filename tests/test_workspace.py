@@ -249,7 +249,6 @@ def test_config_defaults_and_independence(tmp_path):
                      'authors': {}},
         'retro': {'charter_paths': ['.wuwei/charters'],
                   'changelog': '.wuwei/memory/CHANGELOG.md'},
-        'calendar': {'url': ''},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
@@ -260,7 +259,7 @@ def test_config_defaults_and_independence(tmp_path):
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
-                     'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
+                     'checks': 'local',
                      'transcripts': 'none'},
     }
     outward['allow'].append('changed')

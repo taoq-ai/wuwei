@@ -56,7 +56,8 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'scanner.mcp.block', 'docs', 'adapters.docs',
            'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
            'watch', 'sessions', 'worktree',  # #847
-           'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo')  # #848
+           'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo',  # #848
+           'adapters.calendar', 'adapters.tts', 'calendar')  # #848 review: nothing reads them
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -96,7 +97,6 @@ SCHEMA = {
                 "max_per_item_per_day": (int, 10, 1),
                 "project": (str, ""), "board": (str, ""),
                 "auth": (str, "token", ("token", "gh"))},
-    "calendar": {"url": (str, "")},
     "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
@@ -175,8 +175,7 @@ SCHEMA = {
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
-                 "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
-                 "calendar": (str, "none"), "transcripts": (str, "none")},
+                 "checks": (str, "local"), "transcripts": (str, "none")},
 }
 
 
@@ -574,7 +573,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 25  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 26  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.

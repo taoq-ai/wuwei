@@ -13,9 +13,7 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | vcs | git | git |
 | host | none, local | local |
 | checks | none, local | local |
-| calendar | none, ics | none |
 | transcripts | none | none |
-| tts | none, say | say on macOS, else none |
 
 The `vcs` port calls git, and `code_host.github` calls `gh`. Tracker and chat integrations need their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner needs **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or missing versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.md).
 
@@ -41,11 +39,10 @@ Exit 1 means a required credential is missing or malformed. Exit 2 means a check
 | tracker.github | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only, or your gh login with `tracker.auth = "gh"` ([below](#github-tracker-through-your-gh-login)). `tracker.project` names `owner/repo` (else the first repository). Optional `tracker.board` names a Projects board as `owner/number`. |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
 | review_bot.greptile | `GREPTILE_API_KEY` |
-| calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
 | runtime.codex | `codex.command`, a nonempty command array in config.toml; that tool manages its own credentials |
 | runtime.claude | No WUWEI credential variable; authenticate the Claude CLI separately |
 | scanner.ziran | No WUWEI credential variable; install and configure ZIRAN separately |
-| vcs.git, host.local, checks.local, tts.say | No WUWEI credential variables |
+| vcs.git, host.local, checks.local | No WUWEI credential variables |
 | Any none adapter | No credentials; measurements remain unmeasured |
 
 ### GitHub tracker through your gh login

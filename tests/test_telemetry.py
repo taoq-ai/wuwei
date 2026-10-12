@@ -136,7 +136,7 @@ def test_vocabularies_match_their_sources():
     assert telemetry.posture_label({'guards': {'enforce': False}}) == 'observe'
     assert {'guarded', 'observe'} <= set(telemetry.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
-    retired = {'docs', 'inbound', 'redactor'}  # weeks before #841, #810 and #848
+    retired = {'docs', 'inbound', 'redactor', 'calendar', 'tts'}  # weeks before #841, #810 and #848
     assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | retired
     assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS if port not in retired} == {
         port: names for port, names in telemetry.ADAPTERS.items() if port not in retired}

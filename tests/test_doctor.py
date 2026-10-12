@@ -185,6 +185,16 @@ def test_install_rows(ws):
     hooks = row(doctor.diagnose(), 'hooks')
     assert hooks['status'] == 'fail' and hooks['fix'] == '/plugin install wuwei@wuwei in Claude Code'
 
+    # #848 review F3: an unmeasured or stale cached verdict names the fix that measures again.
+    from wuwei import integrity as api
+    for reason in ('plugin integrity unmeasured; run bin/wuwei doctor --fix --apply integrity-reconfirm, '
+                   'which measures it again', 'plugin integrity unmeasured: gone'):
+        ws.mp.setattr(integrity, 'fresh', lambda root, reason=reason: Result(2, reason=reason))
+        found = row(doctor.diagnose(), 'integrity')
+        assert found['status'] == 'unmeasured' and found['apply'] == 'integrity-reconfirm', found
+        assert found['fix'].startswith(W('doctor --fix --apply integrity-reconfirm'))
+    assert not [text for text in (api.cached.__code__.co_consts + api.fresh.__code__.co_consts)
+                if isinstance(text, str) and re.search(r'run (?:bin/)?wuwei doctor(?! --fix)', text)]
     ws.mp.setattr(integrity, 'fresh', lambda root: Result(2, reason=TRIAL))
     found = row(doctor.diagnose(), 'integrity')
     assert found['status'] == 'fail' and found['value'] == TRIAL

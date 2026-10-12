@@ -333,7 +333,10 @@ def test_a_goals_change_goes_through_the_goals_block(root):
     assert registry.load('vcs', {'adapters': {'vcs': 'git'}}).workspace_init(root / '.wuwei').exit == 0
     before = (root / '.wuwei/memory/goals.md').read_text()
     text = plan.propose(lead(), root).read_text()
-    assert 'G-2 (provisional)' in text and 'Document the widget' in text
+    assert 'Document the widget' in text and 'provisional' not in text.lower()
+    assert 'Replaces the recorded goals G-1' in text  # #848 review F4
+    assert 'Goals G-1 (Ship the widget), G-2 (Document the widget) (replaces G-1)' in (
+        plan.gate_widget(root)['options'][0]['description'])
     assert (root / '.wuwei/memory/goals.md').read_text() == before
     plan.approve(['A'], root, goals_confirmed=True)
     memory = (root / '.wuwei/memory/goals.md').read_text()

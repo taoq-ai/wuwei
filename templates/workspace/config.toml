@@ -96,9 +96,6 @@ code_host = "github"
 vcs = "git"
 host = "local"
 checks = "local"
-# tts defaults to say on macOS and none elsewhere. Set "none" to suppress audio.
-# tts = "none"
-calendar = "none" # Use "ics" for a private HTTPS feed.
 transcripts = "none"
 
 [scanner]
@@ -107,9 +104,6 @@ severity_threshold = "high" # critical, high, medium or low; trust-boundary find
 [scanner.mcp]
 # Installed plugin registry v2, read to find installed plugins.
 plugins_file = "~/.claude/plugins/installed_plugins.json"
-
-[calendar]
-# url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.
 
 [brief]
 remote = "origin"

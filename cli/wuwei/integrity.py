@@ -330,7 +330,7 @@ def cached(root):
                 and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN)):
             return Result(2, reason=confirmed(record['plugin']))
         if record['exit']:
-            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei doctor, which measures it again')
+            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
         if record.get('checkout') is not None:
             current = _checkout(root)
             if current != record['checkout'] or not current or not current['clean']:
@@ -338,7 +338,7 @@ def cached(root):
                               'restore a clean commit and run wuwei doctor --fix --apply integrity-reconfirm')
         return Result(0)
     except (OSError, ValueError, TypeError) as exc:
-        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei doctor')
+        return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
 
 
 def fresh(root):
@@ -363,7 +363,7 @@ def fresh(root):
                 file = Path(directory) / name
                 if not name.endswith('.pyc') and file.lstat().st_mtime > since:
                     return Result(1, reason=f'page: plugin integrity: {file.relative_to(PLUGIN).as_posix()} '
-                                  'changed after the cached verdict; run wuwei doctor')
+                                  'changed after the cached verdict; run wuwei doctor --fix --apply integrity-reconfirm, which measures it again')
         return result
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
