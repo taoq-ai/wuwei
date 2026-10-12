@@ -29,7 +29,7 @@ These are the commands `bin/wuwei --help` lists. `bin/wuwei <command> --help` sh
 | `bin/wuwei dora` | Prints the DORA four keys with their sources. | [dora](#dora) |
 | `bin/wuwei agents` | Builds or checks the generated role agents. | [agents](#agents) |
 
-Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan resume`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
+Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan set <item> governed_by=<path>`, `plan resume`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
 
 ## init
 

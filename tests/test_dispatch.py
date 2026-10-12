@@ -1807,6 +1807,7 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     argv = shlex.split(park)
     assert argv[:5] == ['wuwei', 'plan', 'park', 'P1', '--reason'], park
     assert 'acme/code' in argv[5] and 'acme/paper' in argv[5] and 'repo' in argv[5]
+    assert 'wuwei worktree add P1 --repo <one of' in argv[5] and 'then wuwei plan resume P1' in argv[5]  # review F2
     for name in ('P1', 'P3'):  # an existing worktree starts with the brief, whatever its repository
         (root / 'worktrees' / name).mkdir(parents=True)
     starts = [row['commands'] for row in dispatch.launch_set(root)['entries'] if row['action'] == 'start']
@@ -1826,6 +1827,31 @@ def test_a_park_runs_without_free_seats(day_set):
     assert entries['G']['action'] == 'wait'
     assert entries['P1']['action'] == 'park'
     assert entries['P1']['commands'][0].startswith('wuwei plan park P1 --reason ')
+
+
+def test_an_item_whose_brief_cannot_be_written_parks_and_frees_its_seat(day_set):
+    # #864: a recorded governed_by that does not resolve parks the item with the fix, so it
+    # takes no CAP seat and the next queued item starts.
+    import shlex
+    from wuwei import dispatch
+    root, _ = day_set
+    (root / 'worktrees/P3/specs/x').mkdir(parents=True)
+    state._write_state(lambda data: data['items']['P3'].update(governed_by='specs/x'), root)
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    [park] = entries['P3']['commands']
+    argv = shlex.split(park)
+    assert argv[:5] == ['wuwei', 'plan', 'park', 'P3', '--reason']
+    assert 'specs/x' in argv[5] and 'not a file' in argv[5]
+    assert 'wuwei plan set P3 governed_by=<path>' in argv[5] and 'wuwei plan resume P3' in argv[5]
+    assert [(name, entries[name]['action']) for name in ('P1', 'P2', 'P4')] == [
+        ('P1', 'start'), ('P2', 'start'), ('P4', 'wait')]
+    # review F1: the park happens only where the brief reads governed_by (specmode.brief_block)
+    state._write_state(lambda data: data['items']['P3'].update(spec={'value': 'skipped', 'reason': 'x'}), root)
+    assert {row['item']: row['action'] for row in dispatch.launch_set(root)['entries']}['P3'] == 'start'
+    state._write_state(lambda data: data['items']['P3'].pop('spec'), root)
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[spec]\nmode = "off"\n')
+    assert {row['item']: row['action'] for row in dispatch.launch_set(root)['entries']}['P3'] == 'start'
 
 
 def test_a_corrupt_proposal_refuses_the_planned_items_only(day_set):

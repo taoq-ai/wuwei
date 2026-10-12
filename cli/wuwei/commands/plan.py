@@ -38,6 +38,12 @@ def register(subparsers):
                      help="Admit a seat's finding (wuwei next lists them) as a small item; its ticket comes later")
     add.add_argument('--note', help="The owner's own words naming the item; recorded once and quoted in "
                                     'its briefs as Approved as:')
+    add.add_argument('--repo', help='Configured repository name; required when several are configured')
+    add.add_argument('--track', default='SLICE', help='SLICE (default) or FULL')
+    add.add_argument('--governed-by', help='The governing document: <path> or <path>#<heading>, relative to '
+                                           'the repository; a directory names its spec.md')
+    for flag in plan.FLAGS:
+        add.add_argument('--' + flag.replace('_', '-'), action='store_true', help=f'Set the {flag} flag')
     for verb, text in (('carry', 'Carry an open item to tomorrow'), ('park', 'Park an open item')):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
@@ -45,9 +51,10 @@ def register(subparsers):
     actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
                        ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'ticket=<id> or owner_merge=true|false')
+                                            'ticket=<id>, owner_merge=true|false or governed_by=<path>')
     assign.add_argument('item', help='The item id')
-    assign.add_argument('assignment', help='spec=required|skipped, ticket=<id> or owner_merge=true|false')
+    assign.add_argument('assignment', help='spec=required|skipped, ticket=<id>, owner_merge=true|false or '
+                                           'governed_by=<path>[#heading]')
     assign.add_argument('--reason', help='Why; required for spec=skipped')
     parser.set_defaults(func=run)
 
@@ -91,7 +98,9 @@ def run(args):
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
                                       title=args.title, ticket=args.ticket, note=args.note,
-                                      source='finding' if args.from_finding else None)))
+                                      source='finding' if args.from_finding else None,
+                                      repo=args.repo, track=args.track, governed_by=args.governed_by,
+                                      flags=[flag for flag in plan.FLAGS if getattr(args, flag)])))
         elif args.action == 'set':
             key, _, value = args.assignment.partition('=')
             if key == 'spec':
@@ -100,10 +109,12 @@ def run(args):
                 print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
                 print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
+            elif key == 'governed_by':
+                print(plan.set_governed_by(args.item, value))
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec, ticket or owner_merge value; run '
-                                 f'bin/wuwei plan set {args.item} spec=required|skipped, '
-                                 'ticket=<id> or owner_merge=true|false. '
+                raise ValueError(f'plan set: {args.assignment} is not a spec, ticket, owner_merge or governed_by '
+                                 f'value; run bin/wuwei plan set {args.item} spec=required|skipped, '
+                                 'ticket=<id>, owner_merge=true|false or governed_by=<path>. '
                                  'Pass --reason "<why>" with spec=skipped')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]

@@ -316,6 +316,8 @@ def governing(tree, row, location=None):
         return None
     name, _, heading = reference.partition('#')
     path = Path(tree) / name
+    if name and path.is_dir():  # #864: a spec directory names its spec.md
+        path = path / 'spec.md'
     if (not name or Path(name).is_absolute() or not path.resolve().is_relative_to(Path(tree).resolve())
             or not path.is_file()):
         raise ValueError(f'governing document {reference} is not a file in the worktree; fix the Governing: line in spec.md to a repository-relative path, then run the analyze step again')
