@@ -658,3 +658,153 @@ def test_agent_launch_follows_the_build_record_runtime(seat, bound, policy, code
     found, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': action['prompt']}})
     assert found == code and (('Codex' in reason) is bool(code)), reason
+
+
+@pytest.mark.parametrize('moved,legacy,headless', [
+    (True, False, False), (True, True, False), (False, False, False), (False, True, True)])
+def test_a_new_brief_replaces_an_unlaunched_build_past_its_brief_head(seat, moved, legacy, headless):
+    # #889: a worktree that moved past an unlaunched build's brief (work done outside the
+    # record) takes a new brief at the current HEAD; the build keeps its start head, so the
+    # outside commits count as its change and still go through the checks and the gates. A
+    # record from before start heads (legacy) starts at the old brief's logged HEAD. A brief
+    # logged with no HEAD (headless) is one the guard never refuses: the refusal stands. A
+    # fix round's feedback and CI block carry into the new launch.
+    root, repo, path, _, results = seat
+    if headless:
+        log = workspace.day_dir(root) / 'events.jsonl'
+        text = log.read_text().replace('"head": "' + 'a' * 40 + '"', '"head": null')
+        log.chmod(0o644)
+        log.write_text(text)
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    old = build.next_action('A', root=root)
+    assert state.read_state(root)['builds']['A']['start'] == 'a' * 40
+    if legacy:
+        state._write_state(lambda data: data['builds']['A'].pop('start'), root)
+    tail = '\n\ngate: fix the finding\nCI job: lint'
+    state._write_state(lambda data: data['builds']['A']['action'].update(
+        feedback='gate: fix the finding', prompt=old['prompt'] + tail), root)
+    vcs = registry.load('vcs', None)
+    head = 'b' * 40 if moved else 'a' * 40
+    vcs.head = lambda *a, **kw: registry.Result(0, {'sha': head})
+    vcs.touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    (repo / '.git/HEAD').write_text(head + '\n')
+    if moved:
+        code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+            'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': old['prompt']}})
+        assert code == 1 and 'HEAD changed since brief' in reason
+    new = path.with_name('handoff.md')
+    new.write_text('Verify the commits already made and finish')
+    state.append_event('brief written', {'name': 'handoff', 'item': 'A', 'role': 'builder',
+        'gate': False, 'path': str(new.relative_to(root)), 'worktree': str(repo),
+        'head': head, 'sha256': hashlib.sha256(new.read_bytes()).hexdigest()}, root)
+    if not moved:  # the old brief still launches: the refusal stands
+        with pytest.raises(ValueError, match='cannot replace an unfinished build'):
+            build.next_action('A', root=root)
+        return
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'launch' and 'handoff.md' in action['prompt']
+    assert action['feedback'] == 'gate: fix the finding' and action['prompt'].endswith(tail)
+    record = state.read_state(root)['builds']['A']
+    assert record['brief'].endswith('handoff.md') and record['start'] == 'a' * 40
+    launch(seat, action)
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert build.next_action('A', root=root)['action'] == 'done'
+    assert phase(root) == 'gate'
+
+
+@pytest.mark.parametrize('ancestor', [True, False])
+def test_a_fresh_build_starts_at_the_brief_merge_base(seat, ancestor):
+    # #889 F4: a hand-back on a later day has no build record; the commits the branch already
+    # holds over its base count as the build's change, so a seat that adds nothing is done.
+    # A base that is no longer an ancestor of HEAD (a rebase since the brief) starts at HEAD.
+    root, repo, path, _, results = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    vcs = registry.load('vcs', None)
+    vcs.touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    vcs.merge_base = lambda *a, **kw: registry.Result(0, {'sha': ('c' if ancestor else 'd') * 40})
+    new = path.with_name('handback.md')
+    new.write_text(f'Worktree: {repo}\nHEAD: {"a" * 40}\nMerge-base: {"c" * 40} (origin/main)\n\nFinish')
+    state.append_event('brief written', {'name': 'handback', 'item': 'A', 'role': 'builder',
+        'gate': False, 'path': str(new.relative_to(root)), 'worktree': str(repo),
+        'head': 'a' * 40, 'sha256': hashlib.sha256(new.read_bytes()).hexdigest()}, root)
+    launch(seat, build.next_action('A', root=root))
+    assert state.read_state(root)['builds']['A']['start'] == ('c' if ancestor else 'a') * 40
+    if not ancestor:
+        return
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert phase(root) == 'gate'
+
+
+@pytest.mark.parametrize('recorded', [False, True])
+def test_a_brief_a_seat_already_ran_continues_that_seat(seat, recorded):
+    # #892: a builder launched straight from its brief runs with no build record; the next
+    # build next continues that stopped seat, so the launch registers, and the seat's own
+    # commits (from its launch HEAD) count as the build's change. recorded: an older build
+    # next already recorded a launch of that used brief (0.29.0 state).
+    from wuwei import brief
+    root, repo, path, _, results = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    launch(seat, brief.seat_action('builder', path, repo, root))
+    with pytest.raises(ValueError, match='still running'):
+        build.next_action('A', root=root)
+    with (root / 'agent.jsonl').open('a') as stream:
+        stream.write(json.dumps({'type': 'assistant', 'message': {
+            'content': [{'type': 'text', 'text': 'Blocked: none\nGap: none\nChange: none'}]}}) + '\n')
+    assert agent_launch.stop({'cwd': str(root), 'agent_type': 'wuwei:builder', 'agent_id': 'agent-builder',
+        'agent_transcript_path': str(root / 'agent.jsonl'),
+        'last_assistant_message': 'Blocked: none\nGap: none\nChange: none'}) == (0, '')
+    assert state.read_state(root)['seats']['builder']['status'] == 'stopped'
+    (repo / '.git/HEAD').write_text('b' * 40 + '\n')  # the seat committed
+    registry.load('vcs', None).touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    if recorded:
+        state._write_state(lambda data: data.setdefault('builds', {}).update(A={
+            'brief': str(path.relative_to(root)), 'worktree': str(repo), 'runtime': 'claude',
+            'repo': 'app', 'commands': ['test'], 'iteration': 0, 'repeats': 0, 'signature': None,
+            'status': 'ready', 'action': brief.seat_action('builder', path, repo, root)}), root)
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'continue' and action['resume'] == 'agent-builder'
+    assert state.read_state(root)['builds']['A']['start'] == 'a' * 40
+    launch(seat, action)
+    assert stop(seat, 'agent-fresh') == (0, '')
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert phase(root) == 'gate'
+
+
+def test_an_unmeasured_seat_on_the_recorded_brief_takes_a_fresh_brief(seat):
+    # #889 D1: a record an older build next wrote on a brief whose seat ended unmeasured: build
+    # next asks for a fresh brief, and the fresh brief replaces the record at the same HEAD.
+    from wuwei import brief
+    root, repo, path, _, results = seat
+    launch(seat, brief.seat_action('builder', path, repo, root))
+    state.stop_seat('builder', root, reason='report unreadable')
+    state._write_state(lambda data: data.setdefault('builds', {}).update(A={
+        'brief': str(path.relative_to(root)), 'worktree': str(repo), 'runtime': 'claude',
+        'repo': 'app', 'commands': ['test'], 'iteration': 0, 'repeats': 0, 'signature': None,
+        'status': 'ready', 'action': brief.seat_action('builder', path, repo, root)}), root)
+    with pytest.raises(ValueError, match='write a fresh brief'):
+        build.next_action('A', root=root)
+    new = path.with_name('fresh.md')
+    new.write_text('Build it again')
+    state.append_event('brief written', {'name': 'fresh', 'item': 'A', 'role': 'builder',
+        'gate': False, 'path': str(new.relative_to(root)), 'worktree': str(repo),
+        'head': 'a' * 40, 'sha256': hashlib.sha256(new.read_bytes()).hexdigest()}, root)
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'launch' and 'fresh.md' in action['prompt']
+    launch(seat, action)
+
+
+def test_build_next_never_adopts_another_items_seat(seat):
+    # #889 D2: a seat that ran the brief for another item is not this build's seat.
+    from wuwei import brief
+    root, repo, path, _, _ = seat
+    launch(seat, brief.seat_action('builder', path, repo, root))
+    state._write_state(lambda data: data['seats']['builder'].update(item='B', status='stopped'), root)
+    assert build.next_action('A', root=root)['action'] == 'launch'
