@@ -259,6 +259,24 @@ def test_host_rows_healthy(ws):
     assert row(doctor.diagnose(), 'ziran')['status'] == 'fail'
 
 
+@pytest.mark.parametrize('floor, percent, status, value', [
+    # #898: the memory row names both floors and the share free
+    ('', Result(0, 62), 'ok', '8192 MiB (floor 1024 MiB); 62% free (floor off)'),
+    ('min_free_memory_pct = 40\n', Result(0, 62), 'ok', '8192 MiB (floor 1024 MiB); 62% free (floor 40%)'),
+    ('min_free_memory_pct = 40\n', Result(0, 38), 'fail', '8192 MiB (floor 1024 MiB); 38% free below the floor 40%'),
+    ('min_free_memory_pct = 40\n', Result(2, None, 'memory_pressure exited 1'), 'unmeasured',
+     '8192 MiB (floor 1024 MiB); memory_pressure exited 1'),
+    ('', Result(2, None, 'memory_pressure exited 1'), 'ok', '8192 MiB (floor 1024 MiB); memory_pressure exited 1'),
+])
+def test_memory_row_reports_the_percentage_floor(ws, floor, percent, status, value):
+    config(ws.root, CONFIG + '\n[host]\n' + floor)
+    ws.host.results['free_percent'] = percent
+    found = row(doctor.diagnose(), 'memory')
+    assert (found['status'], found['value']) == (status, value), found
+    if status != 'ok':
+        assert 'host.min_free_memory_pct' in found['fix']
+
+
 def codex_plugin(ws):
     script = ws.root.parent / 'codex-plugin/scripts/codex-companion.mjs'
     script.parent.mkdir(parents=True)

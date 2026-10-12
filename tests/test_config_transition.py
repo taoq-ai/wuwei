@@ -741,6 +741,7 @@ def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkey
             table = table.get(part, {})
         assert key.split('.')[-1] not in table, key
     assert (base / 'memory/index.md').is_file()
+    assert config['host']['min_free_memory_pct'] == 0  # #898: the new key, off
 
 
 def test_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):

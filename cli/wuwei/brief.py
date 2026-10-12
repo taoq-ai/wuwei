@@ -331,11 +331,19 @@ def stuck(data):
             found.append(name)
         elif seat['status'] == 'running' and isinstance(seat.get('transcript'), str):
             try:
-                if last_turn(seat['transcript'])[2]:
+                if tail_turn(seat['transcript'])[1]:
                     found.append(name)
             except (OSError, ValueError):
                 pass  # ponytail: an unreadable transcript is no evidence of an end; the reservation timeout still reports the seat
     return sorted(found)
+
+
+def live(data):
+    """#898: the seats that hold a slot: running, registered on a brief (not adhoc) and not
+    handed back (stuck)."""
+    done = set(stuck(data))
+    return [seat for name, seat in seats(data).items()
+            if seat['status'] == 'running' and seat['role'] != 'adhoc' and name not in done]
 
 
 def seats(data):

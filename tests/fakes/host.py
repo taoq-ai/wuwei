@@ -6,7 +6,11 @@ from wuwei.registry import Result
 
 class Fake(Recorder):
     def __init__(self, results=None):
-        super().__init__({'free_memory': Result(0, 8 * 1024**3)} if results is None else results)
+        super().__init__({'free_memory': Result(0, 8 * 1024**3), 'free_percent': Result(0, 62)}
+                         if results is None else results)
 
     def free_memory(self, root=None):
         return self._call('free_memory', (), root)
+
+    def free_percent(self, root=None):
+        return self._call('free_percent', (), root)

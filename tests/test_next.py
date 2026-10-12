@@ -833,6 +833,22 @@ def test_waits_next_to_a_window_hold_still_give_the_timed_wait(root, capsys, mon
     assert (found['state'], found['action'], found['until']) == ('wait', 'background', '2026-09-30T13:00:00+00:00')
 
 
+def test_a_set_held_by_the_memory_floor_is_a_timed_wait(root, capsys, monkeypatch):
+    # #898: below host.min_free_memory_pct next sleeps briefly, then offers the launch again
+    from wuwei.guards import agent_launch
+    approved(root, {'ITEM-2': ('planned', {})}, cap=2)
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[host]\nmin_free_memory_pct = 40\n')
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 38)
+    code, found = row(capsys)
+    assert (code, found['state'], found['action']) == (0, 'wait', 'background'), found
+    assert found['until'] == '2026-09-30T10:01:00+00:00' and found['command'] == 'sleep 121'
+    assert 'held: free memory 38% < 40%' in found['why']
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 41)
+    code, found = row(capsys)
+    assert found['state'] == 'set' and [launch['action'] for launch in found['launches']] == ['start']
+
+
 def test_a_set_held_only_by_a_spent_window_is_a_timed_wait(root, capsys, monkeypatch):
     # #845 US1: no launch fits the window, nothing else is due: next sleeps past the reset.
     from wuwei import derive

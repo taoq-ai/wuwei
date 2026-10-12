@@ -566,6 +566,21 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
         assert (code, 'CAP 3' in reason) == ((1, True) if name == 'four' else (0, False)), reason
 
 
+def test_launch_ceiling_counts_only_live_registered_seats(day, monkeypatch):
+    # #898: adhoc seats hold no slot at the seat ceiling or CAP; the launch event still counts them
+    from test_brief import events
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 3\n')
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    set_seats({f'adhoc-{i}': {'item': f'adhoc-{i}', 'role': 'adhoc', 'status': 'running'} for i in range(3)}, root)
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'one') == 0
+    relative = str((directory / 'briefs/one.md').relative_to(root))
+    assert check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'builder', 'description': 'one', 'prompt': 'WUWEI brief: ' + relative}}) == (0, '')
+    assert [e for e in events(directory) if e['kind'] == 'seat launched'][-1]['payload']['running'] == 3
+
+
 def drop_day(directory):
     """No day yet: no records in the log (#844) and no cache."""
     for name in ('state.json', 'events.jsonl'):

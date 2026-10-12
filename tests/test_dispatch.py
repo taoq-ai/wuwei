@@ -1942,6 +1942,67 @@ def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_s
     assert 'B' not in calls
 
 
+def test_launch_set_holds_every_seat_launch_below_the_memory_floor(day_set, monkeypatch):
+    # #898: below host.min_free_memory_pct no seat starts; next re-checks a minute later
+    from wuwei import dispatch
+    from wuwei.guards import agent_launch
+    root, calls = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\nmin_free_memory_pct = 40\n')
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 38)
+    value = dispatch.launch_set(root)
+    assert value['capacity'].endswith('; free memory 38% (floor 40%)')
+    assert [(row['item'], row['action'], row.get('until')) for row in value['entries']
+            if row['reason'] == 'held: free memory 38% < 40%'] == [
+        (item, 'wait', '2026-09-29T12:01:00+00:00') for item in ('G', 'B', 'P3', 'P1')]
+    assert [row['action'] for row in value['entries']] == ['wait'] * 6 and 'CAP 3' in value['entries'][4]['reason']
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 40)
+    assert [row['action'] for row in dispatch.launch_set(root)['entries']][:4] == ['gates', 'launch', 'start', 'start']
+
+
+def test_a_memory_hold_never_runs_build_next_for_a_briefed_planned_item(day_set, monkeypatch):
+    # #898 review F1: held before build next binds, moves or claims it
+    from wuwei import dispatch
+    from wuwei.guards import agent_launch
+    root, calls = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\nmin_free_memory_pct = 40\n')
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 38)
+    state._write_state(lambda data: None, root, kind='brief written', payload={
+        'name': 'p3', 'item': 'P3', 'role': 'builder', 'path': 'x.md', 'gate': False})
+    entry = next(row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3')
+    assert (entry['action'], entry['reason'], entry['until']) == (
+        'wait', 'held: free memory 38% < 40%', '2026-09-29T12:01:00+00:00')
+    assert 'P3' not in calls and state.read_state(root)['items']['P3']['phase'] == 'planned'
+
+
+def test_launch_set_never_holds_a_launch_without_a_seat(day_set, monkeypatch):
+    # #898: a pr act run takes no seat, so the floor never holds it
+    from wuwei import dispatch
+    from wuwei.guards import agent_launch
+    root, _ = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\nmin_free_memory_pct = 40\n')
+    monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 38)
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'run', 'command': 'wuwei pr act 7 --push'})
+    entry = dispatch.launch_set(root)['entries'][0]
+    assert (entry['item'], entry['action'], entry['command']) == ('G', 'run', 'wuwei pr act 7 --push')
+
+
+def test_launch_set_counts_only_live_registered_seats(day_set):
+    # #898: an adhoc seat and a seat that handed back hold no slot; a registered running seat does
+    from pathlib import Path
+    from wuwei import brief, dispatch
+    root, _ = day_set
+    transcript = root / 'done.jsonl'
+    transcript.write_text((Path(__file__).parent / 'payloads/SubagentStop/handback-transcript.jsonl').read_text())
+    state._write_state(lambda data: data['seats'].update({
+        'b': {'item': 'B', 'role': 'builder', 'status': 'running', 'brief': 'b.md'},
+        'adhoc-1': {'item': 'adhoc-1', 'role': 'adhoc', 'status': 'running'},
+        'done': {'item': 'R', 'role': 'shepherd', 'status': 'running', 'brief': 'd.md', 'transcript': str(transcript)},
+        'old': {'item': 'R', 'role': 'shepherd', 'status': 'stopped', 'brief': 'o.md'},
+        'lost': {'item': 'R', 'role': 'shepherd', 'status': 'unmeasured', 'brief': 'l.md'}}), root)
+    assert [seat['brief'] for seat in brief.live(state.read_state(root))] == ['b.md']
+    assert dispatch.launch_set(root)['free_seats'] == 7
+
+
 def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
     from wuwei import dispatch
     from wuwei.__main__ import main
@@ -3183,6 +3244,35 @@ def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
     unset = dispatch.host(workspace_root, config, policy={})
     assert (unset['cap'], unset['seats'], unset['bound']) == (10, 10, 'host.seats')
     assert unset['text'].endswith('host.seats unset, 10 cores')
+
+
+def test_free_memory_floor_holds_every_runtime(workspace_root, ports):
+    # #898: host.min_free_memory_pct is read for subagent and process seats alike
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('cap = 8\n[host]\nseats = 8\nmin_free_memory_pct = 40\n')
+    config = workspace.load_config(workspace_root)
+    for policy in ({}, PROCESS):
+        ports['host'].results['free_percent'] = registry.Result(0, 38)
+        held = dispatch.host(workspace_root, config, policy=policy)
+        assert (held['held'], held['cap']) == ('held: free memory 38% < 40%', 8)
+        assert held['text'].endswith('; free memory 38% (floor 40%)')
+        ports['host'].results['free_percent'] = registry.Result(0, 40)
+        assert 'held' not in dispatch.host(workspace_root, config, policy=policy)
+    assert dispatch.host(workspace_root, config, policy={})['text'] == (
+        'cap 8 (owner): config cap; the host fits 8 (subagent runtime); free memory 40% (floor 40%)')
+    ports['host'].results['free_percent'] = registry.Result(2, None, 'free memory percentage unmeasured: memory_pressure exited 1')
+    unmeasured = dispatch.host(workspace_root, config, policy={})
+    assert unmeasured['held'].startswith('held: free memory percentage unmeasured: memory_pressure exited 1; ')
+    assert 'bin/wuwei doctor' in unmeasured['held'] and 'unmeasured' in unmeasured['text']
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    assert dispatch.host(workspace_root, config, policy=PROCESS)['held'] == unmeasured['held']
+    ports['host'].results['free_percent'] = registry.Result(0, 'not a number')  # F4: one doctor hint
+    assert dispatch.host(workspace_root, config, policy={})['held'].count('doctor') == 1
+    config['host']['min_free_memory_pct'] = 0
+    ports['host'].calls.clear()
+    off = dispatch.host(workspace_root, config, policy={})
+    assert 'held' not in off and not ports['host'].calls
+    assert off['text'] == 'cap 8 (owner): config cap; the host fits 8 (subagent runtime, free memory not read)'
 
 
 def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch):

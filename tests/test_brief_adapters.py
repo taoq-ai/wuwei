@@ -49,6 +49,31 @@ def test_host_vm_stat(monkeypatch, stdout, exit_code, expected):
     assert len(calls) == 1
 
 
+@pytest.mark.parametrize('platform,source,expected', [
+    # #898: the share of the host free, as the owner reads it
+    ('darwin', 'The system has 34359738368 (2097152 pages with a page size of 16384).\n'
+               'System-wide memory free percentage: 38%\n', 38),
+    ('darwin', 'System-wide memory free percentage: 100%\n', 100),
+    ('darwin', 'malformed', None), ('darwin', '', None),
+    ('linux', 'MemTotal: 1000 kB\nMemFree: 10 kB\nMemAvailable: 385 kB\n', 38),
+    ('linux', 'MemAvailable: 385 kB\n', None), ('linux', 'MemTotal: 0 kB\nMemAvailable: 0 kB\n', None),
+    ('linux', 'MemTotal: 100 kB\nMemAvailable: 200 kB\n', None),
+])
+def test_host_free_percent(monkeypatch, platform, source, expected):
+    from pathlib import Path
+    adapter = importlib.import_module('adapters.host.local')
+    monkeypatch.setattr(adapter.sys, 'platform', platform)
+    if platform == 'darwin':
+        calls = install_replay(monkeypatch, 'memory_pressure', [{'stdout': source, 'exit': 0 if source else 1}])
+    else:
+        monkeypatch.setattr(Path, 'read_text', lambda path, **kwargs: str(path) == '/proc/meminfo' and source)
+    result = adapter.free_percent()
+    assert (result.exit, result.data) == ((0, expected) if expected is not None else (2, None))
+    assert expected is not None or 'free memory percentage unmeasured' in result.reason
+    if platform == 'darwin':
+        assert calls == [['memory_pressure']]
+
+
 def test_branches_exact_command_and_failure(monkeypatch):
     adapter = registry.load('vcs', {'adapters': {'vcs': 'git'}})
     calls = install_replay(monkeypatch, 'git', [{'argv': ['-C', 'tree', 'branch', '--list',
