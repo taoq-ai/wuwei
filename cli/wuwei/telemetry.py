@@ -28,8 +28,8 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
 GUARDS = ('agent_launch', 'answers', 'edges', 'integrity', 'lifecycle', 'outward', 'protect_state',
-          'spec', 'stop', 'traces', 'verdict')
-RETIRED_GUARDS = ('commit_push', 'deploy', 'pr')  # stored weeks (#839)
+          'spec', 'traces', 'verdict')
+RETIRED_GUARDS = ('commit_push', 'deploy', 'pr', 'stop')  # stored weeks (#839, #847)
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
@@ -40,17 +40,17 @@ PROFILES = ('strict', 'standard')
 OS = ('darwin', 'linux', 'other')
 ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
-            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
+            'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),  # tts, calendar: weeks before #848
             'calendar': ('ics', 'none'), 'transcripts': ('none',),
             'inbound': ('none', 'slack'),  # weeks recorded before #810 removed the inbound port
-            'redactor': ('builtin',),
+            'redactor': ('builtin',),  # weeks recorded before #848 retired the redactor key
             'docs': ('confluence', 'markdown', 'none', 'notion')}  # weeks recorded before #841 removed the docs port
 INNER = frozenset((*GUARDS, *RETIRED_GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat',
                    'cruise'))  # cruise: weeks stored before #814
-OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',
+OWNER_KINDS = ('state.recovered', 'integrity_confirmation', 'mcp.decided',  # state.recovered: days before #847
                'draft.sending', 'draft.dropped')
-PROBES = ('refused', 'allowed', 'state_write', 'read_loop')
+PROBES = ('refused', 'allowed', 'state_write', 'read_loop')  # heartbeat rows of days before #847
 SPAN_EVENTS = ('decision.routed', 'decision.decided', 'decision.reversed', 'negotiation.loop', 'gate.received',
                *OWNER_KINDS)
 VERSION = re.compile(r'\d+\.\d+(\.\d+)?')
@@ -253,7 +253,7 @@ def load_week(root, week):
         return None
     found = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(found, dict) or found.get('week') != week:
-        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei metrics --week {week}')
+        raise ValueError(f'{path.name} is not a week file; remove it, then run bin/wuwei report --week {week}')
     return found
 
 
@@ -305,9 +305,9 @@ def _leaf(value):
 def validate(found):
     """Raise ValueError(rule) unless the payload keeps to the 5.13 anonymisation rules."""
     if not isinstance(found, dict) or set(found) not in (KEYS, KEYS | {'token'}):
-        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('top-level keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if found['schema'] != SCHEMA or not isinstance(found['week'], str) or not WEEK.fullmatch(found['week']):
-        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('schema or week; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     if 'token' in found and not (isinstance(found['token'], str) and TOKEN.fullmatch(found['token'])):
         raise ValueError('token')
     versions, config = found['versions'], found['config']
@@ -323,20 +323,20 @@ def validate(found):
         raise ValueError('config')
     metrics = found['metrics']
     if not isinstance(metrics, dict) or not set(metrics) <= set(METRICS):
-        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('metric keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
 
     def check(value, depth):
         if isinstance(value, dict) and depth < 2:
             for key, inner in value.items():
                 if key not in INNER:
-                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+                    raise ValueError('metric inner keys; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
                 check(inner, depth + 1)
         elif not _leaf(value):
-            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+            raise ValueError('metric values; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     for value in metrics.values():
         check(value, 0)
     if len(json.dumps(found, sort_keys=True).encode()) > MAX_PAYLOAD:
-        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei metrics --week <week>')
+        raise ValueError('payload over 16 KB; remove .wuwei/metrics/<week>.json, then run bin/wuwei report --week <week>')
     return found
 
 

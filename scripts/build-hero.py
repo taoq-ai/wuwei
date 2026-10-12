@@ -1,7 +1,7 @@
 """Generate docs/site/assets/hero-dark.svg and hero-light.svg from one drawing.
 
 One working day as an agentic engineering flow, left to right: you and the ranked queue, the
-agent team in three lanes, the gates, the pull requests the shepherd sweeps, you again with the
+agent team in three lanes, the gates, the pull requests the shepherd follows, you again with the
 cards. Items only move forward; loops are drawn where the system loops. Edit the tables here,
 then run `python3 scripts/build-hero.py` and commit both files. A test checks they match.
 """
@@ -19,14 +19,14 @@ PAL = {
 
 ALT = ('A ranked queue you approve feeds an agent team working three parallel lanes that loop build and '
        'check, every candidate passes the gates within the round cap, pull requests wait in a stack '
-       'the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, '
-       "heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan.")
+       'the shepherd follows until they merge, and you answer the odd card in the session while guards, '
+       "lead and steward work under the hood and each day's retro feeds tomorrow's plan.")
 
 STAGES = [  # (name, small line, icon, x of the pill centre)
     ('Specs and plan', 'you approve, the lead ranks', 'you', 130),
     ('Agent team', '3 seats in parallel lanes', 'team', 398),
     ('Gates', 'arch · quality · security', 'gate', 572),
-    ('Pull requests', 'the shepherd sweeps', 'pr', 887),
+    ('Pull requests', 'the shepherd follows up', 'pr', 887),
     ('Review and merge', 'cards: your final say', 'you', 1082),
 ]
 ICONS = {  # 24-unit line icons, stroke only
@@ -51,26 +51,24 @@ ITEMS = [  # (name, lane, [(k, place)]); an item fades in at its last 'off' and 
 FIX = ('login fix', .50, .70)          # amber dot, amber outline and the fix loop, one span
 PRS = [('#142 rate limits', .64, .80), ('#143 docs page', .74, .86), ('#144 login fix', .78, .90)]
 PR_LINES = [('ping reviewer · CI green?', 'muted', .65, .78), ('merge at the gated head', 'atext', .80, .91)]
-DECISIONS = [  # (asked, answered, open text or None, closed text, asked on the phone)
+DECISIONS = [  # (asked, answered, open text or None, closed text, asked you)
     (.30, .31, None, 'assumed in the spec', False),
     (.44, .45, None, 'assumed in the spec', False),
-    (.52, .62, 'client wants Friday?', 'answered: Allow once', True),
+    (.52, .62, 'ship by Friday?', 'answered: Yes', True),
 ]
 GATE = (.02, .12, .17)                 # gate card on, question becomes "Approved", card off
-PHONE = [(GATE[0], GATE[1], 'accent')] + [(a, b, 'warm') for a, b, _, _, phone in DECISIONS if phone]
 GUARD = (.36, .40)
 CLOSE = .92                            # report, retro, return arrow, steward, carried
 STILL_K = .55                          # 13:55, the reduced-motion frame
-LOOPS = ['a one-way question reaches you on one card', 'you answer from the phone; seats assume the rest']
+LOOPS = ['a one-way question reaches you on one card', 'you answer on a card; seats assume the rest']
 DAY = "tomorrow's plan carries what was learned"
-INDICATORS = ['guards: every call checked, 1 caught', 'heartbeat',
-              'lead: morning discovery', 'steward: retro at close, you promote']
+INDICATORS = ['guards: every call checked, 1 caught', 'lead: morning discovery',
+              'steward: retro at close, you promote']
 
 A = f'dur="{T:g}s" repeatCount="indefinite"'
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
-BEAT = ' class="beat"'
 DOTS = [600, 620, 640]                 # x of the three gate dots: arch, quality, security
-IND_X = [56, 322, 452, 772]            # x of the four indicators in the band
+IND_X = [56, 400, 700]                 # x of the three indicators in the band
 
 
 def pct(x): return f'{x:.4f}'.rstrip('0').rstrip('.') or '0'
@@ -167,8 +165,7 @@ def svg(p):
         '.still{display:none}',
         '.spin{animation:spin 2s linear infinite;transform-box:fill-box;transform-origin:center}'
         '@keyframes spin{to{transform:rotate(360deg)}}',
-        '.beat{animation:beat 2s ease-in-out infinite}@keyframes beat{50%{opacity:.25}}',
-        '@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.spin,.beat{animation:none}}',
+        '@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.spin{animation:none}}',
         ']]></style>',
         '<defs>', *[f'<marker id="m-{c}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
                     f'orient="auto"><path d="M0 0L10 5L0 10z" fill="{{{c}}}"/></marker>' for c in ('muted', 'accent', 'warm')],
@@ -202,22 +199,14 @@ def svg(p):
           for lane, y in enumerate(LANE_Y)],
         *[f'<circle id="gate-{lane}-{n}" cx="{x}" cy="{y}" r="6" fill="{{muted}}" opacity="0.25"/>'
           for lane, y in enumerate(LANE_Y) for n, x in enumerate(DOTS)],
-        # pull requests: the sweep orbit
-        f'<path id="sweep" class="spin" d="{orbit(814, 344, 10)}" fill="none" stroke="{{accent}}" stroke-width="2"/>',
-        text(832, 348, 'sweep', 'text', attrs=' font-weight="600"'),
-        text(802, 370, 'overnight: sweeps, never merges', size=11),
-        # cards: the phone
-        '<rect x="1017" y="304" width="30" height="52" rx="6" fill="{panel}" stroke="{muted}" stroke-opacity="0.45" stroke-width="1.5"/>',
-        '<rect x="1022" y="311" width="20" height="34" rx="3" fill="{muted}" opacity="0.2"/>',
         # the guidance loops under the flow
         f'<path id="ask-loop" stroke-dasharray="6 5" d="{ask}"{stroke.format(w=1.5, c="muted")}/>',
         f'<path id="answer-loop" stroke-dasharray="6 5" d="{answer}"{stroke.format(w=1.5, c="muted")}/>',
         text(845, 480, LOOPS[0], attrs=' text-anchor="middle"'), text(820, 512, LOOPS[1], attrs=' text-anchor="middle"'),
         # under the hood
         text(56, 548, 'UNDER THE HOOD', size=11, attrs=' letter-spacing="1"'),
-        *[f'<circle cx="{x + 7}" cy="570" r="6" fill="{{{"accent" if i == 1 else "muted"}}}" '
-          f'opacity="{1 if i == 1 else 0.3}"{BEAT if i == 1 else ""}/>' + text(x + 20, 574, t, 'text')
-          for i, (x, t) in enumerate(zip(IND_X, INDICATORS))],
+        *[f'<circle cx="{x + 7}" cy="570" r="6" fill="{{muted}}" opacity="0.3"/>' + text(x + 20, 574, t, 'text')
+          for x, t in zip(IND_X, INDICATORS)],
     ]
     # the queue: pills visible from the first frame, each leaves when it pops into a lane
     for i, (name, _, stops) in enumerate(sorted(ITEMS, key=lambda it: popped(it[2])), 1):
@@ -263,24 +252,22 @@ def svg(p):
         on('text', ta(802, 412, 'atext', attrs=' font-weight="600"'), f'shipped today: {n}', [(merges[n], merges[n + 1])])
     carried = sum(1 for _, _, s in ITEMS if s[-1][1] != 'PR')
     on('text', ta(802, 430, 'warm', 11), f'carried to tomorrow: {carried}', [(CLOSE, 1)])
-    # cards: the decisions, the phone, asked today
+    # cards: the decisions, asked today
     for i, (asked, answered, opened, closed, _) in enumerate(DECISIONS):
         if opened:
             on('text', ta(1015, 248 + 20 * i, 'warm', 11, ' font-weight="600"'), opened, [(asked, answered)])
         on('text', ta(1015, 248 + 20 * i, 'text', 11), closed, [(answered, 1)])
-    for a, b, c in PHONE:
-        on('rect', f' x="1022" y="311" width="20" height="34" rx="3" fill="{{{c}}}"', '', [(a, b)])
-    phone = [d for d in DECISIONS if d[4]]
-    on('text', ta(1015, 380, 'text', attrs=' font-weight="600"'), f'asked today: {len(phone)} of {len(DECISIONS)}',
-       [(phone[0][0], 1)])
+    asked = [d for d in DECISIONS if d[4]]
+    on('text', ta(1015, 380, 'text', attrs=' font-weight="600"'), f'asked today: {len(asked)} of {len(DECISIONS)}',
+       [(asked[0][0], 1)])
     # the loops light on their events; the band's indicators and the close
     lit = stroke.format(w=2.5, c='accent')
     on('path', f' d="{ask}"{lit} stroke-dasharray="6 5"', '', [(d[0], d[0] + .02) for d in DECISIONS], 'ask-loop-lit')
     on('path', f' d="{answer}"{lit} stroke-dasharray="6 5"', '', [(d[1], d[1] + .02) for d in DECISIONS], 'answer-loop-lit')
     on('path', f' d="{day}"{lit}', '', [(CLOSE, 1)], 'day-loop-lit')
     on('circle', f' cx="{IND_X[0] + 7}" cy="570" r="6" fill="{{warm}}"', '', [GUARD])
-    on('circle', f' cx="{IND_X[2] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(pops[-1], pops[-1] + .06)], 'lead')
-    on('circle', f' cx="{IND_X[3] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(CLOSE, 1)])
+    on('circle', f' cx="{IND_X[1] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(pops[-1], pops[-1] + .06)], 'lead')
+    on('circle', f' cx="{IND_X[2] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(CLOSE, 1)])
     on('text', ta(1144, 604, 'atext', attrs=' text-anchor="end" font-weight="600"'),
        f'{clock(CLOSE)} close: report written, retro done', [(CLOSE, 1)])
     # the day clock

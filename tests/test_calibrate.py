@@ -581,15 +581,6 @@ def test_drift_rejects_a_malformed_snapshot(workspace_root):
         calibrate.drift(workspace_root)
 
 
-def test_drift_event_is_reserved_to_the_steward(workspace_root, capsys):
-    from types import SimpleNamespace
-    from wuwei.commands import event
-
-    assert event.run(SimpleNamespace(kind='calibration.drift', payload='{}')) == 1
-    assert 'written by wuwei steward run' in capsys.readouterr().err
-    assert drift_events(workspace_root) == []
-
-
 def test_read_skips_files_reached_through_a_symlinked_directory(tmp_path):
     outside = tmp_path / 'outside'
     (outside / 'workflows').mkdir(parents=True)

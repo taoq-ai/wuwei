@@ -50,43 +50,6 @@ def ws(tmp_path, monkeypatch):
     return root
 
 
-@pytest.mark.parametrize('path,value', [('decision_outcomes', {}),
-    ('decision_outcomes.D-3', {}), ('items.x.decision_outcomes', {}),
-    ('items.x', {'decision_outcomes': {}})])
-def test_reserved_outcomes(ws, path, value):
-    from wuwei import state
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state(path, value, ws)
-
-
-def test_reserved_callback(ws):
-    from wuwei import state
-    with pytest.raises(state.StateError, match='reserved'):
-        state.write_state(lambda data: data.update(decision_outcomes={'D-3': {}}), ws)
-
-
-def test_reserved_outcomes_inside_list(ws):
-    from wuwei import state
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('metadata', [{'decision_outcomes': {'D-3': {}}}], ws)
-
-
-def test_reserved_outcomes_inside_tuple_callback(ws):
-    from wuwei import state
-    with pytest.raises(state.StateError, match='reserved'):
-        state.write_state(lambda data: data.update(
-            metadata=({'decision_outcomes': {'D-3': {}}},)), ws)
-
-
-@pytest.mark.parametrize('kind', ['decision.decided', 'decision.rejected', 'decision.future'])
-def test_generic_event_reserves_all_decision_kinds(ws, monkeypatch, capsys, kind):
-    from wuwei.__main__ import main
-    from wuwei.workspace import day_dir
-    monkeypatch.chdir(ws)
-    assert main(['event', kind, '{}']) == 1
-    assert not (day_dir(ws) / 'events.jsonl').exists()
-
-
 @pytest.mark.parametrize('data,expected', [
     ({}, None),
     ({'decision_outcomes': {}}, None),

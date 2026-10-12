@@ -122,7 +122,7 @@ def raised(root):
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['A'], raised_prs=['example/project#1'],
         items={'A': {'phase': 'raised', 'status': 'running', 'pr': 'example/project#1'}}),
-        root, reserved=False, kind='plan.approved')
+        root, kind='plan.approved')
 
 
 def test_the_duty_command_records_a_due_duty_and_refuses_any_other(root, capsys):

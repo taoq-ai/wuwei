@@ -3,10 +3,10 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.transition',
+SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
-          'session.seen', 'session.rotated', 'item.claimed', 'worktree.adopted', 'worktree.created',
+          'worktree.adopted', 'worktree.created',
           'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
@@ -15,21 +15,22 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.set', 'state.tr
           'decision.decided',
           'decision.routed',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
-          'watch: clock', 'heartbeat: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
-          'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
+          'watch: observation', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
           'gate.received', 'gate.tiered', 'gate.delta_head',
           'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
           'finding.noted',
           'discovery.requested', 'discovery.intake',  # days before #843
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
           'build.held', 'build.released',
-          'shepherd.overnight', 'shepherd.swept',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.off',
           'docs.set', 'docs.written', 'docs.exempt',  # days before #841
           'tracker.created', 'tracker.folded', 'tracker.logged', 'plan.set',
           'duty.due', 'duty.done', 'duty.skipped',  # #842: tracker.call carries the warning
-          'cap.derived')
+          'cap.derived',
+          'state.set', 'session.seen', 'session.rotated', 'item.claimed', 'watch: clock',  # days before #847
+          'heartbeat: clock', 'watch: heartbeat', 'session: compact', 'session: wake-seen',
+          'shepherd.overnight', 'shepherd.swept')
 
 
 def classify(event, state):

@@ -1,18 +1,19 @@
-"""Characterise the loop before the derived next (#844).
+"""The loop's contract (#844, #849): what the derived `next` must offer for any day.
 
-Three parts, run against today's `next`:
+Three parts:
 
 1. A property test over generated item states. Each case is a world (the plan file, the
    worktree, the builder seat, the verdict files, the round count, the cached PR listing and the
-   outward duties) that `materialise` writes as the day files today's commands would have left.
-   An oracle says what the loop must offer for that world; each invariant of #844 is one test.
+   outward duties) that `materialise` writes as the day files the commands leave. An oracle says
+   what the loop must offer for that world; each invariant is one test: every ready launch
+   offered, every due duty offered, at most one owner decision and only when nothing is ready,
+   never past the round cap, never a gate, raise or merge before its evidence, and never done
+   with an open duty.
 2. One test per recorded scheduler dead end and state drift case from the two study days.
 3. Deleting state.json between two `next` calls changes no answer.
 
-Every assertion today's `next` violates is xfail(strict=True) with the gap as its reason, so the
-suite stays green today and each xfail must turn into a pass in the rewrite. The rewrite owns
-`materialise` (where the derived next reads its inputs) and `answer` (how its output reads as
-offers); the worlds, the oracle and the invariants stay.
+A change to the loop keeps the worlds, the oracle and the invariants; it may change only
+`materialise` (where `next` reads its inputs) and `answer` (how its output reads as offers).
 """
 
 import json
@@ -181,7 +182,7 @@ def materialise(root, day):
         data['items'][name] = entry
     (directory / 'plan.md').write_text('\n'.join(plan) + '\n')
     (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': pulls}))
-    state._write_state(lambda fresh: fresh.update(workspace.copy_data(data)), root, reserved=False,
+    state._write_state(lambda fresh: fresh.update(workspace.copy_data(data)), root,
                        kind='plan.approved', payload={'items': data['approved_items']})
     for kind, payload in events:
         state.append_event(kind, payload, root)
@@ -388,7 +389,7 @@ def run(tmp_path, monkeypatch):
 
 
 def seat_state(root, update):
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
 
 
 # Scheduler dead ends.
@@ -487,7 +488,7 @@ def test_783_every_gate_passed_gives_the_shepherd_that_raises_with_wuwei(run):
     root, offers = run({'cap': 1, 'items': [item('item-1', 'gating', verdicts={'quality': 'PASS'})]})
     assert offers == [('raise', 'item-1')]
     command = dispatch.next_step('item-1', root)['commands'][0]
-    assert command.startswith('wuwei brief shepherd item-1 shepherd-item-1 ')
+    assert command.startswith('wuwei seat brief shepherd item-1 shepherd-item-1 ')
     assert 'pr raise' in command and '--item item-1' in command
 
 
@@ -615,7 +616,7 @@ def test_open_duties_carry_across_days(run):
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['old-1'], raised_prs=[old],
         items={'old-1': {'phase': 'raised', 'status': 'running', 'pr': old}}),
-        directory=prior, reserved=False, kind='plan.approved')
+        directory=prior, kind='plan.approved')
     assert ('ping', 'old-1') in answer(root)
     code, reason = closing.unresolved(root, [])
     assert code == 1 and 'old-1: ping' in reason

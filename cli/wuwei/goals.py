@@ -66,15 +66,18 @@ def defined(text):
 
 
 def proposed(text, goals):
-    """(goals text, provisional): text, or while it has no goal heading, the lead's goal
-    objects rendered as goals.md text and validated by parse."""
-    if defined(text) or not isinstance(goals, list) or not goals:
+    """(goals text, provisional): the lead's goal blocks rendered as goals.md text and validated
+    by parse, which replace the recorded goals once the gate approves them (#848); goal ids
+    alone keep text, and need its goals."""
+    if not isinstance(goals, list) or not goals:
         return text, False
-    if ids := [goal for goal in goals if isinstance(goal, str)]:
-        raise ValueError(f'the lead JSON names {", ".join(ids)} without its block; have the lead write '
-                         'goals as blocks (outcome, measure, target, date, priority), or run '
-                         '/wuwei:wuwei-plan again')
     if not all(isinstance(goal, dict) for goal in goals):
+        if defined(text):
+            return text, False
+        if ids := [goal for goal in goals if isinstance(goal, str)]:
+            raise ValueError(f'the lead JSON names {", ".join(ids)} without its block; have the lead write '
+                             'goals as blocks (outcome, measure, target, date, priority), or run '
+                             '/wuwei:wuwei-plan again')
         return text, False
     blocks = ['# Goals', '']
     for goal in goals:

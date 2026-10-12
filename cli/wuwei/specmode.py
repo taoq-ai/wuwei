@@ -24,7 +24,7 @@ STEPS = {
                 ('plan', 'plan.md', 'one', '/speckit.plan'),
                 ('tasks', 'tasks.md', 'one', '/speckit.tasks'),
                 ('analyze', 'analysis.md', 'clean', '/speckit.analyze, then save its report with '
-                 'bin/wuwei spec analysis {item} < report (a subagent cannot write analysis.md)'),
+                 'bin/wuwei build analysis {item} < report (a subagent cannot write analysis.md)'),
                 ('checklist', 'checklists/*.md', 'checked', '/speckit.checklist'),
                 ('implement', 'tasks.md', 'checked', '/speckit.implement')),
     'superpowers': (('brainstorming', f'docs/superpowers/specs/{DATE}-{{item}}-design.md', 'one',
@@ -365,7 +365,7 @@ def brief_block(config, item, row, tree):
     return (f'\n## Governing document\n\n{reference} (lines {first}-{last}) governs this item. Give the text '
             'below to /speckit.analyze with the spec, and end the report with a ## Governing table: '
             '| Assumption | Verdict | Line |, one row per assumption in spec.md, the verdict agrees, '
-            'conflicts or not covered, the line cited as <path>:<n>. bin/wuwei spec analysis refuses a '
+            'conflicts or not covered, the line cited as <path>:<n>. bin/wuwei build analysis refuses a '
             f'report without it.\n\n{text}')
 
 

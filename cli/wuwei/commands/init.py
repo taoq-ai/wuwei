@@ -90,10 +90,79 @@ def run(args):
 # #838: the register comment init --upgrade wrote above config sections; removed on upgrade.
 GRAPH_COMMENT = ('# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; '
                  'bin/wuwei who walks it.')
+# Paths under .wuwei/ (files or directories) no code reads or writes; init --upgrade removes
+# them, never through a symlink and never under days/ (history).
 RETIRED_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json', 'memory/targets.lock',
-                 'memory/cruise.json', 'memory/forget.json')  # #814, #815, #833: init --upgrade removes them
+                 'memory/cruise.json', 'memory/forget.json',  # #814, #815, #833
+                 'memory/voice.md', 'memory/digests', 'inbox', 'graph.json', 'ziran',  # #810, #833, #838, #840
+                 *(f'{name}.{suffix}' for name in ('watch', 'shepherd', 'listen')  # #810, #847
+                   for suffix in ('lock', 'stdout.log', 'stderr.log')))
+RETIRED_UNITS = ('listen', 'watch', 'shepherd')  # #810, #847: user services no longer shipped
 # #800: the guide block an older init wrote into the memory.export_to file.
 GUIDE = ('<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->')
+
+
+def _retired(destination, generated):
+    """(names to remove, (name, reason) left): each RETIRED_FILES path present and each stale
+    generated copy; a symlink, or a path that resolves outside .wuwei/, is left and named."""
+    remove, left = [], []
+    for name in (*RETIRED_FILES, *generated):
+        path = destination / name
+        if not (path.exists() or path.is_symlink()):
+            continue
+        if destination.is_symlink() or path.is_symlink():
+            left.append((name, 'a symlink'))
+        elif not path.resolve().is_relative_to(destination.resolve()):
+            left.append((name, 'resolves outside .wuwei'))
+        else:
+            remove.append(name)
+    return remove, left
+
+
+def _stale_generated(plugin, destination):
+    """#848: generated copies of a skill, agent or charter the plugin no longer ships."""
+    generated = destination / 'generated'
+    if generated.is_symlink() or not generated.is_dir() or security.load(destination.parent) is None:
+        return []
+    from wuwei.commands.agents import workspace_files
+    current = workspace_files(plugin, destination)
+    kinds = {name.split('/')[0] for name in current}  # agents, charters, skills; never the config cache
+    return sorted(name for name in (path.relative_to(generated).as_posix() for path in generated.rglob('*')
+                                    if path.is_file() or path.is_symlink())
+                  if name.split('/')[0] in kinds and '/' in name and name not in current)
+
+
+def _remove(destination, name):
+    path = destination / name
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    for parent in path.parents:  # an emptied generated/<kind>/<name>/ goes with its last file
+        if parent == destination / 'generated' or not parent.is_relative_to(destination / 'generated'):
+            break
+        if any(parent.iterdir()):
+            break
+        parent.rmdir()
+
+
+def _remove_unit(path, name):
+    """Stop a retired user service and delete its unit; service failures are warnings."""
+    from wuwei import registry
+    service = registry.watch_service()
+
+    def call(argv):
+        try:
+            service.call(argv)
+        except (OSError, ValueError) as exc:
+            print(f'wuwei init: {name} service: warning: {exc}; run bin/wuwei doctor', file=sys.stderr)
+    if sys.platform == 'darwin':
+        call(['launchctl', 'bootout', f'gui/{os.getuid()}', str(path)])
+    else:
+        call(['systemctl', '--user', 'disable', '--now', path.name])
+    path.unlink(missing_ok=True)
+    if sys.platform == 'linux':
+        call(['systemctl', '--user', 'daemon-reload'])
 
 
 def _guide(root, **kwargs):
@@ -135,19 +204,59 @@ def _finish(root):
     return 0
 
 
-def _worktree_hooks(root):
-    """Rewrite every item worktree's git hooks; the scripts follow the repository's hooks (#472)."""
-    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
-    if not trees:
-        return
-    from wuwei import registry
-    from wuwei.commands.git_hook import install
-    vcs = registry.load('vcs', workspace.load_config(root))
-    for tree in trees:
+def _linked_worktrees(root, vcs, config):
+    """Every linked worktree of each configured repository, and any under worktrees/."""
+    from wuwei import brief
+    trees = {tree.resolve() for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file()}
+    for repo in config['repos']:
+        path = (root / Path(repo['path']).expanduser()).resolve()
         try:
-            install(tree, root, vcs)
+            rows = brief.read(vcs.worktrees, str(path), root=root)
+            if not isinstance(rows, list) or not all(isinstance(row, dict) and isinstance(row.get('path'), str)
+                                                     for row in rows):
+                raise ValueError(f'invalid worktree list; {DAMAGED}')
         except ValueError as exc:
-            print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
+            print(f"wuwei init warning: {repo['name']}: worktrees unread: {exc}", file=sys.stderr)
+            continue
+        trees |= {Path(row['path']).resolve() for row in rows if (Path(row['path']) / '.git').is_file()}
+    return sorted(trees)
+
+
+def _unhook(root, dry_run, config):
+    """#847: unset the core.hooksPath WUWEI set in every linked worktree of each configured
+    repository (an owner's own value stays), rewrite its anchor and remove the managed hooks
+    once no worktree may still point at them; the repository's hooks run natively. True when
+    it changed (or, dry, would change) something."""
+    from wuwei import registry
+    vcs = registry.load('vcs', config)
+    root = root.resolve()
+    changed, stuck = False, []
+    for tree in _linked_worktrees(root, vcs, config):
+        name = tree.relative_to(root).as_posix() if tree.is_relative_to(root) else str(tree)
+        try:
+            found = registry.data(vcs.unhook(str(tree), not dry_run, root=root))
+            if found['unset']:
+                changed = True
+                print(f"{'Would upgrade' if dry_run else 'Upgraded'} worktree {name}: unset core.hooksPath")
+            anchor = Path(found['git_dir']) / 'wuwei-workspace'
+            if not dry_run and (anchor.is_file() or tree.parent == root / 'worktrees'):
+                workspace.atomic_write(anchor, str(root) + '\n')
+        except ValueError as exc:
+            stuck.append(name)
+            print(f'wuwei init warning: {name}: {exc}', file=sys.stderr)
+    shims = root / '.wuwei/git-hooks'
+    if shims.is_dir() and not shims.is_symlink():
+        if stuck:
+            for name in stuck:
+                print(f'left .wuwei/git-hooks: worktree {name} may still point at it')
+            return changed
+        changed = True
+        if dry_run:
+            print('Would upgrade .wuwei/git-hooks: remove (no longer installed)')
+        else:
+            shutil.rmtree(shims)
+            print('Upgraded .wuwei/git-hooks: remove (no longer installed)')
+    return changed
 
 
 def _sections(raw):
@@ -387,8 +496,6 @@ def upgrade(args):
         uncommented = ''.join(line for line in migrated.splitlines(keepends=True)
                               if line.rstrip('\r\n') != GRAPH_COMMENT)  # #838: the register is gone
         graph_comments, migrated = uncommented != migrated, uncommented
-        graph = destination / 'graph.json'
-        graph_stale = graph.is_file() and not graph.is_symlink()
         executable = integrity.launcher(destination.parent, config)
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -404,12 +511,9 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
-        memory_dir = destination / 'memory'  # #815: never clean through a symlinked or outside memory dir
-        inside = not memory_dir.is_symlink() and memory_dir.resolve().is_relative_to(destination.resolve())
-        stale = [name for name in RETIRED_FILES if inside and (destination / name).is_file()
-                 and not (destination / name).is_symlink()]  # #815: no longer read
+        stale, left = _retired(destination, ['generated/' + name for name in _stale_generated(plugin, destination)])
         for name in [] if args.dry_run else stale:
-            (destination / name).unlink()
+            _remove(destination, name)
         from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
         tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
                                   write=not args.dry_run)
@@ -418,8 +522,6 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
-            if graph_stale:
-                graph.unlink()
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             try:  # #735: the checkouts find the workspace from anywhere
@@ -430,6 +532,11 @@ def upgrade(args):
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
             if guide_changed:
                 guide_path, guide_changed = _guide(destination.parent, raw=text)
+            from wuwei import memory  # #848: the index the deleted index command wrote
+            try:
+                memory.write_index(destination.parent)
+            except (OSError, ValueError) as exc:
+                print(f'wuwei init: warning: memory index not written: {exc}; run bin/wuwei doctor for the fix', file=sys.stderr)
         if security_data is None:
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
@@ -448,25 +555,26 @@ def upgrade(args):
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if graph_comments:
             print(f'{prefix} config.toml: remove the graph comments')
-        if graph_stale:
-            print(f'{prefix} .wuwei/graph.json: remove (no longer read)')
         if pointer_changed:
             print(f'{prefix} executable pointer')
         for name in stale:
             print(f'{prefix} .wuwei/{name}: remove (no longer read)')
+        for name, reason in left:
+            print(f'left .wuwei/{name}: {reason}')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: remove the guide block')
         for line in tickets:
             print(f'{prefix} {line}')
-        listener = workspace.watch_unit(destination.parent, name='listen')[1]  # #810: no longer shipped
-        listener = sys.platform in ('darwin', 'linux') and listener.exists() and listener
-        if listener and args.dry_run:
-            print('Would remove the listener service (no longer shipped)')
-        elif listener:
-            from wuwei import registry
-            from wuwei.commands.watch import _remove
-            _remove(listener, sys.platform, registry.watch_service(), 'listen')
-            print('Removed the listener service (no longer shipped)')
+        units = [name for name in RETIRED_UNITS if sys.platform in ('darwin', 'linux')
+                 and workspace.watch_unit(destination.parent, name=name)[1].exists()]
+        for name in units:
+            if args.dry_run:
+                print(f'Would remove the {name} service (no longer shipped)')
+            else:
+                _remove_unit(workspace.watch_unit(destination.parent, name=name)[1], name)
+                print(f'Removed the {name} service (no longer shipped)')
+        unhooked = _unhook(destination.parent, args.dry_run,
+                           workspace.load_config(destination.parent, raw=migrated))
         # #670: doctor runs the dry run, which never contacts the tracker
         labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
             destination.parent, prefix,
@@ -479,12 +587,11 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not stale and not graph_comments and not graph_stale and text == raw
-                and not tickets and not listener and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
+                and not guide_changed and not stale and not graph_comments and text == raw
+                and not tickets and not units and not unhooked and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
-        _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
         if integrity.other_versions():  # #353: another version's hooks still run
             print(integrity.RESTART)

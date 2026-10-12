@@ -321,7 +321,7 @@ def analysis(ws, monkeypatch, capsys, *args, stdin=REPORT):
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
     monkeypatch.setattr(sys, 'stdin', io.StringIO(stdin))
-    code = main(['spec', 'analysis', *args])
+    code = main(['build', 'analysis', *args])
     out = capsys.readouterr()
     return code, out.out, out.err
 
@@ -344,7 +344,7 @@ def test_spec_analysis_writes_the_report(ws, item, unanalysed, monkeypatch, caps
     assert analysis(ws, monkeypatch, capsys, 'A', '--file', str(source), stdin='')[0] == 0
     assert specmode.status(item, 'speckit', 'A')['step'] == 'analyze'
     line = specmode.brief_line(config(), 'A', {}, item, False)
-    assert 'bin/wuwei spec analysis a' in line
+    assert 'bin/wuwei build analysis a' in line
 
 
 @pytest.mark.parametrize('case, hint', [

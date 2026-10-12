@@ -1,5 +1,5 @@
 ---
-version: 1.3.0
+version: 1.4.0
 ---
 # Quality sentinel charter
 
@@ -13,3 +13,4 @@ Read `_common.md` for shared gate rules. Write the briefed quality verdict. Revi
 4. Recheck the whole fix delta against prior findings. Identify new behavior and deleted coverage before closing a finding. Use the common verdict shape.
 5. Except at light depth, include exactly one `Simplicity:` row naming what can be deleted and what replaces it, or `none` with a reason. Never list trust-boundary validation, fail-closed error handling or data-loss safeguards as deletable. Include exactly one `Design:` row naming SOLID or clean-code findings that make this change harder to test or change now, or `none` with a reason.
 6. Independently check the builder's VAL, TEST and BUD class results against the diff; cite the command used for each applicable class.
+7. Defect classes the gates caught on real days: an error path that ends a long-running job on a temporary or rate-limit failure instead of waiting and retrying, so the work done so far is lost. A headline, number or uncertainty statement that the data at the reviewed commit does not support.

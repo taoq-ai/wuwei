@@ -43,13 +43,10 @@ def test_baseline_missing_and_populated(root):
                                   'owner_intervention': '90', 'lead_time': '48'}
 
 
-def test_blank_template_baseline_is_unmeasured(root, capsys):
-    from wuwei.__main__ import main
-
+def test_blank_template_baseline_is_unmeasured(root):
     template = Path(__file__).resolve().parents[1] / 'templates/workspace/memory/notes/baseline.md'
     (root / '.wuwei/memory/notes/baseline.md').write_bytes(template.read_bytes())
-    assert main(['metrics']) == 0
-    assert json.loads(capsys.readouterr().out)['baseline'] == {
+    assert metrics.collect(root)['baseline'] == {
         'escaped_defects': 'unmeasured', 'review_rework': 'unmeasured',
         'owner_intervention': 'unmeasured', 'lead_time': 'unmeasured'}
 
@@ -106,7 +103,7 @@ def test_escaped_defects_only_full_window(root, monkeypatch):
                                   {'sha': 'late', 'at': '2026-10-16T10:00:00Z'}], 'fixes': ['b']}},
         'example/project#2': {'status': 'merged', 'merged_at': '2026-10-15T10:00:00Z',
                               'outcome': {'escaped': False, 'reverts': [], 'fixes': []}},
-    }), root, reserved=False)
+    }), root)
     assert metrics.collect(root)['escaped_defects'] == {
         'rate': 1.0, 'prs': 1, 'raw_count': 2, 'reverts': 1, 'fixes': 1}
 
@@ -115,7 +112,7 @@ def test_review_rework_counts_human_threads_followed_by_commit(root, monkeypatch
     from wuwei.registry import Result
     from wuwei import registry
 
-    state._write_state(lambda data: data.update(raised_prs=['example/project#1']), root, reserved=False)
+    state._write_state(lambda data: data.update(raised_prs=['example/project#1']), root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -144,7 +141,7 @@ def test_tracker_lead_time_and_secondary_durations(root, monkeypatch):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[adapters]\ntracker = "linear"\n')
     state._write_state(lambda data: data.update(items={'ISSUE-1': {'pr': 'example/project#1'}}),
-                       root, reserved=False)
+                       root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -182,7 +179,7 @@ def two_tickets(root, monkeypatch, created):
     state._write_state(lambda data: data.update(items={
         'a': {'pr': 'example/project#1'}, 'b': {'pr': 'example/project#2'}}, tickets={
         'a': {'id': 'acme/app#1', 'source': 'set'}, 'b': {'id': 'acme/app#2', 'source': 'set'}}),
-        root, reserved=False)
+        root)
 
     class Host:
         def pr(self, ref, root=None):
@@ -228,16 +225,13 @@ def test_malformed_ticket_data_still_fails_the_collect(root, monkeypatch):
         metrics.collect(root)
 
 
-def test_invalid_transcript_fails_closed_without_disclosing_text(root, capsys):
-    from wuwei.__main__ import main
-
+def test_invalid_transcript_fails_closed_without_disclosing_text(root):
     paths = root / 'transcripts'
     paths.mkdir()
     (paths / 'a.jsonl').write_text('{"message":"private sentinel text"\n')
-    assert main(['metrics']) == 2
-    captured = capsys.readouterr()
-    assert 'transcript' in captured.err
-    assert 'private sentinel text' not in captured.out + captured.err
+    with pytest.raises((OSError, UnicodeError, ValueError, TypeError, KeyError), match='transcript') as raised:
+        metrics.collect(root)
+    assert 'private sentinel text' not in str(raised.value)
     day = workspace.day_dir(root)
     assert not (day / 'events.jsonl').exists()
     assert not (day / 'state.json').exists()
@@ -247,7 +241,7 @@ def test_no_tracker_with_item_stays_unmeasured(root):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[adapters]\ncode_host = "none"\n')
     state._write_state(lambda data: data.update(items={'ISSUE-1': {'pr': 'example/project#1'}}),
-                       root, reserved=False)
+                       root)
     assert metrics.collect(root)['lead_time'] == 'unmeasured'
 
 
@@ -260,7 +254,7 @@ def test_report_shows_measured_outcome_beside_workspace_baseline(root, monkeypat
     (root / '.wuwei/memory/notes/baseline.md').write_text('Escaped-defect-rate: 0.25\n')
     state._write_state(lambda data: data.update(merges={'example/project#1': {
         'status': 'merged', 'merged_at': '2026-09-29T10:00:00Z',
-        'outcome': {'escaped': True, 'reverts': [], 'fixes': ['f']}}}), root, reserved=False)
+        'outcome': {'escaped': True, 'reverts': [], 'fixes': ['f']}}}), root)
     text = report.build(root)
     assert '"rate": 1.0' in text
     assert 'baseline: 0.25' in text
@@ -293,7 +287,7 @@ def test_missing_code_host_does_not_bias_defect_denominator(root, monkeypatch):
         raised_prs=['example/project#2'],
         merges={'example/project#1': {'status': 'merged',
             'merged_at': '2026-09-29T10:00:00Z',
-            'outcome': {'escaped': False, 'reverts': [], 'fixes': []}}}), root, reserved=False)
+            'outcome': {'escaped': False, 'reverts': [], 'fixes': []}}}), root)
     assert metrics.collect(root)['escaped_defects'] == 'unmeasured'
 
 
@@ -305,7 +299,7 @@ def test_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
     config.write_text(config.read_text() + '\n[adapters]\ntracker = "linear"\n')
     state._write_state(lambda data: data.update(items={'item-1': {'pr': 'example/project#1'}},
                                                 tickets={'item-1': {'id': 'ENG-1', 'source': 'set'}}),
-                       root, reserved=False)
+                       root)
     calls = []
 
     class Host:

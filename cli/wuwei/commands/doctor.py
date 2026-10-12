@@ -12,18 +12,18 @@ import shutil
 import sys
 import tempfile
 
-from wuwei import heartbeat, integrity, registry, workspace
+from wuwei import integrity, registry, workspace
 
 SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
             'gates': 'Gates and adapters', 'pr-flow': 'PR flow', 'day': 'Day and sessions',
             'guards': 'Guards'}
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
-        'host': 'docs/site/daily.md#1-install-the-signed-release',
+        'host': 'docs/site/index.md#start-here',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
         'gates': 'docs/site/security.md#ziran-integration',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
-        'day': 'docs/site/reference.md#watch-state',
-        'guards': 'docs/site/reference.md#heartbeat'}
+        'day': 'docs/site/reference.md#stuck-seats',
+        'guards': 'docs/site/reference.md#doctor'}
 CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2, 'waiting': 2}
 OUTSIDE = "python3 - <<'EOF'\nprint('gh pr list')\nEOF"  # #323: a heredoc that mentions gh
 REINSTALL = 'reinstall the signed release'
@@ -120,15 +120,17 @@ def _install(root, config):
     reason = result.reason
     if result.exit == 0:
         rows.append(_row('install', 'integrity', 'ok', reason or 'clean'))
-    elif 'run wuwei integrity check' in reason or not ('page:' in reason or 'reconfirm' in reason):
+    elif result.exit == 2 and 'page:' not in reason or not ('page:' in reason or 'reconfirm' in reason):
+        # #848: doctor reads the cached verdict; the reconfirm fix measures it again.
         rows.append(_row('install', 'integrity', 'fail' if result.exit == 1 else 'unmeasured', reason,
-                         'wuwei integrity check'))
+                         'wuwei doctor --fix --apply integrity-reconfirm, which measures it again',
+                         apply='integrity-reconfirm' if root is not None else None))
     elif _checkout() and root is not None:
-        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei integrity reconfirm',
+        rows.append(_row('install', 'integrity', 'fail', reason, 'wuwei doctor --fix --apply integrity-reconfirm',
                          apply='integrity-reconfirm'))
     else:
         rows.append(_row('install', 'integrity', 'fail', reason,
-                         'review the files named, then wuwei integrity reconfirm; or ' + REINSTALL))
+                         'review the files named, then wuwei doctor --fix --apply integrity-reconfirm; or ' + REINSTALL))
     markers = plugin / integrity.MARKERS
     count = len(list(markers.iterdir())) if markers.is_dir() else 0
     notice = integrity.restart(config)
@@ -261,10 +263,6 @@ def _host(root, config):
             rows.append(_row('host', 'memory', 'ok', f'{mib} MiB') if mib >= floor else
                         _row('host', 'memory', 'fail', f'{mib} MiB below {floor} MiB',
                              'free memory, or lower host.free_memory_mb in .wuwei/config.toml'))
-    manager = 'launchctl' if sys.platform == 'darwin' else 'systemctl'
-    rows.append(_row('host', 'service manager', 'ok', manager) if shutil.which(manager) else
-                _row('host', 'service manager', 'fail', f'{manager} not on PATH',
-                     'the watch needs launchd (macOS) or systemd --user (Linux)'))
     return rows
 
 
@@ -329,23 +327,6 @@ def _workspace(root, config, error, found):
                              f'clone the repository at {path}, or fix repos.{index}.path'))
             continue
         rows.append(_row('workspace', f'{name} git', 'ok', 'git repository'))
-        mode, hooks = config['worktree']['git_hooks'], f'{name} git hooks'
-        found = vcs.hooks_target(str(path)) if mode != 'skip' else None
-        if found is None:
-            rows.append(_row('workspace', hooks, 'ok', 'skipped (worktree.git_hooks = "skip"); the '
-                             'PreToolUse guard still refuses a force push and a push to the default branch'))
-        elif found.exit == 2:
-            rows.append(_row('workspace', hooks, 'unmeasured', found.reason,
-                             f'run git -C {path} config --show-scope --get-all core.hooksPath and fix what it names'))
-        elif found.exit:
-            rows.append(_row('workspace', hooks, 'warn', found.reason,
-                             'fix what the value names, then run wuwei init --upgrade; or set '
-                             'worktree.git_hooks = "skip" in .wuwei/config.toml'))
-        else:
-            chain = (found.data or {}).get('chain', '')
-            rows.append(_row('workspace', hooks, 'ok',
-                             f'chained with {chain}' if chain and mode == 'chain' else
-                             f'replaces {chain} (worktree.git_hooks = "replace")' if chain else 'WUWEI hooks'))
         result = vcs.branches(str(path), branch)
         rows.append(_row('workspace', f'{name} branch', 'ok', branch) if result.exit == 0 and branch in result.data
                     else _row('workspace', f'{name} branch', 'unmeasured' if result.exit == 2 else 'fail',
@@ -394,7 +375,7 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'drift', 'warn', 'calibration drift: ' + ', '.join(drifted), 'wuwei config promote')
                     if drifted else _row('workspace', 'drift', 'ok', 'none today'))
     except watch.ERRORS as exc:
-        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover'))
+        rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), "fix today's events.jsonl, then run wuwei doctor"))
     rows.append(_row('workspace', 'guards', 'ok', 'enforce (guards.enforce = true)')
                 if config['guards']['enforce'] else
                 _row('workspace', 'guards', 'ok', "log only (guards.enforce = false); the day report's "
@@ -454,61 +435,82 @@ def pr_flow(config):
 
 
 PROBE = {'ok': 'ok', 'failed': 'fail', 'unmeasured': 'unmeasured'}
+# #847: doctor's own probes, run on demand (exit codes only, no timings): two the edges refuse or
+# allow, one the records guard refuses, and the day read in process.
+PROBES = ('refused', 'allowed', 'state_write', 'state', 'seats')
+
+
+def _exit(result, want):
+    code, line, _ = result
+    if code is None:
+        return 'unmeasured', 'timeout'
+    if code == want:
+        return 'ok', f'exit {code}'
+    return 'failed', f'exit {code}' + (f': {line}' if line else '')
+
+
+def _hook(root, tool, inputs):
+    from wuwei.commands.hook import PROBE_SESSION
+    return ('hook', 'PreToolUse'), json.dumps({
+        'session_id': PROBE_SESSION, 'transcript_path': os.devnull, 'cwd': str(root / '.wuwei'),
+        'hook_event_name': 'PreToolUse', 'tool_name': tool, 'tool_input': inputs})
+
+
+def _state(root):
+    from wuwei import state
+    try:
+        state.read_state(root)
+    except ValueError as exc:
+        return 'failed', str(exc)
+    return 'ok', 'readable'
+
+
+def _seats(root):
+    from wuwei import brief, state
+    names = brief.stuck(state.read_state(root))
+    if not names:
+        return 'ok', 'none stuck'
+    return 'failed', (f'dead: {", ".join(names)}; run wuwei seat stop {names[0]} --verdict <file>, '
+                      'or --unmeasured "<reason>"')
+
+
+def measure(root):
+    """Every probe once: {name: {result: ok|failed|unmeasured, value}} in PROBES order."""
+    from wuwei import watch
+    root = Path(root)
+    calls = [_hook(root, 'Bash', {'command': 'git push --force origin main'}),
+             _hook(root, 'Read', {'file_path': str(root / '.wuwei/config.toml')}),
+             _hook(root, 'Write', {'file_path': str(workspace.day_dir(root) / 'events.jsonl'), 'content': ''})]
+    found = {}
+    for name, check in (('state', _state), ('seats', _seats)):
+        try:
+            found[name] = check(root)
+        except watch.ERRORS as exc:
+            found[name] = 'unmeasured', str(exc)
+    try:
+        (refused, allowed, written), _ = registry.watch_service().probe(calls, root / '.wuwei')
+        found.update(refused=_exit(refused, 2), allowed=_exit(allowed, 0), state_write=_exit(written, 2))
+    except (OSError, ValueError) as exc:
+        found.update({name: ('unmeasured', str(exc)) for name in ('refused', 'allowed', 'state_write')})
+    return {name: {'result': found[name][0], 'value': found[name][1]} for name in PROBES}
 
 
 def _day(root, config, probes):
-    from wuwei import watch
     from wuwei.commands import status
     rows = [_row('day', 'state', PROBE[probes['state']['result']], probes['state']['value'],
-                 'wuwei state recover'),
-            _row('day', 'planner', PROBE[probes['planner']['result']], probes['planner']['value'],
-                 'wuwei plan session <session id> --take-over from the live session')]
+                 "fix today's .wuwei/days/<date>/events.jsonl or state.json, then run wuwei doctor")]
     try:
-        found, health, beat = status.scan(workspace.day_dir(root))
+        found = status.attention(workspace.day_dir(root))
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return rows + [_row('day', 'day', 'unmeasured', str(exc), 'wuwei state recover')]
-    if health == 'alive':
-        rows.append(_row('day', 'watch', 'ok', 'alive'))
-    elif health == 'off':
-        rows.append(_row('day', 'watch', 'warn', 'not installed', 'wuwei watch install', apply='watch-install'))
-    elif health == 'dead':
-        rows.append(_row('day', 'watch', 'fail', 'dead', 'wuwei watch uninstall, then wuwei watch '
-                         'install (read .wuwei/watch.stderr.log first)'))
-    else:
-        rows.append(_row('day', 'watch', 'unmeasured', 'unmeasured', 'wuwei watch names the problem'))
-    try:  # #511: an ok row either way; scheduling is the owner's choice.
-        from wuwei import shepherd
-        last = shepherd.last_swept(root)
-        rows.append(_row('day', 'shepherd', 'ok', (
-            f'scheduled ({"launchd" if sys.platform == "darwin" else "systemd"}), last swept {last or "not yet"}'
-            if workspace.unit_installed(root, name='shepherd') else
-            'runs only in a session; bin/wuwei shepherd schedule runs it overnight'
-            + (f'; last headless sweep {last}' if last else ''))))
-    except (OSError, ValueError, TypeError, KeyError) as exc:
-        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover'))
-    rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
-                     beat or 'none today', 'wuwei heartbeat names the failed probe'))
-    try:  # #601: one credential reader; the heartbeat row reports a broken saved beat
-        theirs = watch.saved(root).get('heartbeat', {}).get('probes', {}).get('config')
-    except (OSError, ValueError, TypeError, AttributeError):
-        theirs = None
-    mine = probes.get('config')
-    if theirs and mine and theirs != mine:
-        rows.append(_row('day', 'credentials', 'warn',
-                         f"the watch's last heartbeat read {theirs.get('result')} {theirs.get('value')}; "
-                         f"doctor reads {mine['result']} {mine['value']}",
-                         'the next heartbeat rereads .wuwei/env; if this row stays, '
-                         'wuwei watch uninstall, then wuwei watch install'))
+        return rows + [_row('day', 'day', 'unmeasured', str(exc), "fix today's events.jsonl, then run wuwei doctor")]
     rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],
                      'wuwei seat stop <name> --verdict <file>, or wuwei seat stop <name> --unmeasured "<reason>"'))
     for page in found:
         if page['tier'] == 'page':  # wuwei next acts on health pages only
-            fix = ('wuwei next' if page['source'] in ('heartbeat', 'watch: health', 'listen: health') else
-                   f"wuwei why {page['reason']}" if page['source'] == 'item.escalated' else
+            fix = (f"wuwei why {page['reason']}" if page['source'] == 'item.escalated' else
                    f"read the {page['source']} event in today's .wuwei/days/<date>/events.jsonl, "
                    'act on it, then run wuwei doctor')
-            rows.append(_row('day', page['source'] + (' page' if page['source'] == 'heartbeat' else ''), 'fail',
-                             str(page['reason']), fix))
+            rows.append(_row('day', page['source'], 'fail', str(page['reason']), fix))
     gaps = sum(page.get('count', 1) for page in found if page['source'] == 'traces.gap')
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
                      "read the traces.gap events in today's .wuwei/days/<date>/events.jsonl, then run wuwei doctor"))
@@ -517,17 +519,6 @@ def _day(root, config, probes):
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
                      'launch agents from a session inside the workspace after the morning plan; '
                      'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
-    from wuwei import watch
-    try:  # #599: the last SessionStart says whether Bash calls carry WUWEI_SESSION_ID.
-        flags = [row['payload']['env_file'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
-                 if row['kind'] == 'session.seen' and 'env_file' in row['payload']]
-        rows.append(_row('day', 'session id', 'ok', 'SessionStart exported it' if flags else 'not recorded today')
-                    if not flags or flags[-1] else
-                    _row('day', 'session id', 'warn', 'SessionStart had no CLAUDE_ENV_FILE, so Bash calls do not carry '
-                         'WUWEI_SESSION_ID',
-                         'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
-    except watch.ERRORS as exc:
-        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover'))
     return rows
 
 
@@ -567,38 +558,23 @@ def _tracker_labels(root, config):
     return _row('day', 'tracker labels', 'ok', 'none missing')
 
 
-TIMED = ('refused', 'allowed', 'state_write', 'read_loop')  # the heartbeat probes that carry ms
-
-
 def _probe_fix(name, probes):
-    """A failed guard probe row's fix. #782: a probe over its time is a busy host or a
-    missing cached line, never a reinstall; damaged files are the integrity row's."""
-    value = probes[name]['value']
-    if 'plugin integrity' in value:
+    """A failed guard probe row's fix; damaged files are the integrity row's."""
+    if 'plugin integrity' in probes[name]['value']:
         return 'fix the integrity row first'
-    if value != 'timeout' and ' ms over ' not in value:
-        return 'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL
-    budget = heartbeat.STATUS_LINE_BUDGET_MS
-    peers = {other: probes[other] for other in TIMED if other != name}
-    if all(row['value'] == 'timeout' or row.get('ms', 0) > budget for row in peers.values()):
-        fastest = min(((row['ms'], other) for other, row in peers.items() if 'ms' in row), default=None)
-        detail = f'fastest hook probe {fastest[1]} {fastest[0]} ms' if fastest else 'every hook probe timed out'
-        return (f'every launcher call in this run was slow ({detail}): the host is busy, not the '
-                'hook; rerun wuwei doctor when fewer seats run')
-    if name == 'status_line':
-        return ('only status --line was slow: it prints the line the watch heartbeat caches each '
-                'tick, and a dead watch caches none; fix the watch row, then rerun wuwei doctor')
-    return 'only this probe timed out in this run; rerun wuwei doctor'
+    if probes[name]['value'] == 'timeout':
+        return 'the hook did not answer in time; rerun wuwei doctor when fewer seats run'
+    return 'the hook no longer behaves as shipped; ' + REINSTALL
 
 
 def _guards(root, probes):
-    from wuwei.commands.hook import HEARTBEAT_SESSION
+    from wuwei.commands.hook import PROBE_SESSION
     rows = [_row('guards', name, PROBE[probes[name]['result']], probes[name]['value'], _probe_fix(name, probes))
-            for name in ('refused', 'allowed', 'state_write', 'read_loop', 'git_read', 'status_line')] if root is not None else []
+            for name in ('refused', 'allowed', 'state_write')] if root is not None else []
     fix = 'upgrade WUWEI: outside a workspace every hook must allow (#323)'
     try:
         with tempfile.TemporaryDirectory() as outside:
-            payload = json.dumps({'session_id': HEARTBEAT_SESSION, 'transcript_path': os.devnull, 'cwd': outside,
+            payload = json.dumps({'session_id': PROBE_SESSION, 'transcript_path': os.devnull, 'cwd': outside,
                                   'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
                                   'tool_input': {'command': OUTSIDE}})
             (result,), _ = registry.watch_service().probe([(('hook', 'PreToolUse'), payload)], outside)
@@ -612,7 +588,7 @@ def _guards(root, probes):
 
 
 def diagnose(section=None):
-    """Every row (or one section's), in section order; reads only (heartbeat's state.lock aside)."""
+    """Every row (or one section's), in section order; reads only."""
     error = None
     try:
         root = workspace.find_workspace()
@@ -631,7 +607,7 @@ def diagnose(section=None):
             _row('pr-flow', 'config', 'unmeasured', error or ('no workspace' if root is None else UNLOADED),
                  'fix config.toml first')]
     defaults = config or workspace._validate({}, workspace.SCHEMA, (), '')
-    probes = heartbeat.measure(root) if root is not None else None
+    probes = measure(root) if root is not None else None
     rows = [*_install(root, config), *_host(root, defaults), *_workspace(root, config, error, found)]
     if root is not None:
         if config is None:
@@ -672,18 +648,10 @@ def _upgrade(root, dry):
     return init.upgrade, Namespace(path=str(root), dry_run=dry)
 
 
-def _service(name):
-    def make(root, dry):
-        from wuwei.commands import watch
-        return (lambda args: watch.service(args, name, None),
-                Namespace(**{f'{name}_action': 'install'}, once=False, dry_run=dry))
-    return make
-
-
 def _reconfirm_preview(root):
     result = integrity.check(root)
     if not result.data:
-        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei integrity check to see the current verdict')
+        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei doctor to see the current verdict')
     return f'installation fingerprint {result.data}\n', result.data
 
 
@@ -695,12 +663,11 @@ def _reconfirm(root, token):
 
 
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (guards.enforce, state recover, the code host)
+# apply(root, token) -> exit). Decisions (guards.enforce, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
-    'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
+    'integrity-reconfirm': ('wuwei doctor --fix --apply integrity-reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
-    'watch-install': _planned('wuwei watch install', _service('watch')),
 }
 
 

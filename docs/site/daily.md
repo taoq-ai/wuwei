@@ -1,353 +1,155 @@
 # The daily path
 
-One path for a solo owner through one day: install, configure, plan, build and review,
-decide, close. Every command here is daily use. Anything else is in
-[recovery](recovery.md). `bin/wuwei` below is the executable in the plugin
-directory; the planner uses the one recorded in `.wuwei/executable`. Each Claude Code
-session in the workspace gets the same flow as [what the session knows](agent.md).
+One day for a solo owner, walked through `wuwei next`. Install is on the [home](index.md) page;
+anything else is in [recovery](recovery.md). `wuwei` below is the executable recorded in
+`.wuwei/executable`, and every command runs in the Claude Code session.
 
-## 1. Install the signed release
+The loop is the same all day. The planner runs `wuwei next --json` and does what it returns:
+every ready launch, every due duty, and at most one owner decision, asked on its card. When a
+seat stops, its completion notification brings the planner back, and it calls `wuwei next`
+again. You answer cards; you never edit a file or move a phase by hand.
 
-Claude Code, Python 3.11 or newer, Git and `ssh-keygen` must be available. From your
-project directory:
+## 1. Start
 
-```sh
-curl -fL https://github.com/taoq-ai/wuwei/releases/latest/download/wuwei.tar.gz -o ../wuwei.tar.gz
-mkdir -p ../wuwei-plugin
-tar -xzf ../wuwei.tar.gz -C ../wuwei-plugin --strip-components=1
-```
+In a project with no workspace, `wuwei next` names `bin/wuwei init --shadow`. That creates
+`.wuwei/` with the guards logging only, so your first week shows what they would refuse
+without refusing it. `wuwei doctor` then checks the install, host, workspace, gates and
+guards in one pass, and prints the fix for anything not ok.
 
-In Claude Code:
-
-```text
-/plugin marketplace add ../wuwei-plugin
-/plugin install wuwei@wuwei
-```
-
-Then create the workspace in your project directory:
-
-```sh
-../wuwei-plugin/bin/wuwei init --shadow
-```
-
-`init` ends with `plugin integrity: clean` for an intact signed release. A development
-checkout needs one host confirmation first; see [recovery](recovery.md).
-
-Then run `bin/wuwei doctor`. It checks the install, host, workspace, [gates](concepts.md#gate), day and guards in
-one pass and prints the fix for anything that is not ok; `bin/wuwei doctor --fix` applies the
-deterministic fixes after one confirmation. When something fails on the first day, see
-[troubleshooting](recovery.md#troubleshooting).
-
-Then open Claude Code in the workspace and say what you want; the session knows the rest.
+Each session starts with an orientation block from the SessionStart hook: the next action,
+the guard switch, the goals and memory. A plugin integrity problem shows there as a warning.
 
 ## 2. Configure
 
-Open Claude Code in the workspace. `wuwei next` asks for the repositories first: the planner
-asks you which repositories WUWEI works on (owner/repo, path, default branch) and runs
-`wuwei config add-repo --name <owner/repo> --path <path> --branch <branch>` for each one. Each
-run shows the `config.toml` diff and asks its Owner step card; nothing is written until you
-answer Yes.
+With no repository configured, `wuwei next` returns the `setup` row. The planner asks you
+which repositories WUWEI works on and runs
+`wuwei config add-repo --name <owner/repo> --path <path> --branch <branch>` for each. Each
+run prints the `config.toml` diff and its Owner step card; nothing is written before your Yes.
 
-Then the planner runs `wuwei config promote`. It surveys each checkout and proposes what the
-repositories declare: fast checks, CI check names, deploy workflows and environments, each from
-the file and line it came from ([calibration](configuration.md#calibration)). It prints the
-diff and the calibration it will record in `.wuwei/calibration.json`, and asks its Owner step
-card. `wuwei config promote --measure` also times each test runner once and proposes only the
-fast ones.
+`wuwei config promote` proposes what each checkout declares: fast checks, CI check names,
+deploy workflows and environments, each from the file and line it came from. It asks its
+card too. Any other value is one `wuwei config set <key> <value>`, on its own card
+([configuration](configuration.md)).
 
-Any other value is one `wuwei config set <key> <value>`, on its card too. Credentials go in
-`.wuwei/env`; `bin/wuwei config check` names each variable the selected adapters still need.
-You do not write goals by hand: the lead proposes them at the first morning plan and
-`wuwei plan approve` records the ones you approve. A later change to `.wuwei/memory/goals.md` is
-recorded by the next gate approval.
-[Configuration](configuration.md) lists every key.
-
-Then run `bin/wuwei doctor`. A missing calibration warns `never applied` with the fix
-`wuwei config promote`. The branch protections and the watch service are the usual first-day
-findings:
-
-```text
-$ bin/wuwei doctor
-...
-Gates and adapters
-  fail       config check: exit 1
-      fix: apply the fix each detail line names
-      ...
-      Host protections:
-      acme/widget main: classic protection: none visible (404: unprotected or no admin)
-      acme/widget main: required checks: missing (require status checks on main)
-      acme/widget main: required reviews: ok (solo owner: shepherd.min_reviewers = 0)
-      acme/widget main: force pushes: missing (block force pushes on main)
-      acme/widget main: deletions: missing (block deletions of main)
-      acme/widget main: fix in https://github.com/acme/widget/settings/branches
-      ...
-Day and sessions
-  ...
-  warn       watch: not installed
-      fix: wuwei watch install
-      ...
-doctor: 1 fail, 1 warn, 0 unmeasured, 0 waiting
-```
-
-Set the protections when you are ready, and run `bin/wuwei watch install` when you want the
-background supervisor. See [troubleshooting](recovery.md#troubleshooting) when a first-day
-check fails.
-
-`--shadow` starts a first week in the observe posture. The guards then record what they would
-refuse and let the call through. Records still refuse. Deploys, releases and messages that wait
-for your approval ask you on a card, and merges and approvals stay yours. Read the `## Shadow`
-section of the day report. When `bin/wuwei doctor` asks after `guards.shadow_days`, run
-`wuwei config set security.posture '"guarded"'`, or keep watching with
-`wuwei config set guards.shadow_days 14`; each asks its card. See
-[security posture](concepts.md#security-posture).
+When your first week is up, `wuwei config set guards.enforce true` turns the guards on.
 
 ## 3. Plan and the morning gate
 
-Run `/wuwei plan` in Claude Code. The planner registers its session
-(`wuwei plan session`), sweeps live work, asks the lead for candidates and writes the
-proposal with `wuwei plan propose`, which orders the queue by your framework. It then asks you one
-`Morning gate` question, `Approve today's plan as proposed?`. Pick `Change something` to get
-the separate questions on goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
-[envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answer. While `memory/goals.md` has no goals,
-the lead proposes them, `plan.md` shows them as provisional and the approval question shows the
-blocks. On approval the planner records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed [--note "<your words>"]`, which also writes
-the approved goals to `memory/goals.md`.
+Run `/wuwei plan`. `wuwei next` then walks the morning in order:
 
-When an item in the plan needs a deploy, a release or a merge you decide, the lead lists it and
-the plan shows it as an `Owner-only: <action> <target> (owner step)` line. The gate does not
-approve it ahead of time: when the seat gets there, the command asks you its own Owner step card
-([owner-only actions](concepts.md#owner-only-actions)).
+1. `wuwei plan session <session id>` registers this session as the day's planner.
+2. `wuwei doctor --section pr-flow` checks the PR flow settings once.
+3. `wuwei seat brief lead day lead` briefs the lead, and the planner launches it. The lead
+   proposes goals, the ordered candidates with their tickets, seats, the envelope, and any
+   open PRs of yours to claim.
+4. `wuwei plan propose .wuwei/days/<date>/lead.json` orders the queue and writes `plan.md`.
+5. `wuwei plan gate` prints the morning gate card: `Approve today's plan as proposed?`
 
-An item that comes up after the gate needs no second gate. Say what it is and which goal it
-serves; the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"` and the item
-joins today's plan. Every builder and gate brief for it quotes your words under `Approved as:`,
-and `wuwei why <item>` shows them.
+Pick Approve and the planner runs the card's command,
+`wuwei plan approve --items <ids> --goals-confirmed`. That records the plan and writes any
+new goal blocks to `memory/goals.md`. Pick `Change something` to change goals, queue,
+tickets, seat policy, CAP, envelope or carry-over; the lead's answer is edited and proposed
+again. Nothing launches before your answer.
 
-The planner asks the morning gate as question cards. After you approve, it records the goals
-and the plan, and you can run the last command yourself. A clean first plan with one
-goal and one item looks like this:
+An item that comes up later needs no second gate. Say what it is and which goal it serves;
+the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"`. Every brief for it
+quotes your words under `Approved as:`, and `wuwei why <item>` shows them.
 
-```text
-$ wuwei plan propose .wuwei/days/<date>/lead.json
-<project>/.wuwei/days/<date>/plan.md
-$ wuwei plan approve --items DIV-1 --goals-confirmed
-$ bin/wuwei status --line
-WUWEI 1 planned · seats 0/1 | pages 0 · observe
-$ bin/wuwei next
-dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
-```
-
-It worked when `memory/goals.md` holds your goal, the status line shows `1 planned` and
-`bin/wuwei next` names the first item. `plan approve` prints nothing when it succeeds, and
-`meeting unmeasured` only means no calendar is set up. It did not work when the status line
-has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see
-[troubleshooting](recovery.md#troubleshooting).
+To keep an item's merge for yourself, say so at the gate or later. The planner records
+`wuwei plan set <item> owner_merge=true`, and that PR then always comes to you.
 
 ## Starting with work in progress
 
-Your open pull requests, branches and worktrees stay as they are; nothing is recreated. The
-morning sweep lists the open PRs you authored in the configured repositories (by
-`owner.handles`) under `## Open PRs to claim` in the plan, and the gate card names them:
-`Claims PR-12 (owner/repo#12)`. Approving the gate claims each one under the first goal.
+Your open PRs, branches and worktrees stay as they are. The gate card names the open PRs you
+authored, for example `Claims PR-12 (owner/repo#12)`. Approving claims each one as an
+[adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
+`wuwei pr claim owner/repo#12 --goal G-1`.
 
-Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
-makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
-claim adopts it too. A PR opened after the
-gate is claimed with `bin/wuwei pr claim owner/repo#12 --goal G-1`; with one configured
-repository a bare `12` works, and with one goal for the day `--goal` can go.
-
-The [shepherd](concepts.md#shepherd) needs no checkout. `bin/wuwei pr act` pings reviewers, reads CI, answers review
-threads and takes the merge decision through the code host. Only a fix round or a rebase needs a
-checkout, and then `pr act` returns an `adopt` action with the exact command and `then` to run
-after it:
-
-- `bin/wuwei worktree adopt <path> --item <item>` registers a worktree you already have. It
-  chains the hooks, writes the pre-push anchor at the current HEAD and records the path. It
-  refuses a tree with uncommitted or untracked files and names them.
-- `bin/wuwei worktree add <item> --branch <branch>` checks the existing branch out in
-  `worktrees/<item>` and records it as the item's.
-
-Run `bin/wuwei pr act <ref>` again and the fix round starts in that worktree.
+The shepherd needs no checkout. When a fix round needs one, `wuwei worktree adopt <path>
+--item <item>` registers a clean worktree you have, or `wuwei worktree add <item> --branch
+<branch>` checks the branch out.
 
 ## 4. Through the day
 
-The day starts in parallel. After you approve, the planner runs `wuwei dispatch next --all`,
-which lists every item that can move now: items at the gate first, then items building, then
-planned items up to CAP, each goal's share first. It briefs the new items and launches the
-whole set in one turn, so several builders, and an item's three gate seats, run at the same
-time. An item that does not fit waits and says why. The status line shows
-`seats 2 of CAP 3 (G-1 1, G-2 1)`, and `bin/wuwei next` names the waiting item and the seat
-expected to free first.
+After the gate, each `wuwei next` returns a set: the launches ready now, the duties due, and
+one decision when there is one. A short example:
 
-Watch the status line and `bin/wuwei next`. The status line counts items in words, for
-example `1 building`, and later `1 shipped`. The planner runs one loop per item and
-executes each returned action unchanged:
+```text
+$ wuwei next
+set: Ready now: 2 launch(es). Do every launch and every duty now: ...
+build A: wuwei dispatch next --all
+build B: wuwei dispatch next --all
+```
 
-1. Worktree and builder brief: `wuwei worktree add <item>`, then
-   `wuwei brief builder <item> <name> --worktree <path> --file -`.
-2. Build: `wuwei build next <item>` returns `launch`, `continue`, `check`, `park` or
-   `done`. The planner runs `launch` and `continue` through Agent and a `check` through
-   its `command` (`wuwei build check <item>`), then calls `build next` again. `done` means
-   the checks passed and the item is in `gate`.
-3. Gates: `wuwei dispatch next <item>` returns `gates` with the roles still needed. The
-   planner writes one gate brief per role, for example
-   `wuwei brief quality <item> quality-1 --gate --worktree <path> --file -`, and calls
-   `dispatch next` again. Its `seats` list holds one ready action per brief: `launch`
-   with `prompt` and `agent_type`, and `receive`, the exact
-   `wuwei dispatch receive <item> <role> <seat>` call to run after the seat stops. At the
-   first gate the action also carries the item's `tier`: `light` asks for the quality gate
-   only, `standard` and `full` for all three.
-4. Fix round: when a gate says FIX, `dispatch next` returns `fix` with `command`
-   (`wuwei build next <item>`). The item is already in `fix` and the stopped builder has a
-   `continue` action with the FIX verdict files as feedback. The planner launches a fresh
-   Agent with its `prompt`; Claude Code's Agent takes no `resume`. Then it runs the build
-   loop again until `done`, which moves the item to `delta`.
-   A [PARK](concepts.md#park) verdict parks the item with its reason and no card. An
-   ESCALATE verdict returns `escalate` with the Owner step card of `dispatch next <item>`
-   and exits 1; the planner asks it. On Yes the next `dispatch next` opens the fix round;
-   on No it parks the item. At the round cap it parks the item and names
-   `wuwei plan resume <item>`, which asks you its own card. `build next` prints the same
-   answer.
-5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that did not pass, and `seats` holds a
-   `continue` action per seat with its `prompt`, `resume` (the seat's agent ID) and a
-   `receive` call with `--round delta`. The planner launches it as a fresh Agent, which
-   continues the same seat. `dispatch next` records the head the fix round left on the
-   reviewer's seat, and the `continue` feedback names it. The delta verdict's `Head:` is that
-   head, whether the planner continues the seat in its session or as a fresh Agent. After
-   the delta verdicts it returns `raise` with review notes,
-   the next fix round, or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
-   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. With no round left the item parks with its reason,
-   and `escalate` names `wuwei plan resume <item>` as its `command`. A
-   light item has no delta review: its `continue` feedback starts
-   `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
-6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
-   <file> --item <item>` opens the PR, links it to the item and moves the item to `raised`.
-   The shepherd opens it this way. A `gh pr create` for a recorded item that links no PR
-   warns naming `wuwei pr raise ... --item <item>` below strict and is refused under strict. `wuwei pr state`
-   reads the host; `wuwei pr act <ref>` returns the next PR action, including a post-PR fix
-   round. When the host reports the PR merged, the item is `merged`, whatever round it
-   was in.
+The planner runs the whole set in one turn, so builders and an item's gate seats run at the
+same time, up to [CAP](concepts.md#cap). An item waiting on another, or past CAP, takes no seat.
 
-Process depth follows the [tier](concepts.md#tier). A light item skips the class sweep, gate step zero and
-the long verdict rows. A standard item sweeps only the classes `wuwei sweep classes
-<worktree>` lists and mutates only when its diff touches guard code or a trust path, or the lead flagged it
-trust_surface or boundary_relevant. Each
-brief's `Depth:` line says which. The report's `## Cycle time` section shows how long each
-merged item took and the median per tier against the targets (light 60, standard 180
-minutes).
+**Build.** For a planned item the planner adds its worktree (`wuwei worktree add <item>`) and
+writes the brief (`wuwei seat brief builder <item> <name> --worktree <path> --file -`). Then
+`wuwei build next <item>` returns `launch`, `continue`, `check`, `park` or `done`. A `check` is
+`wuwei build check <item>`, which runs the fast checks. On a non-trivial item the builder
+first runs every step of the [spec engine](concepts.md#spec-engine). `done` moves the item to
+`gate`.
 
-On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
-(spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
-the item's worktree. Under [strict mode](concepts.md#strict-mode) the build loop keeps the item from the gates
-until all of them are done. An item the lead marks `tier: light` skips the spec. To skip one
-item yourself, run `bin/wuwei plan set <item> spec=skipped --reason <why>` in a host
-terminal; `spec=required` turns the check back on.
+**Gates.** `wuwei dispatch next <item>` sets the [tier](concepts.md#tier) and names the gate
+roles. The planner writes one brief per role, for example
+`wuwei seat brief quality <item> quality-1 --gate --worktree <path> --file -`, and launches
+them together. After each seat stops, `wuwei dispatch receive <item> <role> <seat>` records
+its verdict at the item's head.
 
-Phases move by themselves: `planned`, `implement`, `gate`, `fix`, `delta`, `raised`,
-`merged`. You never move one by hand on this path.
+**Fix and delta.** A FIX opens a fix round: the builder continues as a fresh Agent with the
+verdicts as feedback. Then the gates that asked for the fix review again, the
+[delta](concepts.md#delta). A light item has no delta; the same sentinel re-reads it.
+A [PARK](concepts.md#park) verdict parks the item with its reason and no card. An ESCALATE,
+or a blocker at the round cap, comes to you as the day's decision.
 
-To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
-the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
-`wuwei merge`, `merge check`, `pr act`, the PR guard and the overnight shepherd refuse that
-PR, whatever the merge policy says, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
-the `owner-merge` label and, when raised after the flag, an `Owner merges:` line in its body.
-Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host terminal; the
-next pass then follows the normal merge policy. If you merge it by hand instead, the item
-moves to `merged` with the flag still set, so the record shows which way it went.
+**Raise.** Once every gate passed at the head, `wuwei next` launches the shepherd. It runs
+`wuwei pr raise <owner/repo> --base main --title <title> --body-file <file> --item <item>`,
+which opens the PR and moves the item to `raised`. `wuwei pr state` reads the PRs from the
+code host. Red checks, a conflict or a moved head come back from `wuwei next` as `wuwei pr
+act <pr>` or a new gate pass.
 
-With a tracker set up, an item can carry a [ticket](concepts.md#ticket); the plan links an
-open one when it is the item's work, and no item waits for one. `wuwei next` shows the ticket
-id beside the item. The ticket's claim, in-review and done updates are duties: one that is
-due shows as a `duty` row in `wuwei next`, and close waits on it. One the tracker refused
-is listed in the day report.
+**Duties.** With a review channel set, a raised PR brings the `ping` duty: post the review
+request. New review threads bring the `shepherd` duty. With a tracker or an owner page, a merge
+brings the `tracker` duty. The
+planner writes each one and records it with `wuwei duty <item> <duty> --evidence <link>`.
+See [duties](concepts.md#duties).
 
-A message to other people through an MCP tool goes out only when that tool is on
-`outward.allow`. Otherwise the refusal names one line, `bin/wuwei config set outward.allow
-'["<tool>"]' --add`; the planner runs it, asks you its Owner step card, and the call passes
-on retry. A write to your own DM, canvas or page is never held.
+**Merge.** When the checks are green, `wuwei next` offers `wuwei merge <pr>`. It applies the
+merge policy: gates at head, required checks, approvals, threads, the soak and the merge
+method. When a rule that is yours to decide stands in the way, it prints its Owner step card.
+When the code host reports the PR merged, the item is `merged`.
 
-PR changes reach the planner without you. Every change on a raised or claimed PR that
-needs an action is one `pr.changed` event with a summary, for example
-`PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed`.
-Each part is delivered once. A passed check, a resolved conflict, a reviewer request, a
-timestamp, or a PR starting or stopping being owned does not wake the planner;
-`bin/wuwei watch why <pr>` says what the last change fired and what it suppressed.
-The Stop hook message lists that summary first, and the status line
-shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
-learns of a change at its next turn (its next Stop or session start): Claude Code cannot
-put input into an idle session. For CI events in your own
-session, the Claude Code desktop PR monitor is the complement.
+Watch the day with `wuwei status --line`, for example `WUWEI 1 building · seats 1/3`.
 
 ## 5. Owner decisions
 
-What reaches you comes from `bin/wuwei next`, one decision at a time: the morning gate, a
-merge the policy does not clear or one you keep, an ESCALATE verdict, a parked item to
-resume and a scope change a reviewer asks on a PR. The command that needs your answer
-prints its Owner step card; the planner asks it in the session and runs the command again on
-Yes. A [PARK](concepts.md#park) verdict parks the item without asking you; the report and
-`bin/wuwei why <item>` show its reason.
+What reaches you comes from `wuwei next`, one decision at a time: the morning gate, a round
+cap spent, an ESCALATE verdict, a merge the policy does not clear or one you keep, and a PR
+closed unmerged. The command that needs your answer prints its Owner step card. The planner
+asks it as a question card in the session, the recommended option first. On Yes the same
+command runs again ([owner decisions](concepts.md#owner-decisions)).
 
-To answer from your phone, run the planner session with Claude Code Remote Control
-(`claude --remote-control`, or `/remote-control` inside the session) and turn on
-"Push when actions required" in `/config`. Each question then reaches the Claude
-mobile app and stays open until you answer.
-
-Seats do not ask what their mandate lets them decide: they record two-way choices under
+Seats do not ask what their mandate lets them decide. They record two-way choices under
 `Assumptions:` and name a one-way question in their result.
-
-### How you answer
-
-In the Claude Code session (desktop app, terminal or IDE alike) each owner question shows up
-as a question card: tap an option, the recommended one first. The planner records your pick
-with the command printed beside the card. When that command needs your confirmation in a
-host terminal, the planner shows you the line to run.
-
-Away from the session, the same question reaches your phone through Remote Control.
-
-Use the host terminal for what a hook sends there: today your commands listed at the top
-of this section, and under `strict` posture everything owner-only.
-
-## Long sessions
-
-The planner session is the one long-lived context of the day; seats are fresh per item.
-Quality can drift as that context grows, so WUWEI measures it and lets you rotate the
-planner on a schedule.
-
-- Measured: `bin/wuwei report` has a `## Quality by band` section with gates, FIX rate,
-  fix rounds, verdict lint rejections and your interventions. It splits them per hour band (morning
-  05-11, midday 11-14, afternoon 14-18, evening 18-05, in `owner.timezone`) and per
-  planner session-age band (turns since it started today, or compacted). `bin/wuwei retro`
-  compares the last 7 days, names the worst band when its FIX rate leads every other band
-  by `metrics.band_margin`, and proposes a planner charter line for you to promote or
-  reject.
-- Rotation: set `sessions.rotate_after` (`turns`, `compactions` or a `clock` time; off by
-  default). At the first turn past the limit with no running seat, the Stop hook tells the planner to end the session once. Start a fresh Claude
-  Code session in the workspace and run
-  `wuwei plan session "$WUWEI_SESSION_ID" --take-over` there. `bin/wuwei sessions` shows
-  the old session as `rotated`, and the events record `session.rotated`. Nothing is lost:
-  the day lives in `.wuwei/`, not in the transcript.
-- Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
-  with the orientation block: what WUWEI is, the posture and the next step from
-  `bin/wuwei next`. `Active constraints:` follows with the day's goals, the approved plan
-  and the briefs of running seats. The full day state is no longer pasted
-  into the session; it is one command away, `bin/wuwei state get`.
-
-Set them with `bin/wuwei config set` in a host terminal, for example
-`bin/wuwei config set owner.timezone '"Europe/Lisbon"'`,
-`bin/wuwei config set metrics.band_margin 0.3` or
-`bin/wuwei config set sessions.rotate_after.turns 200`. Each shows a diff and applies it
-after its [digest](concepts.md#digest) ([configuration](configuration.md)).
 
 ## 6. Close
 
-The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
-`wuwei report` (shipped, merged, parked with its reason and [unmeasured](concepts.md#unmeasured) sources) and ends with
-`wuwei close`. Its `## Steward runs` section counts today's [steward](concepts.md#steward) runs by trigger and
-names the setting that drives the sweep, `watch.sweep_seconds`. `close` refuses while an obligation is open and names it; the Stop hook
-holds the session until close is clean. For each open item close asks: carry it to
-tomorrow (recommended), park it, or keep working, and records the answer with
-`wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with
-`bin/wuwei status --line`.
+When every approved item is merged, parked, carried or escalated, `wuwei next` returns
+`wuwei close`. It refuses while an item, a decision or a duty is open, and asks one question
+per open item: carry it to tomorrow (recommended), park it, or keep working. The planner
+records your answer with `wuwei plan carry ITEM` or `wuwei plan park ITEM`.
 
-Anything not on this page is recovery, not daily use: see [recovery](recovery.md).
+Once nothing is open, `close` runs the steward's close review. `wuwei next` then returns, in
+order:
+
+1. `wuwei retro` compiles the steward retro.
+2. `wuwei retro --promote` lands the supported charter proposals and writes the memory index.
+3. `wuwei retro` again records what promote applied.
+4. `wuwei report` writes the day report: merged, parked with its reason, carried, cycle time,
+   skipped duties and [unmeasured](concepts.md#unmeasured) sources. The planner shows it to
+   you, and the `summary` duty posts it to your DM when that channel is set.
+5. `wuwei close` closes the day.
+
+`wuwei close --check retro` checks the retro preconditions on its own. Tomorrow starts with
+`wuwei next`, and carried items come back on the next morning gate.

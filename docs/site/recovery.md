@@ -1,128 +1,60 @@
 # Recovery
 
-The [daily path](daily.md) needs none of these commands. Each one here is recovery, not
-daily use: reach for it when evidence and state disagree, a seat is lost, or the
-installation changed. Before a release, the [release rehearsal](rehearsal.md) drives a
-real day; its failures point back here.
+The [daily path](daily.md) needs none of this page. Reach for it when evidence and records disagree, a seat is lost, or the installation changed. Before a release, the [release rehearsal](rehearsal.md) drives a real day, and its failures point back here.
 
 ## Troubleshooting
 
-Start with `bin/wuwei doctor`: it names each problem with its fix, and
-`bin/wuwei doctor --fix` applies the deterministic ones after one confirmation. See
-[doctor](reference.md#doctor). The entries below are first-day recovery: what a first run
-on 0.11.0 showed, what changed in 0.12.0, and the command for each.
+Start with `bin/wuwei doctor`. It checks the install, host, workspace, gates, PR flow, day and guards, and prints each problem with its fix. It exits 0 when all is well, 1 on a finding and 2 when something could not be measured.
 
-### Every tool call is refused with plugin integrity
+- `--json` prints the rows as JSON.
+- `--section pr-flow` prints one section.
+- `--fix` applies the fixes it can apply safely. Today these are `init-upgrade` and `integrity-reconfirm`. It previews them, asks one Owner step card in the session, and applies them on your Yes. Then it diagnoses again.
+- `--fix --apply <ids>` narrows the batch to those fix ids.
+- `--fix --widget` prints the card and applies nothing.
 
-The refusal names a file under `.in_use/`. Claude Code writes one marker there per running
-Claude process, and 0.11.0 counted each marker as tampering. From 0.12.0 the check skips
-files named by a process id directly in the install root's `.in_use/`; any other name, a
-directory, a symlink or a deeper `.in_use` is still a finding. Install the new release and
-run `bin/wuwei init --upgrade`. If it still refuses, `bin/wuwei integrity check` names the
-files. Doctor's `in_use` row counts the markers.
+Every other row stays printed with the command that fixes it. See [doctor](reference.md#doctor) for the full row list.
+
+### Why did that happen
+
+`bin/wuwei why <target>` reads the day records and explains, writing nothing. The target is `last refusal`, an event id, `adhoc`, a PR ref `owner/repo#<n>` or an item. `last refusal` prints the guard, the rule, the command and the fix. `--full` adds event ids and evidence paths.
 
 ### config.toml does not load
 
-Every tool is refused with the parse error, except `ToolSearch` and a `Read`, `Grep` or
-`Glob` of `.wuwei/config.toml` or its charters, so the session can still show the line. Run
-`bin/wuwei config check`: it names the key, the line and the fix.
+Every tool call is refused with the parse error. A `Read`, `Grep` or `Glob` of the config or charters still passes, and so does `config set` with its card. Run `bin/wuwei config check`; it names the key, the line and the fix.
 
-### repos = [] next to [[repos]] tables
+A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei init --upgrade` removes the line, and `doctor --fix` offers it.
 
-The load error ends with "repos is assigned on line N; delete that line before using
-[[repos]] tables". `bin/wuwei init --upgrade` removes the line, and `doctor --fix` offers it.
-The template no longer ships `repos = []`.
+### A stuck seat
 
-### Changing one value
+A seat whose report cannot be read is stopped as `unmeasured`, never left running. `wuwei next`, the doctor `stuck seats` row and `why` name it. From the planner session:
 
-Do not edit `config.toml` by hand for a single value. `bin/wuwei config set <key> <value>`
-and `bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch>` show a
-diff and apply it after its digest. Edit the file yourself only for a table or a value that
-spans lines.
+- `bin/wuwei seat stop <name> --verdict <file>` records the report from a file. It runs the same stop guards, and a sentinel's file must pass the verdict lint first.
+- `bin/wuwei seat stop <name> --unmeasured "<reason>"` stops it so the day can move. A builder's running build parks with that reason.
 
-### fast_checks stays empty after promote
+An adhoc seat has no report, so only `--unmeasured` clears it. See [stuck seats](reference.md#stuck-seats).
 
-0.11.0 left an explicit `fast_checks = []` alone. From 0.12.0 a one-line empty list is
-filled by `bin/wuwei config promote`, like the deploy lists. An empty list is a state, not an
-error: items build with checks none configured and CI is the evidence, in every posture.
+### A damaged event log line
 
-### A test suite is proposed as a fast check
+The day's records live in `.wuwei/days/<date>/events.jsonl`; `state.json` is only its cache. A torn cache is rebuilt from the log. A line that never finished writing recorded nothing, and the records skip it.
 
-A test runner is CI only unless measured. `wuwei config promote --measure` times each one
-against `calibrate.fast_check_seconds` and proposes only the fast ones
-([calibration](configuration.md#calibration)).
+The doctor `state`, `day` and `drift` rows read the log strictly. A damaged line shows there as unmeasured, naming the file. Agent tools cannot edit the log. Open it in your editor and remove only the incomplete line. Do not reorder or delete other lines: an event id is the line number. Then run `bin/wuwei doctor` again.
 
 ### Branch protection reads as unmeasured
 
-A 404 on the classic endpoint means the branch is unprotected or you lack admin.
-`bin/wuwei config check` now prints `classic protection: none visible (404: unprotected or
-no admin)` and reads the rulesets as well.
+A 404 on the classic endpoint means the branch is unprotected or you lack admin. `bin/wuwei config check` prints `classic protection: none visible` and reads the rulesets as well.
 
-### A read-only shell command was refused
+## Integrity reconfirm
 
-From 0.12.0 a `for` loop, `$(...)` or `git symbolic-ref` that only reads is not refused, and
-outside a workspace every hook allows. If a refusal remains, `bin/wuwei why last refusal`
-prints the guard, the rule, the command and the fix. Under `observe`, the day report's
-`## Shadow` section lists what would have been refused.
+`bin/wuwei doctor --fix --apply integrity-reconfirm` records your confirmation of a development checkout or a changed installation. An intact signed release never needs it.
 
-## state transition
-
-`bin/wuwei state transition <item> <phase>` moves an item's phase by hand. It is recovery,
-not daily use: on the daily path `build next`, `dispatch next`, `pr raise` and an observed
-merge move every phase. Use it only when the recorded phase disagrees with the evidence,
-for example to resume a parked item. It accepts only the moves in the
-[item phase order](reference.md#item-phase-order).
-
-## runtime dispatch
-
-`bin/wuwei runtime dispatch <role> <brief> <worktree>` returns launch instructions for a
-logged brief. The planner uses it for lead and shepherd seats. By hand it is recovery,
-not daily use: relaunch a lost sentinel from a fresh brief, or launch a Codex seat.
-
-## runtime continue
-
-`bin/wuwei runtime continue <job-json> <feedback>` returns the same seat's instructions
-with feedback. It is recovery, not daily use: return a rejected or unmeasured verdict to
-its seat, or continue a Codex sentinel with the job `runtime dispatch` printed. Claude
-delta continuations come from the `seats` list of `dispatch next`.
-
-## integrity reconfirm
-
-`bin/wuwei integrity reconfirm` records your confirmation of a development
-checkout or a changed installation. It is recovery, not daily use: an intact signed
-release needs no reconfirmation. Run it in a host terminal and answer y
-after reviewing the contents. See the [index](index.md#development-checkouts) for what
-it records.
-
-## Other recovery
-
-`bin/wuwei state recover` restores an unreadable `state.json` from its snapshot; see
-[state recovery](reference.md#state-recovery). Owner-only commands are listed under
-[host terminal actions](reference.md#host-terminal-actions).
+Review the files the integrity row names first. The command prints the installation fingerprint and asks its Owner step card in the session. On your Yes it measures again and records the confirmation only if nothing changed meanwhile. A later change to the installation voids it. See [integrity](integrity.md).
 
 ## Seat launch contract
 
-Write and log a brief with `wuwei brief <role> <item> <name> --body TEXT` (or
-`--file PATH`, where `--file -` reads stdin), then obtain launch
-instructions with `wuwei runtime dispatch <role> <brief> <worktree>`. With the Claude
-runtime, pass the returned `prompt` unchanged to Agent and use its `agent_type`
-(`wuwei:<role>`) as Agent's `subagent_type`. Supply an Agent description and launch
-from the workspace root, which is the hook payload's `cwd`.
+`wuwei next` returns each ready launch with its prompt. Builder and gate launches come from `bin/wuwei build next` and `bin/wuwei dispatch next`. Pass the prompt to Agent unchanged, with `wuwei:<role>` as `subagent_type`, from the workspace root.
 
-The prompt carries the line `WUWEI brief: <relative brief path>`. The path is relative
-to the workspace root, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`,
-not relative to the item's worktree. The line may stand on any line of the prompt:
-a note you add before or after WUWEI's prompt is kept on the seat, and
-`wuwei why <item>` shows it. The guard still requires the logged, unchanged brief and
-matching role, fresh evidence and available capacity. A WUWEI seat type launched without
-the line is refused under strict, naming `bin/wuwei brief <role> <item> <name>`. Below
-strict it is registered as an adhoc seat with that warning, so WUWEI can trace and stop it
-but cannot receive or continue it. Any launch refusal the posture lets through is shown
-to the session as `seat not registered: <reason>`.
+The prompt carries the line `WUWEI brief: <path>`, relative to the workspace root, such as `.wuwei/days/<date>/briefs/builder-1.md`. A note you add before or after it stays on the seat. The launch guard still needs the logged, unchanged brief, the matching role and free capacity.
 
-The core function `wuwei.brief.launch_prompt` generates these instructions for all
-Claude roles, including the actions `build next` and `dispatch next` return.
-`wuwei runtime continue <job-json> <feedback>` preserves the reference
-and includes feedback for the same seat. It does not authorize a second launch
-with a consumed brief. `wuwei steward run --trigger close` returns the same contract
-inside `steward_launch`, through the configured runtime adapter.
+To brief a seat by hand, write and log the brief with `bin/wuwei seat brief <role> <item> <name> --body TEXT`, or `--file PATH` (`-` reads stdin).
+
+A WUWEI seat type launched without the line is refused while `guards.enforce` is on, naming `seat brief`. With it off, the launch is registered as an adhoc seat with a warning, which WUWEI can trace and stop but not continue. An agent of another type is an adhoc seat once the day has records. Record it first with `bin/wuwei seat start --role <role> --adhoc "<prompt>"` to label it.

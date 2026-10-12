@@ -71,7 +71,7 @@ def off_path(data, events, traces):
 
 def validate(data, events, hooks, start=False, traces=None):
     """Return measured findings. Assistant prose cannot satisfy any assertion. start: the
-    session got only start_prompt, so no probe, Skill call or scripted Stop block is required,
+    session got only start_prompt, so no probe, Skill call or scripted close refusal is required,
     and any refusal or help call is a finding."""
     findings = []
     def require(condition, message):
@@ -101,7 +101,7 @@ def validate(data, events, hooks, start=False, traces=None):
                     and e['payload'].get('role') == role and e['payload'].get('round') == 'initial'
                     and e['payload'].get('verdict') == 'PASS' for e in events), f'{role} gate missing')
     for event, code in [('SessionStart', 0), ('PreToolUse', 0), ('PostToolUse', 0),
-                        ('SubagentStop', 0), *([] if start else [('Stop', 2)]), ('Stop', 0)]:
+                        ('SubagentStop', 0)]:
         require(any(h['event'] == event and h['exit'] == code for h in hooks),
                 f'missing hook exit: {event}={code}')
     if not start:
@@ -126,33 +126,14 @@ def validate(data, events, hooks, start=False, traces=None):
                 f'{role} launch hook missing')
         require(any(h['event'] == 'SubagentStop' and h['exit'] == 0
                     and h.get('agent_type') == 'wuwei:' + role for h in hooks), f'{role} stop hook missing')
-    planner = data.get('planner_session_id')
-    stops = [(i, h['exit']) for i, h in enumerate(hooks)
-             if h['event'] == 'Stop' and h.get('session') == planner]
     closes = [i for i, h in enumerate(hooks) if h.get('args') == ['close'] and h['exit'] == 0]
     if start:
         require(bool(closes), 'close did not succeed')
         return findings + conformance(events, hooks) + (off_path(data, events, traces)
                                                         if traces is not None else [])
-    require(bool(planner) and bool(stops) and stops[-1][1] == 0 and
-            any(block < close < stops[-1][0] for block, code in stops if code == 2 for close in closes),
-            'planner must block, close successfully, then stop cleanly')
-
-    def yielded(start, end):
-        """#477: a clean planner Stop between a start row and the first later end row."""
-        for index, row in enumerate(hooks):
-            last = next((k for k in range(index + 1, len(hooks)) if end(hooks[k])), None) if start(row) else None
-            if last is not None and any(index < stop < last for stop, code in stops if code == 0):
-                return True
-        return False
-    require(yielded(lambda h: h['event'] == 'PreToolUse' and h['exit'] == 0 and h.get('tool') == 'Agent'
-                    and h.get('input', {}).get('subagent_type') == 'wuwei:builder',
-                    lambda h: h['event'] == 'SubagentStop' and h.get('agent_type') == 'wuwei:builder'),
-            'planner did not yield a turn between the builder launch and its stop')
-    require(yielded(lambda h: h['event'] == 'PreToolUse' and h['exit'] == 0 and h.get('tool') == 'Bash'
-                    and 'build check A' in str(h.get('input', {}).get('command', '')),
-                    lambda h: h.get('args') == ['build', 'check', 'A']),
-            'planner did not yield a turn between the check launch and its result')
+    refused = [i for i, h in enumerate(hooks) if h.get('args') == ['close'] and h['exit'] != 0]
+    require(any(block < close for block in refused for close in closes),
+            'close must refuse before the retro, then succeed')
     return findings
 
 
@@ -310,7 +291,7 @@ plan propose proposal.json and plan approve --items A --goals-confirmed.
 description "headless refusal probe", prompt "Deliberate test: no brief".
 This must be denied. The fixture authorizes this one negative probe; resolve it
 by logging the proper brief next, never bypassing the guard.
-3. Write brief builder A builder --worktree repo --body "Verify README.md
+3. Run seat brief builder A builder --worktree repo --body "Verify README.md
 exists and run the configured fast checks. This is a verification-only fixture;
 no tracked edits are needed. Do not commit. Report Blocked: none, Gap: none,
 Change: none on separate lines if verified. Keep the worktree clean."
@@ -320,22 +301,21 @@ builder's completion notification arrives, call build next A; run any returned
 check command through Bash in the background and end your turn; when it exits,
 call build next A until done; done moves A to gate. Never imitate Agent with Bash, synthesize a transcript, or run a hook
 in place of Agent.
-4. Run dispatch next A. For each of arch, quality, security write brief
+4. Run dispatch next A. For each of arch, quality, security run seat brief
 sentinel-ROLE A ROLE --gate --worktree repo --body TEXT, where TEXT describes this
 verification-only item, no remote CI and no tracked changes. Ask for a narrow
 review of README presence and measured fast checks, a verdict at the brief's
 path with Head, Probe, residual risk, VAL, CLASS, Simplicity and Design rows as
 applicable, and the three-line retro with Change: none if no charter change is
-needed. Use runtime dispatch sentinel-ROLE BRIEF repo, then Agent with the exact
-returned prompt and agent_type. These three reviews may run in parallel.
+needed. Run next --json and launch each gate seat it lists with Agent, passing its
+prompt and agent_type unchanged. These three reviews may run in parallel.
 After each seat stops, dispatch receive A ROLE ROLE. dispatch next A must say raise.
 5. This fixture deliberately publishes nothing. Run plan park A --reason fixture.
 Run close now, BEFORE retro: it must refuse. Its
 steward_launch is an instruction: launch that steward via Agent with the returned
 prompt unchanged; its scope is to observe only, propose no changes for this
-fixture, and return a three-line retro. End your turn once now, so the real Stop
-hook blocks for the missing day retro. After the Stop refusal, run retro, then
-close --check retro, then close. Finish only after close succeeds.
+fixture, and return a three-line retro. Then run retro, then close --check retro,
+then close. Finish only after close succeeds.
 Do not treat unmeasured adapter output as clean. If any unexpected refusal or
 error occurs, report it and stop. No prose response is used as proof of success.
 '''
@@ -370,7 +350,7 @@ def exercise(*, local_login=False, start=False, model='sonnet'):
         for finding in findings:
             print('headless e2e finding: ' + finding)
         if not findings:
-            print('Headless e2e passed: plan, builder, gates, blocked Stop and clean close measured')
+            print('Headless e2e passed: plan, builder, gates, refused close and clean close measured')
         return int(bool(findings))
 
 
@@ -380,19 +360,18 @@ def rehearsal_prompt(plugin, stage, *, repo=None, base=None, pr=None):
         return f"""Continue the same day. Use {cli} for every wuwei command, from the workspace root. Run merge {pr}. Then
 run pr state until it reports {pr} as merged, polling at most once a minute. Then
 run report, retro, close --check retro and close. Finish only after close
-succeeds. Never run state transition, state set or state recover, and never edit
-files under .wuwei directly. If a command refuses or fails, report it and stop.
+succeeds. Never edit files under .wuwei directly. If a command refuses or fails, report it and stop.
 """
     return f"""Run this WUWEI release rehearsal day. Invoke Skill wuwei:wuwei-plan first.
 The fixture owner explicitly approves proposal.json, goals G-1, queue A, CAP 1,
 seat policy and envelope as supplied. Reuse the supplied proposal; do not launch
 discovery or ask interactive questions. Use {cli} for every wuwei command, always
-from the workspace root. Never run state transition, state set or state recover,
-and never edit files under .wuwei directly: the product moves every phase. If a
+from the workspace root. Never edit files under .wuwei directly: the product moves
+every phase. If a
 command refuses unexpectedly, report it and stop. Follow these steps:
 1. Register your planner session as the skill says. Run plan propose
 proposal.json and plan approve --items A --goals-confirmed.
-2. Run worktree add A. Write brief builder A builder --worktree <that worktree>
+2. Run worktree add A. Run seat brief builder A builder --worktree <that worktree>
 --body "Add REHEARSAL.md with the line status: draft and commit it on the item
 branch. Follow any fast check feedback exactly and commit again."
 3. Run the build next A step loop exactly as the skill says until done: pass each

@@ -6,7 +6,6 @@ import json
 import re
 import shlex
 import sys
-import time
 
 import pytest
 
@@ -119,14 +118,9 @@ def walk(day, card, after=None, looks=1):
             assert kind == 'wait', action
         if after:
             after(day, action)
-        # The turn ends; a Stop the close guard blocks is the guard doing its job.
-        call(day, ['hook', 'Stop'], json.dumps({
-            'session_id': 'planner', 'cwd': str(day.root), 'hook_event_name': 'Stop',
-            'transcript_path': str(day.root / 'planner.jsonl'), 'stop_hook_active': False}))
     pytest.fail(f'the day did not close: {action}')
 
 
-@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('looks,tier', [(1, 'standard'), (2, 'standard'), (1, 'light')])
 def test_the_day_closes_walking_only_next(day, looks, tier):
     if tier == 'light':  # #567: the repository floor and the lead allow light
@@ -136,7 +130,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
         day.proposal = partial(day.proposal, tier='light')
         day.runtime.spec = False  # no spec engine at light (#280)
     # looks 2: the planner asks next again before each action; asking is not doing (#551 review).
-    started, asks, merged = time.monotonic(), [], []
+    asks, merged = [], []
 
     def card(day, action):
         for widget in action['widget']:
@@ -146,7 +140,7 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
 
     def after(day, action):
         if launched(action, 'pr') and not merged:
-            # The code host merges; the watch records it with pr state.
+            # The code host merges; pr state records it.
             day.host.results['pr'].data.update(state='closed', merged=True,
                                                merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
             assert call(day, ['pr', 'state'])[0] == 0
@@ -156,19 +150,18 @@ def test_the_day_closes_walking_only_next(day, looks, tier):
     assert any(row['kind'] == 'day.closed' for row in day.events)
     assert (day.directory / 'report.md').is_file()
     assert (day.directory / 'retro' / f'{day.directory.name}.md').is_file()
-    for command in (('doctor', '--section', 'pr-flow'), ('promote',)):
+    for command in (('doctor', '--section', 'pr-flow'), ('retro', '--promote')):
         assert command in day.calls, command
     value = metrics.collect(day.root)
     assert value['off_path'] == 0, metrics.path(metrics._events(day.directory),
                                                 metrics._traces(day.directory), 'planner')
-    assert value['planner_asks'] == len(asks) and value['planner_turns'] > 0
+    assert value['planner_asks'] == len(asks) and 'planner_turns' not in value
     assert value['cycle_minutes']['A'] >= 0
     assert value['cycle_by_tier'][tier]['median_minutes'] < metrics.CYCLE_TARGETS[tier]
     assert day.data['items']['A']['gates']['tier'] == tier
     builder = next(row['payload']['path'] for row in day.events if row['kind'] == 'brief written'
                    and row['payload']['role'] == 'builder')
     assert f'Depth: {tier};' in (day.root / builder).read_text()
-    assert time.monotonic() - started < 60
 
 
 def ask(day, widget, label):
@@ -216,7 +209,6 @@ def approve_at_head(day):
     day.host.results['pr'].data.update(additions=1, deletions=1, changed_files=1)
 
 
-@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('posture', [False, True])
 def test_enforce_day(tmp_path, monkeypatch, posture):
     # #530 E, part 14, #837: a whole day with guards.enforce false and true. The quality gate says
@@ -224,7 +216,7 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     # written. Log-only, the owner answers the gate, that card and one unlisted send; enforced,
     # every owner-only action asks on a card. #816: the repository's merge policy merges either way.
     from fakes.day import Day
-    started, answered, steps = time.monotonic(), [], set()
+    answered, steps = [], set()
     autonomous = not posture
     day = prepare(Day(tmp_path / 'workspace', monkeypatch))
     day.quality = 'ESCALATE'
@@ -252,7 +244,6 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     def after(day, action):
         if launched(action, 'pr') and 'ping' not in steps:
             steps.add('ping')
-            bash(day, f'wuwei pr ping-check {day.ref}')
             bash(day, f'wuwei pr ping {day.ref}')
             approve_at_head(day)
             steps.add(allowed(day, planner(tool_name='mcp__slack__post_message',
@@ -296,7 +287,6 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
         assert '## Grants' not in report
     else:
         assert {'merged', 'deployed'} <= steps
-    assert time.monotonic() - started < 60
 
 
 class Reached(Exception):

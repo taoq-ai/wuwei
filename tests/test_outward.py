@@ -570,8 +570,7 @@ def test_hook_lint_humanizes_mcp_writes(configured, monkeypatch, capsys):
 def test_every_free_text_adapter_write_goes_through_the_port():
     import inspect
     from wuwei import outward, registry, shepherd
-    exempt = {('tts', 'speak'): 'local', ('redactor', 'redact'): 'local',
-              ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint',
+    exempt = {('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint',
               # #422: a table of validated counts; telemetry send runs security.outbound itself.
               ('code_host', 'issue'): 'telemetry.validate and security.outbound in wuwei telemetry send'}
     port = 'outward_operation.<locals>.decorate.<locals>.call'

@@ -21,7 +21,7 @@ def test_merged_item_reads_done(tmp_path, monkeypatch, capsys):
         '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\n'
         'target: 1\ndate: 2026-10-30\npriority: 1\n')
     (root / '.wuwei/config.toml').write_text(
-        '[adapters]\ntts = "none"\ncalendar = "none"\ncode_host = "none"\n')
+        '[adapters]\ncode_host = "none"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T10:00:00+02:00')
     monkeypatch.chdir(root)
@@ -32,14 +32,10 @@ def test_merged_item_reads_done(tmp_path, monkeypatch, capsys):
                   'candidates': [candidate('DIVIDE-1')]}, root)
     plan.approve(['DIVIDE-1'], root, goals_confirmed=True)
     for phase in ('implement', 'gate', 'raised'):
-        assert main(['state', 'transition', 'DIVIDE-1', phase]) == 0
-    capsys.readouterr()
-    assert main(['state', 'get', 'items.DIVIDE-1.status']) == 0
-    assert json.loads(capsys.readouterr().out) == 'queued'
-    assert main(['state', 'transition', 'DIVIDE-1', 'merged']) == 0
-    capsys.readouterr()
-    assert main(['state', 'get', 'items.DIVIDE-1.status']) == 0
-    assert json.loads(capsys.readouterr().out) == 'done'
+        state.transition('DIVIDE-1', phase, root)
+    assert state.read_state(root)['items']['DIVIDE-1']['status'] == 'queued'
+    state.transition('DIVIDE-1', 'merged', root)
+    assert state.read_state(root)['items']['DIVIDE-1']['status'] == 'done'
     record = {'agent_id': 'builder-1', 'agent_type': 'builder',
               'fields': {'Blocked': 'none', 'Gap': 'none', 'Change': 'none'},
               'missing': [], 'invalid': []}
@@ -60,7 +56,7 @@ def steward_root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['A'],
-        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path, reserved=False)
+        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path)
     return tmp_path
 
 
@@ -91,7 +87,8 @@ def test_one_close_steward_review_per_day(steward_root, monkeypatch, capsys):
     assert [row['payload']['trigger'] for row in runs()] == ['close']
     assert len(calls) == 1
     capsys.readouterr()
-    assert main(['steward', 'run', '--trigger', 'close']) == 0
+    from wuwei import steward
+    assert steward.run(trigger='close') == 0
     brief_path = first.relative_to(root).as_posix()
     assert (capsys.readouterr().out
             == f'steward: close review already ran today (brief {brief_path})\n')
@@ -142,7 +139,7 @@ def test_report_prints_mapping_metrics_as_json(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
-    state._write_state(lambda data: data.update(items={}), root, reserved=False)
+    state._write_state(lambda data: data.update(items={}), root)
     rework = {'mean_per_pr': 0, 'median_per_pr': 0, 'p90_per_pr': 0.0, 'share_with_rework': 0.0}
     real = metrics.collect
     monkeypatch.setattr('wuwei.report.metrics.collect',

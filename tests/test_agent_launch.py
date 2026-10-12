@@ -107,7 +107,7 @@ def test_missing_brief_names_the_brief_command(launch, monkeypatch, case):
         payload['tool_input']['prompt'] = f'WUWEI brief: ./.wuwei/days/{directory.name}/briefs/never.md'
     before = (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text())
     assert check(payload) == (2, f'brief .wuwei/days/{directory.name}/briefs/{name}.md does not exist; '
-                                 f'run bin/wuwei brief sentinel-arch <item> <name> first')
+                                 f'run bin/wuwei seat brief sentinel-arch <item> <name> first')
     assert (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()) == before
 
 
@@ -154,12 +154,6 @@ def test_memory_floor_equality_and_completed_seats(launch, monkeypatch):
     monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 1024**3)
     set_seats({'done': {'role': 'builder', 'item': 'X', 'status': 'done'}}, day[0])
     assert check(payload) == (0, '')
-
-
-def test_brief_event_cannot_be_forged_by_event_command(day, capsys):
-    from wuwei.__main__ import main
-    assert main(['event', 'brief written', '{}']) == 1
-    assert 'reserved' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('case', ['already-launched', 'already-running'])
@@ -353,17 +347,6 @@ def test_stale_reservation_is_named(launch, monkeypatch, age, cap, host_seats, i
     assert state.read_state(day[0])['seats']['old-seat']['status'] == 'running'
 
 
-def test_stand_down_event_cannot_release_reservation(launch, monkeypatch, capsys):
-    from wuwei.__main__ import main
-    from wuwei.guards import agent_launch
-    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    day, payload = launch
-    assert check(payload) == (0, '')
-    assert main(['event', 'seat stood down', '{"name":"gate"}']) == 1
-    assert 'reserved' in capsys.readouterr().err
-    assert state.read_state(day[0])['seats']['gate']['status'] == 'running'
-
-
 @pytest.mark.parametrize('blocks', [False, True])
 @pytest.mark.parametrize('next_day', [False, True])
 def test_subagent_stop_resolves_runtime_id_from_brief(launch, monkeypatch, blocks, next_day):
@@ -401,7 +384,7 @@ def test_builder_stop_requests_no_discovery(launch, monkeypatch):
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     assert check(payload) == (0, '')
     state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
-                       day[0], reserved=False)
+                       day[0])
     transcript = day[0] / 'builder.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': payload['tool_input']['prompt']}}) + '\n')
@@ -467,7 +450,7 @@ def test_default_capacity_fits_builder_and_three_gates(day, monkeypatch):
     assert workspace.load_config(root)['host']['seats'] == 0  # derived (#528)
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
-    state._write_state(lambda data: data['items'].update({'Y': {}}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update({'Y': {}}), root)
     for role, item, name in [('builder', 'Y', 'builder'),
                              ('sentinel-arch', 'X', 'arch'),
                              ('sentinel-quality', 'X', 'quality'),
@@ -551,7 +534,7 @@ def test_launch_needs_no_ticket(launch, monkeypatch, settings, ticket):
         stream.write(settings)
     if ticket:
         state._write_state(lambda data: data.update(tickets={'X': {'id': ticket, 'source': 'set'}}),
-                           root, reserved=False)
+                           root)
     assert check(payload) == (0, '')
     assert state.read_state(root)['seats']
     assert 'has no ticket' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
@@ -574,7 +557,7 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
     root, directory, _, _ = day
     (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n')
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    state._write_state(lambda data: data.update(cap=1), root, reserved=False)
+    state._write_state(lambda data: data.update(cap=1), root)
     for name in ('one', 'two', 'three', 'four'):
         assert brief(monkeypatch, 'body', 'builder', 'X', name) == 0
         relative = str((directory / f'briefs/{name}.md').relative_to(root))
@@ -585,7 +568,7 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
 
 def drop_day(directory):
     """No day yet: no records in the log (#844) and no cache."""
-    for name in ('state.json', state.SNAPSHOT, 'events.jsonl'):
+    for name in ('state.json', 'events.jsonl'):
         (directory / name).chmod(0o600)
         (directory / name).unlink()
 
@@ -613,7 +596,7 @@ def test_untyped_launch_registers_adhoc_seat(day, enforce, inputs, kind):
     from wuwei import brief as module
     root, directory, _, _ = day
     set_enforce(root, enforce)
-    state._write_state(lambda data: data.update(planner_session_id='P'), root, reserved=False)
+    state._write_state(lambda data: data.update(planner_session_id='P'), root)
     assert check(adhoc_launch(root, **inputs)) == (0, '')
     seat = state.read_state(root)['seats']['adhoc-1']
     assert seat.pop('started_at')
@@ -667,7 +650,7 @@ def test_untyped_stop_stops_its_adhoc_seat(day):
     assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
     assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
     state._write_state(lambda data: data['seats']['adhoc-2'].update(trace_sessions=['P:a2']),
-                       root, reserved=False)
+                       root)
     transcript = subagent_transcript(root / 'agent-a2.jsonl')
     assert agent_launch.stop(adhoc_stop(root, transcript, 'a2')) == (0, '')
     seats = state.read_state(root)['seats']
@@ -846,13 +829,13 @@ def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, description, item):
     from wuwei import brief as module
     root, directory, _, _ = day
     set_enforce(root, False)
-    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root, reserved=False)
+    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root)
     code, reason = check(unbriefed(root, description))
     assert code == 1
     named = item or "<item>"
     assert reason.startswith('unbriefed launch registered as adhoc seat adhoc-1 for '
                              + (item or "no item of today's plan")), reason
-    assert f'bin/wuwei brief sentinel-arch {named} <name>' in reason
+    assert f'bin/wuwei seat brief sentinel-arch {named} <name>' in reason
     seat = state.read_state(root)['seats']['adhoc-1']
     assert seat['role'] == 'adhoc' and seat['item'] == (item or 'adhoc-1')
     assert seat['label'] == 'sentinel-arch' and seat['type'] == 'wuwei:sentinel-arch'
@@ -869,7 +852,7 @@ def test_unbriefed_typed_launch_is_refused(day, monkeypatch, capsys):
     assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', UNBRIEFED_PROMPT]) == 0
     before = events(directory)
     code, reason = check(unbriefed(root))
-    assert code == 1 and 'bin/wuwei brief sentinel-arch X <name>' in reason
+    assert code == 1 and 'bin/wuwei seat brief sentinel-arch X <name>' in reason
     assert state.read_state(root)['seats'] == {} and events(directory) == before
 
 

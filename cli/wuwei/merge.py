@@ -104,6 +104,14 @@ def journals(root):
     return entries, breakers
 
 
+def supervised(root):
+    """#847: the merge journal's refs poll still supervises: not failed, and unmerged or merged
+    under 28 days ago."""
+    now = workspace.now()
+    return [ref for _, ref, entry in journals(root)[0] if entry['status'] != 'failed'
+            and (not entry.get('merged_at') or now - obligations._time(entry['merged_at']) < timedelta(days=28))]
+
+
 def checked_pr(host, ref, root):
     pr = read(host.pr, ref, root=root)
     if f'{pr["repo"]}#{pr["number"]}' != ref:
@@ -472,7 +480,7 @@ def locked(root):
 
 def save_entry(root, directory, ref, entry, kind):
     state._write_state(lambda data: data.setdefault('merges', {}).update({ref: entry}),
-                       root, directory=directory, reserved=False, kind=kind,
+                       root, directory=directory, kind=kind,
                        payload={'pr': ref, 'head': entry['head'], 'status': entry['status'],
                                 'evidence': entry['evidence']})
 
@@ -533,7 +541,7 @@ def trip(root, repo, policy, reason, *, ref=None, kind='merge.breaker', incident
     entry = {'epoch': max(policy['reset_epoch'], integer(prior['epoch']) if prior else 0),
              'reason': reason, 'at': workspace.now().isoformat(), 'incidents': [*seen, incident]}
     state._write_state(lambda data: data.setdefault('merge_breakers', {}).update({repo: entry}),
-                       root, reserved=False, kind=kind,
+                       root, kind=kind,
                        payload={'repo': repo, 'pr': ref, 'reason': reason, 'tier': 'page'})
 
 
@@ -669,14 +677,6 @@ def monitor(root, directory, ref, entry, host, settings):
     if 'merge_commit' not in entry:
         entry.update(status='merged', merge_commit=merge_commit, merged_at=pr['merged_at'])
         save_entry(root, directory, ref, entry, 'merge.completed')
-        from wuwei import dispatch
-        items = state.read_state(directory=directory)['items']
-        item = next((name for name, row in items.items() if row.get('pr') == ref), None)
-        if item is not None:
-            dispatch.tracker_call(item, 'done', root)
-        else:
-            state.append_event('tracker.call', {'item': '', 'pr': ref, 'action': 'done',
-                               'exit': 2, 'reason': 'no item linked to merged PR'}, root)
     age = workspace.now() - obligations._time(entry['merged_at'])
     if age >= timedelta(days=28):
         return 0, None
@@ -724,7 +724,8 @@ def monitor(root, directory, ref, entry, host, settings):
 
 
 def poll(root):
-    """Reconcile merge intents and supervise base checks from the existing watch."""
+    """Reconcile merge intents and supervise base checks; next (with each PR listing refresh)
+    and report run it."""
     result, cohort, unreadable_repos = 0, {}, set()
     try:
         config = workspace.load_config(root)

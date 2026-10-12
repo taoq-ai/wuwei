@@ -58,7 +58,7 @@ UNBRIEFED = ('unbriefed launch registered as adhoc seat {name} for {target}: the
 
 def _fix(role, item):
     item = item or '<item>'
-    return (f'write the brief with bin/wuwei brief {role} {item} <name>, then launch with the prompt '
+    return (f'write the brief with bin/wuwei seat brief {role} {item} <name>, then launch with the prompt '
             f'bin/wuwei build next {item} or bin/wuwei dispatch next {item} returns')
 
 
@@ -83,7 +83,7 @@ def _unbriefed(payload, root, inputs, role):
         if not workspace.load_config(root)['guards']['enforce']:
             return _adhoc(payload, role=role)
         item = _named_item(data, inputs) or item
-    raise brief.Refused(f'no WUWEI brief: line in the Agent prompt; write the brief with bin/wuwei brief '
+    raise brief.Refused(f'no WUWEI brief: line in the Agent prompt; write the brief with bin/wuwei seat brief '
                         f'{role} {item} <name>, then launch with the prompt bin/wuwei build next {item} '
                         f'or bin/wuwei dispatch next {item} returns')
 
@@ -124,7 +124,7 @@ def _adhoc(payload, role=None):
             'launcher': (isinstance(session, str) and sessions.registered(data, session)) or 'adhoc',
             'prompt': redact(prompt.strip().splitlines()[0])[:200], 'prompt_sha256': digest,
             'status': 'running', 'started_at': workspace.now().isoformat()}
-    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
+    state._write_state(reserve, root, kind='seat launched', payload=event)
     if role is None:
         return 0, ''
     return 1, UNBRIEFED.format(name=event['name'], target=found[-1] or "no item of today's plan",
@@ -171,7 +171,7 @@ def _check(payload):
         raise ValueError(f'invalid brief path; {DAMAGED}')
     if not path.exists():  # #725: its prefix is in RECORDS_FLOOR, so it always blocks
         return 2, (f'brief {path.relative_to(root)} does not exist; '
-                   f'run bin/wuwei brief {role} <item> <name> first')
+                   f'run bin/wuwei seat brief {role} <item> <name> first')
     try:
         rows = [json.loads(line) for line in (directory / 'events.jsonl').read_text().splitlines()]
         if any(not isinstance(row, dict) or not isinstance(row.get('kind'), str)
@@ -182,7 +182,7 @@ def _check(payload):
     matches = [row['payload'] for row in rows if row['kind'] == 'brief written'
                and row['payload'].get('path') == relative]
     if not matches:
-        raise brief.Refused('no brief logged for this launch; write the brief first with bin/wuwei brief, then launch with the name it returns')
+        raise brief.Refused('no brief logged for this launch; write the brief first with bin/wuwei seat brief, then launch with the name it returns')
     if len(matches) != 1:
         raise ValueError(f'ambiguous brief events; {DAMAGED}')
     logged, = matches
@@ -191,11 +191,11 @@ def _check(payload):
     if logged['name'] != path.stem or type(logged.get('gate')) is not bool:
         raise ValueError(f'invalid logged brief metadata; {DAMAGED}')
     if role != logged['role']:
-        raise brief.Refused('Agent role does not match logged brief role; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+        raise brief.Refused('Agent role does not match logged brief role; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
     if 'name' in inputs and inputs['name'] != logged['name']:
-        raise brief.Refused('Agent name does not match logged brief name; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+        raise brief.Refused('Agent name does not match logged brief name; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
     if hashlib.sha256(path.read_bytes()).hexdigest() != logged.get('sha256'):
-        raise brief.Refused('brief modified since it was logged; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+        raise brief.Refused('brief modified since it was logged; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
     note = _note(inputs['prompt'], relative, path, root, role)
     if logged.get('second_opinion'):
         raise brief.Refused('second-opinion brief runs through wuwei dispatch opinion, not Agent')
@@ -232,7 +232,7 @@ def _check(payload):
         if not continuing and (logged['name'] in brief.seats(data) or any(
                 row['kind'] == 'seat launched' and row['payload'].get('name') == logged['name']
                 for row in rows)):
-            raise brief.Refused('brief already used for a seat launch; write a fresh brief with bin/wuwei brief for this launch')
+            raise brief.Refused('brief already used for a seat launch; write a fresh brief with bin/wuwei seat brief for this launch')
         stale = []
         for name, seat in brief.seats(data).items():
             if seat['status'] == 'running' and seat.get('started_at'):
@@ -246,7 +246,7 @@ def _check(payload):
             vcs = registry.load('vcs', config)
             head = brief.read(vcs.head, tree, root=root)['sha']
             if not continuing and head != logged.get('head'):
-                raise brief.Refused('worktree HEAD changed since brief was written; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+                raise brief.Refused('worktree HEAD changed since brief was written; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
         if logged['gate'] or logged['role'].startswith('sentinel-'):
             try:
                 brief.gate_ready(data, logged['item'])
@@ -254,10 +254,10 @@ def _check(payload):
                 raise brief.Refused(str(exc) + stale_note) from exc
             tree = logged.get('worktree')
             if not isinstance(tree, str) or not tree:
-                raise ValueError('gate requires a worktree; pass --worktree <path> to bin/wuwei brief')
+                raise ValueError('gate requires a worktree; pass --worktree <path> to bin/wuwei seat brief')
             current_tree = data['items'][logged['item']].get('worktree')
             if current_tree and (root / current_tree).resolve() != Path(tree):
-                raise brief.Refused('item worktree changed since brief was written; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+                raise brief.Refused('item worktree changed since brief was written; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
             changes = brief.status(vcs, tree, root)
             if changes:
                 raise brief.Refused(('gate launch on a dirty tree: ' + ', '.join(row['path'] for row in changes)
@@ -282,7 +282,7 @@ def _check(payload):
         from wuwei.commands import build as build_command
         if role == 'builder':
             build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
-    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
+    state._write_state(reserve, root, kind='seat launched', payload=event)
     return 0, ''
 
 
@@ -388,10 +388,7 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
-    # #516: a stop of today's seat records the session row in its own write; lifecycle then skips its touch.
-    from wuwei.guards.lifecycle import RECORDED, seen_row
     today = directory == workspace.day_dir(root)
-    session = seen_row(payload, 'SubagentStop') if today else None
     try:
         if reserved['status'] == 'running':
             brief.stop_text(payload)
@@ -400,9 +397,7 @@ def stop(payload):
         # A refused stop (another agent, a resumed iteration) still leaves the seat as it was.
         try:
             state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
-                            reason=str(exc), session=session)
-            if session:
-                payload[RECORDED] = str(root.resolve())
+                            reason=str(exc))
         except Exception as error:
             return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
         return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
@@ -413,9 +408,7 @@ def stop(payload):
             from wuwei.commands import build
             handled = build.stopped(item, name, payload, root=root)
         if not handled:
-            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'), session=session)
-            if session:
-                payload[RECORDED] = str(root.resolve())
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
     return 0, ''

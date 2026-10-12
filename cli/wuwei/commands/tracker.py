@@ -1,4 +1,4 @@
-"""Tracker hygiene (5.11): open tickets, write the day's comments, move a ticket to done."""
+"""Tracker hygiene (5.11): open tickets, write the day's comments, move a ticket."""
 
 import sys
 
@@ -7,7 +7,7 @@ from wuwei.exits import UNRUN
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('tracker', help='Open tickets, log comments, mark done')
+    parser = subparsers.add_parser('tracker', help='Open tickets, log comments, move a ticket')
     actions = parser.add_subparsers(dest='action', required=True)
     create = actions.add_parser('create', help="Open the item's ticket, or a linked bug, "
                                                'triage or follow-up ticket')
@@ -24,8 +24,6 @@ def register(subparsers):
                         help='Your seat role, recorded on the event (#644)')
     actions.add_parser('log', help="Write today's progress, verdicts and carried or parked "
                                    'notes as ticket comments')
-    done = actions.add_parser('done', help="Move the item's ticket to the done state")
-    done.add_argument('item')
     move = actions.add_parser('move', help="Run the item's tracker duty: claim, in_review or done")
     move.add_argument('item')
     move.add_argument('state', choices=('claim', 'in_review', 'done'))
@@ -37,9 +35,9 @@ def run(args):
         root = workspace.find_workspace()
         if args.action == 'log':
             return tracker.log(root)
-        if args.action in ('done', 'move'):
+        if args.action == 'move':
             from wuwei import dispatch
-            action = 'done' if args.action == 'done' else args.state
+            action = args.state
             result = dispatch.tracker_call(args.item, action, root)
             reason = f'{args.item}: ticket {action}' if result.exit == 0 else result.reason
         elif (not args.category and workspace.load_config(root)['adapters']['tracker'] != 'none'

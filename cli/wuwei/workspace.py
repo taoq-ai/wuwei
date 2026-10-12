@@ -35,7 +35,7 @@ MERGE_SCHEMA = {
 }
 
 LEVELS = ("brief", "standard", "full")
-SURFACES = ("decisions", "report")
+SURFACES = ("report",)
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
@@ -54,7 +54,10 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'outward.modes', 'outward.classes', 'outward.draft_ttl', 'outward.patterns',
            'scanner.mcp.project_file', 'scanner.mcp.user_file', 'scanner.mcp.timeout_seconds',
            'scanner.mcp.block', 'docs', 'adapters.docs',
-           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery')
+           'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
+           'watch', 'sessions', 'worktree',  # #847
+           'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo',  # #848
+           'adapters.calendar', 'adapters.tts', 'calendar')  # #848 review: nothing reads them
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -78,7 +81,6 @@ SCHEMA = {
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
-    "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
@@ -95,7 +97,6 @@ SCHEMA = {
                 "max_per_item_per_day": (int, 10, 1),
                 "project": (str, ""), "board": (str, ""),
                 "auth": (str, "token", ("token", "gh"))},
-    "calendar": {"url": (str, "")},
     "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
@@ -113,12 +114,6 @@ SCHEMA = {
               "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
                                   "full": (int, 0, 0)},
               "polish": (str, "offer", ("never", "offer", "always"))},  # #723: one notes-only round after a pass
-    "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
-              "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
-              "ping_url": (str, "")},
-    "sessions": {"stale_seconds": (int, 3600, 1),
-                 "rotate_after": {"turns": (int, 0, 0), "compactions": (int, 0, 0),
-                                  "clock": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
     # #844: the outward duties next lists until recorded
@@ -134,8 +129,7 @@ SCHEMA = {
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
                  "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
-    "retro": {"repo": (str, "."),
-              "charter_paths": [(str, None), [".wuwei/charters"]],
+    "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
     "guards": {"enforce": (bool, True)},  # #837: false logs what a guard would refuse
@@ -181,9 +175,7 @@ SCHEMA = {
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
-                 "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
-                 "calendar": (str, "none"), "transcripts": (str, "none"),
-                 "redactor": (str, "builtin")},
+                 "checks": (str, "local"), "transcripts": (str, "none")},
 }
 
 
@@ -306,7 +298,7 @@ def owner_cli(root):
 
 
 def worktree_workspace(path):
-    """Read the local anchor installed by wuwei git-hook in managed worktrees."""
+    """Read the anchor worktree creation writes."""
     for parent in (path, *path.parents):
         # Explicit --git-dir targets may already name the anchored metadata directory.
         gitdir = parent if (parent / 'wuwei-workspace').is_file() else parent / '.git'
@@ -422,15 +414,10 @@ def now():
         raise ValueError("WUWEI_NOW must be an ISO datetime with a time component; set it like 2026-10-03T09:00:00Z, or unset it") from exc
 
 
-# ponytail: process-wide day pin for the headless sweep, which is its own process; pass the
-# directory through if a long-lived caller ever needs two days. Never read from the environment.
-_DAY = None
-
-
 def day_dir(root=None):
-    """Return today's day directory (or the pinned day) without creating it."""
+    """Return today's day directory without creating it."""
     root = find_workspace() if root is None else Path(root)
-    return root / ".wuwei/days" / (_DAY or now().date().isoformat())
+    return root / ".wuwei/days" / now().date().isoformat()
 
 
 def _unit_directory(platform):
@@ -441,24 +428,11 @@ def _unit_directory(platform):
 
 
 def watch_unit(root, platform=sys.platform, name="watch"):
-    """Service label and the unit file `<name> install` writes for this workspace."""
+    """Service label and unit file of a retired user service (watch, shepherd, listen) of this workspace; init --upgrade removes them."""
     import hashlib
     label = "wuwei-" + ("" if name == "watch" else f"{name}-") + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
     suffix = ".plist" if platform == "darwin" else ".service"
     return label, _unit_directory(platform) / f"{label}{suffix}"
-
-
-def unit_installed(root, name="watch"):
-    """watch_unit(root, name=name)[1].exists(); with no WUWEI unit installed at all (the
-    common case) it lists the directory instead of loading hashlib for the label."""
-    try:
-        if not any(entry.startswith("wuwei-") for entry in os.listdir(_unit_directory(sys.platform))):
-            return False
-    except (FileNotFoundError, NotADirectoryError):
-        return False
-    except OSError:
-        pass  # An unlistable directory: check the unit file itself, as before.
-    return watch_unit(root, name=name)[1].exists()
 
 
 def _key_line(raw, path):
@@ -599,7 +573,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 23  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 26  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor and why stay read-only.
@@ -752,10 +726,13 @@ def _require_gate(root):
 
 
 def _anchor(path, root, vcs, identity):
-    """Hooks (chained, #472), the pre-push anchor and the commit identity of an item worktree."""
-    from wuwei.commands.git_hook import install
+    """The workspace anchor (<git dir>/wuwei-workspace) and the commit identity of an item
+    worktree; no managed Git hooks (#847)."""
     from wuwei.registry import data
-    install(path, root, vcs)
+    git_dir = Path(data(vcs.repo_context(str(path), root=root))['path'])
+    if not git_dir.is_absolute():
+        raise ValueError(f'invalid worktree Git directory; {DAMAGED}')
+    atomic_write(git_dir / 'wuwei-workspace', str(Path(root).resolve()) + '\n')
     if identity and identity['name'] and identity['email']:
         written = vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root)
         if written.exit == 1:
@@ -768,12 +745,11 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     """Create and anchor a WUWEI worktree before handing it to a seat; existing checks out
     an existing branch and records the worktree as the item's (#510)."""
     from wuwei.registry import data
-    from wuwei import sessions, state
+    from wuwei import state
 
     _require_gate(root)
     if existing:
         state.record_worktree(root, Path(path).name, str(path), None, check=True)
-    sessions.claim_item(Path(root), Path(path).name)
     if existing:
         result = data(vcs.worktree_checkout(str(repo), branch, str(path), root=root))
     else:
@@ -791,7 +767,7 @@ def adopt_worktree(root, item, path, vcs):
     """Register an existing clean linked worktree of a configured repository as the item's (#510)."""
     from wuwei import commit_push
     from wuwei.registry import data
-    from wuwei import sessions, state
+    from wuwei import state
 
     _require_gate(root)
     path = Path(path).resolve()
@@ -817,7 +793,6 @@ def adopt_worktree(root, item, path, vcs):
             + f'; commit them, or run git -C {path} stash push --include-untracked, then rerun '
             f'bin/wuwei worktree adopt {path} --item {item}')
     state.record_worktree(root, item, path, None, check=True)
-    sessions.claim_item(Path(root), item)
     _anchor(path, root, vcs, repo['identity'])
     head = data(vcs.head(str(path), root=root))['sha']
     state.record_worktree(root, item, path, head)

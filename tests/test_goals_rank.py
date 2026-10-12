@@ -134,7 +134,7 @@ def test_discover_reads_ports_and_skips_day_items(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     state._write_state(lambda value: value.update(raised_prs=['x/y#1'], items={'x/y#1:bot:1': {'goal': 'G-1'}}),
-                       tmp_path, reserved=False)
+                       tmp_path)
 
     class Bot:
         def open_findings(self, ref, *, root):
@@ -162,7 +162,7 @@ def test_discover_skips_threads_the_owner_answered(tmp_path, monkeypatch):
                                       '[adapters]\nscanner = "none"\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path, reserved=False)
+    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path)
 
     def said(author, at):
         return {'id': 1, 'author': author, 'is_bot': False, 'body': 'ok',
@@ -209,7 +209,7 @@ def test_failed_discovery_port_is_unmeasured(tmp_path, monkeypatch):
     base.mkdir()
     (base / 'config.toml').write_text('[adapters]\nreview_bot = "greptile"\ncode_host = "none"\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
-    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path, reserved=False)
+    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path)
 
     class Bot:
         def open_findings(self, ref, *, root):
@@ -228,7 +228,7 @@ def test_discovery_red_base_checks_from_code_host_port(tmp_path, monkeypatch):
     base.mkdir()
     (base / 'config.toml').write_text('')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
-    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path, reserved=False)
+    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path)
 
     class Host:
         def pr(self, ref, *, root):
@@ -336,7 +336,7 @@ def test_discovery_pr_comment_follow_up(tmp_path, monkeypatch):
     base.mkdir()
     (base / 'config.toml').write_text('')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
-    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path, reserved=False)
+    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path)
 
     class Host:
         def threads(self, ref, *, root):
@@ -385,10 +385,13 @@ def test_proposed_renders_lead_goals_on_template():
     assert list(parsed) == ['G-1', 'G-2'] and parsed['G-2']['outcome'] == 'Document the widget'
 
 
-def test_proposed_keeps_defined_goals():
+def test_proposed_blocks_replace_defined_goals_and_ids_keep_them():
+    # #848: a goals change on the owner's word goes through the plan's goals block.
     from wuwei import goals
 
-    assert goals.proposed(GOALS, LEAD_GOALS) == (GOALS, False)
+    text, replacement = goals.proposed(GOALS, LEAD_GOALS)
+    assert replacement and list(goals.parse(text)) == ['G-1', 'G-2'] and 'Ship the widget' in text
+    assert goals.proposed(GOALS, ['G-1']) == (GOALS, False)
 
 
 @pytest.mark.parametrize('change', [

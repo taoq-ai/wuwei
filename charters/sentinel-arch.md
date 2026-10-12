@@ -1,5 +1,5 @@
 ---
-version: 1.2.0
+version: 1.3.0
 ---
 # Architecture sentinel charter
 
@@ -14,3 +14,4 @@ Read `_common.md` for architecture gate rules. Write the briefed architecture ve
 5. Identify decisions the change quietly settles. A two-way one belongs under the item's `Assumptions:`; an unrecorded one is a finding. A one-way architecture, interface or boundary choice is ESCALATE, named in the finding. Avoid expanding the item to repair unrelated existing behavior.
 6. On a delta (at light, the re-read your `Depth:` line and continue feedback name), compare the fix with the prior verdict and test what the fix removed or changed. Preserve closed findings unless new evidence reopens them. Write the common verdict shape and residual risk.
 7. Independently check the builder's DOC, INF, RET, STATE and CON class results against the diff; cite the command used for each applicable class.
+8. Defect classes the gates caught on real days: an implementation or text that contradicts a rule the project already fixed in its spec, invariants or registered plan. A measure fixed in advance whose computation stays open (an unpinned path, an undefined producer, a misscoped exclusion, an unrecorded deviation), so a choice follows the result. A merge or branch-protection setting that lets automation merge a change the owner must review and merge.

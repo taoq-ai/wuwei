@@ -12,12 +12,13 @@ import pytest
 from fakes.code_host import Fake as CodeHost
 from fakes.host import Fake as Host
 from fakes.vcs import Fake as Vcs
-from wuwei import heartbeat, integrity, registry, state, workspace
+from wuwei import integrity, registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.commands import doctor, init
 from wuwei.registry import Result
 
 UPGRADE = init.upgrade  # the real one; the ws fixture replaces init.upgrade
+REAL_MEASURE = doctor.measure  # the real probes; the ws fixture replaces doctor.measure
 
 NOW = '2026-10-03T12:00:00+00:00'
 TODAY = '2026-10-03'
@@ -95,12 +96,8 @@ def ws(tmp_path, monkeypatch):
     seed(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    unit = workspace.watch_unit(root)[1]
-    unit.parent.mkdir(parents=True, exist_ok=True)
-    unit.write_text('')
-    state.append_event('watch: clock', {}, root)
-    probes = {name: {'result': 'ok', 'value': 'ok'} for name, _ in heartbeat.PROBES}
-    monkeypatch.setattr(heartbeat, 'measure', lambda root: probes)
+    probes = {name: {'result': 'ok', 'value': 'ok'} for name in doctor.PROBES}
+    monkeypatch.setattr(doctor, 'measure', lambda root: probes)
     monkeypatch.setattr(init, 'upgrade', no_changes)
     service = Service()
     monkeypatch.setattr(registry, 'watch_service', lambda: service)
@@ -109,7 +106,7 @@ def ws(tmp_path, monkeypatch):
     code_host.results['auth_status'] = Result(0)
     code_host.auth_status = lambda root=None: code_host._call('auth_status', (), root)
     vcs = Vcs({'identity': Result(0, {'name': 'Ada', 'email': 'ada@example.com'}),
-               'branches': Result(0, ['main']), 'hooks_target': Result(0, {'chain': ''})})
+               'branches': Result(0, ['main'])})
     fakes = {'host': host, 'code_host': code_host, 'vcs': vcs}
     real = registry.load
     host.hand_over = real('host', {'adapters': {'host': 'local'}}).hand_over  # #645: the real exec
@@ -163,8 +160,7 @@ def test_outcome_findings_before_unmeasured():
 
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
-    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade',
-                                 'watch-install'}
+    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade'}
 
 
 # US1: the rows
@@ -189,10 +185,20 @@ def test_install_rows(ws):
     hooks = row(doctor.diagnose(), 'hooks')
     assert hooks['status'] == 'fail' and hooks['fix'] == '/plugin install wuwei@wuwei in Claude Code'
 
+    # #848 review F3: an unmeasured or stale cached verdict names the fix that measures again.
+    from wuwei import integrity as api
+    for reason in ('plugin integrity unmeasured; run bin/wuwei doctor --fix --apply integrity-reconfirm, '
+                   'which measures it again', 'plugin integrity unmeasured: gone'):
+        ws.mp.setattr(integrity, 'fresh', lambda root, reason=reason: Result(2, reason=reason))
+        found = row(doctor.diagnose(), 'integrity')
+        assert found['status'] == 'unmeasured' and found['apply'] == 'integrity-reconfirm', found
+        assert found['fix'].startswith(W('doctor --fix --apply integrity-reconfirm'))
+    assert not [text for text in (api.cached.__code__.co_consts + api.fresh.__code__.co_consts)
+                if isinstance(text, str) and re.search(r'run (?:bin/)?wuwei doctor(?! --fix)', text)]
     ws.mp.setattr(integrity, 'fresh', lambda root: Result(2, reason=TRIAL))
     found = row(doctor.diagnose(), 'integrity')
     assert found['status'] == 'fail' and found['value'] == TRIAL
-    assert 'wuwei integrity reconfirm' in found['fix'] and 'reinstall' in found['fix']
+    assert 'wuwei doctor --fix --apply integrity-reconfirm' in found['fix'] and 'reinstall' in found['fix']
     assert 'apply' not in found
 
     (ws.plugin / 'MANIFEST.sha256.sig').unlink()
@@ -201,7 +207,7 @@ def test_install_rows(ws):
     assert row(rows, 'hooks')['value'].startswith('development checkout')
     assert row(rows, 'hooks')['status'] == 'ok'
     found = row(rows, 'integrity')
-    assert found['fix'] == W('integrity reconfirm') and found['apply'] == 'integrity-reconfirm'
+    assert found['fix'] == W('doctor --fix --apply integrity-reconfirm') and found['apply'] == 'integrity-reconfirm'
 
 
 def host_case(ws, change):
@@ -230,12 +236,8 @@ def host_case(ws, change):
      'install the Codex CLI'),
     (('memory', None), 'memory', 'fail', None),
     (('config', '[adapters]\nhost = "none"\n' + REPO), 'memory', 'unmeasured', None),
-    (('unpath', 'launchctl'), 'service manager', 'fail', None),
 ])
 def test_host_rows(ws, change, name, status, fix):
-    import sys
-    if change == ('unpath', 'launchctl') and sys.platform != 'darwin':
-        change = ('unpath', 'systemctl')
     host_case(ws, change)
     rows = doctor.diagnose()
     found = row(rows, name)
@@ -249,8 +251,7 @@ def test_host_rows(ws, change, name, status, fix):
 
 def test_host_rows_healthy(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'codex', 'memory',
-                                   'service manager']
+    assert names(rows, 'host') == ['gh', 'git identity', 'ziran', 'codex', 'memory']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'host'), rows
     (ws.bin / 'ziran').unlink()
     config(ws.root, '[adapters]\nscanner = "ziran"\n' + REPO)
@@ -284,7 +285,7 @@ def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'acme/widget path', 'acme/widget git',
-        'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
+        'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
         'calibration', 'drift',
         'guards', 'telemetry']
     assert row(rows, 'guards')['value'] == 'enforce (guards.enforce = true)'
@@ -337,28 +338,6 @@ def test_workspace_template_drift(ws, monkeypatch):
     charters = row(rows, 'charter overrides')
     assert charters['status'] == 'warn' and 'apply' not in charters
     assert charters['docs'] == 'docs/site/charter-overrides.md'
-
-
-@pytest.mark.parametrize('found, status, value', [
-    (Result(0, {'chain': '/x/hooks'}), 'ok', 'chained with /x/hooks'),
-    (Result(0, {'chain': ''}), 'ok', 'WUWEI hooks'),
-    (Result(1, None, 'git.hooks_target: core.hooksPath /x is not a directory'), 'warn', 'not a directory'),
-    (Result(2, None, 'git.hooks_target: could not run: git exited 128'), 'unmeasured', 'git exited 128'),
-])
-def test_git_hooks_row(ws, found, status, value):
-    ws.vcs.results['hooks_target'] = found
-    got = row(doctor.diagnose(), 'acme/widget git hooks')
-    assert got['status'] == status and value in got['value'], got
-    if status == 'warn':
-        assert 'init --upgrade' in got['fix'] and 'worktree.git_hooks' in got['fix']
-
-
-def test_git_hooks_row_skip_mode(ws):
-    config(ws.root, CONFIG + '[worktree]\ngit_hooks = "skip"\n')
-    ws.vcs.calls.clear()
-    got = row(doctor.diagnose(), 'acme/widget git hooks')
-    assert got['status'] == 'ok' and 'skipped' in got['value']
-    assert not any(call[0] == 'hooks_target' for call in ws.vcs.calls)
 
 
 @pytest.mark.parametrize('repo, name, status, apply', [
@@ -486,8 +465,7 @@ def test_gates_rows(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'traces', 'untraced subagents', 'session id', 'tracker']
+    assert names(rows, 'day') == ['state', 'stuck seats', 'traces', 'untraced subagents', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'untraced subagents')['value'] == 'none today'
     # #676: a subagent stop that matched no seat is named, with the way to register one.
@@ -502,55 +480,31 @@ def test_day_rows(ws):
     ws.probes['seats'] = {'result': 'ok', 'value': 'none stuck'}
 
     ws.probes['state'] = {'result': 'failed', 'value': 'bad state'}
-    ws.probes['planner'] = {'result': 'failed', 'value': 'planner P not registered'}
-    rows = doctor.diagnose()
-    assert row(rows, 'state')['fix'] == W('state recover')
-    assert row(rows, 'planner')['status'] == 'fail' and '--take-over' in row(rows, 'planner')['fix']
-
-    workspace.watch_unit(ws.root)[1].unlink()
-    (workspace.day_dir(ws.root) / 'events.jsonl').unlink()
-    found = row(doctor.diagnose(), 'watch')
-    assert (found['status'], found['value'], found['apply']) == ('warn', 'not installed', 'watch-install')
-
-    state.append_event('watch: clock', {}, ws.root)
-    ws.mp.setenv('WUWEI_NOW', '2026-10-03T13:00:00+00:00')
-    assert row(doctor.diagnose(), 'watch')['status'] == 'fail'
-
-    ws.mp.setenv('WUWEI_NOW', NOW)
-    state.append_event('heartbeat: clock', {'health': 'degraded', 'page': 'heartbeat refused failed: exit 0'},
-                       ws.root)
-    rows = doctor.diagnose()
-    assert row(rows, 'heartbeat')['status'] == 'fail'
-    page = row(rows, 'heartbeat page')
-    assert page['status'] == 'fail' and page['fix'] == W('next')
+    found = row(doctor.diagnose(), 'state')
+    assert found['status'] == 'fail' and 'recover' not in found['fix']
     state.append_event('security.finding', {'reason': 'secret in diff'}, ws.root)
     found = row(doctor.diagnose(), 'security.finding')
     assert found['status'] == 'fail' and 'wuwei next' not in found['fix']
     assert 'security.finding' in found['fix'] and 'events.jsonl' in found['fix']
 
 
-def test_day_session_id_row(ws):
-    # #599: a SessionStart without CLAUDE_ENV_FILE is visible in one row.
-    assert row(doctor.diagnose(), 'session id')['status'] == 'ok'
-    state.append_event('session.seen', {'session_id': 'A', 'hook': 'SessionStart:startup', 'env_file': False}, ws.root)
-    found = row(doctor.diagnose(), 'session id')
-    assert found['status'] == 'warn' and 'CLAUDE_ENV_FILE' in found['value']
-    state.append_event('session.seen', {'session_id': 'A', 'hook': 'Stop'}, ws.root)
-    assert row(doctor.diagnose(), 'session id')['status'] == 'warn'
-    state.append_event('session.seen', {'session_id': 'B', 'hook': 'SessionStart:startup', 'env_file': True}, ws.root)
-    assert row(doctor.diagnose(), 'session id')['status'] == 'ok'
+def test_day_probes_read_state_and_the_seat_ledger(ws):
+    # #847: no heartbeat; doctor reads the day and the seat ledger itself.
+    probes = REAL_MEASURE(ws.root)
+    assert (probes['state']['result'], probes['seats']) == ('ok', {'result': 'ok', 'value': 'none stuck'})
+    assert set(probes) == {'refused', 'allowed', 'state_write', 'state', 'seats'}
 
 
 def test_guards_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'guards') == ['refused', 'allowed', 'state_write', 'read_loop', 'git_read', 'status_line', 'outside workspace']
+    assert names(rows, 'guards') == ['refused', 'allowed', 'state_write', 'outside workspace']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'guards'), rows
     (calls, cwd), = ws.service.calls
     (argv, text), = calls
     payload = json.loads(text)
     assert argv == ('hook', 'PreToolUse')
     assert not Path(cwd).resolve().is_relative_to(ws.root.resolve()) and payload['cwd'] == str(cwd)
-    assert payload['session_id'] == 'wuwei-heartbeat'
+    assert payload['session_id'] == 'wuwei-probe'
     assert '<<' in payload['tool_input']['command'] and 'gh ' in payload['tool_input']['command']
 
     ws.probes['refused'] = {'result': 'failed', 'value': 'exit 0'}
@@ -567,29 +521,20 @@ def test_guards_rows(ws):
     assert row(doctor.diagnose(), 'outside workspace')['status'] == 'unmeasured'
 
 
-def test_slow_probe_fix_names_the_cause(ws):
-    # #782: a probe over its time is a busy host, the watch's cached line or a rerun, never a reinstall.
-    ok = {name: dict(value) for name, value in ws.probes.items()}
-    slow = {'result': 'failed', 'value': '6600 ms over 200 ms'}
-    timeout = {'result': 'unmeasured', 'value': 'timeout'}
-
-    def fix(name, **changes):
-        ws.probes.clear()
-        ws.probes.update({key: dict(value) for key, value in ok.items()}, **changes)
-        found = row(doctor.diagnose(), name)
-        assert 'reinstall' not in found['fix'], found
-        return found
-
-    hooks = ('refused', 'allowed', 'state_write', 'read_loop')
-    busy = {name: {'result': 'ok', 'value': 'ok', 'ms': ms} for name, ms in zip(hooks, (7100, 5865, 7020, 6490))}
-    found = fix('status_line', status_line=slow, **busy)
-    assert found['status'] == 'fail' and found['value'] == '6600 ms over 200 ms'
-    assert 'fastest hook probe allowed 5865 ms' in found['fix'] and 'the host is busy' in found['fix']
-    quick = {name: {'result': 'ok', 'value': 'ok', 'ms': 40} for name in hooks}
-    found = fix('status_line', status_line=slow, **quick)
-    assert 'only status --line was slow' in found['fix'] and 'watch row' in found['fix']
-    assert 'every hook probe timed out' in fix('allowed', **{name: timeout for name in hooks})['fix']
-    assert 'only this probe timed out' in fix('allowed', **{**quick, 'allowed': timeout})['fix']
+def test_hook_probes_through_the_launcher(ws):
+    # #847: a force push the edges refuse, a Read they allow, a write to the day log the records
+    # guard refuses; exit codes only, no timings.
+    ws.service.results = [(2, 'refused', 30), (0, '', 30), (2, 'refused', 30)]
+    probes = REAL_MEASURE(ws.root)
+    assert {name: probes[name] for name in ('refused', 'allowed', 'state_write')} == {
+        name: {'result': 'ok', 'value': f'exit {code}'} for name, code in
+        (('refused', 2), ('allowed', 0), ('state_write', 2))}
+    (calls, _), = ws.service.calls
+    inputs = [json.loads(text)['tool_input'] for _, text in calls]
+    assert inputs[0] == {'command': 'git push --force origin main'}
+    assert inputs[2]['file_path'].endswith('events.jsonl')
+    ws.service.results = [(0, '', 30), (0, '', 30), (2, 'refused', 30)]
+    assert REAL_MEASURE(ws.root)['refused'] == {'result': 'failed', 'value': 'exit 0'}
 
 
 def test_outside_probe_through_launcher(monkeypatch):
@@ -637,7 +582,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
 
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    assert 'wuwei integrity reconfirm' in out and f"fix: {W('init --upgrade')}" in out
+    assert 'wuwei doctor --fix --apply integrity-reconfirm' in out and f"fix: {W('init --upgrade')}" in out
     assert 'delete that line before using [[repos]] tables' in out
 
     config(ws.root, trial)
@@ -698,7 +643,7 @@ def test_pr_flow_in_full_report(ws, capsys):
 def test_pr_flow_section_only(ws, monkeypatch, capsys):
     def refuse(*a, **k):
         raise AssertionError('measured outside the PR flow section')
-    monkeypatch.setattr(heartbeat, 'measure', refuse)
+    monkeypatch.setattr(doctor, 'measure', refuse)
     monkeypatch.setattr(init, 'upgrade', refuse)
     monkeypatch.setattr(registry, 'load', refuse)
     assert main(['doctor', '--section', 'pr-flow']) == 0
@@ -717,22 +662,24 @@ def test_pr_flow_section_only(ws, monkeypatch, capsys):
 # US2: --fix
 
 CHECKOUT = ('page: plugin integrity: development checkout requires host reconfirmation; '
-            'run wuwei integrity reconfirm')
+            'run wuwei doctor --fix --apply integrity-reconfirm')
 
 
 def fix(confirm):
     return doctor.run(Namespace(fix=True, json=False, widget=False, apply=None, section=None), confirm=confirm)
 
 
-def watch_missing(ws):
-    """One allow-listed fix pending: the watch unit is not installed."""
-    workspace.watch_unit(ws.root)[1].unlink()
-    (workspace.day_dir(ws.root) / 'events.jsonl').unlink()
+def upgrade_pending(ws):
+    """One allow-listed fix pending: init --upgrade has a change; applies are recorded."""
+    applied = []
 
-
-def test_doctor_fixed_is_reserved(ws, capsys):
-    assert main(['event', 'doctor.fixed', '{}']) == 1
-    assert 'owner host wuwei doctor --fix' in capsys.readouterr().err
+    def upgrade(args):
+        if not args.dry_run:
+            applied.append(args.path)
+        print('Would upgrade config.toml: add x')
+        return 0
+    ws.mp.setattr(init, 'upgrade', upgrade)
+    return applied
 
 
 def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
@@ -754,7 +701,7 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
         return True
     assert fix(owner) == 0
     (digest, shown), = typed
-    assert '[integrity-reconfirm] wuwei integrity reconfirm' in shown and 'f' * 64 in shown
+    assert '[integrity-reconfirm] wuwei doctor --fix --apply integrity-reconfirm' in shown and 'f' * 64 in shown
     assert len(digest) == 12
     assert events(ws.root, 'doctor.fixed') == [{'fix': 'integrity-reconfirm', 'exit': 0}]
     out = capsys.readouterr().out
@@ -764,36 +711,36 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
 
 def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     rows = [doctor._row('workspace', 'guards', 'warn', 'log only', 'set guards.enforce = true'),
-            doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover')]
+            doctor._row('day', 'state', 'fail', 'bad', 'wuwei doctor')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     asked = []
     assert fix(asked.append) == 1
     out = capsys.readouterr().out
     assert not asked and 'Nothing to apply' in out
     notes = out.split('Not applied:', 1)[1]
-    for text in ('set guards.enforce = true', 'wuwei state recover'):
+    for text in ('set guards.enforce = true',):
         assert text in notes
     assert not events(ws.root, 'doctor.fixed')
 
 
 def test_fix_wrong_digest_applies_nothing(ws, monkeypatch, capsys):
-    watch_missing(ws)
+    applied = upgrade_pending(ws)
     assert fix(lambda digest: False) == 1
     assert 'wuwei doctor: declined; nothing applied' in capsys.readouterr().err
-    assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
+    assert not applied and not events(ws.root, 'doctor.fixed')
 
 
 def test_fix_asks_the_owner_step_card(ws, monkeypatch, capsys):
     # #831: no terminal; the owner's Yes on the printed Owner step card applies the batch.
     from fakes import owner
-    watch_missing(ws)
+    applied = upgrade_pending(ws)
     assert fix(None) == 1
     err = capsys.readouterr().err
     assert 'Owner step: bin/wuwei doctor --fix (' in err and 'host terminal' not in err
-    assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
+    assert not applied and not events(ws.root, 'doctor.fixed')
     owner.answer_card(ws.root, err)
     fix(None)
-    assert ws.service.installed and events(ws.root, 'doctor.fixed') == [{'fix': 'watch-install', 'exit': 0}]
+    assert applied and events(ws.root, 'doctor.fixed') == [{'fix': 'init-upgrade', 'exit': 0}]
 
 
 def test_fix_changed_since_preview(ws, monkeypatch, capsys):
@@ -811,22 +758,6 @@ def test_fix_changed_since_preview(ws, monkeypatch, capsys):
     assert events(ws.root, 'doctor.fixed') == [{'fix': 'init-upgrade', 'exit': 1}]
 
 
-def test_fix_installs_watch(ws, monkeypatch, capsys):
-    workspace.watch_unit(ws.root)[1].unlink()
-    (workspace.day_dir(ws.root) / 'events.jsonl').unlink()
-    started = ws.service.call
-
-    def call(argv):
-        started(argv)
-        state.append_event('watch: clock', {}, ws.root)  # the service manager starts the watch
-    ws.service.call = call
-    shown = []
-    assert fix(lambda digest: shown.append(capsys.readouterr().out) or True) == 0
-    assert '[watch-install] wuwei watch install' in shown[0] and 'unit: ' in shown[0]
-    assert workspace.watch_unit(ws.root)[1].exists() and ws.service.installed
-    assert events(ws.root, 'doctor.fixed') == [{'fix': 'watch-install', 'exit': 0}]
-
-
 def test_fix_nothing_to_apply(ws, capsys):
     asked = []
     assert fix(asked.append) == 0
@@ -834,12 +765,12 @@ def test_fix_nothing_to_apply(ws, capsys):
 
 
 def two_fixes(ws, monkeypatch):
-    """watch-install and init-upgrade due, each with a fake preview and an apply that records its call."""
+    """integrity-reconfirm and init-upgrade due, each with a fake preview and an apply that records its call."""
     applied = []
-    rows = [doctor._row('workspace', 'watch', 'warn', 'old', 'wuwei watch install', apply='watch-install'),
+    rows = [doctor._row('install', 'integrity', 'warn', 'old', 'wuwei doctor --fix --apply integrity-reconfirm', apply='integrity-reconfirm'),
             doctor._row('workspace', 'template', 'warn', 'drift', 'wuwei init --upgrade', apply='init-upgrade')]
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
-    for name, command in (('watch-install', 'wuwei watch install'), ('init-upgrade', 'wuwei init --upgrade')):
+    for name, command in (('integrity-reconfirm', 'wuwei doctor --fix --apply integrity-reconfirm'), ('init-upgrade', 'wuwei init --upgrade')):
         monkeypatch.setitem(doctor.FIXES, name, (command, lambda root, name=name: (f'preview {name}\n', name),
                                                  lambda root, token: applied.append(token) or 0))
     return applied
@@ -858,29 +789,29 @@ def test_fix_widget_prints_the_owner_step_card(ws, monkeypatch, capsys):
     assert built['header'] == 'Owner step' and built['multiSelect'] is False
     assert built['question'].startswith('Owner step: bin/wuwei doctor --fix (')
     assert built['record'] == 'bin/wuwei doctor --fix'
-    assert '[watch-install] wuwei watch install' in built['options'][0]['description']
+    assert '[integrity-reconfirm] wuwei doctor --fix --apply integrity-reconfirm' in built['options'][0]['description']
     assert not asked and not applied and not events(ws.root, 'doctor.fixed')
     assert doctor.run(widget_args(widget=False)) == 1
     refusal = capsys.readouterr().err
     assert json.dumps(built) in refusal
     owner.answer_card(ws.root, refusal)
     doctor.run(widget_args(widget=False))
-    assert sorted(applied) == ['init-upgrade', 'watch-install']
+    assert sorted(applied) == ['init-upgrade', 'integrity-reconfirm']
 
 
 def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     applied = two_fixes(ws, monkeypatch)
-    assert doctor.run(widget_args(widget=False, apply='watch-install'), confirm=lambda digest: True) == 1
+    assert doctor.run(widget_args(widget=False, apply='integrity-reconfirm'), confirm=lambda digest: True) == 1
     out = capsys.readouterr().out
-    assert '[watch-install]' in out and '[init-upgrade]' not in out
-    assert applied == ['watch-install'] and len(events(ws.root, 'doctor.fixed')) == 1
+    assert '[integrity-reconfirm]' in out and '[init-upgrade]' not in out
+    assert applied == ['integrity-reconfirm'] and len(events(ws.root, 'doctor.fixed')) == 1
     assert doctor.run(widget_args(widget=False, apply='nope'), confirm=lambda digest: True) == 2
-    assert 'nope' in capsys.readouterr().err and applied == ['watch-install']
+    assert 'nope' in capsys.readouterr().err and applied == ['integrity-reconfirm']
     assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) == 2
-    assert applied == ['watch-install']
-    for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'watch-install'}, {'apply': 'watch-install'}):
+    assert applied == ['integrity-reconfirm']
+    for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'integrity-reconfirm'}, {'apply': 'integrity-reconfirm'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
-    assert applied == ['watch-install']
+    assert applied == ['integrity-reconfirm']
 def test_workspace_config_unknown_key_warns(ws):
     config(ws.root, CONFIG.replace('[adapters]\n', '[adapters]\ncode_hst = "github"\n'))
     found = row(doctor.diagnose(), 'config')
@@ -931,10 +862,10 @@ def test_init_shadow_without_workspace(ws, tmp_path, monkeypatch):
 def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     launcher = str(ws.plugin / 'bin/wuwei')
     rows = [doctor._row('workspace', 'config', 'fail', 'x', 'wuwei init --upgrade'),
-            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm'),
+            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei doctor --fix --apply integrity-reconfirm'),
             doctor._row('install', 'b', 'fail', 'x', '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan')]
     assert [r['fix'] for r in rows] == [
-        f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm',
+        f'{launcher} init --upgrade', f'run {launcher} doctor --fix --apply integrity-reconfirm',
         '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan']
     assert f'{launcher} init --upgrade' in doctor.render(rows)
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
@@ -1023,24 +954,6 @@ def test_github_tracker_row_names_the_auth_fix(ws, auth, fix):
     assert re.sub(r'\S*/bin/wuwei', 'bin/wuwei', found['fix']) == fix
 
 
-def test_day_shepherd_row(ws):
-    """#511: where the shepherd runs; never changes the doctor exit."""
-    import sys
-    rows = doctor.diagnose()
-    assert row(rows, 'shepherd') == {'section': 'day', 'name': 'shepherd', 'status': 'ok',
-        'value': 'runs only in a session; bin/wuwei shepherd schedule runs it overnight'}
-    unit = workspace.watch_unit(ws.root, name='shepherd')[1]
-    unit.parent.mkdir(parents=True, exist_ok=True)
-    unit.write_text('unit\n')
-    service = 'launchd' if sys.platform == 'darwin' else 'systemd'
-    assert row(doctor.diagnose(), 'shepherd')['value'] == f'scheduled ({service}), last swept not yet'
-    state.append_event('shepherd.swept', {'exit': 0}, ws.root)
-    assert row(doctor.diagnose(), 'shepherd')['value'].endswith('not yet')  # review F2: unapproved day
-    state._write_state(lambda data: data.update(gate_approved=True), ws.root, reserved=False)
-    found = row(doctor.diagnose(), 'shepherd')
-    assert found['status'] == 'ok' and found['value'] == f'scheduled ({service}), last swept {workspace.now().isoformat()}'
-
-
 class HandedOver(Exception):
     pass
 
@@ -1070,7 +983,7 @@ def options(**changes):
 @pytest.mark.parametrize('changes, flags', [
     ({'json': True}, ['--json']), ({'fix': True}, ['--fix']),
     ({'fix': True, 'widget': True}, ['--fix', '--widget']),
-    ({'fix': True, 'apply': 'watch-install'}, ['--fix', '--apply', 'watch-install']),
+    ({'fix': True, 'apply': 'integrity-reconfirm'}, ['--fix', '--apply', 'integrity-reconfirm']),
     ({'section': 'pr-flow'}, ['--section', 'pr-flow'])])
 def test_doctor_hands_over_to_the_pointer(ws, tmp_path, monkeypatch, changes, flags):
     """#645: any copy runs the doctor of the install .wuwei/executable names, same options."""
@@ -1260,17 +1173,3 @@ def test_two_installs_named_with_the_fix(ws, tmp_path):
     assert 'installs' not in names(doctor.diagnose(), 'install')
 
 
-def test_credentials_row_when_watch_and_doctor_disagree(ws):
-    # #601: the watch's last heartbeat and doctor read credentials the same way; a disagreement is a finding.
-    from wuwei import watch
-    assert 'credentials' not in names(doctor.diagnose(), 'day')  # no saved beat
-    watch.save(ws.root, {'heartbeat': {'probes': {'state': {'result': 'ok', 'value': 'ok'}}}})
-    assert 'credentials' not in names(doctor.diagnose(), 'day')
-    watch.save(ws.root, {'heartbeat': {'probes': {'config': {'result': 'ok', 'value': 'ok'}}}})
-    assert 'credentials' not in names(doctor.diagnose(), 'day')
-    watch.save(ws.root, {'heartbeat': {'probes': {'config': {
-        'result': 'failed', 'value': 'missing GITHUB_TRACKER_TOKEN'}}}})
-    found = row(doctor.diagnose(), 'credentials')
-    assert found['status'] == 'warn' and found['section'] == 'day'
-    assert 'failed missing GITHUB_TRACKER_TOKEN' in found['value'] and 'doctor reads ok ok' in found['value']
-    assert 'watch uninstall' in found['fix']

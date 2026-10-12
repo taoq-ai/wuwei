@@ -1,6 +1,5 @@
 """Hook tables run in-process; fixture replays exercise the executable shim."""
 
-from functools import cache
 import io
 import json
 import os
@@ -16,7 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOADS = sorted((ROOT / 'tests/payloads').glob('*/*.json'))
-EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompact', 'Stop')
+EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart')
 
 
 @pytest.fixture
@@ -79,7 +78,7 @@ def install(plugin, source, name='fake'):
 
 def test_hook_configuration():
     path = ROOT / 'hooks/hooks.json'
-    assert path.exists(), 'six hook mappings must exist'
+    assert path.exists(), 'four hook mappings must exist'
     config = json.loads(path.read_text())
     assert set(config['hooks']) == set(EVENTS)
     for event, entries in config['hooks'].items():
@@ -179,10 +178,8 @@ def test_selected_guards_match_full_discovery(event, tool):
     assert runnable(selected) == runnable(discover())
 
 
-
-
 @pytest.mark.parametrize('event, name, unloaded', [
-    ('Stop', 'example', {'edges', 'protect_state'}),
+    ('SubagentStop', 'example', {'edges', 'protect_state'}),
     ('PostToolUse', 'example', {'edges', 'protect_state'}),
 ])
 def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
@@ -193,7 +190,7 @@ def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
     seed(tmp_path)
     payload = {**json.loads((ROOT / f'tests/payloads/{event}/{name}.json').read_text()),
                'cwd': str(tmp_path)}
-    if event == 'Stop':
+    if event == 'SubagentStop':
         payload['stop_hook_active'] = False
     out = tmp_path / 'modules.json'
     script = ('import json, sys\nsys.path.insert(0, sys.argv[1])\n'
@@ -207,9 +204,9 @@ def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
     assert unloaded & set(json.loads(out.read_text())) == set()
 
 
-def test_subagent_stop_skips_watch_and_memory(tmp_path):
-    # SubagentStop records the session; the watch and memory modules (and their imports) are
-    # SessionStart's, Stop's and PreCompact's. lifecycle keeps watch's error tuple itself.
+def test_subagent_stop_skips_lifecycle_watch_and_memory(tmp_path):
+    # #847: SubagentStop records no session; the lifecycle, watch and memory modules (and their
+    # imports) are SessionStart's. lifecycle keeps watch's error tuple itself.
     from wuwei import watch
     from wuwei.guards import lifecycle
     from fakes.integrity import seed
@@ -229,11 +226,9 @@ def test_subagent_stop_skips_watch_and_memory(tmp_path):
                             input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path,
                             env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_NOW': DAY + 'T12:00:00+00:00'})
     assert result.returncode == 0, result.stderr
-    assert {'wuwei.guards.lifecycle', 'wuwei.sessions'} <= set(json.loads(out.read_text()))
-    # The registry write goes through workspace.atomic_write, which needs no tempfile.
-    assert 'abc123' in json.loads((today / 'state.json').read_text())['sessions']
-    assert {'wuwei.watch', 'wuwei.memory', 'tempfile'} & set(json.loads(out.read_text())) == set()
-
+    assert 'sessions' not in json.loads((today / 'state.json').read_text())
+    assert {'wuwei.guards.lifecycle', 'wuwei.watch', 'wuwei.memory', 'tempfile'} & set(
+        json.loads(out.read_text())) == set()
 
 
 @pytest.mark.parametrize('event, name, target, loaded', [
@@ -319,11 +314,11 @@ LAUNCHER_MODULES = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
 
 
 @pytest.mark.parametrize('shape', ['template', 'empty'])
-@pytest.mark.parametrize('args', [('hook', 'PreToolUse'), ('hook', 'PostToolUse'), ('hook', 'Stop'),
+@pytest.mark.parametrize('args', [('hook', 'PreToolUse'), ('hook', 'PostToolUse'),
                                   ('status', '--line')], ids=' '.join)
 def test_warm_config_cache_skips_tomllib(tmp_path, args, shape):
     # #346: with the parsed copy of config.toml current, no hook or status line parses TOML,
-    # in a templated workspace with security material and in the latency tests' blank one.
+    # in a templated workspace with security material and in the latency script's blank one.
     from fakes.integrity import seed
     from wuwei import security
     (tmp_path / '.wuwei').mkdir()
@@ -393,21 +388,6 @@ def test_together_runs_concurrently_and_raises_in_call_order():
         together(lambda: 1, lambda: fail('first'), lambda: fail('second'))
 
 
-def test_unit_installed_matches_the_unit_file(tmp_path, monkeypatch):
-    from wuwei import workspace
-    monkeypatch.setenv('HOME', str(tmp_path / 'home'))
-    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
-    root = tmp_path / 'ws'
-    assert not workspace.unit_installed(root, name='shepherd')
-    unit = workspace.watch_unit(root, name='shepherd')[1]
-    unit.parent.mkdir(parents=True)
-    other = workspace.watch_unit(tmp_path / 'other', name='shepherd')[1]
-    other.write_text('')
-    assert not workspace.unit_installed(root, name='shepherd')
-    unit.write_text('')
-    assert workspace.unit_installed(root, name='shepherd') and not workspace.unit_installed(root)
-
-
 def test_guard_modules_defer_heavy_imports():
     import ast
     for path in (ROOT / 'cli/wuwei/guards').glob('*.py'):
@@ -434,14 +414,14 @@ def test_calibrate_is_off_every_hook_path(tmp_path):
               'sys.exit(3 if {"wuwei.calibrate"} & set(sys.modules) else 0)\n')
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), json.dumps(calls)],
                             text=True, capture_output=True, cwd=tmp_path,
-                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_BENCH': '1'})
+                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path)})
     assert result.returncode == 0, result.stderr
     assert 'calibrat' not in (ROOT / 'hooks/hooks.json').read_text()
 
 
 def test_private_guard_module_is_ignored(plugin):
     install(plugin, 'raise RuntimeError("private helper imported")', '_helper')
-    result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
+    result = replay(plugin, 'SubagentStop', json.dumps(fixture('SubagentStop')))
     assert result.returncode == 0, result.stderr
 
 
@@ -451,13 +431,13 @@ def assert_refusal(result, event, reason, *, malformed=False):
         assert reason in json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
         assert result.stderr == reason + '\n'
         return
-    assert result.returncode == (1 if event == 'PreCompact' and not malformed else 2)
+    assert result.returncode == 2
     assert result.stderr == reason + '\n'
     if event == 'PreToolUse':
         assert json.loads(result.stdout) == {'hookSpecificOutput': {
             'hookEventName': event, 'permissionDecision': 'deny',
             'permissionDecisionReason': reason}}
-    elif event in ('Stop', 'SubagentStop'):
+    elif event == 'SubagentStop':
         assert json.loads(result.stdout) == {'decision': 'block', 'reason': reason}
     else:
         assert result.stdout == ''
@@ -480,7 +460,7 @@ GUARDS = [Guard({event!r}, None, lambda payload: ({code}, 'guard reason'))]
         assert_refusal(result, event, 'guard reason')
     else:
         assert result.returncode == 0, result.stderr
-        assert result.stderr == ('guard reason\n' if event == 'Stop' else '')
+        assert result.stderr == ''
         expected = {'hookSpecificOutput': {'hookEventName': event,
                                           'additionalContext': 'guard reason'}}
         assert result.stdout == (json.dumps(expected) + '\n' if event == 'SessionStart' else '')
@@ -490,7 +470,7 @@ def test_matching_and_all_refusing_reasons(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
 GUARDS = [
-    Guard('Stop', None, lambda p: (1, 'wrong event')),
+    Guard('SubagentStop', None, lambda p: (1, 'wrong event')),
     Guard('PreToolUse', 'Write|Edit', lambda p: (1, 'wrong tool')),
     Guard('PreToolUse', 'Ba', lambda p: (1, 'partial match')),
     Guard('PreToolUse', 'Bash|Agent', lambda p: (1, p['tool_input']['command'])),
@@ -507,14 +487,14 @@ GUARDS = [Guard('PreToolUse', None, lambda p: (2, 'second reason'))]
 
 
 @pytest.mark.parametrize('active', [False, True])
-def test_stop_active_is_passed_to_guard(plugin, active):
+def test_subagent_stop_active_is_passed_to_guard(plugin, active):
     install(plugin, '''
 from wuwei.guards import Guard
-GUARDS = [Guard('Stop', None, lambda p: (1, str(p['stop_hook_active'])))]
+GUARDS = [Guard('SubagentStop', None, lambda p: (1, str(p['stop_hook_active'])))]
 ''')
-    payload = fixture('Stop')
+    payload = fixture('SubagentStop')
     payload['stop_hook_active'] = active
-    assert_refusal(replay(plugin, 'Stop', json.dumps(payload)), 'Stop', str(active))
+    assert_refusal(replay(plugin, 'SubagentStop', json.dumps(payload)), 'SubagentStop', str(active))
 
 
 def test_session_context_is_combined_and_safe_json(plugin):
@@ -545,7 +525,7 @@ def second(payload):
     raise ValueError('second failed')
 def other(payload):
     return 1, 'not this event'
-GUARDS = [Guard('SessionStart', None, first), Guard('Stop', None, other),
+GUARDS = [Guard('SessionStart', None, first), Guard('SubagentStop', None, other),
           Guard('SessionStart', 'NoSuchTool', other), Guard('SessionStart', None, second)]
 ''')
     result = replay(plugin, 'SessionStart', json.dumps(fixture('SessionStart')))
@@ -573,10 +553,9 @@ def payload_field_cases():
         event = path.parent.name
         fields += {'PreToolUse': ['tool_name', 'tool_use_id', 'tool_input'],
                    'PostToolUse': ['tool_name', 'tool_use_id', 'tool_input', 'tool_response'],
-                   'Stop': ['stop_hook_active', 'last_assistant_message'],
                    'SubagentStop': ['stop_hook_active', 'last_assistant_message', 'agent_id',
                                     'agent_type', 'agent_transcript_path'],
-                   'SessionStart': ['source'], 'PreCompact': ['trigger', 'custom_instructions']}[event]
+                   'SessionStart': ['source']}[event]
         fields += ['tool_input.' + field for field in
                    {'Bash': ['command'], 'Write': ['file_path', 'content'],
                     'Edit': ['file_path', 'old_string', 'new_string'],
@@ -620,13 +599,13 @@ def test_optional_fields_may_be_absent(plugin, path, field):
 def test_guard_missing_field_still_fails_closed(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
-GUARDS = [Guard('Stop', None, lambda p: (0, p['last_assistant_message']))]
+GUARDS = [Guard('SubagentStop', None, lambda p: (0, p['last_assistant_message']))]
 ''')
-    payload = fixture('Stop')
+    payload = fixture('SubagentStop')
     del payload['last_assistant_message']
-    result = replay(plugin, 'Stop', json.dumps(payload))
+    result = replay(plugin, 'SubagentStop', json.dumps(payload))
     assert 'KeyError' in result.stderr
-    assert_refusal(result, 'Stop', result.stderr.strip())
+    assert_refusal(result, 'SubagentStop', result.stderr.strip())
 
 
 @pytest.mark.parametrize('raw', ['', '[]', '{}'])
@@ -640,13 +619,13 @@ def test_malformed_subprocess_replay(subprocess_plugin, raw):
     ('GUARDS = None', 'GUARDS must be a list'),
     ('GUARDS = [None]', 'invalid guard record'),
     ("from wuwei.guards import Guard\nGUARDS = [Guard('Typo', None, lambda p: (0, ''))]", 'unknown guard event'),
-    ("from wuwei.guards import Guard\nGUARDS = [Guard('Stop', '[', lambda p: (0, ''))]", 'unterminated character set'),
+    ("from wuwei.guards import Guard\nGUARDS = [Guard('SubagentStop', '[', lambda p: (0, ''))]", 'unterminated character set'),
 ])
 def test_broken_registry(plugin, source, reason):
     install(plugin, source)
-    result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
+    result = replay(plugin, 'SubagentStop', json.dumps(fixture('SubagentStop')))
     assert reason in result.stderr
-    assert_refusal(result, 'Stop', result.stderr.strip(), malformed=True)
+    assert_refusal(result, 'SubagentStop', result.stderr.strip(), malformed=True)
 
 
 @pytest.mark.parametrize('body,reason', [
@@ -666,38 +645,35 @@ from wuwei.guards import Guard
 def check(payload):
     {body}
 
-GUARDS = [Guard('Stop', None, check), Guard('Stop', None, lambda p: (1, 'later refusal'))]
+GUARDS = [Guard('SubagentStop', None, check), Guard('SubagentStop', None, lambda p: (1, 'later refusal'))]
 ''')
-    result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
+    result = replay(plugin, 'SubagentStop', json.dumps(fixture('SubagentStop')))
     # #362: the later guard ran; its finding is the one reason printed.
     assert result.stderr == 'later refusal\n'
-    assert_refusal(result, 'Stop', 'later refusal')
+    assert_refusal(result, 'SubagentStop', 'later refusal')
     install(plugin, f'''
 from wuwei.guards import Guard
 
 def check(payload):
     {body}
 
-GUARDS = [Guard('Stop', None, check)]
+GUARDS = [Guard('SubagentStop', None, check)]
 ''', 'alone')
     (plugin[0] / 'cli/wuwei/guards/fake.py').unlink()
-    result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
+    result = replay(plugin, 'SubagentStop', json.dumps(fixture('SubagentStop')))
     assert reason in result.stderr
-    assert_refusal(result, 'Stop', result.stderr[:-1])
+    assert_refusal(result, 'SubagentStop', result.stderr[:-1])
 
 
-@pytest.mark.parametrize('event', ['PreToolUse', 'Stop', 'SubagentStop', 'PreCompact'])
+@pytest.mark.parametrize('event', ['PreToolUse', 'SubagentStop'])
 def test_valid_empty_text_and_extra_fields(plugin, event):
     payload = fixture(event)
     if event == 'PreToolUse':
         payload.update(tool_name='Edit', tool_input={'file_path': '/tmp/file',
                                                    'old_string': '', 'new_string': ''})
-    elif event in ('Stop', 'SubagentStop'):
-        payload['last_assistant_message'] = ''
-        if event == 'SubagentStop':
-            payload['agent_type'] = ''
     else:
-        payload['custom_instructions'] = ''
+        payload['last_assistant_message'] = ''
+        payload['agent_type'] = ''
     payload['future_field'] = {'value': 42}
     install(plugin, f'''
 from wuwei.guards import Guard
@@ -716,7 +692,7 @@ def test_unknown_tool_is_extensible(plugin):
 
 @pytest.mark.parametrize('event,matcher,reason', [
     ('Typo', None, 'unknown guard event'),
-    ('Stop', '[', 'unterminated character set'),
+    ('SubagentStop', '[', 'unterminated character set'),
 ])
 def test_discovery_validates_records(plugin, event, matcher, reason):
     from wuwei.guards import discover
@@ -726,124 +702,6 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
 """)
     with pytest.raises((ValueError, re.error), match=reason):
         discover()
-
-
-@pytest.mark.parametrize('ci,bench,load,expected,wall_budget', [
-    (False, False, 1.0, 'assert', None),
-    (False, False, 4.0, 'skip', None),
-    (False, False, 8.0, 'skip', None),
-    (True, False, 1.0, 'skip', None),
-    (True, True, 8.0, 'assert', None),
-    (False, True, 8.0, 'assert', None),
-    (False, True, 8.0, 'assert', 59),
-    (False, True, 8.0, 'pass', 61),
-])
-def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected, wall_budget):
-    monkeypatch.delenv('CI', raising=False)
-    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)  # its fixture rows are not probe figures
-    monkeypatch.delenv('WUWEI_BENCH', raising=False)
-    if ci:
-        monkeypatch.setenv('CI', '1')
-    if bench:
-        monkeypatch.setenv('WUWEI_BENCH', '1')
-    monkeypatch.setattr(os, 'getloadavg', lambda: (load, 0, 0))
-    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
-    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
-    if expected == 'pass':
-        assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
-    elif expected == 'assert':
-        with pytest.raises(AssertionError, match=r'startup floor CPU 20\.00 ms, wall 22\.00 ms'):
-            assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
-    else:
-        with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*python3 -I startup floor CPU 20\.00 ms, wall 22\.00 ms.*load'):
-            assert_latency_budget('hook', 51.0, 60.0, capsys)
-
-
-@cache
-def test_latency_row_is_written_before_the_budget(monkeypatch, capsys, tmp_path):
-    # #562: the latency job keeps one JSON row per probe, red runs included.
-    out = tmp_path / 'latency.jsonl'
-    monkeypatch.setenv('WUWEI_BENCH', '1')
-    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
-    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)
-    assert_latency_budget('hook', 40.0, 60.0, capsys)
-    assert not out.exists()
-    monkeypatch.setenv('WUWEI_LATENCY_OUT', str(out))
-    with pytest.raises(AssertionError):
-        assert_latency_budget('hook', 51.0, 60.0, capsys)
-    assert_latency_budget('tick', 51.0, 60.0, capsys, wall_budget=100)
-    rows = [json.loads(line) for line in out.read_text().splitlines()]
-    assert [(r['probe'], r['cpu_ms'], r['wall_ms'], r['budget_ms'], r['measure']) for r in rows] == [
-        ('hook', 51.0, 60.0, 50, 'cpu'), ('tick', 51.0, 60.0, 100, 'wall')]
-    assert {'floor_cpu_ms', 'floor_wall_ms', 'load', 'cpus'} <= rows[0].keys()
-
-
-def startup_floor(runs):
-    """p95 CPU and wall ms of a bare interpreter start, the floor under every hook figure."""
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    cpu, wall = [], []
-    for _ in range(runs):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        subprocess.run([sys.executable, '-I', '-c', 'pass'], check=True)
-        wall.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-    return quantiles(cpu, n=100)[94] * 1000, quantiles(wall, n=100)[94] * 1000
-
-
-def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, runs=60):
-    load = os.getloadavg()[0]
-    cpus = os.cpu_count() or 1
-    floor_cpu, floor_wall = startup_floor(runs)
-    report = (f'{name} p95 over {runs} runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms, '
-              f'python3 -I startup floor CPU {floor_cpu:.2f} ms, wall {floor_wall:.2f} ms, '
-              f'load {load:.2f} on {cpus} CPUs')
-    with capsys.disabled():
-        print('\n' + report)
-    if out := os.environ.get('WUWEI_LATENCY_OUT'):  # #562: kept before the assert, red runs too
-        with open(out, 'a', encoding='utf-8') as file:
-            file.write(json.dumps({'probe': name, 'cpu_ms': cpu_ms, 'wall_ms': wall_ms,
-                                   'budget_ms': 50 if wall_budget is None else wall_budget,
-                                   'measure': 'cpu' if wall_budget is None else 'wall',
-                                   'floor_cpu_ms': floor_cpu, 'floor_wall_ms': floor_wall,
-                                   'load': load, 'cpus': cpus}) + '\n')
-    # Budgets are enforced only when asked (WUWEI_BENCH=1): wall time on a working host is
-    # load-bound, and a load heuristic made the suite red on busy developer machines.
-    if os.environ.get('WUWEI_BENCH') == '1':
-        if wall_budget is None:
-            assert cpu_ms < 50, report
-        else:
-            assert wall_ms < wall_budget, report
-    else:
-        pytest.skip(report)
-
-
-@pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
-def test_hook_latency(subprocess_plugin, capsys, event):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    name = 'bash' if event == 'PreToolUse' else 'example'
-    payload = (ROOT / f'tests/payloads/{event}/{name}.json').read_text()
-    elapsed = []
-    cpu = []
-    for _ in range(60):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess_replay(subprocess_plugin, event, payload)
-        elapsed.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    assert_latency_budget(event, cpu_ms, wall_ms, capsys)
 
 
 def test_unaccounted_shell_mention_blocks_hook(plugin):
@@ -862,40 +720,6 @@ GUARDS = [Guard('PreToolUse', 'Bash', check)]
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
     assert result.returncode == 2
     assert 'run git or gh as a plain command' in result.stderr
-
-
-@pytest.mark.xdist_group('timing')
-def test_status_line_latency(subprocess_plugin, capsys):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    root, env = subprocess_plugin
-    env['WUWEI_NOW'] = '2026-09-28T12:00:00+02:00'
-    directory = root.parent / '.wuwei/days/2026-09-28'
-    directory.mkdir(parents=True)
-    (directory / 'state.json').write_text('{"items":{},"cap":1}\n')
-    kinds = ('state.write', 'state.set', 'state.transition', 'seat launched',
-             'brief written', 'fast_checks.record', 'seat stopped', 'retro.captured')
-    events = ''.join(json.dumps({'kind': kinds[index % len(kinds)],
-                                 'payload': {'detail': 'x' * 400},
-                                 'ts': '2026-09-28T12:00:00+02:00'}) + '\n'
-                     for index in range(10000))
-    (directory / 'events.jsonl').write_text(events)
-    cpu = []
-    wall = []
-    for _ in range(60):
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess.run([str(root / 'bin/wuwei'), 'status', '--line'],
-                                capture_output=True, text=True, cwd=root.parent, env=env)
-        wall.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(wall, n=100)[94] * 1000
-    assert_latency_budget('status --line', cpu_ms, wall_ms, capsys)
 
 
 DAY = '2026-09-28'
@@ -974,7 +798,7 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['ITEM-1'], planner_session_id='planner', goals=['G-1'],
         items={'ITEM-1': {'phase': 'planned', 'status': 'running', 'worktree': 'worktrees/ITEM-1'}}),
-        tmp_path, reserved=False)
+        tmp_path)
     for phase in ('implement', 'gate', 'raised'):
         state.transition('ITEM-1', phase, tmp_path)
     state.record_pr(tmp_path, 'ITEM-1', HEAD_REF, raised=False)
@@ -983,7 +807,7 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
                              'status': 'running', 'started_at': now}},
         fast_checks={'acme/app': {'unit': {'sha': head, 'exit': 0}}},
         watch={'clock_at': now, 'poll_at': now, 'measured_at': now, 'prs': {HEAD_REF: {}},
-               'actions': {}}), tmp_path, reserved=False)
+               'actions': {}}), tmp_path)
     rows = [{'kind': 'plan.session', 'payload': {'session_id': 'planner'}, 'ts': now},
             {'kind': 'brief written', 'payload': {'path': relative, 'worktree': str(tree)}, 'ts': now}]
     rows += [{'kind': 'note', 'payload': {'detail': 'x' * 200}, 'ts': now} for _ in range(1000)]
@@ -1003,7 +827,6 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     saved = tmp_path / 'saved-day'
     shutil.copytree(directory, saved)
     payloads = {
-        'Stop': ('Stop', {'session_id': 'planner', 'cwd': str(tmp_path)}),
         'SubagentStop': ('SubagentStop', {'cwd': str(tmp_path), 'agent_id': 'builder-agent',
                                           'agent_type': 'wuwei:builder', 'last_assistant_message': 'Done.',
                                           'agent_transcript_path': str(transcript)}),
@@ -1022,38 +845,8 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     return (root, env), payloads, reset, calls
 
 
-@pytest.mark.xdist_group('timing')
-@pytest.mark.parametrize('path', ['Stop', 'SubagentStop', 'SessionStart', 'commit', 'push'])
-def test_workspace_hook_latency(seeded_workspace, capsys, path):
-    from resource import RUSAGE_CHILDREN, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-
-    plugin, payloads, reset, calls = seeded_workspace
-    event, fields = payloads[path]
-    payload = json.dumps({**fixture(event), **fields})
-    runs = 60 if os.environ.get('WUWEI_BENCH') == '1' else 20
-    elapsed, cpu = [], []
-    for _ in range(runs):
-        reset()
-        before = getrusage(RUSAGE_CHILDREN)
-        start = perf_counter()
-        result = subprocess_replay(plugin, event, payload)
-        elapsed.append(perf_counter() - start)
-        after = getrusage(RUSAGE_CHILDREN)
-        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
-        assert result.returncode == 0, result.stderr
-        if event != 'SessionStart':
-            assert result.stdout == '', result.stdout
-    assert not calls.exists(), calls.read_text()
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    assert_latency_budget(f'{path} in a workspace', cpu_ms, wall_ms, capsys,
-                          wall_budget=100, runs=runs)
-
-
 # #516: the modules the SubagentStop path runs beyond the PreToolUse Bash call's.
-SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.lifecycle',
+SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch',
                          'wuwei.guards.spec', 'wuwei.guards.verdict', 'wuwei.brief', 'wuwei.dispatch',
                          'wuwei.sessions', 'wuwei.specmode',
                          # #839: a git commit's PreToolUse no longer reads the identity (state, registry).
@@ -1103,26 +896,25 @@ COUNTING = (
 
 
 def test_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
-    # #516: one state write per seat stop (the session row rides in it) and one directory
-    # fsync per state write: 3 fsyncs instead of 8, 3 appends instead of 4, same records.
-    # #843: the seat-free discovery request is gone, one append fewer.
+    # #516: one state write per seat stop and one directory fsync per state write.
+    # #843: the seat-free discovery request is gone, one append fewer. #847: no session row
+    # and no snapshot: the file and the directory fsync.
     from wuwei import state, workspace
     root = seeded_workspace[0][0].parent
     run_launcher(seeded_workspace, tmp_path, 'SubagentStop')  # writes the config cache, as on a warm day
-    assert run_launcher(seeded_workspace, tmp_path, 'SubagentStop', COUNTING) == {'fsync': 3, 'appends': 2}
+    assert run_launcher(seeded_workspace, tmp_path, 'SubagentStop', COUNTING) == {'fsync': 2, 'appends': 2}
     data = state.read_state(root)
     seat = data['seats']['builder-1']
     assert (seat['status'], seat['agent_id']) == ('stopped', 'builder-agent')
-    assert data['sessions']['abc123']['last_hook'] == 'SubagentStop:wuwei:builder'
+    assert 'abc123' not in data.get('sessions', {})
     rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-    rows = [row for row in rows if row['kind'] != 'note'][-3:]
-    assert [row['kind'] for row in rows] == ['seat stopped', 'session.seen', 'spec.warned']
+    rows = [row for row in rows if row['kind'] != 'note'][-2:]
+    assert [row['kind'] for row in rows] == ['seat stopped', 'spec.warned']
     assert rows[0]['payload'] == {'name': 'builder-1', 'prs_seen': True}
-    assert rows[1]['payload'] == {'session_id': 'abc123', 'hook': 'SubagentStop:wuwei:builder', 'prs_seen': True}
 
 
-@pytest.mark.parametrize('session_id, recorded', [('wuwei-heartbeat', 0), ('a-session', 1)])
-def test_heartbeat_refusals_are_not_recorded(plugin, session_id, recorded):
+@pytest.mark.parametrize('session_id, recorded', [('wuwei-probe', 0), ('a-session', 1)])
+def test_probe_refusals_are_not_recorded(plugin, session_id, recorded):
     install(plugin, '''
 from wuwei.guards import Guard
 GUARDS = [Guard('PreToolUse', None, lambda payload: (1, 'guard reason'))]
@@ -1134,49 +926,6 @@ GUARDS = [Guard('PreToolUse', None, lambda payload: (1, 'guard reason'))]
     events = workspace.day_dir(plugin[0]) / 'events.jsonl'
     rows = events.read_text().splitlines() if events.exists() else []
     assert sum(json.loads(row)['kind'] == 'hook.refusal' for row in rows) == recorded
-
-
-def test_no_hook_path_imports_heartbeat():
-    import ast
-    paths = [*(ROOT / 'cli/wuwei/guards').glob('*.py'), ROOT / 'cli/wuwei/commands/hook.py']
-    for path in paths:
-        for node in ast.walk(ast.parse(path.read_text())):
-            names = ([alias.name for alias in node.names] if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
-            if isinstance(node, ast.ImportFrom):
-                names.append(node.module or '')
-            assert not any('heartbeat' in name or 'telemetry' in name for name in names), path
-
-
-@pytest.mark.xdist_group('timing')
-def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbeat):
-    from resource import RUSAGE_CHILDREN, RUSAGE_SELF, getrusage
-    from statistics import quantiles
-    from time import perf_counter
-    from wuwei import heartbeat, integrity, registry
-
-    from fakes.integrity import seed
-    (root, env), _, reset, calls = seeded_workspace
-    seed(root.parent)  # after the fixture signed the copy, so the verdict is fresh
-    monkeypatch.setenv('PATH', env['PATH'])
-    monkeypatch.setattr(integrity, 'PLUGIN', root)
-    module = registry.watch_service()
-    module.LAUNCHER = root / 'bin/wuwei'
-    monkeypatch.setattr(registry, 'watch_service', lambda: module)
-    monkeypatch.setattr(heartbeat, 'beat', quiet_heartbeat)  # the real beat, ping off
-    runs = 60 if os.environ.get('WUWEI_BENCH') == '1' else 20
-    elapsed, cpu = [], []
-    for _ in range(runs):
-        reset()
-        before = [getrusage(who) for who in (RUSAGE_SELF, RUSAGE_CHILDREN)]
-        start = perf_counter()
-        heartbeat.beat(root.parent)
-        elapsed.append(perf_counter() - start)
-        after = [getrusage(who) for who in (RUSAGE_SELF, RUSAGE_CHILDREN)]
-        cpu.append(sum(a.ru_utime - b.ru_utime + a.ru_stime - b.ru_stime for a, b in zip(after, before)))
-    assert not calls.exists(), calls.read_text()
-    cpu_ms = quantiles(cpu, n=100)[94] * 1000
-    wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    assert_latency_budget('heartbeat tick', cpu_ms, wall_ms, capsys, wall_budget=200, runs=runs)
 
 
 def test_seat_question_without_record_stops_freely(subprocess_plugin, tmp_path):
@@ -1207,7 +956,7 @@ GUARDS = [Guard({event!r}, None, lambda payload: (1, {reason!r}))]
 '''
 
 
-@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse', 'Stop'])
+@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
 def test_enforce_off_records_and_allows(plugin, event):
     enforce(plugin)
     install(plugin, refusing(event))
@@ -1218,16 +967,16 @@ def test_enforce_off_records_and_allows(plugin, event):
     recorded, = events_of(plugin, 'guard.would_refuse')
     assert recorded['guard'] == 'fake' and recorded['reason'] == 'guard reason'
     assert not {'area', 'level', 'posture'} & set(recorded)
-    assert recorded['session'] == payload['session_id'] and recorded['item'] is None
+    assert recorded['session'] == payload['session_id'] and 'item' not in recorded
     if event == 'PreToolUse':
         assert recorded['target'] == 'npm test'
     assert events_of(plugin, 'hook.refusal') == []
 
 
-def test_enforce_off_does_not_log_the_heartbeat(plugin):
+def test_enforce_off_does_not_log_the_doctor_probe(plugin):
     enforce(plugin)
     install(plugin, refusing('PreToolUse'))
-    payload = {**fixture('PreToolUse'), 'session_id': 'wuwei-heartbeat'}
+    payload = {**fixture('PreToolUse'), 'session_id': 'wuwei-probe'}
     assert_refusal(replay(plugin, 'PreToolUse', json.dumps(payload)), 'PreToolUse', 'guard reason')
     assert events_of(plugin, 'guard.would_refuse') == []
 
@@ -1384,7 +1133,7 @@ def event_count(plugin):
 
 
 def test_event_count_per_hook_path(plugin):
-    # #422: telemetry adds no record to a hook: allowed 0, refused 1, warned 1, heartbeat 0.
+    # #422: telemetry adds no record to a hook: allowed 0, refused 1, warned 1, doctor probe 0.
     payload = json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
     install(plugin, exiting(0, ''))
     before = event_count(plugin)
@@ -1396,8 +1145,8 @@ def test_event_count_per_hook_path(plugin):
     assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 2
     assert event_count(plugin) - before == 1
     before = event_count(plugin)
-    heartbeat = {**payload, 'session_id': 'wuwei-heartbeat'}
-    assert replay(plugin, 'PreToolUse', json.dumps(heartbeat)).returncode == 2
+    probe = {**payload, 'session_id': 'wuwei-probe'}
+    assert replay(plugin, 'PreToolUse', json.dumps(probe)).returncode == 2
     assert event_count(plugin) - before == 0
     enforce(plugin)
     before = event_count(plugin)
@@ -1457,3 +1206,93 @@ def test_terminal_as_bash(tmp_path):
     for inputs in ({'command': 3}, {'command': 'ls', 'cwd': 3}, 'ls'):
         with pytest.raises(ValueError, match='payload'):
             as_bash({**call, 'tool_input': inputs})
+
+
+def test_part_23_registers_four_hook_events_and_refuses_stop():
+    # #847: the PreCompact and Stop hooks are gone; argparse refuses them as events.
+    from wuwei.__main__ import main
+    hooks = json.loads((Path(__file__).resolve().parents[1] / 'hooks/hooks.json').read_text())['hooks']
+    assert sorted(hooks) == ['PostToolUse', 'PreToolUse', 'SessionStart', 'SubagentStop']
+    for event in ('Stop', 'PreCompact'):
+        with pytest.raises(SystemExit) as raised:
+            main(['hook', event])
+        assert raised.value.code == 2
+
+
+# SessionStart (moved from test_watch.py with the watch, #847): orientation, memory, orphan seats.
+
+@pytest.fixture
+def start_case(tmp_path, monkeypatch):
+    from fakes.integrity import measured
+    from wuwei import state
+    measured(monkeypatch)
+    (tmp_path / '.wuwei/memory').mkdir(parents=True)
+    (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
+    (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["owner"]\n'
+        '[[repos]]\nname="example/project"\npath="repo"\ndefault_branch="main"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    state._write_state(lambda data: data.update(raised_prs=['example/project#7']), tmp_path)
+    return tmp_path
+
+
+@pytest.mark.parametrize('condition,expected', [('clean', 0), ('corrupt', 2)])
+def test_session_start_table(start_case, condition, expected):
+    from wuwei.guards import lifecycle
+    root = start_case
+    if condition == 'corrupt':  # #844: records that fail their schema (a torn cache rebuilds)
+        from fakes import records
+        records.write(root, {'cap': 'bad'})
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert code == expected
+    if condition != 'corrupt':
+        assert 'Memory spine' in message and 'Size:' in message
+    assert 'watch' not in message
+
+
+def test_session_start_names_orphan_seats(start_case):
+    from wuwei import state, workspace
+    from wuwei.guards import lifecycle
+    root = start_case
+    prior = workspace.day_dir(root).parent / '2026-09-27'
+    state._write_state(lambda data: data.update(seats={
+        'old-builder': {'status': 'running'}, 'finished': {'status': 'stopped'}}),
+        directory=prior)
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert code == 1
+    assert 'orphan' in message and 'old-builder' in message and 'finished' not in message
+
+
+def test_session_start_outside_scope(start_case):
+    from wuwei.guards import lifecycle
+    assert lifecycle.session_start({'cwd': str(start_case.parent / 'unrelated')}) == (0, '')
+
+
+def test_session_start_exports_the_session_id(start_case, monkeypatch, tmp_path):
+    from wuwei.guards import lifecycle
+    env_file = tmp_path / 'env'
+    monkeypatch.setenv('CLAUDE_ENV_FILE', str(env_file))
+    lifecycle.session_start({'cwd': str(start_case), 'session_id': 'abc'})
+    assert env_file.read_text() == 'export WUWEI_SESSION_ID=abc\n'
+
+
+def test_session_real_cli_boundary(start_case):
+    root = start_case
+    project = Path(__file__).resolve().parents[1]
+    payload = {'cwd': str(root), 'hook_event_name': 'SessionStart',
+               'session_id': 'test', 'transcript_path': str(root / 'transcript')}
+    result = subprocess.run([sys.executable, '-P', '-m', 'wuwei', 'hook', 'SessionStart'],
+        cwd=root, env={**os.environ, 'PYTHONPATH': str(project / 'cli')},
+        input=json.dumps(payload), text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
+    assert 'Memory spine' in context and 'Size:' in context and 'watch' not in context
+
+
+def test_session_payload_names_why_not_the_records(start_case):
+    from wuwei import memory
+    content, size, tokens = memory.session_payload(start_case)
+    assert 'Full day state: wuwei why <item>' in content and '"raised_prs"' not in content
+    assert size == len(content.encode('utf-8'))
+    assert tokens == memory.estimated_tokens(content)

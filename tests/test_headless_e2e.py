@@ -79,7 +79,7 @@ def evidence():
                  ('PreToolUse', 2, 'Agent', {'description': 'headless refusal probe'}),
                  ('PreToolUse', 0, 'Agent', {'subagent_type': 'wuwei:builder'}),
                  ('PostToolUse', 0, 'Skill', {'skill': 'wuwei:wuwei-plan'}),
-                 ('SubagentStop', 0, '', {}), ('Stop', 2, '', {}), ('Stop', 0, '', {})]]
+                 ('SubagentStop', 0, '', {})]]
     state['planner_session_id'] = 'planner'
     action = {'action': 'launch', 'agent_type': 'wuwei:builder',
               'prompt': 'WUWEI brief: .wuwei/days/2026-09-29/briefs/builder.md\nRead instructions.'}
@@ -89,20 +89,13 @@ def evidence():
             row['input']['prompt'] = action['prompt']
         if row['event'] == 'SubagentStop':
             row['agent_type'] = 'wuwei:builder'
-        if row['event'] == 'Stop':
-            row['session'] = 'planner'
     for role in names[1:]:
-        hooks.insert(-1, {'event': 'PreToolUse', 'exit': 0, 'tool': 'Agent',
-                         'input': {'subagent_type': 'wuwei:' + role}})
-        hooks.insert(-1, {'event': 'SubagentStop', 'exit': 0, 'agent_type': 'wuwei:' + role})
-    hooks.insert(-1, {'event': 'cli', 'args': ['close'], 'exit': 0})
-    # #477: the planner yields a turn while the builder runs and while its check runs.
-    stop = next(i for i, h in enumerate(hooks) if h['event'] == 'SubagentStop')
-    hooks[stop:stop + 1] = [
-        {'event': 'Stop', 'exit': 0, 'session': 'planner', 'yield': 'builder'}, hooks[stop],
-        {'event': 'PreToolUse', 'exit': 0, 'tool': 'Bash', 'input': {'command': 'bin/wuwei build check A'}},
-        {'event': 'Stop', 'exit': 0, 'session': 'planner', 'yield': 'check'},
-        {'event': 'cli', 'args': ['build', 'check', 'A'], 'exit': 0}]
+        hooks.append({'event': 'PreToolUse', 'exit': 0, 'tool': 'Agent',
+                      'input': {'subagent_type': 'wuwei:' + role}})
+        hooks.append({'event': 'SubagentStop', 'exit': 0, 'agent_type': 'wuwei:' + role})
+    # #847: the close refuses before the retro (no Stop hook blocks the turn), then succeeds.
+    hooks += [{'event': 'cli', 'args': ['close'], 'exit': 1}, {'event': 'cli', 'args': ['retro'], 'exit': 0},
+              {'event': 'cli', 'args': ['close'], 'exit': 0}]
     return state, events, hooks
 
 
@@ -112,8 +105,7 @@ def test_complete_structured_evidence_passes():
 
 @pytest.mark.parametrize('mutation', [
     'no-launch', 'no-stop', 'no-skill', 'no-hooks', 'no-block', 'no-close',
-    'no-gate', 'live-seat', 'incomplete-build', 'unapproved', 'no-spec-skip',
-    'no-builder-yield', 'no-check-yield',
+    'no-gate', 'live-seat', 'incomplete-build', 'unapproved', 'no-spec-skip', 'no-close-refusal',
 ])
 def test_missing_contract_evidence_fails_despite_success_prose(mutation):
     runner = load('headless_e2e')
@@ -138,8 +130,8 @@ def test_missing_contract_evidence_fails_despite_success_prose(mutation):
         data['builds']['A']['status'] = 'running'
     elif mutation == 'no-spec-skip':
         events = [e for e in events if e['kind'] != 'spec.skipped']
-    elif mutation in ('no-builder-yield', 'no-check-yield'):
-        hooks = [h for h in hooks if h.get('yield') != mutation.split('-')[1]]
+    elif mutation == 'no-close-refusal':
+        hooks = [h for h in hooks if not (h.get('args') == ['close'] and h['exit'])]
     else:
         data['gate_approved'] = False
     assert runner.validate(data, events, hooks)
@@ -184,7 +176,6 @@ def test_scratch_build_and_observer_preserve_hook_results(tmp_path, monkeypatch)
     assert (plugin / 'hooks/hooks.json').read_bytes() == (ROOT / 'hooks/hooks.json').read_bytes()
     assert (plugin / 'bin/wuwei').read_bytes() == (ROOT / 'bin/wuwei').read_bytes()
     cli = plugin / 'bin/wuwei'
-    assert adapter.run([cli, 'integrity', 'check'], cwd=root, env=env).returncode == 0
     payload = {'session_id': 'fixture', 'transcript_path': str(root / 'transcript.jsonl'),
                'cwd': str(root), 'hook_event_name': 'PreToolUse',
                'tool_name': 'Write', 'tool_input': {'file_path': str(root / '.wuwei/days' /
@@ -196,7 +187,7 @@ def test_scratch_build_and_observer_preserve_hook_results(tmp_path, monkeypatch)
     assert row['event'] == 'PreToolUse' and row['exit'] == 2 and row['tool'] == 'Write'
     for args in (['plan', 'propose', 'proposal.json'],
                  ['plan', 'approve', '--items', 'A', '--goals-confirmed'],
-                 ['brief', 'builder', 'A', 'builder', '--worktree', 'repo', '--file', '-']):
+                 ['seat', 'brief', 'builder', 'A', 'builder', '--worktree', 'repo', '--file', '-']):
         step = adapter.run([cli, *args], cwd=root, env=env, input='Verify README presence.')
         assert step.returncode == 0, step.stderr
     step = adapter.run([cli, 'build', 'next', 'A'], cwd=root, env=env)
@@ -224,8 +215,8 @@ def test_paid_job_and_local_run_are_documented():
         assert phrase in text
 
 
-@pytest.mark.parametrize('mutation', ['changed-prompt', 'no-build-next', 'wrong-stop-session',
-                                     'no-close-exit', 'late-denial', 'wrong-builder-stop'])
+@pytest.mark.parametrize('mutation', ['changed-prompt', 'no-build-next', 'no-close-exit',
+                                      'late-close-refusal', 'wrong-builder-stop'])
 def test_oracle_binds_launch_and_close_to_real_contract(mutation):
     runner = load('headless_e2e')
     data, events, hooks = evidence()
@@ -235,14 +226,11 @@ def test_oracle_binds_launch_and_close_to_real_contract(mutation):
                 row['input']['prompt'] = 'Reconstructed instructions'
     elif mutation == 'no-build-next':
         hooks = [h for h in hooks if h.get('args') != ['build', 'next', 'A']]
-    elif mutation == 'wrong-stop-session':
-        for row in hooks:
-            if row['event'] == 'Stop':
-                row['session'] = 'unrelated'
     elif mutation == 'no-close-exit':
         hooks = [h for h in hooks if h.get('args') != ['close']]
-    elif mutation == 'late-denial':
-        hooks.append({'event': 'Stop', 'exit': 2, 'session': 'planner'})
+    elif mutation == 'late-close-refusal':
+        hooks = [h for h in hooks if not (h.get('args') == ['close'] and h['exit'])]
+        hooks.append({'event': 'cli', 'args': ['close'], 'exit': 1})
     else:
         for row in hooks:
             if row['event'] == 'SubagentStop':
@@ -286,9 +274,9 @@ def test_observer_reads_the_launcher_flags(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, 'stdin', io.StringIO('{}'))
     monkeypatch.setattr(adapter, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout='', stderr=''))
     flags = (ROOT / 'bin/wuwei').read_text().split('exec python3 ', 1)[1].split(' -c ', 1)[0].split()
-    argv = [*flags, '-c', 'run_module("wuwei")', 'cli', 'plugin', 'hook', 'Stop']
+    argv = [*flags, '-c', 'run_module("wuwei")', 'cli', 'plugin', 'hook', 'SubagentStop']
     assert adapter.observe(sys.executable, tmp_path / 'hooks.jsonl', argv) == 0
-    assert json.loads((tmp_path / 'hooks.jsonl').read_text())['args'] == ['hook', 'Stop']
+    assert json.loads((tmp_path / 'hooks.jsonl').read_text())['args'] == ['hook', 'SubagentStop']
 
 
 KEYS = {'verdict', 'interventions', 'elapsed_seconds', 'cost_usd', 'refusals', 'findings', 'pr'}
@@ -519,7 +507,7 @@ def test_fixture_item_is_light_so_its_spec_is_skipped(tmp_path):
 
 
 def start_evidence():
-    """#476: the start-mode day: no refusal probe, no Skill call, no scripted Stop block."""
+    """#476: the start-mode day: no refusal probe, no Skill call, no scripted close refusal."""
     data, events, hooks = evidence()
     hooks = [h for h in hooks if h['exit'] != 2 and h.get('tool') != 'Skill']
     hooks.insert(-1, {'event': 'PreToolUse', 'exit': 0, 'tool': 'Bash',

@@ -18,7 +18,7 @@ def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
         '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\n'
         'target: 1\ndate: 2026-10-30\npriority: 1\n')
     (root / '.wuwei/config.toml').write_text(
-        '[adapters]\ntts = "none"\ncalendar = "none"\ncode_host = "none"\n')
+        '[adapters]\ncode_host = "none"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T10:00:00+02:00')
     monkeypatch.chdir(root)
@@ -29,12 +29,12 @@ def test_merged_item_reads_the_same_everywhere(tmp_path, monkeypatch, capsys):
                   'candidates': [candidate('DIVIDE-1')]}, root)
     plan.approve(['DIVIDE-1'], root, goals_confirmed=True)
     for args in (('lead', 'DISCOVERY', 'lead-1'), ('steward', 'day', 'steward-1')):
-        assert main(['brief', *args, '--body', 'body']) == 0
+        assert main(['seat', 'brief', *args, '--body', 'body']) == 0
     for phase in ('implement', 'gate', 'raised'):
-        assert main(['state', 'transition', 'DIVIDE-1', phase]) == 0
+        state.transition('DIVIDE-1', phase, root)
     state._write_state(lambda data: data['items']['DIVIDE-1'].update(pr='org/repo#1'),
-                       root, reserved=False)
-    assert main(['state', 'transition', 'DIVIDE-1', 'merged']) == 0
+                       root)
+    state.transition('DIVIDE-1', 'merged', root)
     for kind, payload in (
             ('build.started', {'item': 'DIVIDE-1'}), ('build.checked', {'item': 'DIVIDE-1'}),
             ('verdict.rejected', {'item': 'DIVIDE-1'}),

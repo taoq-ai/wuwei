@@ -11,11 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLS = [
-    ('editor', 'edit', ('path', 'command'), False),
-    ('tts', 'speak', ('text', 'rate', 'out'), False),
-    ('calendar', 'events', ('since', 'until'), True),
     ('transcripts', 'recent', ('since',), True),
-    ('redactor', 'redact', ('text',), True),
     ('integrity', 'sign', ('manifest', 'key'), False),
     ('integrity', 'verify', ('manifest', 'signature', 'key'), True),
     ('host', 'free_memory', (), True),
@@ -72,8 +68,7 @@ CALLS = [
     ('vcs', 'repo_context', ('repo',), True),
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
-    ('vcs', 'hooks_path', ('repo', 'path', 'mode'), False),
-    ('vcs', 'hooks_target', ('repo',), True),
+    ('vcs', 'unhook', ('repo', 'write'), False),
     ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('vcs', 'recent_commits', ('repo',), True),
@@ -149,7 +144,7 @@ def test_module_contracts_allow_extra_import(monkeypatch):
     test_module_contracts()
 
 
-@pytest.mark.parametrize('kind,call,parameters,measurement', [c for c in CALLS if c[0] not in ('editor', 'vcs', 'tts', 'calendar', 'transcripts', 'redactor')])
+@pytest.mark.parametrize('kind,call,parameters,measurement', [c for c in CALLS if c[0] not in ('vcs', 'transcripts')])
 def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measurement):
     api = registry()
     module = importlib.import_module(f'adapters.{kind}.none')
@@ -213,11 +208,11 @@ def test_registry_loads_config_selection(tmp_path):
     config = load_config(tmp_path)
     assert hasattr(api, 'known'), 'adapter discovery is missing'
     for kind in api.INTERFACES:
-        if kind in ('integrity', 'editor'):
+        if kind == 'integrity':
             continue  # Fixed host mechanisms, not owner-selectable config.
         expected = {'code_host': 'github', 'vcs': 'git', 'host': 'local',
-                    'checks': 'local', 'redactor': 'builtin',
-                    'tts': 'say' if sys.platform == 'darwin' else 'none'}.get(kind, 'none')
+                    'checks': 'local',
+                    }.get(kind, 'none')
         assert expected in api.known(kind)
         assert config['adapters'][kind] == expected
         assert api.load(kind, config) is importlib.import_module(f'adapters.{kind}.{expected}')
@@ -459,34 +454,24 @@ def test_watch_probe_refuses_unlisted_commands(tmp_path, monkeypatch):
         module.probe([(('hook', 'PreToolUse'), '{}'), (('state', 'set'), '')], tmp_path)
 
 
-@pytest.mark.xdist_group('timing')
-def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
-    import time
+def test_watch_probe_times_out_a_slow_call(tmp_path):
     from wuwei.registry import watch_service
     module = watch_service()
     script = tmp_path / 'wuwei'
-    script.write_text('#!/bin/sh\ncat > /dev/null\n[ "$1" = status ] && exec sleep 5\n'
+    sentinel = tmp_path / 'finished'  # written only by a slow call that ran past its timeout
+    script.write_text('#!/bin/sh\nread -r payload\n'
+                      f'[ "$payload" = slow ] && sleep 2 && touch {sentinel} && exit 0\n'
                       'echo "first line" >&2\necho second >&2\nexit 3\n')
     script.chmod(0o755)
     module.LAUNCHER = script
     ran = []
-    start = time.monotonic()
-    results, during = module.probe([(('status', '--line'), ''), (('hook', 'PreToolUse'), '{}')],
+    results, during = module.probe([(('hook', 'PreToolUse'), 'slow\n'), (('hook', 'PreToolUse'), '{}\n')],
                                    tmp_path, during=lambda: ran.append(1) or 'measured', timeout=1)
-    assert time.monotonic() - start < 3
     assert ran == [1] and during == 'measured'
     (timed, reason, _), (code, line, ms) = results
     assert (timed, reason) == (None, 'timeout')
     assert (code, line) == (3, 'first line') and ms >= 0
-
-
-def test_watch_ping_requires_https(monkeypatch):
-    import urllib.request
-    from wuwei.registry import watch_service
-    module = watch_service()
-    monkeypatch.setattr(urllib.request, 'urlopen', lambda *a, **k: pytest.fail('opened a connection'))
-    with pytest.raises(ValueError, match='ping URL must be https'):
-        module.ping('http://example.test/x')
+    assert not sentinel.exists()  # the slow call was killed, not waited for
 
 
 def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):

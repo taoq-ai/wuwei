@@ -565,7 +565,7 @@ def next_step(item, root=None):
             if _item(fresh, item)['gates']:
                 raise Refused(f'gate tier changed during dispatch; {RACE}')
             fresh['items'][item]['gates'] = record
-        state._write_state(update, root, reserved=False, kind='gate.tiered',
+        state._write_state(update, root, kind='gate.tiered',
                            payload={'item': item, **record})
         row = data['items'][item] = {**row, 'gates': record}
     if phase == 'gate':
@@ -648,7 +648,7 @@ def raise_action(root, data, item, notes):
     action = {'action': 'raise', 'notes': notes, 'seats': []}
     if not path.is_file():
         body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
-        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+        action['commands'] = [f'wuwei seat brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
                               '--body ' + shlex.quote(body)]
     elif name not in data['seats']:
         action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
@@ -697,7 +697,7 @@ def launch_set(root=None):
     ceiling = limits['seats']
     # #658: under the memory rule every sweep records its reading; CAP smooths over them
     if data['gate_approved'] and ((data['cap'], data['cap_bound']) != (cap, bound) or 'reading' in limits):
-        state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root, reserved=False,
+        state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root,
                            kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text'],
                                                         **{key: limits[key] for key in ('reading',) if key in limits}})
     free = start = ceiling - len(running)
@@ -796,7 +796,7 @@ def _start(root, name, repos):
                 f'names no configured repository ({", ".join(names)}); the lead names repo for it '
                 'when it is proposed again')]
         add = [add[0] + ' --repo ' + shlex.quote(repo)]
-    return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+    return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
 def _seats(root, data, item, roles, round_name, commands, note='', stale=(), current=None):
@@ -822,7 +822,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
             elif seat.get('status') == 'stopped' and seat.get('agent_id') and seat.get('brief') and current:
                 if seat.get('delta_head') != current:
                     state._write_state(lambda fresh: fresh['seats'][name].update(delta_head=current),
-                                       root, reserved=False, kind='gate.delta_head',
+                                       root, kind='gate.delta_head',
                                        payload={'item': item, 'seat': name, 'head': current})
                 action = brief.seat_action('sentinel-' + base(role), root / seat['brief'], worktree, root)
                 feedback = _delta_feedback(record, True, current)
@@ -835,7 +835,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
                 again = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, fresh))) + (
                     ' --round delta' if round_name == 'delta' else '')
                 if not logged:
-                    commands.append(f'wuwei brief {base(role)} {item} {fresh} --gate --worktree '
+                    commands.append(f'wuwei seat brief {base(role)} {item} {fresh} --gate --worktree '
                                     f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
                 elif fresh not in data['seats']:
                     actions.append({**brief.seat_action('sentinel-' + base(role), root / logged[-1]['path'],
@@ -855,7 +855,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
         if round_name == 'initial':
             logged = _first_briefs(rows, item, role)
             if not logged and worktree:
-                commands.append(f'wuwei brief {role} {item} {role}-{item} --gate --worktree '
+                commands.append(f'wuwei seat brief {role} {item} {role}-{item} --gate --worktree '
                                 f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item) + note))
             if logged and data['seats'].get(logged[-1].get('name'), {}).get('status') == 'stopped':
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, logged[-1]['name']))))
@@ -882,7 +882,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
                               str((root / worktree).resolve()), root=root)['sha']
             if seat.get('delta_head') != head:
                 state._write_state(lambda fresh: fresh['seats'][name].update(delta_head=head),
-                                   root, reserved=False, kind='gate.delta_head',
+                                   root, kind='gate.delta_head',
                                    payload={'item': item, 'seat': name, 'head': head})
             action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
             feedback = _recheck_feedback(data['items'][item], first,
@@ -1019,7 +1019,7 @@ def skip_polish(item, root=None):
         if row['phase'] != 'gate' or row.get('polish'):
             raise Refused(f'polish state changed during skip; {RACE}')
         row['polish'] = {'status': 'skipped', 'gate': offer['gate'], 'notes': offer['notes']}
-    state._write_state(update, root, reserved=False, kind='polish.skipped',
+    state._write_state(update, root, kind='polish.skipped',
                        payload={'item': item, 'gate': offer['gate'], 'notes': len(offer['notes'])})
     return raise_action(root, state.read_state(root), item, offer['notes'])
 
@@ -1110,7 +1110,7 @@ def receive(item, role, name, round_name='initial', root=None):
         text = scanner.merge(text, findings)
         code, message = verdict.lint(text, class_sweep=True)
         if code:
-            raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
+            raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, then receive it again with bin/wuwei dispatch receive')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
     blocks = sorted(verdict.finding_blocks(text),  # #677: blocking findings first
                     key=lambda block: not re.search(verdict.BLOCKS_YES, block, re.I))
@@ -1133,8 +1133,10 @@ def receive(item, role, name, round_name='initial', root=None):
         fresh['gate_verdicts'][key] = value
 
     stale = _stale_scratch(text, brief_text, root)  # #734: before the write, so damage records nothing
-    state._write_state(update, root, reserved=False, kind='gate.received',
+    state._write_state(update, root, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
+    from wuwei import scanner
+    scanner.trace_sweep(root, workspace.load_config(root))  # #847: pages and parks; not this exit
     if left:  # #672: the round left files in the builder's worktree
         # ponytail: git status omits ignored files (a gitignored __pycache__); the brief's
         # Probe env: line prevents those. Add an --ignored status form if seats keep leaving them.
@@ -1210,7 +1212,7 @@ def opinion(item, root=None):
         seat = {'id': name, 'role': sentinel, 'item': item, 'brief': relative, 'head': head,
                 'status': 'running', 'started_at': workspace.now().isoformat(),
                 'runtime': second['runtime'], 'model': second['model'], 'job': job}
-        state._write_state(lambda fresh: fresh['seats'].update({name: seat}), root, reserved=False,
+        state._write_state(lambda fresh: fresh['seats'].update({name: seat}), root,
                            kind='seat launched', payload={'name': name, 'item': item})
     status = build.wait(runtime, seat['job'], config, root)
     result = build._data(runtime.result(seat['job'], root=root), 'result')
@@ -1229,7 +1231,7 @@ def opinion(item, root=None):
 
     def stop(fresh):
         fresh['seats'][name].update(status='stopped', stopped_at=workspace.now().isoformat(), usage=usage)
-    state._write_state(stop, root, reserved=False, kind='seat.usage',
+    state._write_state(stop, root, kind='seat.usage',
                        payload={'item': item, 'role': sentinel, 'gate': gate, 'usage': usage})
     state.append_event('seat stopped', {'name': name}, root)
     return receive(item, gate, name, round_name, root)

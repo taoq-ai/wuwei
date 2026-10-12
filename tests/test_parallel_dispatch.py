@@ -48,7 +48,7 @@ def launch_set(day, expected=0):
 
 
 def brief(day, item, role='builder', name=None):
-    return day.run('brief', role, item, name or f'{item}-builder', '--worktree', day.repo,
+    return day.run('seat', 'brief', role, item, name or f'{item}-builder', '--worktree', day.repo,
                    '--file', '-', stdin='Implement or review the demo value.').strip()
 
 
@@ -87,7 +87,6 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     assert step['state'] == 'wait'
     assert 'D waits' in step['why'] and 'A-builder started first' in step['why']
     assert 'seats 3/3 by owner (builder, builder, builder)' in day.run('status', '--line')
-    assert 'by owner (builder, builder, builder) · builders G-1 2, G-2 1' in day.run('status')
 
 
 def test_owner_cap_one_stays_sequential(day):
@@ -221,18 +220,7 @@ def test_token_budget_fitting_two_seats_starts_two(day):
     assert 'CAP: cap 2 (budget)' in (day.directory / 'plan.md').read_text()
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'wait'), ('D', 'wait')]
-    assert 'seats 0/2 by budget |' in day.run('status', '--line') and 'bound budget' not in day.run('status')
-
-
-def test_derived_cap_records_are_reserved(day, capsys):
-    from wuwei import signal, state
-    from wuwei.__main__ import main
-    approved(day)
-    assert main(['event', 'cap.derived', '{}']) == 1
-    assert 'wuwei dispatch next --all' in capsys.readouterr().err
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('cap_bound', 'host', day.root)
-    assert 'cap.derived' in signal.SILENT
+    assert 'seats 0/2 by budget |' in day.run('status', '--line')
 
 
 @pytest.mark.parametrize('policy, refused', [(CLAUDE, False), (PROCESS, True)])
@@ -257,12 +245,12 @@ def test_a_day_value_never_changes_cap_or_holds_a_launch(day):
     import os
     from wuwei import state
     approved(day)
-    state._write_state(lambda data: data.update(pace='careful'), day.root, reserved=False)
+    state._write_state(lambda data: data.update(pace='careful'), day.root)
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'start'), ('D', 'start')]
     day.patch.setattr(os, 'getloadavg', lambda: (34.0, 30.0, 20.0))
     day.patch.setattr(os, 'cpu_count', lambda: 10)
-    state._write_state(lambda data: data.update(pace='fast'), day.root, reserved=False)
+    state._write_state(lambda data: data.update(pace='fast'), day.root)
     entries, _ = launch_set(day)
     assert all(action != 'wait' for _, action in entries)
     assert day.data['cap_bound'] != 'load'

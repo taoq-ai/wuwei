@@ -22,11 +22,6 @@ def refused(root, guard, target, day='2026-09-29'):
                        directory=root / '.wuwei/days' / day)
 
 
-def test_would_refuse_is_producer_only(root, capsys):
-    assert main(['event', 'guard.would_refuse', '{}']) == 1
-    assert 'reserved; written by wuwei hook (guards.enforce = false)' in capsys.readouterr().err
-
-
 def test_shadow_lines_group_and_name_candidates(root):
     days = root / '.wuwei/days'
     assert report.shadow_lines([days / '2026-09-28', days / '2026-09-29']) == []
@@ -77,7 +72,7 @@ OFF = '[guards]\nenforce = false\n'
 def test_status_shows_enforce(root, config, enforce):
     from wuwei.commands import status
     (root / '.wuwei/config.toml').write_text(config)
-    state._write_state(lambda data: None, root, reserved=False)
+    state._write_state(lambda data: None, root)
     directory = workspace.day_dir(root)
     data = status.snapshot(directory)
     assert data['enforce'] is enforce and 'posture' not in data

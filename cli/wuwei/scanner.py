@@ -1,6 +1,7 @@
 """S2 trace response and mandatory S4 security measurement."""
 
 import re
+import sys
 
 from wuwei import redact, registry, security, state, workspace
 from wuwei.exits import ADAPTER_DATA
@@ -88,12 +89,13 @@ def _trace_response(finding, root):
             if item is not None and 'parked' in state.PHASES[item['phase']]:
                 item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     return True
 
 
 def trace_sweep(root, config):
-    """Return scanner counts for the watch summary, including empty-day status."""
+    """Page and park on today's scanner chains (dispatch receive and close run it); returns the
+    counts, including empty-day status."""
     counts = {'scanner': 'unmeasured', 'scanner_owed': 0, 'unreadable': 0}
     try:
         path = workspace.day_dir(root) / 'traces.jsonl'
@@ -109,10 +111,6 @@ def trace_sweep(root, config):
             return counts
         if config['adapters']['scanner'] == 'none':
             counts['scanner'] = 'not configured'
-            from wuwei import watch
-            if not any(row['kind'] == 'watch: sweep' and row['payload'].get('scanner') == 'not configured'
-                       for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-                print('watch scanner: not configured', flush=True)
             return counts
         result = registry.load('scanner', config).traces(str(path), root=root)
         if type(result.exit) is not int or result.exit not in (0, 1):
@@ -129,5 +127,5 @@ def trace_sweep(root, config):
         counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1
-        print(f'watch scanner: unmeasured: {type(exc).__name__}', flush=True)
+        print(f'scanner: unmeasured: {type(exc).__name__}; run bin/wuwei doctor', file=sys.stderr)
     return counts

@@ -71,7 +71,7 @@ def record(path):
     def save():
         state._write_state(
             lambda value: value.setdefault('fast_checks', {}).update({repo['name']: records}),
-            root, reserved=False, kind='fast_checks.record', payload={'repo': repo['name']})
+            root, kind='fast_checks.record', payload={'repo': repo['name']})
 
     # Invalidate previous successes before any read or execution can fail.
     save()

@@ -24,7 +24,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
-    state._write_state(lambda data: None, tmp_path, reserved=False)
+    state._write_state(lambda data: None, tmp_path)
     return tmp_path
 
 
@@ -146,7 +146,7 @@ def test_morning_path(root, capsys, monkeypatch):
         ran(root, command)  # done when its command ran, not when it was returned
     found = row(capsys)[1]
     seen_rows.append(found)
-    assert found['state'] == 'lead' and found['command'].startswith('wuwei brief lead day lead --body ')
+    assert found['state'] == 'lead' and found['command'].startswith('wuwei seat brief lead day lead --body ')
     assert '<' not in found['command']
     capsys.readouterr()
     assert main(shlex.split(found['command'])[1:]) == 0
@@ -183,18 +183,11 @@ def test_morning_path(root, capsys, monkeypatch):
 
 def test_next_records_only_with_day_state(root, capsys):
     calibrated(root)
-    for name in ('state.json', 'state.snapshot.json'):
+    for name in ('state.json',):
         (workspace.day_dir(root) / name).unlink(missing_ok=True)
     found = row(capsys)[1]
     assert found['state'] == 'session', found
     assert 'next.action' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
-
-
-@pytest.mark.parametrize('kind,producer', [('next.action', 'wuwei next'), ('day.closed', 'wuwei close')])
-def test_path_events_are_reserved(root, capsys, kind, producer):
-    capsys.readouterr()
-    assert main(['event', kind, '{}']) == 1
-    assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
 
 
 def test_no_decision_row(root, capsys):
@@ -441,7 +434,7 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     text = context(capsys)
     assert len(text.encode('utf-8')) <= BUDGET
     for phrase in ('Next: set: ', 'build ITEM-2: wuwei build next ITEM-2', 'Goals: ', 'Plan: ',
-                   'Full day state: wuwei state get'):
+                   'Full day state: wuwei why <item>'):
         assert phrase in text
     for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
         assert phrase not in text
@@ -515,7 +508,7 @@ def test_build_launches_return_the_build_loop_action(root, capsys, monkeypatch):
 
 
 @pytest.mark.parametrize('answer,action', [
-    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei brief arch A arch-A']}, 'gates'),
+    ({'action': 'gates', 'roles': ['arch'], 'seats': [], 'commands': ['wuwei seat brief arch A arch-A']}, 'gates'),
     ({'action': 'escalate', 'reason': 'gate quality ESCALATE: - P1', 'command': 'wuwei dispatch next A'},
      'refused'),  # #844: an owner decision is the set's decision, never a launch
     ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
@@ -528,7 +521,7 @@ def test_gate_launches_resolve_through_dispatch_next(root, capsys, monkeypatch, 
     [entry] = row(capsys)[1]['launches']
     assert (entry['kind'], entry['action']) == ('gates', action)
     if action == 'gates':
-        assert 'wuwei brief arch A arch-A' in last_event(root)['payload']['named']
+        assert 'wuwei seat brief arch A arch-A' in last_event(root)['payload']['named']
     if action == 'refused':
         assert answer['reason'] in entry['reason']
     if action == 'polish':  # #723
@@ -641,7 +634,7 @@ def test_close_path(root, capsys):
     expect('retro', 'wuwei retro')
     (workspace.day_dir(root) / 'retro').mkdir()
     (workspace.day_dir(root) / 'retro/2026-09-30.md').write_text('# Retro\n')
-    expect('promote', 'wuwei promote')
+    expect('promote', 'wuwei retro --promote')
     expect('retro-applied', 'wuwei retro')
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('[outbound]\nowner_channel = "dm"\n[outbound.owner.slack]\nuser = "U1"\ndm = "D9"\n')
@@ -701,13 +694,6 @@ def test_gate_imports_yesterday_when_it_left_unfinished_items(root, capsys):
     assert coarse(root)['command'] == 'wuwei plan gate'  # the lead proposed it again: no import
 
 
-@pytest.mark.parametrize('kind,producer', [('seat adhoc', 'wuwei seat start'),
-                                           ('subagent.untraced', 'wuwei hook SubagentStop')])
-def test_adhoc_seat_events_are_reserved(root, capsys, kind, producer):
-    # #676: the launch guard trusts seat adhoc; doctor counts subagent.untraced.
-    capsys.readouterr()
-    assert main(['event', kind, '{}']) == 1
-    assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
 # #666: a PR waiting on people never hides work that can run now
 
 
@@ -778,14 +764,14 @@ def test_finding_launch(root, capsys):
     approved(root, {})
     before = coarse(root)
     assert before['state'] != 'set'
-    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin ruff in CI']) == 0
     [launch] = coarse(root)['launches']
     assert (launch['kind'], launch['item'], launch['command']) == (
         'finding', 'fix-pin-ruff-in-ci', 'wuwei plan add fix-pin-ruff-in-ci --from-finding')
     assert 'Pin ruff in CI' in launch['why']
     day(root, items={'fix-pin-ruff-in-ci': {'phase': 'merged'}})
     assert coarse(root) == before
-    assert main(['note', '--fix', 'Pin black']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin black']) == 0
     assert coarse(root)['launches'][0]['item'] == 'fix-pin-black'
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)

@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
 <title id="title">WUWEI: agentic delivery, one day</title>
-<desc id="desc">A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan.</desc>
+<desc id="desc">A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd follows until they merge, and you answer the odd card in the session while guards, lead and steward work under the hood and each day's retro feeds tomorrow's plan.</desc>
 <style><![CDATA[
 .still{display:none}
 .spin{animation:spin 2s linear infinite;transform-box:fill-box;transform-origin:center}@keyframes spin{to{transform:rotate(360deg)}}
-.beat{animation:beat 2s ease-in-out infinite}@keyframes beat{50%{opacity:.25}}
-@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.spin,.beat{animation:none}}
+@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.spin{animation:none}}
 ]]></style>
 <defs>
 <marker id="m-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#B1CBC4"/></marker>
@@ -24,7 +23,7 @@
 <path id="icon-0" d="M12 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4 21c0-4 4-6 8-6s8 2 8 6" transform="translate(115 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="49" y="160" width="162" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="130" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Specs and plan</text><text x="130" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">you approve, the lead ranks</text>
 <path id="icon-1" d="M5 9h14v10H5zM12 5v4M9 13v1M15 13v1M9 16.5h6M3 13v3M21 13v3" transform="translate(383 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="335" y="160" width="126" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="398" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Agent team</text><text x="398" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">3 seats in parallel lanes</text>
 <path id="icon-2" d="M12 3l7 3v5c0 5-3 8-7 10c-4-2-7-5-7-10V6zM9 12l2 2l4-4" transform="translate(557 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="531.5" y="160" width="81" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="572" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Gates</text><text x="572" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">arch · quality · security</text>
-<path id="icon-3" d="M6 4v12M6 20a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8c0 5-12 4-12 8" transform="translate(872 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="810.5" y="160" width="153" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="887" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Pull requests</text><text x="887" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">the shepherd sweeps</text>
+<path id="icon-3" d="M6 4v12M6 20a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8c0 5-12 4-12 8" transform="translate(872 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="810.5" y="160" width="153" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="887" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Pull requests</text><text x="887" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">the shepherd follows up</text>
 <path id="icon-4" d="M12 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4 21c0-4 4-6 8-6s8 2 8 6" transform="translate(1067 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="992" y="160" width="180" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="1082" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Review and merge</text><text x="1082" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">cards: your final say</text>
 <rect id="panel-queue" x="40" y="222" width="180" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
 <rect id="panel-lanes" x="240" y="222" width="530" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
@@ -50,20 +49,14 @@
 <circle id="gate-2-0" cx="600" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
 <circle id="gate-2-1" cx="620" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
 <circle id="gate-2-2" cx="640" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
-<path id="sweep" class="spin" d="M 824 344 A 10 10 0 1 1 814 334 M 810 330 L 814 334 L 810 338" fill="none" stroke="#00C9A7" stroke-width="2"/>
-<text x="832" y="348" fill="#ECF8F5" font-size="12" font-weight="600">sweep</text>
-<text x="802" y="370" fill="#B1CBC4" font-size="11">overnight: sweeps, never merges</text>
-<rect x="1017" y="304" width="30" height="52" rx="6" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/>
-<rect x="1022" y="311" width="20" height="34" rx="3" fill="#B1CBC4" opacity="0.2"/>
 <path id="ask-loop" stroke-dasharray="6 5" d="M 640 440 V 462 H 1050 V 446" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
 <path id="answer-loop" stroke-dasharray="6 5" d="M 1120 440 V 494 H 520 V 446" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
 <text x="845" y="480" fill="#B1CBC4" font-size="12" text-anchor="middle">a one-way question reaches you on one card</text>
-<text x="820" y="512" fill="#B1CBC4" font-size="12" text-anchor="middle">you answer from the phone; seats assume the rest</text>
+<text x="820" y="512" fill="#B1CBC4" font-size="12" text-anchor="middle">you answer on a card; seats assume the rest</text>
 <text x="56" y="548" fill="#B1CBC4" font-size="11" letter-spacing="1">UNDER THE HOOD</text>
 <circle cx="63" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="76" y="574" fill="#ECF8F5" font-size="12">guards: every call checked, 1 caught</text>
-<circle cx="329" cy="570" r="6" fill="#00C9A7" opacity="1" class="beat"/><text x="342" y="574" fill="#ECF8F5" font-size="12">heartbeat</text>
-<circle cx="459" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="472" y="574" fill="#ECF8F5" font-size="12">lead: morning discovery</text>
-<circle cx="779" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="792" y="574" fill="#ECF8F5" font-size="12">steward: retro at close, you promote</text>
+<circle cx="407" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="420" y="574" fill="#ECF8F5" font-size="12">lead: morning discovery</text>
+<circle cx="707" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="720" y="574" fill="#ECF8F5" font-size="12">steward: retro at close, you promote</text>
 <g class="still">
 <rect x="52" y="330" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="347" fill="#ECF8F5">4 · retry policy</text>
 <rect x="52" y="362" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="379" fill="#ECF8F5">5 · cache keys</text>
@@ -84,8 +77,7 @@
 <text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600">shipped today: 0</text>
 <text x="1015" y="248" fill="#ECF8F5" font-size="11">assumed in the spec</text>
 <text x="1015" y="268" fill="#ECF8F5" font-size="11">assumed in the spec</text>
-<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600">client wants Friday?</text>
-<rect x="1022" y="311" width="20" height="34" rx="3" fill="#F2B65E"></rect>
+<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600">ship by Friday?</text>
 <text x="1015" y="380" fill="#ECF8F5" font-size="12" font-weight="600">asked today: 1 of 3</text>
 <text x="1160" y="58" fill="#ECF8F5" font-size="26" text-anchor="end" font-weight="700">13:55</text>
 <rect x="960" y="70" width="110" height="4" rx="2" fill="#00C9A7"/>
@@ -130,17 +122,15 @@
 <text x="802" y="430" fill="#F2B65E" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/>carried to tomorrow: 2</text>
 <text x="1015" y="248" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.31;0.32;1" dur="16s" repeatCount="indefinite"/>assumed in the spec</text>
 <text x="1015" y="268" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.46;1" dur="16s" repeatCount="indefinite"/>assumed in the spec</text>
-<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>client wants Friday?</text>
-<text x="1015" y="288" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>answered: Allow once</text>
-<rect x="1022" y="311" width="20" height="34" rx="3" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.12;0.13;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect x="1022" y="311" width="20" height="34" rx="3" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>ship by Friday?</text>
+<text x="1015" y="288" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>answered: Yes</text>
 <text x="1015" y="380" fill="#ECF8F5" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.52;0.53;1" dur="16s" repeatCount="indefinite"/>asked today: 1 of 3</text>
 <path id="ask-loop-lit" d="M 640 440 V 462 H 1050 V 446" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" stroke-dasharray="6 5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.3;0.31;0.32;0.33;0.44;0.45;0.46;0.47;0.52;0.53;0.54;0.55;1" dur="16s" repeatCount="indefinite"/></path>
 <path id="answer-loop-lit" d="M 1120 440 V 494 H 520 V 446" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" stroke-dasharray="6 5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.31;0.32;0.33;0.34;0.45;0.46;0.47;0.48;0.62;0.63;0.64;0.65;1" dur="16s" repeatCount="indefinite"/></path>
 <path id="day-loop-lit" d="M 1082 124 V 114 H 130 V 122" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/></path>
 <circle cx="63" cy="570" r="6" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36;0.37;0.4;0.41;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle id="lead" cx="459" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.74;0.75;0.8;0.81;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle cx="779" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle id="lead" cx="407" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.74;0.75;0.8;0.81;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="707" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/></circle>
 <text x="1144" y="604" fill="#00C9A7" font-size="12" text-anchor="end" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/>17:15 close: report written, retro done</text>
 <text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.1111;0.1211;1" dur="16s" repeatCount="indefinite"/>09:00</text>
 <text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1111;0.1211;0.2222;0.2322;1" dur="16s" repeatCount="indefinite"/>10:00</text>

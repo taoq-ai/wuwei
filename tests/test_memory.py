@@ -1,23 +1,23 @@
 """Generated memory index and session payload contracts."""
 
-import os
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
+
+from wuwei import memory, state
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = '2026-09-28T12:34:56+02:00'
 
 
-def cli(root, *args):
-    return subprocess.run(
-        [sys.executable, '-P', '-m', 'wuwei', *args],
-        env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli'),
-             'WUWEI_WORKSPACE': str(root), 'WUWEI_NOW': NOW},
-        capture_output=True, text=True,
-    )
+@pytest.fixture(autouse=True)
+def now(monkeypatch):
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+
+
+def payload(root):
+    """What SessionStart injects (#848: the payload command is gone)."""
+    return memory.constraints(root, state.read_state(root)) + '\n' + memory.session_payload(root)[0]
 
 
 def workspace(tmp_path):
@@ -36,12 +36,11 @@ def test_index_sorted_and_stable(tmp_path):
         day.mkdir(parents=True)
         if report is not None:
             (day / 'report.md').write_text(report)
-    result = cli(root, 'index')
-    assert result.returncode == 0, result.stderr
+    assert memory.write_index(root) == []
     index = root / '.wuwei/memory/index.md'
     before = index.read_bytes()
     assert before.decode().splitlines() == ['2026-09-26 | no report', '2026-09-27 | Yesterday']
-    assert cli(root, 'index').returncode == 0
+    assert memory.write_index(root) == []
     assert index.read_bytes() == before
 
 
@@ -51,17 +50,13 @@ def test_payload_content_size_and_missing_source(tmp_path):
     day = root / '.wuwei/days/2026-09-28'
     day.mkdir(parents=True)
     (day / 'state.json').write_text('{"cap": 2}')
-    result = cli(root, 'payload')
-    assert result.returncode == 0, result.stderr
-    assert '# Spine' in result.stdout
-    assert '2026-09-27 | Summary' in result.stdout
-    assert 'Full day state: wuwei state get' in result.stdout and '"cap": 2' not in result.stdout
-    content, size = result.stdout.rsplit('Size: ', 1)
-    assert size == f'{len(content.encode())} bytes, {(len(content) + 3) // 4} estimated tokens\n'
+    content = payload(root)
+    assert '# Spine' in content
+    assert '2026-09-27 | Summary' in content
+    assert 'Full day state: wuwei why <item>' in content and '"cap": 2' not in content
     (root / '.wuwei/memory/index.md').unlink()
-    result = cli(root, 'payload')
-    assert result.returncode == 2
-    assert 'index.md' in result.stderr
+    with pytest.raises(Exception, match='index.md'):
+        payload(root)
 
 
 def test_payload_corrupt_state_fails_closed(tmp_path):
@@ -70,10 +65,8 @@ def test_payload_corrupt_state_fails_closed(tmp_path):
     day = root / '.wuwei/days/2026-09-28'
     day.mkdir(parents=True)
     (day / 'state.json').write_text('{bad')
-    result = cli(root, 'payload')
-    assert result.returncode == 2
-    assert 'state.json' in result.stderr
-    assert not result.stdout
+    with pytest.raises(Exception, match='state.json'):
+        payload(root)
 
 
 def test_index_invalid_utf8_report_replaces_stale_index(tmp_path):
@@ -83,8 +76,7 @@ def test_index_invalid_utf8_report_replaces_stale_index(tmp_path):
     day = root / '.wuwei/days/2026-09-27'
     day.mkdir(parents=True)
     (day / 'report.md').write_bytes(b'\xff')
-    result = cli(root, 'index')
-    assert result.returncode == 1
+    assert memory.write_index(root)
     assert '2026-09-27 | INVALID report:' in index.read_text()
     assert 'stale' not in index.read_text()
 
@@ -92,9 +84,7 @@ def test_index_invalid_utf8_report_replaces_stale_index(tmp_path):
 def test_payload_has_empty_promote_line(tmp_path):
     root = workspace(tmp_path)
     (root / '.wuwei/memory/index.md').write_text('')
-    result = cli(root, 'payload')
-    assert result.returncode == 0, result.stderr
-    assert 'Last promote: none' in result.stdout
+    assert 'Last promote: none' in payload(root)
 
 
 @pytest.mark.parametrize('location', ['days/day', 'archive/day', 'days/report'])
@@ -111,10 +101,8 @@ def test_index_refuses_symlinked_day_or_report(tmp_path, location):
         day = root / '.wuwei/days/2026-09-27'
         day.mkdir(parents=True)
         (day / 'report.md').symlink_to(outside / 'report.md')
-    result = cli(root, 'index')
-    assert result.returncode == 2
-    assert 'symlink' in result.stderr
-    assert 'Outside secret' not in result.stdout
+    with pytest.raises(ValueError, match='symlink'):
+        memory.write_index(root)
 
 
 def test_index_sorts_days_across_live_and_archive_and_rejects_compact_date(tmp_path):
@@ -123,16 +111,14 @@ def test_index_sorts_days_across_live_and_archive_and_rejects_compact_date(tmp_p
                           ('archive', ('2026-09-26',))]:
         for day in dates:
             (root / '.wuwei' / parent / day).mkdir(parents=True)
-    result = cli(root, 'index')
-    assert result.returncode == 0, result.stderr
+    assert memory.write_index(root) == []
     assert (root / '.wuwei/memory/index.md').read_text().splitlines() == [
         '2026-09-26 | no report', '2026-09-27 | no report']
 
 
 def test_index_mode_matches_template(tmp_path):
     root = workspace(tmp_path)
-    result = cli(root, 'index')
-    assert result.returncode == 0, result.stderr
+    assert memory.write_index(root) == []
     assert (root / '.wuwei/memory/index.md').stat().st_mode & 0o777 == 0o644
 
 
@@ -164,7 +150,7 @@ def test_payload_opens_with_active_constraints(tmp_path, monkeypatch, case):
                             'ITEM-4': {'status': 'merged', 'brief': 'c4.md'}},
                     decision_routes={'D-1': {}, 'D-2': {}},
                     decision_outcomes={'D-2': {'option': 'A', 'decided_by': 'owner'}})
-    state._write_state(seed, root, reserved=False)
+    state._write_state(seed, root)
     content, size, _ = memory.session_payload(root)
     assert content.startswith('Rules:\nSpine:') and 'Active constraints:' not in content
     assert size == len(content.encode('utf-8'))
@@ -198,7 +184,7 @@ def test_payload_loads_rules_then_today(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     content, _, _ = memory.session_payload(tiered(tmp_path))
     assert content == ('Rules:\nSpine:\n# Spine\n\n'
-                       'Today:\n2026-09-27 | # Report one\nFull day state: wuwei state get\nLast promote: none\n')
+                       'Today:\n2026-09-27 | # Report one\nFull day state: wuwei why <item>\nLast promote: none\n')
 
 
 def test_payload_over_budget_leaves_today_out(tmp_path, monkeypatch):
@@ -207,7 +193,7 @@ def test_payload_over_budget_leaves_today_out(tmp_path, monkeypatch):
     content, size, tokens = memory.session_payload(tiered(tmp_path, budget=20))
     assert 'Today:' not in content and '2026-09-27 |' not in content and 'retry |' not in content
     assert content == ('Rules:\nSpine:\n# Spine\n\nMemory budget: 27 of 20 estimated tokens; '
-                       'today left out (wuwei state get).\n')
+                       'today left out (wuwei why <item>).\n')
     assert size == len(content.encode()) and tokens == memory.estimated_tokens(content)
 
 
@@ -226,8 +212,8 @@ def test_session_start_names_the_spine_over_budget(tmp_path, monkeypatch):
 BLOCK = '''<!-- wuwei:memory:start -->
 ## WUWEI rules
 
-Generated by wuwei memory export from the workspace charters.
-Change them through wuwei promote; edits here are overwritten.
+Generated from the workspace charters.
+Change them through wuwei retro --promote; edits here are overwritten.
 
 ### builder
 - Run the fast checks before the gate.
@@ -307,24 +293,3 @@ def test_write_block_keeps_the_rules_block_and_owner_text(tmp_path, tmp_path_fac
         with pytest.raises(ValueError, match='memory.export_to'):
             memory.write_block(root, '<!-- other:start -->', '<!-- other:end -->', OTHER, 'x')
         assert not (root / '.wuwei/CLAUDE.md').exists() and not list((root / 'linked').iterdir())
-
-
-def command(*argv):
-    import argparse
-    from wuwei.commands import memory as memory_command
-    parser = argparse.ArgumentParser()
-    memory_command.register(parser.add_subparsers(dest='command'))
-    args = parser.parse_args(['memory', *argv])
-    return args.func(args)
-
-
-def test_memory_export_command(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    root = exporting(tmp_path)
-    assert command('export', '--claude') == 0
-    assert capsys.readouterr().out == f'export: {root / "CLAUDE.md"} written\n'
-    assert command('export', '--claude') == 0
-    assert capsys.readouterr().out.endswith('unchanged\n')
-    for retired in (['show', '2026-10-01'], ['status'], ['forget', 'F-1', 'keep'], ['lint']):
-        with pytest.raises(SystemExit):
-            command(*retired)

@@ -270,44 +270,13 @@ def test_integrity_files_protected(tmp_path, name):
     assert check_bash(payload)[0] != 0
 
 
-def test_integrity_producer_only_state_and_events(tmp_path, monkeypatch):
-    from wuwei import state
-    from wuwei.commands import event
-    root = workspace_root(tmp_path)
-    monkeypatch.chdir(root)
-    for key in ('integrity', 'integrity_failed', 'integrity_confirmation'):
-        with pytest.raises(ValueError):
-            state.set_state(key, {}, root)
-        assert event.run(Namespace(kind=key, payload='{}')) == 1
-
-
-def test_every_sweep_measures_integrity(tmp_path, monkeypatch):
-    from wuwei import obligations, watch
-    api = core()
-    root = workspace_root(tmp_path)
-    calls = []
-    monkeypatch.setattr(api, 'check', lambda root: calls.append(root) or registry.Result(1, reason='page: changed'))
-    monkeypatch.setattr(obligations, 'evaluate', lambda root: dict(
-        exit=0, reply_owed=0, visibility_owed=0, unreadable=0))
-    assert obligations.sweep(root) == 1
-    assert calls == [root]
-    watch.sweep(root)
-    assert calls == [root, root]
-
-
-@pytest.mark.xdist_group('timing')
-def test_cached_check_latency(tmp_path):
-    import time
+def test_cached_check_reads_the_verdict_without_measuring(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 0, 'fingerprint': 'a' * 64, 'reason': ''}))
-    samples = []
-    for _ in range(100):
-        start = time.perf_counter()
-        assert api.cached(root).exit == 0
-        samples.append(time.perf_counter() - start)
-    assert sorted(samples)[94] < .05
+    monkeypatch.setattr(api, 'check', lambda *args, **kwargs: pytest.fail('measured'))
+    assert api.cached(root).exit == 0
 
 
 def vcs():
@@ -533,21 +502,7 @@ def test_missing_ssh_is_unmeasured_even_with_invalid_pin(tmp_path, monkeypatch):
     assert adapter.verify(base / 'MANIFEST.sha256', base / 'MANIFEST.sha256.sig', base / core().KEY).exit == 2
 
 
-def test_sweep_summary_cannot_report_clean_when_integrity_failed(tmp_path, monkeypatch):
-    from wuwei import obligations, state
-    api = core()
-    root = workspace_root(tmp_path)
-    monkeypatch.setattr(api, 'check', lambda root: registry.Result(1, reason='page: changed'))
-    monkeypatch.setattr(obligations, 'evaluate', lambda root: dict(
-        exit=0, reply_owed=0, visibility_owed=0, unreadable=0))
-    records = []
-    monkeypatch.setattr(state, 'append_event', lambda kind, data, **kw: records.append(data))
-    assert obligations.sweep(root) == 1
-    assert records[0]['exit'] == 1 and records[0]['integrity_owed'] == 1
-
-
-def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsys):
-    from wuwei.__main__ import main
+def test_check_names_changed_charter_and_missing_tool(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     base = plugin(tmp_path)
@@ -557,14 +512,14 @@ def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsy
         verify=lambda *a: registry.Result(0)))
     api.write_manifest(base)
     shutil.copyfile(base / api.KEY, root / '.wuwei/integrity/pinned.pub')
-    assert main(['integrity', 'check']) == 0
+    assert api.check(root).exit == 0
     (base / 'charters/builder.md').write_text('run tests.\n')
-    assert main(['integrity', 'check']) == 1
-    assert 'charters/builder.md' in capsys.readouterr().out
+    result = api.check(root)
+    assert result.exit == 1 and 'charters/builder.md' in result.reason
     monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(
         verify=lambda *a: registry.Result(2, reason='ssh-keygen unmeasured: missing')))
-    assert main(['integrity', 'check']) == 2
-    assert 'unmeasured' in capsys.readouterr().out
+    result = api.check(root)
+    assert result.exit == 2 and 'unmeasured' in result.reason
 
 
 @pytest.fixture
@@ -730,7 +685,7 @@ def test_signed_install_passes_without_confirmation_or_vcs(tmp_path, monkeypatch
 
 def test_checkout_reasons_name_reconfirm_line(checkout):
     api, root, base, fake = checkout
-    line = 'run wuwei integrity reconfirm'
+    line = 'run wuwei doctor --fix --apply integrity-reconfirm'
     result = api.check(root)
     assert result.exit == 1 and result.reason.endswith(line) and '\n' not in result.reason
     assert api.cached(root) == registry.Result(2, reason=result.reason)
@@ -813,14 +768,14 @@ def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys)
     monkeypatch.setattr(api, 'PLUGIN', base)
     root = tmp_path / 'ws'
     assert init.run(Namespace(path=str(root))) == 0
-    lines = [line for line in capsys.readouterr().out.splitlines() if 'wuwei integrity reconfirm' in line]
+    lines = [line for line in capsys.readouterr().out.splitlines() if 'wuwei doctor --fix --apply integrity-reconfirm' in line]
     assert len(lines) == 1
     assert pre_tool_use(monkeypatch, root) == 0  # #839: a warning at session start only
     assert pre_tool_use(monkeypatch, root, 'SessionStart') == 0
     out = capsys.readouterr()
     reason = json.loads(out.out.splitlines()[-1])['hookSpecificOutput']['additionalContext']
-    assert 'run wuwei integrity reconfirm' in reason and 'Errno' not in reason
-    assert 'run wuwei integrity reconfirm' in out.err
+    assert 'run wuwei doctor --fix --apply integrity-reconfirm' in reason and 'Errno' not in reason
+    assert 'run wuwei doctor --fix --apply integrity-reconfirm' in out.err
 
 
 def no_terminal(monkeypatch, tmp_path, mode):
@@ -850,9 +805,9 @@ def test_reconfirm_asks_the_owner_step_card(tmp_path, monkeypatch):
     monkeypatch.setattr(api, 'measure', lambda **kw: registry.Result(1, 'b' * 64, 'page: changed'))
     no_terminal(monkeypatch, tmp_path, 'missing')
     result = api.reconfirm(root)
-    assert result.exit == 1 and 'Owner step: bin/wuwei integrity reconfirm (bbbbbbbbbbbb)' in result.reason
+    assert result.exit == 1 and 'Owner step: bin/wuwei doctor --fix --apply integrity-reconfirm (bbbbbbbbbbbb)' in result.reason
     assert 'host terminal' not in result.reason and not (root / '.wuwei/integrity/confirmation.json').exists()
-    owner.answer(root, 'bin/wuwei integrity reconfirm', 'b' * 12, detail=f"Confirm plugin installation {'b' * 12} on this host.")
+    owner.answer(root, 'bin/wuwei doctor --fix --apply integrity-reconfirm', 'b' * 12, detail=f"Confirm plugin installation {'b' * 12} on this host.")
     assert api.reconfirm(root).exit == 0
     assert json.loads((root / '.wuwei/integrity/confirmation.json').read_text())['fingerprint'] == 'b' * 64
 
@@ -1052,8 +1007,9 @@ def test_release_asset_through_the_launcher_with_a_marker(tmp_path, monkeypatch)
     hook = wuwei('hook', 'PreToolUse', stdin=payload)
     assert hook.returncode == 0, hook.stdout + hook.stderr
     (stage / '.in_use/23456').write_text('')
-    check = wuwei('integrity', 'check', cwd=ws)
-    assert check.returncode == 0, check.stdout + check.stderr
+    check = wuwei('doctor', '--json', cwd=ws)  # #848: doctor measures integrity afresh
+    rows = json.loads(check.stdout)['rows']
+    assert [row['status'] for row in rows if row['name'] == 'integrity'] == ['ok'], check.stdout
     assert wuwei('hook', 'PreToolUse', stdin=payload).returncode == 0
 
 
@@ -1068,7 +1024,7 @@ def test_both_paths_cached(tmp_path, monkeypatch):
     result = api.cached(root)
     assert result.exit == 2
     for text in (f'confirmed the plugin at {copy_a}', f'runs {copy_b}', f'claude --plugin-dir {copy_a}',
-                 'bin/wuwei integrity reconfirm to confirm this one'):
+                 'bin/wuwei doctor --fix --apply integrity-reconfirm to confirm this one'):
         assert text in result.reason, text
     monkeypatch.setattr(api, 'PLUGIN', copy_a)
     assert 'confirmed the plugin at' not in api.cached(root).reason

@@ -6,10 +6,10 @@ from wuwei import workspace
 
 CAP = 'seat not registered: running build seats 2 at CAP 2; wait for a build seat to finish, then retry'
 MISMATCH = ('seat not registered: Agent role does not match logged brief role; write the brief '
-            'again with bin/wuwei brief, then launch with the name and role it returns')
+            'again with bin/wuwei seat brief, then launch with the name and role it returns')
 CANARY = 'outward: security.canary'
 MISSING = ('brief .wuwei/days/2026-09-28/briefs/never.md does not exist; '
-           'run bin/wuwei brief sentinel-arch <item> <name> first')
+           'run bin/wuwei seat brief sentinel-arch <item> <name> first')
 
 
 def fixed(module, code, reason, name='check'):
@@ -93,7 +93,7 @@ def test_hook_table(tmp_path, monkeypatch, enforce, check, on, off):
         assert not logged
     else:
         [event] = logged
-        assert set(event) == {'guard', 'reason', 'exit', 'target', 'session', 'item'}
+        assert set(event) == {'guard', 'reason', 'exit', 'target', 'session'}
         assert event['reason'] == reason and event['exit'] == code
 
 

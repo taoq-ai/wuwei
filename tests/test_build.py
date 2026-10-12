@@ -204,7 +204,7 @@ def test_builder_policy_overrides_workspace_runtime(tmp_path, monkeypatch):
     config = tmp_path / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('runtime="codex"', 'runtime="claude"'))
     state._write_state(lambda data: data.update(seat_policy={
-        'builder': {'runtime': 'codex', 'model': 'test'}}), tmp_path, reserved=False)
+        'builder': {'runtime': 'codex', 'model': 'test'}}), tmp_path)
     selected = []
     original = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, settings:

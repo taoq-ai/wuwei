@@ -159,36 +159,22 @@ def test_file_exit_table(tmp_path, contents, code, reason):
     assert reason in message
 
 
-@pytest.mark.parametrize('contents,role,code', [(PASS, '', 0),
-                                             ('Verdict: FIX', '', 1),
-                                             (None, '', 2), (PASS, 'sentinel-quality', 1)])
-def test_cli(tmp_path, capsys, contents, role, code):
-    from wuwei.__main__ import main
-    path = tmp_path / 'verdict.md'
-    if contents is not None:
-        path.write_text(contents)
-    assert main(['verdict', 'lint', str(path), *(['--role', role] if role else [])]) == code
-    output = capsys.readouterr()
-    assert output.err if code else output.out
-
-
 @pytest.mark.parametrize('role,reason', [('sentinel-arch', 'class-sweep'),
                                        ('wuwei:sentinel-security', 'class-sweep'),
                                        ('plugin:wuwei:sentinel-quality', 'Simplicity:'),
                                        ('sentinel-goal', '')])
-def test_cli_role_requirements_match_write_guard(tmp_path, capsys, role, reason):
-    from wuwei.__main__ import main
+def test_role_requirements_match_write_guard(tmp_path, role, reason):
     from wuwei.guards.verdict import check_write
+    from wuwei.verdict import lint_file
     path = tmp_path / 'decisions/gate-item.md'
     path.parent.mkdir()
     path.write_text(PASS.replace('VAL: PASS\n', ''))
     payload = {'cwd': str(tmp_path), 'agent_type': role, 'tool_input': {'file_path': str(path)}}
-    assert main(['verdict', 'lint', str(path), '--role', role]) == int(bool(reason))
+    code, message = lint_file(path, role=role)
+    assert code == int(bool(reason)) and reason in message
     assert check_write(payload)[0] == int(bool(reason))
-    if reason:
-        assert reason in capsys.readouterr().err
     path.write_text(PASS + 'Simplicity: none\nDesign: none\n')
-    assert main(['verdict', 'lint', str(path), '--role', role]) == 0
+    assert lint_file(path, role=role)[0] == 0
     assert check_write(payload)[0] == 0
 
 
@@ -465,18 +451,18 @@ def test_daily_gate_scan_records_findings_and_unreadable_files(tmp_path, command
     assert {str(path) for path in directory.iterdir()} <= {r['payload']['file'] for r in records}
 
 
-@pytest.mark.parametrize('entry', ['cli', 'hook'])
+@pytest.mark.parametrize('entry', ['lint_file', 'hook'])
 @pytest.mark.parametrize('contents', ['Verdict: FIX', None])
 def test_lint_rejections_append_events(tmp_path, monkeypatch, entry, contents):
-    from wuwei.__main__ import main
     from wuwei.guards.verdict import check_write
+    from wuwei.verdict import lint_file
     from wuwei.workspace import day_dir
     path = tmp_path / 'decisions/gate-arch.md'
     path.parent.mkdir()
     if contents is not None:
         path.write_text(contents)
-    if entry == 'cli':
-        assert main(['verdict', 'lint', str(path)]) != 0
+    if entry == 'lint_file':
+        assert lint_file(path)[0] != 0
     else:
         assert check_write({'cwd': str(tmp_path), 'tool_input': {'file_path': str(path)}})[0] != 0
     event, = [json.loads(line) for line in (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()]
@@ -606,7 +592,7 @@ def registered_stop(tmp_path):
     relative = (directory / 'briefs/review-1.md').relative_to(tmp_path).as_posix()
     state._write_state(lambda data: data.update(seats={'review-1': {
         'id': 'review-1', 'role': 'sentinel-quality', 'item': 'X',
-        'brief': relative, 'status': 'stopped'}}), tmp_path, reserved=False)
+        'brief': relative, 'status': 'stopped'}}), tmp_path)
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': [{'type': 'text', 'text': 'WUWEI brief: ' + relative}]}}) + '\n')
@@ -649,7 +635,7 @@ def test_stop_lints_only_registered_seat(registered_stop, tmp_path, monkeypatch,
     if case == 'bad-transcript':
         Path(payload['agent_transcript_path']).write_text('{}\n{broken')
     if case == 'no-reservation':
-        state._write_state(lambda data: data.update(seats={}), tmp_path, reserved=False)
+        state._write_state(lambda data: data.update(seats={}), tmp_path)
     if case == 'wrong-role':
         payload['agent_type'] = 'sentinel-security'
     if case == 'next-day':
@@ -775,7 +761,7 @@ def test_lint_file_takes_no_docs_value(tmp_path, monkeypatch):
         items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'},
                      'docs': {'value': 'docs/a.md', 'reason': ''}}},
         seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
-        tmp_path, reserved=False)
+        tmp_path)
     path = workspace.day_dir(tmp_path) / 'decisions/gate-quality-1.md'
     path.parent.mkdir()
     path.write_text(QUALITY_FIX.replace('fails when input is empty', 'the docs value is missing; fails when input is empty'))
@@ -930,7 +916,7 @@ def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
         items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'},
                      'worktree': str(tree)}},
         seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
-        tmp_path, reserved=False)
+        tmp_path)
     decisions = workspace.day_dir(tmp_path) / 'decisions'
     decisions.mkdir()
     path, unknown = decisions / 'gate-quality-1.md', decisions / 'gate-unknown-1.md'
@@ -938,7 +924,7 @@ def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
         file.write_text(PASS + 'Simplicity: none\nDesign: none\n' + ROW1)
     lint = lambda file: verdict.lint_file(file, role='sentinel-quality', root=tmp_path)
     assert lint(path)[0] == 0
-    state._write_state(lambda data: data['items']['A'].update(ci_jobs=[LINT_REF]), tmp_path, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(ci_jobs=[LINT_REF]), tmp_path)
     code, message = lint(path)
     assert code == 1 and 'CI step 2 (lint / Types)' in message
     assert lint(unknown)[0] == 0

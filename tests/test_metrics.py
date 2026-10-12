@@ -23,7 +23,7 @@ def test_metrics_from_recorded_events(root, capsys):
 
     state._write_state(lambda data: data.update(items={'A': {'phase': 'planned', 'goal': 'unplanned'},
                                                         'B': {'phase': 'planned', 'goal': 'G-1'}}),
-                       root, reserved=False)
+                       root)
     for _ in range(3):
         state.append_event('state.transition', {'item': 'A', 'phase': 'fix',
                                                  'phase_changes': {'A': 'fix'}}, root)
@@ -45,8 +45,6 @@ def test_metrics_from_recorded_events(root, capsys):
     assert value['stuck_parks_per_item']['A'] == 1
     assert value['cost_per_item']['A'] == 0.5
     assert value['seat_decisions_owner_reversed'] == 0
-    assert main(['metrics']) == 0
-    assert json.loads(capsys.readouterr().out)['fix_rounds_per_item']['A'] == 3
 
 
 def test_unmeasured_seat_cost_remains_unmeasured(root):
@@ -62,12 +60,11 @@ def test_missing_source_is_unmeasured_and_corrupt_source_exits_two(root, capsys)
     from wuwei import metrics
 
     assert metrics.collect(root)['fix_rounds_per_item'] == 'unmeasured'
-    assert main(['metrics']) == 0
     directory = workspace.day_dir(root)
     directory.mkdir(parents=True)
     (directory / 'events.jsonl').write_text('{broken}\n')
-    assert main(['metrics']) == 2
-    assert 'events' in capsys.readouterr().err
+    with pytest.raises(ValueError, match='events'):
+        metrics.collect(root)
 
 
 def test_owner_routing_counts_once_and_separately_from_seat_decisions(root, monkeypatch):
@@ -81,7 +78,7 @@ def test_owner_routing_counts_once_and_separately_from_seat_decisions(root, monk
     # A past day's owner route, as the learning cards recorded it before #838.
     row = {'reversibility': 'one-way', 'recommendation': 'A', 'class': None, 'at': '2026-09-29T09:00:00Z'}
     state._write_state(lambda data: data.setdefault('decision_routes', {}).setdefault('D-3', row),
-                       root, reserved=False, kind='decision.routed',
+                       root, kind='decision.routed',
                        payload={'id': 'D-3', 'reversibility': 'one-way', 'class': None, 'at': row['at']})
     value = metrics.collect(root)
     assert value['decisions_per_day'] == 1
@@ -104,7 +101,7 @@ def test_phase_time_includes_initial_planned_interval(root, monkeypatch):
 def test_one_rejection_per_verdict_file_version(root):
     import re
     from wuwei import metrics, verdict
-    state._write_state(lambda data: None, root, reserved=False)
+    state._write_state(lambda data: None, root)
     path = workspace.day_dir(root) / 'decisions/gate-quality.md'
     path.parent.mkdir()
     path.write_text('Verdict: maybe\n')
@@ -130,13 +127,13 @@ def test_escaped_defects_counted_per_computed_tier(root, monkeypatch):
     assert metrics.collect(root)['escaped_defects_per_tier'] == metrics.UNMEASURED
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
     state._write_state(lambda data: data.update(items={'A': merged('light'), 'C': merged('standard')}),
-                       root, reserved=False)
+                       root)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     briefs = workspace.day_dir(root) / 'briefs'
     briefs.mkdir(parents=True)
     (briefs / 'b.md').write_text('Fix the regression from A.\n')
     (briefs / 'gate.md').write_text('Review C.\n')
-    state._write_state(lambda data: data.update(items={'B': merged('standard')}), root, reserved=False)
+    state._write_state(lambda data: data.update(items={'B': merged('standard')}), root)
     for name, role in (('b', 'builder'), ('gate', 'sentinel-quality')):
         state.append_event('brief written', {'item': 'B', 'role': role, 'name': name,
                                              'path': str((briefs / f'{name}.md').relative_to(root))}, root)
@@ -150,7 +147,7 @@ def stamped(monkeypatch, root, at, kind, payload):
 
 
 def banded_day(monkeypatch, root):
-    """A planner day: young until midday, older in the evening, compacted late."""
+    """A planner day with gates through the hours (session.seen rows: a day before #847)."""
     (root / '.wuwei/config.toml').write_text('[owner]\ntimezone = "UTC"\n')
     stamped(monkeypatch, root, '08:00:00', 'plan.session', {'session_id': 'P'})
     for minute in range(10):
@@ -168,22 +165,19 @@ def banded_day(monkeypatch, root):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:30:00+00:00')
 
 
-def test_quality_by_hour_and_session_age(root, monkeypatch):
+def test_quality_by_hour(root, monkeypatch):
     from zoneinfo import ZoneInfo
     from wuwei import metrics
     assert metrics.collect(root)['quality_by_band'] == 'unmeasured'
     banded_day(monkeypatch, root)
     table = metrics.collect(root)['quality_by_band']
-    hour, age = table['hour'], table['session_age']
+    hour = table['hour']
+    assert list(table) == ['hour']  # #847: no session-age bands without the session registry
     assert list(hour) == ['morning', 'midday', 'afternoon', 'evening']
-    assert list(age) == ['0-49 turns', '50-199 turns', '200+ turns', 'compacted', 'no planner']
     assert (hour['morning']['gates'], hour['morning']['fix_rate']) == (1, 0.0)
     assert hour['midday']['fix_rate'] == 1.0
     assert {key: hour['evening'][key] for key in ('gates', 'fix_rounds', 'lint_rejections')} == {
         'gates': 2, 'fix_rounds': 1, 'lint_rejections': 1}
-    assert age['0-49 turns']['gates'] == 2
-    assert (age['50-199 turns']['gates'], age['50-199 turns']['fix_rounds']) == (1, 1)
-    assert age['compacted']['gates'] == 1
     assert hour['afternoon']['fix_rate'] == 'unmeasured'
     assert all(cell['interventions'] == 'unmeasured' for cells in table.values() for cell in cells.values())
     gate = {'kind': 'gate.received', 'ts': '2026-09-29T10:30:00+00:00', 'payload': {'verdict': 'PASS'}}
@@ -207,7 +201,6 @@ def test_band_interventions_from_transcripts(root, monkeypatch):
     assert calls == [1]
     hour = value['quality_by_band']['hour']
     assert [hour[band]['interventions'] for band in hour] == [1, 0, 0, 1]
-    assert value['quality_by_band']['session_age']['no planner']['interventions'] == 2
     assert value['owner_intervention'] == metrics._owner_intervention(real(root, workspace.load_config(root)),
                                                                       workspace.now())
 
@@ -255,7 +248,7 @@ def test_ai_tells_per_text(root, monkeypatch):
                 'status': 'pending', **extra}
     state._write_state(lambda data: data.update(drafts={
         'draft-1': row('draft-1', style=['not-x-but-y', 'stock-word']), 'draft-2': row('draft-2')}),
-        root, reserved=False)
+        root)
     decisions = workspace.day_dir(root) / 'decisions'
     decisions.mkdir()
     (decisions / 'D-1.md').write_text(VALID.replace('records the failure.', text))
@@ -297,27 +290,25 @@ def test_ask_metrics(root):
     state._write_state(lambda data: data.update(
         items={'alpha': {}, 'beta': {}}, decision_routes=routes, decision_outcomes={
             'D-1': {'option': 'A', 'decided_by': 'owner'},
-            'D-2': {'option': 'B', 'decided_by': 'owner'}}), root, reserved=False)
+            'D-2': {'option': 'B', 'decided_by': 'owner'}}), root)
     value = metrics.collect(root)
     assert value['asks_per_item'] == {'alpha': 2, 'beta': 1, 'day': 1}
     assert value['unnecessary_asks'] == 1
 
 
 def test_metrics_week_prints_computes_and_refuses(root, capsys, monkeypatch):
-    # #422: the weekly aggregate on demand; bare metrics is unchanged.
+    # #422, #848: the weekly aggregate on demand through report --week.
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+00:00')
     state.append_event('build.parked', {'item': 'A'}, root)
-    assert main(['metrics', '--week', '2026-W40']) == 0
+    assert main(['report', '--week', '2026-W40']) == 0
     found = json.loads(capsys.readouterr().out)
     assert (found['week'], found['final'], found['metrics']['stuck_parks']) == ('2026-W40', False, 1)
     assert json.loads((root / '.wuwei/metrics/2026-W40.json').read_text()) == found
     (root / '.wuwei/metrics/2026-W40.json').write_text(json.dumps({'week': '2026-W40', 'kept': True}))
-    assert main(['metrics', '--week']) == 0
+    assert main(['report', '--week']) == 0
     assert json.loads(capsys.readouterr().out) == {'week': '2026-W40', 'kept': True}
-    assert main(['metrics', '--week', 'bad']) == 2
+    assert main(['report', '--week', 'bad']) == 2
     assert 'invalid week' in capsys.readouterr().err
-    assert main(['metrics']) == 0
-    assert 'stuck_parks_per_item' in json.loads(capsys.readouterr().out)
 
 
 def test_seat_cost_from_seat_launched_rows(root):
@@ -355,15 +346,12 @@ def span(session, tool, arguments, agent=None):
 def test_path_metrics_count_the_planner_walk(root):
     from wuwei import metrics
     from wuwei.guards import traces
-    state._write_state(lambda data: data.update(planner_session_id='P'), root, reserved=False)
+    state._write_state(lambda data: data.update(planner_session_id='P'), root)
     record = lambda *args, **kwargs: traces._record(span(*args, **kwargs), root)
-    for hook in ('Stop', 'Stop', 'SubagentStop:builder'):
-        state.append_event('session.seen', {'session_id': 'P', 'hook': hook}, root)
-    state.append_event('session.seen', {'session_id': 'X', 'hook': 'Stop'}, root)
     state.append_event('next.action', {'state': 'lead', 'action': 'run', 'item': '', 'traces': 0, 'named': [
-        'wuwei brief lead day lead --body \'Propose today.\'',
+        'wuwei seat brief lead day lead --body \'Propose today.\'',
         'wuwei calibrate --answer "merge=<label>" --repo example/project']}, root)
-    record('P', 'Bash', {'command': '/opt/x/bin/wuwei brief lead day lead --body "other words"'})
+    record('P', 'Bash', {'command': '/opt/x/bin/wuwei seat brief lead day lead --body "other words"'})
     record('P', 'Bash', {'command': 'wuwei calibrate --answer "merge=Owner merges" --repo example/project'})
     record('P', 'Bash', {'command': 'wuwei next --json'})
     record('P', 'Bash', {'command': 'wuwei status --line'})
@@ -374,14 +362,15 @@ def test_path_metrics_count_the_planner_walk(root):
     record('P', 'Bash', {'command': 'git status'}, agent='builder')
     state.append_event('next.action', {'state': 'pr-flow', 'action': 'run', 'item': '', 'traces': 9,
                                        'named': ['wuwei doctor --section pr-flow']}, root)
-    record('P', 'Bash', {'command': 'wuwei brief lead day lead --body x'})
+    record('P', 'Bash', {'command': 'wuwei seat brief lead day lead --body x'})
     value = metrics.collect(root)
     found = metrics.path(metrics._events(workspace.day_dir(root)), metrics._traces(workspace.day_dir(root)), 'P')
-    assert (value['planner_turns'], value['planner_asks'], value['off_path']) == (2, 1, 2), found
+    assert (value['planner_asks'], value['off_path']) == (1, 2), found
+    assert 'planner_turns' not in value
     events = metrics._events(workspace.day_dir(root))
     found = metrics.path(events, metrics._traces(workspace.day_dir(root)), 'P')
     assert found['off_path'][0] == 'wuwei goals'
-    assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named pr-flow
+    assert found['off_path'][1].startswith('wuwei seat brief lead day lead ')  # after next named pr-flow
     assert metrics.path(events, None, 'P')['off_path'] == metrics.UNMEASURED
     assert set(metrics.path(events, [], None).values()) == {metrics.UNMEASURED}
 

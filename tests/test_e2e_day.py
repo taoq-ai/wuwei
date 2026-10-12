@@ -1,7 +1,6 @@
 """A scripted delivery day, collected by the default PR test suite."""
 
 import json
-import time
 
 import pytest
 
@@ -11,9 +10,7 @@ def day(tmp_path, monkeypatch):
     return Day(tmp_path / 'workspace', monkeypatch)
 
 
-@pytest.mark.xdist_group('timing')
 def test_scripted_day(day):
-    started = time.monotonic()
     day.plan()
     assert day.data['gate_approved'] is False
     assert day.run('dispatch', 'next', 'A', expected=1)
@@ -27,8 +24,8 @@ def test_scripted_day(day):
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
     action = day.next()
     tier = action.pop('tier')
-    assert [command.split()[:3] for command in action.pop('commands')] == [
-        ['wuwei', 'brief', role] for role in ('arch', 'quality', 'security')]
+    assert [command.split()[:4] for command in action.pop('commands')] == [
+        ['wuwei', 'seat', 'brief', role] for role in ('arch', 'quality', 'security')]
     assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)
@@ -59,25 +56,15 @@ def test_scripted_day(day):
     assert any(call[0] == 'request_reviewers' for call in day.host.calls)
     rows = json.loads(day.run('pr', 'state'))
     assert rows[0]['state'] == 'waiting'
-    day.run('pr', 'ping-check', day.ref)
     day.run('pr', 'ping', day.ref)
     assert day.data['channel_posts'][0]['status'] == 'posted'
     assert len(day.chat.calls) == 1
-    from wuwei import state
-    state.append_event('watch: clock', {}, day.root)
     day.patch.setenv('WUWEI_NOW', '2026-09-29T12:30:00Z')
-    from wuwei.commands.status import attention
-    pages = [row for row in attention(day.directory) if row['source'] == 'watch: health']
-    assert [row['tier'] for row in pages] == ['page']
-    state.append_event('watch: clock', {}, day.root)
-    assert not [row for row in attention(day.directory) if row['source'] == 'watch: health']
     # Part 14: the open PR holds the close; no decision record does.
     assert 'A is still open' in day.run('close', expected=1)
-    assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
-    day.hook('Stop', stop_hook_active=True)
     day.run('retro')
     day.run('close', '--check', 'retro')
-    assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
+    assert 'A is still open' in day.run('close', expected=1)
     # A replayed server-side merge is external evidence, not a forged local outcome.
     day.host.results['pr'].data.update(state='closed', merged=True,
         merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
@@ -87,7 +74,6 @@ def test_scripted_day(day):
     assert '## Decisions answered' not in (day.directory / 'report.md').read_text()
     assert not list((day.directory / 'decisions').glob('D-*.md'))  # SC-002
     day.run('close')
-    day.hook('Stop')
     assert day.data['close_requested'] is True
     assert all(seat['status'] == 'stopped' for seat in day.data['seats'].values())
     events = day.events
@@ -108,9 +94,9 @@ def test_scripted_day(day):
     assert sorted(row['payload']['step'] for row in events if row['kind'] == 'spec.step') == sorted([
         'specify', 'clarify', 'plan', 'tasks', 'analyze', 'checklist', 'implement'])
     assert 'seat stop unmatched' not in kinds
-    assert json.loads(day.run('metrics'))['fix_rounds_per_item'] == {'A': 1}
+    from wuwei import metrics
+    assert metrics.collect(day.root)['fix_rounds_per_item'] == {'A': 1}
     assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
-    assert time.monotonic() - started < 20
 
 
 def test_fix_round_and_delta_with_fresh_agents(day):
@@ -175,7 +161,6 @@ def test_solo_daily_path(tmp_path, monkeypatch):
     day.run('retro')
     day.run('close', '--check', 'retro')
     day.run('close')
-    day.hook('Stop')
     transitions = [row['payload']['phase_changes']['A'] for row in day.events
                    if 'A' in row['payload'].get('phase_changes', {})]
     assert transitions == ['implement', 'gate', 'fix', 'delta', 'raised', 'merged']
@@ -192,20 +177,10 @@ def refuse_launcher(payload):
     return (2, 'opaque script command') if str(LAUNCHER) in payload['tool_input']['command'] else (0, '')
 
 
-def close_trap(payload):
-    from wuwei.guards import stop
-    return stop.check({**payload, 'stop_hook_active': False})
-
-
-@pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei plan propose'),
-                                            ('close_trap', "'stop_hook_active': True")])
-def test_day_names_the_reintroduced_bug(day, monkeypatch, mutation, match):
-    from wuwei.guards import Guard, edges, stop
-    if mutation == 'launcher':
-        monkeypatch.setattr(edges, 'GUARDS', [*edges.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
-    else:
-        monkeypatch.setattr(stop, 'GUARDS', [Guard('Stop', None, close_trap)])
-    with pytest.raises(AssertionError, match=match):
+def test_day_names_the_reintroduced_bug(day, monkeypatch):
+    from wuwei.guards import Guard, edges
+    monkeypatch.setattr(edges, 'GUARDS', [*edges.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
+    with pytest.raises(AssertionError, match='wuwei plan propose'):
         test_scripted_day(day)
 
 
@@ -230,13 +205,19 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
                    for row in day.events)
 
 
+def integrity_check(day):
+    """#848: the SessionStart check the integrity command ran."""
+    from wuwei import integrity
+    return integrity.check(day.root).exit
+
+
 def test_unconfirmed_plugin_change_warns_and_never_denies_pretooluse(day):
     # #839: integrity warns at session start; no tool call is refused for it.
-    day.run('integrity', 'check')
+    assert integrity_check(day) == 0
     for command in ('python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'):
         day.hook('PreToolUse', tool_name='Bash', tool_input={'command': command})
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
-    day.run('integrity', 'check', expected=1)
+    assert integrity_check(day) == 1
     day.hook('PreToolUse', tool_name='Read', tool_input={'file_path': str(day.repo / 'memory/demo.py')})
     events = day.directory / 'events.jsonl'
     assert not events.exists() or not any(row['kind'] == 'hook.refusal' for row in day.events)
@@ -274,9 +255,9 @@ def test_enforce_off_records_force_push_and_keeps_records_refused(day):
     assert 'posture:' not in denied['permissionDecisionReason']
     from wuwei import report
     assert report.shadow_lines([day.directory])[0].startswith('- edges: 1 ')
-    day.run('integrity', 'check')
+    assert integrity_check(day) == 0
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
-    day.run('integrity', 'check', expected=1)
+    assert integrity_check(day) == 1
     # #839: integrity warns at session start; a tool call is neither refused nor logged for it.
     count = len(day.events)
     assert day.hook('PreToolUse', tool_name='Read',

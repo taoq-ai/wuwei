@@ -11,16 +11,16 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 from wuwei.workspace import ConfigError
 
-# The watch heartbeat's probe calls; their refusals are measurements, not seat refusals.
-HEARTBEAT_SESSION = 'wuwei-heartbeat'
+# Doctor's probe calls; their refusals are measurements, not seat refusals.
+PROBE_SESSION = 'wuwei-probe'
 # #326: events whose answer to a config.toml that does not load is config_failure.
-CONFIG_EVENTS = ('PreToolUse', 'Stop')
+CONFIG_EVENTS = ('PreToolUse',)
 # #326: with a broken config these reads still pass, so the session can show the line.
 REPAIR_READS = {'Read': 'file_path', 'Grep': 'path', 'Glob': 'path'}
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('hook', help='Run guards for a Claude Code hook')
+    parser = subparsers.add_parser('hook')  # no help: unlisted plumbing Claude Code runs
     parser.add_argument('event', choices=EVENTS)
     parser.set_defaults(func=run)
 
@@ -57,7 +57,7 @@ def run(args):
                 except OSError:
                     pass  # A missing or unreadable file stays the guards' to measure, as before.
                 else:
-                    if args.event == 'PreToolUse' and payload['session_id'] != HEARTBEAT_SESSION:
+                    if args.event == 'PreToolUse' and payload['session_id'] != PROBE_SESSION:
                         newer_template(root, payload, config)
         if args.event == 'SubagentStop' and root is not None:
             fill_stop_text(payload)
@@ -119,7 +119,7 @@ def run(args):
         refusals.sort(key=lambda row: row[2])
     enforced, warned = [(module(check), message, code) for check, message, code in refusals], []
     if refusals and args.event != 'SessionStart':
-        if payload.get('session_id') != HEARTBEAT_SESSION:
+        if payload.get('session_id') != PROBE_SESSION:
             enforced = enforce(payload, refusals, root, warned)
         else:  # #839: the probes measure walls; a call a guard could not read is never one
             from wuwei.shell import UNPARSED
@@ -135,14 +135,12 @@ def run(args):
         return CLEAN
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
-                      record=payload.get('session_id') != HEARTBEAT_SESSION,
+                      record=payload.get('session_id') != PROBE_SESSION,
                       refusals=enforced,
                       payload=payload)
     if warned:  # #660: a launch refusal the hook lets through is shown to the session.
         print(json.dumps({'hookSpecificOutput': {'hookEventName': args.event,
                                                  'additionalContext': '\n'.join(warned)}}))
-    if args.event == 'Stop' and context:
-        print('\n'.join(context), file=sys.stderr)
     return CLEAN
 
 
@@ -182,17 +180,13 @@ def newer_template(root, payload, config):
 
 
 def config_failure(event, payload, reason):
-    """A config.toml that does not load (#326): Stop prints it and lets the turn end;
-    PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
+    """A config.toml that does not load (#326): PreToolUse lets ToolSearch, reads of the config and charters, and config set with its
     Owner step card through so the session can show and repair the line, and refuses
     everything else with the error."""
-    if event == 'Stop':
-        print(reason, file=sys.stderr)
-        return CLEAN
     if repair_read(payload) or config_set(payload):  # #831: repaired in the session
         return CLEAN
     return refuse(event, reason, cwd=payload.get('cwd'),
-                  record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)
+                  record=payload.get('session_id') != PROBE_SESSION, payload=payload)
 
 
 def config_set(payload):
@@ -298,7 +292,7 @@ def enforce(payload, refusals, root, warned=None):
                 shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
                 'guard': guard, 'reason': reason, 'exit': code, 'target': shown,
-                'session': payload['session_id'], 'item': claimed(root, payload['session_id'])}, root)
+                'session': payload['session_id']}, root)
             if warned is not None and guard == 'agent_launch':
                 warned.append(reason)
         except BaseException as exc:
@@ -327,16 +321,6 @@ def target(payload):
     return next((inputs[key] for key in ('file_path', 'notebook_path', 'path')
                  if isinstance(inputs.get(key), str)),
                 payload.get('tool_name') or payload['hook_event_name'])
-
-
-def claimed(root, session):
-    """The first item this session claims, or None; never blocks a shadowed refusal."""
-    from wuwei import state
-    try:
-        claims = state.read_state(root).get('claims', {})
-        return next((item for item, holder in sorted(claims.items()) if holder == session), None)
-    except Exception:
-        return None
 
 
 def invalid_constant(value):
@@ -398,7 +382,6 @@ def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=()
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': event, 'permissionDecision': 'deny',
             'permissionDecisionReason': reason}}))
-    elif event in ('Stop', 'SubagentStop'):
+    elif event == 'SubagentStop':
         print(json.dumps({'decision': 'block', 'reason': reason}))
-    # Ordinary PreCompact findings must not prevent compaction (design 4.1).
-    return FINDINGS if event == 'PreCompact' and not malformed else UNRUN
+    return UNRUN

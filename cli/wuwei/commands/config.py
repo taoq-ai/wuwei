@@ -150,7 +150,6 @@ def requirements(config):
         ('tracker', 'github'): [('GITHUB_TRACKER_TOKEN',)],
         ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
-        ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
     }
     if config['chat']['identity'] == 'custom_app':
         needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
@@ -481,7 +480,7 @@ def _protection(host, repo, solo, gate):
                 *(['-F', 'required_status_checks[strict]=false',
                    *(arg for name in contexts for arg in ('-f', f'required_status_checks[contexts][]={name}'))]
                   if contexts else ['-F', 'required_status_checks=null'])]
-        print(f'{label}: or run in your own terminal: {shlex.join(argv)}')
+        print(f'{label}: or apply it with: {shlex.join(argv)}')
     return FINDINGS
 
 

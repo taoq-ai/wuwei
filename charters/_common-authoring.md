@@ -1,5 +1,5 @@
 ---
-version: 1.0.2
+version: 1.0.3
 ---
 # Common authoring rules
 
@@ -10,7 +10,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 1. Identify the audience, delivery medium and the repository's own style before writing. Use plain, factual language; no emoji or em dash. Verify every count, link target, status and technical claim at the current source.
 2. Before any outward post, pass the outward-text guard. A send through a tool not on `outward.allow` is refused; it names the line the owner adds. Record posted ids so obligations can be checked. A refused post is not a sent message.
 3. Before a commit or push, use the repository's configured author and committer identity. Do not fabricate an agent identity or rewrite published history. Use conventional commits when commits are part of the assigned work.
-4. For a rule change, follow the proposal rule in `_common.md`. `wuwei promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
+4. For a rule change, follow the proposal rule in `_common.md`. `wuwei retro --promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
 
 ## Writing for a person
 

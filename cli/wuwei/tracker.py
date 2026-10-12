@@ -62,7 +62,7 @@ def upgrade(root, config, write=True):
             def update(data, item=item, old=old, new=new):
                 if data['tickets'][item]['id'] == old:
                     data['tickets'][item]['id'] = new
-            state._write_state(update, root, reserved=False, kind='plan.set', directory=day,
+            state._write_state(update, root, kind='plan.set', directory=day,
                                payload={'item': item, 'ticket': new, 'was': old})
         lines.append(f'{day.name}/state.json: ticket {item} {old} to {new}')
     return lines
@@ -126,7 +126,7 @@ def duty_comment(root, config, port, number, key, kind, text):
             raise state.StateError(f'tracker: {key} already claimed; another run is writing it, '
                                    'so wait for it to finish')
         rows[key] = {'outcome': 'sending', 'ticket': number, 'kind': kind}
-    state._write_state(claim, root, reserved=False, kind='tracker.logged', payload={'key': key})
+    state._write_state(claim, root, kind='tracker.logged', payload={'key': key})
     result = port.comment(number, text, kind, root=root)
     if result.exit == 2:
         _settle(root, key, lambda rows: rows.pop(key, None), exit=2)
@@ -184,7 +184,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
         row = row or _candidate(root, data, subject)
         if not isinstance(row, dict) or not isinstance(row.get('scope'), str):
             return registry.Result(2, reason=f'tracker create: unknown item {subject}; use an id '
-                                             "from today's plan or proposal (bin/wuwei status lists them)")
+                                             "from today's plan or proposal (bin/wuwei next lists them)")
         title = ' '.join(row['scope'].split())
         lines = [f'Evidence: {row.get("evidence", "")}', f'Goal: {row.get("goal", "unplanned")}',
                  f'Track: {row.get("track", "")}']
@@ -214,7 +214,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None, s
     if result.exit == 1:
         outcome = {'outcome': 'refused', 'reason': result.reason or 'refused'}
         state._write_state(lambda fresh: fresh.setdefault('tracker_log', {}).update({key: outcome}),
-                           root, reserved=False, kind='tracker.logged',
+                           root, kind='tracker.logged',
                            payload={'key': key, 'outcome': outcome['outcome']})
         return registry.Result(1, reason=f'tracker create: refused: {outcome["reason"]}; create the ticket by hand{by_hand}')
     return result
@@ -265,8 +265,7 @@ def _entries(day, data, kinds):
 
 
 def _settle(root, key, update, **payload):
-    state._write_state(lambda fresh: update(fresh.setdefault('tracker_log', {})), root,
-                       reserved=False, kind='tracker.logged', payload={'key': key, **payload})
+    state._write_state(lambda fresh: update(fresh.setdefault('tracker_log', {})), root, kind='tracker.logged', payload={'key': key, **payload})
 
 
 def log(root):
@@ -321,10 +320,10 @@ def log(root):
                 rows[key] = {'outcome': 'sending', 'ticket': number, 'kind': kind}
                 rows.update({name: {'outcome': 'folded', 'ticket': number} for name in keys})
             if keys:
-                state._write_state(claim, root, reserved=False, kind='tracker.folded', payload={
+                state._write_state(claim, root, kind='tracker.folded', payload={
                     'item': folded[0][1], 'ticket': number, 'counts': counts})
             else:
-                state._write_state(claim, root, reserved=False, kind='tracker.logged',
+                state._write_state(claim, root, kind='tracker.logged',
                                    payload={'key': key})
             port = port or registry.load('tracker', config)
             result = port.comment(number, text, category, root=root)
@@ -411,6 +410,6 @@ def record(draft, created, *, root=None, directory=None, seat=None):
             data.setdefault('tickets', {})[subject] = {'id': created['id'], 'source': 'create'}
         data.setdefault('tracker_log', {})[_key(category, subject, draft['title'])] = {
             'outcome': 'written', 'ticket': created['id']}
-    state._write_state(update, root, reserved=False, kind='tracker.created', directory=directory,
+    state._write_state(update, root, kind='tracker.created', directory=directory,
                        payload={'class': category, 'subject': subject,
                                 'ticket': created['id'], 'parent': parent, **({'seat': seat} if seat else {})})

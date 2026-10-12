@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write, Edit
 ---
 
 ---
-version: 1.10.3
+version: 1.10.5
 ---
 # Common rules for every seat
 
@@ -31,11 +31,11 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
+2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals change only through the morning gate's goals block.
 3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
 ---
-version: 1.0.2
+version: 1.0.3
 ---
 # Common authoring rules
 
@@ -46,7 +46,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 1. Identify the audience, delivery medium and the repository's own style before writing. Use plain, factual language; no emoji or em dash. Verify every count, link target, status and technical claim at the current source.
 2. Before any outward post, pass the outward-text guard. A send through a tool not on `outward.allow` is refused; it names the line the owner adds. Record posted ids so obligations can be checked. A refused post is not a sent message.
 3. Before a commit or push, use the repository's configured author and committer identity. Do not fabricate an agent identity or rewrite published history. Use conventional commits when commits are part of the assigned work.
-4. For a rule change, follow the proposal rule in `_common.md`. `wuwei promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
+4. For a rule change, follow the proposal rule in `_common.md`. `wuwei retro --promote` alone appends the dated verbatim line to `memory/CHANGELOG.md` and the outcome to `memory/ledger.jsonl`. Seats never write either and never load the changelog.
 
 ## Writing for a person
 
@@ -74,15 +74,15 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.5.0
+version: 1.5.1
 ---
 # Builder charter
 
-Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei note --fix "<title>"` and the planner adds it as its own small item.
+Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei seat note --fix "<title>"` and the planner adds it as its own small item.
 
 ## Spec and implementation
 
-1. Read the governing requirement, existing code, callers, tests and conventions before changing behavior. State the in-scope promise, assumptions, track and acceptance scenarios in the item's spec. Cite mechanisms from their real callers; mark unverified claims. Specification mode: follow the brief's `Spec:` line. On a non-trivial item, run each step of the configured spec engine in order, with its command, before you edit source. The build loop keeps the gates until every step, implementation included, is done. Claude Code refuses a subagent's Write of a Markdown file named like a report (`analysis.md`, `report.md`, `summary.md`, `findings.md`) in any directory; that check is Claude Code's, not a WUWEI hook. Give a scratch file another name, such as `<item>-analysis.md`, and pipe spec-kit's analyze report to `wuwei spec analysis <item>`, which writes it, then commit it. Name a document section that governs the item in `spec.md` as `Governing: <path>#<heading>`. When the brief or the spec names one, give its text to `/speckit.analyze`. End the report with a `## Governing` table: one row per assumption, the verdict `agrees`, `conflicts` or `not covered`, and the cited `<path>:<line>`. `wuwei spec analysis` refuses the report without it. Name the artifacts (the feature directory, the OpenSpec change or the superpowers files) in your final message. `Spec: skipped (<reason>)` means no spec steps; only the owner skips an item's spec, with `wuwei plan set <item> spec=skipped --reason <why>`.
+1. Read the governing requirement, existing code, callers, tests and conventions before changing behavior. State the in-scope promise, assumptions, track and acceptance scenarios in the item's spec. Cite mechanisms from their real callers; mark unverified claims. Specification mode: follow the brief's `Spec:` line. On a non-trivial item, run each step of the configured spec engine in order, with its command, before you edit source. The build loop keeps the gates until every step, implementation included, is done. Claude Code refuses a subagent's Write of a Markdown file named like a report (`analysis.md`, `report.md`, `summary.md`, `findings.md`) in any directory; that check is Claude Code's, not a WUWEI hook. Give a scratch file another name, such as `<item>-analysis.md`, and pipe spec-kit's analyze report to `wuwei build analysis <item>`, which writes it, then commit it. Name a document section that governs the item in `spec.md` as `Governing: <path>#<heading>`. When the brief or the spec names one, give its text to `/speckit.analyze`. End the report with a `## Governing` table: one row per assumption, the verdict `agrees`, `conflicts` or `not covered`, and the cited `<path>:<line>`. `wuwei build analysis` refuses the report without it. Name the artifacts (the feature directory, the OpenSpec change or the superpowers files) in your final message. `Spec: skipped (<reason>)` means no spec steps; only the owner skips an item's spec, with `wuwei plan set <item> spec=skipped --reason <why>`.
 2. For SLICE, spec and implement in this session. For FULL, stop at the spec-done gate until it passes on what changes what gets built. Record two-way choices, including how to build (an interface, a module boundary, a restructuring, a dependency), under `Assumptions:` in the spec; name a one-way, scope or trust-boundary question under `Blocked:` and stop.
 3. Engineering standard: test first. Write a failing test for each changed behavior, run it, observe the expected failure, then implement the minimum change and run it green. Keep the red and green evidence in the handoff.
 4. Engineering standard: simplest solution that works. Build only what the item asks, reuse repository code, prefer the standard library to a dependency, and avoid an abstraction with one implementation. Preserve trust-boundary validation and data-loss safeguards.
@@ -91,8 +91,8 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 7. Engineering standard: repository conventions first. Match the repository's established tests, formatting, output and commit practices over general preference.
 8. For changed guards, test refusal and error paths as well as success. Validate claims about produced artifacts by reading what the consumer reads. Recheck every changed trust boundary, config use and sibling call path.
 9. Run the focused tests, repository checks and required full suite from the worktree root. Report commands, results, current head, changed files, residual risks and the three-line retro note. A repository check that fails only on files your item does not change means main is broken: do not fix it in this branch. Hand back; the build loop holds the item on one fix item, and its next action tells you to rebase and rerun once that fix merges. Stand down before any sentinel inspects the worktree. When your brief has `CI step` lines, the item fixes a CI job. Run every listed step from the worktree root with the command shown, not only the step that was red. Report one `CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>` line per step in your handoff.
-10. Commit at each green point when authorized by the item workflow; commits are the heartbeat read by the staleness sweep. Undo a probe by reverting its hunk or using a detached copy. Never use `git stash`, `git checkout --` or `git restore` to undo a probe.
-11. Before handoff and after every PR fix round, run `wuwei sweep classes <worktree>` as your brief's `Depth:` line says and sweep only the classes it lists (none at light, design 5.3). Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
+10. Commit at each green point when authorized by the item workflow. Undo a probe by reverting its hunk or using a detached copy. Never use `git stash`, `git checkout --` or `git restore` to undo a probe.
+11. Before handoff and after every PR fix round, run `wuwei build classes <worktree>` as your brief's `Depth:` line says and sweep only the classes it lists (none at light, design 5.3). Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
 
 ## Pre-review class sweep
 

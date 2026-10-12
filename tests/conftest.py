@@ -20,16 +20,6 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def quiet_heartbeat(monkeypatch):
-    # The watch tick runs the heartbeat through the real launcher; a test that drives it
-    # requests this fixture, whose value is the real beat, and restores it.
-    from wuwei import heartbeat
-    real = heartbeat.beat
-    monkeypatch.setattr(heartbeat, 'beat', lambda root: 0)
-    return real
-
-
-@pytest.fixture(autouse=True)
 def unread_deploys(monkeypatch):
     # #586: no test spawns gh for deployments. A test of the deploy rows requests this fixture,
     # whose value is the real reader, and restores it.

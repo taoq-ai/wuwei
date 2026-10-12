@@ -90,8 +90,8 @@ BRIEF = [
     'gate arch initial: PASS',
     'gate quality initial: FIX, blocking: - P1 src/login.py:12 the token is logged in plain text',
     'gate security initial: PASS',
-    'phase implement by wuwei state transition',
-    'phase gate by wuwei state transition',
+    'phase implement by wuwei build next',
+    'phase gate by wuwei build next',
     'phase raised by wuwei pr raise',
     'phase merged by wuwei pr state',
     'merge acme/app#7: cleared by the merge policy at head abcdef123456, checks test success, approvals alice',
@@ -234,7 +234,7 @@ def test_added_item_names_who_added_it(root, capsys):
 
 
 @pytest.mark.parametrize('target,code,err', [
-    ('nope', 1, "wuwei why: no recorded item nope; run bin/wuwei status for today's items\n"),
+    ('nope', 1, "wuwei why: no recorded item nope; run bin/wuwei next for today's items\n"),
     ('acme/app#9', 1, 'wuwei why: no item links acme/app#9; run bin/wuwei pr state for the PRs owned today\n'),
     ('acme#x', 2, 'wuwei why: expected owner/repo#number; pass owner/repo#number\n'),
 ])
@@ -295,7 +295,7 @@ def test_older_refusal_record_says_not_recorded(root, capsys):
 
 
 def test_last_refusal_is_the_newest_across_days(root, capsys):
-    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal; nothing was refused today, so run bin/wuwei status for the day\n')
+    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal; nothing was refused today, so run bin/wuwei next for the day\n')
     refusal(root, NEW, '2026-10-01')
     assert why(capsys, 'last refusal')[1][1:] == REFUSAL
     refusal(root, {'reason': 'today'})
@@ -342,7 +342,7 @@ def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
             'label': 'reviewer', 'launcher': 'planner', 'prompt': 'Review PR 16',
             'prompt_sha256': 'f' * 64, 'status': 'running', 'trace_sessions': ['P:a1']}
     state._write_state(lambda data: data['seats'].update({'adhoc-1': seat, 'b': {
-        'role': 'builder', 'item': 'X', 'status': 'running'}}), root, reserved=False)
+        'role': 'builder', 'item': 'X', 'status': 'running'}}), root)
     assert main(['why', 'adhoc']) == 0
     line, = capsys.readouterr().out.splitlines()
     assert line == ('adhoc seat adhoc-1: general-purpose as reviewer, launched by planner, running; '
@@ -376,7 +376,7 @@ def test_why_json_reads_the_record_at_call_time(root, capsys):
 
     def update(data):
         data['tickets'] = {'X': {'id': 'acme/w#5'}}
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     assert live(capsys)['ticket'] == 'acme/w#5'
 
 
@@ -394,7 +394,7 @@ def test_why_json_reads_an_item_only(root, capsys):
 
     def update(data):
         data['tickets'] = {'X': {'id': f'leaked {TOKEN}'}}
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     out = live(capsys)
     assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['ticket']
 

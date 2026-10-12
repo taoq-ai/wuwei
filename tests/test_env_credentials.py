@@ -5,7 +5,6 @@ import io
 import json
 import os
 from pathlib import Path
-import plistlib
 import shlex
 import subprocess
 import sys
@@ -250,24 +249,13 @@ def test_init_and_upgrade_provision_private_env(tmp_path, monkeypatch):
     assert '/owner-file' in ignore.read_text()
 
 
-@pytest.mark.parametrize('entry', ['bin', 'module', 'watch'])
-def test_entry_paths(case, entry, monkeypatch):
+@pytest.mark.parametrize('entry', ['bin', 'module'])
+def test_entry_paths(case, entry):
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     environment = {**os.environ, 'PYTHONPATH': str(ROOT / 'cli')}
     command = [str(ROOT / 'bin/wuwei')]
     if entry == 'module':
         command = [sys.executable, '-P', '-m', 'wuwei']
-    if entry == 'watch':
-        from wuwei.commands import watch
-        monkeypatch.setattr(watch, 'service_platform', lambda: 'darwin')
-        monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=lambda args: None))
-        assert watch.run(Namespace(watch_action='install', once=False, dry_run=False)) == 0
-        path = next((Path.home() / 'Library/LaunchAgents').glob('*.plist'))
-        data = plistlib.loads(path.read_bytes())
-        assert data['ProgramArguments'][1:] == ['watch']
-        assert KEY not in path.read_text()
-        command = data['ProgramArguments'][:1]
-        environment.update(data['EnvironmentVariables'])
     result = subprocess.run([*command, 'config', 'check'], cwd=case, env=environment,
                             text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
@@ -279,7 +267,6 @@ def test_entry_paths(case, entry, monkeypatch):
     ('tracker="linear"', '', ('LINEAR_API_KEY',)),
     ('chat="slack"', '', ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
-    ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
     ('tracker="jira"', '', ('JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
     ('tracker="github"', '', ('GITHUB_TRACKER_TOKEN',)),
@@ -401,15 +388,6 @@ def test_env_is_loaded_before_argument_errors(case, capsys):
     with pytest.raises(SystemExit):
         main(['config', KEY])
     assert KEY not in str(capsys.readouterr())
-
-
-def test_watch_command_loads_before_tick(case, monkeypatch):
-    from wuwei import watch
-    write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
-    observed = []
-    monkeypatch.setattr(watch, 'tick', lambda root: observed.append(os.environ.get('LINEAR_API_KEY')) or 0)
-    assert main(['watch', '--once']) == 0
-    assert observed == [KEY]
 
 
 def test_output_redacts_values_split_across_writes(case, monkeypatch, capsys):
@@ -595,9 +573,9 @@ URL_LINE = 'acme/widget main: fix in https://github.com/acme/widget/settings/bra
 
 def gh_api(output):
     import shlex
-    lines = [line for line in output.splitlines() if 'or run in your own terminal: ' in line]
+    lines = [line for line in output.splitlines() if 'or apply it with: ' in line]
     assert len(lines) <= 1, lines
-    return shlex.split(lines[0].split('or run in your own terminal: ', 1)[1]) if lines else None
+    return shlex.split(lines[0].split('or apply it with: ', 1)[1]) if lines else None
 
 
 @pytest.mark.parametrize('extra,expected,absent', [

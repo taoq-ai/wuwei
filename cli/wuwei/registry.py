@@ -11,11 +11,7 @@ from wuwei.exits import UNRUN, ADAPTER_DATA, DAMAGED
 
 
 PARAMETERS = {
-    'editor': {'edit': ('path', 'command')},
-    'tts': {'speak': ('text', 'rate', 'out')},
-    'calendar': {'events': ('since', 'until')},
     'transcripts': {'recent': ('since',)},
-    'redactor': {'redact': ('text',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': (), 'hand_over': ('target', 'argv', 'env')},
     'checks': {'run': ('path', 'command', 'timeout')},
@@ -53,8 +49,7 @@ PARAMETERS = {
             'pushed_branches': ('repo',),
             'authorship': ('repo', 'branch', 'paths', 'days'), 'branch': ('repo',),
             'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
-            'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path', 'mode'),
-            'hooks_target': ('repo',),
+            'push_context': ('repo', 'remote', 'refspecs'), 'unhook': ('repo', 'write'),
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
             'recent_commits': ('repo',), 'default_branch': ('repo',),

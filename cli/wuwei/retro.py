@@ -104,7 +104,7 @@ def compile(root=None):
     quality = metrics.bands(root, window)
     margin = workspace.load_config(root)['metrics']['band_margin']
     lines += ['', '## Quality by band (last 7 days)']
-    for key, title in (('hour', 'Hour'), ('session_age', 'Session age')):
+    for key, title in (('hour', 'Hour'),):
         lines += [*metrics.band_lines(title, quality[key]), '']
         found = metrics.worst(quality[key], margin)
         lines.append(f'Worst {title.lower()} band: ' + (
@@ -119,8 +119,8 @@ def compile(root=None):
         workspace.atomic_write(proposals / f'{name}.json', json.dumps({
             'target': '.wuwei/charters/planner.md', 'action': 'add',
             'text': (f'- Gate FIX rate is highest in the {found[0]} {title.lower()} band over the last '
-                     f'7 days ({found[1]:.2f}, others at most {found[2]:.2f}): set '
-                     'sessions.rotate_after so the planner session rotates before it.'),
+                     f'7 days ({found[1]:.2f}, others at most {found[2]:.2f}): '
+                     'start a fresh planner session before it.'),
             'reason': 'quality by band', 'evidence': path.relative_to(root).as_posix()},
             allow_nan=False) + '\n')
     pending = sorted(proposals.glob('*.json')) if proposals.exists() else []

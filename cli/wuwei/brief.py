@@ -38,7 +38,7 @@ def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
     """#567: the brief's Depth: line (design 5.3, process depth follows the tier)."""
     from wuwei import dispatch
     if role == 'builder':
-        sweep = 'wuwei sweep classes ' + shlex.quote(worktree)
+        sweep = 'wuwei build classes ' + shlex.quote(worktree)
         if value == 'light':
             return (f'Depth: light; skip: the class sweep while {sweep} prints Depth: light, '
                     'and the retro note when every line would be none')
@@ -404,6 +404,19 @@ def rulings(body, directory, tree, data):
     return result
 
 
+def candidates(root):
+    """The discovered candidates and every source not measured, one line each."""
+    from wuwei import discovery
+    try:
+        found = discovery.discover(root)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
+        return f'\nCandidates: unmeasured: {exc}\n'
+    lines = [f'Source {name}: {value if isinstance(value, str) else f"measured, {len(value)} rows"}'
+             for name, value in sorted(found['sources'].items())]
+    lines += ['Candidate: ' + json.dumps(row, sort_keys=True) for row in found['candidates']]
+    return '\n' + '\n'.join(lines) + '\n'
+
+
 def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None, second_opinion=None,
           root=None):
     root = workspace.find_workspace(root)
@@ -569,6 +582,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         # reference is optional evidence, so it never refuses.
                         header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
                                       'kept as a reference')
+        if role == 'lead':  # #848: the lead reads the day's candidates here
+            block += candidates(root)
         text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))
         import hashlib
@@ -604,12 +619,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     fresh['items'][item]['depth'] = depth
                 if refs and item in fresh['items']:
                     fresh['items'][item]['ci_jobs'] = refs
-                if role == 'builder':
-                    sessions.claim(fresh, item, session, workspace.now(),
-                                   config['sessions']['stale_seconds'], cwd=str(Path.cwd()))
                 workspace.atomic_write(output, text, replace=False)
                 created = True
-            state._write_state(update, root, reserved=False, kind='brief written', payload=payload)
+            state._write_state(update, root, kind='brief written', payload=payload)
         except BaseException:
             if created:
                 output.unlink()

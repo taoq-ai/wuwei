@@ -220,8 +220,8 @@ def test_config_defaults_and_independence(tmp_path):
             'plugins_file': '~/.claude/plugins/installed_plugins.json'}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
-            'default': 'brief', 'decisions': '', 'report': ''}},
-        'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
+            'default': 'brief', 'report': ''}},
+        'repos': [], 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -239,10 +239,6 @@ def test_config_defaults_and_independence(tmp_path):
         'codex': {'command': [], 'timeout_seconds': 300},
         'gates': {'second_opinion': 'off', 'second_opinion_role': 'quality', 'max_rounds': 2,
                   'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}, 'polish': 'offer'},
-            'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
-                      'sweep_seconds': 7200, 'ping_url': ''},
-        'sessions': {'stale_seconds': 3600,
-                     'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
         'duties': {'on': ['ping', 'shepherd', 'tracker', 'summary']},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
@@ -251,9 +247,8 @@ def test_config_defaults_and_independence(tmp_path):
                          'author_windows_days': [90, 180], 'tie_commits': 2,
                      'source_exclude': ['specs/*', '*.lock', '*lock.json', '*.generated.*', 'generated/*'],
                      'authors': {}},
-        'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
+        'retro': {'charter_paths': ['.wuwei/charters'],
                   'changelog': '.wuwei/memory/CHANGELOG.md'},
-        'calendar': {'url': ''},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
@@ -264,8 +259,8 @@ def test_config_defaults_and_independence(tmp_path):
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
-                     'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'redactor': 'builtin'},
+                     'checks': 'local',
+                     'transcripts': 'none'},
     }
     outward['allow'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['allow']
@@ -376,7 +371,6 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[environments]\nprod = 1', 'environments.prod'),
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
-    ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
     ('[scanner.mcp]\nplugins_file = 1', 'scanner.mcp.plugins_file'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
@@ -402,12 +396,13 @@ def test_owner_verbosity(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
-    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'report': ''}
-    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndecisions = "brief"\n')
+    assert config['owner']['verbosity'] == {'default': 'brief', 'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\nreport = "brief"\n')
     config = workspace.load_config(tmp_path)
-    assert workspace.verbosity(config, 'decisions') == 'brief'
-    assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'decisions = "loud"'):
+    assert workspace.verbosity(config, 'report') == 'brief'
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\n')
+    assert workspace.verbosity(workspace.load_config(tmp_path), 'report') == 'full'
+    for text in ('default = "short"', 'report = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -772,7 +767,7 @@ def test_upgrade_normalises_a_stored_bare_ticket(tmp_path):
     assert cli(tmp_path, 'init', '--upgrade', **now).returncode == 0
     day = tmp_path / '.wuwei/days/2026-09-29'
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
-        {'X': {'id': '24', 'source': 'candidate'}}), reserved=False, directory=day)
+        {'X': {'id': '24', 'source': 'candidate'}}), directory=day)
     before = (day / 'state.json').read_bytes()
     line = '2026-09-29/state.json: ticket X 24 to acme/app#24'
     preview = cli(tmp_path, 'init', '--upgrade', '--dry-run', **now)
@@ -1385,7 +1380,8 @@ def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch
     memory.symlink_to(outside)
     code, out = upgraded(ws, capsys)
     assert code == 0, out.err
-    assert (outside / 'cruise.json').exists() and 'cruise.json' not in out.out
+    assert (outside / 'cruise.json').exists() and 'cruise.json: remove' not in out.out
+    assert 'left .wuwei/memory/cruise.json: resolves outside .wuwei' in out.out.splitlines()  # #848: named
 
 
 @pytest.mark.parametrize('security', ['', '[security]\nposture = "strict"\n'])
@@ -1640,7 +1636,7 @@ def test_status_from_a_configured_checkout(tmp_path, clean_environment):
     (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
     (directory / 'events.jsonl').write_text('')
     index(ws, load_config(ws))
-    result = cli(repo, 'status', WUWEI_NOW='2026-09-28T12:00:00+02:00')
+    result = cli(repo, 'status', '--line', WUWEI_NOW='2026-09-28T12:00:00+02:00')
     assert result.returncode == 0, result.stderr  # config check would reach gh for the repo table
 
 

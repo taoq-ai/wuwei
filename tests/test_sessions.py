@@ -1,4 +1,4 @@
-"""Session registry: several sessions in one workspace, with one planner."""
+"""Session identity, the planner registration and the Owner step card answer."""
 
 import io
 import json
@@ -10,7 +10,6 @@ import pytest
 
 from wuwei import sessions, state, workspace
 from wuwei.__main__ import main
-from wuwei.commands.next import HEADER
 
 
 NOW = '2026-09-30T10:00:00+00:00'
@@ -23,7 +22,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
-    state._write_state(lambda data: None, tmp_path, reserved=False)
+    state._write_state(lambda data: None, tmp_path)
     return tmp_path
 
 
@@ -39,23 +38,10 @@ def test_record_inserts_then_moves_only_last_seen(root, monkeypatch):
     assert data['sessions']['A'] == {'role': 'adhoc', 'started': NOW, 'last_seen': NOW,
                                      'cwd': '/w', 'last_hook': 'SessionStart'}
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:05:00+00:00')
-    sessions.record(data, 'A', hook='Stop', cwd='/other')
+    sessions.record(data, 'A', hook='plan session', cwd='/other')
     assert data['sessions']['A'] == {'role': 'adhoc', 'started': NOW,
                                      'last_seen': '2026-09-30T10:05:00+00:00',
-                                     'cwd': '/w', 'last_hook': 'Stop', 'turns': 1}
-
-
-def test_record_counts_turns_and_compactions(root):
-    data = {}
-    for name in ('SessionStart:startup', 'Stop', 'Stop', 'SessionStart:compact', 'plan session',
-                 'SubagentStop:Explore'):
-        sessions.record(data, 'A', hook=name, cwd='/w')
-    sessions.record(data, 'B', hook='SessionStart:startup', cwd='/w')
-    assert (data['sessions']['A']['turns'], data['sessions']['A']['compactions']) == (2, 1)
-    data['sessions']['A']['rotated'] = NOW
-    rows = {row['session_id']: row for row in sessions.rows(data, workspace.now(), 3600)}
-    assert (rows['A']['turns'], rows['A']['compactions'], rows['A']['rotated']) == (2, 1, NOW)
-    assert (rows['B']['turns'], rows['B']['compactions']) == (0, 0) and 'rotated' not in rows['B']
+                                     'cwd': '/w', 'last_hook': 'plan session'}
 
 
 @pytest.mark.parametrize('data,session_id,role', [
@@ -63,43 +49,6 @@ def test_record_counts_turns_and_compactions(root):
 def test_record_refuses_malformed_input(data, session_id, role):
     with pytest.raises(ValueError):
         sessions.record(data, session_id, hook='SessionStart', cwd='/w', role=role)
-
-
-def test_rows_derive_planner_idle_stale_and_items(root):
-    data = {'planner_session_id': 'A', 'claims': {'X': 'B', 'W': 'B', 'Y': 'A'},
-            'sessions': {'A': {'role': 'adhoc', 'started': '2026-09-30T09:00:00+00:00',
-                               'last_seen': '2026-09-30T09:59:00+00:00', 'cwd': '/w',
-                               'last_hook': 'Stop'},
-                         'B': {'role': 'shepherd', 'started': '2026-09-30T08:00:00+00:00',
-                               'last_seen': '2026-09-30T08:00:00+00:00', 'cwd': '/w',
-                               'last_hook': 'shepherd start'}}}
-    now = workspace.now()
-    rows = sessions.rows(data, now, 3600)
-    assert [row['session_id'] for row in rows] == ['B', 'A']
-    b, a = rows
-    assert (a['role'], a['age_seconds'], a['idle_seconds'], a['stale'], a['items']) == (
-        'planner', 3600, 60, False, ['Y'])
-    assert (b['role'], b['idle_seconds'], b['stale'], b['items']) == (
-        'shepherd', 7200, True, ['W', 'X'])
-    with pytest.raises(ValueError):
-        sessions.rows({'claims': []}, now, 3600)
-
-
-def test_touch_writes_only_when_day_state_exists(root, monkeypatch):
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T10:00:00+00:00')
-    assert sessions.touch(root, 'A', hook='Stop', cwd=str(root)) is None
-    assert not workspace.day_dir(root).exists()
-    monkeypatch.setenv('WUWEI_NOW', NOW)
-    before = len(events(root))
-    data = sessions.touch(root, 'A', hook='Stop', cwd=str(root))
-    assert data['sessions']['A']['last_hook'] == 'Stop'
-    assert [row['kind'] for row in events(root)[before:]] == ['session.seen']
-
-
-def test_stale_seconds_config_and_default(root):
-    assert sessions.stale_seconds(root) == 3600
-    (root / '.wuwei/config.toml').write_text('[sessions]\nstale_seconds = 60\n')
-    assert sessions.stale_seconds(root) == 60
 
 
 def hook(monkeypatch, event, session_id, cwd, **fields):
@@ -111,26 +60,11 @@ def hook(monkeypatch, event, session_id, cwd, **fields):
     return run(SimpleNamespace(event=event))
 
 
-def listed(capsys):
-    capsys.readouterr()
-    assert main(['sessions']) == 0
-    return {row['session_id']: row for row in json.loads(capsys.readouterr().out)}
-
-
-def test_two_sessions_listed_and_planner_role(root, monkeypatch, capsys):
-    hook(monkeypatch, 'SessionStart', 'A', root)
-    hook(monkeypatch, 'SessionStart', 'B', root, source='resume')
-    rows = listed(capsys)
-    assert [(rows[key]['role'], rows[key]['last_hook']) for key in 'AB'] == [
-        ('adhoc', 'SessionStart:startup'), ('adhoc', 'SessionStart:resume')]
-    assert main(['plan', 'session', 'A']) == 0
-    assert listed(capsys)['A']['role'] == 'planner'
-
-
-def test_session_start_adds_one_state_event(root, monkeypatch):
+def test_session_start_writes_no_event(root, monkeypatch):
+    # #847: no session registry; SessionStart only reads.
     before = len(events(root))
     hook(monkeypatch, 'SessionStart', 'A', root)
-    assert [row['kind'] for row in events(root)[before:]] == ['session.seen']
+    assert events(root)[before:] == []
 
 
 def test_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
@@ -142,14 +76,14 @@ def test_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
 
 
 def test_session_start_reads_the_day_state_twice(root, monkeypatch):
-    # #587: next.step reads the day once, the registry write returns it; nothing reads it again.
+    # #587, #847: one read of the day; no registry write.
     today, reads, read = workspace.day_dir(root), [], state.read_state
     def counting(root=None, *, directory=None):
         reads.append(Path(directory) if directory is not None else workspace.day_dir(root))
         return read(root, directory=directory)
     monkeypatch.setattr(state, 'read_state', counting)
     hook(monkeypatch, 'SessionStart', 'A', root)
-    assert reads.count(today) == 1  # #844: the registry write folds the log itself
+    assert reads.count(today) == 1
 
 
 def test_session_start_without_day_state_creates_none(root, monkeypatch, tmp_path_factory):
@@ -159,61 +93,6 @@ def test_session_start_without_day_state_creates_none(root, monkeypatch, tmp_pat
     hook(monkeypatch, 'SessionStart', 'A', root)
     assert not (workspace.day_dir(root) / 'state.json').exists()
     assert env_file.read_text() == 'export WUWEI_SESSION_ID=A\n'
-
-
-def test_stop_and_subagent_stop_touch_only_the_registry(root, monkeypatch):
-    hook(monkeypatch, 'SessionStart', 'A', root)
-    before = state.read_state(root)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:01:00+00:00')
-    assert hook(monkeypatch, 'Stop', 'A', root) == 0
-    after = state.read_state(root)
-    assert after['sessions']['A']['last_hook'] == 'Stop'
-    assert after['sessions']['A']['last_seen'] == '2026-09-30T10:01:00+00:00'
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:02:00+00:00')
-    assert hook(monkeypatch, 'SubagentStop', 'A', root, agent_type='Explore') == 0
-    final = state.read_state(root)
-    assert final['sessions']['A']['last_hook'] == 'SubagentStop:Explore'
-    assert final['sessions']['A']['last_seen'] == '2026-09-30T10:02:00+00:00'
-    assert {k: v for k, v in final.items() if k != 'sessions'} == {
-        k: v for k, v in before.items() if k != 'sessions'}
-
-
-def test_stop_outside_workspace_writes_nothing(root, monkeypatch, tmp_path_factory):
-    outside = tmp_path_factory.mktemp('outside')
-    monkeypatch.delenv('WUWEI_WORKSPACE')
-    before = (workspace.day_dir(root) / 'state.json').read_text()
-    from wuwei.guards import lifecycle
-    assert lifecycle.stop({'cwd': str(outside), 'session_id': 'A'}) == (0, '')
-    assert lifecycle.subagent_stop({'cwd': str(outside), 'session_id': 'A'}) == (0, '')
-    assert (workspace.day_dir(root) / 'state.json').read_text() == before
-
-
-def test_sessions_command_empty_and_unreadable(root, monkeypatch, capsys):
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T10:00:00+00:00')
-    assert main(['sessions']) == 0
-    assert json.loads(capsys.readouterr().out) == []
-    directory = workspace.day_dir(root)
-    directory.mkdir()
-    (directory / 'state.json').write_text('{')
-    assert main(['sessions']) == 2
-    assert 'wuwei sessions' in capsys.readouterr().err
-
-
-def test_status_counts_live_sessions(root, monkeypatch, capsys):
-    assert main(['status']) == 0
-    assert 'sessions 0' in capsys.readouterr().out
-    hook(monkeypatch, 'SessionStart', 'A', root)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:30:00+00:00')
-    hook(monkeypatch, 'SessionStart', 'B', root)
-    capsys.readouterr()
-    assert main(['status']) == 0
-    assert 'sessions 2' in capsys.readouterr().out
-    assert main(['status', '--json']) == 0
-    assert json.loads(capsys.readouterr().out)['sessions'] == 2
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T11:00:00+00:00')
-    assert main(['status']) == 0
-    assert 'sessions 1' in capsys.readouterr().out
-    assert listed(capsys)['A']['stale'] is True
 
 
 def test_second_planner_refused_without_take_over(root, capsys):
@@ -237,187 +116,9 @@ def test_take_over_without_planner_is_plain_registration(root):
     assert 'previous' not in events(root, 'plan.session')[-1]['payload']
 
 
-def test_wake_goes_to_the_new_planner(root, monkeypatch):
-    from wuwei import watch
-    from wuwei.guards import lifecycle
-    assert main(['plan', 'session', 'A']) == 0
-    assert main(['plan', 'session', 'B', '--take-over']) == 0
-    monkeypatch.setattr(watch, 'wake', lambda root, consume=False: 'wake' if consume else '')
-    assert lifecycle.stop({'cwd': str(root), 'session_id': 'A'}) == (0, '')
-    assert lifecycle.stop({'cwd': str(root), 'session_id': 'B'}) == (1, 'wake')
-
-
-def test_shepherd_row_survives_stop_and_planner_role_is_refused(root, monkeypatch, capsys):
-    sessions.touch(root, 'R', hook='shepherd start', cwd=str(root), role='shepherd')
-    assert hook(monkeypatch, 'Stop', 'R', root) == 0
-    row = listed(capsys)['R']
-    assert (row['role'], row['last_hook']) == ('shepherd', 'Stop')
-    directory = workspace.day_dir(root)
-    before = [(directory / name).read_text() for name in ('state.json', 'events.jsonl')]
-    with pytest.raises(ValueError):
-        sessions.touch(root, 'R', hook='x', cwd=str(root), role='planner')
-    assert [(directory / name).read_text() for name in ('state.json', 'events.jsonl')] == before
-
-
-def test_registry_events_are_silent(root, monkeypatch, capsys):
-    from wuwei.commands.status import attention
-    before = attention(workspace.day_dir(root))
-    hook(monkeypatch, 'SessionStart', 'A', root)
-    hook(monkeypatch, 'Stop', 'A', root)
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
-    sessions.claim_item(root, 'X')
-    assert attention(workspace.day_dir(root)) == before
-
-
-def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
-    from wuwei import memory, watch
-    from wuwei.guards import lifecycle
-    monkeypatch.setattr(memory, 'session_payload', lambda root: ('ctx', 3, 1))
-    monkeypatch.setattr(watch, 'health', lambda root, clocks=None, name='watch': (0, ''))
-
-    def broken(*args, **kwargs):
-        raise ValueError('registry broken')
-    monkeypatch.setattr(sessions, 'touch', broken)
-    code, text = lifecycle.session_start({'cwd': str(root), 'session_id': 'A'})
-    assert code == 2
-    assert 'session registry unmeasured: registry broken' in text
-
-
-def test_rows_carry_stopped(root, monkeypatch, capsys):
-    sessions.touch(root, 'R', hook='shepherd start', cwd=str(root), role='shepherd')
-    sessions.touch(root, 'A', hook='SessionStart', cwd=str(root))
-    state._write_state(lambda data: data['sessions']['R'].update(stopped=NOW), root, reserved=False)
-    rows = listed(capsys)
-    assert rows['R']['stopped'] == NOW and 'stopped' not in rows['A']
-
-
 GOALS = ('# Goals\n\n## G-1\noutcome: Ship checkout v2\nmeasure: orders\ntarget: 3\n'
          'date: 2026-10-30\npriority: 1\n')
 BRIEF = '.wuwei/days/2026-09-30/briefs/builder-1.md'
-
-
-def rotating(root, limit, *, turns=0, seat='stopped', started=NOW):
-    (root / '.wuwei/config.toml').write_text(f'[owner]\ntimezone = "UTC"\n[sessions]\nrotate_after = {limit}\n')
-
-    def seed(data):
-        data.update(planner_session_id='P',
-                    seats={'builder-1': {'id': 'builder-1', 'role': 'builder', 'item': 'ITEM-1',
-                                         'brief': BRIEF, 'status': seat}})
-        data['sessions'] = {'P': {'role': 'adhoc', 'started': started, 'last_seen': started,
-                                  'cwd': str(root), 'last_hook': 'Stop', 'turns': turns}}
-    state._write_state(seed, root, reserved=False)
-
-
-def constrained(root):
-    memory = root / '.wuwei/memory'
-    (memory / 'notes').mkdir(parents=True, exist_ok=True)
-    for name, text in (('spine.md', '# Spine\n'), ('index.md', ''), ('goals.md', GOALS)):
-        (memory / name).write_text(text)
-    (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
-
-    def seed(data):
-        data.update(goals=['G-1'], gate_approved=True, approved_items=['ITEM-1'])
-        data['seats']['builder-1']['status'] = 'running'
-    state._write_state(seed, root, reserved=False)
-
-
-def test_issue_acceptance_rotation_after_turns(root, monkeypatch, capsys):
-    rotating(root, '{ turns = 200 }', turns=199, seat='running')
-    assert hook(monkeypatch, 'Stop', 'P', root) == 0
-    assert events(root, 'session.rotated') == []
-    assert state.read_state(root)['sessions']['P']['turns'] == 200
-    state._write_state(lambda data: data['seats']['builder-1'].update(status='stopped'), root,
-                       reserved=False)
-    capsys.readouterr()
-    assert hook(monkeypatch, 'Stop', 'P', root) == 2
-    reason = json.loads(capsys.readouterr().out)
-    assert reason['decision'] == 'block'
-    assert 'turns 201 >= 200' in reason['reason']
-    assert 'wuwei plan session "$WUWEI_SESSION_ID" --take-over' in reason['reason']
-    rotated, = events(root, 'session.rotated')
-    assert {key: rotated['payload'][key] for key in ('session_id', 'turns', 'compactions')} == {
-        'session_id': 'P', 'turns': 201, 'compactions': 0}
-    assert rotated['payload']['reason'] == 'turns 201 >= 200'
-    assert listed(capsys)['P']['rotated'] == NOW
-    assert hook(monkeypatch, 'Stop', 'P', root) == 0
-    assert len(events(root, 'session.rotated')) == 1
-    assert main(['plan', 'session', 'Q', '--take-over']) == 0
-    constrained(root)
-    from wuwei.guards import lifecycle
-    code, text = lifecycle.session_start({'cwd': str(root), 'session_id': 'Q'})
-    assert 'G-1 Ship checkout v2' in text and 'plan.md' in text
-    assert 'Open decisions' not in text and BRIEF in text
-
-
-@pytest.mark.parametrize('case', ['off', 'wake', 'other', 'active', 'running', 'check'])
-def test_rotation_not_at_dirty_boundary_or_off(root, monkeypatch, case):
-    from wuwei import watch
-    from wuwei.guards import lifecycle
-    rotating(root, '{}' if case == 'off' else '{ turns = 1 }', turns=500)
-    if case in ('running', 'check'):
-        state._write_state(lambda data: data.setdefault('builds', {}).update(
-            {'ITEM-1': {'status': case, 'job': 'j1', 'runtime': 'codex', 'brief': BRIEF}}),
-            root, reserved=False)
-    if case == 'wake':
-        monkeypatch.setattr(watch, 'wake', lambda root, consume=False: 'wake' if consume else '')
-    payload = {'cwd': str(root), 'session_id': 'X' if case == 'other' else 'P'}
-    if case == 'active':
-        payload['stop_hook_active'] = True
-    assert lifecycle.stop(payload) == ((1, 'wake') if case == 'wake' else (0, ''))
-    assert events(root, 'session.rotated') == []
-    assert state.read_state(root)['sessions']['P']['turns'] == (500 if case in ('other', 'active') else 501)
-
-
-def test_rotation_by_compactions_and_clock(root, monkeypatch):
-    from wuwei.guards import lifecycle
-    rotating(root, '{ compactions = 1 }')
-    assert lifecycle.stop({'cwd': str(root), 'session_id': 'P'}) == (0, '')
-    hook(monkeypatch, 'SessionStart', 'P', root, source='compact')
-    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
-    assert code == 1 and 'compactions 1 >= 1' in message
-    rotating(root, '{ clock = "13:00" }', started='2026-09-30T09:00:00+00:00')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:59:00+00:00')
-    assert lifecycle.stop({'cwd': str(root), 'session_id': 'P'}) == (0, '')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:00:00+00:00')
-    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
-    assert code == 1 and 'clock 13:00' in message
-    before = len(events(root, 'session.rotated'))
-    rotating(root, '{ clock = "noon" }')
-    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
-    assert code == 0 and message.startswith('planner wake unmeasured:')
-    assert len(events(root, 'session.rotated')) == before
-
-
-def test_issue_acceptance_payload_after_compaction(root, monkeypatch, capsys):
-    rotating(root, '{}')
-    constrained(root)
-    assert hook(monkeypatch, 'PreCompact', 'P', root) == 0
-    capsys.readouterr()
-    assert hook(monkeypatch, 'SessionStart', 'P', root, source='compact') == 0
-    text = json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
-    assert text.startswith(HEADER) and '\nActive constraints:\n' in text
-    assert 'G-1 Ship checkout v2' in text and 'plan.md (approved: ITEM-1)' in text
-    assert 'Open decisions' not in text and BRIEF in text
-    assert state.read_state(root)['sessions']['P']['compactions'] == 1
-
-
-def test_shepherd_role_is_recorded(root):
-    data = {}
-    sessions.record(data, 'S', hook='shepherd conflicted', cwd='/w', role='shepherd')
-    row, = sessions.rows(data, workspace.now(), 3600)
-    assert row['role'] == 'shepherd'
-
-
-def test_session_start_flags_the_env_file(root, monkeypatch, tmp_path_factory):
-    # #599: session.seen says whether SessionStart could export the session id.
-    monkeypatch.setenv('CLAUDE_ENV_FILE', str(tmp_path_factory.mktemp('env') / 'env.sh'))
-    hook(monkeypatch, 'SessionStart', 'A', root)
-    monkeypatch.delenv('CLAUDE_ENV_FILE')
-    hook(monkeypatch, 'SessionStart', 'B', root)
-    hook(monkeypatch, 'Stop', 'A', root)
-    hook(monkeypatch, 'SubagentStop', 'A', root, agent_type='Explore')
-    seen = [row['payload'] for row in events(root, 'session.seen')]
-    assert [row.get('env_file', 'absent') for row in seen] == [True, False, 'absent', 'absent']
 
 
 def test_owner_answer_reads_yes_no_or_none(root):

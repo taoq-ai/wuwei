@@ -1,5 +1,5 @@
 """Proposal promotion contracts."""
-
+import argparse
 import json
 import os
 from pathlib import Path
@@ -55,7 +55,7 @@ def ledger(base):
 def test_plugin_charter_rejected_with_reason(tmp_path):
     base = setup(tmp_path)
     proposal(base, target='charters/builder.md')
-    result = cli(tmp_path, 'promote')
+    result = cli(tmp_path, 'retro', '--promote')
     assert result.returncode == 1, result.stderr
     assert ledger(base)[0]['status'] == 'rejected'
     assert 'target' in ledger(base)[0]['reason']
@@ -69,7 +69,7 @@ def test_note_and_voice_targets_are_rejected(tmp_path):
     (base / 'memory/voice.md').write_text('## internal\n')
     proposal(base, target='.wuwei/memory/notes/old.md', action='patch', old_text='Old fact', text='New fact')
     proposal(base, 'two', target='.wuwei/memory/voice.md', action='add', text='- never: hype\n')
-    assert cli(tmp_path, 'promote').returncode == 1
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
     for record in ledger(base):
         assert record['status'] == 'rejected'
         assert record['reason'] == ('target must be a WUWEI charter override; use a path under '
@@ -81,17 +81,17 @@ def test_duplicate_add_rejected_in_favour_of_patch(tmp_path):
     base = setup(tmp_path)
     (base / 'charters/builder.md').write_text('Check tests before review.\n')
     proposal(base)
-    assert cli(tmp_path, 'promote').returncode == 1
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
     assert 'patch' in ledger(base)[0]['reason']
 
 
 def test_promote_does_not_replay_processed_proposal(tmp_path):
     base = setup(tmp_path)
     proposal(base)
-    assert cli(tmp_path, 'promote').returncode == 0
+    assert cli(tmp_path, 'retro', '--promote').returncode == 0
     first = ledger(base)
     assert first[0]['status'] == 'landed'
-    second = cli(tmp_path, 'promote')
+    second = cli(tmp_path, 'retro', '--promote')
     assert second.returncode == 0, second.stderr
     assert second.stdout == ''
     assert ledger(base) == first
@@ -101,12 +101,12 @@ def test_promote_does_not_replay_processed_proposal(tmp_path):
 def test_add_and_patch_land(tmp_path):
     base = setup(tmp_path)
     proposal(base)
-    assert cli(tmp_path, 'promote').returncode == 0
+    assert cli(tmp_path, 'retro', '--promote').returncode == 0
     assert (base / 'charters/builder.md').read_text().endswith('Check tests before review.\n')
     assert ledger(base)[0]['status'] == 'landed'
     proposal(base, 'two', action='patch', old_text='Check tests before review.',
              text='Check tests and lint before review.')
-    assert cli(tmp_path, 'promote').returncode == 0
+    assert cli(tmp_path, 'retro', '--promote').returncode == 0
     assert (base / 'charters/builder.md').read_text().endswith('Check tests and lint before review.\n')
 
 
@@ -150,19 +150,19 @@ def test_promote_uses_configured_changelog(tmp_path, monkeypatch):
 def test_missing_evidence_rejected(tmp_path):
     base = setup(tmp_path)
     proposal(base, evidence='.wuwei/days/' + DAY + '/missing.md')
-    assert cli(tmp_path, 'promote').returncode == 1
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
     assert 'evidence' in ledger(base)[0]['reason']
 
 
 def test_payload_groups_last_run(tmp_path):
+    from wuwei import promotion
     base = setup(tmp_path)
-    assert 'Last promote: none' in cli(tmp_path, 'payload').stdout
+    assert promotion.last_run(tmp_path) == 'Last promote: none'
     proposal(base)
     proposal(base, 'two', target='charters/plugin.md')
-    assert cli(tmp_path, 'promote').returncode == 1
-    payload = cli(tmp_path, 'payload')
-    assert payload.returncode == 0
-    assert 'Last promote 2026-09-28: landed 1 (.wuwei/charters/builder.md); rejected 1 (charters/plugin.md:' in payload.stdout
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
+    assert promotion.last_run(tmp_path).startswith(
+        'Last promote 2026-09-28: landed 1 (.wuwei/charters/builder.md); rejected 1 (charters/plugin.md:')
 
 
 def test_symlinked_ledger_fails_closed(tmp_path):
@@ -171,7 +171,7 @@ def test_symlinked_ledger_fails_closed(tmp_path):
     outside.write_text('')
     (base / 'memory/ledger.jsonl').symlink_to(outside)
     proposal(base)
-    result = cli(tmp_path, 'promote')
+    result = cli(tmp_path, 'retro', '--promote')
     assert result.returncode == 2
     assert outside.read_text() == ''
 
@@ -180,19 +180,8 @@ def test_patch_must_rewrite_existing_rule(tmp_path):
     base = setup(tmp_path)
     (base / 'charters/builder.md').write_text('Old rule.\n')
     proposal(base, action='patch', old_text='Other rule.', text='New rule.')
-    assert cli(tmp_path, 'promote').returncode == 1
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
     assert (base / 'charters/builder.md').read_text() == 'Old rule.\n'
-
-
-def test_state_set_refuses_symlinked_wuwei(tmp_path):
-    outside = tmp_path / 'outside'
-    setup(outside)
-    root = tmp_path / 'workspace'
-    root.mkdir()
-    (root / '.wuwei').symlink_to(outside / '.wuwei', target_is_directory=True)
-    result = cli(root, 'state', 'set', 'probe', 'true')
-    assert result.returncode == 2
-    assert not (outside / '.wuwei/days' / DAY / 'state.json').exists()
 
 
 def test_memory_writes_are_reserved_for_dedicated_cli(tmp_path, monkeypatch):
@@ -206,17 +195,10 @@ def test_memory_writes_are_reserved_for_dedicated_cli(tmp_path, monkeypatch):
         assert code == 1, path
 
 
-def test_guard_refusal_event_kind_cannot_be_forged(tmp_path):
-    setup(tmp_path)
-    result = cli(tmp_path, 'event', 'hook.refusal', '{}')
-    assert result.returncode == 1
-    assert not (tmp_path / '.wuwei/days' / DAY / 'events.jsonl').exists()
-
-
 def test_malformed_proposal_is_rejected_and_logged(tmp_path):
     base = setup(tmp_path)
     (base / 'days' / DAY / 'proposals/one.json').write_text('[]')
-    assert cli(tmp_path, 'promote').returncode == 1
+    assert cli(tmp_path, 'retro', '--promote').returncode == 1
     assert ledger(base)[0]['status'] == 'rejected'
 
 
@@ -279,23 +261,25 @@ def test_land_records_what_promote_records(tmp_path, monkeypatch):
     assert len(commits) == 2 and commits[0] == commits[1]
 
 
-def test_promote_command_exports_after_a_landing(tmp_path, monkeypatch, capsys):
-    import pytest
-    from wuwei.commands import promote as promote_command
+def test_retro_promote_exports_and_indexes_after_a_landing(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import retro as retro_command
     base = setup(tmp_path)
     monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     fake_vcs(monkeypatch)
     calls = []
     monkeypatch.setattr(memory, 'export', lambda root=None: calls.append(root) or (None, True))
+    promote = argparse.Namespace(promote=True)
     proposal(base, target='charters/builder.md')
-    assert promote_command.run(None) == 1 and calls == []
+    assert retro_command.run(promote) == 1 and calls == []
+    (base / 'memory/index.md').unlink(missing_ok=True)
     proposal(base, name='two')
-    assert promote_command.run(None) == 0 and len(calls) == 1
+    assert retro_command.run(promote) == 0 and len(calls) == 1
+    assert (base / 'memory/index.md').is_file()  # #848: promotion writes the index
 
     def broken(root=None):
         raise ValueError('memory.export_to must not use a symlink')
     monkeypatch.setattr(memory, 'export', broken)
     proposal(base, name='three', text='Run the linter.\n')
-    assert promote_command.run(None) == 2
-    assert 'wuwei promote export: memory.export_to must not use a symlink' in capsys.readouterr().err
+    assert retro_command.run(promote) == 2
+    assert 'wuwei retro --promote export: memory.export_to must not use a symlink' in capsys.readouterr().err

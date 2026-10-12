@@ -2,7 +2,7 @@
 
 import pytest
 
-from test_stop import case  # noqa: F401  (fixture)
+from test_close_branches import case  # noqa: F401  (fixture)
 from wuwei import closing, plan, state, steward, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
@@ -14,7 +14,7 @@ def day(root, monkeypatch, park=ITEMS, open_item=None, vcs=None):
     names = [*park, *([open_item] if open_item else [])]
     state._write_state(lambda data: data.update(
         items={n: {'status': 'running', 'phase': 'planned', 'worktree': f'wt/{n}'} for n in names},
-        approved_items=names), root, reserved=False)
+        approved_items=names), root)
     if open_item:
         (root / 'wt' / open_item).mkdir(parents=True)
         if vcs:
@@ -112,7 +112,7 @@ def test_close_does_not_report_a_mandate_decision_as_pending(tmp_path, monkeypat
     (directory / 'D-1.md').write_text(VALID.replace('two-way', 'one-way').replace('Decided-by: seat', 'Decided-by: mandate'))
     state._write_state(lambda data: data.update(decision_outcomes={
         'D-1': {'option': 'A', 'decided_by': 'mandate', 'reversibility': 'one-way', 'cisr': 'Consequential'}}),
-        root, reserved=False)
+        root)
     assert 'D-1' not in closing.unresolved(root, [])[1]
 
 

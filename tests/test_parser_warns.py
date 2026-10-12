@@ -92,13 +92,12 @@ def test_state_writes_still_refuse(workspace, posture, command, code, monkeypatc
 
 
 @pytest.mark.parametrize('posture', ENFORCE)
-@pytest.mark.parametrize('probe', ['READ_LOOP', 'GIT_READ'])
-def test_heartbeat_read_loop_exits_zero(workspace, posture, probe, monkeypatch, capsys):
-    from wuwei import heartbeat
-    from wuwei.commands.hook import HEARTBEAT_SESSION
+@pytest.mark.parametrize('probe', ['for r in a b; do echo "### $r"; cat .wuwei/$r/report.json; done',
+                                   'git grep -n probe'])
+def test_read_loop_exits_zero(workspace, posture, probe, monkeypatch, capsys):
+    # #347, #470: a loop the guards cannot parse but that only reads, and a git read, pass.
     configure(workspace, posture)
-    assert hook(workspace / '.wuwei', getattr(heartbeat, probe), monkeypatch, capsys,
-                session=HEARTBEAT_SESSION) == (0, {}, '')
+    assert hook(workspace / '.wuwei', probe, monkeypatch, capsys) == (0, {}, '')
 
 
 DAY = STATE.split('/')[2]

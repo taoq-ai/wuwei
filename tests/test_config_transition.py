@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -201,7 +202,7 @@ def newer_events(root):
 
 def test_old_hook_passes_and_records_once_per_session(ws, installed, monkeypatch, capsys):
     write(ws, NEWER)
-    for session in ('one', 'one', 'two', 'wuwei-heartbeat'):
+    for session in ('one', 'one', 'two', 'wuwei-probe'):
         code, out = replay(monkeypatch, capsys, ws, session)
         assert code == 0 and 'deny' not in out, out
     assert newer_events(ws) == [{'plugin': '0.12.0', 'template': '0.13.0', 'session': 'one'},
@@ -213,11 +214,6 @@ def test_same_version_template_records_no_event(ws, installed, monkeypatch, caps
     code, out = replay(monkeypatch, capsys, ws)
     assert code == 0 and 'deny' not in out, out
     assert newer_events(ws) == []
-
-
-def test_newer_template_event_is_reserved(ws, monkeypatch, capsys):
-    from wuwei.commands import event
-    assert event.EVENT_PRODUCERS['config.newer_template'] == 'wuwei hook PreToolUse'
 
 
 @pytest.fixture
@@ -439,23 +435,130 @@ def test_upgrade_maps_the_today_merge_tier_to_merge_auto(tmp_path, monkeypatch, 
 
 
 @pytest.mark.parametrize('dry_run', [False, True])
-def test_upgrade_removes_an_installed_listener_unit(tmp_path, monkeypatch, capsys, dry_run):
+@pytest.mark.parametrize('name', ['listen', 'watch', 'shepherd'])
+def test_upgrade_removes_an_installed_retired_unit(tmp_path, monkeypatch, capsys, dry_run, name):
+    # #810, #847: the listener, watch and shepherd user services are no longer shipped.
     from wuwei import registry
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
     calls = []
     monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=calls.append))
-    unit = workspace.watch_unit(tmp_path, name='listen')[1]
+    unit = workspace.watch_unit(tmp_path, name=name)[1]
     unit.parent.mkdir(parents=True)
-    unit.write_text('old listener\n')
+    unit.write_text(f'old {name}\n')
     out = upgrade_output(tmp_path, monkeypatch, capsys, dry_run, [])
     if dry_run:
-        assert 'Would remove the listener service (no longer shipped)' in out
+        assert f'Would remove the {name} service (no longer shipped)' in out
         assert unit.exists() and calls == []
     else:
-        assert 'Removed the listener service (no longer shipped)' in out
+        assert f'Removed the {name} service (no longer shipped)' in out
         assert not unit.exists() and calls
+
+
+def git(path, *args):
+    return subprocess.run(['git', '-C', str(path), *args], capture_output=True, text=True)
+
+
+def hooked_trees(tmp_path, monkeypatch):
+    """A workspace with one configured repository and four linked worktrees: the managed shims,
+    the chain, the owner's own hooks under worktrees/, and an adopted worktree on the shims
+    outside worktrees/ (#847 F2)."""
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            monkeypatch.delenv(key)
+    root = tmp_path.resolve()
+    assert init.run(SimpleNamespace(path=str(root), upgrade=False, dry_run=False)) == 0
+    repo = root / 'repo'
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+    assert git(repo, '-c', 'user.name=A', '-c', 'user.email=a@example.test', 'commit', '-q', '--allow-empty',
+               '-m', 'start').returncode == 0
+    git(repo, 'config', '--local', 'extensions.worktreeConfig', 'true')
+    shims = root / '.wuwei/git-hooks'
+    shims.mkdir()
+    (shims / 'pre-push').write_text('#!/bin/sh\n')
+    trees = {}
+    for name in ('worktrees/shim', 'worktrees/chain', 'worktrees/own', 'house/adopted'):
+        tree = root / name
+        assert git(repo, 'worktree', 'add', '-q', '-b', name.split('/')[1], str(tree)).returncode == 0
+        git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
+        (git_dir / 'wuwei-workspace').write_text(str(root) + '\n')
+        value = {'worktrees/chain': git_dir / 'wuwei-hooks', 'worktrees/own': root / 'own-hooks'}.get(name, shims)
+        if name == 'worktrees/chain':
+            value.mkdir()
+            (value / 'pre-commit').write_text('#!/bin/sh\n')
+        git(tree, 'config', '--worktree', 'core.hooksPath', str(value))
+        trees[name] = (tree, git_dir, value)
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '\n[watch]\nsweep_seconds = 900\n[sessions]\nstale_seconds = 600\n'
+                    '[worktree]\ngit_hooks = "chain"\n'
+                    '[[repos]]\nname = "acme/repo"\npath = "repo"\ndefault_branch = "main"\n')
+    for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock', 'shepherd.stderr.log'):
+        (root / '.wuwei' / name).write_text('')
+    return root, shims, trees, path
+
+
+@pytest.mark.parametrize('dry_run', [False, True])
+def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, capsys, dry_run):
+    # #847: init --upgrade unsets WUWEI's core.hooksPath (the shims and the chain) in every
+    # linked worktree of a configured repository, keeps the owner's own value and the anchor,
+    # removes the managed hooks, the watch and shepherd files and the [watch], [sessions] and
+    # [worktree] settings.
+    import tomllib
+    from wuwei.commands import init
+    root, shims, trees, path = hooked_trees(tmp_path, monkeypatch)
+    before = path.read_text()
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=dry_run))
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    for name in ('worktrees/shim', 'worktrees/chain', 'house/adopted'):
+        assert f'{prefix} worktree {name}: unset core.hooksPath' in out, out
+    assert not any('worktree worktrees/own' in line for line in out)
+    hooks = {name: git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip()
+             for name, (tree, _, _) in trees.items()}
+    if dry_run:
+        assert hooks == {name: str(value) for name, (_, _, value) in trees.items()}
+        assert shims.is_dir() and trees['worktrees/chain'][2].is_dir() and path.read_text() == before
+        assert (root / '.wuwei/watch.lock').exists()
+        return
+    assert hooks == {'worktrees/shim': '', 'worktrees/chain': '', 'worktrees/own': str(root / 'own-hooks'),
+                     'house/adopted': ''}
+    assert not shims.exists() and not trees['worktrees/chain'][2].exists()
+    assert all((git_dir / 'wuwei-workspace').read_text().strip() == str(root) for _, git_dir, _ in trees.values())
+    config = tomllib.loads(path.read_text())
+    assert not {'watch', 'sessions', 'worktree'} & set(config)
+    for key in ('watch', 'sessions', 'worktree'):
+        assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
+    assert not [name for name in ('watch.lock', 'watch.stdout.log', 'watch.stderr.log', 'shepherd.lock',
+                                  'shepherd.stderr.log') if (root / '.wuwei' / name).exists()]
+
+
+def test_upgrade_keeps_the_shims_a_worktree_still_points_at(tmp_path, monkeypatch, capsys):
+    # #847 F2: a worktree whose hooks path could not be unset keeps .wuwei/git-hooks, named.
+    from wuwei import registry
+    from wuwei.commands import init
+    from wuwei.registry import Result
+    root, shims, trees, _ = hooked_trees(tmp_path, monkeypatch)
+    failing, real_load = str(trees['house/adopted'][0]), registry.load
+
+    def load(kind, config):
+        module = real_load(kind, config)
+        if kind == 'vcs':
+            real = module.unhook
+            module.unhook = lambda repo, write, root=None: (
+                Result(2, None, 'git.unhook: could not run: locked') if repo == failing
+                else real(repo, write, root=root))
+        return module
+    monkeypatch.setattr(registry, 'load', load)
+    capsys.readouterr()
+    init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=False))
+    out = capsys.readouterr().out
+    assert shims.is_dir()
+    assert 'left .wuwei/git-hooks: worktree house/adopted may still point at it' in out, out
+    assert git(trees['worktrees/shim'][0], 'config', '--worktree', '--get', 'core.hooksPath').stdout == ''
 
 
 def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):
@@ -576,4 +679,85 @@ def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
     (tmp_path / '.wuwei/graph.json').symlink_to(target)
     capsys.readouterr()
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
-    assert 'graph.json' not in capsys.readouterr().out and target.exists()
+    out = capsys.readouterr().out
+    assert 'left .wuwei/graph.json: a symlink' in out.splitlines() and target.exists()  # #848: named, kept
+    assert 'graph.json: remove' not in out
+
+
+# #848: what a 0.27.0 workspace left under .wuwei/ that nothing reads any more.
+OLD_FILES = ('memory/rehearsals.json', 'memory/rehearsals.lock', 'memory/targets.json',
+             'memory/targets.lock', 'memory/cruise.json', 'memory/forget.json', 'memory/voice.md',
+             'memory/digests/2026-W40.md', 'inbox/inbox.jsonl', 'inbox/sent.json', 'inbox/cursor.json',
+             'ziran/github/' + 'a' * 64 + '.json', 'generated/skills/wuwei-consolidate/SKILL.md',
+             *(f'{name}.{suffix}' for name in ('watch', 'shepherd', 'listen')
+               for suffix in ('lock', 'stdout.log', 'stderr.log')))
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkeypatch, capsys, dry_run):
+    import tomllib
+    from wuwei import workspace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    base = tmp_path / '.wuwei'
+    old = ((ROOT / 'tests/fixtures/workspace-0.27.0/config.toml').read_text()
+           .replace('[owner.verbosity]\n', '[owner.verbosity]\ndecisions = "full"\n', 1)
+           .replace('[adapters]\n', '[adapters]\nredactor = "builtin"\n', 1))
+    (base / 'config.toml').write_text(old)
+    for name in OLD_FILES:
+        (base / name).parent.mkdir(parents=True, exist_ok=True)
+        (base / name).write_text('{}')
+    outside = tmp_path / 'elsewhere.json'
+    outside.write_text('{}')
+    (base / 'graph.json').symlink_to(outside)
+    history = base / 'days/2026-10-01/state.snapshot.json'
+    history.parent.mkdir(parents=True)
+    history.write_text('{}')
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=dry_run)) == 0
+    out = capsys.readouterr().out.splitlines()
+    prefix = 'Would upgrade' if dry_run else 'Upgraded'
+    removed = sorted({name.split('/')[0] if name.split('/')[0] in ('inbox', 'ziran') else
+                      'memory/digests' if name.startswith('memory/digests/') else name for name in OLD_FILES})
+    for name in removed:
+        assert out.count(f'{prefix} .wuwei/{name}: remove (no longer read)') == 1, (name, out)
+    assert 'left .wuwei/graph.json: a symlink' in out
+    for key in ('owner.verbosity.decisions', 'adapters.redactor', 'retro.repo', 'adapters.calendar'):  # F5
+        assert f'{prefix} config.toml: remove {key} (no longer read)' in out, out
+    assert outside.exists() and history.exists() and (base / 'graph.json').is_symlink()
+    if dry_run:
+        assert (base / 'config.toml').read_text() == old
+        assert all((base / name).exists() for name in OLD_FILES)
+        return
+    assert not [name for name in OLD_FILES if (base / name).exists()]
+    assert not [name for name in ('inbox', 'ziran', 'memory/digests') if (base / name).exists()]
+    config = tomllib.loads((base / 'config.toml').read_text())
+    for key in workspace.RETIRED:
+        table = config
+        for part in key.split('.')[:-1]:
+            table = table.get(part, {})
+        assert key.split('.')[-1] not in table, key
+    assert (base / 'memory/index.md').is_file()
+
+
+def test_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):
+    # #848 review F2: the parsed config copy under generated/ is live, never a stale copy.
+    from wuwei import workspace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
+    cache = tmp_path / '.wuwei/generated' / workspace.CONFIG_CACHE
+    cache.write_text('{}')  # as a hook run leaves it
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert cache.exists() and 'No workspace changes needed' in capsys.readouterr().out
+
+
+def test_calendar_tts_and_editor_ports_are_retired():
+    # #848 review F5: nothing reads them; their keys leave config.toml on upgrade.
+    from wuwei import registry
+    assert {'adapters.calendar', 'adapters.tts', 'calendar'} <= set(workspace.RETIRED)
+    assert not {'calendar', 'tts', 'editor'} & set(registry.INTERFACES)
+    assert not {'calendar', 'tts'} & set(workspace.SCHEMA['adapters']) and 'calendar' not in workspace.SCHEMA

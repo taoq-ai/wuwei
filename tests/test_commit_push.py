@@ -1,4 +1,4 @@
-"""The native Git hooks' commit and push policy: identity, push shape and fast evidence."""
+"""The commit and push policy pr act --run applies: identity and push shape."""
 
 import importlib
 import os
@@ -18,7 +18,7 @@ OLD = 'b' * 40
 def set_fast_checks(root, checks):
     """Seed trusted or malformed on-disk evidence for guard policy tables."""
     from wuwei import state
-    state._write_state(lambda data: data.update(fast_checks=checks), root, reserved=False)
+    state._write_state(lambda data: data.update(fast_checks=checks), root)
 
 
 def guard():
@@ -26,14 +26,11 @@ def guard():
 
 
 def push(root, refs=('feature',)):
-    """The pre-push policy for git push origin <refs> in the fixture repository; 2 when unmeasured."""
+    """The push policy for git push origin <refs> in the fixture repository; 2 when unmeasured."""
     policy = guard()
     try:
         repo, actual, vcs, early = policy.context(root / 'repo', {}, {}, root, push=('origin', list(refs)))
-        policy.configured_identity(repo, root, actual.get('author'))
-        pushed = policy.data(early)
-        result = policy.push_check(repo, actual, pushed, root, vcs)
-        return result if result[0] else policy.fast_evidence(repo, pushed['head']['sha'], actual['path'], root)
+        return policy.push_check(repo, actual, policy.data(early), root, vcs)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return 2, str(exc)
 
@@ -119,20 +116,6 @@ def test_push_context_policy(workspace_case, change, code):
     assert push(root)[0] == code
 
 
-@pytest.mark.parametrize('record,code', [
-    ({'sha': SHA, 'exit': 0}, 0), ({'sha': OLD, 'exit': 0}, 1),
-    ({'sha': SHA, 'exit': 1}, 1), ({'sha': SHA, 'exit': 2}, 1),
-    (None, 1), ({}, 2), ({'sha': SHA, 'exit': False}, 2),
-    ({'sha': SHA, 'exit': '0'}, 2), ({'sha': SHA, 'exit': 3}, 2),
-])
-def test_fast_checks_are_bound_to_head(workspace_case, record, code):
-    from wuwei import state
-    root, _ = workspace_case
-    checks = {} if record is None else {'unit': record}
-    set_fast_checks(root, {'example/project': checks})
-    assert push(root)[0] == code
-
-
 @pytest.mark.parametrize('operation', ['commit_context', 'push_context'])
 @pytest.mark.parametrize('result', [Result(2, None, 'offline'), Result(0, {}), Result(0, None)])
 def test_port_errors_fail_closed(workspace_case, operation, result):
@@ -156,21 +139,14 @@ def test_identity_free_context_refuses_push(workspace_case):
     assert not fake.calls
 
 
-@pytest.mark.parametrize('anchor', ['bash', 'pre-push'])
 @pytest.mark.parametrize('kind', ['author', 'committer'])
-def test_entire_pushed_range_identity(workspace_case, monkeypatch, anchor, kind):
+def test_entire_pushed_range_identity(workspace_case, kind):
     root, fake = workspace_case
     commits = [{'sha': SHA, 'author': OWNER, 'committer': OWNER},
                {'sha': OLD, 'author': OWNER, 'committer': OWNER}]
     commits[1][kind] = OTHER
     fake.results['push_commits'] = Result(0, {'commits': commits})
-    if anchor == 'bash':
-        result = push(root)[0]
-    else:
-        from test_git_hook import invoke
-        result = invoke(workspace_case, monkeypatch, anchor,
-                        f'refs/heads/feature {SHA} refs/heads/feature {"c"*40}\n')
-    assert result == 1
+    assert push(root)[0] == 1
     assert any(call[0] == 'push_commits' for call in fake.calls)
 
 
@@ -211,34 +187,6 @@ def test_identity_refusal_names_the_fix():
         demo, {'author': OTHER, 'committer': demo})[1]
 
 
-@pytest.fixture
-def item_case(workspace_case):
-    """workspace_case with the repository at the item worktree <root>/worktrees/DIV-1."""
-    root, fake = workspace_case
-    tree = root / 'worktrees/DIV-1'
-    tree.mkdir(parents=True)
-    fake.results['commit_context'].data['path'] = str(tree)
-    fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/div-1'
-    return root, fake, tree
-
-
-def test_fast_evidence_is_its_own_check(item_case):
-    root, _, tree = item_case
-    set_fast_checks(root, {})
-    repo = {'name': 'example/project', 'fast_checks': ['unit']}
-    assert guard().fast_evidence(repo, SHA, str(tree), root) == (
-        1, f'fast check "unit" has not passed for HEAD {SHA[:12]}; run bin/wuwei build check DIV-1')
-    set_fast_checks(root, {'example/project': {'unit': {'sha': SHA, 'exit': 0}}})
-    assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
-
-
-def test_fast_evidence_passes_with_no_fast_checks(item_case):
-    root, _, tree = item_case
-    set_fast_checks(root, {})
-    repo = {'name': 'example/project', 'fast_checks': []}
-    assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
-
-
 @pytest.mark.parametrize('identity', ['{name = "", email = ""}', '{name = "<name>", email = "<email>"}'])
 def test_empty_identity_names_the_config_set(workspace_case, identity):
     # #605: an empty or malformed repos.N.identity fails with the reason and fix doctor's row
@@ -250,7 +198,6 @@ def test_empty_identity_names_the_config_set(workspace_case, identity):
     reason, fix = guard().unset_identity({'name': '<name>', 'email': ''}, 0, OWNER)
     assert reason == 'repos.0.identity is empty or malformed'
     assert fix == "bin/wuwei config set repos.0.identity '{name = \"Builder\", email = \"builder@example.test\"}'"
-    assert push(root) == (2, f'{reason}; {fix}')
     assert not any(call[0] == 'identity' for call in fake.calls[calls:])
     assert guard().unset_identity(OWNER, 0) is None
     assert guard().unset_identity({'name': '', 'email': ''}, 0, {'name': '<name>', 'email': ''})[1] == (

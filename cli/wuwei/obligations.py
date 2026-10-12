@@ -7,12 +7,12 @@ import re
 from urllib.parse import urlsplit
 
 from wuwei import registry, state, verdict, workspace
-from wuwei.commands.event import FREE_KINDS
 from wuwei.references import pull_request
 from wuwei.verdict import VERDICTS
 from wuwei.exits import DAMAGED, ADAPTER_DATA
 
 SOLO = 'reviewers: none (solo)'
+FREE_KINDS = frozenset({'note'})  # event kinds that record no PR state
 
 
 def _read(operation, *args, root):
@@ -219,74 +219,6 @@ def _owner_login(config):
     return handles[0]
 
 
-def evaluate(root=None):
-    """Calculate today's obligations without writing a summary event."""
-    root = workspace.find_workspace(root)
-    directory = workspace.day_dir(root)
-    counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
-    try:
-        data = state.read_state(directory=directory)
-        ledger = _ledger(data)
-        refs = []
-        for ref in data['raised_prs'] + data['claimed_prs']:
-            try:
-                if pull_request(ref) not in refs:
-                    refs.append(ref)
-            except ValueError as exc:
-                counts['unreadable'] += 1
-                print(f'day PR reference UNREADABLE: {exc}')
-        counts['prs'] = len(refs)
-        if not refs:
-            _check_empty_day(directory)
-        if refs:
-            config = workspace.load_config(root)
-            me = _owner_login(config)
-            host = registry.load('code_host', config)
-        for ref in refs:
-            try:
-                pr = _read(host.pr, ref, root=root)
-                if pr['state'] == 'closed':
-                    continue
-                if pr['state'] != 'open':
-                    raise ValueError(f'unknown PR state; {ADAPTER_DATA}')
-                reviews, discussion = _evidence(host, ref, root)
-                replies = _replies(reviews, discussion, me, ledger.get(ref, {}))
-                visibility = _visibility(ref, pr, reviews, data, me, directory, config)
-                counts['reply_owed'] += len(replies)
-                counts['visibility_owed'] += len(visibility)
-                for finding in replies + visibility:
-                    print(f'{ref} OWED {finding}')
-                for finding, reason in _not_applicable(config, data.get('pr_reviewers', {}).get(ref)).items():
-                    print(f'{ref} NOT APPLICABLE {finding}: {reason}')
-            except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
-                counts['unreadable'] += 1
-                print(f'{ref} UNREADABLE: {exc}')
-    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
-        counts['unreadable'] += 1
-        print(f'obligations UNREADABLE: {exc}')
-    counts['owed'] = counts['reply_owed'] + counts['visibility_owed'] + counts['unreadable']
-    counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
-    return counts
-
-
-def sweep(root=None):
-    """Sweep today's union once, retaining failures and recording one summary."""
-    root = workspace.find_workspace(root)
-    from wuwei import integrity
-    measured = integrity.check(root)
-    if measured.reason:
-        print(measured.reason)
-    directory = workspace.day_dir(root)
-    counts = evaluate(root)
-    counts['integrity_owed'] = int(measured.exit == 1)
-    counts['unreadable'] += int(measured.exit == 2)
-    counts['exit'] = max(counts['exit'], measured.exit)
-    state.append_event('watch: sweep', counts, directory=directory)
-    print(f'obligations: {counts["reply_owed"]} replies, {counts["visibility_owed"]} visibility, '
-          f'{counts["unreadable"]} unreadable')
-    return counts['exit']
-
-
 def reply(ref, surface, target_id, text, root=None):
     """Reply using fresh API evidence; only unthreaded surfaces need an ack."""
     root = workspace.find_workspace(root)
@@ -340,7 +272,7 @@ def reply(ref, surface, target_id, text, root=None):
             'fingerprint': fingerprint, 'reply_id': reply_id,
             'reply_fingerprint': _fingerprint(posted), 'me': me}
 
-    state._write_state(acknowledge, reserved=False, directory=directory,
+    state._write_state(acknowledge, directory=directory,
                        kind='reply: acknowledged', payload={'pr': ref, 'surface': surface,
                        'id': target_id, 'reply_id': reply_id})
     return 0

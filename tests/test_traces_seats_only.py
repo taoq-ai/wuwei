@@ -28,7 +28,7 @@ def day(tmp_path, monkeypatch):
             f'[adapters]\nscanner = "ziran"\n[guards]\nenforce = {enforce}\n')
         monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
         monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+00:00')
-        state._write_state(lambda data: None, tmp_path, reserved=False)
+        state._write_state(lambda data: None, tmp_path)
         (workspace.day_dir(tmp_path) / 'traces.jsonl').write_text('{}\n')
         assert main(['plan', 'session', 'P']) == 0
         port = SimpleNamespace(traces=lambda file, root=None: Result(
@@ -56,10 +56,10 @@ def sweep(root):
 
 def test_registered_roles():
     data = {'planner_session_id': 'P', 'sessions': {
-        'S': {'role': 'shepherd'}, 'A': {'role': 'adhoc'}}}
+        'S': {'role': 'seat-host'}, 'A': {'role': 'adhoc'}}}
     assert sessions.registered(data, 'P') == 'planner'
     assert sessions.registered(data, 'P:agent1') == 'planner'
-    assert sessions.registered(data, 'S') == 'shepherd'
+    assert sessions.registered(data, 'S') == 'seat-host'
     assert sessions.registered(data, 'A') is None
     assert sessions.registered(data, 'X') is None
     assert sessions.registered({}, 'P') is None
@@ -85,10 +85,10 @@ def test_seeded_day_decisions(day, enforce):
 def test_planner_subagent_and_registered_roles(day):
     root = day(findings=rows('P:agent1', 'S', 'A'))
     state._write_state(lambda data: (
-        sessions.record(data, 'S', hook='shepherd', cwd=str(root), role='shepherd'),
-        sessions.record(data, 'A', hook='SessionStart', cwd=str(root))), root, reserved=False)
+        sessions.record(data, 'S', hook='seat host', cwd=str(root), role='seat-host'),
+        sessions.record(data, 'A', hook='SessionStart', cwd=str(root))), root)
     sweep(root)
-    assert sorted(row['role'] for row in events(root, 'traces.noted')) == ['planner', 'shepherd']
+    assert sorted(row['role'] for row in events(root, 'traces.noted')) == ['planner', 'seat-host']
     assert [row['session_digest'] for row in events(root, 'traces.unmatched')] == [digest('A')]
     assert not events(root, 'scanner.finding') and decisions(root) == []
 
@@ -98,7 +98,7 @@ def test_adhoc_seat_keeps_its_launchers_session_rule(day):
     root = day(findings=rows('P:a1'))
     state._write_state(lambda data: data['seats'].update({'adhoc-1': {
         'role': 'adhoc', 'item': 'adhoc-1', 'status': 'running', 'trace_sessions': ['P:a1']}}),
-        root, reserved=False)
+        root)
     sweep(root)
     noted, = events(root, 'traces.noted')
     assert noted['role'] == 'planner'
@@ -110,7 +110,7 @@ def test_seat_wins_over_registration(day):
     state._write_state(lambda data: data.update(
         items={'work': {'phase': 'planned', 'status': 'queued'}},
         seats={'builder': {'item': 'work', 'role': 'builder', 'status': 'stopped',
-                           'brief': 'x', 'trace_sessions': ['P']}}), root, reserved=False)
+                           'brief': 'x', 'trace_sessions': ['P']}}), root)
     assert sweep(root)['scanner_owed'] == 4
     item = state.read_state(root)['items']['work']
     assert item['phase'] == 'parked' and item['disposition']['reason'].startswith('scanner chain Bash -> ')
@@ -129,9 +129,6 @@ def test_unreadable_events_are_unmeasured(day):
     assert counts['scanner'] == 'unmeasured' and counts['unreadable'] == 1
 
 
-def test_event_tiers(capsys):
+def test_event_tiers():
     assert signal.classify({'kind': 'traces.noted', 'payload': {}}, {})[0] == 'silent'
     assert signal.classify({'kind': 'traces.unmatched', 'payload': {}}, {})[0] == 'warn'
-    for kind in ('traces.noted', 'traces.unmatched'):
-        assert main(['event', kind, '{}']) == 1
-        assert 'wuwei sweep' in capsys.readouterr().err

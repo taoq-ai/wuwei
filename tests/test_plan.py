@@ -88,10 +88,6 @@ def test_approve_selected_items_and_reserve_gate_fields(root):
     assert data['envelope']['net_build_hours'] == 5
     assert data['seat_policy']['builder']['runtime'] == 'claude'
     assert data['items']['A']['phase'] == 'planned'
-    with pytest.raises(state.StateError):
-        state.set_state('cap', 5, root)
-    with pytest.raises(state.StateError):
-        state.set_state('approved_items', ['B'], root)
     assert not list(root.glob('**/.git'))
 
 
@@ -330,9 +326,32 @@ def test_propose_refuses_ids_only_goals(empty):
     assert not (empty / '.wuwei/days/2026-09-28/plan.md').exists()
 
 
-def test_propose_refuses_goal_objects_once_goals_exist(root):
+def test_a_goals_change_goes_through_the_goals_block(root):
+    # #848: on the owner's word the lead writes the new blocks; the gate approves and commits them.
+    import subprocess
+    from wuwei import goals
+    assert registry.load('vcs', {'adapters': {'vcs': 'git'}}).workspace_init(root / '.wuwei').exit == 0
+    before = (root / '.wuwei/memory/goals.md').read_text()
+    text = plan.propose(lead(), root).read_text()
+    assert 'Document the widget' in text and 'provisional' not in text.lower()
+    assert 'Replaces the recorded goals G-1' in text  # #848 review F4
+    assert 'Goals G-1 (Ship the widget), G-2 (Document the widget) (replaces G-1)' in (
+        plan.gate_widget(root)['options'][0]['description'])
+    assert (root / '.wuwei/memory/goals.md').read_text() == before
+    plan.approve(['A'], root, goals_confirmed=True)
+    memory = (root / '.wuwei/memory/goals.md').read_text()
+    assert list(goals.parse(memory)) == ['G-1', 'G-2'] and 'Ship the widget' in memory
+    assert state.read_state(root)['goals'] == ['G-1', 'G-2']
+    log = subprocess.run(['git', '-C', str(root / '.wuwei'), 'status', '--porcelain', '--', 'memory/goals.md'],
+                         capture_output=True, text=True, check=True)
+    assert log.stdout == ''  # committed in the workspace history
+
+
+def test_goal_ids_alone_keep_the_recorded_goals(root):
+    plan.propose(proposal(), root)
+    assert not (root / '.wuwei/days/2026-09-28/goals.md').exists()
     with pytest.raises(ValueError, match='goals must cite identifiers'):
-        plan.propose(lead(), root)
+        plan.propose({**proposal(), 'goals': ['G-9']}, root)
 
 
 def test_repropose_on_confirmed_goals_removes_draft(empty):
@@ -489,7 +508,7 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     state._write_state(lambda data: data['items'].update(A={'phase': 'planned', 'status': 'queued'}),
-                       root, reserved=False)
+                       root)
     events = root / '.wuwei/days/2026-09-28/events.jsonl'
 
     def overrides():
@@ -522,11 +541,6 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
     assert state.read_state(root)['items']['A']['spec'] == {'value': 'required', 'reason': ''}
     assert overrides() == [{'item': 'A', 'value': 'skipped', 'reason': 'typo fix'},
                            {'item': 'A', 'value': 'required', 'reason': ''}]
-    with pytest.raises(state.StateError, match='wuwei plan set'):
-        state.set_state('items.A.spec', '{"value": "skipped"}', root)
-    assert main(['event', 'spec.override', '{}']) == 1
-    assert 'wuwei plan set' in capsys.readouterr().err
-
 
 
 def test_plan_set_owner_merge(root, capsys, monkeypatch):
@@ -536,7 +550,7 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     state._write_state(lambda data: data['items'].update(A={'phase': 'planned', 'status': 'queued'}),
-                       root, reserved=False)
+                       root)
     assert main(['plan', 'set', 'A', 'owner_merge=maybe']) == 2
     assert 'owner_merge=true|false' in capsys.readouterr().err
     assert main(['plan', 'set', 'Z', 'owner_merge=true']) == 1
@@ -572,16 +586,7 @@ def test_plan_set_owner_merge(root, capsys, monkeypatch):
     assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set' and 'owner_merge' in e['payload']] == [
         {'item': 'A', 'owner_merge': value, 'by': by, 'prs_seen': False}
         for value, by in ((True, 'owner'), (True, 'builder'), (False, 'owner'), (True, 'owner'))]
-    with pytest.raises(state.StateError, match='reserved; written by wuwei plan set'):
-        state.set_state('items.A.owner_merge', '{"value": false}', root)
 
-
-
-def test_ci_jobs_is_written_only_by_its_producers(root):  # #733
-    plan.propose(proposal(), root)
-    plan.approve(['A'], root, goals_confirmed=True)
-    with pytest.raises(state.StateError, match='reserved; written by wuwei brief or the fix round'):
-        state.set_state('items.A.ci_jobs', '[]', root)
 
 def test_gate_card_names_the_owner_merge_route(root):
     plan.propose(proposal(), root)
@@ -787,8 +792,6 @@ def test_seats_per_goal_in_plan_gate_and_state(goals2):
     assert 'seats per goal' in widget['options'][-1]['description']
     plan.approve(['A', 'B', 'C', 'D'], root, goals_confirmed=True)
     assert state.read_state(root)['goal_seats'] == {'G-1': 2, 'G-2': 1}
-    with pytest.raises(state.StateError, match='wuwei plan approve'):
-        state.set_state('goal_seats', {'G-1': 3}, root)
 
 
 def test_lead_seats_map_is_validated_and_shown(goals2):
@@ -884,26 +887,6 @@ def test_lead_charter_names_every_owner_action():
         assert f'`{name}`' in text, name
 
 
-def test_the_overnight_report_leads_the_next_morning_plan(root, monkeypatch):
-    """#511: the newest earlier approved day's producer-only shepherd events, before the goals;
-    review F2: an unapproved day with watch clock state in between does not hide them."""
-    yesterday = root / '.wuwei/days/2026-09-26'
-    without = plan.propose(proposal(), root).read_text()
-    assert '## Overnight' not in without
-    state._write_state(lambda data: data.update(gate_approved=True), directory=yesterday, reserved=False)
-    state._write_state(lambda data: None, directory=root / '.wuwei/days/2026-09-27')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T02:00:00+02:00')
-    state.append_event('shepherd.overnight', {'pr': 'acme/widget#7', 'state': 'threads_unanswered',
-        'outcome': 'queued', 'reason': 'triage review threads',
-        'evidence': ['thread T17 by bob on src/app.py: Why this name?']}, directory=yesterday)
-    state.append_event('shepherd.swept', {'exit': 1}, directory=yesterday)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
-    text = plan.propose(proposal(), root).read_text()
-    assert text.index('Status: PROPOSED') < text.index('## Overnight (days/2026-09-26') < text.index('## Goals to confirm')
-    assert ('1. acme/widget#7 threads_unanswered: triage review threads. Run: bin/wuwei pr act acme/widget#7\n'
-            '   - thread T17 by bob on src/app.py: Why this name?\n') in text
-
-
 def test_candidate_paths_are_validated(root):
     data = proposal()
     data['candidates'][0]['paths'] = ['cli/wuwei/report.py']
@@ -958,7 +941,7 @@ def parked_day(root, monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     state._write_state(lambda data: data['items'].update(
         A={'phase': 'planned', 'status': 'queued'}, B={'phase': 'planned', 'status': 'queued'}),
-        root, reserved=False)
+        root)
     state.transition('A', 'implement', root)
 
 
@@ -999,12 +982,6 @@ def test_plan_resume_waits_for_the_owner(root, monkeypatch, capsys):
     assert [r['payload']['item'] for r in events(root) if r['kind'] == 'plan.resumed'] == ['A']
     plan.park('A', 'round cap 2 reached', root)  # the same reason again takes a fresh Yes
     assert main(['plan', 'resume', 'A']) == 1
-
-
-def test_plan_events_are_reserved(root, capsys):
-    from wuwei.__main__ import main
-    for kind in ('plan.disposed', 'plan.resumed'):
-        assert main(['event', kind, '{}']) == 1
 
 
 def candidate(name='NEW', track='SLICE'):
@@ -1172,7 +1149,7 @@ def test_plan_add_backfills_missing_risk_evidence_once(gated):
     # #615: an item admitted before the fix recovers with the command merge check names.
     flags = {key: False for key in plan.FLAGS}
     state._write_state(lambda d: d['items'].update({'OLD': {'goal': 'G-1', 'flags': flags}})
-                       or d['approved_items'].append('OLD'), gated, reserved=False,
+                       or d['approved_items'].append('OLD'), gated,
                        kind='plan.added', payload={'item': 'OLD', 'source': 'owner'})
     assert plan.add('OLD', gated) == {'action': 'risk recorded', 'item': 'OLD'}
     assert added_events(gated)[-1] == {'item': 'OLD', 'source': 'replan', 'flags': {'OLD': flags}}
@@ -1196,7 +1173,7 @@ def test_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
     assert main(['plan', 'add', '--from-finding', 'fix-pin-ruff-in-ci']) == 1
     assert 'wuwei next' in capsys.readouterr().err
-    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    assert main(['seat', 'note', '--fix', 'Pin ruff in CI']) == 0
     capsys.readouterr()
     with pytest.raises(state.StateError, match="not one of today's goals"):
         plan.add('fix-pin-ruff-in-ci', gated, goal='G-9', source='finding')
@@ -1211,3 +1188,14 @@ def test_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
     assert fake.calls == [] and not day.get('tickets')
     assert added_events(gated)[-1]['source'] == 'finding'
 
+
+def test_plan_session_records_the_planner(root, monkeypatch):
+    # moved from test_watch.py (#847)
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    state._write_state(lambda data: None, root)
+    assert main(['plan', 'session', 'planner']) == 0
+    assert state.read_state(root)['planner_session_id'] == 'planner'
+    assert [e['payload']['session_id'] for e in events(root) if e['kind'] == 'plan.session'][-1] == 'planner'
+    assert main(['plan', 'session', '']) == 2
+    assert state.read_state(root)['planner_session_id'] == 'planner'

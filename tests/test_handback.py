@@ -114,7 +114,7 @@ def add_seat(root, name, role, status='running'):
     relative = f'.wuwei/days/{state.workspace.day_dir(root).name}/briefs/{name}.md'
     state._write_state(lambda data: data['seats'].update({name: {
         'id': name, 'role': role, 'item': 'A', 'brief': relative, 'status': status}}),
-        root, reserved=False)
+        root)
     return write(root / f'{name}.jsonl', {'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + relative}})
 
 
@@ -156,7 +156,7 @@ def test_missing_transcript_stops_unmeasured(seat):
     root, _, _, day, _ = seat
     transcript = add_seat(root, 'quality', 'sentinel-quality')
     state._write_state(lambda data: data['seats']['quality'].update({'transcript': str(transcript)}),
-                       root, reserved=False)
+                       root)
     transcript.unlink()
     assert_unmeasured(root, day, 'quality', *agent_launch.stop({
         'cwd': str(root), 'agent_type': 'wuwei:sentinel-quality', 'agent_id': 'agent-quality',
@@ -212,9 +212,8 @@ def test_hook_reads_nothing_for_other_agents(seat, monkeypatch, capsys):
     assert code == 0, err
 
 
-def test_unmatched_seat_stop_still_records_session(seat, monkeypatch, capsys):
-    # #516: the seat stop folds the session row into its own write; a stop that matches no
-    # reservation leaves the registry write to lifecycle, as before.
+def test_unmatched_seat_stop_is_recorded(seat, monkeypatch, capsys):
+    # #847: a stop that matches no reservation is recorded; no session registry row.
     root, _, _, day, _ = seat
     transcript = write(root / 'stray.jsonl',
                        {'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + 'elsewhere.md'}})
@@ -224,8 +223,8 @@ def test_unmatched_seat_stop_still_records_session(seat, monkeypatch, capsys):
     assert code == 0, err
     rows = events(day)
     assert 'seat stop unmatched' in [row['kind'] for row in rows]
-    assert state.read_state(root)['sessions']['abc123']['last_hook'] == 'SubagentStop:wuwei:builder'
-    assert [row['kind'] for row in rows].count('session.seen') == 1
+    assert 'abc123' not in state.read_state(root).get('sessions', {})
+    assert 'session.seen' not in [row['kind'] for row in rows]
 
 
 def stuck_day(root):
@@ -234,7 +233,7 @@ def stuck_day(root):
     with transcript.open('a') as stream:
         stream.write(HANDBACK)
     state._write_state(lambda data: data['seats']['stuck'].update(transcript=str(transcript)),
-                       root, reserved=False)
+                       root)
     return transcript
 
 
@@ -265,7 +264,7 @@ def test_next_names_stuck_seat(seat):
     (root / '.wuwei/calibration.json').write_text('{"calibrated": true}')
     (day / 'plan.md').write_text('# Plan\n')
     state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
-                                                planner_session_id='S'), root, reserved=False)
+                                                planner_session_id='S'), root)
     state.append_event('next.action', {'state': 'x', 'done': [['calibrate', '']]}, root)  # #551: done
     assert [launch['kind'] for launch in next_command.step(root)['launches']] == ['build']
     stuck_day(root)
@@ -274,12 +273,12 @@ def test_next_names_stuck_seat(seat):
     assert launch['command'] == 'wuwei seat stop stuck --unmeasured "seat ended with no recorded result"'
 
 
-def test_heartbeat_seats_probe(seat):
-    from wuwei import heartbeat
+def test_doctor_seats_probe(seat):
+    from wuwei.commands import doctor
     root = seat[0]
-    assert heartbeat._seats(root) == ('ok', 'none stuck')
+    assert doctor._seats(root) == ('ok', 'none stuck')
     stuck_day(root)
-    result, value = heartbeat._seats(root)
+    result, value = doctor._seats(root)
     assert result == 'failed' and value.startswith('dead: stuck;') and 'wuwei seat stop stuck --verdict' in value
 
 
@@ -368,7 +367,7 @@ def test_seat_stop_refusals(seat, monkeypatch, capsys):
 
 def test_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
-    state._write_state(lambda data: data.update(planner_session_id='planner-1'), root, reserved=False)
+    state._write_state(lambda data: data.update(planner_session_id='planner-1'), root)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err

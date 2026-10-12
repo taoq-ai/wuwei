@@ -45,18 +45,23 @@ def assert_registered(root, job, capsys, monkeypatch):
     assert agent_launch.check(payload)[0] == 1  # A consumed brief cannot launch twice.
 
 
+def runtime(root, role):
+    """#847: the runtime port build next and dispatch call (the runtime command is gone)."""
+    from wuwei import registry, workspace
+    return registry.load('runtime', registry.runtime_config(role, workspace.load_config(root), root))
+
+
 @pytest.mark.parametrize('role', ROLES)
 @pytest.mark.parametrize('continue_seat', [False, True])
 def test_runtime_prompt_passes_guard(workspace, monkeypatch, capsys, role, continue_seat):
     root, directory = workspace
     relative = brief.write(role, 'X', 'seat', 'Do the assigned work',
                            worktree='tree', root=root)
-    assert main(['runtime', 'dispatch', role, relative, 'tree', '--write']) == 0
-    job = json.loads(capsys.readouterr().out)
+    adapter = runtime(root, role)
+    job = adapter.dispatch(role, relative, 'tree', True, root=root).data
     if continue_seat:
         for feedback in ('Fix the failing check', 'Check the delta'):
-            assert main(['runtime', 'continue', json.dumps(job), feedback]) == 0
-            job = json.loads(capsys.readouterr().out)
+            job = adapter.continue_job(job, feedback, root=root).data
             assert job['feedback'] == feedback
             assert feedback in job['prompt']
     assert job['agent_type'] == 'wuwei:' + role
@@ -70,15 +75,15 @@ def test_runtime_dispatch_accepts_gate_names(workspace, monkeypatch, capsys, gat
     root, _ = workspace
     relative = brief.write('sentinel-' + gate, 'X', 'seat', 'Review the change',
                            worktree='tree', root=root)
-    assert main(['runtime', 'dispatch', gate, relative, 'tree']) == 0
-    job = json.loads(capsys.readouterr().out)
+    job = runtime(root, 'sentinel-' + gate).dispatch('sentinel-' + gate, relative, 'tree', False, root=root).data
     assert job['agent_type'] == 'wuwei:sentinel-' + gate
     assert_registered(root, job, capsys, monkeypatch)
 
 
 def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
     root, _ = workspace
-    assert main(['steward', 'run', '--trigger', 'close']) == 0
+    from wuwei import steward
+    assert steward.run(trigger='close') == 0
     job = json.loads(capsys.readouterr().out)['steward_launch']
     assert job['agent_type'] == 'wuwei:steward'
     assert_registered(root, job, capsys, monkeypatch)
@@ -93,7 +98,7 @@ def test_missing_brief_line_names_the_brief_command(workspace):
     code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'Do work'}})
     assert code == 1
-    assert 'bin/wuwei brief builder <item> <name>' in message
+    assert 'bin/wuwei seat brief builder <item> <name>' in message
     assert [seat['role'] for seat in state.read_state(root)['seats'].values()] == ['adhoc']
 
 

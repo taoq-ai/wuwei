@@ -22,7 +22,7 @@ def day(tmp_path, monkeypatch):
         "full_path_patterns = ['(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)']\n")
     directory = workspace.day_dir(tmp_path)
     directory.mkdir(parents=True)
-    state._write_state(lambda data: data.update(items={'X': {'phase': 'gate'}}, seats={}), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'gate'}}, seats={}), tmp_path)
     (directory / 'decisions').mkdir()
     (directory / 'decisions/rulings.md').write_text('D-ABC-1 ruled: (a)\n')
     vcs, host = VCS(), CodeHost()
@@ -33,7 +33,7 @@ def day(tmp_path, monkeypatch):
 
 def brief(monkeypatch, body='body', *args):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(body))
-    return main(['brief', *args, '--file', '-'])
+    return main(['seat', 'brief', *args, '--file', '-'])
 
 
 def events(directory):
@@ -63,6 +63,24 @@ def test_lead_and_steward_briefs_create_no_item(day, monkeypatch):
     brief_module.write('steward', 'day', 'steward-1', 'body', root=day[0])
     assert (day[1] / 'briefs/lead-1.md').is_file() and (day[1] / 'briefs/steward-1.md').is_file()
     assert set(state.read_state(day[0])['items']) == {'X'}
+
+
+def test_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
+    # #848: the lead reads the candidates in its brief; an unreachable source stays named.
+    from wuwei import discovery
+    found = {'sources': {'tracker': [{'id': 'ISSUE-1'}], 'scanner': 'unmeasured: scanner down'},
+             'candidates': [{'id': 'ISSUE-1', 'source': 'tracker'}]}
+    monkeypatch.setattr(discovery, 'discover', lambda root=None: found)
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-2') == 0
+    text = (day[1] / 'briefs/lead-2.md').read_text()
+    assert 'Source scanner: unmeasured: scanner down' in text
+    assert 'Candidate: {"id": "ISSUE-1", "source": "tracker"}' in text
+
+    def broken(root=None):
+        raise ValueError('tracker adapter broken')
+    monkeypatch.setattr(discovery, 'discover', broken)
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-3') == 0
+    assert 'Candidates: unmeasured: tracker adapter broken' in (day[1] / 'briefs/lead-3.md').read_text()
 
 
 def test_declared_full_and_persisted(day, monkeypatch):
@@ -183,7 +201,7 @@ def test_ruling_sources(day, monkeypatch, source):
     path.write_text('D-ABC-2..6 accepted\n' if source == 'range' else 'D-ABC-3 pending\n')
     if source == 'policy':
         path.unlink()
-        state._write_state(lambda data: data.update(gate_policy='D-ABC-3 ruled'), root, reserved=False)
+        state._write_state(lambda data: data.update(gate_policy='D-ABC-3 ruled'), root)
     assert brief(monkeypatch, 'per D-ABC-3', 'builder', 'X', 'ruling', *opts) == (1 if source == 'gate-only' else 0)
 
 
@@ -246,7 +264,7 @@ def test_renamed_protected_path_requires_full(day, monkeypatch):
 def test_concurrent_track_change_is_not_overwritten(day, monkeypatch):
     original = day[2].head
     def head(*args, **kwargs):
-        state._write_state(lambda data: data['items']['X'].update(track='FULL'), day[0], reserved=False)
+        state._write_state(lambda data: data['items']['X'].update(track='FULL'), day[0])
         return original(*args, **kwargs)
     monkeypatch.setattr(day[2], 'head', head)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'race-track', '--worktree', 'tree') == 2
@@ -293,7 +311,7 @@ def test_item_worktree_uses_repository_default_branch(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     workspace.day_dir(tmp_path).mkdir(parents=True)
-    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}, seats={}), tmp_path, reserved=False)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}, seats={}), tmp_path)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'worktrees/X') == 0
     sha = git('rev-parse', 'origin/master', cwd=widget)
     assert f'Merge-base: {sha} (origin/master)' in (workspace.day_dir(tmp_path) / 'briefs/b1.md').read_text()
@@ -324,7 +342,7 @@ def test_worktree_of_unconfigured_repository_is_refused(day, monkeypatch, capsys
 
 
 def set_seats(seats, root):
-    state._write_state(lambda data: data.update(seats=seats), root, reserved=False)
+    state._write_state(lambda data: data.update(seats=seats), root)
 
 
 @pytest.mark.parametrize('role', ['quality', 'arch', 'security', 'goal', 'sentinel-quality'])
@@ -373,11 +391,11 @@ def test_probe_env_leaves_no_pycache(day, monkeypatch, tmp_path):  # #672 accept
 
 def test_brief_body_from_option_or_file(day, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'stdin', None)
-    assert main(['brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0
+    assert main(['seat', 'brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0
     assert 'inline body' in (day[1] / 'briefs/b1.md').read_text()
     source = tmp_path / 'body.txt'
     source.write_text('file body')
-    assert main(['brief', 'builder', 'X', 'b2', '--file', str(source)]) == 0
+    assert main(['seat', 'brief', 'builder', 'X', 'b2', '--file', str(source)]) == 0
     assert 'file body' in (day[1] / 'briefs/b2.md').read_text()
     assert brief(monkeypatch, 'stdin body', 'builder', 'X', 'b3') == 0
     assert 'stdin body' in (day[1] / 'briefs/b3.md').read_text()
@@ -388,34 +406,25 @@ def test_brief_without_body_option_never_reads_stdin(day, monkeypatch, capsys):
         raise AssertionError('stdin read')
     monkeypatch.setattr(sys, 'stdin', io.StringIO(''))
     monkeypatch.setattr(sys.stdin, 'read', blocked)
-    assert main(['brief', 'builder', 'X', 'b4']) == 2
+    assert main(['seat', 'brief', 'builder', 'X', 'b4']) == 2
     err = capsys.readouterr().err
     assert '--body' in err and '--file' in err
     assert not (day[1] / 'briefs/b4.md').exists()
     with pytest.raises(SystemExit) as exc:
-        main(['brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
+        main(['seat', 'brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
     assert exc.value.code == 2
 
 
-def test_builder_brief_claims_item_for_the_session(day, monkeypatch, capsys):
+def test_builder_brief_records_the_session_and_claims_nothing(day, monkeypatch):
+    # #847: no session registry and no claims; the brief event still names its session.
     root, directory, _, _ = day
     monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
     data = state.read_state(root)
-    assert data['claims'] == {'X': 'A'} and 'A' in data['sessions']
+    assert 'claims' not in data and 'sessions' not in data
     assert events(directory)[-1]['payload']['session'] == 'A'
     monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
-    before = events(directory)
-    assert brief(monkeypatch, 'body', 'builder', 'X', 'b2') == 2
-    assert 'claimed by live session A' in capsys.readouterr().err
-    assert not (directory / 'briefs/b2.md').exists() and events(directory) == before
-    assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', '--worktree', 'tree') == 0
-    monkeypatch.delenv('WUWEI_SESSION_ID')
-    assert brief(monkeypatch, 'body', 'builder', 'X', 'b3') == 2
-    monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T13:00:00+00:00')
-    assert brief(monkeypatch, 'body', 'builder', 'X', 'b4') == 0
-    assert state.read_state(root)['claims'] == {'X': 'B'}
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b2') == 0
 
 
 def test_unclaimed_builder_brief_without_session_records_no_claim(day, monkeypatch):
@@ -504,7 +513,7 @@ def test_only_the_builder_brief_carries_the_spec_line(day, monkeypatch):
     (root / 'tree/specs/001-a').rename(root / 'tree/specs/001-x')
     assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'g1', '--worktree', 'tree') == 0
     assert spec_line(directory / 'briefs/g1.md') == []  # #667: the gate reads it with why --json
-    state._write_state(lambda data: data['items']['X'].update(tier='light'), root, reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(tier='light'), root)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b2', '--worktree', 'tree') == 0
     assert spec_line(directory / 'briefs/b2.md') == ['Spec: skipped (lead tier light)']
     (root / '.wuwei/config.toml').write_text('[spec]\nengine = "none"\n')
@@ -519,7 +528,7 @@ def test_builder_brief_carries_the_governing_document(day, monkeypatch, capsys):
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b0', '--worktree', 'tree') == 0
     plain = (directory / 'briefs/b0.md').read_text()
     state._write_state(lambda data: data['items']['X'].update(governed_by='docs/prereg.md#Pre-registration'),
-                       root, reserved=False)
+                       root)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
     text = (directory / 'briefs/b1.md').read_text()
     assert text.endswith('\n\n## Pre-registration\nTen samples.\n\nA t-test.\n')
@@ -527,7 +536,7 @@ def test_builder_brief_carries_the_governing_document(day, monkeypatch, capsys):
     header = lambda brief_text: [line for line in brief_text.split('\n\n')[0].splitlines()
                                  if not line.startswith('Written:')]
     assert header(text) == header(plain)
-    state._write_state(lambda data: data['items']['X'].update(governed_by='docs/missing.md'), root, reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(governed_by='docs/missing.md'), root)
     capsys.readouterr()
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b2', '--worktree', 'tree') == 2
     assert 'docs/missing.md is not a file' in capsys.readouterr().err
@@ -536,7 +545,7 @@ def test_builder_brief_carries_the_governing_document(day, monkeypatch, capsys):
 
 def gate_brief(day, monkeypatch, role, name='d'):
     """The brief header lines for item X tiered standard."""
-    state._write_state(lambda data: data['items']['X'].update(gates={'tier': 'standard'}), day[0], reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(gates={'tier': 'standard'}), day[0])
     args = ('--gate', '--worktree', 'tree') if role != 'builder' else ()
     assert brief(monkeypatch, 'Review it.', role, 'X', name, *args) == 0
     return (day[1] / f'briefs/{name}.md').read_text().splitlines()
@@ -574,7 +583,7 @@ def test_builder_and_gate_briefs_quote_the_approval(day, monkeypatch, role, coun
     # #731: the owner's recorded approval settles the scope question, so every builder and gate brief quotes it.
     from wuwei import brief as writer
     state._write_state(lambda data: data['items']['X'].update(approved_as='owner: "only the annotator change"'),
-                       day[0], reserved=False)
+                       day[0])
     if role == 'steward':
         writer.write('steward', 'X', 'l', 'body', root=day[0])
     else:
@@ -595,11 +604,11 @@ def test_item_added_with_a_note_has_it_in_every_gate_brief(day, monkeypatch):
     from wuwei import plan
     root = day[0]
     state._write_state(lambda data: data.update(gate_approved=True, goals=['G-1'], approved_items=[]),
-                       root, reserved=False)
+                       root)
     plan.add('Y', root, goal='G-1', note='only the annotator change')
     state.transition('Y', 'implement', root)
     state.transition('Y', 'gate', root)
-    state._write_state(lambda data: data['items']['Y'].update(gates={'tier': 'standard'}), root, reserved=False)
+    state._write_state(lambda data: data['items']['Y'].update(gates={'tier': 'standard'}), root)
     for role in ('arch', 'quality', 'security'):
         assert brief(monkeypatch, 'Review it.', role, 'Y', f'g-{role}', '--gate', '--worktree', 'tree') == 0
         assert APPROVED in brief_header(day[1] / f'briefs/g-{role}.md')
@@ -623,7 +632,7 @@ def test_builder_brief_names_the_check_interpreter(day, monkeypatch, check, args
     day[2].results['repo_context'] = registry.Result(0, {
         'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
     state._write_state(lambda data: data['items']['X'].update(approved_as='owner: "only the annotator change"'),
-                       root, reserved=False)  # #731: read after the per-repo checks, still the item record
+                       root)  # #731: read after the per-repo checks, still the item record
     assert brief(monkeypatch, 'Review it.', *args, '--worktree', 'worktrees/X') == 0
     text = (day[1] / 'briefs/b.md').read_text()
     assert APPROVED in text
@@ -644,7 +653,7 @@ def test_builder_brief_names_no_fast_checks(day, monkeypatch, checks, none):
         f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = {checks}\n')
     (root / 'app/.git').mkdir(parents=True)
     (root / 'worktrees/X').mkdir(parents=True)
-    state._write_state(lambda data: data.update(pace='careful'), root, reserved=False)
+    state._write_state(lambda data: data.update(pace='careful'), root)
     day[2].results['repo_context'] = registry.Result(0, {
         'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
     assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b', '--worktree', 'worktrees/X') == 0
@@ -724,7 +733,7 @@ def test_issue_acceptance_ticket_recorded_after_the_brief(day, monkeypatch, caps
     root, directory = day[0], day[1]
     gate_brief(day, monkeypatch, 'quality', name='q')
     assert 'bin/wuwei why X --json' in (directory / 'briefs/q.md').read_text()
-    state._write_state(lambda data: data.update(tickets={'X': {'id': 'ENG-7', 'source': 'set'}}), root, reserved=False)
+    state._write_state(lambda data: data.update(tickets={'X': {'id': 'ENG-7', 'source': 'set'}}), root)
     capsys.readouterr()
     assert main(['why', 'X', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['ticket'] == 'ENG-7'
@@ -745,7 +754,7 @@ def test_issue_reference_registers_with_a_warning(day, monkeypatch, capsys):
     # #740: a ticket is an issue; the pulls endpoint 404s on it and the brief still registers.
     (day[0] / '.wuwei/config.toml').write_text(WIDGET)
     day[3].results['pr'] = registry.Result(2, None, NOT_FOUND)
-    state._write_state(lambda data: data.update(tickets={'X': {'id': 'acme/widget#24'}}), day[0], reserved=False)
+    state._write_state(lambda data: data.update(tickets={'X': {'id': 'acme/widget#24'}}), day[0])
     assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'tk') == 0
     text = (day[1] / 'briefs/tk.md').read_text()
     assert 'Warning: acme/widget#24 is no pull request the host could read (' in text
@@ -852,12 +861,12 @@ def test_ci_steps_and_block(tmp_path):
 def test_builder_and_gate_briefs_list_every_step(day, monkeypatch):
     root, directory = day[0], day[1]
     ci_tree(root / 'tree')
-    state._write_state(lambda data: data['items']['X'].update(title='fix the lint job'), root, reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(title='fix the lint job'), root)
     assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
     text = (directory / 'briefs/b1.md').read_text()
     assert text.endswith('Build it.\n' + CI_BLOCK)
     assert state.read_state(root)['items']['X']['ci_jobs'] == [LINT_REF]
-    state._write_state(lambda data: data['items']['X'].pop('title'), root, reserved=False)
+    state._write_state(lambda data: data['items']['X'].pop('title'), root)
     from wuwei.dispatch import GATE_BODY
     assert brief(monkeypatch, GATE_BODY.format(item='X'), 'quality', 'X', 'g1', '--gate', '--worktree', 'tree') == 0
     assert (directory / 'briefs/g1.md').read_text().endswith(CI_BLOCK)

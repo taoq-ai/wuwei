@@ -21,11 +21,11 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['A'],
-        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path, reserved=False)
+        items={'A': {'phase': 'planned', 'status': 'queued'}}), tmp_path)
     state.transition('A', 'implement', tmp_path)
     state.transition('A', 'gate', tmp_path)
     state._write_state(lambda data: data['seats'].update(builder={
-        'item': 'A', 'role': 'builder', 'status': 'stopped'}), tmp_path, reserved=False)
+        'item': 'A', 'role': 'builder', 'status': 'stopped'}), tmp_path)
     return tmp_path
 
 
@@ -37,7 +37,7 @@ def test_gate_dispatch_and_live_builder_refusal(root):
     assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update(builder={
-        'item': 'A', 'role': 'builder', 'status': 'running'}), root, reserved=False)
+        'item': 'A', 'role': 'builder', 'status': 'running'}), root)
     with pytest.raises(dispatch.Refused, match='builder'):
         dispatch.next_step('A', root)
 
@@ -50,7 +50,7 @@ def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     (root / '.wuwei/config.toml').write_text('')
     tree = root / 'tree'
     tree.mkdir()
-    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
     with pytest.raises(dispatch.Refused, match='specify first: /speckit.specify'):
         dispatch.next_step('A', root)
     shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', tree / 'specs')
@@ -65,7 +65,7 @@ def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
     monkeypatch.setattr(dispatch, 'tier', lambda root, config, row: {
         'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']})
     state._write_state(lambda data: data['items']['A'].update(worktree=str(tree), tier='light'),
-                       root, reserved=False)
+                       root)
     action = dispatch.next_step('A', root)
     assert (action['action'], action['roles']) == ('gates', ['quality'])
 
@@ -73,7 +73,7 @@ def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
 def test_gate_dispatch_requires_builder_stand_down(root):
     from wuwei import dispatch
 
-    state._write_state(lambda data: data['seats'].clear(), root, reserved=False)
+    state._write_state(lambda data: data['seats'].clear(), root)
     with pytest.raises(dispatch.Refused, match='stand down'):
         dispatch.next_step('A', root)
 
@@ -89,7 +89,7 @@ def record(root, role, name, text, round_name='initial', brief='Head: abc1234\n'
     state._write_state(lambda data: data['seats'].update({
         name: {'item': 'A', 'role': 'sentinel-' + role.partition('@')[0], 'status': 'stopped',
                'brief': str((directory / 'briefs' / f'{name}.md').relative_to(root)), **seat}}),
-        root, reserved=False)
+        root)
     return dispatch.receive('A', role, name, round_name, root)
 
 
@@ -119,7 +119,7 @@ def built(root):
     tree = root / 'tree'
     tree.mkdir(exist_ok=True)
     completed_build(root, tree)
-    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
     return tree
 
 
@@ -235,7 +235,7 @@ def test_receive_rechecks_current_worktree_head(root, monkeypatch):
     state._write_state(lambda data: data['seats'].update(arch={
         'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
         'brief': str((directory / 'briefs/arch.md').relative_to(root))}),
-        root, reserved=False)
+        root)
     with pytest.raises(dispatch.Refused, match='current worktree HEAD'):
         dispatch.receive('A', 'arch', 'arch', root=root)
 
@@ -251,7 +251,7 @@ def test_receive_accepts_short_head_against_full_brief(root):
     state._write_state(lambda data: data['seats'].update(arch={
         'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
         'brief': str((directory / 'briefs/arch.md').relative_to(root))}),
-        root, reserved=False)
+        root)
     assert dispatch.receive('A', 'arch', 'arch', root=root)['verdict'] == 'PASS'
 
 
@@ -276,7 +276,7 @@ def test_receive_accepts_short_current_worktree_head(root, monkeypatch):
     state._write_state(lambda data: data['seats'].update(arch={
         'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
         'brief': str((directory / 'briefs/arch.md').relative_to(root))}),
-        root, reserved=False)
+        root)
     assert dispatch.receive('A', 'arch', 'arch', root=root)['verdict'] == 'PASS'
 
 
@@ -306,7 +306,7 @@ def test_receive_warns_on_files_the_round_left(root, monkeypatch, capsys, left):
     (directory / 'decisions/gate-arch.md').write_text(PASS)
     state._write_state(lambda data: data['seats'].update(arch={
         'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
-        'brief': str((directory / 'briefs/arch.md').relative_to(root))}), root, reserved=False)
+        'brief': str((directory / 'briefs/arch.md').relative_to(root))}), root)
     code = main(['dispatch', 'receive', 'A', 'arch', 'arch'])
     out, err = capsys.readouterr()
     verdicts = state.read_state(root)['gate_verdicts']
@@ -349,7 +349,7 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
     (root / '.wuwei/config.toml').write_text(
         '[spec]\nengine = "none"\n[adapters]\nscanner="ziran"\n[scanner]\nseverity_threshold="' + threshold + '"\n')
     state._write_state(lambda data: data['items']['A']['flags'].update(
-        agent_surface=True, trust_surface=trust), root, reserved=False)
+        agent_surface=True, trust_surface=trust), root)
     directory = workspace.day_dir(root)
     (directory / 'briefs').mkdir(exist_ok=True)
     (directory / 'decisions').mkdir(exist_ok=True)
@@ -357,7 +357,7 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
     (directory / 'decisions/gate-security.md').write_text(PASS)
     state._write_state(lambda data: data['seats'].update(security={
         'item': 'A', 'role': 'sentinel-security', 'status': 'stopped',
-        'brief': str((directory / 'briefs/security.md').relative_to(root))}), root, reserved=False)
+        'brief': str((directory / 'briefs/security.md').relative_to(root))}), root)
     real_load = registry.load
     vcs = SimpleNamespace(head=lambda *args, **kwargs: Result(0, {'sha': 'abc1234'}),
                           status=lambda *args, **kwargs: Result(0, []))
@@ -492,7 +492,7 @@ def test_flagged_item_blocks_ordinary_finding_below_threshold(root, monkeypatch,
     payload, _, _ = agent_gate(root, monkeypatch, threshold='critical')
     payload['findings'][0].update(rule='SA004', severity='low')
     state._write_state(lambda data: data['items']['A']['flags'].update({flag: True}),
-                       root, reserved=False)
+                       root)
     assert dispatch.receive('A', 'security', 'security', root=root)['blocks']
 
 
@@ -537,7 +537,7 @@ def test_scan_evidence_stays_bound_to_worktree_and_item(root, monkeypatch, fault
         original = subprocess.run
         def run(*args, **kwargs):
             state._write_state(lambda data: data['items']['A']['flags'].update(agent_surface=False),
-                               root, reserved=False)
+                               root)
             return original(*args, **kwargs)
         monkeypatch.setattr(subprocess, 'run', run)
     assert main(['dispatch', 'receive', 'A', 'security', 'security']) == 2
@@ -555,7 +555,7 @@ def test_failed_receive_keeps_verdict_unchanged_for_retry(root, monkeypatch):
     def change_flags(update, *args, **kwargs):
         if kwargs.get('kind') == 'gate.received':
             original_write(lambda data: data['items']['A']['flags'].update(
-                trust_surface=True), root, reserved=False)
+                trust_surface=True), root)
         return original_write(update, *args, **kwargs)
 
     with monkeypatch.context() as patch:
@@ -611,7 +611,7 @@ def test_continued_sentinel_delta_head_matches_seat_head(root):
     state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
     state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678' + '0' * 33),
-                       root, reserved=False)
+                       root)
     verdict = workspace.day_dir(root) / 'decisions/gate-quality-1.md'
     delta = PASS + 'Simplicity: none\nDesign: none\n'
     verdict.write_text(delta.replace('abc1234', '9999999'))
@@ -663,7 +663,7 @@ def test_gate_fix_without_agent_id_launches_gate_fix_brief(root, monkeypatch):
 
     built(root)
     gate_fix(root)
-    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root)
     names = []
 
     def write(role, item, name, body, **kwargs):
@@ -682,7 +682,7 @@ def logged_gate_brief(root, role, name, tree):
     (directory / 'briefs').mkdir(exist_ok=True)
     path = directory / 'briefs' / f'{name}.md'
     path.write_text('Head: abc1234\n')
-    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+    state._write_state(lambda data: None, root, kind='brief written', payload={
         'name': name, 'item': 'A', 'role': 'sentinel-' + role, 'path': str(path.relative_to(root)),
         'gate': True, 'worktree': str(tree)})
     return path
@@ -698,11 +698,11 @@ def test_logged_gate_brief_becomes_launch_action(root):
     assert action['agent_type'] == 'wuwei:sentinel-arch'
     outcome = dispatch.next_step('A', root)
     tier = outcome.pop('tier')
-    assert [command.split()[2] for command in outcome.pop('commands')] == ['quality', 'security']
+    assert [command.split()[3] for command in outcome.pop('commands')] == ['quality', 'security']
     assert outcome == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update({'arch-1': {
-        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root, reserved=False)
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root)
     assert dispatch.next_step('A', root)['seats'] == []
 
 
@@ -712,7 +712,7 @@ def test_delta_offers_one_continuation_of_the_stopped_seat(root, monkeypatch):
     tree = built(root)
     gate_fix(root)
     state._write_state(lambda data: data['seats']['quality-1'].update(
-        agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
+        agent_id='agent-quality-1', head='abc1234' + '0' * 33), root)
     dispatch.next_step('A', root)
     live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
@@ -727,13 +727,13 @@ def test_delta_offers_one_continuation_of_the_stopped_seat(root, monkeypatch):
     assert 'abc1234' in action['feedback'] and 'gate-quality-1.md' in action['feedback']
     assert action['receive'] == 'wuwei dispatch receive A quality quality-1 --round delta'
     state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678'),
-                       root, reserved=False)
+                       root)
     # continued and stopped on the new HEAD: its delta verdict waits for receive
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': [],
                                              'commands': [action['receive']]}
     state._write_state(lambda data: data['seats']['quality-1'].update(head='abc1234'),
-                       root, reserved=False)
-    state._write_state(lambda data: data['seats']['quality-1'].pop('agent_id'), root, reserved=False)
+                       root)
+    state._write_state(lambda data: data['seats']['quality-1'].pop('agent_id'), root)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
 
 
@@ -805,7 +805,7 @@ def tiered(root, monkeypatch, paths, floor='light', flags=(), track='SLICE', lea
         row['flags'].update({name: True for name in flags})
         if lead:
             row['tier'] = lead
-    state._write_state(update, root, reserved=False)
+    state._write_state(update, root)
     return fake
 
 
@@ -823,7 +823,7 @@ def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
     import shlex
     tree = state.read_state(root)['items']['A']['worktree']
     action = {'action': 'gates', 'roles': ['goal'], 'seats': [], 'tier': record, 'commands': [
-        f'wuwei brief goal A goal-A --gate --worktree {shlex.quote(tree)} --body '
+        f'wuwei seat brief goal A goal-A --gate --worktree {shlex.quote(tree)} --body '
         + shlex.quote(dispatch.GATE_BODY.format(item='A'))]}
     assert dispatch.next_step('A', root) == action
     assert state.read_state(root)['items']['A']['gates'] == record
@@ -838,7 +838,7 @@ def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
 def test_light_item_receives_and_raises_on_quality_only(root):
     from wuwei import dispatch
 
-    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root)
     with pytest.raises(dispatch.Refused, match='not in the item gate set'):
         record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n')
@@ -850,7 +850,7 @@ def test_light_item_fixes_and_deltas_quality_only(root):
     from wuwei import dispatch
 
     built(root)
-    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     assert dispatch.next_step('A', root) == {
         'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
@@ -863,7 +863,7 @@ def test_malformed_recorded_gate_set_fails_closed(root, roles):
     from wuwei import dispatch
 
     state._write_state(lambda data: data['items']['A'].update(gates={**LIGHT, 'roles': roles}),
-                       root, reserved=False)
+                       root)
     with pytest.raises(ValueError, match='invalid recorded gate set'):
         dispatch.next_step('A', root)
 
@@ -874,7 +874,7 @@ GOAL = {**LIGHT, 'roles': ['goal']}
 def test_docs_only_item_receives_and_raises_on_goal_only(root):
     from wuwei import dispatch
 
-    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root)
     for role in ('arch', 'quality'):
         with pytest.raises(dispatch.Refused, match='not in the item gate set'):
             record(root, role, f'{role}-1', PASS)
@@ -887,7 +887,7 @@ def test_docs_only_item_fix_continues_the_same_goal_seat(root):
     from wuwei import dispatch
 
     built(root)
-    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root)
     record(root, 'goal', 'goal-1', FIX)
     assert dispatch.next_step('A', root) == {
         'action': 'fix', 'roles': ['goal'], 'command': 'wuwei build next A'}
@@ -1113,7 +1113,7 @@ def test_dispatch_next_offers_the_second_opinion_run(root, monkeypatch):
     assert seats[-1] == RUN
     path = workspace.day_dir(root) / 'briefs/q-1-codex.md'
     path.write_text('Head: abc1234\n')
-    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+    state._write_state(lambda data: None, root, kind='brief written', payload={
         'name': 'q-1-codex', 'item': 'A', 'role': 'sentinel-quality', 'gate': True,
         'path': str(path.relative_to(root)), 'worktree': str(root / 'repo'),
         'second_opinion': 'codex:m1'})
@@ -1121,7 +1121,7 @@ def test_dispatch_next_offers_the_second_opinion_run(root, monkeypatch):
     assert [seat.get('brief', '').endswith('q-1.md') for seat in seats if seat['action'] == 'launch'] == [
         False, True, False]
     state._write_state(lambda data: data['seats'].update({'q-1-codex': {
-        'item': 'A', 'role': 'sentinel-quality', 'status': 'running'}}), root, reserved=False)
+        'item': 'A', 'role': 'sentinel-quality', 'status': 'running'}}), root)
     assert RUN not in dispatch.next_step('A', root)['seats']
 
 
@@ -1132,7 +1132,7 @@ STANDARD = {'tier': 'standard', 'computed': 'standard', 'reasons': [], 'roles': 
 
 
 def standard(root, gates=STANDARD):
-    state._write_state(lambda data: data['items']['A'].update(gates=gates), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=gates), root)
 
 
 def test_receive_records_the_second_opinion_with_usage_and_findings(root):
@@ -1149,7 +1149,7 @@ def test_receive_records_the_second_opinion_with_usage_and_findings(root):
 
 def test_claude_sentinel_record_measures_duration_from_its_seat(root):
     state._write_state(lambda data: data.update(seat_policy={
-        'sentinel-arch': {'runtime': 'claude', 'model': 'opus'}}), root, reserved=False)
+        'sentinel-arch': {'runtime': 'claude', 'model': 'opus'}}), root)
     value = record(root, 'arch', 'arch-1', PASS, started_at='2026-09-29T11:59:00+00:00',
                    stopped_at='2026-09-29T12:06:00+00:00')
     assert value['usage'] == {'input_tokens': 'unmeasured', 'output_tokens': 'unmeasured',
@@ -1178,7 +1178,7 @@ def test_second_opinion_is_linted_as_quality_and_checked_against_sibling_heads(r
     with pytest.raises(dispatch.Refused, match='sibling'):
         record(root, 'quality@codex', 'q-2-codex', QUALITY_PASS.replace('abc1234', 'def5678'),
                head='def5678', runtime='codex', model='m1')
-    state._write_state(lambda data: data['gate_verdicts'].clear(), root, reserved=False)
+    state._write_state(lambda data: data['gate_verdicts'].clear(), root)
     record(root, 'quality@codex', 'q-3-codex', QUALITY_PASS.replace('abc1234', 'def5678'),
            head='def5678', runtime='codex', model='m1')
     with pytest.raises(dispatch.Refused, match='sibling'):
@@ -1194,7 +1194,7 @@ def test_receive_binds_the_seat_runtime_to_the_gate(root):
         dispatch.receive('A', 'quality@codex', 'q-1', root=root)
     with pytest.raises(dispatch.Refused, match='runtime seat'):
         record(root, 'quality@codex', 'q-2', QUALITY_PASS, runtime='codex', model='m1')
-    state._write_state(lambda data: data['gate_verdicts'].clear(), root, reserved=False)
+    state._write_state(lambda data: data['gate_verdicts'].clear(), root)
     with pytest.raises(dispatch.Refused, match='runtime seat'):
         record(root, 'quality', 'q-1-codex', QUALITY_PASS, runtime='codex', model='m1')
     value = dispatch.receive('A', 'quality@codex', 'q-1-codex', root=root)
@@ -1369,7 +1369,7 @@ def test_opinion_refusals(root, monkeypatch):
     for role in ALL:
         logged_gate_brief(root, role, role[0] + '-1', root / 'repo')
     state._write_state(lambda data: data['seats'].update({f's{n}': {
-        'item': 'B', 'role': 'builder', 'status': 'running'} for n in range(4)}), root, reserved=False)
+        'item': 'B', 'role': 'builder', 'status': 'running'} for n in range(4)}), root)
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[host]\nseats = 4\n')  # the owner's ceiling (#528)
     with pytest.raises(dispatch.Refused, match='host.seats=4'):
@@ -1388,7 +1388,7 @@ def test_opinion_delta_refuses_to_resume_on_the_builder_runtime(root, monkeypatc
     dispatch.next_step('A', root)
     state.transition('A', 'delta', root)
     state._write_state(lambda data: data['seat_policy'].update(
-        builder={'runtime': 'codex', 'model': 'm2'}), root, reserved=False)
+        builder={'runtime': 'codex', 'model': 'm2'}), root)
     with pytest.raises(dispatch.Refused, match='builder runtime'):
         dispatch.opinion('A', root)
     assert [call[0] for call in runtime.calls].count('continue') == 0
@@ -1490,7 +1490,7 @@ def ticketed(root, monkeypatch, results, tracker='linear'):
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
     state._write_state(lambda data: (data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
                                      data['items']['A'].update(pr='acme/app#5')),
-                       root, reserved=False)
+                       root)
     return fake
 
 
@@ -1548,7 +1548,7 @@ def test_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('[tracker]\nmax_per_item_per_day = 1\n')
     state._write_state(lambda data: data.setdefault('tracker_log', {}).update({'progress:A:1': {
-        'outcome': 'written', 'ticket': 'ENG-7', 'kind': 'progress'}}), root, reserved=False)
+        'outcome': 'written', 'ticket': 'ENG-7', 'kind': 'progress'}}), root)
     result = dispatch.tracker_call('A', 'done', root)
     assert result.exit == 1 and 'max_per_item_per_day' in result.reason
     assert duty_events(root)[-1][0] == 'duty.skipped'
@@ -1571,7 +1571,7 @@ def test_tracker_call_uses_the_ticket(root, monkeypatch):
     fake = Fake({'claim': registry.Result(0, {})})
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
-                       root, reserved=False)
+                       root)
     dispatch.tracker_call('A', 'claim', root)
     dispatch.tracker_call('B', 'claim', root)
     assert [call[1] for call in fake.calls] == [('ENG-7',), ('B',)]
@@ -1690,7 +1690,7 @@ def day_set(tmp_path, monkeypatch):
         items={name: {'phase': phase, 'goal': goal, **({'disposition': {'kind': 'carried', 'reason': ''}}
                                                        if name == 'C' else {})}
                for name, (phase, goal) in goals.items()}),
-        tmp_path, reserved=False)
+        tmp_path)
     gate = {'action': 'gates', 'roles': list(dispatch.ROLES),
             'seats': [{'action': 'launch', 'agent_type': f'wuwei:sentinel-{role}'}
                       for role in dispatch.ROLES]}
@@ -1712,11 +1712,11 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
     assert calls == ['G', 'B']
     start = value['entries'][2]
     import shlex
-    assert start['commands'] == ['wuwei worktree add P3', 'wuwei brief builder P3 builder-P3 --worktree '
+    assert start['commands'] == ['wuwei worktree add P3', 'wuwei seat brief builder P3 builder-P3 --worktree '
                                  'worktrees/P3 --body ' + shlex.quote("Implement P3 as today's plan records it.")]
     assert '<' not in json.dumps(value)
     assert 'CAP 3' in value['entries'][4]['reason']
-    state._write_state(lambda data: data.pop('goal_seats'), root, reserved=False)
+    state._write_state(lambda data: data.pop('goal_seats'), root)
     assert [row['item'] for row in dispatch.launch_set(root)['entries']
             if row['action'] == 'start'] == ['P1', 'P2']
 
@@ -1738,8 +1738,8 @@ def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_s
     root, calls = day_set
     state._write_state(lambda data: data['seats'].update(b={
         'item': 'B', 'role': 'builder', 'status': 'running', 'started_at': '2026-09-29T11:00:00+00:00'}),
-        root, reserved=False)
-    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+        root)
+    state._write_state(lambda data: None, root, kind='brief written', payload={
         'name': 'p3', 'item': 'P3', 'role': 'builder', 'path': 'x.md', 'gate': False})
     value = dispatch.launch_set(root)
     assert value['free_seats'] == 7
@@ -1775,7 +1775,7 @@ def test_start_names_the_worktree_and_the_builder_brief(day_set):
         {'id': 'P3', 'scope': 'one value', 'evidence': 'recorded issue P3'}]}))
     (root / 'worktrees/P3').mkdir(parents=True)
     [start] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3']
-    assert start['commands'] == ['wuwei brief builder P3 builder-P3 --worktree worktrees/P3 --body '
+    assert start['commands'] == ['wuwei seat brief builder P3 builder-P3 --worktree worktrees/P3 --body '
                                  "'Implement P3: one value. Evidence: recorded issue P3.'"]
 
 
@@ -1794,7 +1794,7 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     starts = {row['item']: row['commands'] for row in dispatch.launch_set(root)['entries']
               if row['action'] in ('start', 'park')}
     assert starts['P3'][0] == 'wuwei worktree add P3 --repo acme/code'
-    assert starts['P3'][1].startswith('wuwei brief builder P3 ')
+    assert starts['P3'][1].startswith('wuwei seat brief builder P3 ')
     [park] = starts['P1']
     argv = shlex.split(park)
     assert argv[:5] == ['wuwei', 'plan', 'park', 'P1', '--reason'], park
@@ -1802,7 +1802,7 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     for name in ('P1', 'P3'):  # an existing worktree starts with the brief, whatever its repository
         (root / 'worktrees' / name).mkdir(parents=True)
     starts = [row['commands'] for row in dispatch.launch_set(root)['entries'] if row['action'] == 'start']
-    assert [[command.split()[1] for command in commands] for commands in starts] == [['brief'], ['brief']]
+    assert [[command.split()[2] for command in commands] for commands in starts] == [['brief'], ['brief']]
     assert main(argv[1:]) == 0, capsys.readouterr().err
     assert 'P1' not in approved(state.read_state(root))
 
@@ -1835,13 +1835,13 @@ def test_gates_name_each_brief_and_receive(root):
     from wuwei import dispatch
     tree = built(root)
     body = shlex.quote(dispatch.GATE_BODY.format(item='A'))
-    brief = lambda role: f'wuwei brief {role} A {role}-A --gate --worktree {shlex.quote(str(tree))} --body {body}'
+    brief = lambda role: f'wuwei seat brief {role} A {role}-A --gate --worktree {shlex.quote(str(tree))} --body {body}'
     assert dispatch.next_step('A', root)['commands'] == [brief(role) for role in dispatch.ROLES]
     logged_gate_brief(root, 'arch', 'arch-A', tree)
     state._write_state(lambda data: data['seats'].update({'arch-A': {
-        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root, reserved=False)
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root)
     assert dispatch.next_step('A', root)['commands'] == [brief('quality'), brief('security')]
-    state._write_state(lambda data: data['seats']['arch-A'].update(status='stopped'), root, reserved=False)
+    state._write_state(lambda data: data['seats']['arch-A'].update(status='stopped'), root)
     assert dispatch.next_step('A', root)['commands'] == [
         'wuwei dispatch receive A arch arch-A', brief('quality'), brief('security')]
 
@@ -1873,9 +1873,9 @@ def test_rounds_used_counts_the_build_record(root):
     data = state.read_state(root)
     assert dispatch.rounds_used(data, 'A') == 0
     built(root)
-    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root)
     assert dispatch.rounds_used(state.read_state(root), 'A') == 2
-    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=0), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=0), root)
     state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
     assert dispatch.rounds_used(state.read_state(root), 'A') == 1
@@ -1908,7 +1908,7 @@ def test_open_fix_from_delta_opens_the_next_round_and_moves_the_verdicts(root, m
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n', 'delta')
     before = state.read_state(root)['gate_verdicts']
     state._write_state(lambda data: (data['builds']['A'].update(status='done'),
-                                     data['builds']['A'].pop('agent_id')), root, reserved=False)
+                                     data['builds']['A'].pop('agent_id')), root)
     names = []
 
     def write(role, item, name, body, **kwargs):
@@ -1936,7 +1936,7 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root, m
     from wuwei import dispatch
     from wuwei.commands import next as next_command
     built(root)
-    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root)
     record(root, 'goal', 'goal-1', FIX)
     assert dispatch.next_step('A', root) == _fix_action(['goal'])
     state.transition('A', 'delta', root)
@@ -1959,7 +1959,7 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root, m
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise' and 'cli/example.py:12' in outcome['notes'][0]
     found = dispatch.resolve_offer(root, {'kind': 'raise', 'item': 'A', 'command': 'wuwei dispatch next A'})
-    assert found['commands'][0].startswith('wuwei brief shepherd A shepherd-A')
+    assert found['commands'][0].startswith('wuwei seat brief shepherd A shepherd-A')
     assert 'Review note: - P1 | cli/example.py:12' in found['commands'][0]
 
 
@@ -1997,7 +1997,7 @@ def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monk
     assert 'across the trust boundary' in reason and not cards(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     state._write_state(lambda data: data['builds']['A'].update(status='done', action={'action': 'done'}),
-                       root, reserved=False)  # the last round's builder finished
+                       root)  # the last round's builder finished
     assert build_next(capsys, root)[:2] == (1, cli(capsys, 'dispatch', 'next', 'A')[1])
     assert cli(capsys, 'dispatch', 'next', 'A')[1]['command'] == 'wuwei plan resume A'
     assert main(['plan', 'resume', 'A']) == 1  # only the owner resumes a parked item
@@ -2172,7 +2172,7 @@ def test_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypa
     gate_fix(root)
     dispatch.next_step('A', root)
     state._write_state(lambda data: data['builds']['A'].update(status='done', action={'action': 'done'}),
-                       root, reserved=False)
+                       root)
     state.transition('A', 'delta', root)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n', 'delta')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -2215,7 +2215,7 @@ def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys
     found = both()
     assert found['seats'] == [] and len(found['commands']) == 1
     command = found['commands'][0]
-    assert command.startswith(f'wuwei brief shepherd A shepherd-A --worktree {tree} --body ')
+    assert command.startswith(f'wuwei seat brief shepherd A shepherd-A --worktree {tree} --body ')
     assert all(part in command for part in ('bin/wuwei pr raise', '--item A')) and 'gh pr create' not in command
     from wuwei.guards import edges
     assert edges.check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})[0] == 0
@@ -2225,7 +2225,7 @@ def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys
     assert found['seats'] == [brief.seat_action('shepherd', path, str(tree), root)]
     assert 'commands' not in found
     state._write_state(lambda data: data['seats'].update({'shepherd-A': {
-        'item': 'A', 'role': 'shepherd', 'status': 'running'}}), root, reserved=False)
+        'item': 'A', 'role': 'shepherd', 'status': 'running'}}), root)
     found = both()
     assert found['seats'] == [] and 'commands' not in found
     assert all(part in found['reason'] for part in ('shepherd-A', 'running', 'bin/wuwei why A'))
@@ -2254,7 +2254,7 @@ def delta_round(root, monkeypatch):
     tree = built(root)
     gate_fix(root)
     state._write_state(lambda data: data['seats']['quality-1'].update(
-        agent_id='agent-quality-1', head=OLD), root, reserved=False)
+        agent_id='agent-quality-1', head=OLD), root)
     dispatch.next_step('A', root)
     live_head(monkeypatch, NEW)  # the fix round committed
     state.transition('A', 'delta', root)
@@ -2301,9 +2301,9 @@ def test_issue_acceptance_in_session_reviewer_delta_verdict_is_received_on_the_d
 
 def test_delta_head_event_is_reserved_and_silent():
     from wuwei import signal
-    from wuwei.commands import event
+    from wuwei.commands.why import EVENT_PRODUCERS
 
-    assert event.EVENT_PRODUCERS['gate.delta_head'] == 'wuwei dispatch next'
+    assert EVENT_PRODUCERS['gate.delta_head'] == 'wuwei dispatch next'
     assert 'gate.delta_head' in signal.SILENT
 
 
@@ -2328,7 +2328,7 @@ def test_delta_continuation_carries_the_ci_steps(root, monkeypatch):
     gate_fix(root)
     state._write_state(lambda data: (data['seats']['quality-1'].update(
         agent_id='agent-quality-1', head='abc1234' + '0' * 33),
-        data['items']['A'].update(ci_jobs=[LINT_REF])), root, reserved=False)
+        data['items']['A'].update(ci_jobs=[LINT_REF])), root)
     dispatch.next_step('A', root)
     live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
@@ -2394,7 +2394,7 @@ def test_owner_yes_opens_the_fix_round_and_regates_the_asking_gate(root, monkeyp
     import shlex
     tree = state.read_state(root)['items']['A'].get('worktree') or str(root)
     assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [], 'seats': [], 'commands': [
-        f'wuwei brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
+        f'wuwei seat brief shepherd A shepherd-A --worktree {shlex.quote(tree)} '
         '--body ' + shlex.quote(dispatch.SHEPHERD_BODY.format(item='A'))]}
     assert cards(root) == []
 
@@ -2454,7 +2454,7 @@ def test_a_third_fix_round_dispatches_without_a_steward_note(root):
     caps(root, 'max_rounds = 3\n')
     built(root)
     gate_fix(root)
-    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root)
     assert dispatch.next_step('A', root) == _fix_action(['quality'])
 
 
@@ -2632,7 +2632,7 @@ def test_polish_without_agent_id_writes_the_notes_into_the_fresh_brief(root, mon
     from wuwei import dispatch
 
     polish_ready(root)
-    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root)
     bodies = {}
 
     def write(role, item, name, body, **kwargs):
@@ -2751,7 +2751,7 @@ def test_polish_at_the_cap_raises_with_the_notes(root):
     from wuwei import dispatch
 
     polish_ready(root)
-    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root)
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
 
 
@@ -2782,7 +2782,7 @@ def test_a_day_value_never_changes_the_tier(root, monkeypatch):
     tiered(root, monkeypatch, [('cli/wuwei/report.py', 3, 1)], floor='standard')
     tier = lambda: dispatch.tier(root, workspace.load_config(root), state.read_state(root)['items']['A'])
     before = tier()
-    state._write_state(lambda data: data.update(pace='fast'), root, reserved=False)
+    state._write_state(lambda data: data.update(pace='fast'), root)
     after = tier()
     assert before == after and 'depth' not in after
     assert not any(reason.startswith('pace') for reason in after['reasons'])
@@ -3014,7 +3014,7 @@ def test_a_new_park_after_the_resumed_round_parks_again(root, monkeypatch, capsy
 
 
 def builder_says(root, blocked_line):
-    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root)
     state.append_event('retro.captured', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
         'Blocked': blocked_line, 'Gap': 'none', 'Change': 'none'}, 'missing': [], 'invalid': []}, root)
 
@@ -3063,7 +3063,7 @@ def test_a_resumed_blocked_park_goes_to_the_gates(root, capsys, monkeypatch):
 def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
     # #834 delta D2: a note missing Gap: is a retro.gap, and its Blocked: line still asks.
     from wuwei import dispatch
-    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root, reserved=False)
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root)
     state.append_event('retro.gap', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
         'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
     found = dispatch.next_step('A', root)
@@ -3079,7 +3079,7 @@ def test_a_reused_item_id_with_a_new_ticket_runs_its_duty(root, monkeypatch):
     assert dispatch.tracker_call('A', 'done', root).exit == 0
     assert [call[0] for call in fake.calls] == ['transition', 'comment']
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-8', 'source': 'set'}}),
-                       root, reserved=False)
+                       root)
     assert dispatch.tracker_call('A', 'done', root).exit == 0
     assert [call[1][0] for call in fake.calls] == ['ENG-7', 'ENG-7', 'ENG-8', 'ENG-8']
     assert [(kind, payload['ticket']) for kind, payload in duty_events(root)] == [
@@ -3093,7 +3093,7 @@ def test_create_runs_again_only_while_the_item_has_no_ticket(root, monkeypatch):
                                      'pr': None}, root)
     assert dispatch.tracker_call('A', 'create', root).exit == 0  # A has ENG-7: nothing to open
     assert [kind for kind, _ in duty_events(root)] == ['duty.done']
-    state._write_state(lambda data: data.update(tickets={}), root, reserved=False)
+    state._write_state(lambda data: data.update(tickets={}), root)
     dispatch.tracker_call('A', 'create', root)
     assert [kind for kind, _ in duty_events(root)][1] == 'duty.due'
 
@@ -3102,7 +3102,7 @@ def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
     # #844, #669: a PASS received at an older head is no pass; its seat re-reads at the current
     # head and the new receipt replaces the stale one.
     from wuwei import dispatch
-    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root)
     record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n', agent_id='agent-q')
     assert dispatch.next_step('A', root)['action'] == 'raise'
     current = 'def5678' + '0' * 33
@@ -3110,7 +3110,7 @@ def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
     tree.mkdir()
     (tree / '.git').mkdir()
     (tree / '.git/HEAD').write_text(current + '\n')
-    state._write_state(lambda data: data['items']['A'].update(worktree='tree'), root, reserved=False)
+    state._write_state(lambda data: data['items']['A'].update(worktree='tree'), root)
     found = dispatch.next_step('A', root)
     assert (found['action'], found['roles']) == ('gates', ['quality'])
     [seat] = found['seats']
@@ -3121,3 +3121,20 @@ def test_a_pass_whose_head_moved_rereads_at_the_current_head(root):
     assert dispatch.next_step('A', root)['commands'] == ['wuwei dispatch receive A quality quality-1']
     dispatch.receive('A', 'quality', 'quality-1', root=root)
     assert dispatch.next_step('A', root)['action'] == 'raise'
+
+
+def test_receive_runs_the_trace_sweep(root, monkeypatch):
+    # #847: a received verdict runs the trace sweep the watch used to run; its exit is not the receive's.
+    from wuwei import dispatch, scanner
+    calls = []
+    monkeypatch.setattr(scanner, 'trace_sweep', lambda root, config: calls.append(root) or {'unreadable': 1})
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'briefs/arch.md').write_text('HEAD: ' + 'a' * 40 + '\n')
+    (directory / 'decisions/gate-arch.md').write_text(PASS.replace('abc1234', 'a' * 7))
+    state._write_state(lambda data: data['seats'].update(arch={
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
+        'brief': str((directory / 'briefs/arch.md').relative_to(root))}), root)
+    assert dispatch.receive('A', 'arch', 'arch', root=root)['verdict'] == 'PASS'
+    assert calls == [root]

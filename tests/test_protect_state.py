@@ -631,14 +631,6 @@ def test_recorded_executable_is_protected(workspace, tool, fields):
     assert check(payload(workspace, tool, **fields))[0] == 1
 
 
-@pytest.mark.parametrize('tool', ['Write', 'Edit'])
-def test_state_snapshot_is_protected(workspace, tool):
-    from wuwei.guards.protect_state import check_bash, check_file
-    path = '.wuwei/days/2026-09-28/state.snapshot.json'
-    assert check_file(payload(workspace, tool, file_path=path))[0] == 1
-    assert check_bash(payload(workspace, 'Bash', command='echo {} > ' + path))[0] == 1
-
-
 def test_unresolvable_cd_refusal_names_the_workspace_guard(workspace):
     from wuwei.guards.protect_state import check_bash
     code, reason = check_bash(payload(workspace, 'Bash',
@@ -853,11 +845,10 @@ _GOALS = '.wuwei/memory/goals.md'
     ('Edit', _CONFIG, 'wuwei config set'), ('Bash', f"sed -i 's/a/b/' {_CONFIG}", 'wuwei config set'),
     ('Bash', f'echo x | tee {_CONFIG}', 'wuwei config set'),
     ('Bash', f'echo x > {_CONFIG}', 'wuwei config set'),
-    ('Write', _STATE, 'wuwei state set'), ('Bash', f'echo x >> {_STATE}', 'wuwei state set'),
-    ('Write', _EVENTS, 'wuwei event'), ('Bash', f'echo x >> {_EVENTS}', 'wuwei event'),
-    ('Edit', _REPORT, 'use the wuwei CLI'), ('Bash', f'echo x >> {_REPORT}', 'use the wuwei CLI'),
+    ('Write', _STATE, 'run wuwei next'), ('Bash', f'echo x >> {_STATE}', 'run wuwei next'),
+    ('Write', _EVENTS, 'run wuwei next'), ('Bash', f'echo x >> {_EVENTS}', 'run wuwei next'),
     ('Edit', _GOALS, 'plan approve records the goals'), ('Bash', f'cp /dev/null {_GOALS}', 'plan approve records the goals'),
-    ('Write', '.wuwei/integrity/verdict.json', 'wuwei integrity reconfirm'),
+    ('Write', '.wuwei/integrity/verdict.json', 'wuwei doctor --fix --apply integrity-reconfirm'),
     ('Write', '.wuwei/charters/a.md', 'use the wuwei CLI'),
     ('Write', 'credentials', 'use the wuwei CLI'), ('Bash', 'credentials', 'use the wuwei CLI'),
 ])
@@ -957,7 +948,7 @@ def _scratch_seat(root, monkeypatch):
     state._write_state(lambda data: data.update(
         items={'A': {'phase': 'planned'}, 'B': {'phase': 'planned'}},
         seats={'b-a': {'role': 'builder', 'item': 'A', 'brief': brief, 'status': 'running'}}),
-        root, reserved=False)
+        root)
     transcript = root / 'fixture/subagents/agent-x.jsonl'
     transcript.parent.mkdir(parents=True)
     transcript.write_text(json.dumps({'type': 'user', 'message': {'content': f'WUWEI brief: {brief}'}}) + '\n')
@@ -1014,7 +1005,7 @@ def test_state_protection_unchanged(workspace):
     """#800: FR-002, the state-file and workspace-root checks stay."""
     from wuwei.guards.protect_state import check_bash
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
-    for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei status > .wuwei/config.toml'):
+    for command in ('echo x > .wuwei/days/2026-09-28/state.json', 'bin/wuwei next > .wuwei/config.toml'):
         assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
     assert check_bash(payload(workspace, 'Bash', command='W=$(cat .wuwei/executable); $W state recover')) == (
         2, UNPARSED)
