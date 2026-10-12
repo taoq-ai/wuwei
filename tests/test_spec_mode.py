@@ -428,12 +428,22 @@ def test_governing_resolves_the_reference(governed_tree):
 @pytest.mark.parametrize('reference, hint', [
     ('docs/missing.md', 'not a file'), ('docs/prereg.md#Nope', 'no heading Nope'),
     ('/etc/hosts', 'not a file'), ('../outside.md', 'not a file'), ('#Pre-registration', 'not a file'),
+    ('docs', 'not a file'),  # #864: a directory without spec.md
 ])
 def test_governing_refusals(governed_tree, reference, hint):
     from wuwei import specmode
     (governed_tree.parent / 'outside.md').write_text('# Out\n')
     with pytest.raises(ValueError, match=hint):
         specmode.governing(governed_tree, {'governed_by': reference})
+
+
+def test_governing_directory_resolves_to_its_spec(governed_tree):
+    # #864: a directory reference resolves to <dir>/spec.md, a heading included.
+    from wuwei import specmode
+    (governed_tree / 'specs/7-a').mkdir(parents=True)
+    (governed_tree / 'specs/7-a/spec.md').write_text('# Spec\n## Scope\nOne.\n')
+    assert specmode.governing(governed_tree, {'governed_by': 'specs/7-a'})[1:] == (1, 3, '# Spec\n## Scope\nOne.\n')
+    assert specmode.governing(governed_tree, {'governed_by': 'specs/7-a/#Scope'})[1:] == (2, 3, '## Scope\nOne.\n')
 
 
 GOVERNED_SPEC = '# Spec\n\n## Assumptions\n\n- Ten samples.\n* A t-test.\n\n## Other\n'

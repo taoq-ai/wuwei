@@ -89,17 +89,13 @@ def _proposal(data, goals_text, framework="wsjf"):
         if item.get('goal', 'unplanned' if item.get('unplanned') is True else None) not in (*data['goals'], 'unplanned'):
             raise ValueError(f'{name}: goal must be confirmed or unplanned; {PLAN_JSON}')
         rank.validate(item, framework, goal_list)
-        if item.get('track') not in ('SLICE', 'FULL'):
-            raise ValueError(f'{name}: track must be SLICE or FULL; {PLAN_JSON}')
+        _admitted(name, item)
         if 'tier' in item and item['tier'] not in dispatch.TIERS:
             raise ValueError(f'{name}: tier must be light, standard or full; {PLAN_JSON}')
         if item.get('ticket') is not None and not (isinstance(item['ticket'], str) and re.fullmatch(
                 TICKET, item['ticket'])):  # #636: null is the owner's none; #640: empty is absent
             raise ValueError(f'{name}: invalid ticket {item["ticket"]!r}; ticket must match {TICKET}, an id '
                              f'such as ENG-12, PROJ-12 or owner/repo#12, or be left out; {PLAN_JSON}')
-        flags = item.get('flags')
-        if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
-            raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
         # #478, #518: owner-only steps the gate pre-approves. An entry the CLI does not
         # understand is a warning on the plan, never a refusal before the gate.
         if not isinstance(item.get('owner_actions', []), list):
@@ -107,10 +103,44 @@ def _proposal(data, goals_text, framework="wsjf"):
         paths = item.get('paths', [])  # #579: the files it touches; guard paths advise careful
         if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
             raise ValueError(f'{name}: paths must be a list of strings; {PLAN_JSON}')
-        if 'governed_by' in item and not (isinstance(item['governed_by'], str) and item['governed_by'].strip()):
-            raise ValueError(f'{name}: governed_by must be a path or path#heading; {PLAN_JSON}')  # #664
     json.dumps(data, allow_nan=False)
     return data
+
+
+def _admitted(name, item, tree=None):
+    """#868: the track, flags and governed_by checks plan propose and plan add share."""
+    if item.get('track') not in ('SLICE', 'FULL'):
+        raise ValueError(f'{name}: track must be SLICE or FULL; {PLAN_JSON}')
+    flags = item.get('flags')
+    if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
+        raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
+    if 'governed_by' in item:
+        governed(name, item['governed_by'], tree)
+
+
+def governed(name, reference, tree=None):
+    """#664, #864: the one governed_by check: a path or path#heading that, in the item's
+    checkout when it is known, resolves as the brief resolves it (specmode.governing)."""
+    from wuwei import specmode
+    if not (isinstance(reference, str) and reference.strip()):
+        raise ValueError(f'{name}: governed_by must be a path or path#heading; {PLAN_JSON}')
+    if tree is None:
+        return
+    try:
+        specmode.governing(tree, {'governed_by': reference})
+    except ValueError as exc:
+        raise ValueError(f'{name}: governed_by {reference}: {str(exc).split(";")[0]}; set governed_by '
+                         'to a repository-relative file, or a directory with a spec.md, with an optional '
+                         '#heading') from None
+
+
+def checkout(root, repos, repo=None, worktree=None):
+    """#864: the tree an item's governed_by resolves in: its worktree once it exists, else the
+    configured repository it names (or the only one), else None while that is unknown."""
+    if worktree and (root / worktree).is_dir():
+        return root / worktree
+    found = [row for row in repos if row['name'] == repo] or (repos if len(repos) == 1 else [])
+    return root / Path(found[0]['path']).expanduser() if found else None
 
 
 REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
@@ -253,6 +283,9 @@ def propose(data, root=None):
                 (root / Path(repo['path']).expanduser() / path).exists() for path in item.get('paths', []))]
             if len(found) == 1:
                 item['repo'] = found[0]
+    for item in data['candidates']:  # #864: refused here, never at the brief after the gate
+        if 'governed_by' in item:
+            governed(item['id'], item['governed_by'], checkout(root, config['repos'], item.get('repo')))
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
@@ -438,9 +471,11 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
     return written
 
 
-def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None):
+def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None,
+        repo=None, track='SLICE', governed_by=None, flags=()):
     """Admit one item after the gate: an item the owner names under a goal (the owner naming it
-    is the decision) or a seat's finding."""
+    is the decision) or a seat's finding. #868: the owner's repo, track, governed_by and flags
+    pass the checks plan propose applies."""
     root = workspace.find_workspace(root)
     day = state.read_state(root)
     if not day['gate_approved']:
@@ -468,11 +503,18 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     if goal not in day['goals']:
         raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
                                f'run bin/wuwei plan add {item} --goal <one of them>')
-    candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
-                 'flags': {key: False for key in FLAGS},
+    candidate = {'id': item, 'goal': goal, 'track': track, 'source': source or 'owner',
+                 'flags': {key: key in flags for key in FLAGS},
                  'title': title or item, 'score': {size_key: 1 if size is None else size},
                  **({'ticket': ticket} if ticket else {}),
-                 **({'tier': 'light'} if source == 'finding' else {})}
+                 **({'tier': 'light'} if source == 'finding' else {}),
+                 **({'repo': repo} if repo else {}),
+                 **({'governed_by': governed_by} if governed_by is not None else {})}
+    names = [row['name'] for row in config['repos']]
+    if repo is not None and repo not in names or source is None and repo is None and len(names) > 1:
+        raise ValueError(f'{item}: name its repository: run bin/wuwei plan add {item} --goal {goal} '
+                         f'--repo <one of {", ".join(names) or "none configured"}>')
+    _admitted(item, candidate, checkout(root, config['repos'], repo, f'worktrees/{item}'))
     from wuwei import tracker
     if candidate.get('ticket'):  # #741: one id format, before anything is written
         candidate = {**candidate, 'ticket': tracker.full_id(config, candidate['ticket'])}
@@ -484,7 +526,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
             raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
-                                  **{key: candidate[key] for key in ('tier', 'governed_by') if key in candidate},
+                                  **{key: candidate[key] for key in ('tier', 'governed_by', 'repo') if key in candidate},
                                   **({'source': source, 'title': candidate['title']} if source else {}),
                                   **({'approved_as': text} if (text := _approval('', note)) else {})}
         current['approved_items'].append(item)
@@ -529,6 +571,22 @@ def set_spec(item, assignment, reason=None, root=None):
     state._write_state(update, root, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
+
+
+def set_governed_by(item, value, root=None):
+    """#864: plan set <item> governed_by=<path>: after the gate, only the owner's Yes changes
+    what governs an item; the value resolves in its checkout first."""
+    root = workspace.find_workspace(root)
+    row = state.read_state(root)['items'].get(item)
+    if row is None:
+        raise state.StateError(f"no item {item} today; use an id from today's plan (bin/wuwei next lists them)")
+    repo = row.get('repo') or (dispatch.candidate(root, item) or {}).get('repo')
+    governed(item, value, checkout(root, workspace.load_config(root)['repos'], repo,
+                                   row.get('worktree') or f'worktrees/{item}'))
+    _owner_confirm(root, [item, f'governed_by={value}'], f'Govern {item} by {value}')
+    state._write_state(lambda data: data['items'][item].update(governed_by=value), root,
+                       kind='plan.set', payload={'item': item, 'governed_by': value})
+    return f'{item}: governed_by {value}'
 
 
 def set_owner_merge(item, value, root=None):

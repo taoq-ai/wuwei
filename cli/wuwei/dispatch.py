@@ -443,7 +443,7 @@ def _record(data, item, role, round_name):
 def _parked(root, item, reason, ask=True):
     """Park the item in code (plan.park). At the round cap the owner decides on plan resume's
     Owner step card (ask); a PARK verdict or the owner's No parks with no card."""
-    from wuwei import plan
+    from wuwei import plan, specmode
     plan.park(item, reason, root)
     return {'action': 'escalate' if ask else 'parked', 'reason': reason,
             'command': 'wuwei plan resume ' + shlex.quote(item)}
@@ -783,19 +783,29 @@ def candidate(root, name):
 
 def _start(root, name, repos):
     """The exact commands that start a planned item: its worktree, then its builder brief."""
+    from wuwei import plan, specmode
     row = candidate(root, name)
+    item = state.read_state(root)['items'].get(name, {})
     body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
             else f"Implement {name} as today's plan records it.")
     tree = f'worktrees/{name}'
+    repo = item.get('repo') or (row or {}).get('repo')  # #868: the owner's plan add names it
     add = [] if (root / tree).exists() else [f'wuwei worktree add {name}']
     if add and len(repos) > 1:  # #603: worktree add exits 2 without --repo here
         names = [repo['name'] for repo in repos]
-        repo = (row or {}).get('repo')
         if repo not in names:
             return [f'wuwei plan park {name} --reason ' + shlex.quote(
-                f'names no configured repository ({", ".join(names)}); the lead names repo for it '
-                'when it is proposed again')]
+                f'names no configured repository ({", ".join(names)}); run wuwei worktree add {name} '
+                f'--repo <one of {", ".join(names)}>, then wuwei plan resume {name}')]
         add = [add[0] + ' --repo ' + shlex.quote(repo)]
+    checkout = plan.checkout(root, repos, repo, tree)
+    try:  # #864: a brief that cannot be written parks the item, so it holds no CAP seat
+        if 'governed_by' in item and checkout is not None:  # the brief's own read of it
+            specmode.brief_block(workspace.load_config(root), name, item, checkout)
+    except ValueError as exc:
+        return [f'wuwei plan park {name} --reason ' + shlex.quote(
+            f'{name}: governed_by {item["governed_by"]}: {str(exc).split(";")[0]}; the owner fixes it '
+            f'with wuwei plan set {name} governed_by=<path>, then wuwei plan resume {name}')]
     return add + [f'wuwei seat brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 

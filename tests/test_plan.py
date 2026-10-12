@@ -226,6 +226,28 @@ def test_candidate_governed_by_is_copied_at_approve(root):
     assert state.read_state(root)['items']['A']['governed_by'] == 'docs/prereg.md#Pre-registration'
 
 
+def test_propose_resolves_governed_by_in_the_repository(root):
+    # #864: governed_by resolves as the brief resolves it; a directory names its spec.md, and a
+    # reference that does not resolve is refused at propose, before the gate.
+    (root / '.wuwei/config.toml').write_text(REPO)
+    (root / 'app/specs/s-1').mkdir(parents=True)
+    (root / 'app/specs/s-2').mkdir(parents=True)
+    (root / 'app/specs/s-1/spec.md').write_text('# Spec\n## Scope\nOne.\n')
+    for good in ('specs/s-1', 'specs/s-1#Scope', 'specs/s-1/spec.md'):
+        data = proposal()
+        data['candidates'][0]['governed_by'] = good
+        plan.propose(data, root)
+    plan_file = root / '.wuwei/days/2026-09-28/plan.md'
+    before = plan_file.read_text()
+    for bad, why in (('specs/s-2', 'not a file'), ('specs/none.md', 'not a file'),
+                     ('specs/s-1#Nope', 'no heading Nope')):
+        data = proposal()
+        data['candidates'][0]['governed_by'] = bad
+        with pytest.raises(ValueError, match=f'A: governed_by {bad}: .*{why}.*directory with a spec.md'):
+            plan.propose(data, root)
+        assert plan_file.read_text() == before
+
+
 SCANNER_CONFIG = '[adapters]\nscanner = "ziran"\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
 REPORT = (Path(__file__).parent / 'fixtures/scanner/audit.json').read_text()
 
@@ -721,7 +743,7 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     assert main(['plan', 'set', 'A', 'ticket=bad id']) == 2
     fake.results['created'] = registry.Result(1, reason='not found')
     assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
-    assert 'owner=pat is not a spec, ticket or owner_merge value' in capsys.readouterr().err
+    assert 'owner=pat is not a spec, ticket, owner_merge or governed_by value' in capsys.readouterr().err
 
 
 GITHUB = '[adapters]\ntracker = "github"\n'
@@ -1082,7 +1104,7 @@ def test_owner_named_bare_ticket_is_stored_in_full_and_claimed(gated, monkeypatc
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
                         else load(kind, config))
-    assert plan.add('OWN-3', gated, goal='G-1', ticket='24')['action'] == 'build next'
+    assert plan.add('OWN-3', gated, goal='G-1', ticket='24', repo='acme/app')['action'] == 'build next'
     assert state.read_state(gated)['tickets']['OWN-3'] == {'id': stored, 'source': 'candidate'}
     assert dispatch.tracker_call('OWN-3', 'claim', gated).exit == 0
     assert fake.calls[-1][:2] == ('claim', (stored,))
@@ -1199,3 +1221,67 @@ def test_plan_session_records_the_planner(root, monkeypatch):
     assert [e['payload']['session_id'] for e in events(root) if e['kind'] == 'plan.session'][-1] == 'planner'
     assert main(['plan', 'session', '']) == 2
     assert state.read_state(root)['planner_session_id'] == 'planner'
+
+
+def test_plan_set_governed_by_after_the_gate(root, capsys, monkeypatch):
+    # #864: the owner corrects an approved item's governed_by on the Owner step card; a value
+    # that does not resolve in the item's checkout is refused before the card.
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    (root / '.wuwei/config.toml').write_text(REPO)
+    (root / 'app/specs/s-1').mkdir(parents=True)
+    (root / 'app/specs/s-1/spec.md').write_text('# Spec\n')
+    state._write_state(lambda data: data['items'].update(
+        A={'phase': 'planned', 'status': 'queued', 'governed_by': 'specs/s-2'}), root)
+    assert main(['plan', 'set', 'A', 'governed_by=specs/none']) == 2
+    assert 'directory with a spec.md' in capsys.readouterr().err
+    assert main(['plan', 'set', 'A', 'governed_by=specs/s-1']) == 1
+    assert 'Owner step: bin/wuwei plan set A governed_by=specs/s-1' in capsys.readouterr().err
+    assert state.read_state(root)['items']['A']['governed_by'] == 'specs/s-2'
+    owner.answer(root, 'bin/wuwei plan set A governed_by=specs/s-1', detail='Govern A by specs/s-1')
+    assert main(['plan', 'set', 'A', 'governed_by=specs/s-1']) == 0
+    assert 'A: governed_by specs/s-1' in capsys.readouterr().out
+    assert state.read_state(root)['items']['A']['governed_by'] == 'specs/s-1'
+    assert [{key: row['payload'][key] for key in ('item', 'governed_by')}
+            for row in events(root) if row['kind'] == 'plan.set'] == [{'item': 'A', 'governed_by': 'specs/s-1'}]
+    assert main(['plan', 'set', 'Z', 'governed_by=specs/s-1']) == 1
+
+
+def test_plan_add_names_the_repository_in_a_multi_repo_workspace(gated, monkeypatch, capsys):
+    # #868: an owner item names its repository when several are configured, and starts there.
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    (gated / '.wuwei/config.toml').write_text(REPOS.format('acme/code', 'code') + REPOS.format('acme/paper', 'paper'))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    for argv in ([], ['--repo', 'acme/none']):
+        assert main(['plan', 'add', 'OWN-1', '--goal', 'G-1', *argv]) == 2
+        assert 'acme/code, acme/paper' in capsys.readouterr().err
+    assert 'OWN-1' not in state.read_state(gated)['items']
+    assert main(['plan', 'add', 'OWN-1', '--goal', 'G-1', '--repo', 'acme/paper']) == 0
+    assert state.read_state(gated)['items']['OWN-1']['repo'] == 'acme/paper'
+    [start] = [row for row in dispatch.launch_set(gated)['entries'] if row['item'] == 'OWN-1']
+    assert start['action'] == 'start' and start['commands'][0] == 'wuwei worktree add OWN-1 --repo acme/paper'
+
+
+def test_plan_add_keeps_track_flags_and_governed_by(gated, monkeypatch, capsys):
+    # #868: an owner item can be admitted as FULL with trust_surface; propose's checks apply.
+    from wuwei.__main__ import main
+    (gated / '.wuwei/config.toml').write_text(REPOS.format('acme/app', 'app'))
+    (gated / 'app/specs/s-1').mkdir(parents=True)
+    (gated / 'app/specs/s-1/spec.md').write_text('# Spec\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    for argv, why in ((['--track', 'MEDIUM'], 'track must be SLICE or FULL'),
+                      (['--governed-by', 'specs/none'], 'directory with a spec.md')):
+        assert main(['plan', 'add', 'OWN-1', '--goal', 'G-1', *argv]) == 2
+        assert why in capsys.readouterr().err
+    assert 'OWN-1' not in state.read_state(gated)['items']
+    assert main(['plan', 'add', 'OWN-1', '--goal', 'G-1', '--track', 'FULL', '--trust-surface',
+                 '--governed-by', 'specs/s-1']) == 0
+    row = state.read_state(gated)['items']['OWN-1']
+    assert (row['track'], row['governed_by']) == ('FULL', 'specs/s-1')
+    assert row['flags'] == {'trust_surface': True, 'boundary_relevant': False, 'agent_surface': False}
+    added = [json.loads(line)['payload'] for line in
+             (gated / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()
+             if json.loads(line)['kind'] == 'plan.added']
+    assert added[-1]['flags'] == {'OWN-1': row['flags']}

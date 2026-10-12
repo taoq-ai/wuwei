@@ -53,7 +53,9 @@ again. Nothing launches before your answer.
 
 An item that comes up later needs no second gate. Say what it is and which goal it serves;
 the planner runs `wuwei plan add <item> --goal G-n --note "<your words>"`. Every brief for it
-quotes your words under `Approved as:`, and `wuwei why <item>` shows them.
+quotes your words under `Approved as:`, and `wuwei why <item>` shows them. With several
+repositories it adds `--repo <name>`. Say FULL, a flag or a governing document, and it adds
+`--track FULL`, `--trust-surface` and the like, or `--governed-by <path>`.
 
 To keep an item's merge for yourself, say so at the gate or later. The planner records
 `wuwei plan set <item> owner_merge=true`, and that PR then always comes to you.
