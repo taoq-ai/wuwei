@@ -208,19 +208,169 @@ def test_subagent_cap_is_host_seats(day):
     assert 'seats 0/6 by host.seats' in day.run('status', '--line')
 
 
-def test_token_budget_fitting_two_seats_starts_two(day):
-    # #528 US2: the prior day measured 100000 tokens per seat; 200000 a day fits two.
-    prior = day.root / '.wuwei/days/2026-09-28/events.jsonl'
-    prior.parent.mkdir(parents=True)
-    prior.write_text(''.join(json.dumps({'ts': '2026-09-28T10:00:00+00:00', 'kind': 'seat.usage',
-                                         'payload': {'item': 'A', 'usage': {
-                                             'input_tokens': 60000, 'output_tokens': 40000}}}) + '\n'
-                             for _ in range(2)))
-    approved(day, extra='[budget]\ntokens_per_day = 200000\n')
-    assert 'CAP: cap 2 (budget)' in (day.directory / 'plan.md').read_text()
-    entries, _ = launch_set(day)
+def usage(day, *rows):
+    """seat.usage rows (ts, tokens, runtime or None) in today's log."""
+    path = day.root / '.wuwei/days/2026-09-29/events.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('a') as stream:
+        for ts, tokens, runtime in rows:
+            stream.write(json.dumps({'ts': ts, 'kind': 'seat.usage', 'payload': {
+                'item': 'Z', **({'runtime': runtime} if runtime else {}),
+                'usage': {'input_tokens': tokens, 'output_tokens': 0}}}) + '\n')
+
+
+def spent(day, runtime='claude', reset='2026-09-29T14:00:00+00:00'):
+    (day.root / '.wuwei/windows.json').write_text(json.dumps({runtime: {'five_hour': {
+        'used_percent': 100, 'resets_at': reset}}}))
+
+
+def test_window_fitting_two_seats_starts_two(day):
+    # #845 (was #528 US2): 100000 of a 300000-token 5-hour window used at 100000 a seat fits two.
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, None))
+    approved(day, extra='[budget.claude]\nfive_hour = 300000\n')
+    entries, rows = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'wait'), ('D', 'wait')]
-    assert 'seats 0/2 by budget |' in day.run('status', '--line')
+    assert [row.get('until') for row in rows] == [None, None] + ['2026-09-29T15:00:00+00:00'] * 2
+    assert 'claude' in rows[2]['reason'] and 'claude five_hour 100000 of 300000 used, room 2' in json.loads(
+        day.run('dispatch', 'next', '--all'))['capacity']
+
+
+ROUTED = {'builder': {'runtime': 'claude', 'model': 'scripted', 'alternate': 'codex'}}
+
+
+@pytest.mark.parametrize('policy,codex,cap,expected', [
+    (ROUTED, 200000, None, ['run', 'run', 'wait', 'wait']),
+    (CLAUDE, 200000, None, ['wait'] * 4),
+    (ROUTED, 100000, 3, ['run', 'wait', 'wait', 'wait']),
+], ids=['alternate', 'no-alternate', 'codex-room-one'])
+def test_a_spent_runtime_routes_builders_to_the_alternate(day, policy, codex, cap, expected):
+    # #845 US2: Claude's window is spent, Codex's has room: builders start on Codex as wuwei build runs.
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, 'claude'))
+    approved(day, cap, extra=f'[budget.codex]\nfive_hour = {codex}\n', policy=policy)
+    spent(day)
+    for item in 'AB':
+        brief(day, item)
+    entries, rows = launch_set(day)
+    assert [action for _, action in entries] == expected
+    for row in rows:
+        if row['action'] == 'run':
+            record = day.data['builds'][row['item']]
+            assert row['runtime'] == record['runtime'] == 'codex'
+            assert row['command'].startswith(f"wuwei build {row['item']} ") and row['command'].endswith(record['worktree'])
+        elif 'CAP' not in row['reason']:
+            assert row['until'] == '2026-09-29T14:00:00+00:00' and 'claude' in row['reason']
+
+
+def test_a_held_build_is_not_bound_moved_or_claimed(day):
+    # #845 F4: the window is checked before build next writes a record.
+    approved(day, policy=CLAUDE)
+    spent(day)
+    brief(day, 'A')
+    entries, rows = launch_set(day)
+    assert entries[0] == ('A', 'wait') and rows[0]['until'] == '2026-09-29T14:00:00+00:00'
+    assert day.data['items']['A']['phase'] == 'planned' and 'A' not in day.data.get('builds', {})
+
+
+def test_a_build_loop_that_ended_at_once_backs_off(day):
+    # #845 F2, D2: a claimed loop counts as running while its pid lives and for two minutes
+    # after it started, so a loop that fails at once is not offered again every turn.
+    from wuwei import state
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, 'claude'))
+    approved(day, extra='[budget.codex]\nfive_hour = 900000\n', policy=ROUTED)
+    spent(day)
+    for item in 'AB':
+        brief(day, item)
+    entries, _ = launch_set(day)
+    assert entries[:2] == [('A', 'run'), ('B', 'run')]
+    state._write_state(lambda data: data['builds']['A'].update(
+        loop={'pid': 2**22 + 7, 'started_at': '2026-09-29T12:00:00+00:00'}), day.root)  # a dead pid
+    entries, _ = launch_set(day)
+    assert [item for item, action in entries if action == 'run'] == ['B'], entries
+    day.patch.setenv('WUWEI_NOW', '2026-09-29T12:03:00Z')
+    entries, _ = launch_set(day)
+    assert [item for item, action in entries if action == 'run'][:2] == ['A', 'B'], entries
+
+
+def test_a_loop_that_died_at_once_is_a_timed_wait(day):
+    # #845 E1: a dead loop is not in flight; its back-off is a wait with until, so next sleeps.
+    from wuwei import state
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, 'claude'))
+    approved(day, 1, extra='[budget.codex]\nfive_hour = 900000\n', policy=ROUTED)
+    spent(day)
+    brief(day, 'A')
+    assert launch_set(day)[0][0] == ('A', 'run')
+    state._write_state(lambda data: data['builds']['A'].update(
+        loop={'pid': 2**22 + 7, 'started_at': '2026-09-29T12:00:00+00:00'}), day.root)  # a dead pid
+    step = json.loads(day.run('next', '--json'))
+    assert (step['state'], step['action'], step['until']) == ('wait', 'background', '2026-09-29T12:02:01+00:00')
+    assert step['command'].startswith('sleep ') and 'A' in step['why']
+    day.patch.setenv('WUWEI_NOW', '2026-09-29T12:03:00Z')
+    assert [launch['action'] for launch in json.loads(day.run('next', '--json'))['launches']][0] == 'run'
+
+
+def test_a_routed_builder_seat_takes_its_build_runtime_room(day):
+    # #845 E2: a Claude builder seat routed from a Codex policy counts against Claude's room.
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, 'claude'))
+    approved(day, 4, extra='[budget.claude]\nfive_hour = 300000\n',
+             policy={'builder': {'runtime': 'codex', 'model': 'scripted', 'alternate': 'claude'}})
+    spent(day, 'codex')
+    for item in 'AB':
+        brief(day, item)
+    entries, rows = launch_set(day)
+    assert entries[:2] == [('A', 'launch'), ('B', 'launch')]
+    for row in rows[:2]:
+        day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, row))
+    entries, _ = launch_set(day)
+    assert entries == [('C', 'wait'), ('D', 'wait')]
+
+
+def test_running_seats_take_their_runtime_room(day):
+    # #845 D1: room 2 with A and B running offers nothing more on that runtime.
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, None))
+    approved(day, 4, extra='[budget.claude]\nfive_hour = 300000\n')
+    for item in 'AB':
+        brief(day, item)
+    entries, rows = launch_set(day)
+    assert entries[:2] == [('A', 'launch'), ('B', 'launch')]
+    for row in rows[:2]:
+        day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, row))
+    entries, rows = launch_set(day)
+    assert entries == [('C', 'wait'), ('D', 'wait')] and all(row.get('until') for row in rows)
+
+
+def test_an_unbriefed_start_takes_its_routed_runtime_room(day):
+    usage(day, ('2026-09-29T10:00:00+00:00', 100000, 'claude'))
+    approved(day, extra='[budget.codex]\nfive_hour = 100000\n', policy=ROUTED)
+    spent(day)
+    entries, rows = launch_set(day)
+    assert entries == [('A', 'start'), ('B', 'wait'), ('C', 'wait'), ('D', 'wait')]
+    assert rows[0]['runtime'] == 'codex' and rows[1]['until'] == '2026-09-29T14:00:00+00:00'
+
+
+def test_a_spent_window_holds_new_seats_and_leaves_running_ones(day):
+    # #845 FR-013: a running seat is never stopped; gate seats wait with the reset.
+    approved(day)
+    brief(day, 'A')
+    _, rows = launch_set(day)
+    day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, rows[0]))
+    before = day.data['seats'], day.data['builds']
+    spent(day)
+    entries, rows = launch_set(day)
+    assert (day.data['seats'], day.data['builds']) == before
+    assert entries == [('B', 'wait'), ('C', 'wait'), ('D', 'wait')]
+    assert {row['until'] for row in rows} == {'2026-09-29T14:00:00+00:00'}
+
+
+def test_gate_seats_wait_for_a_spent_window(day):
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.build('builder-initial')
+    for role in ('arch', 'quality', 'security'):
+        brief(day, 'A', role, f'{role}-initial')
+    spent(day)
+    entries, rows = launch_set(day)
+    assert entries == [('A', 'wait')] and rows[0]['until'] == '2026-09-29T14:00:00+00:00'
 
 
 @pytest.mark.parametrize('policy, refused', [(CLAUDE, False), (PROCESS, True)])

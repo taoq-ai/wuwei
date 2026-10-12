@@ -13,6 +13,7 @@ def setup(tmp_path, monkeypatch, runtime='codex'):
     (tmp_path / '.wuwei/config.toml').write_text(
         '[adapters]\nruntime = "' + runtime + '"\n[codex]\ncommand = ["fake-companion"]\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    monkeypatch.setenv('CODEX_HOME', str(tmp_path / 'codex'))  # #845: never the real rollouts
     return tmp_path
 
 
@@ -117,6 +118,49 @@ def test_codex_result_preserves_stored_usage(tmp_path, monkeypatch):
     result = adapter.result({'id': 'j1', 'worktree': str(root)}, root=root)
     assert result.exit == 0
     assert result.data['usage'] == usage
+
+
+def rollout(root, thread, *events):
+    path = root / 'codex/sessions/2026/10/12' / f'rollout-2026-10-12T09-00-00-{thread}.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(''.join((event if isinstance(event, str) else json.dumps(event)) + '\n' for event in events))
+    return path
+
+
+def token_count(primary, secondary):
+    return {'type': 'event_msg', 'payload': {'type': 'token_count', 'info': {}, 'rate_limits': {
+        'primary': primary, 'secondary': secondary}}}
+
+
+@pytest.mark.parametrize('thread,events,expected', [
+    ('t-1', [token_count({'used_percent': 10.0, 'window_minutes': 300, 'resets_at': 1790600000}, None),
+             {'type': 'event_msg', 'payload': {'type': 'agent_message'}},
+             token_count({'used_percent': 42.0, 'window_minutes': 300, 'resets_at': 1790611200},
+                         {'used_percent': 88, 'window_minutes': 10080, 'resets_at': 1791043200})],
+     {'five_hour': {'used_percent': 42.0, 'resets_at': '2026-09-28T16:00:00+00:00'},
+      'seven_day': {'used_percent': 88, 'resets_at': '2026-10-03T16:00:00+00:00'}}),
+    ('t-1', [token_count({'used_percent': 5, 'window_minutes': 60, 'resets_at': 1790611200},
+                         {'used_percent': 88, 'window_minutes': 10080, 'resets_at': 1791043200})],
+     {'seven_day': {'used_percent': 88, 'resets_at': '2026-10-03T16:00:00+00:00'}}),
+    ('t-1', ['{torn'], None),
+    ('t-1', [token_count({'used_percent': 5, 'window_minutes': 300, 'resets_at': 1790611200}, None), '{torn'],
+     {'five_hour': {'used_percent': 5, 'resets_at': '2026-09-28T16:00:00+00:00'}}),
+    ('t-1', [], None),
+    ('t-2', [token_count({'used_percent': 5, 'window_minutes': 300, 'resets_at': 1790611200}, None)], None),
+    ('*', [token_count({'used_percent': 5, 'window_minutes': 300, 'resets_at': 1790611200}, None)], None),
+    ('../t-1', [], None),
+], ids=['last-event', 'other-length-dropped', 'malformed', 'torn-tail', 'no-event', 'no-file', 'glob-id', 'path-id'])
+def test_codex_result_reads_the_thread_window_readings(tmp_path, monkeypatch, thread, events, expected):
+    # #845: the seat thread's rollout file names the Codex windows; any failure is no reading.
+    root = setup(tmp_path, monkeypatch)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    payloads['result']['storedJob']['result']['threadId'] = thread
+    rollout(root, 't-1' if thread in ('t-2', '*', '../t-1') else thread, *events)
+    monkeypatch.setattr(adapter, '_call', lambda *args, **kwargs: adapter.registry.Result(0, payloads['result']))
+    result = adapter.result({'id': 'j1', 'worktree': str(root), 'role': 'builder'}, root=root)
+    assert result.exit == 0 and result.data['text'].startswith('Blocked: none')
+    assert result.data.get('windows') == expected
 
 
 def test_codex_rejects_conflicting_nested_workspace_root(tmp_path, monkeypatch):

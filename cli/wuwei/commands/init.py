@@ -544,7 +544,8 @@ def upgrade(args):
         if text != raw:
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in removed:
-            print(f'{prefix} config.toml: remove {key} (no longer read)')
+            print(f'{prefix} config.toml: remove {key} (no longer read)' + (
+                '; set budget.<runtime>.five_hour and seven_day instead' if key == 'budget.tokens_per_day' else ''))
         for key, near in kept:
             print(f'config.toml: kept {key}, maybe a typo of {near}; fix it by hand')
         for key in added:

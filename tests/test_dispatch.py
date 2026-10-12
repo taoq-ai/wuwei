@@ -1204,6 +1204,9 @@ def test_receive_binds_the_seat_runtime_to_the_gate(root):
 OPINION_TEXT = QUALITY_FIX.replace('abc1234', 'aaaaaaa')
 
 
+READING = {'used_percent': 88, 'resets_at': '2026-10-18T11:09:27+00:00'}
+
+
 class FakeRuntime:
     def __init__(self, text=OPINION_TEXT, statuses=('completed',), usage=None):
         from wuwei.registry import Result
@@ -1229,7 +1232,7 @@ class FakeRuntime:
     def result(self, job, *, root=None):
         from wuwei.registry import Result
         self.calls.append(('result', job['id']))
-        return Result(0, {'text': self.text, 'usage': self.usage})
+        return Result(0, {'text': self.text, 'usage': self.usage, 'windows': {'seven_day': READING}})
 
 
 def opinion_ready(root, monkeypatch, runtime=None):
@@ -1271,6 +1274,8 @@ def test_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
     assert (seat['runtime'], seat['model'], seat['usage']['cost']) == ('codex', 'm1', 0.42)
     [usage] = events_of(root, 'seat.usage')
     assert usage['gate'] == 'quality@codex' and usage['role'] == 'sentinel-quality'
+    assert usage['runtime'] == 'codex'  # #845: the second opinion's runtime
+    assert json.loads((root / '.wuwei/windows.json').read_text()) == {'codex': {'seven_day': READING}}
     assert value['role'] == 'quality@codex' and (value['runtime'], value['model']) == ('codex', 'm1')
     assert value == state.read_state(root)['gate_verdicts']['A:quality@codex:initial']
     calls = len(runtime.calls)
@@ -1377,7 +1382,9 @@ def test_opinion_refusals(root, monkeypatch):
     assert runtime.calls == []
 
 
-def test_opinion_delta_refuses_to_resume_on_the_builder_runtime(root, monkeypatch):
+@pytest.mark.parametrize('policy', ['codex', 'claude'])
+def test_opinion_delta_refuses_to_resume_on_the_builder_runtime(root, monkeypatch, policy):
+    # #845 F3: a routed build's record names the runtime its thread runs on.
     from wuwei import dispatch
 
     runtime = opinion_ready(root, monkeypatch)
@@ -1388,7 +1395,8 @@ def test_opinion_delta_refuses_to_resume_on_the_builder_runtime(root, monkeypatc
     dispatch.next_step('A', root)
     state.transition('A', 'delta', root)
     state._write_state(lambda data: data['seat_policy'].update(
-        builder={'runtime': 'codex', 'model': 'm2'}), root)
+        builder={'runtime': policy, 'model': 'm2'}), root)
+    state._write_state(lambda data: data['builds']['A'].update(runtime='codex'), root)  # the bound thread
     with pytest.raises(dispatch.Refused, match='builder runtime'):
         dispatch.opinion('A', root)
     assert [call[0] for call in runtime.calls].count('continue') == 0
@@ -1696,7 +1704,7 @@ def day_set(tmp_path, monkeypatch):
                       for role in dispatch.ROLES]}
     calls = []
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: calls.append(item) or gate)
-    monkeypatch.setattr(build, 'next_action', lambda item, root=None: calls.append(item) or {
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None, runtime=None: calls.append(item) or {
         'action': 'launch', 'agent_type': 'wuwei:builder'})
     return tmp_path, calls
 
@@ -1884,6 +1892,16 @@ def test_rounds_used_counts_the_build_record(root):
 def fix_events(root):
     return [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl')
             .read_text().splitlines()) if row['kind'] == 'build.fix_opened']
+
+
+def test_a_fix_round_keeps_the_build_record_runtime(root):
+    # #845: a routed build's fix round continues on its record's runtime, never the policy's.
+    from wuwei.commands import build
+    built(root)
+    state._write_state(lambda data: (data['builds']['A'].update(runtime='codex'), data.update(
+        seat_policy={'builder': {'runtime': 'claude', 'model': 'm'}})), root)
+    gate_fix(root)
+    assert build.open_fix('A', 'Gate quality FIX.', root=root)['runtime'] == 'codex'
 
 
 def test_open_fix_counts_rounds_and_refuses_at_the_cap(root):
@@ -2875,14 +2893,16 @@ def test_host_seat_ceiling_holds_one_gate_on_a_two_core_host(workspace_root, mon
 
 def test_host_falls_back_when_a_past_day_log_is_damaged(workspace_root, monkeypatch):
     from wuwei import workspace
-    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    (workspace_root / '.wuwei/config.toml').write_text('[budget.codex]\nfive_hour = 200000\n')
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
     events = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
     events.parent.mkdir(parents=True, exist_ok=True)
     events.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
     limits = dispatch.host(workspace_root, workspace.load_config(workspace_root), free=8192, policy=PROCESS)
     assert (limits['cap'], limits['seats'], limits['seat_mib']) == (4, 4, dispatch.SEAT_MIB)
-    assert 'per-seat tokens unmeasured' in limits['text'] and 'events.jsonl' in limits['text']
+    assert 'warning: events.jsonl' in limits['text']
+    codex = dispatch.windows(workspace_root, workspace.load_config(workspace_root), ['codex'])['codex']
+    assert codex['room'] is None and 'warning: events.jsonl' in codex['text']
 
 
 def usage_day(root, day, *tokens):
@@ -2894,23 +2914,27 @@ def usage_day(root, day, *tokens):
                 'input_tokens': count // 2, 'output_tokens': count - count // 2}}}) + '\n')
 
 
-def test_token_budget_bounds_cap(workspace_root, ports, monkeypatch):
+def test_window_budgets_bound_cap_per_runtime(workspace_root, ports, monkeypatch):
+    # #845: the day CAP keeps its rule; each runtime's room bounds its seats in the launch set.
     from wuwei import workspace
-    (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
+    (workspace_root / '.wuwei/config.toml').write_text('[budget.claude]\nfive_hour = 300000\n'
+                                                      '[budget.codex]\nfive_hour = 250000\n')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
-    unmeasured = dispatch.host(workspace_root, config, policy=PROCESS)
-    assert (unmeasured['cap'], unmeasured['bound']) == (4, 'memory')
-    assert unmeasured['text'].endswith('; budget 200000 tokens a day, per-seat tokens unmeasured')
-    usage_day(workspace_root, '2026-09-30', 100000, 100000)
-    budget = dispatch.host(workspace_root, config, policy=PROCESS)
-    assert (budget['cap'], budget['bound']) == (2, 'budget')
-    assert budget['text'] == ('cap 2 (budget): 10 GB free, 1 GB per seat, 4 cores; '
-                              'budget 200000 tokens a day, 0 used, 100000 per seat')
-    usage_day(workspace_root, '2026-10-01', 150000)
-    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
-    usage_day(workspace_root, '2026-10-01', 150000)
-    assert [dispatch.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
+    policy = {'builder': {'runtime': 'claude', 'model': 'm', 'alternate': 'codex'}}
+    damaged = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
+    damaged.parent.mkdir(parents=True)
+    damaged.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
+    plain = dispatch.host(workspace_root, config, policy=policy)  # the Agent guard's call reads no day log
+    assert 'runtimes' not in plain and 'warning' not in plain['text']
+    damaged.unlink()
+    window_rows(workspace_root, ('2026-10-01T08:00:00+00:00', 100000, 'claude'),
+                ('2026-10-01T08:30:00+00:00', 100000, 'claude'))
+    assert dispatch.host(workspace_root, config, policy=policy) == plain
+    found = dispatch.windows(workspace_root, config, ['claude', 'codex'])
+    assert {name: (row['room'], row['text']) for name, row in found.items()} == {
+        'claude': (1, 'claude five_hour 200000 of 300000 used, room 1'),
+        'codex': (2, 'codex five_hour 0 of 250000 used, room 2')}
 
 
 def test_runtime_rule(workspace_root):
@@ -3138,3 +3162,110 @@ def test_receive_runs_the_trace_sweep(root, monkeypatch):
         'brief': str((directory / 'briefs/arch.md').relative_to(root))}), root)
     assert dispatch.receive('A', 'arch', 'arch', root=root)['verdict'] == 'PASS'
     assert calls == [root]
+
+
+def test_save_windows_keeps_valid_readings_and_merges(workspace_root):
+    # #845: the readings cache takes outside data; invalid entries are dropped, never raised.
+    path = workspace_root / '.wuwei/windows.json'
+    reset = '2026-10-01T14:00:00+00:00'
+    dispatch.save_windows(workspace_root, 'claude', {
+        'five_hour': {'used_percent': 42.0, 'resets_at': reset},
+        'one_hour': {'used_percent': 1, 'resets_at': reset},
+        'seven_day': {'used_percent': -1, 'resets_at': reset}})
+    assert json.loads(path.read_text()) == {'claude': {'five_hour': {'used_percent': 42.0, 'resets_at': reset}}}
+    for bad in ({'used_percent': 'x', 'resets_at': reset}, {'used_percent': True, 'resets_at': reset},
+                {'used_percent': float('nan'), 'resets_at': reset}, {'used_percent': 5, 'resets_at': 'soon'},
+                {'used_percent': 5, 'resets_at': '2026-10-01T14:00:00'}, 'x'):
+        dispatch.save_windows(workspace_root, 'claude', {'seven_day': bad})
+    dispatch.save_windows(workspace_root, 'claude', 'not a dict')
+    dispatch.save_windows(workspace_root, 'codex', {'seven_day': {'used_percent': 88, 'resets_at': reset}})
+    dispatch.save_windows(workspace_root, 'claude', {'seven_day': {'used_percent': 18, 'resets_at': reset}})
+    assert json.loads(path.read_text()) == {
+        'claude': {'five_hour': {'used_percent': 42.0, 'resets_at': reset},
+                   'seven_day': {'used_percent': 18, 'resets_at': reset}},
+        'codex': {'seven_day': {'used_percent': 88, 'resets_at': reset}}}
+    os.utime(path, (0, 0))
+    dispatch.save_windows(workspace_root, 'claude', {'seven_day': {'used_percent': 18, 'resets_at': reset}})
+    assert path.stat().st_mtime == 0
+
+
+def window_rows(root, *rows):
+    """seat.usage rows (ts, tokens, runtime or None) in their day logs."""
+    for ts, tokens, runtime in rows:
+        path = root / '.wuwei/days' / ts[:10] / 'events.jsonl'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('a') as stream:
+            stream.write(json.dumps({'ts': ts, 'kind': 'seat.usage', 'payload': {
+                'item': 'A', **({'runtime': runtime} if runtime else {}),
+                'usage': {'input_tokens': tokens // 2, 'output_tokens': tokens - tokens // 2}}}) + '\n')
+
+
+FIVE = '[budget.claude]\nfive_hour = 300000\n'
+TODAY = '2026-10-01T09:00:00+00:00'
+RESET = '2026-10-01T13:00:00+00:00'
+
+
+@pytest.mark.parametrize('config,rows,readings,room,until,text', [
+    (FIVE, [(TODAY, 100000, 'claude'), (TODAY, 100000, 'claude'), (TODAY, 50000, 'claude')], None,
+     0, '2026-10-01T14:00:00+00:00', 'claude five_hour 250000 of 300000 used, room 0 until 2026-10-01T14:00:00+00:00'),
+    (FIVE, [(TODAY, 100000, 'claude')], None, 2, '2026-10-01T14:00:00+00:00', 'claude five_hour 100000 of 300000 used, room 2'),
+    (FIVE, [(TODAY, 10000, 'claude')], {'five_hour': {'used_percent': 80, 'resets_at': RESET}},
+     6, RESET, '240000 of 300000 used (reported 80%), room 6'),
+    (FIVE, [(TODAY, 10000, 'claude')], {'five_hour': {'used_percent': 97, 'resets_at': RESET}},
+     0, RESET, 'room 0 until ' + RESET),
+    (FIVE, [(TODAY, 100000, 'claude')], {'five_hour': {'used_percent': 97, 'resets_at': '2026-10-01T11:00:00+00:00'}},
+     2, '2026-10-01T14:00:00+00:00', '100000 of 300000 used, room 2'),
+    ('', [], {'seven_day': {'used_percent': 100, 'resets_at': RESET}}, 0, RESET, 'claude seven_day (reported 100%)'),
+    ('', [(TODAY, 100000, 'claude')], {'five_hour': {'used_percent': 50, 'resets_at': RESET}}, None, None, ''),
+    (FIVE, [], None, None, None, 'per-seat tokens unmeasured'),
+    (FIVE, [], {'five_hour': {'used_percent': 100, 'resets_at': RESET}}, 0, RESET, '300000 of 300000 used (reported 100%), per-seat tokens unmeasured, room 0'),
+    (FIVE, [('2026-10-01T08:00:00+00:00', 0, 'claude'), 'damaged'], {'seven_day': {'used_percent': 100, 'resets_at': RESET}},
+     0, RESET, 'warning: events.jsonl'),
+    (FIVE, [(TODAY, 100000, 'claude')], 'damaged', 2, '2026-10-01T14:00:00+00:00', 'warning: windows.json'),
+    (FIVE, [(TODAY, 100000, 'claude'), (TODAY, 200000, 'codex')], None, 2, '2026-10-01T14:00:00+00:00', '100000 of 300000 used'),
+    (FIVE, [(TODAY, 100000, None)], None, 2, '2026-10-01T14:00:00+00:00', '100000 of 300000 used'),
+    ('[budget.claude]\nfive_hour = 300000\nseven_day = 300000\n', [('2026-09-25T13:00:00+00:00', 200000, 'claude')], None,
+     0, '2026-10-02T13:00:00+00:00', 'claude five_hour 0 of 300000 used, room 1; claude seven_day 200000 of 300000 used, room 0'),
+], ids=['spent', 'room', 'reading', 'reading-spent', 'expired-reading', 'full-no-budget', 'reading-no-budget',
+        'unmeasured', 'full-unmeasured', 'damaged-log', 'damaged-cache', 'other-runtime', 'default-runtime', 'seven-day'])
+def test_windows_room_per_runtime(workspace_root, monkeypatch, config, rows, readings, room, until, text):
+    # #845: room in whole seats per runtime from counted tokens, readings and the window budgets.
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T12:00:00Z')
+    (workspace_root / '.wuwei/config.toml').write_text(config)
+    for row in rows:
+        if row == 'damaged':
+            with (workspace_root / '.wuwei/days/2026-10-01/events.jsonl').open('a') as stream:
+                stream.write('{"ts": "2026-10-01T09:00:00+00:00", "kind": "seat.usage"')
+        else:
+            window_rows(workspace_root, row)
+    if readings is not None:
+        (workspace_root / '.wuwei/windows.json').write_text(
+            '{broken' if readings == 'damaged' else json.dumps({'claude': readings}))
+    found = dispatch.windows(workspace_root, workspace.load_config(workspace_root), ['claude', 'none'])
+    assert set(found) == {'claude'}
+    assert (found['claude']['room'], found['claude']['until']) == (room, until)
+    assert text in found['claude']['text'], found['claude']['text']
+
+
+@pytest.mark.parametrize('row,left,expected', [
+    ({'runtime': 'claude', 'alternate': 'codex'}, {'claude': 1, 'codex': 2}, 'claude'),
+    ({'runtime': 'claude', 'alternate': 'codex'}, {'codex': 0}, 'claude'),
+    ({'runtime': 'claude', 'alternate': 'codex'}, {'claude': 0, 'codex': 2}, 'codex'),
+    ({'runtime': 'claude', 'alternate': 'codex'}, {'claude': 0}, 'codex'),
+    ({'runtime': 'claude', 'alternate': 'codex'}, {'claude': 0, 'codex': 0}, 'claude'),
+    ({'runtime': 'claude'}, {'claude': 0, 'codex': 2}, 'claude'),
+    ({}, {'claude': 0, 'codex': 2}, 'codex'),
+], ids=['primary-room', 'primary-unbounded', 'alternate', 'alternate-unbounded', 'both-spent', 'no-alternate', 'no-row'])
+def test_route_takes_the_alternate_only_when_the_primary_is_spent(row, left, expected):
+    # #845: a builder start goes to the policy runtime, else its alternate with room.
+    assert dispatch.route(row, 'codex', left) == expected
+
+
+def test_windows_read_no_day_log_without_a_budget(workspace_root):
+    # #845 F7: the per-seat history scan runs only for a budgeted window.
+    events = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
+    events.parent.mkdir(parents=True)
+    events.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    found = dispatch.windows(workspace_root, workspace.load_config(workspace_root), ['claude', 'codex'])
+    assert found == {name: {'room': None, 'until': None, 'text': ''} for name in ('claude', 'codex')}

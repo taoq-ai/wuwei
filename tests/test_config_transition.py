@@ -367,7 +367,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                     .replace('[scanner.mcp]\n', '[scanner.mcp]\nproject_file = ".mcp.json"\n'
                              'user_file = "~/.claude.json"\ntimeout_seconds = 60\nblock = ["critical"]\n', 1)
                     + '[pace]\ndefault = "fast"\n[listen]\npoll_seconds = 60\n[responder]\nenabled = true\n'
-                    + '[control_plane]\nowner = "T1/U1"\n'
+                    + '[control_plane]\nowner = "T1/U1"\n' + '[budget]\ntokens_per_day = 200000\n'
                     + '[grants]\nstanding = []\n' + '[discovery]\nmin_queue = 2\nautostart = "goal"\n' + repos
                     + 'tests = "pytest"\n')  # repos.1.tests has a near key (repos.1.gates)
     clean += repos
@@ -378,9 +378,11 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
                 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
                 'grants', 'scanner.mcp.project_file', 'scanner.mcp.user_file',
                 'scanner.mcp.timeout_seconds', 'scanner.mcp.block', 'tracker.required',
-                'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery'):
+                'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
+                'budget.tokens_per_day'):
         assert f'Upgraded config.toml: remove {key} (no longer read)' in out, out
-    assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
+    assert tomllib.loads(path.read_text()) == {**tomllib.loads(clean), 'budget': {}}  # an empty [budget] stays
+    assert 'set budget.<runtime>.five_hour and seven_day instead' in out  # #845
 
 
 def test_upgrade_retires_the_memory_machines(tmp_path, monkeypatch, capsys):

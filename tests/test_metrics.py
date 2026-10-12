@@ -334,6 +334,11 @@ def test_seat_tokens_per_usage_row():
             {'kind': 'seat launched', 'payload': {'usage': {'input_tokens': 1, 'output_tokens': 1}}},
             usage({'input_tokens': 10, 'output_tokens': 0})]
     assert metrics.seat_tokens(rows) == [5, 10]
+    # #845: one runtime's rows; a row without runtime counts as the default
+    rows[3]['payload']['runtime'] = 'codex'
+    assert metrics.seat_tokens(rows, 'codex', 'claude') == [10]
+    assert metrics.seat_tokens(rows, 'claude', 'claude') == [5]
+    assert metrics.seat_tokens(rows) == [5, 10]
 
 
 def span(session, tool, arguments, agent=None):

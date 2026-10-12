@@ -807,3 +807,36 @@ def test_an_open_tracker_duty_is_listed_beside_the_launches(root):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('tracker = "linear"', 'tracker = "none"'))
     assert coarse(root)['state'] == 'close'
+
+def test_waits_next_to_a_window_hold_still_give_the_timed_wait(root, capsys, monkeypatch):
+    # #845 F1: a CAP or gate wait without until beside a window hold is no dead end.
+    from wuwei import dispatch
+    approved(root, {'ITEM-2': ('planned', {})}, cap=2)
+    monkeypatch.setattr(dispatch, 'launch_set', lambda root: {'capacity': '', 'entries': [
+        {'kind': 'build', 'item': 'A', 'action': 'wait', 'reason': 'claude window', 'until': '2026-09-30T13:00:00+00:00'},
+        {'kind': 'build', 'item': 'B', 'action': 'wait', 'reason': 'CAP 1 reached'}]})
+    code, found = row(capsys)
+    assert (found['state'], found['action'], found['until']) == ('wait', 'background', '2026-09-30T13:00:00+00:00')
+
+
+def test_a_set_held_only_by_a_spent_window_is_a_timed_wait(root, capsys, monkeypatch):
+    # #845 US1: no launch fits the window, nothing else is due: next sleeps past the reset.
+    from wuwei import derive
+    approved(root, {'ITEM-2': ('planned', {})}, cap=2)
+    (root / '.wuwei/windows.json').write_text(json.dumps({'claude': {'five_hour': {
+        'used_percent': 100, 'resets_at': '2026-09-30T13:00:00+00:00'}}}))
+    code, found = row(capsys)
+    assert (code, found['state'], found['action']) == (0, 'wait', 'background'), found
+    assert found['until'] == '2026-09-30T13:00:00+00:00' and found['then'] == next_command.THEN['background']
+    assert found['command'].startswith('sleep ') and int(found['command'].split()[1]) >= 3 * 3600
+    assert 'claude' in found['why'] and 'wuwei next' in found['why']
+    duty = {'duty': 'ping', 'item': 'ITEM-2', 'prompt': 'Ping.', 'record': 'wuwei duty done ITEM-2 ping'}
+    monkeypatch.setattr(derive, 'duties', lambda *args, **kwargs: [duty])
+    code, found = row(capsys)
+    assert found['state'] == 'set' and found['duties'] == [duty]
+    assert [launch.get('until') for launch in found['launches']] == ['2026-09-30T13:00:00+00:00']
+    monkeypatch.undo()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:30:00+00:00')
+    code, found = row(capsys)
+    assert found['state'] == 'set' and [launch['action'] for launch in found['launches']] == ['start']

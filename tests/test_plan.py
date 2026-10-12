@@ -77,6 +77,24 @@ def test_propose_keeps_derives_and_names_the_repository(root):
     assert [row['repo'] for row in saved if 'repo' in row] == ['acme/paper', 'acme/none']
 
 
+@pytest.mark.parametrize('alternate', ['claude', 'nope', 7, '', 'none'])
+def test_seat_policy_alternate_is_another_known_runtime(root, alternate):
+    # #845: a builder may name an alternate runtime; it must be a known one other than its own.
+    with pytest.raises(ValueError, match='seat_policy'):
+        plan.propose({**proposal(), 'seat_policy': {'builder': {
+            'runtime': 'claude', 'model': 'sonnet', 'alternate': alternate}}}, root)
+    plan.propose({**proposal(), 'seat_policy': {'builder': {
+        'runtime': 'claude', 'model': 'sonnet', 'alternate': 'codex'}}}, root)
+
+
+def test_alternate_never_shares_the_second_opinion_runtime(root):
+    # #845 F3: a builder routed onto the second opinion's runtime would review its own thread.
+    (root / '.wuwei/config.toml').write_text('[gates]\nsecond_opinion = "codex:m1"\n')
+    with pytest.raises(ValueError, match='second opinion'):
+        plan.propose({**proposal(), 'seat_policy': {'builder': {
+            'runtime': 'claude', 'model': 'sonnet', 'alternate': 'codex'}}}, root)
+
+
 def test_approve_selected_items_and_reserve_gate_fields(root):
     plan.propose(proposal(), root)
     plan.approve(['A'], root, goals_confirmed=True)

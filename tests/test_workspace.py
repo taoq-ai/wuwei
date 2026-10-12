@@ -169,6 +169,16 @@ def test_retired_pace_keys_only_warn(tmp_path):
     assert any('unknown key repos.0.tests' in text for text in found)
 
 
+def test_retired_day_budget_only_warns(tmp_path):
+    # #845: budget.tokens_per_day gives way to window budgets per runtime.
+    from wuwei import workspace
+    write_config(tmp_path, '[budget]\ntokens_per_day = 1\n')
+    found = []
+    config = workspace.load_config(tmp_path, warnings=found)
+    assert 'tokens_per_day' not in config['budget'] and 'budget.tokens_per_day' in workspace.RETIRED
+    assert any('unknown key budget.tokens_per_day' in text for text in found), found
+
+
 def test_check_timeout_seconds(tmp_path):  # #724
     from wuwei import workspace
     repo = '[[repos]]\nname = "app"\npath = "/a"\ndefault_branch = "main"\n'
@@ -222,7 +232,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'report': ''}},
         'repos': [], 'checks': {'python': '', 'bootstrap': ''},
-        'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'claude': {'five_hour': 0, 'seven_day': 0}, 'codex': {'five_hour': 0, 'seven_day': 0}}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
                     'create': ['bugs', 'triage', 'follow-ups'],
@@ -356,7 +366,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('text,key', [
     ('cap = true', 'cap'), ('cap = -1', 'cap'), ('cap = 1.5', 'cap'),
-    ('[budget]\ntokens_per_day = -1', 'budget.tokens_per_day'),
+    ('[budget.claude]\nfive_hour = -1', 'budget.claude.five_hour'),
     ('profile = "relaxed"', 'profile'), ('owner = "Pat"', 'owner'),
     ('repos = ["app"]', 'repos.0'),
     ('[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\nfast_checks = [1]', 'repos.0.fast_checks.0'),
@@ -1531,7 +1541,7 @@ def test_template_derives_cap_and_seats(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
     config = load_config(tmp_path)
-    assert (config['cap'], config['host']['seats'], config['budget']['tokens_per_day']) == (0, 0, 0)
+    assert (config['cap'], config['host']['seats'], config['budget']['claude']['five_hour']) == (0, 0, 0)
 
 
 def repos(*paths):

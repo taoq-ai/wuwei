@@ -57,7 +57,8 @@ RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.styl
            'tracker.required', 'tracker.skip_tiers', 'tracker.strict_close', 'tracker.auto', 'discovery',
            'watch', 'sessions', 'worktree',  # #847
            'adapters.redactor', 'owner.verbosity.decisions', 'retro.repo',  # #848
-           'adapters.calendar', 'adapters.tts', 'calendar')  # #848 review: nothing reads them
+           'adapters.calendar', 'adapters.tts', 'calendar',  # #848 review: nothing reads them
+           'budget.tokens_per_day')  # #845: window budgets per runtime
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -85,7 +86,8 @@ SCHEMA = {
     "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
-    "budget": {"tokens_per_day": (int, 0, 0)},
+    # #845: input plus output tokens per runtime and usage window; 0 is no budget.
+    "budget": {name: {"five_hour": (int, 0, 0), "seven_day": (int, 0, 0)} for name in ("claude", "codex")},
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},

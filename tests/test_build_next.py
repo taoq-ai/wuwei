@@ -66,7 +66,9 @@ def test_claude_stop_records_available_usage(seat):
     launch(seat, build.next_action('A', root=root))
     assert stop(seat, usage={'input_tokens': 14, 'output_tokens': 6, 'duration': 3.2,
                              'model': 'sonnet'}) == (0, '')
-    recorded = next(e['payload']['usage'] for e in events(day) if e['kind'] == 'seat.usage')
+    row = next(e['payload'] for e in events(day) if e['kind'] == 'seat.usage')
+    recorded = row['usage']
+    assert row['runtime'] == 'claude'  # #845: the build record's runtime
     assert recorded == {'input_tokens': 14, 'output_tokens': 6,
                         'cost': 'unmeasured', 'model': 'sonnet', 'duration': 3.2}
 
@@ -289,6 +291,17 @@ def test_failed_measurement_never_completes_build(seat, case, capsys):
     assert main(['build', 'check', 'A']) == 2
     assert capsys.readouterr().err
     assert build.next_action('A', root=root)['action'] == 'check'
+
+
+def test_recorded_result_saves_its_window_readings(seat):
+    # #845: a result's windows are saved under the build record's runtime.
+    root, _, _, _, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    record = state.read_state(root)['builds']['A']
+    state._write_state(lambda data: data['builds']['A'].update(status='running'), root)
+    reading = {'used_percent': 40, 'resets_at': '2026-10-12T14:00:00+00:00'}
+    build.record_result('A', {'text': 'done', 'windows': {'five_hour': reading}}, root=root)
+    assert json.loads((root / '.wuwei/windows.json').read_text()) == {record['runtime']: {'five_hour': reading}}
 
 
 def test_new_brief_after_done_starts_new_build(seat):
@@ -554,3 +567,60 @@ def test_strict_builds_without_fast_checks(seat):
     phase(root, 'planned')
     assert build.next_action('A', root=root)['action'] == 'launch'
     assert state.read_state(root)['builds']['A']['commands'] == []
+
+
+def test_a_new_build_binds_the_routed_runtime(seat):
+    # #845: the launch set passes the routed runtime; an existing record keeps its own.
+    root = seat[0]
+    assert build.next_action('A', root=root, runtime='codex')['runtime'] == 'codex'
+    assert state.read_state(root)['builds']['A']['runtime'] == 'codex'
+    assert build.next_action('A', root=root)['runtime'] == 'codex'
+
+
+def test_a_new_build_on_a_spent_runtime_takes_the_alternate(seat):
+    root = seat[0]
+    state._write_state(lambda data: data.update(seat_policy={
+        'builder': {'runtime': 'claude', 'model': 'm', 'alternate': 'codex'}}), root)
+    (root / '.wuwei/windows.json').write_text(json.dumps({'claude': {'five_hour': {
+        'used_percent': 100, 'resets_at': '2026-09-28T14:00:00+00:00'}}}))
+    assert build.next_action('A', root=root)['runtime'] == 'codex'
+
+
+def test_a_second_build_loop_for_an_item_exits_without_a_job(tmp_path, monkeypatch, capsys):
+    # #845 F2: a live loop marker of another process makes a second run a no-op.
+    import subprocess
+    import sys
+    repo, brief, _, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    build.next_action('A', str(brief), str(repo), root=tmp_path)
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    try:
+        state._write_state(lambda data: data['builds']['A'].update(
+            loop={'pid': child.pid, 'started_at': '2026-09-28T12:00:00+00:00'}), tmp_path)
+        runtime.calls.clear()
+        assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+        assert runtime.calls == [] and 'already running' in capsys.readouterr().err
+    finally:
+        child.kill()
+        child.wait()
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0 and runtime.calls
+
+
+@pytest.mark.parametrize('bound,policy,code', [('codex', 'claude', 0), ('claude', 'codex', 2)])
+def test_run_loop_follows_the_build_record_runtime(tmp_path, monkeypatch, capsys, bound, policy, code):
+    # #845: a routed build runs on the runtime its record binds, not the policy runtime.
+    repo, brief, _, _ = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    build.next_action('A', str(brief), str(repo), root=tmp_path, runtime=bound)
+    state._write_state(lambda data: data.update(seat_policy={'builder': {'runtime': policy, 'model': 'm'}}), tmp_path)
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == code
+    assert ('Claude builders require' in capsys.readouterr().err) is (code == 2)
+
+
+@pytest.mark.parametrize('bound,policy,code', [('claude', 'codex', 0), ('codex', 'claude', 1)])
+def test_agent_launch_follows_the_build_record_runtime(seat, bound, policy, code):
+    # #845: the Agent guard reads a builder's runtime from its build record over the policy.
+    root = seat[0]
+    state._write_state(lambda data: data.update(seat_policy={'builder': {'runtime': policy, 'model': 'm'}}), root)
+    action = build.next_action('A', root=root, runtime=bound)
+    found, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': action['prompt']}})
+    assert found == code and (('Codex' in reason) is bool(code)), reason
