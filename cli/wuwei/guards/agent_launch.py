@@ -401,30 +401,48 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
+    if reserved['status'] == 'stopped':
+        return 0, ''  # #905: a repeated stop (one sent back for repair); the seat's end counts once
     today = directory == workspace.day_dir(root)
     try:
-        if reserved['status'] == 'running':
-            brief.stop_text(payload)
-    except (OSError, ValueError) as exc:
-        # #473: an unreadable report never leaves the seat running; the owner records it or stops it.
-        # A refused stop (another agent, a resumed iteration) still leaves the seat as it was.
-        try:
-            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
-                            reason=str(exc))
-        except Exception as error:
-            return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
-        return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
-                   f'{name} --verdict <file>, or run bin/wuwei seat stop {name} --unmeasured "<reason>"')
-    try:
-        handled = False
         if role == 'builder' and today and item in data.get('builds', {}):
             from wuwei.commands import build
-            handled = build.stopped(item, name, payload, root=root)
-        if not handled:
-            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
+            try:
+                if build.stopped(item, name, payload, root=root):
+                    return 0, ''
+            except build.Mismatch as exc:
+                return 2, f'build result could not be recorded: {exc}'  # never another agent's seat
+        if reserved['status'] == 'running':
+            brief.stop_text(payload)
+        state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
-        return 2, f'build result could not be recorded: {exc}'
+        return _unrecorded(payload, root, directory, name, reserved, exc)
     return 0, ''
+
+
+def _unrecorded(payload, root, directory, name, reserved, exc):
+    """#473, #905: a stop whose report cannot be recorded never leaves the bound seat running;
+    it stops unmeasured with the reason, and a readable report is kept for the owner. A seat
+    changed since the stop read it (relaunched, or its result recorded) is left as it is."""
+    from wuwei import brief, state
+    if reserved['status'] != 'running':
+        return 2, f'build result could not be recorded: {exc}'
+    try:  # the bound agent's own words, never a payload message that may differ from them
+        text = brief.tail_turn(payload['agent_transcript_path'])[0]
+        report = brief.keep_report(root, directory, name, text) if text.strip() else None
+    except (OSError, ValueError, KeyError, TypeError):
+        report = None
+    try:
+        state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
+                        reason=str(exc), report=report, expected=reserved)
+    except ValueError:  # the seat changed since this stop read it: its result recorded, or relaunched
+        return 2, (f'seat {name} changed during its stop (its result is recorded, or it was launched '
+                   f'again); a later step failed: {exc}; run bin/wuwei next for the step')
+    except Exception as error:
+        return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
+    return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
+               f'{name} --verdict{"" if report else " <file>"}, or run bin/wuwei seat stop {name} '
+               '--unmeasured "<reason>"')
 
 
 GUARDS = [Guard('PreToolUse', 'Agent', check), Guard('SubagentStop', None, stop)]

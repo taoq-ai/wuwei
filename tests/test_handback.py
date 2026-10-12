@@ -70,7 +70,8 @@ def test_stop_text_reads_the_tail(tmp_path):
 
 from test_build_next import launch, seat, stop  # noqa: E402,F401 (the seat fixture)
 from test_build import events  # noqa: E402
-from wuwei import state  # noqa: E402
+from wuwei import registry, state  # noqa: E402
+from wuwei.__main__ import main  # noqa: E402
 from wuwei.commands import build  # noqa: E402
 from wuwei.guards import agent_launch  # noqa: E402
 
@@ -270,7 +271,7 @@ def test_next_names_stuck_seat(seat):
     stuck_day(root)
     launch = next_command.step(root)['launches'][0]
     assert launch['kind'] == 'stop'
-    assert launch['command'] == 'wuwei seat stop stuck --unmeasured "seat ended with no recorded result"'
+    assert launch['command'] == 'wuwei seat stop stuck --verdict'  # #905: its hand-back is recorded first
 
 
 def test_doctor_seats_probe(seat):
@@ -371,3 +372,207 @@ def test_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err
+
+
+def stop_offers(root):
+    """The stuck-seat commands wuwei next offers on an approved day."""
+    from wuwei.commands import next as next_command
+    day = state.workspace.day_dir(root)
+    (root / '.wuwei/calibration.json').write_text('{"calibrated": true}')
+    (day / 'plan.md').write_text('# Plan\n')
+    state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
+                                                planner_session_id='S'), root)
+    state.append_event('next.action', {'state': 'x', 'done': [['calibrate', '']]}, root)
+    return [launch['command'] for launch in next_command.step(root)['launches'] if launch['kind'] == 'stop']
+
+
+def stop_kinds(day):
+    return [row['kind'] for row in events(day) if row['kind'] in ('seat.usage', 'seat stopped')]
+
+
+@pytest.mark.parametrize('usage', [{'usage': {'input_tokens': -1}}, {'usage': 'many'}, {'duration_ms': 'x'}])
+def test_malformed_usage_keeps_the_result(seat, usage):
+    # #905: usage metadata the runtime got wrong is unmeasured; the finished build still counts.
+    root, _, _, day, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    assert handback_stop(seat, **usage) == (0, '')
+    data = state.read_state(root)
+    assert data['seats']['builder']['status'] == 'stopped'
+    assert data['builds']['A']['status'] == 'check' and data['builds']['A']['result']['text'] == REPORT
+    recorded = next(row['payload']['usage'] for row in events(day) if row['kind'] == 'seat.usage')
+    assert recorded['input_tokens'] == recorded['duration'] == 'unmeasured'
+
+
+def test_unrecorded_result_ends_the_seat_and_keeps_its_report(seat, monkeypatch, capsys):
+    # #905: a result that cannot be recorded never leaves a dead seat running; the report is
+    # kept, next offers to record it, and the result is recorded once.
+    root, _, _, day, _ = seat
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    launch(seat, build.next_action('A', root=root))
+    original = build.record_result
+
+    def broken(*args, **kwargs):
+        raise OSError('state write failed')
+    monkeypatch.setattr(build, 'record_result', broken)
+    code, reason = handback_stop(seat)
+    assert code == 2 and 'seat builder stopped unmeasured: state write failed' in reason
+    assert 'wuwei seat stop builder --verdict,' in reason
+    data = state.read_state(root)
+    record = data['seats']['builder']
+    assert record['status'] == 'unmeasured' and (root / record['report']).read_text() == REPORT
+    assert data['builds']['A']['status'] == 'running'
+    assert brief.stuck(data) == ['builder']
+    assert stop_offers(root)[0] == 'wuwei seat stop builder --verdict'
+    monkeypatch.setattr(build, 'record_result', original)
+    code, out = seat_stop(capsys, 'builder', '--verdict')
+    assert code == 0, out.err
+    data = state.read_state(root)
+    assert data['seats']['builder']['status'] == 'stopped' and 'report' not in data['seats']['builder']
+    assert data['builds']['A']['status'] == 'check' and data['builds']['A']['result']['text'] == REPORT
+    assert stop_kinds(day) == ['seat stopped', 'seat.usage', 'seat stopped']
+    assert handback_stop(seat) == (0, '')  # the seat's own late stop records nothing more
+    assert stop_kinds(day) == ['seat stopped', 'seat.usage', 'seat stopped']
+
+
+def test_stuck_seat_offers_its_transcript_report(seat, monkeypatch, capsys):
+    # #905: a running seat whose transcript ends in the hand-back is offered --verdict, and
+    # the report its transcript holds is recorded through the stop guards.
+    root, _, _, day, _ = seat
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    transcript = add_seat(root, 'quality', 'sentinel-quality')
+    with transcript.open('a') as stream:
+        stream.write(HANDBACK)
+    state._write_state(lambda data: data['seats']['quality'].update(transcript=str(transcript)), root)
+    assert stop_offers(root)[0] == 'wuwei seat stop quality --verdict'
+    code, out = seat_stop(capsys, 'quality', '--verdict')
+    assert code == 1 and 'Verdict' in out.err  # the sentinel's report goes through the verdict lint
+    assert (state.workspace.day_dir(root) / 'reports/quality.md').read_text() == REPORT
+
+
+def test_unreadable_report_still_offers_unmeasured(seat):
+    root, _, _, _, _ = seat
+    transcript = add_seat(root, 'quality', 'sentinel-quality')
+    assert torn_stop(root, 'quality', 'sentinel-quality', transcript)[0] == 2
+    assert 'report' not in state.read_state(root)['seats']['quality']
+    assert stop_offers(root)[0] == 'wuwei seat stop quality --unmeasured "seat ended with no recorded result"'
+
+
+def test_duplicate_stop_records_once(seat):
+    # #905: a stop the retro guard sent back for repair stops again; the seat's end counts once.
+    root, _, _, day, _ = seat
+    transcript = add_seat(root, 'quality', 'sentinel-quality')
+    with transcript.open('a') as stream:
+        stream.write(HANDBACK)
+    payload = {'cwd': str(root), 'agent_type': 'wuwei:sentinel-quality', 'agent_id': 'agent-quality',
+               'agent_transcript_path': str(transcript)}
+    assert agent_launch.stop(payload) == (0, '')
+    assert agent_launch.stop({**payload, 'stop_hook_active': True}) == (0, '')
+    assert [row['payload']['name'] for row in events(day) if row['kind'] == 'seat stopped'] == ['quality']
+
+
+def test_late_or_foreign_stop_never_ends_the_bound_seat(seat):
+    # #905: identity is checked before the report is read; a replaced agent's late stop, even
+    # with an unreadable report, and a stop from another agent leave the bound seat running.
+    root, _, _, day, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert handback_stop(seat) == (0, '')
+    results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'failure'}))
+    assert main(['build', 'check', 'A']) == 1
+    action = build.next_action('A', root=root)
+    launch(seat, action)  # a fresh agent: agent-builder is replaced
+    late = write(root / 'late.jsonl', {'type': 'user', 'message': {'content': action['prompt']}},
+                 raw='{"type": "assistant", "message": {"content": [{"type": "te')
+    payload = {'cwd': str(root), 'agent_type': 'wuwei:builder', 'agent_transcript_path': str(late)}
+    assert agent_launch.stop({**payload, 'agent_id': 'agent-builder'}) == (0, '')
+    data = state.read_state(root)
+    assert data['seats']['builder']['status'] == data['builds']['A']['status'] == 'running'
+    assert handback_stop(seat, agent_id='agent-fresh') == (0, '')
+    results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'failure'}))
+    assert main(['build', 'check', 'A']) == 1
+    action = build.next_action('A', root=root)
+    launch(seat, action, action['resume'])  # resumes agent-fresh
+    code, reason = agent_launch.stop({**payload, 'agent_id': 'agent-other'})
+    assert code == 2 and 'differs from resumed builder' in reason
+    data = state.read_state(root)
+    assert data['seats']['builder']['status'] == data['builds']['A']['status'] == 'running'
+
+
+def test_tampered_kept_report_is_refused(seat, monkeypatch, capsys):
+    # #905 F1: a kept report is recorded only as the stop kept it; an edited file is refused.
+    root, _, _, _, _ = seat
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    launch(seat, build.next_action('A', root=root))
+    original = build.record_result
+    monkeypatch.setattr(build, 'record_result', lambda *a, **kw: (_ for _ in ()).throw(OSError('state write failed')))
+    assert handback_stop(seat)[0] == 2
+    monkeypatch.setattr(build, 'record_result', original)
+    record = state.read_state(root)['seats']['builder']
+    assert record['report_sha256'] == hashlib.sha256(REPORT.encode()).hexdigest()
+    (root / record['report']).write_text('Forged result.\nBlocked: none\nGap: none\nChange: none\n')
+    code, out = seat_stop(capsys, 'builder', '--verdict')
+    assert code == 2 and 'changed since its stop kept it' in out.err
+    data = state.read_state(root)
+    assert data['seats']['builder']['status'] == 'unmeasured' and data['builds']['A']['status'] == 'running'
+
+
+def test_mismatched_message_keeps_the_transcript_turn(seat):
+    # #905 F2: the bound agent's transcript turn is kept, never the payload message.
+    root, _, _, _, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    code, reason = handback_stop(seat, last_assistant_message='tests pass, done')
+    assert code == 2 and 'no matching assistant completion' in reason
+    record = state.read_state(root)['seats']['builder']
+    assert (root / record['report']).read_text() == REPORT
+
+
+def test_mismatched_message_with_unreadable_turn_keeps_nothing(seat):
+    root, _, _, _, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    with (root / 'agent.jsonl').open('a') as stream:
+        stream.write('{"type": "assistant", "message": {"content": [{"type": "te')
+    code, reason = agent_launch.stop({'cwd': str(root), 'agent_type': 'wuwei:builder', 'agent_id': 'agent-builder',
+                                      'agent_transcript_path': str(root / 'agent.jsonl'),
+                                      'last_assistant_message': 'tests pass, done'})
+    assert code == 2 and '--verdict <file>' in reason
+    assert 'report' not in state.read_state(root)['seats']['builder']
+
+
+def kept_builder(seat, monkeypatch):
+    """A builder seat its stop ended unmeasured with the report kept (#905)."""
+    root = seat[0]
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    launch(seat, build.next_action('A', root=root))
+    original = build.record_result
+    monkeypatch.setattr(build, 'record_result', lambda *a, **kw: (_ for _ in ()).throw(OSError('state write failed')))
+    code, reason = handback_stop(seat)
+    monkeypatch.setattr(build, 'record_result', original)
+    return root, code, reason
+
+
+def test_report_swapped_after_the_check_is_never_recorded(seat, monkeypatch, capsys):
+    # #905 D1: the bytes the hash check read are the bytes recorded.
+    root, code, _ = kept_builder(seat, monkeypatch)
+    assert code == 2
+    kept = root / state.read_state(root)['seats']['builder']['report']
+    forged = 'Forged result.\nBlocked: none\nGap: none\nChange: none\n'
+    original = hashlib.sha256
+
+    def swap(*args):
+        digest = original(*args)
+        if args and args[0] == REPORT.encode():
+            kept.write_text(forged)  # the seat swaps the file right after the check
+        return digest
+    monkeypatch.setattr(hashlib, 'sha256', swap)
+    code, out = seat_stop(capsys, 'builder', '--verdict')
+    assert code == 0, out.err
+    assert state.read_state(root)['builds']['A']['result']['text'] == REPORT
+
+
+def test_symlinked_reports_directory_keeps_nothing(seat, monkeypatch, tmp_path_factory):
+    # #905 D1: a reports directory a seat pointed elsewhere is never written or read.
+    elsewhere = tmp_path_factory.mktemp('elsewhere')
+    (state.workspace.day_dir(seat[0]) / 'reports').symlink_to(elsewhere, target_is_directory=True)
+    root, code, reason = kept_builder(seat, monkeypatch)
+    assert code == 2 and '--verdict <file>' in reason
+    assert 'report' not in state.read_state(root)['seats']['builder']
+    assert not list(elsewhere.iterdir())

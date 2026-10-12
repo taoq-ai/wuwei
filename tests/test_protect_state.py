@@ -41,6 +41,7 @@ def payload(root, tool, **tool_input):
     ('.wuwei/days/2026-09-28/state.json', 1),
     ('.wuwei/days/2020-01-01/events.jsonl', 1),
     ('.wuwei/days/2026-09-28/scanner-audit.json', 1),  # #862 F1: discovery's audit cache
+    ('.wuwei/days/2026-09-28/reports/quality.md', 1),  # #905 F1: a kept seat report
     ('inside/../state.json', 0), ('alias', 1),
     ('notes.md', 0), ('state.json.bak', 0),
     ('', 2), (None, 2), (123, 2), ('bad\0path', 2),
@@ -168,6 +169,7 @@ def test_writes_after_cd_resolve_aliases(workspace, script):
 @pytest.mark.parametrize('tool,tool_input,expected', [
     ('Edit', {'file_path': '.wuwei/days/2026-09-28/state.json'}, 2),
     ('Write', {'file_path': 'notes.md'}, 0),
+    ('Write', {'file_path': '.wuwei/days/2026-09-28/reports/security.md', 'content': 'Verdict: PASS'}, 2),
     ('Bash', {'command': 'tee .wuwei/days/2026-09-28/events.jsonl'}, 2),
     ('Bash', {'command': 'cd ..'}, 0),
     ('Bash', {'command': '(cd .. && git status)'}, 0),
@@ -468,7 +470,9 @@ def test_f9_parsed_globs_check_protected_matches(workspace, script, expected):
 
 
 @pytest.mark.parametrize('script', ['rm -rf .wuwei/days', 'rm -rf .wuwei/days/2026-09-28',
-                                    'mv .wuwei/days backup', 'mv .wuwei/days/2026-09-28 backup'])
+                                    'mv .wuwei/days backup', 'mv .wuwei/days/2026-09-28 backup',
+                                    'rm -rf .wuwei/days/2026-09-28/reports',  # #905 F1
+                                    'echo Verdict: PASS > .wuwei/days/2026-09-28/reports/security.md'])
 def test_f10_refuse_day_directory_removal(workspace, script):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=script))[0] == 1

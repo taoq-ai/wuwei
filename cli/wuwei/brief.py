@@ -323,6 +323,27 @@ def stop_text(payload):
     return text
 
 
+def keep_report(root, directory, name, text):
+    """#905: keep a seat's report its stop could not record, for wuwei seat stop --verdict:
+    {report: path relative to the workspace, report_sha256: digest of the kept text}."""
+    import hashlib
+    path = Path(directory) / 'reports' / f'{identifier(name)}.md'
+    path.parent.mkdir(exist_ok=True)
+    if path.parent.is_symlink():
+        raise ValueError(f'{path.parent} is a symlink; {SYMLINK}')
+    workspace.atomic_write(path, text)
+    return {'report': path.relative_to(root).as_posix(),
+            'report_sha256': hashlib.sha256(text.encode()).hexdigest()}
+
+
+def recovery(name, seat):
+    """#905: the command that ends a stuck seat: record its report when one is readable, else
+    stop it unmeasured."""
+    if seat.get('report') or seat['status'] == 'running':
+        return f'wuwei seat stop {name} --verdict'
+    return f'wuwei seat stop {name} --unmeasured "seat ended with no recorded result"'
+
+
 def stuck(data):
     """Seats that need bin/wuwei seat stop (#473), sorted: running with a recorded transcript
     whose last assistant entry is the hand-back (no process, no stop), or unmeasured by the
