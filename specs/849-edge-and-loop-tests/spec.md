@@ -72,10 +72,10 @@ must find all of an edge's cases in one place.
 
 **Acceptance Scenarios**:
 
-1. **Given** the repository, **When** `python -m pytest --collect-only -q` runs, **Then** it
-   reports fewer than 3000 tests.
-2. **Given** CI, **When** the tests job runs, **Then** a step fails if the collected count is
-   3000 or more.
+1. **Given** the repository, **When** the test functions (`def test_`) under `tests/` are
+   counted, **Then** there are fewer than 3000 (B9 lead call (b): test functions, not collected
+   cases; no parametrized table is collapsed).
+2. **Given** CI, **When** the tests job runs, **Then** a step fails if that count is 3000 or more.
 
 ### Edge Cases
 
@@ -108,10 +108,9 @@ must find all of an edge's cases in one place.
   fake figures.
 - **FR-006**: The `timing` xdist group, its rerun step in `.github/workflows/tests.yml`, the
   marker in `pyproject.toml` and the `TIMING` pin in `tests/test_dev_cycle.py` MUST go.
-- **FR-007**: Parametrized tables of one function's inputs and expected outputs MUST become one
-  test that checks every row and reports every failing row, starting with the largest
-  surplus (plan.md order), until the collected count is under 3000 with at least 100 to spare.
-- **FR-008**: CI MUST fail when the collected count reaches 3000.
+- **FR-007**: Superseded by B9 lead call (b): the limit counts test functions (`def test_`);
+  no parametrized table is collapsed and every row stays its own case.
+- **FR-008**: CI MUST fail when the count of test functions reaches 3000.
 
 ### Key Entities
 
@@ -120,11 +119,12 @@ must find all of an edge's cases in one place.
 
 ## Success Criteria *(mandatory)*
 
-- **SC-001**: `python -m pytest --collect-only -q` reports at most 2900 tests.
+- **SC-001**: `grep -rh "def test_" tests | wc -l` reports fewer than 3000.
 - **SC-002**: `grep -rnE "monotonic\(\)|perf_counter\(\)|process_time\(\)|elapsed|_ms *<|seconds *<|xdist_group\('timing'\)" tests`
   finds no assertion on a duration (a fake clock passed into the code is allowed).
 - **SC-003**: `tests/test_edges.py` has eight edge table tests; no other file calls
-  `edges.check_bash`, `edges.check_deploy` or `edges.check_send` to assert a decision.
+  `edges.check_bash` or `edges.check_deploy` to assert a decision. `tests/test_outward.py` keeps
+  its `check_send` calls: they test the outward lint beside the send edge.
 - **SC-004**: The full suite passes in CI; `tests/test_loop.py`'s property test takes under one
   second in `--durations` output (recorded in the PR body).
 

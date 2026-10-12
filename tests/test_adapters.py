@@ -458,7 +458,9 @@ def test_watch_probe_times_out_a_slow_call(tmp_path):
     from wuwei.registry import watch_service
     module = watch_service()
     script = tmp_path / 'wuwei'
-    script.write_text('#!/bin/sh\nread -r payload\n[ "$payload" = slow ] && exec sleep 5\n'
+    sentinel = tmp_path / 'finished'  # written only by a slow call that ran past its timeout
+    script.write_text('#!/bin/sh\nread -r payload\n'
+                      f'[ "$payload" = slow ] && sleep 2 && touch {sentinel} && exit 0\n'
                       'echo "first line" >&2\necho second >&2\nexit 3\n')
     script.chmod(0o755)
     module.LAUNCHER = script
@@ -469,6 +471,7 @@ def test_watch_probe_times_out_a_slow_call(tmp_path):
     (timed, reason, _), (code, line, ms) = results
     assert (timed, reason) == (None, 'timeout')
     assert (code, line) == (3, 'first line') and ms >= 0
+    assert not sentinel.exists()  # the slow call was killed, not waited for
 
 
 def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):

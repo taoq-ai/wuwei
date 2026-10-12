@@ -7,12 +7,12 @@ test first; owner constraint: never loosen a test or budget); `tests/` and
 
 | ID | Category | Severity | Location(s) | Summary | Resolution |
 |----|----------|----------|-------------|---------|------------|
-| N1 | Feasibility | CRITICAL | US4 | Parts 23 and 24 delete about 800 tests; the suite would still collect about 6850. Deleting tests to reach 3000 would drop coverage. | Resolved: collapse parametrized tables into table tests that keep every row (FR-007, Assumption 1); full collapse gives about 2500, so 2900 is reachable without dropping a distinct row. |
+| N1 | Feasibility | CRITICAL | US4 | Parts 23 and 24 delete about 800 tests; the suite would still collect about 6850. Deleting tests to reach 3000 would drop coverage. | Resolved by B9 lead call (b): the limit counts test functions (`def test_`), 2643 after this part; nothing is collapsed and no row is dropped (FR-007 superseded). |
 | N2 | Owner constraint | HIGH | FR-004 | Removing a latency budget could read as loosening a budget. | Resolved: the measurement moves to `scripts/hook_latency.py` in the informational latency job (as today, #805); the issue forbids timing assertions in tests. |
 | N3 | Coverage | HIGH | FR-002 | Moving rows from eight files risks losing the context those files added (outside a workspace, enforce off, profiles). | Resolved: the tables carry the workspace and enforce columns; a row is dropped only as a named duplicate (Assumption 2); each table is shown red (T001). |
 | N4 | Measurement | MEDIUM | US2 | The property test took 1.54 s setup plus 2.13 s for the state.json pair test at 71d3f06b. | Resolved: part 23 deletes the pair test and the cache writes; T005 measures and has a fallback that keeps the 300 worlds (Assumption 3). |
 | N5 | CI | MEDIUM | FR-006 | `tests/test_dev_cycle.py` pins the timing group and the workflow text. | Resolved: T004 updates the pin and the workflow assertions together. |
-| N6 | Regression guard | LOW | FR-008 | Without a check the count creeps back. | Resolved: a collect-only CI step fails at 3000. |
+| N6 | Regression guard | LOW | FR-008 | Without a check the count creeps back. | Resolved: a CI step counts test functions and fails at 3000. |
 
 **Coverage Summary**
 

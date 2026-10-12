@@ -39,13 +39,14 @@ restore. Record the count with `python -m pytest --collect-only -q | tail -1` af
 - [X] T005 [US2] Fix the `tests/test_loop.py` docstring; run
   `python -m pytest -q --durations=0 tests/test_loop.py`; if the property test's setup and calls
   exceed one second, write each world in one `_write_state` call and measure again. Record the
-  figure for the PR body.
+  figure for the PR body. B9 lead call (d): the property test takes 1.4 to 2.4 s; measured,
+  never asserted.
 
 ## Phase 4: Under 3000 (US4, P1)
 
-- [X] T006 [US4] Collapse parametrized tables in plan.md's order, one file at a time, running
+- [X] T006 [US4] Superseded by B9 lead call (b), nothing collapsed. Was: Collapse parametrized tables in plan.md's order, one file at a time, running
   that file after each; stop at a collected count of at most 2900.
-- [X] T007 [US4] Run `python -m pytest --collect-only -q | tail -1`: at most 2900. Run the files
+- [X] T007 [US4] Superseded by B9 lead call (b): the CI step counts test functions. Was: Run `python -m pytest --collect-only -q | tail -1`: at most 2900. Run the files
   T006 touched plus `tests/test_edges.py tests/test_loop.py tests/test_e2e_day.py
   tests/test_path_day.py`: green.
 
