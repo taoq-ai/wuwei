@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/taoq-ai/wuwei/compare/v0.27.0...v0.28.0) (2026-10-12)
+
+
+### Features
+
+* **next:** deletion pass batch 8: derived state; next returns every ready launch, due duty or one owner decision ([#852](https://github.com/taoq-ai/wuwei/issues/852)) ([db20c98](https://github.com/taoq-ai/wuwei/commit/db20c98c8cc6df9923a39e2d70f901b2fab2e98c))
+
 ## [0.27.0](https://github.com/taoq-ai/wuwei/compare/v0.26.0...v0.27.0) (2026-10-11)
 
 
