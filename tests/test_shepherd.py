@@ -156,7 +156,7 @@ def test_claim_adopts_the_branch_worktree(case, monkeypatch, capsys):
     adopted_day(root, ['G-1'])
     adopted = []
 
-    def adopt(root, item, path, vcs):
+    def adopt(root, item, path, vcs, **_):
         adopted.append((item, path))
         if path == 'dirty':
             raise state.StateError('worktree has unrecorded changes: a.txt')
@@ -168,9 +168,10 @@ def test_claim_adopts_the_branch_worktree(case, monkeypatch, capsys):
     assert adopted == [('PR-8', 'house')] and '"path": "house"' in capsys.readouterr().out
     vcs.responses['worktrees'] = Result(0, [{'path': 'dirty', 'branch': 'feature', 'head': SHA}])
     assert main(['pr', 'claim', '8']) == 0
-    assert 'worktree not adopted: worktree has unrecorded changes' in capsys.readouterr().err
+    assert 'worktree not ready: worktree has unrecorded changes' in capsys.readouterr().err
     vcs.responses['worktrees'] = Result(2, reason='git.worktrees: could not run')
-    assert main(['pr', 'claim', '8']) == 2
+    assert main(['pr', 'claim', '8']) == 0  # the claim is recorded; the worktree step names its rerun
+    assert 'could not run; rerun bin/wuwei pr claim acme/widget#8' in capsys.readouterr().err
     assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
 
 
@@ -181,7 +182,7 @@ def test_claim_adds_a_worktree_when_none_is_on_the_branch(case, capsys):
     host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
     state._write_state(lambda data: (data['items'].update(A={}), data['approved_items'].append('A')), root)
     assert main(['pr', 'claim', '8', '--item', 'A']) == 0
-    assert vcs.added == [] and 'worktree not created: morning gate' in capsys.readouterr().err
+    assert vcs.added == [] and 'worktree not ready: morning gate' in capsys.readouterr().err
     adopted_day(root, ['G-1'])
     assert main(['pr', 'claim', '8', '--item', 'A']) == 0
     assert vcs.added == [('A', 'feature', 'acme/widget')]
@@ -239,7 +240,7 @@ def test_a_failed_worktree_step_keeps_the_claim_and_names_the_rerun(case, capsys
         raise ValueError('git exited 128 (fetch origin feature)')
     monkeypatch.setattr(worktree, 'add', fail)
     assert main(['pr', 'claim', '8']) == 0
-    assert ('worktree not created: git exited 128 (fetch origin feature); rerun bin/wuwei pr claim '
+    assert ('worktree not ready: git exited 128 (fetch origin feature); rerun bin/wuwei pr claim '
             'acme/widget#8') in capsys.readouterr().err
     assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
 

@@ -36,6 +36,17 @@ def run(args):
     return 0
 
 
+def checkout(root, config, item, repo, branch, dirty=False):
+    """#879, #901: the item's worktree on an existing branch of repo: the repository's worktree
+    on it adopted, else worktrees/<item> checked out on it (fetched when only on the remote)."""
+    from types import SimpleNamespace
+    vcs = registry.load('vcs', config)
+    path = workspace.branch_worktree(vcs, (root / Path(repo['path']).expanduser()).resolve(), branch, root)
+    if path:
+        return workspace.adopt_worktree(root, item, path, vcs, dirty=dirty)
+    return add(SimpleNamespace(repo=repo['name'], branch=branch), root, config, item)
+
+
 def add(args, root, config, item):
     repos = config['repos']
     if args.repo is not None:

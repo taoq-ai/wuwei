@@ -81,7 +81,9 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     running = [seat for seat in day.data['seats'].values() if seat['status'] == 'running']
     assert sorted(seat['item'] for seat in running) == ['A', 'B', 'C']
     code, reason = guard(day, brief(day, 'D'))
-    assert code == 1 and 'CAP 3' in reason
+    # #901: no build record for D; the build next it names waits at CAP instead of starting one
+    assert code == 1 and 'no build record for D' in reason and 'bin/wuwei build next D' in reason
+    assert 'CAP 3 reached (3 building)' in day.run('build', 'next', 'D', expected=2)
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
     step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
@@ -97,7 +99,8 @@ def test_owner_cap_one_stays_sequential(day):
     _, rows = launch_set(day)
     day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, rows[0]))
     code, reason = guard(day, brief(day, 'B'))
-    assert code == 1 and 'CAP 1' in reason
+    assert code == 1 and 'no build record for B' in reason
+    assert 'CAP 1 reached' in day.run('build', 'next', 'B', expected=2)
 
 
 def test_gate_sentinels_run_together_and_the_item_moves_after_all_verdicts(day):
@@ -386,7 +389,9 @@ def test_launch_guard_compares_with_the_cap_derived_at_launch(day, policy, refus
         day.patch.setenv('WUWEI_NOW', f'2026-09-29T12:0{minute}:00Z')
         day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, row))
     day.memory.results['free_memory'] = Result(0, 1024**3)
-    code, reason = guard(day, brief(day, 'D'))
+    relative = brief(day, 'D')
+    day.run('build', 'next', 'D')  # #901: under the day's CAP 4 the build is recorded first
+    code, reason = guard(day, relative)
     assert (code == 1 and 'CAP 3' in reason) if refused else code == 0, reason
     assert day.data['cap'] == 4
 

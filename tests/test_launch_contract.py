@@ -67,6 +67,9 @@ def test_runtime_prompt_passes_guard(workspace, monkeypatch, capsys, role, conti
     assert job['agent_type'] == 'wuwei:' + role
     assert job['write'] is True
     assert job['worktree'] == str(root / 'tree')
+    if role == 'builder':  # #901: a builder launches on its build record
+        state._write_state(lambda data: data.setdefault('builds', {}).update(X={
+            'brief': relative, 'status': 'ready', 'action': {'action': 'launch'}}), root)
     assert_registered(root, job, capsys, monkeypatch)
 
 

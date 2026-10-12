@@ -71,6 +71,12 @@ The claim gives the item a checkout of the PR branch: a clean worktree you have 
 `worktrees/<item>`, fetched when the branch is only on the remote. A conflict, red checks or
 a fix asked in review then comes back from `wuwei next` as a fix-round builder.
 
+Work on a plan item that was done outside WUWEI, by hand or by a seat that ran unregistered,
+comes back with `wuwei build reconcile <item> --worktree <path>` (or `--repo <name> --branch
+<branch>`, or `--pr owner/repo#12`). It records the worktree as it is, runs the fast checks and
+leaves the gates to `wuwei next`. Uncommitted files go to a builder to commit first. Running it
+again changes nothing. Nothing done outside counts as tested or approved.
+
 ## 4. Through the day
 
 After the gate, each `wuwei next` returns a set: the launches ready now, the duties due, and

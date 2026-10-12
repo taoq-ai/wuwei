@@ -49,6 +49,18 @@ def launch(seat, action, resume=None):
         stream.write(json.dumps({'type': 'user', 'message': {'content': action['prompt']}}) + '\n')
 
 
+def outside(seat, action):
+    """A builder launched with no build record, as before #901: only with guards.enforce off
+    does it register, with the refusal logged."""
+    root = seat[0]
+    set_enforce(root, False)
+    code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': action['prompt']}})
+    assert code == 1 and 'no build record' in reason, reason
+    with (root / 'agent.jsonl').open('a') as stream:
+        stream.write(json.dumps({'type': 'user', 'message': {'content': action['prompt']}}) + '\n')
+
+
 def stop(seat, agent_id='agent-builder', **usage):
     root, _, path, _, _ = seat
     transcript = root / 'agent.jsonl'
@@ -565,12 +577,20 @@ def test_checked_event_counts_passed_and_failed(seat):
     assert record['status'] == 'check'
 
 
+def measured(root, item, sha='a' * 40):
+    """#901 review D2: the HEAD the fast checks measured, as build check records it."""
+    record = state.read_state(root)['builds'][item]
+    state._write_state(lambda data: data.setdefault('fast_checks', {}).setdefault(record['repo'], {}).update(
+        {command: {'sha': sha, 'exit': 0} for command in record['commands']}), root)
+
+
 def checked(seat):
     root = seat[0]
     launch(seat, build.next_action('A', root=root))
     assert stop(seat) == (0, '')
     if state.read_state(root)['builds']['A']['status'] != 'check':
         state._write_state(lambda data: data['builds']['A'].update(status='check'), root)
+    measured(root, 'A')
     return root, [registry.Result(0)] * len(state.read_state(root)['builds']['A']['commands'])
 
 
@@ -841,7 +861,7 @@ def test_a_brief_a_seat_already_ran_continues_that_seat(seat, recorded):
     root, repo, path, _, results = seat
     (repo / '.git').mkdir()
     (repo / '.git/HEAD').write_text('a' * 40 + '\n')
-    launch(seat, brief.seat_action('builder', path, repo, root))
+    outside(seat, brief.seat_action('builder', path, repo, root))
     with pytest.raises(ValueError, match='still running'):
         build.next_action('A', root=root)
     with (root / 'agent.jsonl').open('a') as stream:
@@ -873,7 +893,7 @@ def test_an_unmeasured_seat_on_the_recorded_brief_takes_a_fresh_brief(seat):
     # next asks for a fresh brief, and the fresh brief replaces the record at the same HEAD.
     from wuwei import brief
     root, repo, path, _, results = seat
-    launch(seat, brief.seat_action('builder', path, repo, root))
+    outside(seat, brief.seat_action('builder', path, repo, root))
     state.stop_seat('builder', root, reason='report unreadable')
     state._write_state(lambda data: data.setdefault('builds', {}).update(A={
         'brief': str(path.relative_to(root)), 'worktree': str(repo), 'runtime': 'claude',
@@ -895,6 +915,84 @@ def test_build_next_never_adopts_another_items_seat(seat):
     # #889 D2: a seat that ran the brief for another item is not this build's seat.
     from wuwei import brief
     root, repo, path, _, _ = seat
-    launch(seat, brief.seat_action('builder', path, repo, root))
+    outside(seat, brief.seat_action('builder', path, repo, root))
     state._write_state(lambda data: data['seats']['builder'].update(item='B', status='stopped'), root)
     assert build.next_action('A', root=root)['action'] == 'launch'
+
+
+def set_enforce(root, value):
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[guards]\nenforce = {str(value).lower()}\n')
+
+
+def test_a_builder_launch_with_no_build_record_is_refused_and_build_next_launches_it(seat):
+    # #901 owner decision: a builder runs on its build record. The refusal names build next
+    # (and reconcile for work done outside), and the launch build next returns registers.
+    from wuwei import brief
+    root, repo, path, _, _ = seat
+    prompt = brief.seat_action('builder', path, repo, root)['prompt']
+    code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': prompt}})
+    assert code == 1 and 'no build record for A' in reason, reason
+    assert 'bin/wuwei build next A' in reason and 'bin/wuwei build reconcile A --worktree' in reason
+    assert not state.read_state(root)['seats'] and 'A' not in state.read_state(root).get('builds', {})
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'launch'
+    launch(seat, action)
+    assert state.read_state(root)['builds']['A']['status'] == 'running'
+
+
+def test_with_enforce_off_a_builder_with_no_build_record_logs_and_registers(seat, monkeypatch, capsys):
+    # #901: guards.enforce = false records guard.would_refuse; the seat registers as before, so
+    # build next continues it when it stops (#892).
+    import io
+    import sys
+    from wuwei import brief
+    root, repo, path, day, _ = seat
+    set_enforce(root, False)
+    payload = {'cwd': str(root), 'session_id': 'planner', 'transcript_path': 'planner.jsonl',
+               'hook_event_name': 'PreToolUse', 'tool_name': 'Agent', 'tool_input': {
+                   'subagent_type': 'wuwei:builder', 'description': 'Build A',
+                   'prompt': brief.seat_action('builder', path, repo, root)['prompt']}}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    assert main(['hook', 'PreToolUse']) == 0, capsys.readouterr()
+    [logged] = [e['payload'] for e in events(day) if e['kind'] == 'guard.would_refuse']
+    assert logged['guard'] == 'agent_launch' and 'no build record for A' in logged['reason']
+    assert state.read_state(root)['seats']['builder']['status'] == 'running'
+
+
+def test_a_sentinel_launch_needs_no_build_record(seat):
+    # #901: only builders: the gate and other seats keep their own rules.
+    from wuwei import brief
+    root, repo, path, _, _ = seat
+    gate = path.with_name('arch.md')
+    gate.write_text('Review A')
+    state.append_event('brief written', {'name': 'arch', 'item': 'A', 'role': 'sentinel-arch',
+        'gate': True, 'path': str(gate.relative_to(root)), 'worktree': str(repo),
+        'head': 'a' * 40, 'sha256': hashlib.sha256(gate.read_bytes()).hexdigest()}, root)
+    state.transition('A', 'gate', root)
+    code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:sentinel-arch', 'description': 'Gate A',
+        'prompt': brief.seat_action('sentinel-arch', gate, repo, root)['prompt']}})
+    assert 'build record' not in reason
+
+
+def test_a_seat_built_item_whose_head_moves_after_its_checks_goes_back_to_them(seat):
+    # #901 review: every build records the head its checks passed on; no gate reads another
+    from wuwei import brief, dispatch
+    root, repo, _, _, results = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    registry.load('vcs', None).touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    state._write_state(lambda data: data['builds']['A'].update(start='c' * 40), root)
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert state.read_state(root)['builds']['A']['checked'] == 'a' * 40 and phase(root) == 'gate'
+    (repo / '.git/HEAD').write_text('b' * 40 + '\n')  # a commit by hand
+    state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A']), root)
+    with pytest.raises(brief.Refused, match='not the head its fast checks passed on'):
+        brief.gate_ready(state.read_state(root), 'A', 'b' * 40)
+    assert dispatch.next_step('A', root)['action'] == 'check'
+    assert state.read_state(root)['builds']['A']['status'] == 'check'

@@ -381,9 +381,15 @@ def seats(data):
     return records
 
 
-def gate_ready(data, item):
+def gate_ready(data, item, head=None):
+    """head (#901 review): the worktree HEAD the gate would read; it must be the head the item's
+    fast checks passed on."""
     if item not in data['items']:
         raise ValueError(f'unknown gate item: {item}')
+    checked = (data.get('builds', {}).get(item) or {}).get('checked')
+    if head and checked and head != checked:
+        raise Refused(f'{item} HEAD {head[:12]} is not the head its fast checks passed on ({checked[:12]}); '
+                      f'run bin/wuwei dispatch next {item}, which sends it back to its fast checks')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'delta', 'raised', 'merged'):
         raise Refused(f"gate brief while item phase is '{phase}'; finish the build loop first (wuwei build next {item} returns done)")
@@ -587,7 +593,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
         if gate:
-            gate_ready(data, item)
+            gate_ready(data, item, head)
         row = [value for key, value in data['gate_verdicts'].items()
                if key == item or value.get('item') == item or value.get('pr') in (item, pr) and value.get('pr')]
         header.append(f'Gate row: {json.dumps(row)}')
@@ -639,7 +645,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             def update(fresh):
                 nonlocal created
                 if gate:
-                    gate_ready(fresh, item)
+                    gate_ready(fresh, item, head)
                     fresh_changes = status(vcs, tree, root)
                     if fresh_changes:
                         raise Refused(('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in fresh_changes)

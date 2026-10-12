@@ -25,6 +25,13 @@ def check(payload):
     return importlib.import_module('wuwei.guards.agent_launch').check(payload)
 
 
+def recorded(root, item, name):
+    """#901: a builder launches on its build record: a ready launch of brief name for item."""
+    path = str((workspace.day_dir(root) / f'briefs/{name}.md').relative_to(root))
+    state._write_state(lambda data: data.setdefault('builds', {}).update({item: {
+        'brief': path, 'status': 'ready', 'action': {'action': 'launch'}}}), root)
+
+
 @pytest.mark.parametrize('case,code,hint', [
     ('clean', 0, ''), ('unlogged', 1, 'logged'), ('wrong-role', 1, 'role'),
     ('wrong-name', 1, 'name'), ('modified', 1, 'modified'), ('missing-file', 2, 'does not exist'),
@@ -239,6 +246,7 @@ def test_changed_head_refuses_launch(day, monkeypatch, role):
     from wuwei.guards import agent_launch
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     assert brief(monkeypatch, 'body', role, 'X', 'head', '--worktree', 'tree') == 0
+    recorded(day[0], 'X', 'head')
     day[2].results['head'] = registry.Result(0, {'sha': 'b' * 40})
     path = str((day[1] / 'briefs/head.md').relative_to(day[0]))
     code, message = check({'cwd': str(day[0]), 'tool_input': {
@@ -255,8 +263,9 @@ def test_concurrent_launches_reserve_once(day, monkeypatch, same_brief):
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     (day[0] / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 3\n')
     payloads = []
-    for name in ('one', 'two'):
-        assert brief(monkeypatch, 'body', 'builder', 'X', name) == 0
+    for item, name in (('X', 'one'), ('Y', 'two')):
+        assert brief(monkeypatch, 'body', 'builder', item, name) == 0
+        recorded(day[0], item, name)
         path = str((day[1] / f'briefs/{name}.md').relative_to(day[0]))
         payloads.append({'cwd': str(day[0]), 'tool_input': {
             'subagent_type': 'builder', 'prompt': 'WUWEI brief: ' + path, 'description': 'work'}})
@@ -314,6 +323,7 @@ def test_reserved_builder_blocks_gate_without_pid(day, monkeypatch):
     from wuwei.guards import agent_launch
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'build') == 0
+    recorded(day[0], 'X', 'build')
     path = str((day[1] / 'briefs/build.md').relative_to(day[0]))
     assert check({'cwd': str(day[0]), 'tool_input': {
         'subagent_type': 'builder', 'prompt': 'WUWEI brief: ' + path, 'description': 'work'}}) == (0, '')
@@ -456,6 +466,8 @@ def test_default_capacity_fits_builder_and_three_gates(day, monkeypatch):
                              ('sentinel-quality', 'X', 'quality'),
                              ('sentinel-security', 'X', 'security')]:
         assert brief(monkeypatch, 'body', role, item, name, '--worktree', 'tree') == 0
+        if role == 'builder':
+            recorded(root, item, name)
         relative = str((directory / f'briefs/{name}.md').relative_to(root))
         code, reason = check({'cwd': str(root), 'tool_input': {
             'subagent_type': role, 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
@@ -558,8 +570,9 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
     (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n')
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     state._write_state(lambda data: data.update(cap=1), root)
-    for name in ('one', 'two', 'three', 'four'):
-        assert brief(monkeypatch, 'body', 'builder', 'X', name) == 0
+    for item, name in (('X', 'one'), ('Y', 'two'), ('Z', 'three'), ('W', 'four')):
+        assert brief(monkeypatch, 'body', 'builder', item, name) == 0
+        recorded(root, item, name)
         relative = str((directory / f'briefs/{name}.md').relative_to(root))
         code, reason = check({'cwd': str(root), 'tool_input': {
             'subagent_type': 'builder', 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
@@ -575,6 +588,7 @@ def test_launch_ceiling_counts_only_live_registered_seats(day, monkeypatch):
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     set_seats({f'adhoc-{i}': {'item': f'adhoc-{i}', 'role': 'adhoc', 'status': 'running'} for i in range(3)}, root)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'one') == 0
+    recorded(root, 'X', 'one')
     relative = str((directory / 'briefs/one.md').relative_to(root))
     assert check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'builder', 'description': 'one', 'prompt': 'WUWEI brief: ' + relative}}) == (0, '')

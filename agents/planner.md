@@ -75,7 +75,7 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 2.4.1
+version: 2.5.0
 ---
 # Planner charter
 
@@ -88,6 +88,7 @@ Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` retur
 3. Admission after the gate: an item the owner names joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. With several repositories add `--repo <name>`. Add `--track FULL`, `--trust-surface`, `--boundary-relevant`, `--agent-surface` or `--governed-by <path>` when the owner names them. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. An item needs no ticket to start, build, pass its gates or raise its PR. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding` as a small item. When `wuwei next` lists a duty, write its content and run its record command.
 4. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec: `wuwei plan set <item> spec=skipped --reason <why>` asks the owner on its Owner step card.
 5. A command that refuses with an Owner step card: ask that card with AskUserQuestion as printed; on Yes run the same command again; on No leave it.
+6. A builder launches only with the prompt `wuwei build next <item>` returns; the launch guard refuses a builder with no build record. Work done outside the record (a branch, a worktree or a PR built by hand) comes back with `wuwei build reconcile <item> --worktree <path>`, or `--repo <name> --branch <branch>`, or `--pr <owner/repo#n>`. It registers the work as it is and runs the fast checks; the gates follow from `wuwei next`. Nothing done outside counts as tested or approved.
 
 ## What the planner records
 

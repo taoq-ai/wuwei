@@ -767,18 +767,24 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     return result
 
 
-def adopt_worktree(root, item, path, vcs):
-    """Register an existing clean linked worktree of a configured repository as the item's (#510)."""
+def adopt_worktree(root, item, path, vcs, dirty=False, repo=None):
+    """Register an existing clean linked worktree of a configured repository as the item's (#510).
+    #901, build reconcile: dirty registers uncommitted work as it is; repo refuses a worktree of
+    another repository."""
     from wuwei import commit_push
     from wuwei.registry import data
     from wuwei import state
 
     _require_gate(root)
     path = Path(path).resolve()
+    expected = repo
     try:
         repo, actual, _ = commit_push.context(path, {}, {}, root, identity=False)
     except ValueError as exc:
         raise state.StateError(f'{path} is not a worktree of a configured repository: {exc}') from exc
+    if expected and repo['name'] != expected:
+        raise state.StateError(f'{path} is a worktree of {repo["name"]}, not of {expected}, the repository '
+                               f'{item} is for; pass a worktree of {expected}')
     if actual['path'] == actual['common_dir']:
         raise state.StateError(f'{path} is the main checkout; run bin/wuwei worktree add {item} --branch <branch> '
                                f'--repo {repo["name"]} to check the branch out in its own worktree')
@@ -790,16 +796,18 @@ def adopt_worktree(root, item, path, vcs):
         top = max((top for top in tops if path.is_relative_to(top)), key=lambda top: len(top.parts), default=None)
         raise state.StateError(f'{path} is not a worktree root; rerun bin/wuwei worktree adopt '
                                f'{top or "<worktree root>"} --item {item}')
-    changes = brief.status(vcs, str(path), root)
-    if changes:
+    changes = [row['path'] for row in brief.status(vcs, str(path), root)]
+    if changes and not dirty:
         raise state.StateError(
-            'worktree has unrecorded changes: ' + ', '.join(row['path'] for row in changes)
+            'worktree has unrecorded changes: ' + ', '.join(changes)
             + f'; commit them, or run git -C {path} stash push --include-untracked, then rerun '
-            f'bin/wuwei worktree adopt {path} --item {item}')
+            f'bin/wuwei worktree adopt {path} --item {item}. To register the work as it is, run '
+            f'bin/wuwei build reconcile {item} --worktree {path}')
     state.record_worktree(root, item, path, None, check=True)
     _anchor(path, root, vcs, repo['identity'])
     head = data(vcs.head(str(path), root=root))['sha']
-    state.record_worktree(root, item, path, head)
+    if state.read_state(root)['items'][item].get('worktree') != str(path):  # #901: a rerun records nothing
+        state.record_worktree(root, item, path, head)
     return {'item': item, 'path': str(path), 'head': head}
 
 
