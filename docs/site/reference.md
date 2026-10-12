@@ -275,7 +275,7 @@ Every seat ends with three retro lines: `Blocked:`, `Gap:` and `Change:`. Write 
 
 It works before there is a workspace; the Workspace section then names where to run `init`. When `.wuwei/executable` names another install, doctor runs from that install so every copy prints the same rows.
 
-Each row is `ok`, `warn`, `fail`, `unmeasured` or `waiting` (a GitHub rate limit). Every row that is not ok prints `fix:` and `docs:`. Exit 1 when any row is warn or fail, else 2 when any is unmeasured or waiting, else 0. `--json` prints `{"exit", "rows"}`. `--section pr-flow` prints the PR flow rows from `config.toml` alone.
+Each row is `ok`, `warn`, `fail`, `unmeasured` or `waiting` (a GitHub rate limit). Doctor never waits for a rate limit to reset: it names the empty bucket and its reset and moves on. A clean branch protection read is kept for the day in `.wuwei/days/<date>/protection.json`, so later doctor and `config check` runs that day skip it; a read with findings is made again. `wuwei why` reads the day's records only and makes no network call. Every row that is not ok prints `fix:` and `docs:`. Exit 1 when any row is warn or fail, else 2 when any is unmeasured or waiting, else 0. `--json` prints `{"exit", "rows"}`. `--section pr-flow` prints the PR flow rows from `config.toml` alone.
 
 `bin/wuwei doctor --fix` applies only this allow list:
 

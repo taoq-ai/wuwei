@@ -584,21 +584,20 @@
   {
     "operation": "open_prs",
     "args": [
-      "acme/widget"
+      "acme/widget",
+      "builder"
     ],
     "steps": [
       {
         "argv": [
           "api",
-          "repos/acme/widget/pulls?per_page=100",
+          "search/issues?q=is%3Apr%20is%3Aopen%20repo%3Aacme%2Fwidget%20author%3Abuilder&per_page=100",
           "-H",
           "Cache-Control: no-cache",
-          "--paginate",
-          "--slurp",
           "--hostname",
           "github.com"
         ],
-        "stdout": "[[{\"number\": 12, \"title\": \"Add a cache\", \"user\": {\"login\": \"builder\", \"type\": \"User\"}}, {\"number\": 13, \"title\": \"Bump deps\", \"user\": {\"login\": \"renovate[bot]\", \"type\": \"Bot\"}}], []]"
+        "stdout": "{\"total_count\": 1, \"incomplete_results\": false, \"items\": [{\"number\": 12, \"title\": \"Add a cache\", \"user\": {\"login\": \"builder\", \"type\": \"User\"}, \"pull_request\": {\"url\": \"https://api.github.com/repos/acme/widget/pulls/12\"}}]}"
       }
     ],
     "data": [
@@ -606,11 +605,6 @@
         "number": 12,
         "title": "Add a cache",
         "author": "builder"
-      },
-      {
-        "number": 13,
-        "title": "Bump deps",
-        "author": "renovate[bot]"
       }
     ]
   },

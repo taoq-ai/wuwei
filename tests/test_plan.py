@@ -484,7 +484,9 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     load = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
     text = plan.propose(proposal(), root).read_text()
-    assert ('open_prs', ('acme/widget',), root) in host.calls
+    # #867: one server-side search per repository and owner login, never the whole repository
+    assert [call for call in host.calls if call[0] == 'open_prs'] == [
+        ('open_prs', ('acme/widget', 'builder'), root)]  # U1 is a chat ID, never searched
     assert '- open-prs: measured: 1 open PR by the owner\n' in text
     assert '## Open PRs to claim\n- PR-12: acme/widget#12 Add a cache (claimed under G-1)\n' in text
     assert 'PR-13' not in text
@@ -501,6 +503,31 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     assert plan._owner_prs(workspace.load_config(root), root, []) == (
         [], 'unmeasured: github.open_prs: could not run')
 
+
+
+def test_owner_pr_search_skips_handles_that_are_not_github_logins(root, monkeypatch):
+    # #867 F1: GitHub search answers 422 for a user that does not exist; a chat ID or a handle
+    # GitHub cannot hold never reaches it, and the owner's code host login is always searched.
+    from fakes.code_host import Fake
+    from wuwei import workspace
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nhandles = ["U07ABC123", "W1", "Builder", "ada.lovelace", "u_x"]\n'
+        '[outbound.owner]\ncode_host = "Leone"\n'
+        '[[repos]]\nname = "acme/widget"\npath = "."\ndefault_branch = "main"\n')
+    host = Fake()
+    real = host.open_prs
+
+    def open_prs(repo, author, root=None):
+        if author not in ('builder', 'leone'):
+            host.calls.append(('open_prs', (repo, author), root))
+            return registry.Result(2, None, 'github.open_prs: could not run: gh exited 1 (search)')
+        return real(repo, author, root=root)
+    host.open_prs = open_prs
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
+    rows, sweep = plan._owner_prs(workspace.load_config(root), root, [])
+    assert [call[1][1] for call in host.calls] == ['builder', 'leone']
+    assert [row['id'] for row in rows] == ['PR-12'] and sweep == 'measured: 1 open PR by the owner'
 
 def test_one_pr_number_in_two_repositories_gives_two_ids(root, monkeypatch):
     # #603 review: with two repositories the claim id names the repository, so approve takes both.

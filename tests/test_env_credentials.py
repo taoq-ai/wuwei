@@ -507,13 +507,14 @@ def test_required_checks_lists_names(host, case, capsys):
     (case / '.wuwei/config.toml').write_text(
         '[adapters]\ncode_host="none"\n' + REPO + 'review_required_checks = ["unit"]\n')
     security, unit = {'name': 'Security', 'app_id': None}, {'name': 'unit', 'app_id': None}
-    host.results['protection'] = protected(required_checks=[unit, security])
-    assert main(['config', 'check']) == 0
-    assert 'required checks: ok (Security, unit)' in capsys.readouterr().out
     host.results['protection'] = protected(required_checks=[security])
     assert main(['config', 'check']) == 1
     assert ('required checks: missing (require status checks on main: unit; required now: Security)'
             in capsys.readouterr().out)
+    # #867: a read with findings is not kept, so the fixed branch shows on the next check.
+    host.results['protection'] = protected(required_checks=[unit, security])
+    assert main(['config', 'check']) == 0
+    assert 'required checks: ok (Security, unit)' in capsys.readouterr().out
 
 
 def test_missing_reviews_names_the_review_gate_check(host, capsys):

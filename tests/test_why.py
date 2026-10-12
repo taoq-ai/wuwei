@@ -123,6 +123,23 @@ def test_item_chain_lists_every_recorded_step(root, capsys):
     assert why(capsys, 'fix-login') == (0, BRIEF, '')
 
 
+
+@pytest.mark.parametrize('target', [['fix-login'], ['acme/app#7'], ['fix-login', '--json'], ['last refusal']])
+def test_why_reads_local_records_only(root, capsys, monkeypatch, target):
+    # #867: a seat runs why at start and before handoff; it never reaches a port or a process.
+    import subprocess
+    from wuwei import registry
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('why called the network')
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "github"\ntracker = "github"\n')
+    merged_item(root)
+    monkeypatch.setattr(registry, 'load', refuse)
+    monkeypatch.setattr(subprocess, 'run', refuse)
+    monkeypatch.setattr(subprocess, 'Popen', refuse)
+    code, lines, err = why(capsys, *target)
+    assert code == (1 if target == ['last refusal'] else 0) and 'network' not in err
+
 def test_item_chain_names_where_the_worktree_started(root, capsys):
     # #681: the worktree.created event records the fetched start commit.
     merged_item(root)
