@@ -213,7 +213,7 @@ def _gate(root, data, config, name):
         results[role]['verdict'] == 'FIX' if round_name == 'initial' else results[role]['blocks'])]
     if not blocking:
         return 'raise', 'every gate passed at the current head'
-    if dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+    if dispatch.capped(root, config, data, name):  # #904: the owner's resume grants one round
         return 'owner', f'round cap reached: {blocking[0]} still blocks'
     resumed = dispatch._resumed(root, name)
     if any(results[role]['verdict'] == 'PARK' for role in asked) and not resumed:
@@ -247,7 +247,7 @@ def offers(data, root, config, merges=None):
     items in plan order. A launch is {kind, item, command, why}; the decision the first owner
     decision in plan order; parks the items a PARK verdict or the owner's No parks in code
     (wuwei next records them); rows one status row per open item, runnable first, PRs last."""
-    from wuwei import dispatch
+    from wuwei import dispatch, merge
     from wuwei.commands.next import TERMINAL, approved
     merges = merges or {}
     found = listing(workspace.day_dir(root))
@@ -339,14 +339,13 @@ def offers(data, root, config, merges=None):
             waiting.append({'state': 'pr', 'item': name, 'command': f'wuwei pr act {pr}'})
             checks = (pull or {}).get('checks')
             checks = 'green' if checks == 'none' else checks  # G3: no CI; merge.check holds the policy
-            owner = row.get('owner_merge') or 'owner-merge' in ((pull or {}).get('labels') or ())
+            owner = merge.owner_hold(row) or 'owner-merge' in ((pull or {}).get('labels') or ())
             blocked, held = merges.get(pr) or (None, None)
             at = repo.get('at') or listing_at  # #907: the time its repository was read
             fetched = when(at) if at else None
             claimed = pr in data.get('claimed_prs', ()) and bool(row.get('worktree'))  # #879
             if pull is not None and moved(root, data, name, pull.get('head')):  # F1: re-read first
-                if (dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row)
-                        and not dispatch._resumed(root, name)):  # D3: the owner's resume grants one round
+                if dispatch.capped(root, config, data, name):  # D3: the owner's resume grants one round
                     ask(name, f'PR {pr} head moved past its verdicts at the round cap.', f'wuwei dispatch next {name}')
                 else:
                     launch('fix', name, f'wuwei dispatch next {name}',
@@ -355,7 +354,7 @@ def offers(data, root, config, merges=None):
                 ask(name, f'the merge of {pr} is yours to decide.', f'wuwei merge {pr}')
             elif pull is None:
                 launch('pr', name, f'wuwei pr act {pr}', f'{name}: PR {pr} is not in the listing yet.')
-            elif checks == 'red' and dispatch.rounds_used(data, name) >= dispatch.max_rounds(config, row):
+            elif checks == 'red' and dispatch.capped(root, config, data, name):
                 ask(name, f'PR {pr} checks are red at the round cap.', f'wuwei pr act {pr}')
             elif checks == 'red':
                 launch('fix', name, f'wuwei pr act {pr}', f'{name}: PR {pr} checks are red.')

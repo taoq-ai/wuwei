@@ -399,6 +399,13 @@ def rounds_used(data, item):
     return max(used, int(data['items'][item]['phase'] == 'delta'))
 
 
+def capped(root, config, data, item):
+    """The item's round cap when its rounds are spent, else None. D3, #904: the owner's resume
+    after the park grants one more round, spent when that round opens (build.fix_opened)."""
+    cap = max_rounds(config, data['items'][item])
+    return cap if rounds_used(data, item) >= cap and not _resumed(root, item) else None
+
+
 def rotate(data, item, used):
     """#623: the next round answers each gate's delta verdict, so it becomes the gate's initial
     record and the record it replaces is kept as round<used>. Every verdict reader keeps
@@ -596,13 +603,15 @@ PARKS = 'The item parks.'
 
 def _resumed(root, item):
     """True when the owner resumed the item after its last park and no fix round has opened
-    since: the resume is the owner's Yes to the verdict that parked it."""
+    since: the resume is the owner's Yes to the verdict that parked it. #904: a build check
+    answers the resume of a build park, so it ends the grant too."""
     from wuwei import watch
+    ends = ('plan.disposed', 'build.fix_opened', 'build.checked')
     last = {}
     for number, row in enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl')):
-        if row['payload'].get('item') == item and row['kind'] in ('plan.resumed', 'plan.disposed', 'build.fix_opened'):
+        if row['payload'].get('item') == item and row['kind'] in ('plan.resumed', *ends):
             last[row['kind']] = number
-    return last.get('plan.resumed', -1) > max(last.get('plan.disposed', -1), last.get('build.fix_opened', -1))
+    return last.get('plan.resumed', -1) > max(last.get(kind, -1) for kind in ends)
 
 
 def _blocked(root, data, item):
@@ -650,16 +659,13 @@ def next_step(item, root=None):
     if phase == 'raised' and row.get('pr'):  # F1: a rebase or a push moved the PR past its verdicts
         pull = derive.listing(workspace.day_dir(root))['pulls'].get(row['pr']) or {}
         if moved := derive.moved(root, data, item, pull.get('head')):
-            cap = max_rounds(workspace.load_config(root), row)
-            granted = _resumed(root, item)  # D3: the owner's Yes on plan resume grants one re-read round
-            if rounds_used(data, item) >= cap and not granted:
+            if cap := capped(root, workspace.load_config(root), data, item):
                 return _parked(root, item, f"round cap {cap} reached: PR {row['pr']} head moved to "
                                f'{moved[:12]} past its verdicts')
             from wuwei.commands import build
             build.open_fix(item, f'The PR head moved to {moved[:12]} outside a fix round (a rebase or a '
                            'push). Bring the worktree to that head, rerun the fast checks there and change '
-                           'nothing else unless they fail; every gate then re-reads it.', root=root, start=moved,
-                           granted=granted)
+                           'nothing else unless they fail; every gate then re-reads it.', root=root, start=moved)
             return _fix(item, [])
     if phase in ('gate', 'delta') and (tree := derive.gone(root, row)):  # F5
         raise Refused(f'{item} worktree {tree} is gone or its HEAD unreadable; no verdict counts there; '
@@ -744,8 +750,7 @@ def next_step(item, root=None):
                 return {'action': 'polish', **offer, 'command': 'wuwei dispatch polish ' + shlex.quote(item),
                         'skip': 'wuwei dispatch skip-polish ' + shlex.quote(item)}
         return raise_action(root, data, item, [note for result in results.values() for note in result['notes']])
-    cap = max_rounds(config, row)
-    if rounds_used(data, item) >= cap:  # #623: a park with its finding at the cap
+    if cap := capped(root, config, data, item):  # #623: a park with its finding at the cap
         findings = results[blocking[0]]['findings']
         finding = next((text for text in findings if re.search(verdict.BLOCKS_YES, text, re.I)),
                        (findings or ['none'])[0])

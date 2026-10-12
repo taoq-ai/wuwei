@@ -2295,7 +2295,16 @@ def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root, monk
     owner.answer_card(root, capsys.readouterr().err)
     assert main(['plan', 'resume', 'A']) == 0
     assert state.read_state(root)['items']['A']['phase'] == 'delta'
-    assert dispatch.next_step('A', root)['command'] == 'wuwei plan resume A'  # no round past the cap
+    # #904: the owner's Yes grants one more round (docs/site/concepts.md, Fix rounds), once;
+    # review F2: next offers that round too, not the cap card again
+    from wuwei import derive
+    assert derive._gate(root, state.read_state(root), workspace.load_config(root), 'A')[0] == 'fix'
+    assert dispatch.next_step('A', root) == _fix_action(['security'])
+    assert len(fix_events(root)) == 3
+    state.transition('A', 'delta', root)
+    record(root, 'security', 'security-1', TRUST.replace('abc1234', 'fedcba9'), 'delta', head='fedcba9' + '0' * 33)
+    assert dispatch.next_step('A', root)['command'] == 'wuwei plan resume A'  # the grant is spent
+    assert len(fix_events(root)) == 3
 
 
 def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
@@ -3337,6 +3346,21 @@ def test_a_new_park_after_the_resumed_round_parks_again(root, monkeypatch, capsy
     state.transition('A', 'delta', root)
     record(root, 'quality', 'quality-2', PARKS.replace('abc1234', 'def5678'), 'delta', head='def5678' + '0' * 33)
     assert dispatch.next_step('A', root)['action'] == 'parked'
+
+
+@pytest.mark.parametrize('verdict', ['PARK', 'ESCALATE'])
+def test_a_build_park_resume_spent_by_its_check_grants_nothing_at_the_gates(root, monkeypatch, verdict):
+    # #904 review F1: the owner resumed a build park and the build check answered it; a PARK
+    # verdict at the gates parks, and an ESCALATE asks its card, as with no resume at all.
+    from wuwei import dispatch
+    state.append_event('plan.resumed', {'item': 'A'}, root)
+    state.append_event('build.checked', {'item': 'A', 'passed': 1, 'failed': 0}, root)
+    blocked(root, monkeypatch, quality=PARKS if verdict == 'PARK' else ESCALATE)
+    found = dispatch.next_step('A', root)
+    if verdict == 'PARK':
+        assert found['action'] == 'parked' and state.read_state(root)['items']['A']['phase'] == 'parked'
+    else:
+        assert found['action'] == 'escalate' and 'card' in found
 
 
 def builder_says(root, blocked_line):

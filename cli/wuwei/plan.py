@@ -729,11 +729,21 @@ def resume(item, root=None):
     from wuwei.commands import build
     record = data.get('builds', {}).get(item) or {}
     end = derive.head(record['worktree']) if record.get('worktree') else None
+    # #904: a parked build moves on with the item: an environment park rechecks, any other
+    # park continues the builder once; an unchanged failure parks again
+    parked = (record.get('action') or {}).get('reason', '') if record.get('status') == 'parked' else None
+    if parked is not None:
+        parked = ({'status': 'check', 'action': build.recheck(item, record)} if parked.startswith('environment:')
+                  else {'status': 'ready', 'action': build._continue(root, record, (
+                      f'The owner resumed {item} after its park: {parked}. Run the fast checks, fix what '
+                      'fails and commit.'))})
 
     def update(fresh):
         current = fresh['items'][item]
-        if current['phase'] != row['phase']:
+        if current['phase'] != row['phase'] or (parked and fresh['builds'][item] != record):
             raise state.StateError(f'{item} changed during plan resume; run bin/wuwei plan resume {item} again')
+        if parked:
+            fresh['builds'][item] = {**record, **parked}
         after = build.AFTER.get(current['resume_phase'])
         current.update(phase=current['resume_phase'], status='queued')
         if after and (fresh.get('builds', {}).get(item) or {}).get('status') == 'done':

@@ -78,7 +78,8 @@ def test_stuck_after_three_same_failures(tmp_path, monkeypatch):
     assert not list((day / 'decisions').glob('D-*.md'))
 
 
-def test_environment_failure_parks_after_first_check_without_feedback(tmp_path, monkeypatch):
+def test_environment_failure_holds_after_first_check_without_feedback(tmp_path, monkeypatch):
+    # #904: a hold with a recheck action; the loop stops for the repair, the item does not park.
     from wuwei.commands import build
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [
         registry.Result(1, {'test_ids': [], 'error': 'No module named pytest',
@@ -86,8 +87,9 @@ def test_environment_failure_parks_after_first_check_without_feedback(tmp_path, 
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
     record = state.read_state(tmp_path)['builds']['A']
     assert record['iteration'] == 1
-    assert record['action']['action'] == 'park'
-    assert record['action']['reason'] == 'environment: pytest not found'
+    assert (record['status'], record['action']['action']) == ('check', 'check')
+    assert record['action']['reason'].startswith('environment: pytest not found')
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'implement'
     assert runtime.calls == [('dispatch', str(brief))]
     assert not any(event['kind'] == 'build.checked' for event in events(day))
 

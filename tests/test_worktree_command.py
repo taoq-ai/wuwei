@@ -576,8 +576,9 @@ def test_a_moved_claimed_pr_at_the_round_cap_parks_for_the_owner(tmp_path, monke
     monkeypatch.setattr(sessions, 'needs_owner', lambda *args, **kwargs: None)
     plan.resume('PR-7', root)
     opened = []
-    monkeypatch.setattr(build, 'open_fix', lambda item, feedback, root, granted=False:
-                        opened.append(granted) or {'action': 'continue'})
+    from wuwei import dispatch  # #904: open_fix reads the grant itself and spends it
+    monkeypatch.setattr(build, 'open_fix', lambda item, feedback, root:
+                        opened.append(dispatch._resumed(root, item)) or {'action': 'continue'})
     assert main(['pr', 'act', 'acme/widget#7', '--push']) == 1
     assert opened == [True] and pushed == [] and state.read_state(root)['items']['PR-7']['phase'] == 'gate'
 

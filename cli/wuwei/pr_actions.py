@@ -378,15 +378,14 @@ def _gated_push(root, ref, item, tree):
         # H1: a teammate pushed after the round started; the lease would overwrite it. Merge it first.
         from wuwei import dispatch
         from wuwei.commands import build
-        cap, granted = dispatch.max_rounds(config, data['items'][item]), dispatch._resumed(root, item)
-        if dispatch.rounds_used(data, item) >= cap and not granted:  # J1, K1: the owner's resume grants one
+        if cap := dispatch.capped(root, config, data, item):  # J1, K1: the owner's resume grants one
             reason = f'round cap {cap} reached: PR {ref} moved to {pr["head"][:12]} again'
             dispatch._parked(root, item, reason)
             print(f'{ref}: {reason}; nothing is pushed; {item} parks and the owner decides on the Owner '
                   f'step card of bin/wuwei plan resume {item}')
             return 1
         action = build.open_fix(item, _merge_feedback(root, ref, f'PR {ref} moved to {pr["head"][:12]} '
-                                                      'while this round ran.', pr['branch']), root=root, granted=granted)
+                                                      'while this round ran.', pr['branch']), root=root)
         print(f'{ref}: the PR moved to {pr["head"][:12]}, which this worktree does not contain; nothing '
               f'is pushed. A fix round merges it, the gates read it, then pr act --push:')
         print(json.dumps(action, sort_keys=True))
@@ -513,8 +512,7 @@ def _fix_round(root, ref, item, tree, measured, feedback=None):
         return 1, action
     if row['phase'] == 'implement':  # #879: the claimed round in flight answers its current step
         return 1, build.next_action(item, root=root)
-    cap = dispatch.max_rounds(workspace.load_config(root), row)
-    if dispatch.rounds_used(data, item) >= cap:  # #844: the owner decides on plan resume's card
+    if cap := dispatch.capped(root, workspace.load_config(root), data, item):  # #844: the owner decides on plan resume's card
         reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
         dispatch._parked(root, item, reason)
         return 1, (f'{ref}: {reason}; {item} parks and the owner decides on the Owner step card of '
