@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.29.0](https://github.com/taoq-ai/wuwei/compare/v0.28.0...v0.29.0) (2026-10-12)
+
+
+### Features
+
+* **budget:** seats and pauses follow each runtime's usage window, not the day; next waits for the reset instead of stopping ([#874](https://github.com/taoq-ai/wuwei/issues/874)) ([4cb3164](https://github.com/taoq-ai/wuwei/commit/4cb3164d02a7954fbc761ce160c8ad888ea28ab5))
+
+
+### Bug Fixes
+
+* **cli:** why reads local state only, doctor caps its network probes, PR listing searches the owner's PRs, and a rate limit names its own bucket ([#885](https://github.com/taoq-ai/wuwei/issues/885)) ([5d7e4f5](https://github.com/taoq-ai/wuwei/commit/5d7e4f5eee93538ed1b518b5a44bd1b695d9be05))
+* **plan:** governed_by resolves to a file or is refused, a stuck item never holds a CAP seat, and plan add takes repo, track, governed_by and flags ([#881](https://github.com/taoq-ai/wuwei/issues/881)) ([9491769](https://github.com/taoq-ai/wuwei/commit/9491769d3c670e7aa3fc05be222495cad71b8c22))
+* **pr:** pr claim on a remote-only PR creates its worktree, and a claimed PR's fix rounds are gated before a fast-forward push ([#888](https://github.com/taoq-ai/wuwei/issues/888)) ([1bfeec2](https://github.com/taoq-ai/wuwei/commit/1bfeec2746f386ecf7f87f80dcfae37540cdf9c3))
+* **resume:** a resumed item whose build finished goes to its gates, not stuck in implement ([#876](https://github.com/taoq-ai/wuwei/issues/876)) ([06d8815](https://github.com/taoq-ai/wuwei/commit/06d881561e82ad3222cafe087c2f3b2a073fbe5b))
+* **scanner:** the normal builder loop (Edit, Bash, Write in its own worktree) is not a critical chain that parks every item ([#880](https://github.com/taoq-ai/wuwei/issues/880)) ([0be0450](https://github.com/taoq-ai/wuwei/commit/0be0450730702a00df003e1a1211f70facacbaf1))
+* **security:** a seat's honeytoken read parks its item and holds the close ([#882](https://github.com/taoq-ai/wuwei/issues/882)) ([568f00d](https://github.com/taoq-ai/wuwei/commit/568f00d7286ff301f9b245d9335e658ee965ce3e))
+
 ## [0.28.0](https://github.com/taoq-ai/wuwei/compare/v0.27.0...v0.28.0) (2026-10-12)
 
 
