@@ -39,7 +39,7 @@ FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'protect_state', 'edges.ch
 # refusals (next never offers a launch past CAP).
 LOG_ONLY = frozenset({'outward', 'protect_state.check_scratch', 'traces'})
 # Launch refusal text that only logs: CAP, the host seat ceiling, free memory.
-CAPACITY = ('running build seats', 'host seat ceiling', 'free memory')
+CAPACITY = ('build slots', 'host seat ceiling', 'free memory')
 # The missing-reviewer refusal names its ways out.
 REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
                      "bin/wuwei config set shepherd.reviewers '[\"login\"]'")

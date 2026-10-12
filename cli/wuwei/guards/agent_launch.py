@@ -289,12 +289,14 @@ def _check(payload):
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         event.update(free_mib=available // 2**20, running=len(running))
         live = brief.live(data)  # #898: adhoc and handed-back seats hold no slot
-        builders = sum(seat['role'] == 'builder' for seat in live)
         from wuwei.dispatch import host  # lazy: hook path (#346); #528: derived at launch
+        from wuwei.commands.next import building, slot  # #910: the launch set's build slot count
         limits = host(root, config, running=len(live), free=available // 2**20,
                                 policy=data['seat_policy'])
-        if role == 'builder' and builders >= limits['cap']:
-            raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
+        if role == 'builder' and not slot(data, logged['item'], cap := limits['cap']):
+            holders = building(data)
+            raise brief.Refused(f'build slots {len(holders)} at CAP {cap}: held by {", ".join(holders[:cap])}; '
+                                'wait for a build to hand off, then retry' + stale_note)
         if len(live) >= limits['seats']:
             raise brief.Refused(f'running seats {len(live)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
         data['seats'][logged['name']] = {

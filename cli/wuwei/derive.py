@@ -263,7 +263,7 @@ def offers(data, root, config, merges=None):
     decision in plan order; parks the items a PARK verdict or the owner's No parks in code
     (wuwei next records them); rows one status row per open item, runnable first, PRs last."""
     from wuwei import dispatch, merge
-    from wuwei.commands.next import TERMINAL, approved
+    from wuwei.commands.next import TERMINAL, approved, building
     merges = merges or {}
     found = listing(workspace.day_dir(root))
     pulls, listing_at = found['pulls'], found['fetched_at']
@@ -273,8 +273,7 @@ def offers(data, root, config, merges=None):
     merged = {name for name, row in items.items() if row['phase'] == 'merged'
               or (pulls.get(row.get('pr')) or {}).get('state') == 'merged'}
     shepherds = {duty['item'] for duty in duties(root, config, data=data) if duty['duty'] == 'shepherd'}
-    free = data['cap'] - sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name)
-                             for name in names)
+    free = data['cap'] - len(building(data))
     launches, parks, rows, waiting = [], [], [], []
     decision = None
 

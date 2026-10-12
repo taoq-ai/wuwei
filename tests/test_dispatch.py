@@ -1915,16 +1915,125 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
             if row['action'] == 'start'] == ['P1', 'P2']
 
 
-def test_launch_set_keeps_an_items_gate_seats_together(day_set):
+def test_launch_set_launches_the_gate_seats_that_fit(day_set):
+    # #910: three gate seats on two host seats: two launch, one waits; no planned item starts
     from wuwei import dispatch
     root, _ = day_set
     (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 2\n')
     entries = dispatch.launch_set(root)['entries']
-    assert entries[0]['item'] == 'G' and entries[0]['action'] == 'wait'
-    assert 'host.seats' in entries[0]['reason'] and 'seats' not in entries[0]
-    # a waiting gate goes before new builds: no planned item starts in its seats
-    assert [row['action'] for row in entries[1:4]] == ['launch', 'wait', 'wait']
-    assert 'gate' in entries[2]['reason']
+    assert (entries[0]['item'], entries[0]['action'], entries[0]['deferred']) == ('G', 'gates', 1)
+    assert len(entries[0]['seats']) == 2 and 'host.seats=2' in entries[0]['reason']
+    assert entries[1]['item'] == 'B' and entries[1]['action'] == 'wait' and 'host.seats=2' in entries[1]['reason']
+    assert [row['action'] for row in entries[2:]] == ['wait'] * 4 and 'gate' in entries[2]['reason']
+
+
+def test_launch_set_waits_a_gate_set_when_no_seat_fits(day_set):
+    from wuwei import dispatch
+    root, _ = day_set
+    state._write_state(lambda data: data['seats'].update({f's{i}': {
+        'item': 'B', 'role': 'builder', 'status': 'running', 'brief': f'{i}.md'} for i in range(2)}), root)
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 2\n')
+    entry = dispatch.launch_set(root)['entries'][0]
+    assert (entry['item'], entry['action']) == ('G', 'wait') and 'seats' not in entry
+    assert 'host.seats=2' in entry['reason']
+
+
+def opinion_windows(monkeypatch, codex):
+    from wuwei import dispatch
+    reset = '2026-09-29T14:00:00+00:00'
+    monkeypatch.setattr(dispatch, 'windows', lambda root, config, names: {name: (
+        {'room': codex, 'text': f'codex five_hour room {codex}', 'until': reset} if name == 'codex'
+        else {'room': None, 'text': '', 'until': None}) for name in names})
+
+
+@pytest.mark.parametrize('seats,codex,launched,deferred', [
+    (8, 0, ['claude'] * 3, 1), (8, 1, ['claude'] * 3 + ['codex'], None), (2, 0, ['claude'] * 2, 2)])
+def test_a_second_opinion_on_a_spent_runtime_waits_alone(day_set, monkeypatch, seats, codex, launched, deferred):
+    # #910, #845: the second opinion takes its own runtime's window room; the sentinels launch
+    from wuwei import dispatch
+    root, _ = day_set
+    (root / '.wuwei/config.toml').write_text(f'cap = 3\n[host]\nseats = {seats}\n[gates]\nsecond_opinion = "codex:m1"\n')
+    opinion_windows(monkeypatch, codex)
+    gate = {'action': 'gates', 'roles': [*dispatch.ROLES, 'quality@codex'], 'seats': [
+        *({'action': 'launch', 'runtime': 'claude', 'agent_type': f'wuwei:sentinel-{role}'} for role in dispatch.ROLES),
+        {'action': 'run', 'gate': 'quality@codex', 'runtime': 'codex', 'model': 'm1',
+         'command': 'wuwei dispatch opinion G'}]}
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: gate)
+    entry = dispatch.launch_set(root)['entries'][0]
+    assert entry['action'] == 'gates' and [seat['runtime'] for seat in entry['seats']] == launched
+    assert entry.get('deferred') == deferred
+    if deferred and seats == 8:
+        assert 'codex' in entry['reason'] and 'claude' not in entry['reason']
+
+
+def test_a_spent_window_waits_a_gate_set_with_its_reset(day_set, monkeypatch):
+    from wuwei import dispatch
+    root, _ = day_set
+    opinion_windows(monkeypatch, 0)
+    gate = {'action': 'gates', 'roles': ['quality@codex'], 'seats': [{
+        'action': 'run', 'gate': 'quality@codex', 'runtime': 'codex', 'model': 'm1',
+        'command': 'wuwei dispatch opinion G'}]}
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: gate)
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n[gates]\nsecond_opinion = "codex:m1"\n')
+    entry = dispatch.launch_set(root)['entries'][0]
+    assert (entry['action'], entry['until']) == ('wait', '2026-09-29T14:00:00+00:00') and 'codex' in entry['reason']
+
+
+def test_a_stopped_builder_keeps_its_slot_and_a_fix_round_past_cap_waits(day_set, monkeypatch):
+    # #910: one count of build slots: B (stopped, awaiting checks) holds CAP 1 in plan order;
+    # R's fix round waits for it, as the launch guard would refuse it; no planned item starts
+    from wuwei import dispatch
+    from wuwei.commands import build
+    root, calls = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 8\n')
+    state._write_state(lambda data: (data['items']['R'].update(phase='fix'), data['seats'].update(b={
+        'item': 'B', 'role': 'builder', 'status': 'stopped', 'brief': 'b.md'})), root)
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    assert entries['B']['action'] == 'launch'
+    assert entries['R']['action'] == 'wait' and 'CAP 1' in entries['R']['reason']
+    assert all(entries[name]['action'] == 'wait' and 'CAP 1' in entries[name]['reason']
+               for name in ('P1', 'P2', 'P3', 'P4'))
+    # a build step that launches no seat (its fast checks) is never held by CAP
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None, runtime=None: {
+        'action': 'check', 'commands': ['make check']})
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    assert entries['R']['action'] == 'check'
+
+
+def test_a_fix_round_opened_in_the_sweep_takes_its_build_slot(day_set, monkeypatch):
+    # #910 review F2: G's FIX opens its fix round during this sweep; the count after it is fresh,
+    # so G and B hold CAP 2 and no planned item starts past it
+    from wuwei import derive, dispatch
+    root, _ = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 2\n[host]\nseats = 8\n')
+    offers = derive.offers
+    monkeypatch.setattr(derive, 'offers', lambda data, root, config, merges=None: {**(found := offers(
+        data, root, config, merges)), 'launches': [{**row, 'kind': 'fix'} if row['item'] == 'G' else row
+                                                   for row in found['launches']]})
+
+    def opens(item, root=None):
+        state._write_state(lambda data: data['items'][item].update(phase='fix'), root)
+        return {'action': 'launch', 'agent_type': 'wuwei:builder'}
+    monkeypatch.setattr(dispatch, 'next_step', opens)
+    entries = dispatch.launch_set(root)['entries']
+    assert [row['item'] for row in entries if row['action'] in ('launch', 'start')] == ['G', 'B']
+    assert all('CAP 2' in row['reason'] for row in entries if row['item'].startswith('P'))
+
+
+def test_a_running_gate_batch_holds_new_builds_until_its_set_launches(day_set):
+    # #910 review F3: G's first two gate seats ran (one still running); its third is not launched,
+    # so the seat it frees goes to the gate, not to a new planned build
+    from wuwei import dispatch
+    root, _ = day_set
+    state._write_state(lambda data: data['seats'].update({
+        'arch-G': {'item': 'G', 'role': 'sentinel-arch', 'status': 'running', 'brief': 'a.md'},
+        'quality-G': {'item': 'G', 'role': 'sentinel-quality', 'status': 'stopped', 'brief': 'q.md'}}), root)
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    assert 'G' not in entries
+    assert all(entries[name]['action'] == 'wait' and 'gate' in entries[name]['reason'] for name in ('P1', 'P3'))
+    state._write_state(lambda data: data['seats'].update({
+        'security-G': {'item': 'G', 'role': 'sentinel-security', 'status': 'running', 'brief': 's.md'}}), root)
+    assert [row['action'] for row in dispatch.launch_set(root)['entries'] if row['item'] in ('P1', 'P3')] == ['start'] * 2
 
 
 def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_set):
@@ -2071,7 +2180,7 @@ def test_a_park_runs_without_free_seats(day_set):
         f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in ('code', 'paper')))
     (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [{'id': 'P1'}]}))
     entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
-    assert entries['G']['action'] == 'wait'
+    assert entries['G']['deferred'] == 2 and entries['B']['action'] == 'wait'  # #910: one gate seat fits
     assert entries['P1']['action'] == 'park'
     assert entries['P1']['commands'][0].startswith('wuwei plan park P1 --reason ')
 

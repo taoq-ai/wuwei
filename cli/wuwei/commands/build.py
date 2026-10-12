@@ -286,9 +286,8 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     if record is None and data['items'][item]['phase'] == 'planned' and data['cap_bound']:
         # #901: a new build takes a CAP slot, as wuwei next counts it; the launch guard sends a
         # builder with no build record here, so past CAP this waits instead of starting one
-        from wuwei.commands.next import approved
-        building = sum(data['items'][name]['phase'] in state.BUILD_PHASES and not state.held(data, name)
-                       for name in approved(data))
+        from wuwei.commands.next import building as holders
+        building = len(holders(data))
         if building >= data['cap']:
             raise ValueError(f'CAP {data["cap"]} reached ({building} building); wait for a build to finish, '
                              f'then run bin/wuwei build next {item} (bin/wuwei next names the seat expected to free first)')
