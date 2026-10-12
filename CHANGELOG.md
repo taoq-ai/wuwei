@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.29.1](https://github.com/taoq-ai/wuwei/compare/v0.29.0...v0.29.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **github:** a rate-limit refusal names the bucket from rate_limit, says secondary only when GitHub does, and names both readings when they disagree ([#893](https://github.com/taoq-ai/wuwei/issues/893)) ([7314a62](https://github.com/taoq-ai/wuwei/commit/7314a6246ee8893b1645387e5690d258ea4bddf3))
+* **runtime:** Codex seats start one at a time, surface their error, deliver their verdict and commit their build; second opinion is selective ([#890](https://github.com/taoq-ai/wuwei/issues/890)) ([6e2798a](https://github.com/taoq-ai/wuwei/commit/6e2798a033c53f9eb0f9f66deb6828d2f86abeee))
+* **scanner:** ZIRAN runs once per repo per HEAD per day, its normal output is measured, a resumed item is not re-parked, close asks one card, and the S4 gate reads the item's own changes ([#895](https://github.com/taoq-ai/wuwei/issues/895)) ([86ebea0](https://github.com/taoq-ai/wuwei/commit/86ebea012b1bfc180862cd4c50e8064d51776677))
+
 ## [0.29.0](https://github.com/taoq-ai/wuwei/compare/v0.28.0...v0.29.0) (2026-10-12)
 
 
