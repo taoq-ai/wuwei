@@ -58,7 +58,7 @@ def _gh(payload):
     except subprocess.TimeoutExpired:
         raise Failure('gh api graphql timed out after 30 s') from None
     if result.returncode:
-        if limit := gh_limit(result.stderr):
+        if limit := gh_limit(result.stderr, resource='graphql'):
             raise limit
         code = re.search(r'\(HTTP ([1-5][0-9][0-9])\)', result.stderr)
         if code:

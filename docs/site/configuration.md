@@ -128,7 +128,7 @@ A Claude Code subagent cannot write `analysis.md` itself. The builder saves the 
 | `host.free_memory_mb` | `1024` | Free memory floor in MiB. |
 | `host.seats` | `0` | Total seat ceiling, builders and gates. `0` means one per core. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a seat reservation is reported stale. |
-| `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit before one retry. `0` never waits. |
+| `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit before one retry. `0` never waits. Doctor never waits. |
 | `budget.claude.five_hour`, `budget.claude.seven_day` | `0` | Input plus output tokens Claude Code may spend in its 5-hour and 7-day usage windows. With the measured per-seat cost they bound how many Claude seats start. `0` is no budget. |
 | `budget.codex.five_hour`, `budget.codex.seven_day` | `0` | The same for Codex. |
 | `memory.budget_tokens` | `6000` | SessionStart memory payload budget. Today's lines go first. |

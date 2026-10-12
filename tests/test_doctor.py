@@ -19,6 +19,7 @@ from wuwei.registry import Result
 
 UPGRADE = init.upgrade  # the real one; the ws fixture replaces init.upgrade
 REAL_MEASURE = doctor.measure  # the real probes; the ws fixture replaces doctor.measure
+REAL_LOAD = registry.load  # the real adapters; the ws fixture replaces registry.load
 
 NOW = '2026-10-03T12:00:00+00:00'
 TODAY = '2026-10-03'
@@ -451,9 +452,6 @@ def test_workspace_retired_shadow_mode(ws, monkeypatch):
 
 
 def test_gates_rows(ws):
-    rows = doctor.diagnose()
-    assert row(rows, 'config check')['status'] == 'ok'
-
     ws.code_host.results['protection'] = protected(**CLASSIC_404)
     found = row(doctor.diagnose(), 'config check')
     assert (found['status'], found['value']) == ('fail', 'exit 1')
@@ -462,6 +460,83 @@ def test_gates_rows(ws):
 
     ws.code_host.results['protection'] = Result(2, None, 'github.protection: could not run')
     assert row(doctor.diagnose(), 'config check')['status'] == 'unmeasured'
+
+    ws.code_host.results['protection'] = protected()
+    assert row(doctor.diagnose(), 'config check')['status'] == 'ok'
+
+
+
+def test_a_protection_finding_outranks_a_rate_limit(ws):
+    # #867 F2: one repository rate limited and another missing a setting: the finding is the row.
+    (ws.root / 'paper/.git').mkdir(parents=True)
+    config(ws.root, CONFIG + REPO.replace('acme/widget', 'acme/paper').replace('"repo"', '"paper"'))
+    limited = Result(2, None, 'github.protection: could not run: GitHub rate limit until 14:05:00 UTC '
+                     '(0 of 5000 core calls left); retry after it')
+    finding = protected(**CLASSIC_404)
+    ws.code_host.protection = lambda repo, branch, root=None: limited if repo == 'acme/paper' else finding
+    found = row(doctor.diagnose(), 'config check')
+    assert found['status'] == 'unmeasured' and any('missing (' in line for line in found['detail'])
+    ws.code_host.protection = lambda repo, branch, root=None: limited if repo == 'acme/paper' else protected()
+    assert row(doctor.diagnose(), 'config check')['status'] == 'waiting'
+
+def protection_calls(ws):
+    return sum(call[0] == 'protection' for call in ws.code_host.calls)
+
+
+def test_protection_is_read_once_a_day_when_clean(ws):
+    # #867: findings and errors are read again, so the owner's fix shows; a clean read is kept.
+    ws.code_host.results['protection'] = protected(**CLASSIC_404)
+    doctor.diagnose()
+    doctor.diagnose()
+    assert protection_calls(ws) == 2
+    ws.code_host.results['protection'] = protected()
+    assert row(doctor.diagnose(), 'config check')['status'] == 'ok'
+    assert row(doctor.diagnose(), 'config check')['status'] == 'ok'
+    assert protection_calls(ws) == 3
+    kept = json.loads((workspace.day_dir(ws.root) / 'protection.json').read_text())
+    assert list(kept) == ['acme/widget@main']
+    # A changed requirement is judged against the kept read, with no call.
+    config(ws.root, CONFIG.replace('identity =', 'review_required_checks = ["absent"]\nidentity ='))
+    assert row(doctor.diagnose(), 'config check')['status'] == 'fail'
+    assert protection_calls(ws) == 3
+
+
+@pytest.mark.parametrize('kept', ['not json', '[]', '{"acme/widget@main": "yes"}'])
+def test_unreadable_protection_cache_reads_again(ws, kept):
+    path = workspace.day_dir(ws.root) / 'protection.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(kept)
+    assert row(doctor.diagnose(), 'config check')['status'] == 'ok'
+    assert protection_calls(ws) == 1
+
+
+def test_rate_limited_doctor_never_waits(ws, monkeypatch):
+    # #867 acceptance: every GitHub call is rate limited with a reset 100 s out; doctor waits for
+    # none, the gh and config check rows wait, and the override does not outlive the run.
+    import subprocess
+    from fakes.replay import NOW, SECONDARY, hms, install_clock, limits
+    slept = install_clock(monkeypatch)
+    real_run, real_load = subprocess.run, REAL_LOAD
+    fakes = {'host': ws.host, 'vcs': ws.vcs}
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: fakes.get(kind) or real_load(kind, cfg))
+
+    def run(argv, **kwargs):
+        if argv[:1] != ['gh']:
+            return real_run(argv, **kwargs)
+        if argv[1:3] == ['api', 'rate_limit']:
+            return subprocess.CompletedProcess(argv, 0, limits(0, 4000, NOW + 100), '')
+        if argv[1:3] == ['auth', 'status']:
+            return subprocess.CompletedProcess(argv, 1, 'The token in keyring is invalid.', '')
+        return subprocess.CompletedProcess(argv, 1, '', SECONDARY)
+    monkeypatch.setattr(subprocess, 'run', run)
+    monkeypatch.delenv('WUWEI_RATE_LIMIT_WAIT', raising=False)
+    rows = doctor.diagnose()
+    assert slept == []
+    for name in ('gh', 'config check'):
+        found = row(rows, name)
+        assert found['status'] == 'waiting', found
+    assert row(rows, 'gh')['value'].startswith(f'rate limited until {hms(NOW + 100)} UTC (0 of 5000 core')
+    assert 'WUWEI_RATE_LIMIT_WAIT' not in os.environ
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
@@ -544,9 +619,9 @@ def test_outside_probe_through_launcher(monkeypatch):
 
 
 def test_healthy_workspace_exits_zero(ws, capsys):
-    def listing():
+    def listing():  # #867: the day's clean protection read is the one file doctor keeps
         return {p: p.stat().st_mtime_ns for p in (ws.root / '.wuwei').rglob('*')
-                if p.is_file() and p.name != 'state.lock'}
+                if p.is_file() and p.name not in ('state.lock', 'protection.json')}
     before = listing()
     assert main(['doctor']) == 0
     out = capsys.readouterr().out
@@ -914,8 +989,9 @@ def test_gh_row_on_a_rate_limit(ws, capsys):
     assert found['value'] == 'rate limited until 14:05:00 UTC (5000 of 5000 core calls left); retry after it'
     assert 'wait until the reset' in found['fix']
     assert not any('gh auth: missing' in r['value'] or 'gh auth login' in r.get('fix', '') for r in rows)
+    assert row(rows, 'config check')['status'] == 'waiting'  # #867: its gh auth line names the limit
     assert main(['doctor']) == 2
-    assert capsys.readouterr().out.splitlines()[-1].endswith('1 waiting')
+    assert capsys.readouterr().out.splitlines()[-1].endswith('2 waiting')
 def test_tracker_labels_row(ws):
     """#670: doctor lists the lifecycle labels the tracker lacks; it creates none."""
     from fakes.tracker import Fake

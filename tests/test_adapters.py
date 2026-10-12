@@ -36,7 +36,7 @@ CALLS = [
     ('code_host', 'ready', ('ref',), False),
     ('code_host', 'revert_pr', ('ref',), False),
     ('code_host', 'merged_prs', ('repo',), True),
-    ('code_host', 'open_prs', ('repo',), True),
+    ('code_host', 'open_prs', ('repo', 'author'), True),
     ('code_host', 'pulls', ('repo',), True),
     ('code_host', 'probe', ('ref', 'tags'), True),
     ('code_host', 'default_branch', ('repo',), True),

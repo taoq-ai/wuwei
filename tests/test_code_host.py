@@ -595,7 +595,29 @@ def test_deployments_fail_closed(steps, since, monkeypatch):
     assert result.exit == 2 and result.data is None and result.reason
 
 
+
+OPEN = next(c for c in CASES if c['operation'] == 'open_prs')
+
+
+@pytest.mark.parametrize('change', [{'incomplete_results': True}, {'total_count': 101}],
+                         ids=['incomplete', 'truncated'])
+def test_open_prs_search_fails_closed_when_incomplete(change, monkeypatch):
+    # #867: one search per repository and author; a partial answer is never read as all of them.
+    body = {**json.loads(OPEN['steps'][0]['stdout']), **change}
+    install_replay(monkeypatch, 'gh', [{**OPEN['steps'][0], 'stdout': json.dumps(body)}])
+    result = adapter().open_prs(*OPEN['args'])
+    assert result.exit == 2 and result.data is None
+
+
+@pytest.mark.parametrize('author', ['', '-ada', 'ada author:eve', None])
+def test_open_prs_refuses_a_bad_login(author, monkeypatch):
+    calls = install_replay(monkeypatch, 'gh', [])
+    result = adapter().open_prs('acme/widget', author)
+    assert result.exit == 2 and calls == []
+
 RATE_LIMIT = ['api', 'rate_limit', '--hostname', 'github.com']
+# #867: the failed read asked again with --include; a reply without X-RateLimit headers falls back.
+NO_HEADERS = {'when': ['--include'], 'exit': 1, 'stderr': 'gh: boom'}
 PR = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--hostname', 'github.com']
 
 
@@ -607,7 +629,8 @@ def wait_cap(tmp_path, monkeypatch, seconds):
 
 @pytest.mark.parametrize('stderr', [SECONDARY, SECONDARY_JSON], ids=['plain', 'json'])
 @pytest.mark.parametrize('step,until,left', [
-    ({'stdout': limits(4990, 4800, NOW + 3600)}, NOW + 60, ' (4800 of 5000 graphql calls left)'),
+    # #867: the failed call's own resource (a REST read spends core), never the emptier bucket.
+    ({'stdout': limits(4990, 4800, NOW + 3600)}, NOW + 60, ' (secondary limit, 4990 of 5000 core calls left)'),
     ({'stdout': limits(0, 4800, NOW + 900)}, NOW + 900, ' (0 of 5000 core calls left)'),
     ({'exit': 1, 'stderr': 'gh: boom'}, NOW + 60, ''),
     ({'stdout': 'not json'}, NOW + 60, ''),
@@ -624,6 +647,123 @@ def test_rate_limit_is_named_not_redacted(stderr, step, until, left, tmp_path, m
                              f'{left}; retry after it')
     assert slept == [] and len(calls) == 2
 
+
+
+MERGED = next(c for c in CASES if c['operation'] == 'merged_prs')
+
+
+@pytest.mark.parametrize('core,graphql,until,left', [
+    (4000, 0, NOW + 900, ' (0 of 5000 graphql calls left)'),
+    (0, 4989, NOW + 60, ' (secondary limit, 4989 of 5000 graphql calls left)'),
+], ids=['graphql-empty', 'core-empty'])
+def test_graphql_rate_limit_names_graphql(core, graphql, until, left, tmp_path, monkeypatch):
+    # #867: a GraphQL call reports the graphql bucket and its reset, whatever core holds.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    install_replay(monkeypatch, 'gh', [{'argv': MERGED['steps'][0]['argv'], 'exit': 1, 'stderr': SECONDARY},
+                                       {'argv': RATE_LIMIT, 'stdout': limits(core, graphql, NOW + 900)}])
+    result = adapter().merged_prs(*MERGED['args'])
+    assert result.reason == (f'github.merged_prs: could not run: GitHub rate limit until {hms(until)} UTC'
+                             f'{left}; retry after it')
+
+
+
+PRIMARY = 'gh: API rate limit exceeded for user ID 1. (HTTP 403)'
+
+
+def headers(resource, remaining, reset, status='403 Forbidden'):
+    """A recorded failing gh api --include reply (#867): status line, headers, body."""
+    return (f'HTTP/2.0 {status}\r\nContent-Type: application/json\r\nX-Ratelimit-Limit: 5000\r\n'
+            f'X-Ratelimit-Remaining: {remaining}\r\nX-Ratelimit-Reset: {reset}\r\n'
+            f'X-Ratelimit-Resource: {resource}\r\nX-Ratelimit-Used: 5000\r\n\r\n'
+            '{"message":"API rate limit exceeded","documentation_url":"https://docs.github.com"}')
+
+
+def included(argv):
+    """The failed read asked again with --include and no pagination (#867)."""
+    plain = [arg for arg in argv if arg not in ('--paginate', '--slurp')]
+    return plain[:2] + ['--include'] + plain[2:]
+
+
+def test_rate_limit_reads_the_failed_responses_headers(tmp_path, monkeypatch):
+    # #867 field case: rate_limit said core was fine while the failing response said core 0; the
+    # reason comes from the response's own X-RateLimit headers, and rate_limit is not read.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': PR, 'exit': 1, 'stderr': PRIMARY},
+        {'argv': included(PR), 'exit': 1, 'stdout': headers('core', 0, NOW + 941), 'stderr': PRIMARY}])
+    result = adapter().pr('acme/widget#7')
+    assert result.reason == (f'github.pr: could not run: GitHub rate limit until {hms(NOW + 941)} UTC'
+                             ' (0 of 5000 core calls left); retry after it')
+    assert len(calls) == 2
+
+
+def test_graphql_rate_limit_reads_the_failed_responses_headers(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    argv = MERGED['steps'][0]['argv']
+    install_replay(monkeypatch, 'gh', [
+        {'argv': argv, 'exit': 1, 'stderr': PRIMARY},
+        {'argv': included(argv), 'input': MERGED['steps'][0]['input'], 'exit': 1,
+         'stdout': headers('graphql', 0, NOW + 300, '200 OK')}])
+    result = adapter().merged_prs(*MERGED['args'])
+    assert f'until {hms(NOW + 300)} UTC (0 of 5000 graphql calls left)' in result.reason
+
+
+def test_rate_limit_on_a_paged_read_asks_one_page_with_headers(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    case = next(c for c in CASES if c['operation'] == 'reviews')
+    argv = case['steps'][0]['argv']
+    assert '--paginate' in argv
+    install_replay(monkeypatch, 'gh', [
+        {'argv': argv, 'exit': 1, 'stderr': PRIMARY},
+        {'argv': included(argv), 'exit': 1, 'stdout': headers('core', 0, NOW + 60)}])
+    result = adapter().reviews(*case['args'])
+    assert f'until {hms(NOW + 60)} UTC (0 of 5000 core calls left)' in result.reason
+
+
+
+def test_a_secondary_limit_is_never_asked_again(tmp_path, monkeypatch):
+    # #867 D1: GitHub says to wait out a secondary limit (another request can extend it), so the
+    # failed read is not asked again with --include; rate_limit names the bucket.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(4990, 4000, NOW + 900)}])
+    result = adapter().pr('acme/widget#7')
+    assert 'secondary limit, 4990 of 5000 core calls left' in result.reason
+    assert [call[1:3] for call in calls] == [PR[:2], RATE_LIMIT[:2]]
+
+
+def test_a_primary_limit_without_headers_falls_back_to_rate_limit(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY}, NO_HEADERS,
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 900)}])
+    result = adapter().pr('acme/widget#7')
+    assert f'until {hms(NOW + 900)} UTC (0 of 5000 core calls left)' in result.reason and len(calls) == 3
+
+def test_a_write_is_never_asked_again(tmp_path, monkeypatch):
+    # A refused write is not repeated to read headers; rate_limit names the bucket instead.
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [
+        {'exit': 1, 'stderr': PRIMARY}, {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 90)}])
+    result = adapter().create_pr({'repo': 'acme/widget', 'base': 'main', 'head': 'x', 'title': 't', 'body': 'b'})
+    assert f'until {hms(NOW + 90)} UTC (0 of 5000 core calls left)' in result.reason and len(calls) == 2
+
+def test_wait_override_never_waits(tmp_path, monkeypatch):
+    # #867: doctor sets WUWEI_RATE_LIMIT_WAIT=0; a reset 30 s away is reported, not waited for.
+    wait_cap(tmp_path, monkeypatch, 120)
+    monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '0')
+    clock = install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 30)}])
+    result = adapter().pr('acme/widget#7')
+    assert result.exit == 2 and f'until {hms(NOW + 30)} UTC' in result.reason
+    assert clock == [] and len(calls) == 2
 
 @pytest.mark.parametrize('reset,slept', [(NOW + 30, [30]), (NOW - 5, [0])])
 def test_rate_limit_within_the_cap_waits_and_retries(reset, slept, tmp_path, monkeypatch):
@@ -680,7 +820,7 @@ AUTH_FAILED = ('github.com\n  X Failed to log in to github.com account octocat (
 
 
 @pytest.mark.parametrize('stdout,reset,left', [
-    (limits(5000, 5000, NOW + 3600), NOW + 60, '(5000 of 5000 core calls left)'),
+    (limits(5000, 5000, NOW + 3600), NOW + 60, '(secondary limit, 5000 of 5000 core calls left)'),
     (limits(0, 5000, NOW + 900), NOW + 900, '(0 of 5000 core calls left)'),
 ], ids=['secondary', 'primary'])
 def test_auth_status_rate_limit_is_not_missing(stdout, reset, left, tmp_path, monkeypatch):

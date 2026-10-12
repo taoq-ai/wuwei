@@ -229,22 +229,28 @@ def _seats(data):
 def _owner_prs(config, root, candidates):
     """#510: the owner's open PRs in the configured repositories, as rows the gate claims."""
     from wuwei import registry
-    logins = {login.casefold() for login in (*config['owner']['handles'],
-                                             config['outbound']['owner']['code_host']) if login}
+    own = config['outbound']['owner']['code_host']
+    # #867 F1: GitHub search answers 422 for a user it does not know, so only handles that can be
+    # GitHub logins are searched (never a chat ID, checked before casefold); the code host login always.
+    logins = {login.casefold() for login in config['owner']['handles']
+              if not re.fullmatch(r'[UW][A-Z0-9]+', login) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login)}
+    logins |= {own.casefold()} if own else set()
     if not config['repos'] or not logins:
         return [], 'unmeasured: no configured repository or owner.handles'
     host = registry.load('code_host', config)
     taken, rows = {item['id'] for item in candidates}, []
     for repo in config['repos']:
-        result = host.open_prs(repo['name'], root=root)
-        if result.exit:
-            return [], f'unmeasured: {result.reason}'
-        # #603: with several repositories the id names the repository, so one number gives two ids.
-        prefix = f'PR-{repo["name"].rsplit("/", 1)[-1]}-' if len(config['repos']) > 1 else 'PR-'
-        for pr in result.data:
-            ident = f'{prefix}{pr["number"]}'
-            if (pr['author'] or '').casefold() in logins and ident not in taken:
-                rows.append({'id': ident, 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']})
+        for login in sorted(logins):  # #867: GitHub filters by author; never every open PR
+            result = host.open_prs(repo['name'], login, root=root)
+            if result.exit:
+                return [], f'unmeasured: {result.reason}'
+            # #603: with several repositories the id names the repository, so one number gives two ids.
+            prefix = f'PR-{repo["name"].rsplit("/", 1)[-1]}-' if len(config['repos']) > 1 else 'PR-'
+            for pr in result.data:
+                ident = f'{prefix}{pr["number"]}'
+                if (pr['author'] or '').casefold() in logins and ident not in taken:
+                    taken.add(ident)
+                    rows.append({'id': ident, 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']})
     return rows, f'measured: {len(rows)} open PR{"" if len(rows) == 1 else "s"} by the owner'
 
 
