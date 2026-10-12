@@ -217,7 +217,7 @@ def _busy(item, record):
 def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     """Return one stable action. Executing it belongs to the caller. runtime (#845): the runtime
     a new build binds, routed by the launch set; else routed here on fresh window room."""
-    from wuwei.brief import events, identifier, seat_action
+    from wuwei.brief import events, identifier, read, seat_action
     root = workspace.find_workspace(root)
     identifier(item)
     data = state.read_state(root)
@@ -240,12 +240,38 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
         raise ValueError(f'builder brief needs a worktree; create one with bin/wuwei worktree add {item} and pass it with --worktree. Or run bin/wuwei build next {item} <brief> <worktree>')
     tree = (root / worktree).resolve(strict=True)
     path = (root / brief).resolve(strict=True)
+    relative = str(path.relative_to(root))
+    # #892: a builder launched straight from its brief ran outside the build record; one brief
+    # is one seat, so the build continues that seat instead of handing the brief out again
+    def ran(path):  # the builder seats that ran a brief of this item
+        return [name for name, seat in data.get('seats', {}).items() if seat.get('role') == 'builder'
+                and seat.get('item') == item and seat.get('brief') == path]
+    used = next(iter(ran(relative)), None)
+    if used and (record is None or record.get('seat') != used):
+        status = data['seats'][used]['status']
+        if status == 'running':
+            raise ValueError(f'builder seat {used} is still running; wait for its stop hook, then run bin/wuwei build next {item}')
+        if status != 'stopped':
+            raise ValueError(f'brief {used} already ran a seat that is {status}; write a fresh brief with bin/wuwei seat brief, then run bin/wuwei build next {item}')
+    unbound = bool(used) and record is not None and record.get('seat') != used
+    stale, logged = False, []
     if record is not None:
-        if str(path.relative_to(root)) == record['brief'] and str(tree) == record['worktree']:
+        if relative == record['brief'] and str(tree) == record['worktree'] and not unbound:
             if record['action']['action'] == 'wait' and not state.held(data, item):
                 return _release(item, record, data, root)
             return record['action']
-        if record['status'] not in ('done', 'parked'):
+        if record['status'] == 'ready' and record['action']['action'] == 'launch' and str(tree) == record['worktree']:
+            # #889: an unlaunched brief the worktree moved past is one the launch guard refuses
+            # (unlogged today, or logged at another HEAD); a new brief replaces it, and the build
+            # keeps its start head (a record from before start heads takes the old brief's),
+            # its fix rounds and its fix feedback
+            logged = [row['payload'].get('head') for row in events(root) if row['kind'] == 'brief written'
+                      and row['payload'].get('path') == record['brief']]
+            # D1: a seat other than the build's already ran the recorded brief: the guard refuses it
+            stale = (unbound or not logged or bool(set(ran(record['brief'])) - {record.get('seat')})
+                     or (logged[-1] is not None and logged[-1] != read(
+                         registry.load('vcs', config).head, tree, root=root)['sha']))
+        if record['status'] not in ('done', 'parked') and not stale:
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume it with bin/wuwei plan resume {item}, then run bin/wuwei build next {item}')
@@ -257,12 +283,34 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
         runtime = dispatch.route(policy, config['adapters']['runtime'], {name: row['room'] for name, row in rooms.items()})
     action = seat_action('builder', path, tree, root, runtime)
     previous = record
+    feedback = stale and previous['action'].get('feedback')
+    if feedback:
+        action['feedback'] = feedback
+        action['prompt'] += '\n\n' + feedback + previous['action']['prompt'].partition('\n\n' + feedback)[2]
     commands = list(repo['fast_checks'])
     from wuwei import derive  # #871 L2: the head the build must move past
-    record = {'brief': str(path.relative_to(root)), 'worktree': str(tree), 'start': derive.head(tree),
+    if used:  # #892: the head the seat launched at
+        start = data['seats'][used].get('head')
+    elif stale:
+        start = previous.get('start') or next(iter(logged), None)
+    else:  # #889 F4: a new record counts the commits its branch holds over the brief's base
+        base = previous is None and re.search(r'^Merge-base: (\S+)', path.read_text(encoding='utf-8').split('\n\n', 1)[0], re.M)
+        start = derive.head(tree)
+        if base and derive.SHA.fullmatch(base[1]):
+            try:  # D3: a base a rebase left behind is no ancestor of HEAD; HEAD stays the start
+                if read(registry.load('vcs', config).merge_base, tree, base[1], root=root)['sha'] == base[1]:
+                    start = base[1]
+            except ValueError:
+                pass
+    record = {**(previous if stale else {}), 'brief': relative, 'worktree': str(tree), 'start': start,
               'runtime': action['runtime'], 'repo': repo['name'],
               'commands': commands, 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
+    if used:
+        record.update(seat=used, agent_id=data['seats'][used].get('agent_id'))
+        record['action'] = action = _continue(root, record, (
+            f'Seat {used} ran this brief before WUWEI recorded its build. Finish what the brief '
+            'asks, commit it, and stop; WUWEI runs the fast checks next.'))
     _save(item, record, root, 'build.started', previous,
           None if commands else {'checks': 'none configured'})
     if data['items'][item]['phase'] == 'planned':
