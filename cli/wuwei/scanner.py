@@ -1,6 +1,7 @@
 """S2 trace response and mandatory S4 security measurement."""
 
 import json
+from pathlib import Path
 import re
 import sys
 
@@ -10,21 +11,27 @@ from wuwei.exits import ADAPTER_DATA
 
 # Static checks for secrets, unvalidated input, execution and data exposure.
 TRUST_RULES = {'SA001', 'SA002', 'SA003', 'SA007', 'SA008', 'SA009', 'SA010'}
+# P1: the fix for a scanner that cannot measure today; doctor never runs ZIRAN.
+OFF = "bin/wuwei config set adapters.scanner '\"none\"'"
 # Tools that stay on the machine; Bash egress and deploys are the edges guards' (#870).
 LOCAL = frozenset({'Read', 'Grep', 'Glob', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash'})
 
 
-def rows(tree, item, flags, config, root):
+def rows(tree, item, flags, config, root, changed):
+    """The S4 rows of findings in the item's changed files (S8: findings already on main in
+    files it did not change are the morning discovery's, not this item's)."""
     if workspace.guard_scope({'cwd': str(tree)}) != root:
         raise OSError('scanner: unmeasured: reviewed worktree is outside the workspace; write the gate brief with --worktree inside the workspace')
     scanner = registry.load('scanner', config)
     audit = scanner.audit(str(tree), root=root)
     if audit.exit not in (0, 1):
-        raise OSError('scanner: unmeasured: ' + audit.reason + '; run bin/wuwei doctor')
+        raise _unmeasured(tree, item, audit.reason)
     threshold = config['scanner']['severity_threshold']
     gate = scanner.gate(audit.data, threshold, root=root)
     if gate.exit not in (0, 1):
-        raise OSError('scanner: unmeasured: ' + gate.reason + '; run bin/wuwei doctor')
+        raise _unmeasured(tree, item, gate.reason)
+    if audit.data['files_analyzed'] == 0:  # F5: measured, but ZIRAN covered nothing here
+        return [NOTHING]
     levels = ('critical', 'high', 'medium', 'low')
     markers = security.load(root)
     result = []
@@ -32,10 +39,15 @@ def rows(tree, item, flags, config, root):
         try:
             source = (tree / finding['file']).resolve(strict=True)
             location = source.relative_to(tree.resolve())
+            # F2: ZIRAN names a symlink by its own path; the diff names the link, not its target.
+            raw = Path(finding['file'])
+            raw = str(raw.relative_to(tree.resolve()) if raw.is_absolute() else raw)
             with source.open(encoding='utf-8') as stream:
                 stream.read()
         except (OSError, ValueError):
-            raise OSError('scanner: unmeasured: finding source is unreadable or outside worktree; run bin/wuwei doctor, which tests the scanner') from None
+            raise _unmeasured(tree, item, 'a finding source is unreadable or outside the worktree') from None
+        if str(location) not in changed and raw not in changed:
+            continue
         blocks = (flags['trust_surface'] or flags['boundary_relevant']
                   or finding.get('trust_boundary', False)
                   or finding['rule'] in TRUST_RULES
@@ -43,7 +55,8 @@ def rows(tree, item, flags, config, root):
         rule, location, message = redact.redact(security.redact(
             [finding['rule'], str(location), finding['message']], markers))
         message = re.sub(r'[^a-zA-Z0-9 .,:()/=_-]', ' ', message)
-        result.append(f"- {finding['severity']} | {location}:{finding['line']} | "
+        # S1: a file-level finding (SA002, line null) is the file's line 1, the file:line a verdict needs.
+        result.append(f"- {finding['severity']} | {location}:{finding['line'] or 1} | "
                       f"ZIRAN {rule} scenario: {message} | "
                       f"blocks: {'yes' if blocks else 'no'}")
         state.append_event('scanner.finding', {
@@ -51,6 +64,15 @@ def rows(tree, item, flags, config, root):
             'severity': finding['severity'], 'blocks': blocks,
         }, root)
     return result
+
+
+def _unmeasured(tree, item, reason):
+    """P1: the worktree and the fix; an agent_surface item needs a measured scanner."""
+    return OSError(f'scanner: unmeasured: {tree}: {reason}; rerun bin/wuwei dispatch receive, '
+                   f'or park the item with bin/wuwei plan park {item} --reason "<why>"')
+
+
+NOTHING = 'Note: ZIRAN analyzed no file in this worktree (no Python or agent file), so it measured nothing here.'
 
 
 def merge(text, findings):
@@ -126,6 +148,14 @@ def _trace_response(finding, root, traces):
             extra = {'role': role, 'summary': f'traces: {role} session, chain noted'} if role else {}
             state.append_event(kind, {'session_digest': digest, 'chain': finding['chain'], **extra}, root)
         return False
+    # S6: the sweep reads the whole day's traces; a chain recorded today (parked, maybe resumed
+    # since) never parks or pages again.
+    # ponytail: a repeat of a recorded chain by the same session after a resume is not detected
+    # again (F4); S9's since-last-sweep offset is the upgrade.
+    if any(row['kind'] == 'scanner.finding' and row['payload'].get('session_id') == session
+           and row['payload'].get('chain') == finding['chain']
+           for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+        return False
     reason = 'scanner chain ' + ' -> '.join(finding['chain'])
     # #870: a chain of local file and shell tools only is the builder loop (edit, test, write),
     # unless the session touched a private file (a credential read, then curl from Bash).
@@ -154,8 +184,9 @@ def honeytoken(session, root, timeout=30):
 
 
 def _park(finding, reason, root, timeout=30):
+    """#862 F3: the finding and the park are one write, so the S6 dedup never sees a finding
+    whose park failed."""
     from wuwei import brief
-    state.append_event('scanner.finding', {**finding, 'reason': reason}, root, timeout=timeout)
 
     def update(data):
         items = {seat['item'] for seat in brief.seats(data).values()
@@ -165,7 +196,7 @@ def _park(finding, reason, root, timeout=30):
             if item is not None and 'parked' in state.PHASES[item['phase']]:
                 item.update(phase='parked', status='blocked', disposition={'kind': 'parked', 'reason': reason})
 
-    state._write_state(update, root, timeout=timeout)
+    state._write_state(update, root, kind='scanner.finding', payload={**finding, 'reason': reason}, timeout=timeout)
 
 
 def trace_sweep(root, config):
@@ -189,7 +220,7 @@ def trace_sweep(root, config):
             return counts
         result = registry.load('scanner', config).traces(str(path), root=root)
         if type(result.exit) is not int or result.exit not in (0, 1):
-            raise ValueError(result.reason or 'scanner unavailable; retry; if it repeats, run bin/wuwei doctor')
+            raise ValueError(result.reason or 'scanner unavailable; retry at the next receive or close')
         markers = security.load(root)
         owed = 0
         for finding in result.data['findings']:
@@ -202,5 +233,7 @@ def trace_sweep(root, config):
         counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1
-        print(f'scanner: unmeasured: {type(exc).__name__}; run bin/wuwei doctor', file=sys.stderr)
+        detail = str(exc) if type(exc) is ValueError else type(exc).__name__  # CLI-authored reasons only
+        print(f"scanner: unmeasured: today's trace sweep: {detail}; retry at the next receive or close, "
+              f'or run {OFF} to switch the scanner off', file=sys.stderr)
     return counts

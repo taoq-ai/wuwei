@@ -83,6 +83,21 @@ def test_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
     assert 'Candidates: unmeasured: tracker adapter broken' in (day[1] / 'briefs/lead-3.md').read_text()
 
 
+def test_lead_brief_discovers_outside_the_brief_lock(day, monkeypatch):
+    # S5: a slow scanner audit no longer holds brief.lock, so a parallel brief is not refused.
+    import fcntl
+    from wuwei import discovery
+
+    def discover(root=None):
+        with (day[1] / 'brief.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)  # BlockingIOError while held
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        return {'sources': {}, 'candidates': []}
+    monkeypatch.setattr(discovery, 'discover', discover)
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-4') == 0
+    assert 'Candidates: unmeasured' not in (day[1] / 'briefs/lead-4.md').read_text()
+
+
 def test_declared_full_and_persisted(day, monkeypatch):
     args = ('builder', 'X')
     assert brief(monkeypatch, 'Paths: core/x.py, infrastructure/db.ts', *args, 'n3') == 1

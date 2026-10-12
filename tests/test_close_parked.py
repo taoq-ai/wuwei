@@ -124,8 +124,16 @@ def test_a_critical_scanner_finding_holds_the_close_until_the_owner_answers(case
     state.append_event('scanner.finding', {'chain': ['Read', 'WebFetch'], 'risk_level': 'critical',
                                            'session_id': 's1'}, root)
     state.append_event('scanner.finding', {'chain': ['Read'], 'risk_level': 'high', 'session_id': 's2'}, root)
+    state.append_event('scanner.finding', {'chain': ['Bash', 'WebFetch'], 'risk_level': 'critical',
+                                           'session_id': 's1'}, root)
     assert main(['close']) == 1
     out = capsys.readouterr().out
-    assert 'Owner step: bin/wuwei close (' in out and 'Read -> WebFetch' in out
+    # S7: one card names every critical chain today; one Yes closes.
+    assert out.count('Owner step: bin/wuwei close (') == 1
+    assert 'Read -> WebFetch' in out and 'Bash -> WebFetch' in out and 'Read.' not in out
     owner.answer_card(root, out)
     assert main(['close']) == 0
+    state.append_event('scanner.finding', {'chain': ['Edit', 'WebFetch'], 'risk_level': 'critical',
+                                           'session_id': 's3'}, root)
+    assert main(['close']) == 1  # a chain after the Yes asks again
+    assert 'Edit -> WebFetch' in capsys.readouterr().out

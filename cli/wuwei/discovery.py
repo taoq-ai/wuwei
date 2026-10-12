@@ -1,6 +1,8 @@
 """Read discovery sources through ports for the morning plan."""
 
+import json
 import re
+from time import monotonic
 
 from wuwei import obligations, registry, state, workspace
 from wuwei.exits import ADAPTER_DATA, DAMAGED
@@ -33,6 +35,15 @@ def dedupe(sources, *, tracker_ids=(), day_ids=()):
                 candidates.append({**row, 'source': name})
                 seen.add(row['id'])
     return {'sources': measured, 'candidates': candidates}
+
+
+def _shaped(rows, config):
+    """#862 F1: cached rows carry the scanner adapter's own finding shape, or are re-audited."""
+    try:
+        registry.load('scanner', config)._report({'files_analyzed': 1, 'findings': rows})
+        return True
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
 
 
 def discover(root=None, *, ports=None, repo=None):
@@ -166,25 +177,57 @@ def discover(root=None, *, ports=None, repo=None):
                                         'evidence': check.get('url') or 'red base check'})
                 if complete:
                     sources['base_checks'] = red
+    missing = []
     if config['repos'] and config['adapters']['scanner'] != 'none':
         scanner = ports.get('scanner') or registry.load('scanner', config)
+        vcs = ports.get('vcs') or registry.load('vcs', config)
+        # S4 (#862): one audit per repo and HEAD per day; a slow failure (a timeout) is paid once.
+        # ponytail: two discoveries at once may both audit; the last write wins.
+        cache_path = workspace.day_dir(root) / 'scanner-audit.json'
+        try:
+            cache = json.loads(cache_path.read_text(encoding='utf-8'))
+            cache = cache if isinstance(cache, dict) else {}
+        except (OSError, ValueError):
+            cache = {}
         found = []
         for checkout in config['repos']:
-            result = scanner.audit(str((root / checkout['path']).resolve()), root=root)
-            valid = isinstance(result, registry.Result) and result.exit in (0, 1, 2)
-            rows = (result.data.get('findings') if valid and result.exit != 2 and isinstance(result.data, dict)
-                    else None)
-            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
-                reason = (result.reason or 'scanner audit failed') if valid and result.exit == 2 \
-                    else 'invalid scanner result'
-                found = f'unmeasured: {checkout["name"]}: {reason}'
-                break
-            # Rows are already validated by the adapter (ziran._report).
-            found += [{'id': f'{checkout["name"]}:scanner:{row["rule"]}:{row["file"]}:{row["line"]}',
-                       'evidence': f'{row["severity"]} {row["rule"]} {row["file"]}:{row["line"]}: '
-                                   f'{row["message"]}'} for row in rows]
+            path = str((root / checkout['path']).resolve())
+            head = vcs.head(path, root=root)
+            head = head.data.get('sha') if isinstance(head, registry.Result) and head.exit == 0 \
+                and isinstance(head.data, dict) else None
+            entry = cache.get(checkout['name'])
+            if not (isinstance(entry, dict) and entry.get('head') == head
+                    and (isinstance(entry.get('reason'), str) or _shaped(entry.get('rows'), config))):
+                started = monotonic()
+                result = scanner.audit(path, root=root)
+                valid = isinstance(result, registry.Result) and result.exit in (0, 1, 2)
+                rows = (result.data.get('findings') if valid and result.exit != 2 and isinstance(result.data, dict)
+                        else None)
+                if isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
+                    entry = {'head': head, 'rows': rows}
+                else:
+                    entry = {'head': head, 'reason': (result.reason or 'scanner audit failed')
+                             if valid and result.exit == 2 else 'invalid scanner result'}
+                # A fast failure (ZIRAN missing) is retried at the next call.
+                if 'rows' in entry or monotonic() - started >= 10:
+                    cache[checkout['name']] = entry
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    workspace.atomic_write(cache_path, json.dumps(cache, sort_keys=True))
+            if 'reason' in entry:
+                missing.append(f'unmeasured: {checkout["name"]}: {" ".join(entry["reason"].split())}')
+                continue
+            # Rows are already validated by the adapter (ziran._report); S1: a file-level finding has no line.
+            for row in entry['rows']:
+                line = row.get('line')
+                where = f'{row["file"]}:{line}' if line else row['file']
+                found.append({'id': f'{checkout["name"]}:scanner:{row["rule"]}:{row["file"]}:{line or 0}',
+                              'evidence': ' '.join(f'{row["severity"]} {row["rule"]} {where}: {row["message"]}'.split())})
         sources['scanner'] = found
     found = dedupe(sources, day_ids=day['items'])
+    if missing:  # S3: the measured repos' rows stay; each unmeasured repo is named
+        from wuwei.scanner import OFF
+        measured = found['sources']['scanner'] + '; ' if len(missing) < len(config['repos']) else ''
+        found['sources']['scanner'] = measured + '; '.join(missing) + f'; run {OFF} to switch the scanner off'
     for candidate in found['candidates']:
         candidate.update({'repo': name for name in names if candidate['id'].startswith((name + '#', name + ':'))})
     if repo is not None:
