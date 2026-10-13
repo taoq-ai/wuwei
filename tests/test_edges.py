@@ -353,6 +353,93 @@ def test_deploy_edge(root, command, where, code, fragments):
     decide(root, command, where, code, fragments, 'check_deploy')
 
 
+@pytest.mark.parametrize('command', [
+    'vercel env ls production', 'vc env ls production', 'vercel ls', 'vercel inspect app',
+    'gh api "repos/org/repo/deployments?per_page=100"',
+    'gh api repos/org/repo/environments',
+    'gh api -X GET repos/org/repo/deployments',
+    'gh api --method=GET repos/org/repo/environments/production',
+    'gh api -i -X GET repos/org/repo/environments/rerun',
+    'gh api repos/org/repo/environments/rerun-failed-jobs',
+    'gh api -XGET repos/org/repo/deployments/1/statuses',
+    'gh api --preview x repos/org/repo/deployments',
+    'gh api --preview=x repos/org/repo/environments',
+    'gh api repos/org/repo/deployments -H "Accept: application/vnd.github+json"',
+    'gh api repos/org/repo/environments --header="Accept: application/vnd.github+json"',
+    "env CI=1 sh -c 'vercel env ls production'",
+    'vercel env ls production; gh api repos/org/repo/deployments',
+])
+def test_publish_reads_need_no_card(root, command):
+    assert check(root, command, 'check_deploy') == (0, '')
+    assert check(root, command) == (0, '')
+
+
+@pytest.mark.parametrize('path', ['deployments', 'environments/production'])
+@pytest.mark.parametrize('options', [
+    '-X POST', '--method=PUT', '-XDELETE', '-X HEAD', '-X OPTIONS',
+    '-f ref=main', '-F ref=main', '--field=ref=main', '--raw-field=ref=main', '--input=-',
+    '-X GET -fref=main', '-X GET -Fref=main', '-X GET --input=-',
+    '-X POST --method GET', '-iXDELETE', '-ifref=main', '-iFref=main',
+    '--preview x -X POST -f ref=main', '--preview=x -X POST -f ref=main',
+    '-H "X-HTTP-Method-Override: POST"', '--header "x-http-method-override: DELETE"',
+    '-HX-HTTP-Method-Override:POST', '--header="X-Method-OVERRIDE: PUT"',
+])
+def test_publish_api_non_reads_still_need_owner(root, path, options):
+    code, reason = check(root, f'gh api repos/org/repo/{path} {options}', 'check_deploy')
+    assert code == 1 and 'Owner step:' in reason and 'deployment/environment API' in reason
+
+
+@pytest.mark.parametrize('path', ['deployments', 'environments/production'])
+@pytest.mark.parametrize('targets', ['repos/org/repo/{path} extra', 'extra repos/org/repo/{path}'])
+@pytest.mark.parametrize('method', ['', '-X POST'])
+def test_publish_api_multiple_targets_need_owner(root, path, targets, method):
+    command = f'gh api {targets.format(path=path)} {method}'
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and 'Owner step:' in reason and 'deployment/environment API' in reason
+
+
+@pytest.mark.parametrize('command', [
+    'vercel env add NAME production', 'vc env rm NAME production', 'vercel deploy --prod',
+    'vercel env ls production; vercel --prod',
+    'gh api repos/org/repo/deployments; gh api -X POST repos/org/repo/deployments',
+])
+def test_publish_read_does_not_allow_writes(root, command):
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and 'Owner step:' in reason
+
+
+def test_publish_read_respects_explicit_deny(root):
+    (root / '.wuwei/config.toml').write_text('[deploy]\ndeny = ["vercel env ls"]\n')
+    code, reason = check(root, 'vercel env ls production', 'check_deploy')
+    assert code == 1 and 'deploy.deny: vercel env ls' in reason
+
+
+@pytest.mark.parametrize('command', [
+    'vercel env ls production', 'gh api "repos/org/repo/deployments?per_page=100"',
+])
+@pytest.mark.parametrize('enforce', [True, False])
+def test_publish_field_reads_through_hook(root, monkeypatch, capsys, command, enforce):
+    code, findings = hook(root, monkeypatch, capsys, command, enforce)
+    assert code == 0 and findings == []
+
+
+def test_publish_card_explains_exact_command_binding(root):
+    from fakes.owner import answer_card
+    command = 'gh workflow run deploy.yml -f ref=abc'
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1
+    card = json.loads(reason.split('; card: ', 1)[1])
+    detail = card['options'][0]['description']
+    assert 'Only this exact command text is approved' in detail
+    assert 'run it alone' in detail
+    answer_card(root, reason)
+    for changed in ('gh workflow run deploy.yml --ref main',
+                    f'git fetch; {command}; sleep 1; gh run list'):
+        assert check(root, changed, 'check_deploy')[0] == 1
+    assert check(root, command, 'check_deploy') == (0, '')
+    assert check(root, command, 'check_deploy')[0] == 1
+
+
 def test_unmarked_workflow_is_allowed(root):
     (root / '.wuwei/config.toml').write_text('[deploy]\nworkflows = ["deploy.yml"]\n')
     assert check(root, 'gh workflow run ci.yml', 'check_deploy') == (0, '')
