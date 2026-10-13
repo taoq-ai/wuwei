@@ -291,8 +291,8 @@ def named(root, config, item, row, tree, text):
     effective = mode(config)
     if effective == 'off' or _skipped(root, config, item, row, False):
         return 0, ''
-    from wuwei.verdict import retro_fields  # #902: a Blocked: stop is the owner question (_common.md)
-    if retro_fields(text)[0].get('Blocked', 'none').casefold() != 'none':
+    from wuwei.verdict import blocked_none, retro_fields  # #902: a Blocked: stop is the owner question
+    if not blocked_none(retro_fields(text)[0].get('Blocked', 'none')):
         return 0, ''
     engine = config['spec']['engine']
     location, _ = _location(tree, engine, item)

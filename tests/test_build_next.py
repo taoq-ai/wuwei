@@ -1133,6 +1133,21 @@ def test_resultless_recovery_preserves_business_blocker(seat):
     assert not seat[4] and phase(root) == 'implement'
 
 
+def test_issue_972_replayed_build_card_says_ask_verbatim(seat, capsys):
+    from fakes import owner
+    root = committed_without_result(seat)
+    state.append_event('retro.captured', {'agent_id': 'agent-builder', 'fields': {
+        'Blocked': 'owner approval required for schema change', 'Gap': 'none', 'Change': 'none'}}, root)
+    first = build.step('A', root)
+    reworded = dict(first['card'], question='Owner step: Can the builder continue?')
+    owner._record(root, reworded, 'Yes', 'planner-session', None)
+    assert main(['build', 'next', 'A']) == 1
+    replayed = json.loads(capsys.readouterr().out)
+    assert replayed['action'] == 'escalate'
+    assert replayed['card'] == first['card']
+    assert 'ask this card verbatim' in replayed['reason']
+
+
 def test_unlaunched_record_cannot_escalate_a_stale_agent_blocker(seat):
     root = seat[0]
     action = build.next_action('A', root=root)

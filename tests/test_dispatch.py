@@ -2,6 +2,7 @@
 
 import json
 import os
+from functools import partial
 
 import pytest
 
@@ -3853,6 +3854,8 @@ def test_issue_940_dispatch_names_the_mismatched_answer(root, monkeypatch, sourc
     refused = dispatch.next_step('A', root)
     assert refused['action'] == 'escalate'
     assert 'did not match' in refused['reason']
+    if source == 'builder':
+        assert refused['reason'].count('verbatim') == 1
     assert 'answered card matched command' in refused['reason']
     assert refused['card'] == found['card']
 
@@ -3862,7 +3865,7 @@ def test_a_builder_blocked_line_asks_the_owner_before_the_gates(root, monkeypatc
     builder_says(root, 'the schema change needs the owner')
     found = dispatch.next_step('A', root)
     assert (found['action'], found['command']) == ('escalate', 'wuwei dispatch next A')
-    assert found['reason'] == 'builder blocked: the schema change needs the owner'
+    assert found['reason'] == 'builder blocked: the schema change needs the owner; ask this card verbatim'
     assert found['card']['options'][1]['description'] == 'The item parks.'
     owner_says(root, found)
     built(root)
@@ -3881,15 +3884,52 @@ def _case_a_builder_blocked_line_no_parks(root):
     assert found['action'] == 'parked' and found['reason'] == 'builder blocked: the schema change needs the owner'
 
 
-def _case_a_builder_blocked_none_goes_to_the_gates(root):
-    from wuwei import dispatch
-    builder_says(root, 'none')
-    assert dispatch.next_step('A', root)['action'] == 'gates'
+def _case_a_builder_blocked_none_goes_to_the_gates(root, line, action, note):
+    builder_says(root, line)
+    if note:
+        tree = root / 'tree'
+        tree.mkdir()
+        state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
+        decision = dispatch.decide(root, state.read_state(root), workspace.load_config(root), 'A')
+        assert decision['note'].strip() == f'Builder note on Blocked: {note}'
+    found = dispatch.next_step('A', root)
+    assert found['action'] == action
+    if note:
+        import shlex
+        assert found['note'] == f'Builder note on Blocked: {note}'
+        assert all(f'Builder note on Blocked: {note}' in shlex.split(command)[-1]
+                   for command in found['commands'])
+
+
+def _case_a_blocked_line_in_a_partial_retro_note_still_asks(root):
+    # #834 delta D2: a note missing Gap: is a retro.gap, and its Blocked: line still asks.
+    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root)
+    state.append_event('retro.gap', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
+        'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
+    found = dispatch.next_step('A', root)
+    assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner; ask this card verbatim')
 
 
 @pytest.mark.parametrize("scenario_fn", [
     _case_a_builder_blocked_line_no_parks,
-    _case_a_builder_blocked_none_goes_to_the_gates,
+    _case_a_blocked_line_in_a_partial_retro_note_still_asks,
+    partial(_case_a_builder_blocked_none_goes_to_the_gates, line='none', action='gates', note=''),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='none. The live phase reads "implement", but the brief forbids production code this run, '
+                 'so implementation waits for the owner.',
+            action='gates',
+            note='The live phase reads "implement", but the brief forbids production code this run, '
+                 'so implementation waits for the owner.'),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='NONE, context for the report', action='gates', note='context for the report'),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='None; context for the report', action='gates', note='context for the report'),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='none needed', action='escalate', note=''),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='none: context', action='escalate', note=''),
+    partial(_case_a_builder_blocked_none_goes_to_the_gates,
+            line='nonetheless blocked', action='escalate', note=''),
 ])
 def test_a_builder_cases_3843(root, scenario_fn):
     scenario_fn(root)
@@ -3904,16 +3944,6 @@ def test_a_resumed_blocked_park_goes_to_the_gates(root, capsys, monkeypatch):
     assert dispatch.next_step('A', root)['action'] == 'parked'
     resume_yes(root, capsys)
     assert dispatch.next_step('A', root)['action'] == 'gates'
-
-
-def test_a_blocked_line_in_a_partial_retro_note_still_asks(root):
-    # #834 delta D2: a note missing Gap: is a retro.gap, and its Blocked: line still asks.
-    from wuwei import dispatch
-    state._write_state(lambda data: data['seats']['builder'].update(agent_id='b-1'), root)
-    state.append_event('retro.gap', {'agent_id': 'b-1', 'agent_type': 'wuwei:builder', 'fields': {
-        'Blocked': 'needs the owner'}, 'missing': ['Gap', 'Change'], 'invalid': []}, root)
-    found = dispatch.next_step('A', root)
-    assert (found['action'], found['reason']) == ('escalate', 'builder blocked: needs the owner')
 
 
 def test_a_reused_item_id_with_a_new_ticket_runs_its_duty(root, monkeypatch):
