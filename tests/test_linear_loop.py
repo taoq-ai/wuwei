@@ -27,7 +27,7 @@ def test_linear_backlog_recorded(monkeypatch, team):
     assert ('team:{id:{eq:$team}}' in calls[0][0]) == bool(team)
 
 
-def test_linear_transition_resolves_team_state_once(monkeypatch):
+def _case_linear_transition_resolves_team_state_once(monkeypatch):
     calls = []
     def query(query, variables):
         calls.append(variables)
@@ -45,7 +45,7 @@ def test_linear_transition_resolves_team_state_once(monkeypatch):
     assert calls[-1]['input'] == {'stateId': 'state-1'}
 
 
-def test_linear_transition_resolves_name_starting_with_state(monkeypatch):
+def _case_linear_transition_resolves_name_starting_with_state(monkeypatch):
     calls = []
     def query(query, variables):
         calls.append((query, variables))
@@ -59,6 +59,14 @@ def test_linear_transition_resolves_name_starting_with_state(monkeypatch):
     monkeypatch.setattr(linear, '_state_ids', {})
     assert linear.transition('ABC-1', 'state-review').exit == 0
     assert calls[-1][1]['input'] == {'stateId': 'uuid-state'}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_linear_transition_resolves_team_state_once,
+    _case_linear_transition_resolves_name_starting_with_state,
+])
+def test_linear_transition_cases_30(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 
 def test_discovery_tracker_candidates_and_none(tmp_path, monkeypatch):

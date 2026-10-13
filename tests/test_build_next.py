@@ -563,7 +563,7 @@ def tracked(seat, monkeypatch):
     return fake
 
 
-def test_build_next_needs_no_ticket(seat, monkeypatch):
+def _case_build_next_needs_no_ticket(seat, monkeypatch):
     root, _, _, day, _ = seat
     fake = tracked(seat, monkeypatch)
     assert main(['build', 'next', 'A']) == 0
@@ -571,7 +571,7 @@ def test_build_next_needs_no_ticket(seat, monkeypatch):
     assert not [e for e in events(day) if e['kind'].startswith('duty.')]
 
 
-def test_build_next_claims_a_recorded_ticket_as_a_duty(seat, monkeypatch):
+def _case_build_next_claims_a_recorded_ticket_as_a_duty(seat, monkeypatch):
     root, _, _, day, _ = seat
     fake = tracked(seat, monkeypatch)
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
@@ -583,6 +583,14 @@ def test_build_next_claims_a_recorded_ticket_as_a_duty(seat, monkeypatch):
                                     'command': 'wuwei tracker move A claim'}),
                       ('duty.done', {'item': 'A', 'duty': 'tracker.claim', 'ticket': 'ENG-7',
                                      'pr': None})]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_build_next_needs_no_ticket,
+    _case_build_next_claims_a_recorded_ticket_as_a_duty,
+])
+def test_build_next_cases_566(seat, monkeypatch, scenario_fn):
+    scenario_fn(seat, monkeypatch)
 
 
 def test_checked_event_counts_passed_and_failed(seat):
@@ -735,7 +743,7 @@ def test_strict_builds_without_fast_checks(seat):
     assert state.read_state(root)['builds']['A']['commands'] == []
 
 
-def test_a_new_build_binds_the_routed_runtime(seat):
+def _case_a_new_build_binds_the_routed_runtime(seat):
     # #845: the launch set passes the routed runtime; an existing record keeps its own.
     root = seat[0]
     assert build.next_action('A', root=root, runtime='codex')['runtime'] == 'codex'
@@ -743,13 +751,21 @@ def test_a_new_build_binds_the_routed_runtime(seat):
     assert build.next_action('A', root=root)['runtime'] == 'codex'
 
 
-def test_a_new_build_on_a_spent_runtime_takes_the_alternate(seat):
+def _case_a_new_build_on_a_spent_runtime_takes_the_alternate(seat):
     root = seat[0]
     state._write_state(lambda data: data.update(seat_policy={
         'builder': {'runtime': 'claude', 'model': 'm', 'alternate': 'codex'}}), root)
     (root / '.wuwei/windows.json').write_text(json.dumps({'claude': {'five_hour': {
         'used_percent': 100, 'resets_at': '2026-09-28T14:00:00+00:00'}}}))
     assert build.next_action('A', root=root)['runtime'] == 'codex'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_a_new_build_binds_the_routed_runtime,
+    _case_a_new_build_on_a_spent_runtime_takes_the_alternate,
+])
+def test_a_new_cases_746(seat, scenario_fn):
+    scenario_fn(seat)
 
 
 def test_a_second_build_loop_for_an_item_exits_without_a_job(tmp_path, monkeypatch, capsys):

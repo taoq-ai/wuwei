@@ -48,7 +48,7 @@ def candidate(name='inventory', **fields):
     return {**proposal()['candidates'][0], 'id': name, 'paths': ['src/inventory.py'], **fields}
 
 
-def test_field_case_refills_instead_of_close_and_briefs_existing_lead(root):
+def _case_field_case_refills_instead_of_close_and_briefs_existing_lead(root):
     from wuwei import brief, dispatch
     import shlex
     from wuwei.__main__ import main
@@ -72,7 +72,7 @@ def test_field_case_refills_instead_of_close_and_briefs_existing_lead(root):
     assert next_command.step(root)['state'] == 'propose'
 
 
-def test_safe_goal_work_joins_without_card_and_preserves_morning(root):
+def _case_safe_goal_work_joins_without_card_and_preserves_morning(root):
     from wuwei import dispatch
     morning = (workspace.day_dir(root) / 'proposal.json').read_bytes()
     refill(root, [candidate()])
@@ -112,21 +112,30 @@ def test_exceptions_share_one_content_bound_card_and_retry(root, fields):
     assert not any(kind == 'owner.requested' for kind, _ in sessions._rows(root))
 
 
-def test_empty_refill_closes_reports_goals_and_does_not_repeat(root):
-    refill(root, [])
-    assert next_command.step(root)['state'] == 'close'
-    assert next_command.step(root)['state'] == 'close'
-    text = report.build(root)
-    assert 'Goals with no work found' in text and 'G-1: Client directory' in text
-    # Fold the authoritative events again after removing only the disposable cache.
-    (workspace.day_dir(root) / 'state.json').unlink()
-    assert next_command.step(root)['state'] == 'close'
-    path = root / '.wuwei/memory/goals.md'
-    path.write_text(path.read_text().replace('complete', 'complete including vendors'))
-    assert next_command.step(root)['state'] == 'close'
+@pytest.mark.parametrize('case', ['empty refill', 'last refill has work'])
+def test_report_uses_last_refill(root, case):
+    if case == 'empty refill':
+        refill(root, [])
+        assert next_command.step(root)['state'] == 'close'
+        assert next_command.step(root)['state'] == 'close'
+        text = report.build(root)
+        assert 'Goals with no work found' in text and 'G-1: Client directory' in text
+        # Fold the authoritative events again after removing only the disposable cache.
+        (workspace.day_dir(root) / 'state.json').unlink()
+        assert next_command.step(root)['state'] == 'close'
+        path = root / '.wuwei/memory/goals.md'
+        path.write_text(path.read_text().replace('complete', 'complete including vendors'))
+        assert next_command.step(root)['state'] == 'close'
+    else:
+        from wuwei import goals
+        opened = goals.parse((root / '.wuwei/memory/goals.md').read_text())
+        records.write(root, {'refills': [
+            {'number': 1, 'goals': opened, 'admitted': ['first'], 'no_work': ['G-1'], 'pending': False},
+            {'number': 2, 'goals': opened, 'admitted': ['second'], 'no_work': [], 'pending': False}]})
+        assert 'Goals with no work found' not in report.build(root)
 
 
-def test_duplicate_finished_items_and_declined_exceptions_do_not_repeat(root):
+def _case_duplicate_finished_items_and_declined_exceptions_do_not_repeat(root):
     with pytest.raises(state.StateError) as error:
         refill(root, [candidate('A'), candidate('outside', goal='unplanned')])
     owner.answer_card(root, str(error.value), reply='No')
@@ -163,11 +172,18 @@ def test_stop_blocks_only_changed_active_rows(root, monkeypatch, capsys, row):
     assert stop(root, monkeypatch, capsys, stop_hook_active=False)['decision'] == 'block'
 
 
-@pytest.mark.parametrize('case', ['wait', 'owner', 'closed', 'closing', 'unstarted', 'seat', 'agent', 'role'])
+@pytest.mark.parametrize('case', [
+    'wait', 'owner', 'closed', 'closing', 'unstarted', 'seat', 'agent', 'role', 'error',
+])
 def test_stop_exemptions(root, monkeypatch, capsys, case):
     fields = {}
-    monkeypatch.setattr(next_command, 'step', lambda root: {'state': 'wait' if case == 'wait' else 'set',
-                                                          'then': '', 'decision': case == 'owner'})
+    if case == 'error':
+        def broken(root):
+            raise ValueError('broken data')
+        monkeypatch.setattr(next_command, 'step', broken)
+    else:
+        monkeypatch.setattr(next_command, 'step', lambda root: {'state': 'wait' if case == 'wait' else 'set',
+                                                              'then': '', 'decision': case == 'owner'})
     if case == 'owner':
         sessions.needs_owner(root, 'bin/wuwei plan set A owner_merge=true', 'Owner decides')
     elif case == 'closed':
@@ -184,14 +200,8 @@ def test_stop_exemptions(root, monkeypatch, capsys, case):
     elif case == 'role':
         monkeypatch.setenv('WUWEI_SEAT_ROLE', 'builder')
     assert stop(root, monkeypatch, capsys, **fields) is None
-
-
-def test_hook_error_fails_open_and_records(root, monkeypatch, capsys):
-    def broken(root):
-        raise ValueError('broken data')
-    monkeypatch.setattr(next_command, 'step', broken)
-    assert stop(root, monkeypatch, capsys) is None
-    assert any(kind == 'hook.stop_error' for kind, _ in sessions._rows(root))
+    if case == 'error':
+        assert any(kind == 'hook.stop_error' for kind, _ in sessions._rows(root))
 
 
 def test_stop_executable_shim(root):
@@ -204,20 +214,21 @@ def test_stop_executable_shim(root):
     assert json.loads(result.stdout)['decision'] == 'block'
 
 
-@pytest.mark.parametrize('paths', [['infra/main.tf'], ['nested/requirements.txt'], ['.github/workflows/ci.yml']])
-def test_never_auto_paths_require_owner_even_with_clear_flags(root, paths):
+@pytest.mark.parametrize('paths', [
+    ['infra/main.tf'], ['nested/requirements.txt'], ['.github/workflows/ci.yml'], None,
+])
+def test_unsafe_or_missing_paths_require_owner(root, paths):
+    if paths is None:
+        row = candidate()
+        del row['paths']
+    else:
+        row = candidate(paths=paths)
     with pytest.raises(state.StateError, match='Owner step card'):
-        refill(root, [candidate(paths=paths)])
+        refill(root, [row])
     assert state.read_state(root)['approved_items'] == ['A']
 
 
-def test_refill_cannot_skip_an_active_queue(root):
-    records.write(root, {'items': {'A': {'phase': 'planned'}}})
-    with pytest.raises(state.StateError, match='exhausted'):
-        refill(root, [candidate()])
-
-
-def test_card_cannot_approve_changed_candidate(root):
+def _case_card_cannot_approve_changed_candidate(root):
     rows = [candidate('outside', goal='unplanned')]
     with pytest.raises(state.StateError) as error:
         refill(root, rows)
@@ -228,21 +239,33 @@ def test_card_cannot_approve_changed_candidate(root):
     assert state.read_state(root)['approved_items'] == ['A']
 
 
-@pytest.mark.parametrize('closed', ['close_requested', 'day.closed'])
-def test_explicit_close_prevents_refill(root, closed):
-    if closed == 'day.closed':
-        state.append_event(closed, {}, root)
+@pytest.mark.parametrize('blocked_by', ['active queue', 'close_requested', 'day.closed'])
+def test_refill_requires_exhausted_unclosed_day(root, blocked_by):
+    if blocked_by == 'active queue':
+        records.write(root, {'items': {'A': {'phase': 'planned'}}})
+    elif blocked_by == 'day.closed':
+        state.append_event(blocked_by, {}, root)
     else:
-        records.write(root, {closed: True})
-    with pytest.raises(state.StateError, match='unclosed'):
-        refill(root, [])
-    assert next_command.step(root)['state'] != 'refill'
+        records.write(root, {blocked_by: True})
+    with pytest.raises(state.StateError, match='exhausted' if blocked_by == 'active queue' else 'unclosed'):
+        refill(root, [candidate()] if blocked_by == 'active queue' else [])
+    if blocked_by != 'active queue':
+        assert next_command.step(root)['state'] != 'refill'
 
 
-def test_refill_proposal_is_available_to_tracker_duty(root):
+@pytest.mark.parametrize('case', ['refill proposal', 'symlink proposal'])
+def test_tracker_candidate_uses_safe_proposal(root, case):
     from wuwei import tracker
-    refill(root, [candidate()])
-    assert tracker._candidate(root, state.read_state(root), 'inventory')['scope'] == 'one function'
+    if case == 'refill proposal':
+        refill(root, [candidate()])
+        assert tracker._candidate(root, state.read_state(root), 'inventory')['scope'] == 'one function'
+    else:
+        path = workspace.day_dir(root) / 'proposal.json'
+        elsewhere = root / 'foreign.json'
+        elsewhere.write_bytes(path.read_bytes())
+        path.unlink()
+        path.symlink_to(elsewhere)
+        assert tracker._candidate(root, state.read_state(root), 'A') is None
 
 
 @pytest.mark.parametrize('effort, asks', [(1, False), (2, True)])
@@ -259,7 +282,7 @@ def test_rice_auto_start_bar(root, effort, asks):
     assert ('inventory' in state.read_state(root)['approved_items']) is not asks
 
 
-def test_refill_candidate_overrides_unapproved_morning_proposal(root):
+def _case_refill_candidate_overrides_unapproved_morning_proposal(root):
     from wuwei import dispatch
     path = workspace.day_dir(root) / 'proposal.json'
     morning = json.loads(path.read_text())
@@ -270,7 +293,7 @@ def test_refill_candidate_overrides_unapproved_morning_proposal(root):
     assert found['scope'] == 'New admitted scope' and found['paths'] == ['new.py']
 
 
-def test_refill_preserves_shared_admission_evidence(root):
+def _case_refill_preserves_shared_admission_evidence(root):
     from wuwei import merge, metrics
     refill(root, [candidate()])
     assert merge.risk_evidence(root, 'inventory') == [candidate()['flags']]
@@ -281,16 +304,6 @@ def test_refill_preserves_shared_admission_evidence(root):
     assert any(row['item'] == 'inventory' for row in metrics.cycles(root))
 
 
-def test_tracker_keeps_symlink_proposal_excluded(root):
-    from wuwei import tracker
-    path = workspace.day_dir(root) / 'proposal.json'
-    elsewhere = root / 'foreign.json'
-    elsewhere.write_bytes(path.read_bytes())
-    path.unlink()
-    path.symlink_to(elsewhere)
-    assert tracker._candidate(root, state.read_state(root), 'A') is None
-
-
 def test_abandoned_owner_request_does_not_hide_work(root, monkeypatch, capsys):
     before = list(sessions._rows(root))
     assert sessions.needs_owner(root, 'bin/wuwei plan set A owner_merge=true', 'Owner decides')
@@ -299,19 +312,39 @@ def test_abandoned_owner_request_does_not_hide_work(root, monkeypatch, capsys):
     assert stop(root, monkeypatch, capsys, stop_hook_active=True) is None
 
 
-@pytest.mark.parametrize('limit', [0, 2, 20])
-def test_stop_daily_cap_even_when_commands_change(root, monkeypatch, capsys, limit):
-    if limit != 20:
+@pytest.mark.parametrize('case, limit', [
+    ('changing commands', 0), ('changing commands', 2), ('changing commands', 20),
+    ('warning', 0), ('warning', 2),
+])
+def test_stop_daily_cap(root, monkeypatch, capsys, case, limit):
+    if case == 'changing commands':
+        if limit != 20:
+            with (root / '.wuwei/config.toml').open('a') as stream:
+                stream.write(f'\n[guards]\nstop_max_blocks={limit}\n')
+        action = {'state': 'set', 'then': ''}
+        monkeypatch.setattr(next_command, 'step', lambda root: action)
+        for index in range(limit + 1):
+            action['command'] = f'wuwei plan set A attempt={index}'
+            state.append_event('next.action', {'state': 'set'}, root)
+            result = stop(root, monkeypatch, capsys, stop_hook_active=True)
+            assert (result is not None) == (index < limit)
+        assert sum(kind == 'hook.stop_blocked' for kind, _ in sessions._rows(root)) == limit
+    else:
+        from wuwei.commands import status
         with (root / '.wuwei/config.toml').open('a') as stream:
             stream.write(f'\n[guards]\nstop_max_blocks={limit}\n')
-    action = {'state': 'set', 'then': ''}
-    monkeypatch.setattr(next_command, 'step', lambda root: action)
-    for index in range(limit + 1):
-        action['command'] = f'wuwei plan set A attempt={index}'
-        state.append_event('next.action', {'state': 'set'}, root)
-        result = stop(root, monkeypatch, capsys, stop_hook_active=True)
-        assert (result is not None) == (index < limit)
-    assert sum(kind == 'hook.stop_blocked' for kind, _ in sessions._rows(root)) == limit
+        for _ in range(limit):
+            assert stop(root, monkeypatch, capsys)['decision'] == 'block'
+        for _ in range(2):
+            assert stop(root, monkeypatch, capsys) is None
+        warnings = [row for kind, row in sessions._rows(root) if kind == 'hook.stop_capped']
+        assert len(warnings) == 1 and warnings[0]['limit'] == limit
+        shown = [row for row in status.attention(workspace.day_dir(root)) if row['source'] == 'hook.stop_capped']
+        assert len(shown) == 1 and shown[0]['tier'] == 'warn'
+        assert 'wake is off' in shown[0]['reason']
+        plan.session('new-planner', root, take_over=True)
+        assert stop(root, monkeypatch, capsys, session_id='new-planner') is None
+        assert sum(kind == 'hook.stop_capped' for kind, _ in sessions._rows(root)) == 1
 
 
 @pytest.mark.parametrize('limit', [0, 1, 3])
@@ -329,10 +362,24 @@ def test_refill_daily_cap_and_report(root, limit):
         refill(root, [candidate('too-late')], limit + 1)
 
 
-@pytest.mark.parametrize('now, expected', [('14:59:59', 'refill'), ('15:00:00', 'close'), ('18:00:00', 'close')])
+@pytest.mark.parametrize('now, expected', [
+    ('14:59:59', 'refill'), ('15:00:00', 'close'), ('18:00:00', 'close'),
+    ('slow discovery', 'envelope.end'),
+])
 def test_refill_honors_approved_envelope_in_owner_timezone(root, monkeypatch, now, expected):
+    timezone = 'UTC' if now == 'slow discovery' else 'Europe/Amsterdam'
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('\n[owner]\ntimezone="Europe/Amsterdam"\n')
+        stream.write(f'\n[owner]\ntimezone="{timezone}"\n')
+    if now == 'slow discovery':
+        monkeypatch.setenv('WUWEI_NOW', '2026-10-13T16:59:59+00:00')
+        def slow_discovery(*args, **kwargs):
+            monkeypatch.setenv('WUWEI_NOW', '2026-10-13T17:00:01+00:00')
+            return {'sources': {}, 'candidates': []}
+        monkeypatch.setattr(discovery, 'discover', slow_discovery)
+        with pytest.raises(state.StateError, match='envelope.end'):
+            refill(root, [candidate('late')])
+        assert state.read_state(root)['approved_items'] == ['A']
+        return
     monkeypatch.setenv('WUWEI_NOW', f'2026-10-13T{now}+00:00')
     assert next_command.step(root)['state'] == expected
     if expected == 'close':
@@ -341,22 +388,29 @@ def test_refill_honors_approved_envelope_in_owner_timezone(root, monkeypatch, no
             refill(root, [candidate()])
 
 
-def test_pending_refill_can_finish_at_count_cap_but_not_after_end(root, monkeypatch):
+@pytest.mark.parametrize('case', ['after end', 'another pass'])
+def test_pending_refill_respects_cap_and_end(root, monkeypatch, case):
     with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('\n[plan]\nmax_refills=1\n[owner]\ntimezone="UTC"\n')
+        stream.write('\n[plan]\nmax_refills=1\n' + ('[owner]\ntimezone="UTC"\n' if case == 'after end' else ''))
     rows = [candidate(goal='unplanned')]
-    with pytest.raises(state.StateError) as error:
+    with pytest.raises(state.StateError, match='Owner step card' if case == 'another pass' else None) as error:
         refill(root, rows)
-    assert next_command.step(root)['state'] == 'propose'
-    owner.answer_card(root, str(error.value))
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-13T17:00:00+00:00')
-    assert next_command.step(root)['state'] == 'close'
-    with pytest.raises(state.StateError, match='envelope.end'):
-        refill(root, rows)
-    assert state.read_state(root)['approved_items'] == ['A']
+    if case == 'after end':
+        assert next_command.step(root)['state'] == 'propose'
+        owner.answer_card(root, str(error.value))
+        monkeypatch.setenv('WUWEI_NOW', '2026-10-13T17:00:00+00:00')
+        assert next_command.step(root)['state'] == 'close'
+        with pytest.raises(state.StateError, match='envelope.end'):
+            refill(root, rows)
+        assert state.read_state(root)['approved_items'] == ['A']
+    else:
+        with pytest.raises(state.StateError, match='pending refill'):
+            refill(root, [candidate('beyond-cap')], 2)
+        assert state.read_state(root)['approved_items'] == ['A']
+        assert len(state.read_state(root)['refills']) == 1
 
 
-def test_refill_command_stays_compact_for_large_goals_and_item_scope(root):
+def _case_refill_command_stays_compact_for_large_goals_and_item_scope(root):
     path = workspace.day_dir(root) / 'goals.md'
     path.write_text((root / '.wuwei/memory/goals.md').read_text().replace('complete', 'complete ' * 3000))
     records.write(root, {'items': {'A': {'phase': 'merged', 'status': 'done', 'approved_as': 'inventory ' * 3000}}})
@@ -365,7 +419,7 @@ def test_refill_command_stays_compact_for_large_goals_and_item_scope(root):
     assert 'memory/goals.md' in row['command'] and 'wuwei status' in row['command']
 
 
-def test_unknown_repository_goes_to_card_without_aborting_safe_candidates(root):
+def _case_unknown_repository_goes_to_card_without_aborting_safe_candidates(root):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[[repos]]\nname="acme/other"\npath="other"\ndefault_branch="main"\n')
     rows = [candidate(repo='acme/client'), candidate('unknown', repo='missing/repo')]
@@ -375,28 +429,20 @@ def test_unknown_repository_goes_to_card_without_aborting_safe_candidates(root):
     assert state.read_state(root)['approved_items'] == ['A', 'inventory']
 
 
-def test_missing_paths_require_owner(root):
-    row = candidate()
-    del row['paths']
-    with pytest.raises(state.StateError, match='Owner step card'):
-        refill(root, [row])
-    assert state.read_state(root)['approved_items'] == ['A']
+@pytest.mark.parametrize('snapshot', ['saved', 'missing'])
+def test_refill_uses_gate_goal_snapshot(root, snapshot):
+    if snapshot == 'saved':
+        original = (root / '.wuwei/memory/goals.md').read_text()
+        assert (workspace.day_dir(root) / 'goals.md').read_text() == original
+        (root / '.wuwei/memory/goals.md').write_text(original.replace('Client directory', 'Changed memory'))
+        refill(root, [])
+        assert state.read_state(root)['refills'][-1]['goals']['G-1']['outcome'].startswith('Client directory')
+    else:
+        (workspace.day_dir(root) / 'goals.md').unlink(missing_ok=True)
+        assert next_command.step(root)['state'] == 'close'
 
 
-def test_gate_saves_snapshot_and_refill_ignores_memory_edits(root):
-    original = (root / '.wuwei/memory/goals.md').read_text()
-    assert (workspace.day_dir(root) / 'goals.md').read_text() == original
-    (root / '.wuwei/memory/goals.md').write_text(original.replace('Client directory', 'Changed memory'))
-    refill(root, [])
-    assert state.read_state(root)['refills'][-1]['goals']['G-1']['outcome'].startswith('Client directory')
-
-
-def test_legacy_day_without_goal_snapshot_does_not_refill(root):
-    (workspace.day_dir(root) / 'goals.md').unlink(missing_ok=True)
-    assert next_command.step(root)['state'] == 'close'
-
-
-def test_only_gate_approved_goal_ids_are_automatic(root):
+def _case_only_gate_approved_goal_ids_are_automatic(root):
     path = workspace.day_dir(root) / 'goals.md'
     text = (root / '.wuwei/memory/goals.md').read_text()
     path.write_text(text + text.replace('# Goals\n', '').replace('G-1', 'G-2'))
@@ -409,15 +455,6 @@ def test_only_gate_approved_goal_ids_are_automatic(root):
     assert state.read_state(root)['goals'] == ['G-1']
 
 
-def test_report_no_work_is_from_last_refill_only(root):
-    from wuwei import goals
-    opened = goals.parse((root / '.wuwei/memory/goals.md').read_text())
-    records.write(root, {'refills': [
-        {'number': 1, 'goals': opened, 'admitted': ['first'], 'no_work': ['G-1'], 'pending': False},
-        {'number': 2, 'goals': opened, 'admitted': ['second'], 'no_work': [], 'pending': False}]})
-    assert 'Goals with no work found' not in report.build(root)
-
-
 def test_completed_refill_retry_is_idempotent_at_cap_and_after_end(root, monkeypatch):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[plan]\nmax_refills=1\n[owner]\ntimezone="UTC"\n')
@@ -426,30 +463,6 @@ def test_completed_refill_retry_is_idempotent_at_cap_and_after_end(root, monkeyp
     before = list(sessions._rows(root))
     refill(root, [candidate()])
     assert list(sessions._rows(root)) == before
-
-
-def test_pending_refill_cannot_start_another_pass_to_bypass_cap(root):
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('\n[plan]\nmax_refills=1\n')
-    with pytest.raises(state.StateError, match='Owner step card'):
-        refill(root, [candidate(goal='unplanned')])
-    with pytest.raises(state.StateError, match='pending refill'):
-        refill(root, [candidate('beyond-cap')], 2)
-    assert state.read_state(root)['approved_items'] == ['A']
-    assert len(state.read_state(root)['refills']) == 1
-
-
-def test_refill_rechecks_envelope_after_slow_discovery(root, monkeypatch):
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write('\n[owner]\ntimezone="UTC"\n')
-    monkeypatch.setenv('WUWEI_NOW', '2026-10-13T16:59:59+00:00')
-    def slow_discovery(*args, **kwargs):
-        monkeypatch.setenv('WUWEI_NOW', '2026-10-13T17:00:01+00:00')
-        return {'sources': {}, 'candidates': []}
-    monkeypatch.setattr(discovery, 'discover', slow_discovery)
-    with pytest.raises(state.StateError, match='envelope.end'):
-        refill(root, [candidate('late')])
-    assert state.read_state(root)['approved_items'] == ['A']
 
 
 @pytest.mark.parametrize('end, closed', [
@@ -471,20 +484,16 @@ def test_refill_and_report_accept_envelope_end_formats(root, monkeypatch, end, c
         assert ('Refill stopped at envelope.end' in report.build(root)) == closed
 
 
-@pytest.mark.parametrize('limit', [0, 2])
-def test_stop_cap_warns_once_per_day_and_is_visible_in_status(root, monkeypatch, capsys, limit):
-    from wuwei.commands import status
-    with (root / '.wuwei/config.toml').open('a') as stream:
-        stream.write(f'\n[guards]\nstop_max_blocks={limit}\n')
-    for _ in range(limit):
-        assert stop(root, monkeypatch, capsys)['decision'] == 'block'
-    for _ in range(2):
-        assert stop(root, monkeypatch, capsys) is None
-    warnings = [row for kind, row in sessions._rows(root) if kind == 'hook.stop_capped']
-    assert len(warnings) == 1 and warnings[0]['limit'] == limit
-    shown = [row for row in status.attention(workspace.day_dir(root)) if row['source'] == 'hook.stop_capped']
-    assert len(shown) == 1 and shown[0]['tier'] == 'warn'
-    assert 'wake is off' in shown[0]['reason']
-    plan.session('new-planner', root, take_over=True)
-    assert stop(root, monkeypatch, capsys, session_id='new-planner') is None
-    assert sum(kind == 'hook.stop_capped' for kind, _ in sessions._rows(root)) == 1
+@pytest.mark.parametrize("scenario_fn", [
+    _case_field_case_refills_instead_of_close_and_briefs_existing_lead,
+    _case_safe_goal_work_joins_without_card_and_preserves_morning,
+    _case_duplicate_finished_items_and_declined_exceptions_do_not_repeat,
+    _case_card_cannot_approve_changed_candidate,
+    _case_refill_candidate_overrides_unapproved_morning_proposal,
+    _case_refill_preserves_shared_admission_evidence,
+    _case_refill_command_stays_compact_for_large_goals_and_item_scope,
+    _case_unknown_repository_goes_to_card_without_aborting_safe_candidates,
+    _case_only_gate_approved_goal_ids_are_automatic,
+])
+def test_refill_evidence_cases(root, scenario_fn):
+    scenario_fn(root)

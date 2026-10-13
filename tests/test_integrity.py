@@ -874,7 +874,7 @@ def signed(tmp_path, monkeypatch):
     return api, base
 
 
-def test_in_use_markers_do_not_change_measure(tmp_path, monkeypatch):
+def _case_in_use_markers_do_not_change_measure(tmp_path, monkeypatch):
     api, base = signed(tmp_path, monkeypatch)
     clean = api.measure(base)
     assert clean.exit == 0
@@ -886,7 +886,7 @@ def test_in_use_markers_do_not_change_measure(tmp_path, monkeypatch):
     assert api.measure(base) == clean
 
 
-def test_in_use_markers_across_an_upgrade(tmp_path, monkeypatch):
+def _case_in_use_markers_across_an_upgrade(tmp_path, monkeypatch):
     """#353: two cached versions, each with a live marker, measure clean and name each other."""
     (tmp_path / 'cache').mkdir()
     bases, clean = [], []
@@ -901,6 +901,14 @@ def test_in_use_markers_across_an_upgrade(tmp_path, monkeypatch):
         assert before.exit == 0 and api.measure(base) == before
         monkeypatch.setattr(api, 'PLUGIN', base)
         assert api.other_versions() == [other.name]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_in_use_markers_do_not_change_measure,
+    _case_in_use_markers_across_an_upgrade,
+])
+def test_in_use_cases_877(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize('shape, fragment', [
@@ -1013,7 +1021,7 @@ def test_release_asset_through_the_launcher_with_a_marker(tmp_path, monkeypatch)
     assert wuwei('hook', 'PreToolUse', stdin=payload).returncode == 0
 
 
-def test_both_paths_cached(tmp_path, monkeypatch):
+def _case_both_paths_cached(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     copy_a, copy_b = (tmp_path / 'a/plugin').resolve(), (tmp_path / 'b/plugin').resolve()
@@ -1030,7 +1038,7 @@ def test_both_paths_cached(tmp_path, monkeypatch):
     assert 'confirmed the plugin at' not in api.cached(root).reason
 
 
-def test_both_paths_check(tmp_path, monkeypatch):
+def _case_both_paths_check(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     base = plugin(tmp_path)
@@ -1051,7 +1059,7 @@ def test_both_paths_check(tmp_path, monkeypatch):
     assert f'runs {other}' in result.reason
 
 
-def test_both_paths_old_records(tmp_path, monkeypatch):
+def _case_both_paths_old_records(tmp_path, monkeypatch):
     api = core()
     root = workspace_root(tmp_path)
     (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
@@ -1062,6 +1070,15 @@ def test_both_paths_old_records(tmp_path, monkeypatch):
     (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 0, 'fingerprint': 'a' * 64, 'reason': '', 'plugin': str(tmp_path / 'other')}))
     assert api.cached(root).exit == 0
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_both_paths_cached,
+    _case_both_paths_check,
+    _case_both_paths_old_records,
+])
+def test_both_paths_cases_1016(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def release_install(path):

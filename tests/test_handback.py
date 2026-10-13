@@ -41,7 +41,7 @@ def test_last_turn_shapes(tmp_path):
         brief.last_turn(tmp_path / 'missing.jsonl')
 
 
-def test_stop_text(tmp_path):
+def _case_stop_text(tmp_path):
     path = write(tmp_path / 'handback.jsonl', raw=HANDBACK)
     assert brief.stop_text({'last_assistant_message': 'said', 'agent_transcript_path': str(path)}) == 'said'
     for message in ({}, {'last_assistant_message': ''}, {'last_assistant_message': '  \n'}):
@@ -56,7 +56,7 @@ def test_stop_text(tmp_path):
         brief.stop_text({'agent_transcript_path': str(tool_only)})
 
 
-def test_stop_text_reads_the_tail(tmp_path):
+def _case_stop_text_reads_the_tail(tmp_path):
     # #516: a missing report is read from the transcript's end; the head is never decoded and
     # the window grows until the last assistant entry is in it.
     user = json.dumps({'type': 'user', 'message': {'content': 'x' * 1000}}) + '\n'
@@ -68,6 +68,14 @@ def test_stop_text_reads_the_tail(tmp_path):
     path = tmp_path / 'far.jsonl'
     path.write_text(json.dumps({'type': 'assistant', 'message': {'content': 'far back'}}) + '\n' + user * 300)
     assert brief.stop_text({'agent_transcript_path': str(path)}) == 'far back'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_stop_text,
+    _case_stop_text_reads_the_tail,
+])
+def test_stop_text_cases_44(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
 
 
 from test_build_next import launch, seat, stop  # noqa: E402,F401 (the seat fixture)
@@ -104,7 +112,7 @@ def test_builder_handback_records_result(seat, ending):
     assert kinds(day) == ['seat.usage', 'seat stopped']
 
 
-def test_mismatched_message_still_refused(seat):
+def _case_mismatched_message_still_refused(seat):
     root, _, _, _, _ = seat
     launch(seat, build.next_action('A', root=root))
     code, reason = handback_stop(seat, last_assistant_message='something else')
@@ -410,7 +418,7 @@ def seat_stop(capsys, *args):
     return code, capsys.readouterr()
 
 
-def test_seat_stop_verdict_builder(seat, monkeypatch, capsys):
+def _case_seat_stop_verdict_builder(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err
@@ -420,7 +428,7 @@ def test_seat_stop_verdict_builder(seat, monkeypatch, capsys):
     assert kinds(seat[3]) == ['seat.usage', 'seat stopped']
 
 
-def test_seat_stop_verdict_after_unmeasured(seat, monkeypatch, capsys):
+def _case_seat_stop_verdict_after_unmeasured(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
     (root / 'agent.jsonl').write_text((root / 'agent.jsonl').read_text().replace(HANDBACK, ''))
     assert torn_stop(root, 'builder', 'builder', root / 'agent.jsonl')[0] == 2
@@ -433,7 +441,7 @@ def test_seat_stop_verdict_after_unmeasured(seat, monkeypatch, capsys):
     assert brief.stuck(data) == []
 
 
-def test_seat_stop_verdict_sentinel_lint(seat, monkeypatch, capsys):
+def _case_seat_stop_verdict_sentinel_lint(seat, monkeypatch, capsys):
     root = seat[0]
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     add_seat(root, 'quality', 'sentinel-quality')
@@ -445,7 +453,7 @@ def test_seat_stop_verdict_sentinel_lint(seat, monkeypatch, capsys):
     assert state.read_state(root)['seats'] == before
 
 
-def test_seat_stop_unmeasured_parks_builder(seat, monkeypatch, capsys):
+def _case_seat_stop_unmeasured_parks_builder(seat, monkeypatch, capsys):
     root, _ = stuck_builder(seat, monkeypatch)
     code, out = seat_stop(capsys, 'builder', '--unmeasured', 'seat process gone')
     assert code == 0, out.err
@@ -457,7 +465,7 @@ def test_seat_stop_unmeasured_parks_builder(seat, monkeypatch, capsys):
     assert brief.stuck(data) == []
 
 
-def test_seat_stop_refusals(seat, monkeypatch, capsys):
+def _case_seat_stop_refusals(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
     add_seat(root, 'done', 'sentinel-arch', status='stopped')
     before = (state.workspace.day_dir(root) / 'state.json').read_text()
@@ -473,12 +481,24 @@ def test_seat_stop_refusals(seat, monkeypatch, capsys):
     assert seat_stop(capsys, 'builder', '--unmeasured', 'x')[0] == 0
 
 
-def test_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):
+def _case_seat_stop_planner_session_allowed(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
     state._write_state(lambda data: data.update(planner_session_id='planner-1'), root)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_seat_stop_verdict_builder,
+    _case_seat_stop_verdict_after_unmeasured,
+    _case_seat_stop_verdict_sentinel_lint,
+    _case_seat_stop_unmeasured_parks_builder,
+    _case_seat_stop_refusals,
+    _case_seat_stop_planner_session_allowed,
+])
+def test_seat_stop_cases_413(seat, monkeypatch, capsys, scenario_fn):
+    scenario_fn(seat, monkeypatch, capsys)
 
 
 def stop_offers(root):
@@ -622,7 +642,7 @@ def test_tampered_kept_report_is_refused(seat, monkeypatch, capsys):
     assert data['seats']['builder']['status'] == 'unmeasured' and data['builds']['A']['status'] == 'running'
 
 
-def test_mismatched_message_keeps_the_transcript_turn(seat):
+def _case_mismatched_message_keeps_the_transcript_turn(seat):
     # #905 F2: the bound agent's transcript turn is kept, never the payload message.
     root, _, _, _, _ = seat
     launch(seat, build.next_action('A', root=root))
@@ -632,7 +652,7 @@ def test_mismatched_message_keeps_the_transcript_turn(seat):
     assert (root / record['report']).read_text() == REPORT
 
 
-def test_mismatched_message_with_unreadable_turn_keeps_nothing(seat):
+def _case_mismatched_message_with_unreadable_turn_keeps_nothing(seat):
     root, _, _, _, _ = seat
     launch(seat, build.next_action('A', root=root))
     with (root / 'agent.jsonl').open('a') as stream:
@@ -642,6 +662,15 @@ def test_mismatched_message_with_unreadable_turn_keeps_nothing(seat):
                                       'last_assistant_message': 'tests pass, done'})
     assert code == 2 and '--verdict <file>' in reason
     assert 'report' not in state.read_state(root)['seats']['builder']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_mismatched_message_still_refused,
+    _case_mismatched_message_keeps_the_transcript_turn,
+    _case_mismatched_message_with_unreadable_turn_keeps_nothing,
+])
+def test_mismatched_message_cases_107(seat, scenario_fn):
+    scenario_fn(seat)
 
 
 def kept_builder(seat, monkeypatch):

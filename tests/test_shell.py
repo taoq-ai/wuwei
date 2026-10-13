@@ -34,26 +34,83 @@ def test_normalize(script, expected):
 
 
 @pytest.mark.parametrize('script', [
+    # test_parse_error
     "git 'push", 'echo "unterminated', 'git push\\', '(git push', 'git push)',
     'git push &&', '| git push', 'git push ;; pwd', 'bash -c', 'bash -c "git \'push"',
     'env -u', 'env --unknown git push', 'xargs --unknown git push',
     'exec -a', 'time -o log git push', 'sh script.sh',
     'echo $(git push)', 'echo `git push`', '$CMD push',
     'if true; then git push; fi', '\x00',
-])
-def test_parse_error(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
+    # test_expanding_nested_script_fails_closed
     '''X='; git push'; bash -c "echo $X"''',
     '''env X='; git push' bash -c "echo ${X}"''',
     '''env X=value command bash -c 'echo '"$X"''',
     '''xargs -I{} bash -c "$SCRIPT"''',
+    # test_shell_named_options_fail_closed
+    "sh -c -o errexit 'git push -f'", "sh -c +o errexit 'git push -f'",
+    # test_dynamic_launcher_fails_closed
+    "trap 'git push -f' EXIT",
+    '''xargs -I '{}' bash -c 'git push "$1"' _ '{}' ''',
+    """sh -c 'nice "$@"' _ git push -f""",
+    """sh -c 'nice "$1" push -f' _ git""",
+    # test_argument_expansion_fails_closed
+    r"git $'\x70ush' -f", 'V=push; git $V -f', 'git ${X:-push} -f',
+    'git push${IFS}-f', 'gh "$ACTION" merge', "echo $'literal'",
+    "bash -c $'git push -f'",
+    # test_shell_mutation_fails_closed
+    'alias g=git', 'unalias git', '. ./commands', 'source ./commands',
+    'shopt -s expand_aliases', 'enable -f commands.so commands',
+    "bash -c 'shopt -s expand_aliases\nalias g=git\ng push'",
+    r"bash -c $'shopt -s expand_aliases\nalias g=git\ng push'",
+    # test_unsupported_redirections_and_substitutions_fail_closed
+    'git push >', 'git push > ; echo ok',
+    'git push > $(echo file)', 'cat <<EOF\n$(git push)\nEOF',
+    "cat <<'EOF'\nunterminated", 'git commit -m "$(echo message)"',
+    "git commit -m \"$(cat <<'EOF'\nmessage\nEOF\ngit push\n)\"",
+    "git commit -m \"$(cat <<EOF\nmessage\nEOF\n)\"",
+    # test_dynamic_environment_fails_closed
+    'GIT_CONFIG_VALUE_0="$VALUE" git x',
+    'env GIT_CONFIG_COUNT=$COUNT git x',
+    # test_unwrap_cannot_discard_mentions
+    'echo git\\\nhub', "sh -c 'echo git\\\nhub'",
+    "git status; python3 <<'EOF'\nrun('gh pr merge')\nEOF",
+    # test_source_mentions_cannot_be_replaced_by_decoded_mentions
+    "sh -c 'echo git'hub'; gi'\"'t status\"",
+    'sh -c "echo git\\\nhub; g\\\nit status"',
+    "echo \"$(cat <<'git'\nsafe\ngit\n)\"",
+    "echo > \"$(cat <<'git'\nsafe\ngit\n)\"",
+    # test_obfuscated_launcher_mentions_fail_closed
+    '''caffeinate -i sh -c 'g""it push -f' ''',
+    "flock /tmp/l -c 'gi''t push -f'",
+    '''watch 'g""it push -f' ''',
+    r'watch "gi\t push -f"',
+    # test_xargs_obfuscated_guarded_program_fails_closed
+    "echo push | xargs g''it", r'echo push | xargs gi\t',
+    "echo pr merge | xargs g''h", r'echo pr merge | xargs g\h',
+    # test_brace_expansion_fails_closed
+    'git {push,--force}', 'git pu{s,}h', 'git show HEAD@{1..3}',
+    # test_other_commands_cannot_borrow_guarded_heredoc_exemption
+    "git status; python3 <<'EOF'\ngit push\nEOF",
+    "python3 <<'EOF'; git status\ngit push\nEOF",
+    "git status | python3 <<'EOF'\ngit push\nEOF",
+    "python3 <<'EOF' | git status\ngit push\nEOF",
+    "git commit -F - <<'A'; python3 <<'B'\ngit documentation\nA\ngit push\nB",
+    # test_state_writer_dynamic_forms_fail_closed
+    'tee "$TARGET"', 'mv source {state,events}.json',
+    "sed -i 's/a/b/' $FILE", 'dd of=$TARGET', 'truncate -s0 $FILE',
+    'cd "$DEST"', 'cd ../*', 'echo data >*.json',
+    'xargs tee', 'xargs cp source', 'xargs truncate -s0',
+    # test_reader_text_that_can_run_fails_closed
+    "echo 'git push' | sh", "echo 'import os; os.system(\"git push\")' | python3",
+    'echo "gh pr merge 5" | xargs -I@ sh -c @', "cat <<'EOF' | python3\ngit push\nEOF",
+    "cat <<'EOF' | tee out\ngit push\nEOF", "mkdir -p d && echo 'git push' > d/x",
+    "printf 'git push' > x",
+    # test_reader_text_written_under_git_dir_is_not_data
+    "echo '[alias] x = !git push' >> .git/config",
+    "cat > .git/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
+    "cat > .GIT/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
 ])
-def test_expanding_nested_script_fails_closed(script):
+def test_parse_error(script):
     from wuwei.shell import ParseError, normalize
     with pytest.raises(ParseError):
         normalize(script)
@@ -71,15 +128,6 @@ def test_single_quotes_inside_outer_double_quotes_still_expand():
 def test_shell_script_after_options(script):
     from wuwei.shell import normalize
     assert [item.argv for item in normalize(script)] == [['git', 'push', '-f']]
-
-
-@pytest.mark.parametrize('script', [
-    "sh -c -o errexit 'git push -f'", "sh -c +o errexit 'git push -f'",
-])
-def test_shell_named_options_fail_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 def test_comment_backslash_cannot_hide_next_command():
@@ -103,18 +151,6 @@ def test_launcher_exposes_guarded_command(script):
     assert any(item.argv[:3] == ['git', 'push', '-f'] for item in normalize(script))
 
 
-@pytest.mark.parametrize('script', [
-    "trap 'git push -f' EXIT",
-    '''xargs -I '{}' bash -c 'git push "$1"' _ '{}' ''',
-    """sh -c 'nice "$@"' _ git push -f""",
-    """sh -c 'nice "$1" push -f' _ git""",
-])
-def test_dynamic_launcher_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
 @pytest.mark.parametrize('script,envs', [
     ('env VAR=x git status', [{'VAR': 'x'}]),
     ("A=outer env B=two sh -c 'A=inner git status; git push' | cat",
@@ -128,40 +164,25 @@ def test_environment_is_preserved(script, envs):
     assert [item.env for item in normalize(script)] == envs
 
 
-@pytest.mark.parametrize('script', [
-    r"git $'\x70ush' -f", 'V=push; git $V -f', 'git ${X:-push} -f',
-    'git push${IFS}-f', 'gh "$ACTION" merge', "echo $'literal'",
-    "bash -c $'git push -f'",
-])
-def test_argument_expansion_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
 @pytest.mark.parametrize('script,word', [
+    # test_literal_dollar_is_not_expansion
     ("git commit -m '$literal'", '$literal'),
     (r'git commit -m \$literal', '$literal'),
     (r'git commit -m "\$literal"', '$literal'),
+    # test_guarded_literal_arguments_remain_supported
+    ("git commit -m '{git gh} * ? [ $ `literal`'", '{git gh} * ? [ $ `literal`'),
+    ('gh pr list --search "{git gh} * ? ["', '{git gh} * ? ['),
+    (r'git show \{git\}\*\?\[', '{git}*?['),
+    ("git commit -m \"$(cat <<'EOF'\ngit and gh: {braces} * ? [ $V `literal`\nEOF\n)\"",
+     'git and gh: {braces} * ? [ $V `literal`'),
 ])
 def test_literal_dollar_is_not_expansion(script, word):
     from wuwei.shell import normalize
     assert normalize(script)[0].argv[-1] == word
 
 
-@pytest.mark.parametrize('script', [
-    'alias g=git', 'unalias git', '. ./commands', 'source ./commands',
-    'shopt -s expand_aliases', 'enable -f commands.so commands',
-    "bash -c 'shopt -s expand_aliases\nalias g=git\ng push'",
-    r"bash -c $'shopt -s expand_aliases\nalias g=git\ng push'",
-])
-def test_shell_mutation_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
 @pytest.mark.parametrize('script,expected', [
+    # test_redirections_and_literal_heredocs
     ('npm test 2>&1 | tail', [['npm', 'test'], ['tail']]),
     ('git push > /dev/null', [['git', 'push']]),
     ('2>/dev/null git push -f 1>>log', [['git', 'push', '-f']]),
@@ -171,33 +192,19 @@ def test_shell_mutation_fails_closed(script):
     ("cat <<'A' <<'B'\none\nA\ntwo\nB\ngit push", [['cat'], ['git', 'push']]),
     ("git commit -m \"$(cat <<'EOF'\nmessage with \"quotes\" and 'quotes'\n$V `literal`\nEOF\n)\"",
      [['git', 'commit', '-m', 'message with "quotes" and \'quotes\'\n$V `literal`']]),
+    # test_reader_text_is_data
+    ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
+     "Raise the PR with gh pr create; then git push.\nEOF", [['cat']]),
+    ("echo 'falls back to gh' > notes.md", [['echo', 'falls back to gh']]),
+    ('grep -rn "gh pr" docs | head -20', [['grep', '-rn', 'gh pr', 'docs'], ['head', '-20']]),
+    ('echo "git push"', [['echo', 'git push']]),
+    ("git status; cat <<'EOF'\ngit push\nEOF", [['git', 'status'], ['cat']]),
+    ("cat <<'EOF' | git status\ngit push\nEOF", [['cat'], ['git', 'status']]),
+    ("cat <<'EOF'\n$(git push -f)\nEOF\ngit status", [['cat'], ['git', 'status']]),
 ])
 def test_redirections_and_literal_heredocs(script, expected):
     from wuwei.shell import normalize
     assert [item.argv for item in normalize(script)] == expected
-
-
-@pytest.mark.parametrize('script', [
-    'git push >', 'git push > ; echo ok',
-    'git push > $(echo file)', 'cat <<EOF\n$(git push)\nEOF',
-    "cat <<'EOF'\nunterminated", 'git commit -m "$(echo message)"',
-    "git commit -m \"$(cat <<'EOF'\nmessage\nEOF\ngit push\n)\"",
-    "git commit -m \"$(cat <<EOF\nmessage\nEOF\n)\"",
-])
-def test_unsupported_redirections_and_substitutions_fail_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
-    'GIT_CONFIG_VALUE_0="$VALUE" git x',
-    'env GIT_CONFIG_COUNT=$COUNT git x',
-])
-def test_dynamic_environment_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 def test_background_command_has_subshell_scope():
@@ -239,79 +246,18 @@ def test_unaccounted_guarded_mentions_fail_closed(script):
         normalize(script)
 
 
-@pytest.mark.parametrize('script,word', [
-    ("git commit -m '{git gh} * ? [ $ `literal`'", '{git gh} * ? [ $ `literal`'),
-    ('gh pr list --search "{git gh} * ? ["', '{git gh} * ? ['),
-    (r'git show \{git\}\*\?\[', '{git}*?['),
-    ("git commit -m \"$(cat <<'EOF'\ngit and gh: {braces} * ? [ $V `literal`\nEOF\n)\"",
-     'git and gh: {braces} * ? [ $V `literal`'),
-])
-def test_guarded_literal_arguments_remain_supported(script, word):
-    from wuwei.shell import normalize
-    assert normalize(script)[0].argv[-1] == word
-
-
 @pytest.mark.parametrize('script', [
-    'echo git\\\nhub', "sh -c 'echo git\\\nhub'",
-    "git status; python3 <<'EOF'\nrun('gh pr merge')\nEOF",
-])
-def test_unwrap_cannot_discard_mentions(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
-    "sh -c 'echo git'hub'; gi'\"'t status\"",
-    'sh -c "echo git\\\nhub; g\\\nit status"',
-    "echo \"$(cat <<'git'\nsafe\ngit\n)\"",
-    "echo > \"$(cat <<'git'\nsafe\ngit\n)\"",
-])
-def test_source_mentions_cannot_be_replaced_by_decoded_mentions(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
-    '''caffeinate -i sh -c 'g""it push -f' ''',
-    "flock /tmp/l -c 'gi''t push -f'",
-    '''watch 'g""it push -f' ''',
-    r'watch "gi\t push -f"',
-])
-def test_obfuscated_launcher_mentions_fail_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
-    "echo push | xargs g''it", r'echo push | xargs gi\t',
-    "echo pr merge | xargs g''h", r'echo pr merge | xargs g\h',
-])
-def test_xargs_obfuscated_guarded_program_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
-@pytest.mark.parametrize('script', [
+    # test_literal_git_braces_are_allowed
     'git log @{u}..HEAD', 'git rev-parse --abbrev-ref @{upstream}',
     'git reset --soft HEAD@{1}', 'git stash show stash@{0}',
     'git push origin main}',
+    # test_writer_globs_are_left_for_guard_expansion
+'cp *.py sub/', 'mv build/*.whl dist/',
+    'tee *.log', 'truncate -s0 *.log', 'sed -i s/a/b/ *.log', 'dd of=*.log',
 ])
 def test_literal_git_braces_are_allowed(script):
     from wuwei.shell import normalize
     assert normalize(script)[0].argv == script.split()
-
-
-@pytest.mark.parametrize('script', [
-    'git {push,--force}', 'git pu{s,}h', 'git show HEAD@{1..3}',
-])
-def test_brace_expansion_fails_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('script,expected', [
@@ -338,19 +284,6 @@ def test_plain_guarded_command_heredoc_is_data(header, expected):
     assert [item.argv for item in normalize(header + '\ngit and gh documentation\nEOF')] == expected
 
 
-@pytest.mark.parametrize('script', [
-    "git status; python3 <<'EOF'\ngit push\nEOF",
-    "python3 <<'EOF'; git status\ngit push\nEOF",
-    "git status | python3 <<'EOF'\ngit push\nEOF",
-    "python3 <<'EOF' | git status\ngit push\nEOF",
-    "git commit -F - <<'A'; python3 <<'B'\ngit documentation\nA\ngit push\nB",
-])
-def test_other_commands_cannot_borrow_guarded_heredoc_exemption(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
-
-
 @pytest.mark.parametrize('script,targets', [
     ('echo data > state.json', ['state.json']),
     ('>> events.jsonl', ['events.jsonl']),
@@ -367,18 +300,6 @@ def test_other_commands_cannot_borrow_guarded_heredoc_exemption(script):
 def test_output_targets_survive_normalization(script, targets):
     from wuwei.shell import normalize
     assert sorted(path for item in normalize(script) for path in item.writes) == sorted(targets)
-
-
-@pytest.mark.parametrize('script', [
-    'tee "$TARGET"', 'mv source {state,events}.json',
-    "sed -i 's/a/b/' $FILE", 'dd of=$TARGET', 'truncate -s0 $FILE',
-    'cd "$DEST"', 'cd ../*', 'echo data >*.json',
-    'xargs tee', 'xargs cp source', 'xargs truncate -s0',
-])
-def test_state_writer_dynamic_forms_fail_closed(script):
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('script', ['python3 -m pytest -q', 'python -m pip install x',
@@ -402,13 +323,6 @@ def test_nonliteral_path_error_retains_type(script):
     with pytest.raises(shell.ParseError) as error:
         shell.normalize(script)
     assert type(error.value).__name__ == 'NonliteralPathError'
-
-
-@pytest.mark.parametrize('script', ['cp *.py sub/', 'mv build/*.whl dist/',
-    'tee *.log', 'truncate -s0 *.log', 'sed -i s/a/b/ *.log', 'dd of=*.log'])
-def test_writer_globs_are_left_for_guard_expansion(script):
-    from wuwei.shell import normalize
-    assert normalize(script)[0].argv == script.split()
 
 
 def _git_kind_cases():
@@ -524,39 +438,12 @@ _READ_643 = "import json,sys; print(json.load(open('.wuwei/state.json'))['day'])
 def test_issue_643_snippet_write(argv, expected):
     from wuwei import shell
     assert shell.snippet_write(argv) == expected
-@pytest.mark.parametrize('script,expected', [
-    ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
-     "Raise the PR with gh pr create; then git push.\nEOF", [['cat']]),
-    ("echo 'falls back to gh' > notes.md", [['echo', 'falls back to gh']]),
-    ('grep -rn "gh pr" docs | head -20', [['grep', '-rn', 'gh pr', 'docs'], ['head', '-20']]),
-    ('echo "git push"', [['echo', 'git push']]),
-    ("git status; cat <<'EOF'\ngit push\nEOF", [['git', 'status'], ['cat']]),
-    ("cat <<'EOF' | git status\ngit push\nEOF", [['cat'], ['git', 'status']]),
-    ("cat <<'EOF'\n$(git push -f)\nEOF\ngit status", [['cat'], ['git', 'status']]),
-])
-def test_reader_text_is_data(script, expected):
-    # #671: a reader's arguments and here-doc body are text, not a command.
-    from wuwei.shell import normalize
-    assert [item.argv for item in normalize(script)] == expected
 
 
 def test_reader_text_keeps_its_write_target():
     from wuwei.shell import normalize
     found = normalize("cat > brief.md <<'EOF'\nfalls back to gh\nEOF")
     assert found[0].writes == ('brief.md',)
-
-
-@pytest.mark.parametrize('script', [
-    "echo 'git push' | sh", "echo 'import os; os.system(\"git push\")' | python3",
-    'echo "gh pr merge 5" | xargs -I@ sh -c @', "cat <<'EOF' | python3\ngit push\nEOF",
-    "cat <<'EOF' | tee out\ngit push\nEOF", "mkdir -p d && echo 'git push' > d/x",
-    "printf 'git push' > x",
-])
-def test_reader_text_that_can_run_fails_closed(script):
-    # #671: one command that is not a reader or git or gh voids the exemption for the call.
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('script', [
@@ -573,18 +460,6 @@ def test_constructed_names_resolve(script):
 def test_split_word_in_eval_or_shell_is_its_value(script):
     from wuwei.shell import normalize
     assert [item.argv for item in normalize(script)] == [['echo', 'github']]
-
-
-@pytest.mark.parametrize('script', [
-    "echo '[alias] x = !git push' >> .git/config",
-    "cat > .git/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
-    "cat > .GIT/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
-])
-def test_reader_text_written_under_git_dir_is_not_data(script):
-    # #671 review F2: text written into git's own files can run, so it is not data.
-    from wuwei.shell import ParseError, normalize
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('text, expected', [

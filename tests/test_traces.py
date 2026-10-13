@@ -92,7 +92,7 @@ def recorder():
     return guards[0].check
 
 
-def test_gh_pr_create_in_item_worktree_without_gates_is_unclaimed(trace_workspace, call_payload,
+def _case_gh_pr_create_in_item_worktree_without_gates_is_unclaimed(trace_workspace, call_payload,
                                                                   monkeypatch):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
@@ -119,7 +119,7 @@ def test_gh_pr_create_in_item_worktree_without_gates_is_unclaimed(trace_workspac
                and 'pr raise' not in row['payload']['reason'] for row in events)
 
 
-def test_gh_pr_create_head_branch_without_gates_is_unclaimed(trace_workspace, call_payload, monkeypatch):
+def _case_gh_pr_create_head_branch_without_gates_is_unclaimed(trace_workspace, call_payload, monkeypatch):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
@@ -136,7 +136,7 @@ def test_gh_pr_create_head_branch_without_gates_is_unclaimed(trace_workspace, ca
     assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
 
 
-def test_gh_pr_create_without_item_records_unclaimed(trace_workspace, call_payload):
+def _case_gh_pr_create_without_item_records_unclaimed(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
@@ -167,7 +167,7 @@ def test_planner_pr_from_external_branch_is_offered_not_item_claimed(trace_works
     assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
 
 
-def test_gh_pr_create_outside_configured_repos_records_no_pr(trace_workspace, call_payload):
+def _case_gh_pr_create_outside_configured_repos_records_no_pr(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/other"\npath = "repo"\ndefault_branch = "main"\n')
@@ -191,7 +191,7 @@ def test_unclaimed_pr_url_uses_configured_repo_casing(trace_workspace, call_payl
                'https://github.com/acme/widget/pull/3160' for row in events)
 
 
-def test_gh_pr_create_in_unapproved_worktree_offers_claim(trace_workspace, call_payload):
+def _case_gh_pr_create_in_unapproved_worktree_offers_claim(trace_workspace, call_payload):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
@@ -205,6 +205,15 @@ def test_gh_pr_create_in_unapproved_worktree_offers_claim(trace_workspace, call_
     assert recorder()(call_payload) == (0, '')
     assert state.read_state(root)['items']['A'].get('pr') is None
     assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_gh_pr_create_without_item_records_unclaimed,
+    _case_gh_pr_create_outside_configured_repos_records_no_pr,
+    _case_gh_pr_create_in_unapproved_worktree_offers_claim,
+])
+def test_gh_pr_cases_139(trace_workspace, call_payload, scenario_fn):
+    scenario_fn(trace_workspace, call_payload)
 
 
 @pytest.mark.parametrize('command,stdout,unclaimed', [
@@ -250,7 +259,7 @@ def test_failed_gh_pr_create_records_nothing(trace_workspace, call_payload):
     assert not (trace_workspace / 'events.jsonl').exists()
 
 
-def test_gh_pr_autoclaim_error_fails_open(trace_workspace, call_payload, monkeypatch):
+def _case_gh_pr_autoclaim_error_fails_open(trace_workspace, call_payload, monkeypatch):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
@@ -276,7 +285,7 @@ def test_gh_pr_autoclaim_error_fails_open(trace_workspace, call_payload, monkeyp
     assert 'pr.unclaimed' in events and 'item already links another PR' in events
 
 
-def test_gh_pr_create_real_branch_match_prefers_approved_item(trace_workspace, call_payload,
+def _case_gh_pr_create_real_branch_match_prefers_approved_item(trace_workspace, call_payload,
                                                               monkeypatch):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
@@ -308,7 +317,7 @@ def test_gh_pr_create_real_branch_match_prefers_approved_item(trace_workspace, c
     assert calls
 
 
-def test_gh_pr_create_worktree_match_records_branch(trace_workspace, call_payload, monkeypatch):
+def _case_gh_pr_create_worktree_match_records_branch(trace_workspace, call_payload, monkeypatch):
     root = trace_workspace.parents[2]
     (root / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
@@ -332,13 +341,25 @@ def test_gh_pr_create_worktree_match_records_branch(trace_workspace, call_payloa
     assert state.read_state(root)['items']['A']['branch'] == 'feature-a'
 
 
-def test_gh_pr_autoclaim_timeout_uses_traces_slow(trace_workspace, call_payload, monkeypatch):
+def _case_gh_pr_autoclaim_timeout_uses_traces_slow(trace_workspace, call_payload, monkeypatch):
     root = trace_workspace.parents[2]
     monkeypatch.setattr(__import__('wuwei.guards.traces', fromlist=['_claim_created_pr']),
                         '_claim_created_pr', lambda *args: (_ for _ in ()).throw(TimeoutError()))
     assert recorder()(call_payload) == (0, '')
     events = (trace_workspace / 'events.jsonl').read_text()
     assert 'traces.slow' in events and 'pr.autoclaim_error' not in events
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_gh_pr_create_in_item_worktree_without_gates_is_unclaimed,
+    _case_gh_pr_create_head_branch_without_gates_is_unclaimed,
+    _case_gh_pr_autoclaim_error_fails_open,
+    _case_gh_pr_create_real_branch_match_prefers_approved_item,
+    _case_gh_pr_create_worktree_match_records_branch,
+    _case_gh_pr_autoclaim_timeout_uses_traces_slow,
+])
+def test_gh_pr_cases_95(trace_workspace, call_payload, monkeypatch, scenario_fn):
+    scenario_fn(trace_workspace, call_payload, monkeypatch)
 
 
 def read_spans(directory):

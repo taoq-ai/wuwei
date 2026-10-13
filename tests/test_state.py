@@ -518,7 +518,7 @@ def test_a_replaced_log_never_takes_the_old_cache(workspace):
     assert state.read_state()['cap'] == 1
 
 
-def test_part_23_writes_no_snapshot_and_takes_no_reserved(workspace):
+def _case_part_23_writes_no_snapshot_and_takes_no_reserved(workspace):
     """#847: state.json is the cache; no snapshot is written and no writer is reserved."""
     import inspect
     from wuwei import state
@@ -531,13 +531,21 @@ def test_part_23_writes_no_snapshot_and_takes_no_reserved(workspace):
         assert not hasattr(state, name), name
 
 
-def test_part_23_damaged_day_names_doctor(workspace):
+def _case_part_23_damaged_day_names_doctor(workspace):
     from wuwei import state
     day(workspace).mkdir(parents=True)
     (day(workspace) / 'state.json').write_text('{broken')
     with pytest.raises(ValueError) as caught:
         state.read_state(workspace)
     assert 'bin/wuwei doctor' in str(caught.value) and 'state recover' not in str(caught.value)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_part_23_writes_no_snapshot_and_takes_no_reserved,
+    _case_part_23_damaged_day_names_doctor,
+])
+def test_part_23_cases_521(workspace, scenario_fn):
+    scenario_fn(workspace)
 
 
 @pytest.mark.parametrize('value', ['NaN', 'Infinity', '-Infinity', '1e999', '-1e999'])

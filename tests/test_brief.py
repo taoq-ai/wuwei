@@ -73,7 +73,7 @@ def test_lead_and_steward_briefs_create_no_item(day, monkeypatch):
     assert set(state.read_state(day[0])['items']) == {'X'}
 
 
-def test_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
+def _case_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
     # #848: the lead reads the candidates in its brief; an unreachable source stays named.
     from wuwei import discovery
     found = {'sources': {'tracker': [{'id': 'ISSUE-1'}], 'scanner': 'unmeasured: scanner down'},
@@ -91,7 +91,7 @@ def test_lead_brief_carries_the_discovered_candidates(day, monkeypatch):
     assert 'Candidates: unmeasured: tracker adapter broken' in (day[1] / 'briefs/lead-3.md').read_text()
 
 
-def test_lead_brief_discovers_outside_the_brief_lock(day, monkeypatch):
+def _case_lead_brief_discovers_outside_the_brief_lock(day, monkeypatch):
     # S5: a slow scanner audit no longer holds brief.lock, so a parallel brief is not refused.
     import fcntl
     from wuwei import discovery
@@ -104,6 +104,14 @@ def test_lead_brief_discovers_outside_the_brief_lock(day, monkeypatch):
     monkeypatch.setattr(discovery, 'discover', discover)
     assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-4') == 0
     assert 'Candidates: unmeasured' not in (day[1] / 'briefs/lead-4.md').read_text()
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_lead_brief_carries_the_discovered_candidates,
+    _case_lead_brief_discovers_outside_the_brief_lock,
+])
+def test_lead_brief_cases_76(day, monkeypatch, scenario_fn):
+    scenario_fn(day, monkeypatch)
 
 
 def test_declared_full_and_persisted(day, monkeypatch):

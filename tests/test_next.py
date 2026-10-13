@@ -143,7 +143,7 @@ def test_next_does_not_offer_closed_or_merged_unclaimed_pr(root, state_name):
     assert coarse(root)['state'] != 'pr-claim'
 
 
-def test_next_refreshes_unclaimed_repo_before_offering(root, monkeypatch, capsys):
+def _case_next_refreshes_unclaimed_repo_before_offering(root, monkeypatch, capsys):
     from wuwei import derive
     approved(root, {})
     directory = workspace.day_dir(root)
@@ -182,7 +182,7 @@ def test_next_reuses_recent_listing_for_unclaimed_pr(root, monkeypatch, capsys):
     assert refreshed == []
 
 
-def test_next_refreshes_once_when_unclaimed_event_is_newer(root, monkeypatch, capsys):
+def _case_next_refreshes_once_when_unclaimed_event_is_newer(root, monkeypatch, capsys):
     from wuwei import derive
     approved(root, {})
     directory = workspace.day_dir(root)
@@ -201,6 +201,14 @@ def test_next_refreshes_once_when_unclaimed_event_is_newer(root, monkeypatch, ca
     assert row(capsys)[1]['state'] == 'pr-claim'
     assert row(capsys)[1]['state'] == 'pr-claim'
     assert refreshed == ['example/project']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_next_refreshes_unclaimed_repo_before_offering,
+    _case_next_refreshes_once_when_unclaimed_event_is_newer,
+])
+def test_next_refreshes_cases_134(root, monkeypatch, capsys, scenario_fn):
+    scenario_fn(root, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('status', ['claimed', 'dismissed', 'done', 'closed'])
@@ -566,7 +574,7 @@ def context(capsys):
     return json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
 
 
-def test_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
+def _case_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
     calibrated(root)
     memory = root / '.wuwei/memory'
     (memory / 'notes').mkdir(parents=True)
@@ -636,7 +644,7 @@ def test_issue_acceptance_silent_outside_workspace(tmp_path, monkeypatch, capsys
 BUDGET = 4096  # The issue's fixed SessionStart budget in UTF-8 bytes for a busy day.
 
 
-def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
+def _case_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
     import shutil
     build = {'status': 'ready', 'brief': 'briefs/b.md',
              'action': {'action': 'launch', 'prompt': 'LAUNCH-PROMPT ' + 'x' * 4000}}
@@ -657,6 +665,14 @@ def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
         assert phrase in text
     for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
         assert phrase not in text
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_issue_acceptance_session_start_orients,
+    _case_issue_acceptance_session_start_budget,
+])
+def test_issue_acceptance_cases_560(root, monkeypatch, capsys, scenario_fn):
+    scenario_fn(root, monkeypatch, capsys)
 @pytest.mark.parametrize('kind', ['carried', 'parked'])
 def test_carried_item_is_skipped(root, capsys, kind):
     approved(root, {'A': ('implement', {'disposition': {'kind': kind, 'reason': 'r'}})})

@@ -2,6 +2,7 @@
 
 from collections import Counter
 from pathlib import Path
+import pytest
 import re
 
 
@@ -23,7 +24,7 @@ def frontmatter(path):
     return fields
 
 
-def test_skill_eval_coverage():
+def _case_skill_eval_coverage():
     skills = {path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md")}
     assert skills
     counts = Counter()
@@ -61,7 +62,7 @@ def test_skill_eval_coverage():
         assert counts[skill, "negative"] >= 5, (skill, counts)
 
 
-def test_skill_eval_ci_and_docs():
+def _case_skill_eval_ci_and_docs():
     workflow = (ROOT / ".github/workflows/tests.yml").read_text()
     readme = (ROOT / "README.md").read_text()
     assert "skill-evals:" in workflow
@@ -71,3 +72,11 @@ def test_skill_eval_ci_and_docs():
     assert "claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json" in readme
     assert "ANTHROPIC_API_KEY" in readme
     assert "any case scores below 0.9" in readme
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_skill_eval_coverage,
+    _case_skill_eval_ci_and_docs,
+])
+def test_skill_eval_cases_26(scenario_fn):
+    scenario_fn()

@@ -5,6 +5,8 @@ import functools
 from pathlib import Path
 import re
 
+import pytest
+
 from wuwei import exits
 
 
@@ -157,7 +159,7 @@ def all_reasons():
     return tuple(found)
 
 
-def test_collector_finds_a_new_bare_wall():
+def _case_collector_finds_a_new_bare_wall():
     assert [text for _, text, _ in reasons("raise ValueError('invalid thing')")] == ['invalid thing']
     assert all(family for *_, family in reasons(
         "from wuwei.exits import DAMAGED\nraise ValueError(f'invalid thing; {DAMAGED}')"))
@@ -169,7 +171,7 @@ def test_collector_finds_a_new_bare_wall():
     assert NEXT_STEP.search('state file is a symlink; run bin/wuwei doctor')
 
 
-def test_collector_finds_an_or_fallback_wall():
+def _case_collector_finds_an_or_fallback_wall():
     def texts(source):
         return [text for _, text, _ in reasons(source)]
     assert texts("raise ValueError(result.reason or 'branch protection unmeasured')") == [
@@ -179,6 +181,14 @@ def test_collector_finds_an_or_fallback_wall():
     assert texts("Result(2, None, a or b or 'poll failed now')") == ['poll failed now']
     assert reasons("raise ValueError(result.reason or f'{exc}')") == []
     assert reasons("raise ValueError(result.reason or f'build: {exc}')") == []
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_collector_finds_a_new_bare_wall,
+    _case_collector_finds_an_or_fallback_wall,
+])
+def test_collector_finds_cases_160(scenario_fn):
+    scenario_fn()
 
 
 def test_family_texts_name_a_next_step_without_a_pronoun():
@@ -236,22 +246,22 @@ def run(capsys, *args):
     return code, out.out + out.err
 
 
-def test_before_plan_close(fresh, capsys):
+def _case_before_plan_close(fresh, capsys):
     assert run(capsys, 'close') == (
         0, 'Nothing to close today: no day has started. Start one with /wuwei:wuwei-plan.\n')
     assert not (fresh / '.wuwei/days').exists() or not list((fresh / '.wuwei/days').rglob('*.json*'))
 
 
-def test_before_plan_report(fresh, capsys):
+def _case_before_plan_report(fresh, capsys):
     assert run(capsys, 'report') == (
         0, 'No report today: no day has started. Start one with /wuwei:wuwei-plan.\n')
 
 
-def test_before_plan_template(fresh, capsys):
+def _case_before_plan_template(fresh, capsys):
     assert run(capsys, 'plan', 'template')[0] == 0
 
 
-def test_before_plan_build_check(fresh, capsys):
+def _case_before_plan_build_check(fresh, capsys):
     code, text = run(capsys, 'build', 'check', 'DIV-1')
     assert code == 2 and 'DIV-1' in text and 'bin/wuwei build next DIV-1' in text
     assert 'not waiting for checks' in text
@@ -266,7 +276,7 @@ def test_before_plan_build_check_names_the_status(fresh, monkeypatch):
         build.check('DIV-1', root=fresh)
 
 
-def test_before_plan_dispatch_next(fresh, capsys):
+def _case_before_plan_dispatch_next(fresh, capsys):
     from wuwei import dispatch, state
     code, text = run(capsys, 'dispatch', 'next', 'DIV-1')
     assert code == 1 and '/wuwei:wuwei-plan' in text and 'DIV-1' in text
@@ -278,9 +288,21 @@ def test_before_plan_dispatch_next(fresh, capsys):
     assert 'bin/wuwei build next DIV-1' in str(exc.value)
 
 
-def test_before_plan_approve(fresh, capsys):
+def _case_before_plan_approve(fresh, capsys):
     code, text = run(capsys, 'plan', 'approve', '--items', 'DIV-1', '--goals-confirmed')
     assert code == 1 and '/wuwei:wuwei-plan' in text
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_before_plan_close,
+    _case_before_plan_report,
+    _case_before_plan_template,
+    _case_before_plan_build_check,
+    _case_before_plan_dispatch_next,
+    _case_before_plan_approve,
+])
+def test_before_plan_cases_239(fresh, capsys, scenario_fn):
+    scenario_fn(fresh, capsys)
 
 
 def test_bool_tuple_is_not_an_exit_reason():

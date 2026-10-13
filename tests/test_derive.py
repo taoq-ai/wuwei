@@ -28,17 +28,25 @@ def test_head_reads_a_detached_head(tmp_path):
     assert derive.head(tree) == SHA
 
 
-def test_head_resolves_a_loose_ref(tmp_path):
+def _case_head_resolves_a_loose_ref(tmp_path):
     tree, common = worktree(tmp_path, 'ref: refs/heads/item')
     (common / 'refs/heads').mkdir(parents=True)
     (common / 'refs/heads/item').write_text(SHA + '\n')
     assert derive.head(tree) == SHA
 
 
-def test_head_resolves_a_packed_ref(tmp_path):
+def _case_head_resolves_a_packed_ref(tmp_path):
     tree, common = worktree(tmp_path, 'ref: refs/heads/item')
     (common / 'packed-refs').write_text(f'# pack-refs with: peeled\n{OTHER} refs/heads/main\n{SHA} refs/heads/item\n')
     assert derive.head(tree) == SHA
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_head_resolves_a_loose_ref,
+    _case_head_resolves_a_packed_ref,
+])
+def test_head_resolves_cases_31(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
 
 
 def test_head_of_a_gone_worktree_is_none(tmp_path):
@@ -48,7 +56,7 @@ def test_head_of_a_gone_worktree_is_none(tmp_path):
     assert derive.head(tree) is None
 
 
-def test_existing_start_detects_a_recorded_external_worktree(root):
+def _case_existing_start_detects_a_recorded_external_worktree(root):
     state._write_state(lambda data: None, root)
     repo = root / 'project'
     (repo / '.git').mkdir(parents=True)
@@ -66,7 +74,7 @@ def test_existing_start_detects_a_recorded_external_worktree(root):
     assert evidence['state'] == 'blocked' and str(tree) in evidence['why']
 
 
-def test_existing_start_skips_a_pr_row_after_its_repository_read_failed(root):
+def _case_existing_start_skips_a_pr_row_after_its_repository_read_failed(root):
     state._write_state(lambda data: None, root)
     found = {'pulls': {'example/project#7': {'state': 'open', 'branch': 'item'}},
              'repos': {'example/project': {'failed': 'host unavailable'}}}
@@ -76,7 +84,7 @@ def test_existing_start_skips_a_pr_row_after_its_repository_read_failed(root):
     assert evidence is None
 
 
-def test_existing_start_matches_branch_suffix_and_registered_worktree(root):
+def _case_existing_start_matches_branch_suffix_and_registered_worktree(root):
     state._write_state(lambda data: None, root)
     repo = root / 'project'
     common = repo / '.git'
@@ -102,7 +110,7 @@ def test_existing_start_matches_branch_suffix_and_registered_worktree(root):
                                  {'pulls': {}, 'repos': {}}) is None
 
 
-def test_existing_start_skips_commit_for_own_brief_or_build(root):
+def _case_existing_start_skips_commit_for_own_brief_or_build(root):
     state._write_state(lambda data: None, root)
     repo = root / 'project'
     (repo / '.git').mkdir(parents=True)
@@ -120,50 +128,42 @@ def test_existing_start_skips_commit_for_own_brief_or_build(root):
                                      {'worktree': str(tree)}, found) is None
 
 
-def test_existing_start_checks_adhoc_without_resolved_repo_and_punctuation(root):
+@pytest.mark.parametrize('scenario', [
+    'unresolved_repo', 'explicit_item', 'bad_proposal', 'spec_and_reviewer',
+])
+def test_existing_start_tracks_only_matching_adhoc_work(root, monkeypatch, scenario):
     state._write_state(lambda data: None, root)
     config = workspace.load_config(root)
-    config['repos'] = [{'name': 'one', 'path': 'one'}, {'name': 'two', 'path': 'two'}]
-    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'item': 'ITEM', 'label': 'builder'}}, 'builds': {}}
     found = {'pulls': {}, 'repos': {}}
+    if scenario == 'unresolved_repo':
+        config['repos'] = [{'name': 'one', 'path': 'one'}, {'name': 'two', 'path': 'two'}]
+        data = {'seats': {'adhoc-1': {'role': 'adhoc', 'item': 'ITEM', 'label': 'builder'}}, 'builds': {}}
+    elif scenario == 'explicit_item':
+        state.append_event('seat adhoc', {'role': 'builder', 'item': 'ITEM',
+                                          'prompt': 'Item: ITEM.'}, root)
+        data = {'seats': {}, 'builds': {}}
+    elif scenario == 'bad_proposal':
+        from wuwei import dispatch
+        monkeypatch.setattr(dispatch, 'candidate',
+                            lambda *args: (_ for _ in ()).throw(AttributeError('bad')))
+        data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'builder', 'item': 'ITEM'}}, 'builds': {}}
+    else:
+        data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'spec', 'item': 'ITEM'}}, 'builds': {}}
     assert derive.existing_start(root, config, data, 'ITEM', {}, found)['state'] == 'wait'
-    assert derive.existing_start(root, config, data, 'ITEM-2', {}, found) is None
+    if scenario in ('unresolved_repo', 'explicit_item'):
+        assert derive.existing_start(root, config, data, 'ITEM-2', {}, found) is None
+    elif scenario == 'bad_proposal':
+        monkeypatch.setattr(dispatch, 'candidate', lambda *args: [1])
+        assert derive.existing_start(root, config, data, 'ITEM', {}, found)['state'] == 'wait'
+    else:
+        data['seats']['adhoc-1']['label'] = 'reviewer'
+        assert derive.existing_start(root, config, data, 'ITEM', {}, found) is None
+        state.append_event('seat adhoc', {'role': 'spec', 'prompt': 'Item ITEM.'}, root)
+        assert derive.existing_start(root, config, {'seats': {}, 'builds': {}},
+                                     'ITEM', {}, found)['state'] == 'wait'
 
 
-def test_existing_start_links_explicit_item_with_trailing_punctuation(root):
-    state._write_state(lambda data: None, root)
-    state.append_event('seat adhoc', {'role': 'builder', 'item': 'ITEM',
-                                      'prompt': 'Item: ITEM.'}, root)
-    data = {'seats': {}, 'builds': {}}
-    found = {'pulls': {}, 'repos': {}}
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM-2', {}, found) is None
-
-
-def test_existing_start_tolerates_bad_proposal_without_hiding_seat(root, monkeypatch):
-    from wuwei import dispatch
-    state._write_state(lambda data: None, root)
-    monkeypatch.setattr(dispatch, 'candidate', lambda *args: (_ for _ in ()).throw(AttributeError('bad')))
-    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'builder', 'item': 'ITEM'}}, 'builds': {}}
-    found = {'pulls': {}, 'repos': {}}
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
-    monkeypatch.setattr(dispatch, 'candidate', lambda *args: [1])
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
-
-
-def test_existing_start_holds_spec_seat_but_not_reviewer(root):
-    state._write_state(lambda data: None, root)
-    found = {'pulls': {}, 'repos': {}}
-    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'spec', 'item': 'ITEM'}}, 'builds': {}}
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
-    data['seats']['adhoc-1']['label'] = 'reviewer'
-    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found) is None
-    state.append_event('seat adhoc', {'role': 'spec', 'prompt': 'Item ITEM.'}, root)
-    assert derive.existing_start(root, workspace.load_config(root), {'seats': {}, 'builds': {}},
-                                 'ITEM', {}, found)['state'] == 'wait'
-
-
-def test_carried_worktree_uses_its_creation_reflog_before_origin(root):
+def _case_carried_worktree_uses_its_creation_reflog_before_origin(root):
     state._write_state(lambda data: None, root)
     tree, common = worktree(root, 'ref: refs/heads/item')
     (common / 'refs/heads').mkdir(parents=True)
@@ -610,3 +610,14 @@ def test_red_checks_at_the_cap_after_the_owners_resume_are_a_fix_round(root):
     assert offered(root, checks='red') == [('fix', ACT, True)]
     state.append_event('build.fix_opened', {'item': 'A'}, root)
     assert offered(root, checks='red') == []
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_existing_start_detects_a_recorded_external_worktree,
+    _case_existing_start_skips_a_pr_row_after_its_repository_read_failed,
+    _case_existing_start_matches_branch_suffix_and_registered_worktree,
+    _case_existing_start_skips_commit_for_own_brief_or_build,
+    _case_carried_worktree_uses_its_creation_reflog_before_origin,
+])
+def test_existing_start_evidence_cases(root, scenario_fn):
+    scenario_fn(root)

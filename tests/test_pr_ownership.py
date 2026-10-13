@@ -155,7 +155,7 @@ def test_cli_union_filter_and_partial_failure(case, monkeypatch, capsys):
     assert main(['pr', 'state', 'acme/widget#9']) == 2
 
 
-def test_review_window_and_config(case, monkeypatch):
+def _case_review_window_and_config(case, monkeypatch):
     root, host, _ = case
     own(root)
     config = workspace.load_config(root)['pr']
@@ -254,7 +254,7 @@ def test_parked_conflict_is_exempt_but_carried_is_not(case, monkeypatch):
     assert pr_actions.check(root)[0] == 2
 
 
-def test_review_window_does_not_slide_on_comment_churn(case, monkeypatch):
+def _case_review_window_does_not_slide_on_comment_churn(case, monkeypatch):
     root, host, _ = case
     own(root)
     measure(root)
@@ -263,6 +263,14 @@ def test_review_window_does_not_slide_on_comment_churn(case, monkeypatch):
     assert measure(root)[1][0]['state'] == 'review_stale'
     host.results['pr'].data['head'] = 'b' * 40
     assert measure(root)[1][0]['state'] == 'waiting'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_review_window_and_config,
+    _case_review_window_does_not_slide_on_comment_churn,
+])
+def test_review_window_cases_158(case, monkeypatch, scenario_fn):
+    scenario_fn(case, monkeypatch)
 
 
 def test_check_reads_fresh_and_completes(case, monkeypatch):

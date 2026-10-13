@@ -340,25 +340,34 @@ def test_never_past_the_round_cap(results):
     assert not found, found[:3]
 
 
-def test_never_a_gate_before_the_builder_stops(results):
+def _case_never_a_gate_before_the_builder_stops(results):
     found = broken(results, lambda day, expected, offers: not any(
         kind == 'gates' and row['name'] == name and row['builder'] == 'running'
         for kind, name in offers for row in day['items']))
     assert not found, found[:3]
 
 
-def test_never_a_raise_without_a_pass_at_head(results):
+def _case_never_a_raise_without_a_pass_at_head(results):
     found = broken(results, lambda day, expected, offers: not any(
         kind == 'raise' and row['name'] == name and set(row['verdicts'].values()) != {'PASS'}
         for kind, name in offers for row in day['items']))
     assert not found, found[:3]
 
 
-def test_never_a_merge_without_the_policy(results):
+def _case_never_a_merge_without_the_policy(results):
     found = broken(results, lambda day, expected, offers: not any(
         kind == 'merge' and row['name'] == name and (row['pr'] != 'green' or row['owner_merge'])
         for kind, name in offers for row in day['items']))
     assert not found, found[:3]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_never_a_gate_before_the_builder_stops,
+    _case_never_a_raise_without_a_pass_at_head,
+    _case_never_a_merge_without_the_policy,
+])
+def test_never_a_cases_343(results, scenario_fn):
+    scenario_fn(results)
 
 
 def test_never_done_with_an_open_duty(results):

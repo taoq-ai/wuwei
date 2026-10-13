@@ -175,7 +175,7 @@ def test_jira_site_must_be_https(workspace_root, monkeypatch):
     assert result.exit == 2 and 'JIRA_SITE' in result.reason and calls == []
 
 
-def test_jira_create_checks_parent_before_creating(workspace_root, monkeypatch):
+def _case_jira_create_checks_parent_before_creating(workspace_root, monkeypatch):
     from adapters.tracker import jira
     root = workspace_root('jira')
     calls = replay(monkeypatch, [{'key': 'PROJ-2'}])
@@ -183,12 +183,20 @@ def test_jira_create_checks_parent_before_creating(workspace_root, monkeypatch):
     assert result.exit == 2 and calls == []
 
 
-def test_jira_create_link_failure_still_returns_the_issue(workspace_root, monkeypatch):
+def _case_jira_create_link_failure_still_returns_the_issue(workspace_root, monkeypatch):
     from adapters.tracker import jira
     root = workspace_root('jira')
     calls = replay(monkeypatch, [{'key': 'PROJ-2'}, ['not an object']])
     result = jira.create({'title': 'Bug', 'parent': 'PROJ-1'}, root=root)
     assert result.exit == 0 and result.data['id'] == 'PROJ-2' and len(calls) == 2
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_jira_create_checks_parent_before_creating,
+    _case_jira_create_link_failure_still_returns_the_issue,
+])
+def test_jira_create_cases_178(workspace_root, monkeypatch, scenario_fn):
+    scenario_fn(workspace_root, monkeypatch)
 
 
 def test_github_board_moves_the_project_status(workspace_root, monkeypatch):
@@ -221,7 +229,7 @@ def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch)
 MISSING = {'data': {'repository': {'id': 'repo-node-1', 'label': None}}}
 
 
-def test_github_labels_reads_then_creates(workspace_root, monkeypatch):
+def _case_github_labels_reads_then_creates(workspace_root, monkeypatch):
     """#670: without a board, in review is a label; labels(create) reads it and creates it."""
     from adapters.tracker import github
     root = workspace_root('github')
@@ -239,7 +247,7 @@ def test_github_labels_reads_then_creates(workspace_root, monkeypatch):
     assert all(balanced(call[3]['query']) for call in calls)
 
 
-def test_github_labels_follow_the_state_name_and_board(workspace_root, monkeypatch):
+def _case_github_labels_follow_the_state_name_and_board(workspace_root, monkeypatch):
     from adapters.tracker import github
     root = workspace_root('github')
     with (root / '.wuwei/config.toml').open('a') as stream:
@@ -253,6 +261,14 @@ def test_github_labels_follow_the_state_name_and_board(workspace_root, monkeypat
     calls = replay(monkeypatch, [])
     result = github.labels(True, root=root)
     assert (result.exit, result.data, calls) == (0, {'created': [], 'missing': []}, [])
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_github_labels_reads_then_creates,
+    _case_github_labels_follow_the_state_name_and_board,
+])
+def test_github_labels_cases_224(workspace_root, monkeypatch, scenario_fn):
+    scenario_fn(workspace_root, monkeypatch)
 
 
 def test_github_label_create_failure_names_the_label(workspace_root, monkeypatch):
@@ -372,7 +388,7 @@ def test_github_gh_failure_names_the_cause_not_the_text(gh_root, monkeypatch, an
     assert 'private' not in result.reason
 
 
-def test_github_gh_error_body_is_a_failure(gh_root, monkeypatch):
+def _case_github_gh_error_body_is_a_failure(gh_root, monkeypatch):
     from adapters.tracker import github
     gh_replay(monkeypatch, [{'errors': [{'message': 'private'}], 'data': None}])
     result = github.created('acme/app#1', root=gh_root)
@@ -415,7 +431,7 @@ def no_wait(root):
         stream.write('[host]\nrate_limit_wait_seconds = 0\n')
 
 
-def test_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
+def _case_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
     from adapters.tracker import github
     slept = install_clock(monkeypatch)
     primary = 'gh: API rate limit exceeded. (HTTP 403)'
@@ -429,6 +445,14 @@ def test_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
     assert result.exit == 2 and result.reason == (
         f'github.created: could not run: GitHub rate limit until {hms(NOW + 20)} UTC '
         '(0 of 5000 graphql calls left); retry after it (token: gh keyring)')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_github_gh_error_body_is_a_failure,
+    _case_github_gh_rate_limit_is_named_and_retried,
+])
+def test_github_gh_cases_375(gh_root, monkeypatch, scenario_fn):
+    scenario_fn(gh_root, monkeypatch)
 
 
 def limited(code, headers, url='https://api.github.com/graphql'):

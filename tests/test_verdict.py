@@ -110,7 +110,7 @@ def test_samples_cannot_supply_missing_evidence(wrap):
     assert lint(wrap(VALID))[0] == 1
 
 
-def test_multiline_finding():
+def _case_multiline_finding():
     from wuwei.verdict import lint
     text = VALID.replace(FINDING, '### P1: empty input\nSeverity: high\n'
                          'File: cli/example.py:12\nScenario: fails when input is empty\n'
@@ -118,11 +118,19 @@ def test_multiline_finding():
     assert lint(text)[0] == 0
 
 
-def test_multiline_finding_with_bulleted_fields():
+def _case_multiline_finding_with_bulleted_fields():
     from wuwei.verdict import lint
     finding = ('### P1: empty input\n- File: cli/example.py:12\n'
                '- Scenario: fails when input is empty\n- blocks: yes\n')
     assert lint(VALID.replace(FINDING, finding))[0] == 0
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_multiline_finding,
+    _case_multiline_finding_with_bulleted_fields,
+])
+def test_multiline_finding_cases_113(scenario_fn):
+    scenario_fn()
 
 
 @pytest.mark.parametrize('extra,reason', [
@@ -751,7 +759,7 @@ def test_write_guard_refuses_fix_without_parsed_blocker(tmp_path):
                                  'tool_input': {'file_path': str(path), 'content': HEADING_FIX}})
     assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
 QUALITY_FIX = VALID + 'Simplicity: none\nDesign: none\n'
-def test_lint_file_takes_no_docs_value(tmp_path, monkeypatch):
+def _case_lint_file_takes_no_docs_value(tmp_path, monkeypatch):
     # #841: a finding that calls docs missing lints as any finding; no docs rule refuses it.
     from wuwei import state, verdict, workspace
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
@@ -907,7 +915,7 @@ def test_ci_step_rows_without_steps_lint_as_before(text):
     assert lint(text, steps=()) == lint(text)
 
 
-def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
+def _case_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
     from test_brief import LINT_REF, ci_tree
     from wuwei import state, verdict, workspace
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
@@ -934,3 +942,11 @@ def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
     (tree / '.github/workflows/ci.yml').symlink_to(real)
     code, message = lint(path)
     assert code == 2 and '.github/workflows/ci.yml' in message
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_lint_file_takes_no_docs_value,
+    _case_lint_file_reads_the_ci_steps_at_lint_time,
+])
+def test_lint_file_cases_754(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)

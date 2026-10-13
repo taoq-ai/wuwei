@@ -133,19 +133,27 @@ def test_review_candidate_kind_and_target_are_admitted_and_kept(root):
         'review', 'acme/widget#3168', 'arch', 'gate')
 
 
-def test_build_candidate_cannot_claim_a_pr_without_review_kind(root):
+def _case_build_candidate_cannot_claim_a_pr_without_review_kind(root):
     data = proposal()
     data['candidates'][0].update(pr='acme/widget#3168', review_role='arch')
     with pytest.raises(ValueError, match='only for review'):
         plan.propose(data, root)
 
 
-def test_build_candidate_treats_null_pr_as_absent(root):
+def _case_build_candidate_treats_null_pr_as_absent(root):
     data = proposal()
     data['candidates'][0]['pr'] = None
     plan.propose(data, root)
     plan.approve(['A'], root, goals_confirmed=True)
     assert state.read_state(root)['items']['A'].get('pr') is None
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_build_candidate_cannot_claim_a_pr_without_review_kind,
+    _case_build_candidate_treats_null_pr_as_absent,
+])
+def test_build_candidate_cases_136(root, scenario_fn):
+    scenario_fn(root)
 
 
 @pytest.mark.parametrize('kind, message', [('verdict', 'kind'), ('review', 'pr'), ('measure', 'paths')])
@@ -336,7 +344,7 @@ def test_worktree_creation_refuses_before_gate(root):
         workspace.create_worktree(root / 'repo', 'item', root / 'tree', root, Fake())
 
 
-def test_candidate_tier_is_optional_validated_and_copied(root):
+def _case_candidate_tier_is_optional_validated_and_copied(root):
     bad = proposal()
     bad['candidates'][0]['tier'] = 'medium'
     with pytest.raises(ValueError, match='tier must be light, standard or full'):
@@ -346,7 +354,7 @@ def test_candidate_tier_is_optional_validated_and_copied(root):
     assert 'tier' not in state.read_state(root)['items']['A']
 
 
-def test_candidate_tier_is_copied_at_approve(root):
+def _case_candidate_tier_is_copied_at_approve(root):
     good = proposal()
     good['candidates'][0]['tier'] = 'full'
     plan.propose(good, root)
@@ -354,7 +362,15 @@ def test_candidate_tier_is_copied_at_approve(root):
     assert state.read_state(root)['items']['A']['tier'] == 'full'
 
 
-def test_candidate_governed_by_is_checked(root):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_candidate_tier_is_optional_validated_and_copied,
+    _case_candidate_tier_is_copied_at_approve,
+])
+def test_candidate_tier_cases_339(root, scenario_fn):
+    scenario_fn(root)
+
+
+def _case_candidate_governed_by_is_checked(root):
     for bad in ('', 3):  # before the gate: an approved day refuses every propose first (P4)
         wrong = proposal()
         wrong['candidates'][0]['governed_by'] = bad
@@ -365,12 +381,20 @@ def test_candidate_governed_by_is_checked(root):
     assert 'governed_by' not in state.read_state(root)['items']['A']
 
 
-def test_candidate_governed_by_is_copied_at_approve(root):
+def _case_candidate_governed_by_is_copied_at_approve(root):
     good = proposal()
     good['candidates'][0]['governed_by'] = 'docs/prereg.md#Pre-registration'
     plan.propose(good, root)
     plan.approve(['A'], root, goals_confirmed=True)
     assert state.read_state(root)['items']['A']['governed_by'] == 'docs/prereg.md#Pre-registration'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_candidate_governed_by_is_checked,
+    _case_candidate_governed_by_is_copied_at_approve,
+])
+def test_candidate_governed_cases_357(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_propose_resolves_governed_by_in_the_repository(root):
@@ -713,7 +737,7 @@ def test_gate_widget_is_the_one_approval_question(root):
     assert plan.gate_widget(root)['header'] == 'Goals'
 
 
-def test_plan_set_spec_override(root, capsys, monkeypatch):
+def _case_plan_set_spec_override(root, capsys, monkeypatch):
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     state._write_state(lambda data: data['items'].update(A={'phase': 'planned', 'status': 'queued'}),
@@ -752,7 +776,7 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
                            {'item': 'A', 'value': 'required', 'reason': ''}]
 
 
-def test_plan_set_owner_merge(root, capsys, monkeypatch):
+def _case_plan_set_owner_merge(root, capsys, monkeypatch):
     # #678: the owner keeps an item's merge; the record says who set it and when.
     from wuwei.__main__ import main
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -909,7 +933,7 @@ def test_a_failed_open_is_a_skipped_duty_and_never_refuses(root, monkeypatch):
                                                  'ticket': None, 'error': 'linear: unreachable'})
 
 
-def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
+def _case_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     from fakes.tracker import Fake
     from wuwei.__main__ import main
     plan.propose(proposal(), root)
@@ -937,7 +961,7 @@ GITHUB = '[adapters]\ntracker = "github"\n'
 REPO = '[[repos]]\nname = "acme/app"\npath = "app"\ndefault_branch = "main"\n'
 
 
-def test_plan_set_bare_ticket_is_stored_and_printed_in_full(root, monkeypatch, capsys):
+def _case_plan_set_bare_ticket_is_stored_and_printed_in_full(root, monkeypatch, capsys):
     """#741: plan set ticket=24 confirms, stores and prints acme/app#24."""
     from fakes.tracker import Fake
     from wuwei.__main__ import main
@@ -955,6 +979,14 @@ def test_plan_set_bare_ticket_is_stored_and_printed_in_full(root, monkeypatch, c
     assert state.read_state(root)['tickets'] == {'A': {'id': 'acme/app#24', 'source': 'set'}}
     assert [e['payload']['ticket'] for e in events(root) if e['kind'] == 'plan.set'] == ['acme/app#24']
     assert capsys.readouterr().out.strip() == 'A: ticket acme/app#24'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_plan_set_records_a_confirmed_ticket,
+    _case_plan_set_bare_ticket_is_stored_and_printed_in_full,
+])
+def test_plan_set_cases_912(root, monkeypatch, capsys, scenario_fn):
+    scenario_fn(root, monkeypatch, capsys)
 
 
 def test_proposed_bare_ticket_is_stored_in_full(root):
@@ -1250,7 +1282,7 @@ def gated(root, monkeypatch):
     return root
 
 
-def test_plan_add_admits_owner_named_item_under_a_goal(gated):
+def _case_plan_add_admits_owner_named_item_under_a_goal(gated):
     result = plan.add('OWN-1', gated, goal='G-1', size=2)
     day = state.read_state(gated)
     assert result['action'] == 'build next'
@@ -1260,7 +1292,7 @@ def test_plan_add_admits_owner_named_item_under_a_goal(gated):
     assert 'OWN-1' in day['approved_items']
 
 
-def test_plan_add_and_set_recover_omitted_kind(gated, monkeypatch, capsys):
+def _case_plan_add_and_set_recover_omitted_kind(gated, monkeypatch, capsys):
     from wuwei.__main__ import main
     from wuwei import sessions
     monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
@@ -1297,7 +1329,7 @@ def test_plan_add_records_the_owner_note_once(gated, monkeypatch):
     assert state.read_state(gated)['items']['OWN-3']['approved_as'] == 'owner: "x"'
 
 
-def test_plan_add_records_an_adopted_source(gated):
+def _case_plan_add_records_an_adopted_source(gated):
     plan.add('PR-8', gated, goal='G-1', title='Fix login', source='adopted')
     plan.add('OWN-1', gated, goal='G-1')
     day = state.read_state(gated)
@@ -1310,7 +1342,7 @@ def test_plan_add_records_an_adopted_source(gated):
     assert [(row['item'], row['source']) for row in added] == [('PR-8', 'adopted'), ('OWN-1', 'owner')]
 
 
-def test_plan_add_unknown_item_without_goal_names_the_form(gated):
+def _case_plan_add_unknown_item_without_goal_names_the_form(gated):
     with pytest.raises(state.StateError, match='plan add OWN-2 --goal G-n'):
         plan.add('OWN-2', gated)
     with pytest.raises(state.StateError, match="not one of today's goals"):
@@ -1398,14 +1430,14 @@ def added_events(gated):
                                       .read_text().splitlines()) if e['kind'] == 'plan.added']
 
 
-def test_plan_add_records_the_risk_flags_merge_check_reads(gated):
+def _case_plan_add_records_the_risk_flags_merge_check_reads(gated):
     # #615: plan.added carries flags in the plan.approved shape, so merge check finds evidence.
     plan.add('OWN-1', gated, goal='G-1')
     flags = {key: False for key in plan.FLAGS}
     assert [row['flags'] for row in added_events(gated)] == [{'OWN-1': flags}]
 
 
-def test_plan_add_backfills_missing_risk_evidence_once(gated):
+def _case_plan_add_backfills_missing_risk_evidence_once(gated):
     # #615: an item admitted before the fix recovers with the command merge check names.
     flags = {key: False for key in plan.FLAGS}
     state._write_state(lambda d: d['items'].update({'OLD': {'goal': 'G-1', 'flags': flags}})
@@ -1418,7 +1450,18 @@ def test_plan_add_backfills_missing_risk_evidence_once(gated):
     assert len(added_events(gated)) == 2
 
 
-def test_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_plan_add_admits_owner_named_item_under_a_goal,
+    _case_plan_add_records_an_adopted_source,
+    _case_plan_add_unknown_item_without_goal_names_the_form,
+    _case_plan_add_records_the_risk_flags_merge_check_reads,
+    _case_plan_add_backfills_missing_risk_evidence_once,
+])
+def test_plan_add_cases_1253(gated, scenario_fn):
+    scenario_fn(gated)
+
+
+def _case_plan_add_from_a_seat_finding(gated, monkeypatch, capsys):
     """#646: a seat's finding joins as a small item with no ticket, even with a tracker required."""
     from fakes.tracker import Fake, ported
     from wuwei import registry
@@ -1461,7 +1504,7 @@ def test_plan_session_records_the_planner(root, monkeypatch):
     assert state.read_state(root)['planner_session_id'] == 'planner'
 
 
-def test_plan_set_governed_by_after_the_gate(root, capsys, monkeypatch):
+def _case_plan_set_governed_by_after_the_gate(root, capsys, monkeypatch):
     # #864: the owner corrects an approved item's governed_by on the Owner step card; a value
     # that does not resolve in the item's checkout is refused before the card.
     from wuwei.__main__ import main
@@ -1486,7 +1529,16 @@ def test_plan_set_governed_by_after_the_gate(root, capsys, monkeypatch):
     assert main(['plan', 'set', 'Z', 'governed_by=specs/s-1']) == 1
 
 
-def test_plan_add_names_the_repository_in_a_multi_repo_workspace(gated, monkeypatch, capsys):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_plan_set_spec_override,
+    _case_plan_set_owner_merge,
+    _case_plan_set_governed_by_after_the_gate,
+])
+def test_plan_set_cases_716(root, capsys, monkeypatch, scenario_fn):
+    scenario_fn(root, capsys, monkeypatch)
+
+
+def _case_plan_add_names_the_repository_in_a_multi_repo_workspace(gated, monkeypatch, capsys):
     # #868: an owner item names its repository when several are configured, and starts there.
     from wuwei import dispatch
     from wuwei.__main__ import main
@@ -1502,7 +1554,7 @@ def test_plan_add_names_the_repository_in_a_multi_repo_workspace(gated, monkeypa
     assert start['action'] == 'start' and start['commands'][0] == 'wuwei worktree add OWN-1 --repo acme/paper'
 
 
-def test_plan_add_keeps_track_flags_and_governed_by(gated, monkeypatch, capsys):
+def _case_plan_add_keeps_track_flags_and_governed_by(gated, monkeypatch, capsys):
     # #868: an owner item can be admitted as FULL with trust_surface; propose's checks apply.
     from wuwei.__main__ import main
     (gated / '.wuwei/config.toml').write_text(REPOS.format('acme/app', 'app'))
@@ -1523,6 +1575,16 @@ def test_plan_add_keeps_track_flags_and_governed_by(gated, monkeypatch, capsys):
              (gated / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()
              if json.loads(line)['kind'] == 'plan.added']
     assert added[-1]['flags'] == {'OWN-1': row['flags']}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_plan_add_and_set_recover_omitted_kind,
+    _case_plan_add_from_a_seat_finding,
+    _case_plan_add_names_the_repository_in_a_multi_repo_workspace,
+    _case_plan_add_keeps_track_flags_and_governed_by,
+])
+def test_plan_add_cases_1263(gated, monkeypatch, capsys, scenario_fn):
+    scenario_fn(gated, monkeypatch, capsys)
 
 
 def scanner_repos(root, *names):

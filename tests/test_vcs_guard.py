@@ -17,7 +17,7 @@ def context_steps(tmp_path):
             {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n', 'when': ['GIT_COMMITTER_IDENT']}]
 
 
-def test_commit_context(tmp_path, monkeypatch):
+def _case_commit_context(tmp_path, monkeypatch):
     assert hasattr(adapter(), 'commit_context'), 'commit context port is missing'
     calls = install_replay(monkeypatch, 'git', context_steps(tmp_path))
     result = adapter().commit_context(str(tmp_path), {}, {})
@@ -249,7 +249,7 @@ def concurrent_run(monkeypatch, outputs):
     return git
 
 
-def test_commit_context_reads_run_together(tmp_path, monkeypatch):
+def _case_commit_context_reads_run_together(tmp_path, monkeypatch):
     ident = 'Builder <builder@example.test> 1790596800 +0200\n'
     git = concurrent_run(monkeypatch, {'--absolute-git-dir': str(tmp_path / '.git') + '\n',
                                        '--git-common-dir': str(tmp_path / '.git') + '\n',
@@ -257,6 +257,14 @@ def test_commit_context_reads_run_together(tmp_path, monkeypatch):
     result = git.commit_context(str(tmp_path), {}, {})
     assert result.data == {'path': str(tmp_path / '.git'), 'common_dir': str(tmp_path / '.git'),
                            'author': OWNER, 'committer': OWNER}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_commit_context,
+    _case_commit_context_reads_run_together,
+])
+def test_commit_context_cases_20(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def test_push_context_reads_run_together(tmp_path, monkeypatch):

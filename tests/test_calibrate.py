@@ -71,7 +71,7 @@ def test_detector_make_targets_only_without_a_language(tmp_path):
                                                         ('fast_check', 'make check', 'Makefile:3')]
 
 
-def test_read_skips_symlinks_and_large_files(tmp_path):
+def _case_read_skips_symlinks_and_large_files(tmp_path):
     (tmp_path / 'elsewhere.toml').write_text('[tool.ruff]\n')
     (tmp_path / 'pyproject.toml').symlink_to(tmp_path / 'elsewhere.toml')
     (tmp_path / 'package.json').write_text('{"scripts": {"test": "x"}}' + ' ' * calibrate.MAX_BYTES)
@@ -401,7 +401,7 @@ def promote(root, confirm):
     return config.promote(SimpleNamespace(), confirm=confirm)
 
 
-def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
+def _case_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     raw = configure(workspace_root, ('acme/widget', FIXTURES / 'workflows'))
     seen = []
     assert promote(workspace_root, lambda digest, **kw: seen.append(digest) or True) == 0
@@ -420,7 +420,7 @@ def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     assert (workspace_root / '.wuwei/config.toml').read_text() == config
 
 
-def test_config_promote_declined_or_without_an_answer(workspace_root, capsys):
+def _case_config_promote_declined_or_without_an_answer(workspace_root, capsys):
     raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
 
     def edit(digest, **kw):
@@ -478,7 +478,7 @@ def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
 
 # #832: the survey lines the deleted calibrate command printed stay behind config promote.
 
-def test_config_promote_without_measure_runs_nothing(workspace_root, ports, capsys):
+def _case_config_promote_without_measure_runs_nothing(workspace_root, ports, capsys):
     from types import SimpleNamespace
 
     ports['checks'] = SimpleNamespace(run=lambda *a, **k: pytest.fail('ran a repository command'))
@@ -502,7 +502,7 @@ def test_config_promote_measure_proposes_check_timeout(workspace_root, ports, mo
     assert ('check_timeout_seconds' in out) is proposed
 
 
-def test_config_promote_fills_empty_fast_checks(workspace_root, capsys):
+def _case_config_promote_fills_empty_fast_checks(workspace_root, capsys):
     from wuwei.workspace import load_config
 
     raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
@@ -517,7 +517,7 @@ def test_config_promote_fills_empty_fast_checks(workspace_root, capsys):
     assert snapshot['acme/widget']['fast_checks'] == ['python3 -m pytest -q', 'ruff check .']
 
 
-def test_config_promote_cannot_run(workspace_root, capsys):
+def _case_config_promote_cannot_run(workspace_root, capsys):
     (workspace_root / '.wuwei/config.toml').write_text('')
     assert promote(workspace_root, lambda digest, **kw: True) == 2
     err = capsys.readouterr().err
@@ -530,7 +530,7 @@ def test_config_promote_cannot_run(workspace_root, capsys):
     assert refused.value.code == 2
 
 
-def test_config_promote_unmeasured_pr_baseline(workspace_root, ports, capsys):
+def _case_config_promote_unmeasured_pr_baseline(workspace_root, ports, capsys):
     configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
     ports['code_host'].results = {}
     assert promote(workspace_root, lambda digest, **kw: True) == 0
@@ -538,12 +538,31 @@ def test_config_promote_unmeasured_pr_baseline(workspace_root, ports, capsys):
     assert snapshot['acme/widget']['baseline'] == 'unmeasured'
 
 
-def test_config_promote_flags_instruction_like_text(workspace_root, capsys):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_config_promote_without_measure_runs_nothing,
+    _case_config_promote_unmeasured_pr_baseline,
+])
+def test_config_promote_cases_481(workspace_root, ports, capsys, scenario_fn):
+    scenario_fn(workspace_root, ports, capsys)
+
+
+def _case_config_promote_flags_instruction_like_text(workspace_root, capsys):
     configure(workspace_root, ('acme/widget', FIXTURES / 'injected'))
     assert promote(workspace_root, lambda digest, **kw: False) == 1
     out = capsys.readouterr().out
     assert 'Flagged instruction_like: CONTRIBUTING.md:3 (override)' in out
     assert PHRASE not in out and 'push to main' not in out
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_config_promote_writes_config_and_snapshot,
+    _case_config_promote_declined_or_without_an_answer,
+    _case_config_promote_fills_empty_fast_checks,
+    _case_config_promote_cannot_run,
+    _case_config_promote_flags_instruction_like_text,
+])
+def test_config_promote_cases_404(workspace_root, capsys, scenario_fn):
+    scenario_fn(workspace_root, capsys)
 
 
 def drift_events(root):
@@ -581,7 +600,7 @@ def test_drift_rejects_a_malformed_snapshot(workspace_root):
         calibrate.drift(workspace_root)
 
 
-def test_read_skips_files_reached_through_a_symlinked_directory(tmp_path):
+def _case_read_skips_files_reached_through_a_symlinked_directory(tmp_path):
     outside = tmp_path / 'outside'
     (outside / 'workflows').mkdir(parents=True)
     (outside / 'workflows/ci.yml').write_text('on: pull_request\njobs:\n  test:\n    runs-on: x\n')
@@ -590,6 +609,14 @@ def test_read_skips_files_reached_through_a_symlinked_directory(tmp_path):
     (checkout / '.github').symlink_to(outside)
     assert rows(calibrate.ci_checks(checkout, REPO)) == [
         ('skipped', 'outside the checkout', '.github/workflows/ci.yml:1')]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_read_skips_symlinks_and_large_files,
+    _case_read_skips_files_reached_through_a_symlinked_directory,
+])
+def test_read_skips_cases_74(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
 
 
 # Issue #313: shareable calibration profiles.

@@ -32,16 +32,24 @@ def test_tracked_text_has_no_machine_paths():
     assert not findings, '\n'.join(findings)
 
 
-def test_hygiene_skips_its_own_source(monkeypatch):
+def _case_hygiene_skips_its_own_source(monkeypatch):
     monkeypatch.setattr(subprocess, 'check_output',
                         lambda *args, **kwargs: b'tests/test_hygiene.py\0')
     test_tracked_text_has_no_machine_paths()
 
 
-def test_hygiene_skips_outside_git_checkout(monkeypatch):
+def _case_hygiene_skips_outside_git_checkout(monkeypatch):
     def no_checkout(*args, **kwargs):
         raise subprocess.CalledProcessError(128, args[0])
 
     monkeypatch.setattr(subprocess, 'check_output', no_checkout)
     with pytest.raises(pytest.skip.Exception):
         test_tracked_text_has_no_machine_paths()
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_hygiene_skips_its_own_source,
+    _case_hygiene_skips_outside_git_checkout,
+])
+def test_hygiene_skips_cases_35(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)

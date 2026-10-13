@@ -870,7 +870,7 @@ def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES, prin
     return json.loads(out.read_text())
 
 
-def test_subagent_stop_loads_no_more_than_pretooluse(seeded_workspace, tmp_path):
+def _case_subagent_stop_loads_no_more_than_pretooluse(seeded_workspace, tmp_path):
     # #516, in the #346 style: the common SubagentStop path (message present, seat known)
     # loads only PreToolUse's modules and the ones it runs. Second runs: warm caches.
     loaded = {path: [set(run_launcher(seeded_workspace, tmp_path, path)) for _ in range(2)][1]
@@ -899,7 +899,7 @@ COUNTING = (
     'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)\n')
 
 
-def test_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
+def _case_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
     # #516: one state write per seat stop and one directory fsync per state write.
     # #843: the seat-free discovery request is gone, one append fewer. #847: no session row
     # and no snapshot: the file and the directory fsync.
@@ -915,6 +915,14 @@ def test_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
     rows = [row for row in rows if row['kind'] != 'note'][-2:]
     assert [row['kind'] for row in rows] == ['seat stopped', 'spec.warned']
     assert rows[0]['payload'] == {'name': 'builder-1', 'prs_seen': True}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_subagent_stop_loads_no_more_than_pretooluse,
+    _case_subagent_stop_writes_state_once,
+])
+def test_subagent_stop_cases_869(seeded_workspace, tmp_path, scenario_fn):
+    scenario_fn(seeded_workspace, tmp_path)
 
 
 @pytest.mark.parametrize('session_id, recorded', [('wuwei-probe', 0), ('a-session', 1)])
@@ -977,7 +985,7 @@ def test_enforce_off_records_and_allows(plugin, event):
     assert events_of(plugin, 'hook.refusal') == []
 
 
-def test_enforce_off_does_not_log_the_doctor_probe(plugin):
+def _case_enforce_off_does_not_log_the_doctor_probe(plugin):
     enforce(plugin)
     install(plugin, refusing('PreToolUse'))
     payload = {**fixture('PreToolUse'), 'session_id': 'wuwei-probe'}
@@ -985,7 +993,7 @@ def test_enforce_off_does_not_log_the_doctor_probe(plugin):
     assert events_of(plugin, 'guard.would_refuse') == []
 
 
-def test_enforce_off_blocks_when_it_cannot_record(plugin):
+def _case_enforce_off_blocks_when_it_cannot_record(plugin):
     from wuwei import state
     enforce(plugin)
     install(plugin, refusing('PreToolUse'))
@@ -994,6 +1002,14 @@ def test_enforce_off_blocks_when_it_cannot_record(plugin):
     assert result.returncode == 2
     assert json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert 'could not record a logged refusal' in result.stderr
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_enforce_off_does_not_log_the_doctor_probe,
+    _case_enforce_off_blocks_when_it_cannot_record,
+])
+def test_enforce_off_cases_976(plugin, scenario_fn):
+    scenario_fn(plugin)
 
 
 @pytest.mark.parametrize('raw', [None, '[guards]\nenforce = true\n'])
@@ -1255,7 +1271,7 @@ def test_session_start_table(start_case, condition, expected):
     assert 'watch' not in message
 
 
-def test_session_start_names_orphan_seats(start_case):
+def _case_session_start_names_orphan_seats(start_case):
     from wuwei import state, workspace
     from wuwei.guards import lifecycle
     root = start_case
@@ -1268,9 +1284,17 @@ def test_session_start_names_orphan_seats(start_case):
     assert 'orphan' in message and 'old-builder' in message and 'finished' not in message
 
 
-def test_session_start_outside_scope(start_case):
+def _case_session_start_outside_scope(start_case):
     from wuwei.guards import lifecycle
     assert lifecycle.session_start({'cwd': str(start_case.parent / 'unrelated')}) == (0, '')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_session_start_names_orphan_seats,
+    _case_session_start_outside_scope,
+])
+def test_session_start_cases_1254(start_case, scenario_fn):
+    scenario_fn(start_case)
 
 
 def test_session_start_exports_the_session_id(start_case, monkeypatch, tmp_path):

@@ -29,7 +29,7 @@ def root(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_gate_dispatch_and_live_builder_refusal(root):
+def _case_gate_dispatch_and_live_builder_refusal(root):
     from wuwei import dispatch
 
     action = dispatch.next_step('A', root)
@@ -42,7 +42,7 @@ def test_gate_dispatch_and_live_builder_refusal(root):
         dispatch.next_step('A', root)
 
 
-def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
+def _case_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     import shutil
     from pathlib import Path
     from wuwei import dispatch
@@ -57,7 +57,7 @@ def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     assert dispatch.next_step('A', root)['action'] == 'gates'
 
 
-def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
+def _case_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
     # #843: the spec check before gates stays in dispatch; a light item skips it.
     (root / '.wuwei/config.toml').write_text('')
     tree = root / 'tree'
@@ -70,12 +70,21 @@ def test_light_item_gets_its_gates_without_a_spec(root, monkeypatch):
     assert (action['action'], action['roles']) == ('gates', ['quality'])
 
 
-def test_gate_dispatch_requires_builder_stand_down(root):
+def _case_gate_dispatch_requires_builder_stand_down(root):
     from wuwei import dispatch
 
     state._write_state(lambda data: data['seats'].clear(), root)
     with pytest.raises(dispatch.Refused, match='stand down'):
         dispatch.next_step('A', root)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_gate_dispatch_and_live_builder_refusal,
+    _case_gate_dispatch_refuses_an_item_with_a_spec_gap,
+    _case_gate_dispatch_requires_builder_stand_down,
+])
+def test_gate_dispatch_cases_32(root, scenario_fn):
+    scenario_fn(root)
 
 
 def record(root, role, name, text, round_name='initial', brief='Head: abc1234\n', **seat):
@@ -412,7 +421,7 @@ def test_agent_surface_scanner_verdict(root, monkeypatch, findings, threshold, t
         assert dispatch.next_step('A', root)['roles'] == ['arch', 'quality']
 
 
-def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch):
+def _case_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch):
     from wuwei import dispatch
 
     built(root)
@@ -473,7 +482,7 @@ def test_agent_surface_failure_never_records_pass(root, monkeypatch, capsys, fai
     assert state.read_state(root)['gate_verdicts'] == {}
 
 
-def test_agent_surface_judges_only_the_items_changed_files(root, monkeypatch):
+def _case_agent_surface_judges_only_the_items_changed_files(root, monkeypatch):
     # S8: a finding already on main in a file the item did not change does not block it.
     from wuwei import dispatch
     from wuwei.registry import Result
@@ -486,7 +495,7 @@ def test_agent_surface_judges_only_the_items_changed_files(root, monkeypatch):
     assert 'scanner.finding' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
 
 
-def test_agent_surface_symlink_in_the_diff_to_an_unchanged_file_still_blocks(root, monkeypatch):
+def _case_agent_surface_symlink_in_the_diff_to_an_unchanged_file_still_blocks(root, monkeypatch):
     # #862 F2: the item adds tools/agent_tool.py -> ../vulnerable.py; ZIRAN reports the link's
     # path, which resolves to a file already on main. The diff names the link, so it blocks.
     from wuwei import dispatch
@@ -501,7 +510,7 @@ def test_agent_surface_symlink_in_the_diff_to_an_unchanged_file_still_blocks(roo
     assert result['verdict'] == 'FIX' and result['blocks']
 
 
-def test_agent_surface_note_when_ziran_analyzed_nothing(root, monkeypatch):
+def _case_agent_surface_note_when_ziran_analyzed_nothing(root, monkeypatch):
     # #862 F5: files_analyzed 0 is measured, and the verdict says ZIRAN covered no file.
     from wuwei import dispatch, verdict
 
@@ -514,7 +523,7 @@ def test_agent_surface_note_when_ziran_analyzed_nothing(root, monkeypatch):
     assert verdict.lint(text, class_sweep=True)[0] == 0
 
 
-def test_agent_surface_file_level_finding_has_no_line(root, monkeypatch):
+def _case_agent_surface_file_level_finding_has_no_line(root, monkeypatch):
     # S1: SA002 has line null; the row names the file at line 1, the file:line a verdict needs.
     from wuwei import dispatch
 
@@ -524,7 +533,7 @@ def test_agent_surface_file_level_finding_has_no_line(root, monkeypatch):
     assert result['blocks'] and '| vulnerable.py:1 | ZIRAN SA002' in (root / result['file']).read_text()
 
 
-def test_agent_surface_brief_without_merge_base_is_unmeasured(root, monkeypatch):
+def _case_agent_surface_brief_without_merge_base_is_unmeasured(root, monkeypatch):
     from wuwei import dispatch
 
     agent_gate(root, monkeypatch)
@@ -535,7 +544,19 @@ def test_agent_surface_brief_without_merge_base_is_unmeasured(root, monkeypatch)
     assert state.read_state(root)['gate_verdicts'] == {}
 
 
-def test_scanner_finding_text_cannot_inject_or_leak(root, monkeypatch):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_agent_surface_delta_rescans_and_keeps_manual_findings,
+    _case_agent_surface_judges_only_the_items_changed_files,
+    _case_agent_surface_symlink_in_the_diff_to_an_unchanged_file_still_blocks,
+    _case_agent_surface_note_when_ziran_analyzed_nothing,
+    _case_agent_surface_file_level_finding_has_no_line,
+    _case_agent_surface_brief_without_merge_base_is_unmeasured,
+])
+def test_agent_surface_cases_415(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
+
+
+def _case_scanner_finding_text_cannot_inject_or_leak(root, monkeypatch):
     from wuwei import dispatch
 
     payload, _, _ = agent_gate(root, monkeypatch)
@@ -546,12 +567,20 @@ def test_scanner_finding_text_cannot_inject_or_leak(root, monkeypatch):
     assert text.count('Verdict:') == 1 and 'private-value' not in text
 
 
-def test_scanner_finding_declared_trust_boundary_blocks_below_threshold(root, monkeypatch):
+def _case_scanner_finding_declared_trust_boundary_blocks_below_threshold(root, monkeypatch):
     from wuwei import dispatch
 
     payload, _, _ = agent_gate(root, monkeypatch, threshold='critical')
     payload['findings'][0].update(rule='SA004', trust_boundary=True)
     assert dispatch.receive('A', 'security', 'security', root=root)['blocks']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_scanner_finding_text_cannot_inject_or_leak,
+    _case_scanner_finding_declared_trust_boundary_blocks_below_threshold,
+])
+def test_scanner_finding_cases_538(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 @pytest.mark.parametrize('flag', ['trust_surface', 'boundary_relevant'])
@@ -775,7 +804,7 @@ def test_logged_gate_brief_becomes_launch_action(root):
     assert dispatch.next_step('A', root)['seats'] == []
 
 
-def test_delta_offers_one_continuation_of_the_stopped_seat(root, monkeypatch):
+def _case_delta_offers_one_continuation_of_the_stopped_seat(root, monkeypatch):
     from wuwei import brief, dispatch
 
     tree = built(root)
@@ -883,7 +912,7 @@ def tier_events(root):
             if row['kind'] == 'gate.tiered']
 
 
-def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
+def _case_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
     from wuwei import dispatch
 
     fake = tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard')
@@ -904,7 +933,7 @@ def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
     assert len(tier_events(root)) == 1
 
 
-def test_light_item_receives_and_raises_on_quality_only(root):
+def _case_light_item_receives_and_raises_on_quality_only(root):
     from wuwei import dispatch
 
     state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root)
@@ -915,7 +944,7 @@ def test_light_item_receives_and_raises_on_quality_only(root):
     assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
-def test_light_item_fixes_and_deltas_quality_only(root):
+def _case_light_item_fixes_and_deltas_quality_only(root):
     from wuwei import dispatch
 
     built(root)
@@ -925,6 +954,14 @@ def test_light_item_fixes_and_deltas_quality_only(root):
         'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
     state.transition('A', 'delta', root)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_light_item_receives_and_raises_on_quality_only,
+    _case_light_item_fixes_and_deltas_quality_only,
+])
+def test_light_item_cases_907(root, scenario_fn):
+    scenario_fn(root)
 
 
 @pytest.mark.parametrize('roles', [['arch'], ['goal', 'arch'], ['security'], ['goal', 'quality']])
@@ -940,7 +977,7 @@ def test_malformed_recorded_gate_set_fails_closed(root, roles):
 GOAL = {**LIGHT, 'roles': ['goal']}
 
 
-def test_docs_only_item_receives_and_raises_on_goal_only(root):
+def _case_docs_only_item_receives_and_raises_on_goal_only(root):
     from wuwei import dispatch
 
     state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root)
@@ -952,7 +989,7 @@ def test_docs_only_item_receives_and_raises_on_goal_only(root):
     assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
-def test_docs_only_item_fix_continues_the_same_goal_seat(root):
+def _case_docs_only_item_fix_continues_the_same_goal_seat(root):
     from wuwei import dispatch
 
     built(root)
@@ -964,12 +1001,20 @@ def test_docs_only_item_fix_continues_the_same_goal_seat(root):
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['goal'], 'seats': []}
 
 
+@pytest.mark.parametrize("scenario_fn", [
+    _case_docs_only_item_receives_and_raises_on_goal_only,
+    _case_docs_only_item_fix_continues_the_same_goal_seat,
+])
+def test_docs_only_cases_943(root, scenario_fn):
+    scenario_fn(root)
+
+
 def tier_of(root):
     from wuwei import dispatch
     return dispatch.next_step('A', root)['tier']
 
 
-def test_issue_acceptance_trust_path_is_standard_regardless_of_floor(root, monkeypatch):
+def _case_issue_acceptance_trust_path_is_standard_regardless_of_floor(root, monkeypatch):
     tiered(root, monkeypatch, [('docs/guide.md', 3, 1), ('cli/wuwei/guards/pr.py', 2, 0)])
     record = tier_of(root)
     assert record['tier'] == 'standard' and record['roles'] == ALL
@@ -985,7 +1030,7 @@ def test_issue_acceptance_lockfile_includes_security_at_any_tier(root, monkeypat
     assert any(reason.startswith('uv.lock matches never-auto path') for reason in record['reasons'])
 
 
-def test_full_track_pattern_forces_arch(root, monkeypatch):
+def _case_full_track_pattern_forces_arch(root, monkeypatch):
     tiered(root, monkeypatch, [('api/schema.json', 1, 0)], extra='[brief]\nfull_path_patterns = ["^api/"]\n')
     record = tier_of(root)
     assert 'arch' in record['roles']
@@ -1000,7 +1045,7 @@ def test_issue_acceptance_lead_flag_raises_a_light_diff(root, monkeypatch, flag)
     assert f'lead flag {flag}' in record['reasons']
 
 
-def test_issue_acceptance_lead_tier_raises_and_cannot_lower(root, monkeypatch):
+def _case_issue_acceptance_lead_tier_raises_and_cannot_lower(root, monkeypatch):
     tiered(root, monkeypatch, [('src/app.py', 3, 1)], lead='full')
     record = tier_of(root)
     assert record['tier'] == 'full' and 'lead tier full' in record['reasons']
@@ -1041,13 +1086,13 @@ def test_code_or_trust_surface_keeps_three_gates(root, monkeypatch, paths, flags
     assert not any(reason.startswith('docs-only') for reason in record['reasons'])
 
 
-def test_empty_diff_keeps_quality_at_a_light_floor(root, monkeypatch):
+def _case_empty_diff_keeps_quality_at_a_light_floor(root, monkeypatch):
     tiered(root, monkeypatch, [])
     record = tier_of(root)
     assert (record['tier'], record['roles']) == ('light', ['quality'])
 
 
-def test_backfill_evidence_zero_diff_measurement_has_one_gate_at_standard_floor(root, monkeypatch):
+def _case_backfill_evidence_zero_diff_measurement_has_one_gate_at_standard_floor(root, monkeypatch):
     tiered(root, monkeypatch, [], floor='standard', lead='light')
     state._write_state(lambda data: data['items']['A'].update(kind='measure'), root)
     record = tier_of(root)
@@ -1055,7 +1100,7 @@ def test_backfill_evidence_zero_diff_measurement_has_one_gate_at_standard_floor(
     assert record['tier'] == 'light'
 
 
-def test_measurement_tier_uses_builder_start_head(root, monkeypatch):
+def _case_measurement_tier_uses_builder_start_head(root, monkeypatch):
     fake = tiered(root, monkeypatch, [], floor='standard')
     state._write_state(lambda data: (
         data['items']['A'].update(kind='measure'),
@@ -1121,24 +1166,32 @@ def test_measurement_start_brief_asks_for_evidence_without_implementation(day_se
     assert 'Implement P3' not in body
 
 
-def test_issue_acceptance_lead_full_is_overridden_for_docs_only(root, monkeypatch):
+def _case_issue_acceptance_lead_full_is_overridden_for_docs_only(root, monkeypatch):
     tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard', lead='full')
     record = tier_of(root)
     assert (record['tier'], record['roles']) == ('light', ['goal'])
     assert record['reasons'] == ['lead tier full overridden: docs-only', 'docs-only: 1 reviewer (goal)']
 
 
-def test_issue_acceptance_lead_cannot_lower_a_standard_diff(root, monkeypatch):
+def _case_issue_acceptance_lead_cannot_lower_a_standard_diff(root, monkeypatch):
     tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)], lead='light')
     record = tier_of(root)
     assert record['tier'] == 'standard' and record['roles'] == ALL
     assert 'lead tier light refused: below standard' in record['reasons']
 
 
-def test_full_track_is_full_with_three_gates(root, monkeypatch):
+def _case_full_track_is_full_with_three_gates(root, monkeypatch):
     tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], track='FULL')
     record = tier_of(root)
     assert (record['tier'], record['computed'], record['roles']) == ('full', 'full', ALL)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_full_track_pattern_forces_arch,
+    _case_full_track_is_full_with_three_gates,
+])
+def test_full_track_cases_988(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 @pytest.mark.parametrize('paths,reason', [
@@ -1151,12 +1204,20 @@ def test_size_and_binary_diffs_stay_standard(root, monkeypatch, paths, reason):
     assert record['tier'] == 'standard' and reason in record['reasons']
 
 
-def test_empty_diff_is_light(root, monkeypatch):
+def _case_empty_diff_is_light(root, monkeypatch):
     tiered(root, monkeypatch, [])
     assert tier_of(root)['tier'] == 'light'
 
 
-def test_unmeasured_diff_stays_standard(root, monkeypatch):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_empty_diff_keeps_quality_at_a_light_floor,
+    _case_empty_diff_is_light,
+])
+def test_empty_diff_cases_1044(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
+
+
+def _case_unmeasured_diff_stays_standard(root, monkeypatch):
     from wuwei.registry import Result
 
     fake = tiered(root, monkeypatch, [])
@@ -1198,7 +1259,7 @@ def test_second_opinion_is_recorded_at_standard_and_full(root, monkeypatch, trac
     assert dispatch.base('quality@codex') == 'quality' and dispatch.base('arch') == 'arch'
 
 
-def test_second_opinion_role_is_configurable(root, monkeypatch):
+def _case_second_opinion_role_is_configurable(root, monkeypatch):
     from wuwei import dispatch
 
     tiered(root, monkeypatch, [('src/app.py', 200, 0)],
@@ -1207,7 +1268,7 @@ def test_second_opinion_role_is_configurable(root, monkeypatch):
     assert dispatch.gate_set(state.read_state(root)['items']['A'])[-1] == 'security@codex'
 
 
-def test_light_item_and_option_off_have_no_second_opinion(root, monkeypatch):
+def _case_light_item_and_option_off_have_no_second_opinion(root, monkeypatch):
     from wuwei import dispatch
 
     tiered(root, monkeypatch, [('src/app.py', 3, 1)], extra=SECOND)
@@ -1215,7 +1276,7 @@ def test_light_item_and_option_off_have_no_second_opinion(root, monkeypatch):
     assert dispatch.gate_set(state.read_state(root)['items']['A']) == ('quality',)
 
 
-def test_option_off_records_no_second_opinion(root, monkeypatch):
+def _case_option_off_records_no_second_opinion(root, monkeypatch):
     tiered(root, monkeypatch, [('src/app.py', 200, 0)])
     assert 'second_opinion' not in tier_of(root)
 
@@ -1242,7 +1303,7 @@ RUN = {'action': 'run', 'gate': 'quality@codex', 'runtime': 'codex', 'model': 'm
        'command': 'wuwei dispatch opinion A'}
 
 
-def test_dispatch_next_offers_the_second_opinion_run(root, monkeypatch):
+def _case_dispatch_next_offers_the_second_opinion_run(root, monkeypatch):
     from wuwei import dispatch
 
     opinion_item(root, monkeypatch)
@@ -1407,7 +1468,7 @@ def events_of(root, kind):
                                           .read_text().splitlines()) if row['kind'] == kind]
 
 
-def test_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
+def _case_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
     from wuwei import dispatch
 
     runtime = opinion_ready(root, monkeypatch)
@@ -1439,7 +1500,7 @@ def test_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
     assert dispatch.next_step('A', root)['action'] == 'fix'
 
 
-def test_passing_opinion_lets_the_item_raise(root, monkeypatch):
+def _case_passing_opinion_lets_the_item_raise(root, monkeypatch):
     from wuwei import dispatch
 
     opinion_ready(root, monkeypatch, FakeRuntime(QUALITY_PASS.replace('abc1234', 'aaaaaaa')))
@@ -1451,7 +1512,7 @@ def test_passing_opinion_lets_the_item_raise(root, monkeypatch):
     assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
-def test_opinion_rerun_polls_the_running_job(root, monkeypatch):
+def _case_opinion_rerun_polls_the_running_job(root, monkeypatch):
     from wuwei import dispatch
 
     runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=('running', 'completed')))
@@ -1493,7 +1554,7 @@ def test_failed_opinion_frees_its_seat_and_the_rerun_relaunches(root, monkeypatc
     assert 'failed' not in state.read_state(root)['seats']['q-1-codex']
 
 
-def test_opinion_keeps_a_verdict_the_seat_wrote(root, monkeypatch):
+def _case_opinion_keeps_a_verdict_the_seat_wrote(root, monkeypatch):
     from wuwei import dispatch
 
     opinion_ready(root, monkeypatch, FakeRuntime(text='Done.'))
@@ -1504,7 +1565,7 @@ def test_opinion_keeps_a_verdict_the_seat_wrote(root, monkeypatch):
     assert verdict.read_text() == QUALITY_PASS.replace('abc1234', 'aaaaaaa')
 
 
-def test_rejected_opinion_continues_the_same_job(root, monkeypatch):
+def _case_rejected_opinion_continues_the_same_job(root, monkeypatch):
     from wuwei import dispatch
 
     runtime = opinion_ready(root, monkeypatch, FakeRuntime(text='Verdict: PASS\n'))
@@ -1542,7 +1603,7 @@ def test_opinion_failures_record_no_verdict(root, monkeypatch, failure):
     assert state.read_state(root)['gate_verdicts'] == {}
 
 
-def test_opinion_refusals(root, monkeypatch):
+def _case_opinion_refusals(root, monkeypatch):
     from wuwei import dispatch
 
     with pytest.raises(dispatch.Refused, match='no second opinion'):
@@ -1655,13 +1716,13 @@ def opinion_fix_round(root, monkeypatch, delta_text, cap=''):
     return dispatch.next_step('A', root)
 
 
-def test_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates(root, monkeypatch):
+def _case_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates(root, monkeypatch):
     outcome = opinion_fix_round(root, monkeypatch, OPINION_TEXT, 'max_rounds = 1\n')
     assert outcome['action'] == 'escalate'
     assert outcome['reason'].startswith('round cap 1 reached: quality@codex still blocks:')
 
 
-def test_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
+def _case_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
     text = QUALITY_PASS.replace('abc1234', 'aaaaaaa').replace(
         'Probe:', '- P3 | cli/example.py:12 | naming fails when read | blocks: no\nProbe:')
     outcome = opinion_fix_round(root, monkeypatch, text)
@@ -1723,13 +1784,22 @@ def test_a_blocking_second_opinion_survives_switching_it_off(root, monkeypatch, 
     assert events_of(root, 'gate.released') == []
 
 
-def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
+def _case_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
     from wuwei import dispatch
 
     tiered(root, monkeypatch, [('src/app.py', 3, 1)], extra=SECOND)
     logged_gate_brief(root, 'quality', 'q-1', root / 'repo')
     outcome = dispatch.next_step('A', root)
     assert outcome['roles'] == ['quality'] and [seat['action'] for seat in outcome['seats']] == ['launch']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_light_item_gets_its_gates_without_a_spec,
+    _case_light_item_and_option_off_have_no_second_opinion,
+    _case_light_item_with_second_opinion_on_offers_no_run,
+])
+def test_light_item_cases_60(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 def test_quality_pass_needs_no_docs_value(root):
@@ -1794,7 +1864,7 @@ def test_a_failed_duty_is_recorded_skipped(root, monkeypatch, results):
                                                        'ticket': 'ENG-7', 'error': error})]
 
 
-def test_a_duty_comment_is_claimed_before_it_is_sent(root, monkeypatch):
+def _case_a_duty_comment_is_claimed_before_it_is_sent(root, monkeypatch):
     """#842 F4: a crash after the claim never posts the PR link twice on a retry."""
     from wuwei import dispatch, registry
     fake = ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
@@ -1810,7 +1880,7 @@ def test_a_duty_comment_is_claimed_before_it_is_sent(root, monkeypatch):
     assert duty_events(root)[-1][0] == 'duty.skipped'
 
 
-def test_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
+def _case_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
     from wuwei import dispatch, registry
     ticketed(root, monkeypatch, {'transition': registry.Result(0, {})})
     with (root / '.wuwei/config.toml').open('a') as stream:
@@ -1820,6 +1890,14 @@ def test_a_duty_comment_respects_the_daily_cap(root, monkeypatch):
     result = dispatch.tracker_call('A', 'done', root)
     assert result.exit == 1 and 'max_per_item_per_day' in result.reason
     assert duty_events(root)[-1][0] == 'duty.skipped'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_a_duty_comment_is_claimed_before_it_is_sent,
+    _case_a_duty_comment_respects_the_daily_cap,
+])
+def test_a_duty_cases_1867(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 def test_no_duty_without_a_ticket_or_a_tracker(root, monkeypatch):
@@ -1879,7 +1957,7 @@ def tracker_events(root):
             if json.loads(line)['kind'] == 'tracker.call']
 
 
-def test_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
+def _case_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
     """#670 acceptance 2: on the owner's tracker the label is created, then moved."""
     from wuwei import dispatch, registry
     fake = moves(root, monkeypatch, registry.Result(0, {'created': ['In Review'], 'missing': []}))
@@ -1890,7 +1968,7 @@ def test_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
     assert tracker_events(root)[-1]['exit'] == 0
 
 
-def test_in_review_names_the_label_on_an_external_tracker(root, monkeypatch):
+def _case_in_review_names_the_label_on_an_external_tracker(root, monkeypatch):
     from wuwei import dispatch, registry
     fake = moves(root, monkeypatch, registry.Result(0, {'created': [], 'missing': ['In Review']}), '')
     result = dispatch.tracker_call('A', 'in_review', root)
@@ -1899,6 +1977,14 @@ def test_in_review_names_the_label_on_an_external_tracker(root, monkeypatch):
         ('transition', ('A', 'In Review')), ('labels', (False,))]
     event = tracker_events(root)[-1]
     assert (event['exit'], event['reason']) == (1, LABEL_MISSING)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_in_review_creates_the_missing_label_and_moves,
+    _case_in_review_names_the_label_on_an_external_tracker,
+])
+def test_in_review_cases_1882(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 @pytest.mark.parametrize('labels', [{'created': [], 'missing': []}, None])
@@ -1969,7 +2055,7 @@ def day_set(tmp_path, monkeypatch):
     return tmp_path, calls
 
 
-def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
+def _case_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
     from wuwei import dispatch
     root, calls = day_set
     value = dispatch.launch_set(root)
@@ -1989,7 +2075,7 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
             if row['action'] == 'start'] == ['P1', 'P2']
 
 
-def test_launch_set_launches_the_gate_seats_that_fit(day_set):
+def _case_launch_set_launches_the_gate_seats_that_fit(day_set):
     # #910: three gate seats on two host seats: two launch, one waits; no planned item starts
     from wuwei import dispatch
     root, _ = day_set
@@ -2001,7 +2087,7 @@ def test_launch_set_launches_the_gate_seats_that_fit(day_set):
     assert [row['action'] for row in entries[2:]] == ['wait'] * 4 and 'gate' in entries[2]['reason']
 
 
-def test_launch_set_waits_a_gate_set_when_no_seat_fits(day_set):
+def _case_launch_set_waits_a_gate_set_when_no_seat_fits(day_set):
     from wuwei import dispatch
     root, _ = day_set
     state._write_state(lambda data: data['seats'].update({f's{i}': {
@@ -2110,7 +2196,7 @@ def test_a_running_gate_batch_holds_new_builds_until_its_set_launches(day_set):
     assert [row['action'] for row in dispatch.launch_set(root)['entries'] if row['item'] in ('P1', 'P3')] == ['start'] * 2
 
 
-def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_set):
+def _case_launch_set_skips_running_items_and_launches_briefed_planned_items(day_set):
     from wuwei import dispatch
     root, calls = day_set
     state._write_state(lambda data: data['seats'].update(b={
@@ -2125,7 +2211,7 @@ def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_s
     assert 'B' not in calls
 
 
-def test_launch_set_holds_every_seat_launch_below_the_memory_floor(day_set, monkeypatch):
+def _case_launch_set_holds_every_seat_launch_below_the_memory_floor(day_set, monkeypatch):
     # #898: below host.min_free_memory_pct no seat starts; next re-checks a minute later
     from wuwei import dispatch
     from wuwei.guards import agent_launch
@@ -2157,7 +2243,7 @@ def test_a_memory_hold_never_runs_build_next_for_a_briefed_planned_item(day_set,
     assert 'P3' not in calls and state.read_state(root)['items']['P3']['phase'] == 'planned'
 
 
-def test_launch_set_never_holds_a_launch_without_a_seat(day_set, monkeypatch):
+def _case_launch_set_never_holds_a_launch_without_a_seat(day_set, monkeypatch):
     # #898: a pr act run takes no seat, so the floor never holds it
     from wuwei import dispatch
     from wuwei.guards import agent_launch
@@ -2169,7 +2255,15 @@ def test_launch_set_never_holds_a_launch_without_a_seat(day_set, monkeypatch):
     assert (entry['item'], entry['action'], entry['command']) == ('G', 'run', 'wuwei pr act 7 --push')
 
 
-def test_launch_set_counts_only_live_registered_seats(day_set):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_launch_set_holds_every_seat_launch_below_the_memory_floor,
+    _case_launch_set_never_holds_a_launch_without_a_seat,
+])
+def test_launch_set_cases_2128(day_set, monkeypatch, scenario_fn):
+    scenario_fn(day_set, monkeypatch)
+
+
+def _case_launch_set_counts_only_live_registered_seats(day_set):
     # #898: an adhoc seat and a seat that handed back hold no slot; a registered running seat does
     from pathlib import Path
     from wuwei import brief, dispatch
@@ -2184,6 +2278,17 @@ def test_launch_set_counts_only_live_registered_seats(day_set):
         'lost': {'item': 'R', 'role': 'shepherd', 'status': 'unmeasured', 'brief': 'l.md'}}), root)
     assert [seat['brief'] for seat in brief.live(state.read_state(root))] == ['b.md']
     assert dispatch.launch_set(root)['free_seats'] == 7
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_launch_set_orders_gates_builds_then_planned_within_cap,
+    _case_launch_set_launches_the_gate_seats_that_fit,
+    _case_launch_set_waits_a_gate_set_when_no_seat_fits,
+    _case_launch_set_skips_running_items_and_launches_briefed_planned_items,
+    _case_launch_set_counts_only_live_registered_seats,
+])
+def test_launch_set_cases_1972(day_set, scenario_fn):
+    scenario_fn(day_set)
 
 
 def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
@@ -2480,7 +2585,7 @@ def test_a_fix_round_keeps_the_build_record_runtime(root):
     assert build.open_fix('A', 'Gate quality FIX.', root=root)['runtime'] == 'codex'
 
 
-def test_open_fix_counts_rounds_and_refuses_at_the_cap(root):
+def _case_open_fix_counts_rounds_and_refuses_at_the_cap(root):
     from wuwei.commands import build
     built(root)
     gate_fix(root)
@@ -2646,12 +2751,12 @@ def test_issue_657_tier_counts_without_generated_and_data_lines(root, monkeypatc
         assert record['roles'] == ['quality']
 
 
-def test_issue_657_standard_item_shows_its_count(root, monkeypatch):
+def _case_issue_657_standard_item_shows_its_count(root, monkeypatch):
     tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)])
     assert '2 changed lines within light_max_lines 100' in tier_of(root)['reasons']
 
 
-def test_issue_657_lockfile_stops_counting_but_stays_never_auto(root, monkeypatch):
+def _case_issue_657_lockfile_stops_counting_but_stays_never_auto(root, monkeypatch):
     tiered(root, monkeypatch, [('src/app.py', 10, 0), ('uv.lock', 4800, 0)])
     record = tier_of(root)
     assert record['tier'] == 'standard' and 'security' in record['roles']
@@ -2659,12 +2764,21 @@ def test_issue_657_lockfile_stops_counting_but_stays_never_auto(root, monkeypatc
     assert '4810 changed lines, 4800 generated or data excluded, 10 count, within light_max_lines 100' in record['reasons']
 
 
-def test_issue_657_unreadable_gitattributes_is_unmeasured(root, monkeypatch):
+def _case_issue_657_unreadable_gitattributes_is_unmeasured(root, monkeypatch):
     tiered(root, monkeypatch, [('src/app.py', 3, 0)])
     (root / 'repo/.gitattributes').mkdir()
     record = tier_of(root)
     assert record['tier'] == 'standard'
     assert any(reason.startswith('diff unmeasured:') for reason in record['reasons'])
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_issue_657_standard_item_shows_its_count,
+    _case_issue_657_lockfile_stops_counting_but_stays_never_auto,
+    _case_issue_657_unreadable_gitattributes_is_unmeasured,
+])
+def test_issue_657_cases_2746(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 ANALYSIS = [('docs/analysis.md', 120, 0), ('study/results/scores.csv', 600, 0), ('analysis/eval.ipynb', 69, 0)]
@@ -2708,7 +2822,7 @@ ASSUMED_NOTE = ('Assumption: medium specs/x/spec.md:12 assumed one process; '
                 'would break when two processes share it; blocks: no\n')
 
 
-def test_issue_677_receive_keeps_q_findings_blocking_first(root):
+def _case_issue_677_receive_keeps_q_findings_blocking_first(root):
     text = ('Verdict: FIX\nHead: abc1234\n\n## Non-blocking findings\n\n'
             'N1. Severity: low. File: src/c.py:5. blocks: no.\nFailure scenario: would log twice.\n\n'
             '## Blocking findings\n\n'
@@ -2725,7 +2839,7 @@ def test_issue_677_receive_keeps_q_findings_blocking_first(root):
     assert [note.split(' ')[0] for note in value['notes']] == ['N1.', 'Assumption:']
 
 
-def test_issue_677_receive_refuses_fix_without_parsed_blocker(root):
+def _case_issue_677_receive_refuses_fix_without_parsed_blocker(root):
     from wuwei import dispatch
     text = ('Verdict: FIX\nHead: abc1234\n### Q1 high\n'
             'The cache in src/a.py:80 is never cleared, so a reload would serve stale data; blocks: yes\n'
@@ -2734,6 +2848,14 @@ def test_issue_677_receive_refuses_fix_without_parsed_blocker(root):
     with pytest.raises(dispatch.Refused, match='FIX verdict but no blocking finding parsed'):
         record(root, 'quality', 'quality-1', text)
     assert state.read_state(root)['gate_verdicts'] == {}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_issue_677_receive_keeps_q_findings_blocking_first,
+    _case_issue_677_receive_refuses_fix_without_parsed_blocker,
+])
+def test_issue_677_cases_2808(root, scenario_fn):
+    scenario_fn(root)
 # #666: build next and dispatch next read one decision
 
 
@@ -2768,7 +2890,7 @@ def test_issue_acceptance_build_next_and_dispatch_next_agree_on_a_gate_fix(root,
     assert not list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))  # #732: no card
 
 
-def test_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypatch, capsys):
+def _case_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypatch, capsys):
     from wuwei import dispatch
     built(root)
     gate_fix(root)
@@ -2786,7 +2908,7 @@ def test_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypa
     assert (code, found['action'], found['command']) == (0, 'fix', 'wuwei build next A')
 
 
-def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch, capsys):
+def _case_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch, capsys):
     from wuwei import dispatch
     built(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -2798,6 +2920,14 @@ def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch,
     assert (code, found) == (1, None) and 'builder must stand down before gates' in err
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'escalate', 'reason': 'r'})
     assert build_next(capsys, root)[:2] == (1, {'action': 'escalate', 'reason': 'r'})
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_build_next_opens_the_delta_fix_round_dispatch_next_names,
+    _case_build_next_exits_one_on_a_gate_refusal_or_escalation,
+])
+def test_build_next_cases_2771(root, monkeypatch, capsys, scenario_fn):
+    scenario_fn(root, monkeypatch, capsys)
 
 
 def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys):
@@ -2910,7 +3040,7 @@ def test_delta_head_event_is_reserved_and_silent():
 
 # Issue #733: the fix round and the delta continue prompt carry every CI step.
 
-def test_open_fix_records_the_ci_job_and_lists_every_step(root):
+def _case_open_fix_records_the_ci_job_and_lists_every_step(root):
     from test_brief import CI_BLOCK, LINT_REF, ci_tree
     from wuwei.commands import build
     ci_tree(built(root))
@@ -2918,6 +3048,14 @@ def test_open_fix_records_the_ci_job_and_lists_every_step(root):
     action = build.open_fix('A', 'Lint: failure https://example.test/1', root=root)
     assert state.read_state(root)['items']['A']['ci_jobs'] == [LINT_REF]
     assert action['prompt'].endswith('Lint: failure https://example.test/1\n' + CI_BLOCK)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_open_fix_counts_rounds_and_refuses_at_the_cap,
+    _case_open_fix_records_the_ci_job_and_lists_every_step,
+])
+def test_open_fix_cases_2483(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_delta_continuation_carries_the_ci_steps(root, monkeypatch):
@@ -3178,7 +3316,7 @@ def test_rechecks_rule():
     assert not dispatch.rechecks(empty, 'P', 'quality')
 
 
-def test_issue_acceptance_pass_with_notes_offers_polish(root):
+def _case_issue_acceptance_pass_with_notes_offers_polish(root):
     from wuwei import dispatch
 
     polish_ready(root)
@@ -3191,11 +3329,19 @@ def test_issue_acceptance_pass_with_notes_offers_polish(root):
     assert data['items']['A']['phase'] == 'gate' and 'polish' not in data['items']['A']
 
 
-def test_issue_acceptance_polish_never_raises_at_once_with_the_notes(root):
+def _case_issue_acceptance_polish_never_raises_at_once_with_the_notes(root):
     from wuwei import dispatch
 
     polish_ready(root, 'never')
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_issue_acceptance_pass_with_notes_offers_polish,
+    _case_issue_acceptance_polish_never_raises_at_once_with_the_notes,
+])
+def test_issue_acceptance_cases_3294(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_polish_always_opens_the_round_itself(root):
@@ -3328,7 +3474,7 @@ def test_issue_acceptance_one_gate_rechecks_the_polish_and_the_pr_is_raised(root
     assert dispatch.next_step('A', root)['action'] == 'raise'
 
 
-def test_blocking_polish_delta_opens_the_next_round(root):
+def _case_blocking_polish_delta_opens_the_next_round(root):
     from wuwei import dispatch
 
     polished(root)
@@ -3343,13 +3489,21 @@ def test_blocking_polish_delta_opens_the_next_round(root):
     assert dispatch.next_step('A', root)['roles'] == ['quality']
 
 
-def test_blocking_polish_delta_parks_at_the_cap(root):
+def _case_blocking_polish_delta_parks_at_the_cap(root):
     from wuwei import dispatch
 
     caps(root, 'max_rounds = 1\n')
     polished(root)
     record(root, 'quality', 'quality-2', QUALITY_FIX, 'delta')
     assert dispatch.next_step('A', root)['reason'].startswith('round cap 1 reached: quality still blocks:')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_blocking_polish_delta_opens_the_next_round,
+    _case_blocking_polish_delta_parks_at_the_cap,
+])
+def test_blocking_polish_cases_3331(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_polish_at_the_cap_raises_with_the_notes(root):
@@ -3360,7 +3514,7 @@ def test_polish_at_the_cap_raises_with_the_notes(root):
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': NOTES}
 
 
-def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypatch):
+def _case_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypatch):
     from wuwei import dispatch
 
     note = '- P3 | cli/example.py:12 | naming fails when read | blocks: no\n'
@@ -3379,6 +3533,16 @@ def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypa
     [continued] = [call for call in runtime.calls if call[0] == 'continue']
     assert continued[2].startswith('Polish re-check:') and 'gate-q-1-codex.md' in continued[2]
     assert _raised(dispatch.next_step('A', root)) == {'action': 'raise', 'notes': []}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_second_opinion_role_is_configurable,
+    _case_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates,
+    _case_second_opinion_delta_residual_becomes_a_review_note,
+    _case_second_opinion_notes_are_rechecked_by_the_second_opinion,
+])
+def test_second_opinion_cases_1201(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
 
 
 def test_a_day_value_never_changes_the_tier(root, monkeypatch):
@@ -3709,7 +3873,7 @@ def test_a_builder_blocked_line_asks_the_owner_before_the_gates(root, monkeypatc
                in shlex.split(command)[-1] for command in found['commands'])
 
 
-def test_a_builder_blocked_line_no_parks(root):
+def _case_a_builder_blocked_line_no_parks(root):
     from wuwei import dispatch
     builder_says(root, 'the schema change needs the owner')
     owner_says(root, dispatch.next_step('A', root), 'No')
@@ -3717,10 +3881,18 @@ def test_a_builder_blocked_line_no_parks(root):
     assert found['action'] == 'parked' and found['reason'] == 'builder blocked: the schema change needs the owner'
 
 
-def test_a_builder_blocked_none_goes_to_the_gates(root):
+def _case_a_builder_blocked_none_goes_to_the_gates(root):
     from wuwei import dispatch
     builder_says(root, 'none')
     assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_a_builder_blocked_line_no_parks,
+    _case_a_builder_blocked_none_goes_to_the_gates,
+])
+def test_a_builder_cases_3843(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_a_resumed_blocked_park_goes_to_the_gates(root, capsys, monkeypatch):
@@ -3937,3 +4109,26 @@ def test_review_955_prompt_seat_cannot_deliver_gate_verdict(root, monkeypatch):
     with pytest.raises(dispatch.Refused, match='bin/wuwei dispatch next A'):
         dispatch.receive('A', 'arch', 'adhoc-1', root=root)
     assert state.read_state(root) == before
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_delta_offers_one_continuation_of_the_stopped_seat,
+    _case_issue_acceptance_docs_only_runs_one_goal_gate,
+    _case_issue_acceptance_trust_path_is_standard_regardless_of_floor,
+    _case_issue_acceptance_lead_tier_raises_and_cannot_lower,
+    _case_backfill_evidence_zero_diff_measurement_has_one_gate_at_standard_floor,
+    _case_measurement_tier_uses_builder_start_head,
+    _case_issue_acceptance_lead_full_is_overridden_for_docs_only,
+    _case_issue_acceptance_lead_cannot_lower_a_standard_diff,
+    _case_unmeasured_diff_stays_standard,
+    _case_option_off_records_no_second_opinion,
+    _case_dispatch_next_offers_the_second_opinion_run,
+    _case_opinion_runs_the_second_gate_and_receives_it,
+    _case_passing_opinion_lets_the_item_raise,
+    _case_opinion_rerun_polls_the_running_job,
+    _case_opinion_keeps_a_verdict_the_seat_wrote,
+    _case_rejected_opinion_continues_the_same_job,
+    _case_opinion_refusals,
+])
+def test_gate_and_opinion_dispatch_cases(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)

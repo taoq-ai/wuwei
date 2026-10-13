@@ -77,7 +77,7 @@ def test_codex_matches_then_polls_and_validates_result(tmp_path, monkeypatch):
     assert 'usage' not in result.data
 
 
-def test_codex_prompt_carries_the_mandate(tmp_path, monkeypatch):
+def _case_codex_prompt_carries_the_mandate(tmp_path, monkeypatch):
     from wuwei import brief as briefs
     root = setup(tmp_path, monkeypatch)
     brief = root / 'brief.md'
@@ -93,7 +93,7 @@ def test_codex_prompt_carries_the_mandate(tmp_path, monkeypatch):
     assert calls[0][-2].endswith(briefs.mandate(root))
 
 
-def test_codex_result_with_a_question_is_its_result(tmp_path, monkeypatch):
+def _case_codex_result_with_a_question_is_its_result(tmp_path, monkeypatch):
     # Part 14: a seat names its question in the result; no record is required.
     root = setup(tmp_path, monkeypatch)
     adapter = importlib.import_module('adapters.runtime.codex')
@@ -106,7 +106,7 @@ def test_codex_result_with_a_question_is_its_result(tmp_path, monkeypatch):
     assert result.exit == 0 and result.data['text'].startswith('Which option')
 
 
-def test_codex_result_preserves_stored_usage(tmp_path, monkeypatch):
+def _case_codex_result_preserves_stored_usage(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     adapter = importlib.import_module('adapters.runtime.codex')
     payloads = companion_payloads(root)
@@ -163,7 +163,7 @@ def test_codex_result_reads_the_thread_window_readings(tmp_path, monkeypatch, th
     assert result.data.get('windows') == expected
 
 
-def test_codex_rejects_conflicting_nested_workspace_root(tmp_path, monkeypatch):
+def _case_codex_rejects_conflicting_nested_workspace_root(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     brief = root / 'brief.md'
     brief.write_text('Do task')
@@ -188,7 +188,7 @@ def test_codex_error_body_is_unrun(tmp_path, monkeypatch):
     assert result.exit == 2 and 'no job' in result.reason
 
 
-def test_codex_result_captures_retro_outside_workspace_tree(tmp_path, monkeypatch):
+def _case_codex_result_captures_retro_outside_workspace_tree(tmp_path, monkeypatch):
     (tmp_path / 'workspace').mkdir()
     root = setup(tmp_path / 'workspace', monkeypatch)
     tree = tmp_path / 'tree'
@@ -202,7 +202,7 @@ def test_codex_result_captures_retro_outside_workspace_tree(tmp_path, monkeypatc
     assert event['kind'] == 'retro.captured'
 
 
-def test_codex_result_lints_verdict(tmp_path, monkeypatch):
+def _case_codex_result_lints_verdict(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     verdict = root / '.wuwei/days/2026-09-28/decisions/gate-goal.md'
     verdict.parent.mkdir(parents=True)
@@ -215,13 +215,21 @@ def test_codex_result_lints_verdict(tmp_path, monkeypatch):
     assert 'REJECT' in result.reason
 
 
-def test_codex_rejects_role_path_traversal(tmp_path, monkeypatch):
+def _case_codex_rejects_role_path_traversal(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     brief = root / 'brief.md'
     brief.write_text('Do task')
     adapter = importlib.import_module('adapters.runtime.codex')
     result = adapter.dispatch('../README', str(brief), str(root), True, root=root)
     assert result.exit == 1
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_codex_rejects_conflicting_nested_workspace_root,
+    _case_codex_rejects_role_path_traversal,
+])
+def test_codex_rejects_cases_166(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def codex_task(tmp_path, monkeypatch, text):
@@ -256,7 +264,7 @@ QUALITY = ('Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\nBlocked: no
            'Change: none\nSimplicity: none\nDesign: none\n')
 
 
-def test_codex_result_lints_only_its_own_verdict(tmp_path, monkeypatch):
+def _case_codex_result_lints_only_its_own_verdict(tmp_path, monkeypatch):
     root, adapter, job, _ = codex_task(tmp_path, monkeypatch, 'Item: A\n\nReview it.')
     decisions = root / '.wuwei/days/2026-09-28/decisions'
     decisions.mkdir(parents=True)
@@ -267,6 +275,17 @@ def test_codex_result_lints_only_its_own_verdict(tmp_path, monkeypatch):
     assert adapter.result(job, root=root).exit == 0
     own.write_text('Verdict: PASS\n')
     assert adapter.result(job, root=root).exit == 1
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_codex_result_with_a_question_is_its_result,
+    _case_codex_result_preserves_stored_usage,
+    _case_codex_result_captures_retro_outside_workspace_tree,
+    _case_codex_result_lints_verdict,
+    _case_codex_result_lints_only_its_own_verdict,
+])
+def test_codex_result_cases_96(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def test_codex_starts_one_app_server_at_a_time(tmp_path, monkeypatch):
@@ -343,7 +362,7 @@ def test_codex_status_names_the_companion_error(tmp_path, monkeypatch):
     assert 'error' not in adapter.status({'id': 'j1', 'worktree': str(root)}, root=root).data
 
 
-def test_codex_prompt_asks_for_the_retro_note(tmp_path, monkeypatch):
+def _case_codex_prompt_asks_for_the_retro_note(tmp_path, monkeypatch):
     # #871: the Gap: and Change: lines check_retro reads, from the one verdict format table
     from wuwei import verdict
     root, _, job, calls = codex_task(tmp_path, monkeypatch, 'Item: A\n\nReview it.')
@@ -351,6 +370,14 @@ def test_codex_prompt_asks_for_the_retro_note(tmp_path, monkeypatch):
     assert job.exit == 0 and contract in calls[0][-2]
     for key in verdict.RETRO_KEYS:
         assert verdict.FORMAT[key][0] in contract
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_codex_prompt_carries_the_mandate,
+    _case_codex_prompt_asks_for_the_retro_note,
+])
+def test_codex_prompt_cases_80(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def test_codex_gate_prompt_makes_the_final_message_the_verdict(tmp_path, monkeypatch):

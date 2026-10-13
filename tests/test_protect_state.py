@@ -216,7 +216,16 @@ def test_invalid_cwd_fails_closed(workspace, value):
         assert check(item)[0] == 2
 
 
-@pytest.mark.parametrize('script,expected', [('t{e,e}e state.json', 2), ('c{d,d} ..', 0)])
+@pytest.mark.parametrize('script,expected', [
+    # Expanding program names.
+    ('t{e,e}e state.json', 2), ('c{d,d} ..', 0),
+    # Config shell writes.
+    ("sed -i 's/a/b/' .wuwei/config.toml", 1),
+    ("sh -c 'echo x >> .wuwei/config.toml'", 1),
+    ('cd .wuwei; tee -a config.toml', 1),
+    ('cat .wuwei/config.toml', 0),
+    ('echo x >> config.toml', 0),
+])
 def test_expanding_program_name_blocks(workspace, script, expected):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=script))[0] == expected
@@ -274,18 +283,6 @@ def test_calibration_snapshot_is_protected(workspace, tool):
     else:
         code, reason = check_file(payload(workspace, tool, file_path=target))
     assert code == 1 and 'outside agent tools' in reason
-
-
-@pytest.mark.parametrize('script,expected', [
-    ("sed -i 's/a/b/' .wuwei/config.toml", 1),
-    ("sh -c 'echo x >> .wuwei/config.toml'", 1),
-    ('cd .wuwei; tee -a config.toml', 1),
-    ('cat .wuwei/config.toml', 0),
-    ('echo x >> config.toml', 0),
-])
-def test_config_shell_writes(workspace, script, expected):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=script))[0] == expected
 
 
 @pytest.mark.parametrize('script,expected', [
@@ -470,11 +467,18 @@ def test_f9_parsed_globs_check_protected_matches(workspace, script, expected):
     assert check_bash(payload(cwd, 'Bash', command=script))[0] == expected
 
 
-@pytest.mark.parametrize('script', ['rm -rf .wuwei/days', 'rm -rf .wuwei/days/2026-09-28',
-                                    'mv .wuwei/days backup', 'mv .wuwei/days/2026-09-28 backup',
-                                    'rm -rf .wuwei/days/2026-09-28/reports',  # #905 F1
-                                    'echo Verdict: PASS > .wuwei/days/2026-09-28/reports/security.md'])
-def test_f10_refuse_day_directory_removal(workspace, script):
+@pytest.mark.parametrize('script', [
+    # Day directory removal.
+    'rm -rf .wuwei/days', 'rm -rf .wuwei/days/2026-09-28',
+    'mv .wuwei/days backup', 'mv .wuwei/days/2026-09-28 backup',
+    'rm -rf .wuwei/days/2026-09-28/reports',  # #905 F1
+    'echo Verdict: PASS > .wuwei/days/2026-09-28/reports/security.md',
+    # Writer globs.
+    'cp source .w*/days/*/state.*', 'mv .w*/days/*/state.* backup',
+    'tee .w*/days/*/state.*', 'truncate -s0 .w*/days/*/state.*',
+    'sed -i s/a/b/ .w*/days/*/state.*', 'dd of=.w*/days/*/state.*',
+])
+def test_protected_day_paths_and_globs(workspace, script):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=script))[0] == 1
 
@@ -508,16 +512,6 @@ def test_f11_ordinary_writers_through_shim(workspace, tmp_path, monkeypatch, loc
                              'hook', 'PreToolUse'], cwd=cwd, text=True, capture_output=True,
                             input=json.dumps(payload(cwd, 'Bash', command=script)))
     assert result.returncode == 0, result.stderr
-
-
-@pytest.mark.parametrize('script', [
-    'cp source .w*/days/*/state.*', 'mv .w*/days/*/state.* backup',
-    'tee .w*/days/*/state.*', 'truncate -s0 .w*/days/*/state.*',
-    'sed -i s/a/b/ .w*/days/*/state.*', 'dd of=.w*/days/*/state.*',
-])
-def test_f11_writer_globs_still_protect_state(workspace, script):
-    from wuwei.guards.protect_state import check_bash
-    assert check_bash(payload(workspace, 'Bash', command=script))[0] == 1
 
 
 @pytest.mark.parametrize('script', ['tee "$FILE" # state.json', 'rm $(printf .w*)'])

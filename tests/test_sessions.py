@@ -60,14 +60,14 @@ def hook(monkeypatch, event, session_id, cwd, **fields):
     return run(SimpleNamespace(event=event))
 
 
-def test_session_start_writes_no_event(root, monkeypatch):
+def _case_session_start_writes_no_event(root, monkeypatch):
     # #847: no session registry; SessionStart only reads.
     before = len(events(root))
     hook(monkeypatch, 'SessionStart', 'A', root)
     assert events(root)[before:] == []
 
 
-def test_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
+def _case_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
     env_file = tmp_path_factory.mktemp('env') / 'env.sh'
     monkeypatch.setenv('CLAUDE_ENV_FILE', str(env_file))
     hook(monkeypatch, 'SessionStart', 'A', root)
@@ -75,7 +75,7 @@ def test_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
     assert env_file.read_text() == "export WUWEI_SESSION_ID=A\nexport WUWEI_SESSION_ID='A B'\n"
 
 
-def test_session_start_reads_the_day_state_twice(root, monkeypatch):
+def _case_session_start_reads_the_day_state_twice(root, monkeypatch):
     # #587, #847: one read of the day; no registry write.
     today, reads, read = workspace.day_dir(root), [], state.read_state
     def counting(root=None, *, directory=None):
@@ -86,13 +86,29 @@ def test_session_start_reads_the_day_state_twice(root, monkeypatch):
     assert reads.count(today) == 1
 
 
-def test_session_start_without_day_state_creates_none(root, monkeypatch, tmp_path_factory):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_session_start_writes_no_event,
+    _case_session_start_reads_the_day_state_twice,
+])
+def test_session_start_cases_63(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)
+
+
+def _case_session_start_without_day_state_creates_none(root, monkeypatch, tmp_path_factory):
     env_file = tmp_path_factory.mktemp('env') / 'env.sh'
     monkeypatch.setenv('CLAUDE_ENV_FILE', str(env_file))
     monkeypatch.setenv('WUWEI_NOW', '2026-10-01T10:00:00+00:00')
     hook(monkeypatch, 'SessionStart', 'A', root)
     assert not (workspace.day_dir(root) / 'state.json').exists()
     assert env_file.read_text() == 'export WUWEI_SESSION_ID=A\n'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_session_start_exports_quoted_id,
+    _case_session_start_without_day_state_creates_none,
+])
+def test_session_start_cases_70(root, monkeypatch, tmp_path_factory, scenario_fn):
+    scenario_fn(root, monkeypatch, tmp_path_factory)
 
 
 def test_second_planner_refused_without_take_over(root, capsys):

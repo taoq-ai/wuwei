@@ -147,7 +147,7 @@ def write_config(root, text):
     (workspace / 'config.toml').write_text(text)
 
 
-def test_checks_table(tmp_path):
+def _case_checks_table(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '[checks]\npython = 1\n')
     with pytest.raises(workspace.ConfigError, match='checks.python'):
@@ -158,7 +158,7 @@ def test_checks_table(tmp_path):
     assert found and 'unknown key checks.pyhton' in found[0]
 
 
-def test_retired_pace_keys_only_warn(tmp_path):
+def _case_retired_pace_keys_only_warn(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '[pace]\ndefault = "fast"\n[[repos]]\nname = "app"\npath = "app"\n'
                            'default_branch = "main"\ntests = "pytest"\n')
@@ -169,7 +169,7 @@ def test_retired_pace_keys_only_warn(tmp_path):
     assert any('unknown key repos.0.tests' in text for text in found)
 
 
-def test_retired_day_budget_only_warns(tmp_path):
+def _case_retired_day_budget_only_warns(tmp_path):
     # #845: budget.tokens_per_day gives way to window budgets per runtime.
     from wuwei import workspace
     write_config(tmp_path, '[budget]\ntokens_per_day = 1\n')
@@ -179,7 +179,7 @@ def test_retired_day_budget_only_warns(tmp_path):
     assert any('unknown key budget.tokens_per_day' in text for text in found), found
 
 
-def test_check_timeout_seconds(tmp_path):  # #724
+def _case_check_timeout_seconds(tmp_path):  # #724
     from wuwei import workspace
     repo = '[[repos]]\nname = "app"\npath = "/a"\ndefault_branch = "main"\n'
     write_config(tmp_path, repo)
@@ -191,7 +191,7 @@ def test_check_timeout_seconds(tmp_path):  # #724
         workspace.load_config(tmp_path)
 
 
-def test_outward_allow_and_owner_pages(tmp_path):  # #838
+def _case_outward_allow_and_owner_pages(tmp_path):  # #838
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
@@ -207,7 +207,7 @@ def test_outward_allow_and_owner_pages(tmp_path):  # #838
             workspace.load_config(tmp_path)
 
 
-def test_initialized_config_checks(tmp_path):
+def _case_initialized_config_checks(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     result = cli(tmp_path, 'config', 'check')
     assert result.returncode == 0, result.stderr
@@ -393,7 +393,7 @@ def test_invalid_config_values(tmp_path, text, key):
     assert key in result.stderr and 'expected' in result.stderr
 
 
-def test_owner_zone(tmp_path):
+def _case_owner_zone(tmp_path):
     from zoneinfo import ZoneInfo
     from wuwei.workspace import load_config, zone
     write_config(tmp_path, '')
@@ -405,7 +405,7 @@ def test_owner_zone(tmp_path):
         zone(load_config(tmp_path))
 
 
-def test_owner_verbosity(tmp_path):
+def _case_owner_verbosity(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     config = workspace.load_config(tmp_path)
@@ -428,7 +428,7 @@ def test_owner_verbosity(tmp_path):
     assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'brief'
 
 
-def test_guards_enforce(tmp_path):
+def _case_guards_enforce(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     assert workspace.load_config(tmp_path)['guards'] == {'enforce': True, 'stop_max_blocks': 20}
@@ -444,7 +444,7 @@ def test_guards_enforce(tmp_path):
     assert len(found) == 5, found  # #799: retired keys only warn
 
 
-def test_outward_humanize_keys(tmp_path):
+def _case_outward_humanize_keys(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
     rules = workspace.load_config(tmp_path)['outward']
@@ -458,7 +458,7 @@ def test_outward_humanize_keys(tmp_path):
     assert workspace.load_config(tmp_path)['outward']['humanize'] is True
 
 
-def test_retired_docs_config_only_warns(tmp_path):
+def _case_retired_docs_config_only_warns(tmp_path):
     # #841: the docs system is gone; a former [docs] table and adapters.docs only warn.
     from wuwei import workspace
     write_config(tmp_path, '[adapters]\ndocs = "notion"\n[docs]\nsystem = "notion"\n')
@@ -731,7 +731,7 @@ def test_upgrade_previous_workspace(tmp_path):
     assert 'repos = []\n' in raw.splitlines(keepends=True)
 
 
-def test_upgrade_removes_empty_repos_before_tables(tmp_path):
+def _case_upgrade_removes_empty_repos_before_tables(tmp_path):
     import tomllib
 
     directory = previous_workspace(tmp_path)
@@ -831,7 +831,7 @@ def test_upgrade_dry_run_does_not_write(tmp_path):
     assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
 
 
-def test_upgrade_removes_an_unread_key(tmp_path):
+def _case_upgrade_removes_an_unread_key(tmp_path):
     import tomllib
     directory = previous_workspace(tmp_path)
     config_path = directory / 'config.toml'
@@ -848,6 +848,14 @@ def test_upgrade_removes_an_unread_key(tmp_path):
     assert 'Upgraded config.toml: remove owner.mystery (no longer read)' in result.stdout
     owner = tomllib.loads(config_path.read_text())['owner']
     assert 'mystery' not in owner and (owner['name'], owner['pronouns']) == ('Pat', 'they/them')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_upgrade_removes_empty_repos_before_tables,
+    _case_upgrade_removes_an_unread_key,
+])
+def test_upgrade_removes_cases_733(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
 
 
 def test_upgrade_refuses_an_unread_key_in_an_inline_table(tmp_path):
@@ -1003,7 +1011,7 @@ def fresh_load(root, monkeypatch, warnings=None, writes=True):
     return workspace.load_config(root, warnings=warnings)
 
 
-def test_config_cache_only_hooks_and_the_status_line_write_it(tmp_path, monkeypatch):
+def _case_config_cache_only_hooks_and_the_status_line_write_it(tmp_path, monkeypatch):
     from wuwei import workspace
     write_config(tmp_path, 'cap = 2\n')
     assert workspace.CONFIG_CACHE_WRITES is False  # Every other command stays read-only.
@@ -1015,7 +1023,7 @@ def test_config_cache_only_hooks_and_the_status_line_write_it(tmp_path, monkeypa
     assert parsed == []  # A current copy serves every command.
 
 
-def test_config_cache_hit_skips_the_parse(tmp_path, monkeypatch):
+def _case_config_cache_hit_skips_the_parse(tmp_path, monkeypatch):
     write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
     parsed = counted_parse(monkeypatch)
     first = fresh_load(tmp_path, monkeypatch)
@@ -1042,7 +1050,7 @@ def test_config_cache_is_stale_when_the_text_changes(tmp_path, monkeypatch, text
     assert len(parsed) == 1
 
 
-def test_config_cache_survives_a_touch(tmp_path, monkeypatch):
+def _case_config_cache_survives_a_touch(tmp_path, monkeypatch):
     write_config(tmp_path, 'cap = 2\n')
     fresh_load(tmp_path, monkeypatch)
     path = tmp_path / '.wuwei/config.toml'
@@ -1078,7 +1086,7 @@ def test_config_cache_unreadable_is_ignored(tmp_path, monkeypatch, content):
     assert parsed == []  # Rewritten by the parse that ignored it.
 
 
-def test_config_cache_forged_text_is_a_miss(tmp_path, monkeypatch):
+def _case_config_cache_forged_text_is_a_miss(tmp_path, monkeypatch):
     write_config(tmp_path, 'cap = 2\n')
     fresh_load(tmp_path, monkeypatch)
     data = json.loads((tmp_path / CACHE).read_text())
@@ -1088,7 +1096,7 @@ def test_config_cache_forged_text_is_a_miss(tmp_path, monkeypatch):
     assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
 
 
-def test_config_cache_missing_directory(tmp_path, monkeypatch):
+def _case_config_cache_missing_directory(tmp_path, monkeypatch):
     write_config(tmp_path, 'cap = 2\n')
     assert not (tmp_path / '.wuwei/generated').exists()
     assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
@@ -1107,7 +1115,7 @@ def test_config_cache_unwritable_directory(tmp_path, monkeypatch):
         (tmp_path / '.wuwei/generated').chmod(0o700)
 
 
-def test_config_cache_symlink_is_ignored(tmp_path, monkeypatch):
+def _case_config_cache_symlink_is_ignored(tmp_path, monkeypatch):
     write_config(tmp_path, 'cap = 2\n')
     fresh_load(tmp_path, monkeypatch)
     forged = tmp_path / 'forged.json'
@@ -1119,7 +1127,7 @@ def test_config_cache_symlink_is_ignored(tmp_path, monkeypatch):
     assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
 
 
-def test_config_cache_keeps_the_warnings(tmp_path, monkeypatch):
+def _case_config_cache_keeps_the_warnings(tmp_path, monkeypatch):
     write_config(tmp_path, 'cap = 2\ncapp = 3\n[owner]\nhandle = "x"\n')
     fresh, cached = [], []
     parsed = counted_parse(monkeypatch)
@@ -1129,7 +1137,7 @@ def test_config_cache_keeps_the_warnings(tmp_path, monkeypatch):
     assert cached == fresh and len(fresh) == 2 and 'did you mean cap?' in fresh[0]
 
 
-def test_config_cache_deleted_changes_nothing(tmp_path, monkeypatch):
+def _case_config_cache_deleted_changes_nothing(tmp_path, monkeypatch):
     write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text() + 'capp = 3\n')
     with_cache, without = [], []
     fresh_load(tmp_path, monkeypatch)
@@ -1139,7 +1147,7 @@ def test_config_cache_deleted_changes_nothing(tmp_path, monkeypatch):
     assert without == with_cache and with_cache
 
 
-def test_config_cache_only_for_the_file(tmp_path, monkeypatch):
+def _case_config_cache_only_for_the_file(tmp_path, monkeypatch):
     from wuwei import workspace
     write_config(tmp_path, 'cap = 2\n')
     monkeypatch.setattr(workspace, 'CONFIG_CACHE_WRITES', True)
@@ -1152,7 +1160,7 @@ def test_config_cache_only_for_the_file(tmp_path, monkeypatch):
     assert not (tmp_path / CACHE).exists()  # Findings are never cached.
 
 
-def test_config_cache_is_no_workspace_finding(tmp_path, monkeypatch):
+def _case_config_cache_is_no_workspace_finding(tmp_path, monkeypatch):
     from wuwei import integrity, workspace
     write_config(tmp_path, 'cap = 2\n')
     (tmp_path / '.wuwei/memory').mkdir()
@@ -1163,7 +1171,23 @@ def test_config_cache_is_no_workspace_finding(tmp_path, monkeypatch):
     assert integrity.workspace_check(tmp_path).exit == 0
 
 
-def test_repository_gate_defaults_and_floor_choices(tmp_path):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_config_cache_only_hooks_and_the_status_line_write_it,
+    _case_config_cache_hit_skips_the_parse,
+    _case_config_cache_survives_a_touch,
+    _case_config_cache_forged_text_is_a_miss,
+    _case_config_cache_missing_directory,
+    _case_config_cache_symlink_is_ignored,
+    _case_config_cache_keeps_the_warnings,
+    _case_config_cache_deleted_changes_nothing,
+    _case_config_cache_only_for_the_file,
+    _case_config_cache_is_no_workspace_finding,
+])
+def test_config_cache_cases_1005(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
+
+
+def _case_repository_gate_defaults_and_floor_choices(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     repo = '[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\n'
     write_config(tmp_path, repo)
@@ -1194,7 +1218,7 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_retired_decision_tables_only_warn(tmp_path):
+def _case_retired_decision_tables_only_warn(tmp_path):
     # #814, part 14: decisions, autonomy and steward are retired; stale tables load with a warning.
     from wuwei.workspace import load_config
     write_config(tmp_path, '[decisions.cruise]\nmargin = 0.3\n[autonomy]\nmode = "supervised"\n'
@@ -1205,7 +1229,7 @@ def test_retired_decision_tables_only_warn(tmp_path):
     assert all(any(name in line for line in found) for name in ('decisions', 'autonomy', 'steward')), found
 
 
-def test_grant_keys_only_warn(tmp_path):
+def _case_grant_keys_only_warn(tmp_path):
     # #816: grants and merge.default_tier are retired; a stale line loads with an unknown-key warning.
     from wuwei.workspace import load_config
     write_config(tmp_path, '[merge]\ndefault_tier = "today"\n[grants]\nstanding = [{action = "merge", '
@@ -1216,7 +1240,7 @@ def test_grant_keys_only_warn(tmp_path):
     assert any('merge.default_tier' in line for line in found) and any('grants' in line for line in found), found
 
 
-def test_second_opinion_config(tmp_path):
+def _case_second_opinion_config(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
     gates = {key: value for key, value in load_config(tmp_path)['gates'].items()
@@ -1240,7 +1264,7 @@ def test_second_opinion_config(tmp_path):
         load_config(tmp_path)
 
 
-def test_polish_config(tmp_path):
+def _case_polish_config(tmp_path):
     # #723: one notes-only round after a pass; never, offer (default) or always.
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
@@ -1340,7 +1364,7 @@ def test_upgrade_maps_the_posture_to_guards_enforce(tmp_path, monkeypatch, capsy
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
 
 
-def test_upgrade_keeps_an_explicit_guards_enforce(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_an_explicit_guards_enforce(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'posture = "observe"\n', 'enforce = true\n')
     code, out = upgraded(tmp_path, capsys)
@@ -1350,7 +1374,7 @@ def test_upgrade_keeps_an_explicit_guards_enforce(tmp_path, monkeypatch, capsys)
     assert tomllib.loads(path.read_text())['guards'] == {'enforce': True, 'stop_max_blocks': 20}
 
 
-def test_upgrade_removes_security_areas(tmp_path, monkeypatch, capsys):
+def _case_upgrade_removes_security_areas(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch)
     path.write_text(path.read_text() + '[security.areas]\nmcp = "off"\n')
@@ -1360,7 +1384,7 @@ def test_upgrade_removes_security_areas(tmp_path, monkeypatch, capsys):
     assert 'areas' not in tomllib.loads(path.read_text())['security']
 
 
-def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
+def _case_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
     # #815: the rehearsal ledger, the seen set, their locks and the cruise file are no longer read.
     from types import SimpleNamespace
     from wuwei.commands import init
@@ -1382,7 +1406,7 @@ def test_upgrade_removes_retired_memory_files(tmp_path, monkeypatch, capsys):
         assert out.out.count(f'Upgraded .wuwei/memory/{name}: remove (no longer read)') == 1
 
 
-def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch, capsys):
     # #815 review: a memory directory that is a symlink is never cleaned through.
     from types import SimpleNamespace
     from wuwei.commands import init
@@ -1401,6 +1425,14 @@ def test_upgrade_keeps_files_behind_a_symlinked_memory_dir(tmp_path, monkeypatch
     assert code == 0, out.err
     assert (outside / 'cruise.json').exists() and 'cruise.json: remove' not in out.out
     assert 'left .wuwei/memory/cruise.json: resolves outside .wuwei' in out.out.splitlines()  # #848: named
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_upgrade_keeps_an_explicit_guards_enforce,
+    _case_upgrade_keeps_files_behind_a_symlinked_memory_dir,
+])
+def test_upgrade_keeps_cases_1342(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('security', ['', '[security]\nposture = "strict"\n'])
@@ -1489,7 +1521,7 @@ def test_load_config_returns_independent_copies(tmp_path):
     assert state.DAY_DEFAULTS['items'] == {} and state.DAY_DEFAULTS['goals'] == []
 
 
-def test_memory_tier_keys_default_and_validate(tmp_path):
+def _case_memory_tier_keys_default_and_validate(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
     memory = load_config(tmp_path)['memory']
@@ -1695,7 +1727,7 @@ def test_owner_cli_quotes_the_root():
     assert owner_cli(Path('/w')) == 'bin/wuwei --workspace /w'
 
 
-def test_upgrade_removes_the_old_guide_block(tmp_path, monkeypatch, capsys):
+def _case_upgrade_removes_the_old_guide_block(tmp_path, monkeypatch, capsys):
     """#800: init writes no guide block; init --upgrade removes the one an older init wrote."""
     from argparse import Namespace
     from wuwei.commands import init
@@ -1716,3 +1748,35 @@ def test_upgrade_removes_the_old_guide_block(tmp_path, monkeypatch, capsys):
     assert '# Owner notes' in path.read_text() and 'wuwei:guide' not in path.read_text()
     assert init.upgrade(Namespace(path=str(project), dry_run=False)) == 0
     assert 'guide block' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_upgrade_removes_security_areas,
+    _case_upgrade_removes_retired_memory_files,
+    _case_upgrade_removes_the_old_guide_block,
+])
+def test_upgrade_removes_cases_1352(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_checks_table,
+    _case_retired_pace_keys_only_warn,
+    _case_retired_day_budget_only_warns,
+    _case_check_timeout_seconds,
+    _case_outward_allow_and_owner_pages,
+    _case_initialized_config_checks,
+    _case_owner_zone,
+    _case_owner_verbosity,
+    _case_guards_enforce,
+    _case_outward_humanize_keys,
+    _case_retired_docs_config_only_warns,
+    _case_repository_gate_defaults_and_floor_choices,
+    _case_retired_decision_tables_only_warn,
+    _case_grant_keys_only_warn,
+    _case_second_opinion_config,
+    _case_polish_config,
+    _case_memory_tier_keys_default_and_validate,
+])
+def test_config_validation_cases(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
