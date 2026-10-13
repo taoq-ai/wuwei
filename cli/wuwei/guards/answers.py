@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import shlex
 
 from wuwei import workspace
 from wuwei.guards import Guard
@@ -42,9 +43,18 @@ def record_gate(payload):
         found = set()
         for question in owner:
             if reply := _answer(payload, question['question']):
-                found.update((owner_topic(question['question']), owner_topic(question['question'], reply),
-                              owner_topic(step(question['question']))))
-                if token := re.search(r'\([0-9a-f]{12}\)$', question['question'].strip()):
+                text = question['question']
+                # #940: context after the exact command and token does not change the card.
+                for token in re.finditer(r' \([0-9a-f]{12}\)', text):
+                    try:
+                        shlex.split(text[:token.start()])
+                    except ValueError:
+                        continue  # token-shaped text inside a quoted command argument
+                    text = text[:token.end()]
+                    break
+                found.update((owner_topic(text), owner_topic(text, reply), owner_topic(step(text))))
+                found.add(owner_topic(step(text.splitlines()[0])))
+                if token := re.search(r'\([0-9a-f]{12}\)$', text.strip()):
                     found.add(owner_topic(token[0]))
         if found:
             state.append_event('gate.asked', {'session_id': session, 'topics': sorted(found)}, root)

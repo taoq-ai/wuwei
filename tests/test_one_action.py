@@ -230,7 +230,8 @@ def test_a_blocked_stop_passes_the_strict_spec_stop_guard(tmp_path):
     assert specmode.named(tmp_path, config, 'A', row, tree, text) == (0, '')
 
 
-def test_a_blocked_builder_stops_and_the_owner_is_asked_before_its_checks(day):
+@pytest.mark.parametrize('context', ['', ' This needs owner approval.', '\nThis needs owner approval.'])
+def test_a_blocked_builder_stops_and_the_owner_is_asked_before_its_checks(day, context):
     # Contradiction 6: a builder stops on an owner-only question; strict spec mode demanded the
     # spec artifacts first, and a later build check sent it back to write them.
     from fakes import owner
@@ -246,12 +247,38 @@ def test_a_blocked_builder_stops_and_the_owner_is_asked_before_its_checks(day):
     assert asked['reason'] == 'builder blocked: the schema change needs the owner'
     found = json.loads(act(day, 'next', '--json')[1])
     assert found['decision']['card'] == asked['card']
-    owner._record(day.root, asked['card'], 'Yes', 'planner-session', None)
+    card = {**asked['card'], 'question': asked['card']['question'] + context}
+    owner._record(day.root, card, 'Yes', 'planner-session', None)
     day.runtime.spec, day.runtime.blocked = True, None
     action = json.loads(day.run('build', 'next', 'A'))
     assert action['action'] == 'continue' and 'the schema change needs the owner' in action['feedback']
     day.steps({**action, 'brief': str(day.root / day.data['builds']['A']['brief']), 'worktree': str(day.repo)})
     assert day.data['items']['A']['phase'] == 'gate'
+
+
+@pytest.mark.parametrize('changed', ['missing-token', 'wrong-command'])
+def test_issue_940_blocked_build_names_the_mismatched_answer(day, changed):
+    from fakes import owner
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.runtime.blocked = 'the schema change needs the owner'
+    day.brief('builder', 'builder-initial')
+    day.execute(json.loads(day.run('build', 'next', 'A')))
+    asked = json.loads(act(day, 'build', 'next', 'A')[1])
+    card = dict(asked['card'])
+    card['question'] = (card['question'].rsplit(' (', 1)[0] if changed == 'missing-token'
+                        else card['question'].replace('build next', 'dispatch next') + ' Context.')
+    owner._record(day.root, card, 'Yes', 'planner-session', None)
+    code, out, _ = act(day, 'build', 'next', 'A')
+    refused = json.loads(out)
+    assert (code, refused['action']) == (1, 'escalate')
+    assert 'did not match' in refused['reason']
+    assert ('answered card matched token' if changed == 'wrong-command'
+            else 'answered card matched command') in refused['reason']
+    assert refused['card'] == asked['card']
+    decision = json.loads(act(day, 'next', '--json')[1])['decision']
+    assert 'did not match' in decision['why']
 
 
 def test_a_blocked_builder_the_owner_says_no_to_parks(day):
