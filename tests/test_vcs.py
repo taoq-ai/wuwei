@@ -426,7 +426,13 @@ def batch_replay(monkeypatch, steps):
     calls = install_replay(monkeypatch, 'git', steps)
     run, stdin = subprocess.run, []
     def record(argv, **kwargs):
-        stdin.append(kwargs.get('input'))
+        source = kwargs.get('stdin')
+        if source is not None:
+            position = source.tell()
+            stdin.append(source.read())
+            source.seek(position)
+        else:
+            stdin.append(kwargs.get('input'))
         return run(argv, **kwargs)
     monkeypatch.setattr(subprocess, 'run', record)
     return calls, stdin
@@ -453,6 +459,40 @@ def test_read_tree_real_git_one_batch(tmp_path, monkeypatch):
     result = adapter().read_tree(str(repo), 'HEAD', ['.'])
     assert result.exit == 0 and len(calls) == 2
     assert result.data == {'a b.md': 'rule\n', 'dir/c.bin': b'bin\xff\n\x00'.decode('utf-8', 'surrogateescape')}
+
+
+def test_read_tree_large_batch_uses_file_stdin(tmp_path, monkeypatch):
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    tracked = {f'{index:04d}-' + 'x' * 60 + '.txt': 'content\n' * 12
+               for index in range(1024)}
+    for name, content in tracked.items():
+        (repo / name).write_text(content)
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@localhost',
+           '-c', 'commit.gpgSign=false']
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run([*git, 'add', '.'], check=True)
+    subprocess.run([*git, 'commit', '-qm', 'init'], check=True)
+
+    run = subprocess.run
+    def check_batch(argv, **kwargs):
+        if argv[-2:] == ['cat-file', '--batch']:
+            assert kwargs.get('input') is None
+            assert kwargs['timeout'] == adapter().TIMEOUT
+            source = kwargs['stdin']
+            position = source.tell()
+            request = source.read()
+            source.seek(position)
+            assert len(request) > 65536
+        result = run(argv, **kwargs)
+        if argv[-2:] == ['cat-file', '--batch']:
+            assert len(result.stdout) > 65536
+        return result
+    monkeypatch.setattr(subprocess, 'run', check_batch)
+
+    result = adapter().read_tree(str(repo), 'HEAD', ['.'])
+    assert result.exit == 0
+    assert result.data == tracked
 
 
 @pytest.mark.parametrize('operation,args', [

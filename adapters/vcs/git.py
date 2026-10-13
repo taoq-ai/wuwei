@@ -190,7 +190,14 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
         options['env'].update(GIT_AUTHOR_NAME='WUWEI', GIT_AUTHOR_EMAIL='wuwei@localhost',
                               GIT_COMMITTER_NAME='WUWEI', GIT_COMMITTER_EMAIL='wuwei@localhost')
     options['env']['GIT_NO_REPLACE_OBJECTS'] = '1'
-    result = subprocess.run(argv, input=input, capture_output=True, timeout=TIMEOUT, **options)
+    if input is None:
+        result = subprocess.run(argv, capture_output=True, timeout=TIMEOUT, **options)
+    else:
+        import tempfile  # Lazy: SessionStart loads only what it prints.
+        with tempfile.TemporaryFile() as stdin:
+            stdin.write(input)
+            stdin.seek(0)
+            result = subprocess.run(argv, stdin=stdin, capture_output=True, timeout=TIMEOUT, **options)
     if missing and result.returncode == 1:
         return ''
     if result.returncode == 1 and args[:3] == ('rev-parse', '--verify', '--quiet'):
