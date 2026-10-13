@@ -193,6 +193,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
     if input is None:
         result = subprocess.run(argv, capture_output=True, timeout=TIMEOUT, **options)
     else:
+        import tempfile  # Lazy: SessionStart loads only what it prints.
         with tempfile.TemporaryFile() as stdin:
             stdin.write(input)
             stdin.seek(0)
