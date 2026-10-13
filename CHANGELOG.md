@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.33.0](https://github.com/taoq-ai/wuwei/compare/v0.32.0...v0.33.0) (2026-10-13)
+
+
+### Features
+
+* **housekeeping:** WUWEI records the background waits it hands out, reaps only its own stale ones, and lists everything else ([#952](https://github.com/taoq-ai/wuwei/issues/952)) ([#970](https://github.com/taoq-ai/wuwei/issues/970)) ([7a0d806](https://github.com/taoq-ai/wuwei/commit/7a0d806340be2f043f45cc660e150a49925bc597))
+* **next:** an empty queue refills from the day's goals, and a Stop hook keeps the planner going while next has work ([#949](https://github.com/taoq-ai/wuwei/issues/949)) ([#964](https://github.com/taoq-ai/wuwei/issues/964)) ([7211341](https://github.com/taoq-ai/wuwei/commit/72113410a66b305297a06e4d42416c8f43d33c9d))
+* **plan:** plan done lets the owner mark an item done that never went through a build ([#951](https://github.com/taoq-ai/wuwei/issues/951)) ([#965](https://github.com/taoq-ai/wuwei/issues/965)) ([022d921](https://github.com/taoq-ai/wuwei/commit/022d9215022b9d8afb2817dcb66535586442807a))
+* **pr:** a gh pr create run by the planner or a seat is claimed or offered, so no PR goes unwatched ([#954](https://github.com/taoq-ai/wuwei/issues/954)) ([#967](https://github.com/taoq-ai/wuwei/issues/967)) ([71a1dfd](https://github.com/taoq-ai/wuwei/commit/71a1dfd7ee57f67250b014e5baf4806a5f7bd368))
+* **seat:** an ad-hoc seat registers at launch, with no prompt file and no second paste ([#955](https://github.com/taoq-ai/wuwei/issues/955)) ([#969](https://github.com/taoq-ai/wuwei/issues/969)) ([2e4c7d4](https://github.com/taoq-ai/wuwei/commit/2e4c7d4e13eecc926ead9cd2b7b29a53f6fa6923))
+
+
+### Bug Fixes
+
+* **dispatch:** Blocked: none followed by a note is not a block, and a reworded card answer says to ask verbatim ([#972](https://github.com/taoq-ai/wuwei/issues/972)) ([#985](https://github.com/taoq-ai/wuwei/issues/985)) ([10ae2b2](https://github.com/taoq-ai/wuwei/commit/10ae2b29c52ca918b10dbddeed44c9a6a25ff95d))
+* **github:** a refusal whose headers say 0 left while rate_limit shows calls left holds 60 s, not until the reset ([#953](https://github.com/taoq-ai/wuwei/issues/953)) ([#966](https://github.com/taoq-ai/wuwei/issues/966)) ([efbb123](https://github.com/taoq-ai/wuwei/commit/efbb1233897fa3caa065f129239de39726177765))
+* **git:** read_tree passes the cat-file request through a temporary file, so a large tree cannot deadlock on macOS ([#956](https://github.com/taoq-ai/wuwei/issues/956)) ([#958](https://github.com/taoq-ai/wuwei/issues/958)) ([4512cc2](https://github.com/taoq-ai/wuwei/commit/4512cc2179ad9cbf3e6c485edfd6a172d94fcb80))
+* **guard:** a forged wuwei hook call is refused through substitution, global options, wrappers, other runners and case tricks ([#960](https://github.com/taoq-ai/wuwei/issues/960)) ([#968](https://github.com/taoq-ai/wuwei/issues/968)) ([497598e](https://github.com/taoq-ai/wuwei/commit/497598ea5a02ef36b70925a2052d72537d8c4b98))
+* **init:** deny only Vercel deploys and writes at the host, not every vercel command ([#974](https://github.com/taoq-ai/wuwei/issues/974)) ([#986](https://github.com/taoq-ai/wuwei/issues/986)) ([0b291f3](https://github.com/taoq-ai/wuwei/commit/0b291f3643b6fc84725ea7ea20ac91e24c0d7378))
+* **next:** a planned item whose work already exists outside WUWEI gets one owner card, not a duplicate start ([#950](https://github.com/taoq-ai/wuwei/issues/950)) ([#973](https://github.com/taoq-ai/wuwei/issues/973)) ([6f61844](https://github.com/taoq-ai/wuwei/commit/6f618446552eec1e7c5e0ebfbfd3b53aa4605384))
+* **publish:** read-only vercel and gh api deployment GETs pass without a card, --preview no longer hides a write, and a deploy card says its exact text binds ([#947](https://github.com/taoq-ai/wuwei/issues/947)) ([#963](https://github.com/taoq-ai/wuwei/issues/963)) ([14b68c3](https://github.com/taoq-ai/wuwei/commit/14b68c3714dd085b9d41006f4ced7c2fb1f44b0b))
+* **specmode:** a Clarifications heading with trailing text and the bold Governing forms are recognised ([#971](https://github.com/taoq-ai/wuwei/issues/971)) ([#984](https://github.com/taoq-ai/wuwei/issues/984)) ([f2a446b](https://github.com/taoq-ai/wuwei/commit/f2a446be51cc1766ac72fc16ab60ae102b9c4065))
+
 ## [0.32.0](https://github.com/taoq-ai/wuwei/compare/v0.31.0...v0.32.0) (2026-10-13)
 
 
