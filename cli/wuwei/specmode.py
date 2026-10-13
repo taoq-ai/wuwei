@@ -198,6 +198,8 @@ def label(config):
 def skip(config, row, computed=None):
     """Why the item needs no spec, or None: the owner's override first, then the lead tier,
     which the diff's computed tier voids when it is not in skip_tiers."""
+    if row.get('kind') in ('review', 'measure'):
+        return f"{row['kind']} item"
     override = row.get('spec') or {}
     if override.get('value') == 'skipped':
         return f"owner: {override.get('reason', '')}"

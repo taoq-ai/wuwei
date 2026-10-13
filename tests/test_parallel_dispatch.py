@@ -8,6 +8,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 GOALS = ('A', 'G-1', 1), ('B', 'G-2', 2), ('C', 'G-1', 3), ('D', 'G-2', 5)
 CLAUDE = {'builder': {'runtime': 'claude', 'model': 'scripted'}}
+
+
+def test_lead_prompt_and_charter_explain_candidate_kind():
+    from wuwei.commands.next import LEAD_BODY
+
+    charter = (ROOT / 'charters/lead.md').read_text()
+    assert 'kind' in LEAD_BODY and 'review' in LEAD_BODY and 'measure' in LEAD_BODY
+    assert 'kind' in charter and 'review' in charter and 'measure' in charter
 # #658: one seat runtime that launches its own process puts the day on the memory rule
 PROCESS = {**CLAUDE, 'sentinel-security': {'runtime': 'codex', 'model': 'scripted'}}
 

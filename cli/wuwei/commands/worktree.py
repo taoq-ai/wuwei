@@ -63,6 +63,10 @@ def add(args, root, config, item):
     if not repos:
         raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo')
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()
+    if args.branch:
+        vcs = registry.load('vcs', config)
+        if existing := workspace.branch_worktree(vcs, repo, args.branch, root):
+            return workspace.adopt_worktree(root, item, existing, vcs, repo=repos[0]['name'])
     tree = root / 'worktrees' / item
     result = workspace.create_worktree(repo, args.branch or item.lower(), tree, root,
                                        registry.load('vcs', config), identity=repos[0]['identity'],

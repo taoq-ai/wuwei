@@ -52,6 +52,54 @@ def test_propose_writes_plan_without_state_or_worktree(root):
     assert not list(root.glob('**/.git'))
 
 
+def test_review_candidate_kind_and_target_are_admitted_and_kept(root):
+    data = proposal()
+    data['candidates'][0].update(id='PR-3168-DELTA', kind='review', paths=[],
+                                 pr='acme/widget#3168', review_role='arch',
+                                 scope='Arch PASS at ff93cfe3f or a named finding')
+    plan.propose(data, root)
+    plan.approve(['PR-3168-DELTA'], root, goals_confirmed=True)
+    row = state.read_state(root)['items']['PR-3168-DELTA']
+    assert (row['kind'], row['pr'], row['review_role'], row['phase']) == (
+        'review', 'acme/widget#3168', 'arch', 'gate')
+
+
+def test_build_candidate_cannot_claim_a_pr_without_review_kind(root):
+    data = proposal()
+    data['candidates'][0].update(pr='acme/widget#3168', review_role='arch')
+    with pytest.raises(ValueError, match='only for review'):
+        plan.propose(data, root)
+
+
+def test_build_candidate_treats_null_pr_as_absent(root):
+    data = proposal()
+    data['candidates'][0]['pr'] = None
+    plan.propose(data, root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['items']['A'].get('pr') is None
+
+
+@pytest.mark.parametrize('kind, message', [('verdict', 'kind'), ('review', 'pr'), ('measure', 'paths')])
+def test_candidate_kind_and_target_are_validated(root, kind, message):
+    data = proposal()
+    row = data['candidates'][0]
+    row['kind'] = kind
+    if kind == 'review':
+        row['review_role'] = 'arch'
+    if kind == 'measure':
+        row['paths'] = ['src/file.py']
+    with pytest.raises(ValueError, match=message):
+        plan.propose(data, root)
+
+
+def test_measure_candidate_kind_is_copied_and_default_remains_build(root):
+    data = proposal()
+    data['candidates'][0].update(kind='measure', paths=[])
+    plan.propose(data, root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['items']['A']['kind'] == 'measure'
+
+
 def test_propose_keeps_derives_and_names_the_repository(root):
     # #603: with two repositories each candidate carries repo, derived from paths when unique.
     def configure(*names):
@@ -1141,6 +1189,27 @@ def test_plan_add_admits_owner_named_item_under_a_goal(gated):
     assert day['items']['OWN-1']['budget_size'] == 2
     assert day['items']['OWN-1']['status'] == 'queued'
     assert 'OWN-1' in day['approved_items']
+
+
+def test_plan_add_and_set_recover_omitted_kind(gated, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei import sessions
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(gated))
+    monkeypatch.setattr(sessions, 'needs_owner', lambda *args, **kwargs: None)
+    assert main(['plan', 'add', 'REV-1', '--goal', 'G-1', '--kind', 'review',
+                 '--pr', 'acme/widget#7', '--review-role', 'arch']) == 0
+    review = state.read_state(gated)['items']['REV-1']
+    assert (review['kind'], review['pr'], review['review_role'], review['phase']) == (
+        'review', 'acme/widget#7', 'arch', 'gate')
+    assert main(['plan', 'add', 'MEAS-1', '--goal', 'G-1']) == 0
+    assert main(['plan', 'set', 'MEAS-1', 'kind=measure']) == 0
+    assert state.read_state(gated)['items']['MEAS-1']['kind'] == 'measure'
+    assert main(['plan', 'add', 'REV-2', '--goal', 'G-1']) == 0
+    assert main(['plan', 'set', 'REV-2', 'kind=review', '--pr', 'acme/widget#8',
+                 '--review-role', 'quality']) == 0
+    second = state.read_state(gated)['items']['REV-2']
+    assert (second['phase'], second['pr'], second['review_role']) == (
+        'gate', 'acme/widget#8', 'quality')
 
 
 def test_plan_add_records_the_owner_note_once(gated, monkeypatch):

@@ -518,10 +518,13 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header.append(f'Charter: {path}')
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
         scratch = root / workspace.SCRATCH / item / role  # #647: one scratch directory per seat
-        header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
-                      'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
-                      'when it holds files you did not write, and write every temporary file there, '
-                      "never at the scratchpad root or in another item's directory")
+        if role == 'builder' and current.get('kind') == 'measure':
+            header.append(f'Scratch: {scratch}/')
+        else:
+            header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
+                          'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
+                          'when it holds files you did not write, and write every temporary file there, '
+                          "never at the scratchpad root or in another item's directory")
         if gate:  # #672: a gate probe never writes in the builder's worktree
             header.append('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX='
                           f'{shlex.quote(str(scratch / "pycache"))}; set it on every command that '
@@ -592,7 +595,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                      [row['path'] for row in changed],
                                      (repo or {}).get('gates', {}).get('trust_paths', []) if tree else [],
                                      current.get('flags')))
-        if role == 'builder' and tree and repo:
+        if role == 'builder' and tree and repo and current.get('kind') != 'measure':
             from wuwei import fast_checks  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
                 found = fast_checks.interpreter(command, tree, repo, root, config)
@@ -605,7 +608,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 header.append(f'{fast_checks.NONE[0].upper()}{fast_checks.NONE[1:]}. '
                               'Write "checks: none configured" in the PR body.')
         host = registry.load('code_host', config) if pr else None
-        header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
+        pull = read(host.pr, pr, root=root) if pr else None
+        if pr and current.get('kind') == 'review':
+            if pull.get('head') != head or pull.get('state') != 'open':
+                raise Refused(f'review PR {pr} is not open at worktree HEAD {head}; update the worktree and write a new brief')
+        header.append('PR head (no-cache): ' + (json.dumps(pull) if pr else 'not applicable'))
         if gate:
             gate_ready(data, item, head)
         row = [value for key, value in data['gate_verdicts'].items()

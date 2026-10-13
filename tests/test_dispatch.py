@@ -1047,6 +1047,80 @@ def test_empty_diff_keeps_quality_at_a_light_floor(root, monkeypatch):
     assert (record['tier'], record['roles']) == ('light', ['quality'])
 
 
+def test_backfill_evidence_zero_diff_measurement_has_one_gate_at_standard_floor(root, monkeypatch):
+    tiered(root, monkeypatch, [], floor='standard', lead='light')
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), root)
+    record = tier_of(root)
+    assert record['roles'] == ['quality']
+    assert record['tier'] == 'light'
+
+
+def test_measurement_tier_uses_builder_start_head(root, monkeypatch):
+    fake = tiered(root, monkeypatch, [], floor='standard')
+    state._write_state(lambda data: (
+        data['items']['A'].update(kind='measure'),
+        data.setdefault('builds', {}).update(A={'status': 'done', 'start': 'c' * 40})), root)
+    assert tier_of(root)['roles'] == ['quality']
+    assert [call[1][1] for call in fake.calls if call[0] == 'diff_stat'] == ['c' * 40]
+
+
+@pytest.mark.parametrize('flag', ['trust_surface', 'agent_surface'])
+def test_measurement_with_risk_flag_keeps_security_gate(root, monkeypatch, flag):
+    tiered(root, monkeypatch, [], floor='standard', flags=(flag,))
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), root)
+    assert tier_of(root)['roles'] == ALL
+
+
+def test_measurement_gate_brief_names_handoff_and_scratch(root):
+    from wuwei import dispatch
+
+    state._write_state(lambda data: (data['items']['A'].update(
+        kind='measure', worktree='tree', gates=LIGHT), data.setdefault('builds', {}).update({
+            'A': {'status': 'done', 'result': {'text': 'Rows: 427 from outputs/rows.txt and D-123-OPEN'}}})), root)
+    (root / 'tree').mkdir()
+    (root / 'outputs').mkdir()
+    (root / 'outputs/rows.txt').write_text('427\n')
+    action = dispatch.next_step('A', root)
+    body = '\n'.join(action['commands'])
+    assert 'Rows: 427' not in body and 'D-123-OPEN' not in body
+    assert 'state.json' in body and 'outputs/rows.txt' in body
+    assert str((root / 'outputs/rows.txt').resolve()) in body
+    assert '.wuwei/scratch/A/builder' not in body
+    scratch = root / '.wuwei/scratch/A/builder'
+    scratch.mkdir(parents=True)
+    assert str(scratch.resolve()) not in '\n'.join(dispatch.next_step('A', root)['commands'])
+    (scratch / 'detail.txt').write_text('427\n')
+    assert str(scratch.resolve()) in '\n'.join(dispatch.next_step('A', root)['commands'])
+    state._write_state(lambda data: data['builds']['A']['result'].update(
+        text=f'Rows: 427 from {(root / "outputs/rows.txt").resolve()}'), root)
+    assert 'outputs/rows.txt' in '\n'.join(dispatch.next_step('A', root)['commands'])
+
+
+def test_measurement_finishes_after_quality_pass_without_pr(root):
+    state._write_state(lambda data: data['items']['A'].update(kind='measure', gates=LIGHT), root)
+    record(root, 'quality', 'quality-measure', PASS)
+    action = dispatch.next_step('A', root)
+    assert action['action'] == 'done'
+    assert state.read_state(root)['gate_verdicts']['A:quality:initial']['file'] in action['reason']
+    assert state.read_state(root)['items']['A']['status'] == 'done'
+    assert state.read_state(root)['items']['A'].get('pr') is None
+
+
+def test_measurement_start_brief_asks_for_evidence_without_implementation(day_set):
+    from wuwei import dispatch
+
+    root, _ = day_set
+    state._write_state(lambda data: data['items']['P3'].update(kind='measure'), root)
+    (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
+        {'id': 'P3', 'scope': 'backfill count on production', 'evidence': 'read-only query'}]}))
+    [action] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3']
+    body = '\n'.join(action['commands'])
+    assert 'Measure P3' in body
+    assert 'Record the numbers and scratch artifacts' in body
+    assert str((root / '.wuwei/scratch/P3/builder').resolve()) in body
+    assert 'Implement P3' not in body
+
+
 def test_issue_acceptance_lead_full_is_overridden_for_docs_only(root, monkeypatch):
     tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard', lead='full')
     record = tier_of(root)
@@ -2141,6 +2215,126 @@ def test_start_names_the_worktree_and_the_builder_brief(day_set):
     [start] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3']
     assert start['commands'] == ['wuwei seat brief builder P3 builder-P3 --worktree worktrees/P3 --body '
                                  "'Implement P3: one value. Evidence: recorded issue P3.'"]
+
+
+def test_pr_3168_delta_review_routes_to_arch_sentinel_without_builder(root, monkeypatch):
+    from wuwei import derive, dispatch
+
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    state._write_state(lambda data: data['items']['A'].update(
+        kind='review', pr='acme/widget#3168', review_role='arch', phase='gate'), root)
+    monkeypatch.setattr(derive, 'listing', lambda directory: {
+        'pulls': {'acme/widget#3168': {'head': 'a' * 40, 'branch': 'review-3168',
+                                      'head_repo': 'acme/widget', 'state': 'open', 'checks': 'red'}},
+        'repos': {}, 'fetched_at': '2026-09-29T12:00:00Z'})
+    original = dispatch.host
+    monkeypatch.setattr(dispatch, 'host', lambda *a, **k: {**original(*a, **k), 'seats': 0})
+    action = next(row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'A')
+    assert action['kind'] == 'gates'
+    assert action['action'] == 'run'
+    assert 'wuwei worktree add A --branch review-3168' in action['command']
+    assert 'builder' not in action['command']
+    monkeypatch.setattr(dispatch, 'host', original)
+    (root / 'house/review-3168').mkdir(parents=True)
+    state._write_state(lambda data: data['items']['A'].update(worktree='house/review-3168'), root)
+    monkeypatch.setattr(derive, 'head', lambda path: 'a' * 40)
+    assert next(row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'A')['kind'] == 'gates'
+    brief_action = dispatch.next_step('A', root)
+    assert brief_action['action'] == 'gates'
+    assert '--worktree house/review-3168' in brief_action['commands'][0]
+    assert '--gate' in brief_action['commands'][0]
+    assert 'builder' not in '\n'.join(brief_action['commands'])
+    import shlex
+    parts = shlex.split(brief_action['commands'][0])
+    assert parts[parts.index('--pr') + 1] == 'acme/widget#3168'
+
+
+@pytest.mark.parametrize('base,expected', [('local', 'run'), ('remote', 'refused'), ('other', 'refused')])
+def test_stale_review_worktree_returns_update_command(root, monkeypatch, base, expected):
+    from wuwei import derive, registry
+    from types import SimpleNamespace
+
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    (root / 'tree').mkdir()
+    state._write_state(lambda data: data['items']['A'].update(
+        kind='review', pr='acme/widget#3168', review_role='arch', worktree='tree'), root)
+    monkeypatch.setattr(derive, 'listing', lambda directory: {'pulls': {'acme/widget#3168': {
+        'state': 'open', 'head': 'a' * 40, 'branch': 'review-3168', 'head_repo': 'acme/widget'}}, 'repos': {}})
+    monkeypatch.setattr(derive, 'head', lambda path: 'b' * 40)
+    bases = {'local': 'b' * 40, 'remote': 'a' * 40, 'other': 'c' * 40}
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(
+        merge_base=lambda *a, **k: registry.Result(0, {'sha': bases[base]}))
+        if kind == 'vcs' else load(kind, config))
+    action = dispatch.next_step('A', root)
+    assert action['action'] == expected
+    if expected == 'run':
+        assert 'command' in action and 'ff-only' in action['command']
+    else:
+        assert 'push the local commits or review the pushed head' in action['reason']
+
+
+@pytest.mark.parametrize('head_repo', ['someone/widget', None])
+def test_fork_review_is_refused(day_set, monkeypatch, head_repo):
+    from wuwei import derive
+
+    root, _ = day_set
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    state._write_state(lambda data: data['items']['P3'].update(
+        kind='review', pr='acme/widget#3168', review_role='arch'), root)
+    monkeypatch.setattr(derive, 'listing', lambda directory: {'pulls': {'acme/widget#3168': {
+        'head': 'a' * 40, 'branch': 'review-3168', 'head_repo': head_repo, 'state': 'open'}},
+        'repos': {}})
+    with pytest.raises(dispatch.Refused, match='fork PR'):
+        dispatch.review_action(root, state.read_state(root), 'P3')
+
+
+@pytest.mark.parametrize('verdict_text,action', [
+    ('PASS', 'done'), ('FIX', 'done'), ('ESCALATE', 'escalate'), ('PARK', 'parked'),
+])
+def test_review_verdict_uses_gate_decision(root, monkeypatch, verdict_text, action):
+    from wuwei import brief, dispatch, registry
+    from types import SimpleNamespace
+    from wuwei import derive
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[gates]\nmax_rounds = 1\n[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    (root / 'tree').mkdir()
+    state._write_state(lambda data: data['items']['A'].update(
+        kind='review', pr='acme/widget#3168', review_role='arch', phase='gate', worktree='tree'), root)
+    monkeypatch.setattr(derive, 'head', lambda path: 'abc1234' + '0' * 33)
+    monkeypatch.setattr(derive, 'listing', lambda directory: {'pulls': {'acme/widget#3168': {
+        'state': 'open', 'head': 'abc1234' + '0' * 33, 'branch': 'review-3168',
+        'head_repo': 'acme/widget'}}, 'repos': {}})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(pr=lambda *a, **k: registry.Result(0, {
+        'state': 'open', 'head': 'abc1234' + '0' * 33})) if kind == 'code_host' else load(kind, config))
+    text = (PASS if verdict_text == 'PASS' else
+            (FIX + 'Simplicity: none\nDesign: none\n').replace('Verdict: FIX', 'Verdict: ' + verdict_text))
+    record(root, 'arch', 'arch-1', text)
+    assert state.read_state(root)['items']['A']['status'] != 'done'
+    result = dispatch.next_step('A', root)
+    assert result['action'] == action
+    if action == 'done':
+        assert state.read_state(root)['gate_verdicts']['A:arch:initial']['file'] in result['reason']
+    assert (state.read_state(root)['items']['A']['status'] == 'done') == (action == 'done')
+    assert not any(row['kind'] == 'build.started' for row in brief.events(root))
+
+
+def test_review_receipt_refuses_a_pushed_pr_head(root, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import registry
+
+    state._write_state(lambda data: data['items']['A'].update(
+        kind='review', pr='acme/widget#3168', review_role='arch', phase='gate'), root)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(pr=lambda *a, **k: registry.Result(0, {
+        'state': 'open', 'head': 'b' * 40})) if kind == 'code_host' else load(kind, config))
+    with pytest.raises(dispatch.Refused, match='PR head'):
+        record(root, 'arch', 'arch-moved', PASS)
+    assert state.read_state(root)['items']['A']['status'] != 'done'
 
 
 def test_start_names_the_repository_when_several_are_configured(day_set, capsys):

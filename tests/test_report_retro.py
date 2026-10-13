@@ -105,6 +105,8 @@ def test_hard_rule_change_is_a_retro_line(tmp_path, monkeypatch):
 
 
 def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
+    from fakes.code_host import Fake as Host
+
     root = tmp_path
     (root / '.wuwei/memory/notes').mkdir(parents=True)
     (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
@@ -114,16 +116,32 @@ def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Host()
+                        if kind == 'code_host' else load(kind, config))
     state._write_state(lambda data: data.update(items={
         'open': {'phase': 'implement', 'status': 'running'},
+        'review-done': {'phase': 'gate', 'status': 'done', 'kind': 'review', 'pr': 'acme/widget#7'},
+        'measure-done': {'phase': 'gate', 'status': 'done', 'kind': 'measure'},
         'park': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked',
                  'disposition': {'kind': 'parked', 'reason': 'gate quality PARK: P1'}},
-        'held': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked'}}), root)
+        'held': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked'}},
+        gate_verdicts={
+            'review-done:arch:initial': {'item': 'review-done', 'role': 'arch', 'verdict': 'FIX',
+                                         'file': '.wuwei/days/2026-09-29/decisions/review.md'},
+            'measure-done:quality:initial': {'item': 'measure-done', 'role': 'quality',
+                                              'verdict': 'PASS',
+                                              'file': '.wuwei/days/2026-09-29/decisions/measure.md'},
+            'measure-done:quality:round1': {'item': 'measure-done', 'role': 'quality',
+                                             'verdict': 'FIX',
+                                             'file': '.wuwei/days/2026-09-29/decisions/old.md'}}), root)
     assert main(['report']) == 0
     text = capsys.readouterr().out
     assert all(section in text for section in ('## Outcome', '## Open at close', '## Parked', '## Carry'))
     assert all(value in text for value in ('0.2', '1.4', '32 minutes', '3 days', 'unmeasured'))
     assert '## Parked\n- held: parked\n- park: gate quality PARK: P1\n' in text
+    assert '## Done\n- measure-done: quality PASS (.wuwei/days/2026-09-29/decisions/measure.md)\n- review-done: arch FIX (.wuwei/days/2026-09-29/decisions/review.md)\n' in text
+    assert 'decisions/old.md' not in text
     assert '## Decisions answered' not in text and 'D-' not in text
 
 
@@ -212,14 +230,18 @@ def test_report_lists_merged_items(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(items={
         'A': {**state.ITEM_DEFAULTS, 'phase': 'merged', 'pr': 'org/repo#1'},
-        'B': {**state.ITEM_DEFAULTS, 'phase': 'delta'}}), root)
+        'B': {**state.ITEM_DEFAULTS, 'phase': 'delta'},
+        'R': {**state.ITEM_DEFAULTS, 'kind': 'review', 'phase': 'gate',
+              'status': 'done', 'pr': 'org/repo#2'},
+        'M': {**state.ITEM_DEFAULTS, 'kind': 'measure', 'phase': 'gate',
+              'status': 'done'}}), root)
     from wuwei import report
     text = report.build(root)
     merged = text.split('## Merged\n')[1].split('\n\n')[0]
     assert merged == '- A (org/repo#1)'
     for section in ('## Open at close\n', '## Carry\n'):
         body = text.split(section)[1].split('\n\n')[0]
-        assert 'B' in body and 'A' not in body
+        assert 'B' in body and all(f'- {name}:' not in body for name in ('A', 'R', 'M'))
 
 
 def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
@@ -331,7 +353,7 @@ def test_report_levels(tmp_path, monkeypatch):
         'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root)
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Merged', '## Cycle time', '## DORA (last 28 days)', '## Open at close',
+    assert sections == ['## Changed', '## Merged', '## Done', '## Cycle time', '## DORA (last 28 days)', '## Open at close',
                         '## Parked', '## Carry', '## Steward runs']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(

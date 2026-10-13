@@ -202,6 +202,24 @@ def test_stamped_header_and_fresh_pr(day, monkeypatch):
     assert (directory / 'briefs/one.md').read_text() == text
 
 
+def test_review_brief_is_a_gate_at_the_existing_pr_head_without_spec(day, monkeypatch, capsys):
+    root, directory, vcs, host = day
+    head = 'a' * 40
+    vcs.results['head'] = registry.Result(0, {'sha': head})
+    host.results['pr'] = registry.Result(0, {'head': head, 'state': 'open'})
+    state._write_state(lambda data: data['items']['X'].update(
+        phase='gate', kind='review', pr='example/repo#7', review_role='arch'), root)
+    assert brief(monkeypatch, 'Arch PASS or a named finding', 'arch', 'X', 'arch-X',
+                 '--worktree', 'tree', '--pr', 'example/repo#7', '--gate') == 0
+    text = (directory / 'briefs/arch-X.md').read_text()
+    assert f'HEAD: {head}' in text
+    assert 'Spec:' not in text
+    host.results['pr'] = registry.Result(0, {'head': 'b' * 40, 'state': 'open'})
+    assert brief(monkeypatch, 'Arch PASS or a named finding', 'arch', 'X', 'stale-X',
+                 '--worktree', 'tree', '--pr', 'example/repo#7', '--gate') == 1
+    assert 'not open at worktree HEAD' in capsys.readouterr().err
+
+
 @pytest.mark.parametrize('name', ['../escape', '/escape', '.', 'a/b'])
 def test_unsafe_name(day, monkeypatch, name):
     assert brief(monkeypatch, 'body', 'builder', 'X', name) == 2
@@ -701,6 +719,17 @@ def test_each_seat_gets_its_own_scratch_directory(day, monkeypatch, capsys):
         assert (day[0] / f'.wuwei/scratch/{item}/builder').is_dir()
         lines.append(found[0])
     assert lines[0] != lines[1]
+
+
+def test_measurement_builder_brief_names_workspace_scratch_only(day, monkeypatch):
+    root = day[0]
+    state._write_state(lambda data: data['items']['X'].update(kind='measure'), root)
+    assert brief(monkeypatch, 'Write outputs under .wuwei/scratch/X/builder.',
+                 'builder', 'X', 'measure-X') == 0
+    text = (day[1] / 'briefs/measure-X.md').read_text()
+    line = next(line for line in text.splitlines() if line.startswith('Scratch: '))
+    assert '.wuwei/scratch/X/builder' in line
+    assert '<your scratchpad>' not in line
 
 
 def test_a_new_seat_moves_an_earlier_seats_scratch_aside(day, monkeypatch):

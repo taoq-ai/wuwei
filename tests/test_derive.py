@@ -170,7 +170,8 @@ def test_a_failed_repository_leaves_its_pr_rows_unmeasured_and_the_others_usable
 def test_the_github_listing_maps_one_call(monkeypatch, viewer, activity):
     import importlib
     github = importlib.import_module('adapters.code_host.github')
-    node = {'number': 7, 'state': 'OPEN', 'isDraft': False, 'headRefOid': SHA, 'mergeable': 'CONFLICTING',
+    node = {'number': 7, 'state': 'OPEN', 'isDraft': False, 'headRefOid': SHA, 'headRefName': 'review-7',
+            'headRepository': {'nameWithOwner': 'example/project'}, 'mergeable': 'CONFLICTING',
             'author': {'login': 'me'}, 'labels': {'nodes': [{'name': 'owner-merge'}]},
             'commits': {'nodes': [{'commit': {'statusCheckRollup': {'state': 'FAILURE'}}}]},
             'latestReviews': {'nodes': [{'author': {'login': 'me'}, 'submittedAt': '2026-10-11T09:00:00Z'}]},
@@ -184,7 +185,8 @@ def test_the_github_listing_maps_one_call(monkeypatch, viewer, activity):
     monkeypatch.setattr(github, '_run', run)
     result = github.pulls('example/project')
     assert len(calls) == 1 and result.exit == 0
-    assert result.data == [{'number': 7, 'state': 'open', 'head': SHA, 'draft': False, 'checks': 'red',
+    assert result.data == [{'number': 7, 'state': 'open', 'head': SHA, 'branch': 'review-7',
+                            'head_repo': 'example/project', 'draft': False, 'checks': 'red',
                             'mergeable': 'conflicting', 'labels': ['owner-merge'],
                             'activity_at': activity}]
 
@@ -207,6 +209,12 @@ def test_the_duty_command_records_a_due_duty_and_refuses_any_other(root, capsys)
     (workspace.day_dir(root) / 'report.md').write_text('# Report\n')
     assert [(row['item'], row['duty']) for row in derive.duties(root, workspace.load_config(root))] == [
         ('day', 'summary')]
+
+
+def test_completed_review_item_has_no_pr_duties(root):
+    raised(root)
+    state._write_state(lambda data: data['items']['A'].update(kind='review', status='done'), root)
+    assert derive.duties(root, workspace.load_config(root)) == []
 
 
 def test_a_review_post_records_the_ping(root):
