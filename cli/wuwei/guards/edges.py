@@ -310,7 +310,9 @@ def _recorded(root, config, *, path=None, repo=None, branch=None):
     in repository repo; None when no recorded item matches."""
     from wuwei import merge, registry, state
     vcs = registry.load('vcs', config)
-    for item, row in sorted(state.read_state(root)['items'].items()):
+    data = state.read_state(root)
+    for item, row in sorted(data['items'].items(),
+                            key=lambda pair: (pair[0] not in data['approved_items'], pair[0])):
         if not isinstance(row.get('worktree'), str) or not row['worktree']:
             continue
         tree = (root / row['worktree']).resolve()

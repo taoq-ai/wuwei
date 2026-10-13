@@ -262,6 +262,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent', 'pr.pushed': 'silent',
+                'pr.unclaimed': 'warn', 'pr.autoclaim_error': 'warn',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
                 'reviewer.unresolved': 'silent',
                 'watch: observation': 'silent',

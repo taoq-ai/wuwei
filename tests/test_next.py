@@ -63,6 +63,186 @@ def coarse(root):
     return next_command.step(root)
 
 
+def test_next_offers_unclaimed_pr_before_restarting_work(root):
+    approved(root, {'A': ('planned', {})})
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#950',
+        'url': 'https://github.com/example/project/pull/950'}, root)
+    found = coarse(root)
+    assert found['command'] == 'wuwei pr claim https://github.com/example/project/pull/950'
+    state.record_pr(root, 'A', 'example/project#950', raised=False)
+    assert coarse(root)['state'] != 'pr-claim'
+
+
+def test_unclaimed_pr_with_multiple_goals_names_choice(root):
+    approved(root, {}, goals=['G-1', 'G-2'])
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    found = coarse(root)
+    assert '--goal <one of G-1, G-2>' in found['command']
+    assert found['action'] == 'owner'
+    from wuwei import metrics
+    assert any(metrics._matches('wuwei pr claim https://github.com/example/project/pull/8 --goal G-1',
+                                pattern) for pattern in next_command.named(found))
+
+
+def test_unclaimed_item_pr_uses_item_goal(root):
+    approved(root, {'A': ('gate', {'goal': 'G-2'})}, goals=['G-1', 'G-2'])
+    state.append_event('pr.unclaimed', {'pr': 'example/project#8', 'item': 'A',
+        'url': 'https://github.com/example/project/pull/8',
+        'reason': 'A: pre-PR gates not passed'}, root)
+    found = coarse(root)
+    assert found['command'] == 'wuwei pr claim https://github.com/example/project/pull/8 --item A --goal G-2'
+    assert "Run A's gates first" in found['why']
+    assert found['action'] == 'run'
+
+
+@pytest.mark.parametrize('state_name', ['closed', 'merged'])
+def test_next_does_not_offer_closed_or_merged_unclaimed_pr(root, state_name):
+    approved(root, {})
+    directory = workspace.day_dir(root)
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'repos': {
+        'example/project': {'at': NOW}}, 'pulls': [{
+        'ref': 'example/project#8', 'state': state_name}]}))
+    assert coarse(root)['state'] != 'pr-claim'
+
+
+def test_next_refreshes_unclaimed_repo_before_offering(root, monkeypatch, capsys):
+    from wuwei import derive
+    approved(root, {})
+    directory = workspace.day_dir(root)
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    refreshed = []
+    def refresh(root, config, names):
+        refreshed.extend(names)
+        (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+            'repos': {'example/project': {'at': NOW}}, 'pulls': []}))
+    monkeypatch.setattr(derive, 'refresh', refresh)
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    assert row(capsys)[1]['state'] != 'pr-claim'
+    assert refreshed == ['example/project']
+
+
+def test_next_reuses_recent_listing_for_unclaimed_pr(root, monkeypatch, capsys):
+    from wuwei import derive
+    approved(root, {})
+    directory = workspace.day_dir(root)
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+        'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': 'example/project#8', 'state': 'open'}]}))
+    refreshed = []
+    def refresh(root, config, names):
+        refreshed.extend(names)
+        (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+            'repos': {'example/project': {'at': NOW}}, 'pulls': []}))
+    monkeypatch.setattr(derive, 'refresh', refresh)
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    assert row(capsys)[1]['state'] == 'pr-claim'
+    assert refreshed == []
+
+
+def test_next_refreshes_once_when_unclaimed_event_is_newer(root, monkeypatch, capsys):
+    from wuwei import derive
+    approved(root, {})
+    directory = workspace.day_dir(root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': '2026-09-30T09:59:00+00:00',
+        'repos': {'example/project': {'at': '2026-09-30T09:59:00+00:00'}}, 'pulls': []}))
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    refreshed = []
+    def refresh(root, config, names):
+        refreshed.extend(names)
+        (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+            'repos': {'example/project': {'at': NOW}},
+            'pulls': [{'ref': 'example/project#8', 'state': 'open'}]}))
+    monkeypatch.setattr(derive, 'refresh', refresh)
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    assert row(capsys)[1]['state'] == 'pr-claim'
+    assert row(capsys)[1]['state'] == 'pr-claim'
+    assert refreshed == ['example/project']
+
+
+@pytest.mark.parametrize('status', ['claimed', 'dismissed', 'done', 'closed'])
+def test_next_does_not_refresh_cleared_unclaimed_pr(root, monkeypatch, capsys, status):
+    from wuwei import derive
+    approved(root, {'A': ('planned', {})} if status == 'claimed' else {})
+    ref = 'example/project#8'
+    state.append_event('pr.unclaimed', {'pr': ref,
+        'url': 'https://github.com/example/project/pull/8'}, root)
+    if status == 'claimed':
+        state.record_pr(root, 'A', ref, raised=False)
+    elif status == 'dismissed':
+        state.append_event('next.action', {'state': 'pr-claim', 'item': ref,
+                                           'done': [['pr-claim', ref]]}, root)
+    elif status == 'done':
+        for _ in range(3):
+            state.append_event('next.action', {'state': 'pr-claim', 'item': ref,
+                                               'action': 'run'}, root)
+    else:
+        state.append_event('day.closed', {}, root)
+    directory = workspace.day_dir(root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': '2026-09-30T10:01:00+00:00',
+        'repos': {'example/project': {'at': '2026-09-30T10:01:00+00:00'}}, 'pulls': []}))
+    refreshed = []
+    monkeypatch.setattr(derive, 'refresh', lambda root, config, names: refreshed.extend(names))
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    row(capsys)
+    assert refreshed == []
+
+
+def test_next_polls_pending_unclaimed_pr_after_poll_seconds(root, monkeypatch, capsys):
+    from wuwei import derive
+    approved(root, {})
+    directory = workspace.day_dir(root)
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+        'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': 'example/project#8', 'state': 'open'}]}))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:03:00+00:00')
+    refreshed = []
+    monkeypatch.setattr(derive, 'refresh', lambda root, config, names: refreshed.extend(names))
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    row(capsys)
+    assert refreshed == ['example/project']
+
+
+def test_stuck_seat_precedes_unclaimed_pr(root, monkeypatch):
+    from wuwei import brief
+    approved(root, {'A': ('planned', {})}, seats={'b': {
+        'status': 'running', 'role': 'builder', 'item': 'A'}})
+    monkeypatch.setattr(brief, 'stuck', lambda data: ['b'])
+    state.append_event('pr.unclaimed', {
+        'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
+    found = coarse(root)
+    assert found['state'] == 'set'
+    assert any(entry['kind'] == 'stop' for entry in found['launches'])
+
+
+def test_refused_claim_is_dismissed_after_its_command_runs(root):
+    approved(root, {})
+    ref = 'example/project#8'
+    state.append_event('pr.unclaimed', {'pr': ref,
+        'url': 'https://github.com/example/project/pull/8', 'reason': 'item already links another PR'}, root)
+    found = coarse(root)
+    assert 'item already links another PR' in found['why']
+    state.append_event('next.action', {'state': 'pr-claim', 'item': ref,
+                                      'done': [['pr-claim', ref]]}, root)
+    assert coarse(root)['state'] != 'pr-claim'
+
+
+def test_next_ignores_old_unclaimed_event_for_unconfigured_repo(root):
+    approved(root, {})
+    state.append_event('pr.unclaimed', {'pr': 'acme/other#8',
+        'url': 'https://github.com/acme/other/pull/8'}, root)
+    assert coarse(root)['state'] != 'pr-claim'
+
+
 SHAPE = {'state', 'action', 'command', 'why', 'then'}
 
 
