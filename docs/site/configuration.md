@@ -28,7 +28,7 @@ Every table `config.toml` accepts, and the heading that documents its keys.
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.identity]`, `[repos.shepherd]`, `[checks]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.identity]`, `[repos.shepherd]`, `[checks]`, `[plan]`, `[prioritisation]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[host]`, `[budget]` (`[budget.claude]`, `[budget.codex]`), `[memory]`, `[retro]`, `[metrics]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[duties]`, `[shepherd]`, `[shepherd.authors]` | [Host, build and memory](#host-build-and-memory) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -45,6 +45,8 @@ Every table `config.toml` accepts, and the heading that documents its keys.
 | `template_version` | `""` | Plugin version that last wrote this file. `init` and `init --upgrade` raise it and never lower it. An older plugin treats keys it does not know as unknown, and `doctor` says to restart Claude Code. |
 | `profile` | `"strict"` | Outward lint profile: `strict` or `standard`. Standard warns where strict refuses. |
 | `guards.enforce` | `true` | `false` records a guard refusal as `guard.would_refuse` and lets the call through. Records, merges, approvals, admin merges, deploys and outward sends outside `outward.allow` still refuse. `config check` and `doctor` print the setting. |
+| `guards.stop_max_blocks` | `20` | Maximum planner Stop nudges per day across sessions; zero disables them. An unchanged row during an active Stop passes. The first capped Stop records one warning that the planner wake is off. |
+| `plan.max_refills` | `3` | Maximum goal refill passes per day; zero disables new passes. A pending pass can finish at the count cap. Admission also stops at the approved day envelope.end. Full ISO datetimes retain their offsets; time-only or timezone-free values use owner.timezone or the machine zone when unset. An unparseable end applies no deadline. |
 | `security.required` | `true` | A missing `.wuwei/security.json` makes the guards fail closed. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula `plan propose` orders the queue by: `wsjf` or `rice`. |
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |

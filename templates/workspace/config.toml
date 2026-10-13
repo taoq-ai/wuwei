@@ -200,7 +200,11 @@ skip_tiers = ["light"]
 [security]
 required = true
 
+[plan]
+max_refills = 3 # Daily goal discovery passes after the queue empties; zero disables refill.
+
 [guards]
+stop_max_blocks = 20 # Daily planner Stop nudges; zero disables them.
 enforce = true # false logs what the guards would refuse and lets the call through; records, merges, deploys and held sends still refuse. init --shadow starts here.
 
 # Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means

@@ -93,6 +93,7 @@ SCHEMA = {
     "budget": {name: {"five_hour": (int, 0, 0), "seven_day": (int, 0, 0)} for name in ("claude", "codex")},
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
+    "plan": {"max_refills": (int, 3, 0)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
     "tracker": {"backlog_filter": (str, ""),
                 "states": {"in_review": (str, "In Review"), "done": (str, "Done")},
@@ -139,7 +140,7 @@ SCHEMA = {
     "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
-    "guards": {"enforce": (bool, True)},  # #837: false logs what a guard would refuse
+    "guards": {"enforce": (bool, True), "stop_max_blocks": (int, 20, 0)},  # #837: false logs what a guard would refuse
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},

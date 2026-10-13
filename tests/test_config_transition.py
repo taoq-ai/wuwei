@@ -628,7 +628,7 @@ def test_upgrade_maps_observe_to_enforce_false(tmp_path, monkeypatch, capsys, dr
     if dry_run:
         assert path.read_text() == before
     else:
-        assert workspace.load_config(tmp_path)['guards'] == {'enforce': False}
+        assert workspace.load_config(tmp_path)['guards'] == {'enforce': False, 'stop_max_blocks': 20}
         assert 'posture' not in tomllib.loads(path.read_text())['security']
 
 

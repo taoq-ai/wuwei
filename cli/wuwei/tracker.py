@@ -147,12 +147,10 @@ def _key(category, subject, title):
 
 
 def _candidate(root, data, item):
-    path = workspace.day_dir(root) / 'proposal.json'
-    rows = (json.loads(path.read_text(encoding='utf-8')).get('candidates', [])
-            if path.is_file() and not path.is_symlink() else [])
-    found = data.get('seat_findings', {}).get(item)  # #646: a seat's finding added as an item
-    return next((row for row in rows if row.get('id') == item),
-                found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
+    from wuwei.dispatch import candidate
+    found = data.get('seat_findings', {}).get(item)
+    return candidate(root, item) or (found and {
+        **found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
 
 
 def create(root, subject, category='items', title=None, evidence=(), row=None, seat=None):

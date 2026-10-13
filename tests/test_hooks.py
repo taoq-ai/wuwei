@@ -15,7 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PAYLOADS = sorted((ROOT / 'tests/payloads').glob('*/*.json'))
-EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart')
+EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'Stop')
 
 
 @pytest.fixture
@@ -426,6 +426,10 @@ def test_private_guard_module_is_ignored(plugin):
 
 
 def assert_refusal(result, event, reason, *, malformed=False):
+    if event == 'Stop':
+        assert result.returncode == 0 and result.stdout == ''
+        assert result.stderr == reason + '\n'
+        return
     if event == 'SessionStart':
         assert result.returncode == 0
         assert reason in json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
@@ -1208,12 +1212,12 @@ def test_terminal_as_bash(tmp_path):
             as_bash({**call, 'tool_input': inputs})
 
 
-def test_part_23_registers_four_hook_events_and_refuses_stop():
-    # #847: the PreCompact and Stop hooks are gone; argparse refuses them as events.
+def test_stop_is_registered_and_precompact_stays_retired():
+    # #949 restores Stop as an advisory planner wake; PreCompact stays retired.
     from wuwei.__main__ import main
     hooks = json.loads((Path(__file__).resolve().parents[1] / 'hooks/hooks.json').read_text())['hooks']
-    assert sorted(hooks) == ['PostToolUse', 'PreToolUse', 'SessionStart', 'SubagentStop']
-    for event in ('Stop', 'PreCompact'):
+    assert sorted(hooks) == ['PostToolUse', 'PreToolUse', 'SessionStart', 'Stop', 'SubagentStop']
+    for event in ('PreCompact',):
         with pytest.raises(SystemExit) as raised:
             main(['hook', event])
         assert raised.value.code == 2

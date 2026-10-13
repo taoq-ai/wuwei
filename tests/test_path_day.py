@@ -3,6 +3,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+from pathlib import Path
 import re
 import shlex
 import sys
@@ -98,8 +99,9 @@ def walk(day, card, after=None, looks=1):
                 bash(day, action['command'])
         elif kind in ('launch', 'continue'):
             launch(day, action)
-            if action['state'] == 'lead':  # its then: save the lead's JSON answer with Write
-                (day.directory / 'lead.json').write_text(json.dumps(day.proposal(['A'])))
+            if action['state'] in ('lead', 'refill'):  # save each lead answer to its numbered file
+                target = day.directory / (Path(action['brief']).stem + '.json')
+                target.write_text(json.dumps(day.proposal(['A'])))
         elif kind == 'card':
             card(day, action)
         elif kind == 'set':  # #844: every launch and duty, then the one decision
