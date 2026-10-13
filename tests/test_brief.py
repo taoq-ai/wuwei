@@ -52,6 +52,14 @@ def test_resolved_ruling(day, monkeypatch):
     assert 'Ruling D-ABC-1 [RULED]' in (day[1] / 'briefs/n2.md').read_text()
 
 
+def test_item_and_worktree_name_are_not_rulings(day, monkeypatch):
+    item = 'CID-MAPPING-VIEW-API'
+    state._write_state(lambda data: data['items'].update({item: {'phase': 'planned'}}), day[0])
+    body = f'Implement {item}: inspect worktrees/WS-READ-ROUTE-4734.'
+    assert brief(monkeypatch, body, 'builder', item, 'mapping') == 0
+    assert body in (day[1] / 'briefs/mapping.md').read_text()
+
+
 def test_brief_records_item_worktree(day, monkeypatch):
     assert brief(monkeypatch, 'body', 'builder', 'X', 'tree-brief', '--worktree', 'tree') == 0
     assert state.read_state(day[0])['items']['X']['worktree'] == str((day[0] / 'tree').resolve())

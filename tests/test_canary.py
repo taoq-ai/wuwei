@@ -574,6 +574,25 @@ def test_outbound_body_file_unreadable_is_unrun(secured):
     assert code == 2 and reason
 
 
+def test_missing_outbound_body_file_names_separate_write(secured):
+    from wuwei.guards.edges import check_bash
+    code, reason = check_bash({'cwd': str(secured), 'tool_name': 'Bash',
+        'tool_input': {'command': "cat > outbound.md <<'EOF'\nbody\nEOF\ngh issue create --body-file outbound.md"}})
+    assert code == 2
+    assert 'body file does not exist; write it in a separate command first' in reason
+
+
+def test_overlong_outbound_body_file_refusal_has_no_path(secured):
+    from wuwei.guards.edges import check_bash
+    name = 'a' * 300
+    code, reason = check_bash({'cwd': str(secured), 'tool_name': 'Bash',
+        'tool_input': {'command': f'gh issue create --body-file {name}'}})
+    assert code == 2
+    assert 'cannot read outbound body file' in reason
+    assert str(secured) not in reason
+    assert name not in reason
+
+
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 @pytest.mark.parametrize('form', ['literal', 'body_file'])
 def test_hook_gh_token_pages_once(secured, monkeypatch, capsys, profile, form):
