@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.32.0](https://github.com/taoq-ai/wuwei/compare/v0.31.0...v0.32.0) (2026-10-13)
+
+
+### Features
+
+* **dispatch:** a review item goes to one sentinel gate and a measurement gets one quality gate without a PR ([#939](https://github.com/taoq-ai/wuwei/issues/939), [#866](https://github.com/taoq-ai/wuwei/issues/866)) ([#948](https://github.com/taoq-ai/wuwei/issues/948)) ([608c301](https://github.com/taoq-ai/wuwei/commit/608c301761c5d9cede32709b47d2ea52c90e4004))
+
+
+### Bug Fixes
+
+* **brief:** a ruling id matches only as a whole token, a missing body file says so, and doctor --section pr-flow records its own run ([#941](https://github.com/taoq-ai/wuwei/issues/941), [#861](https://github.com/taoq-ai/wuwei/issues/861)) ([#942](https://github.com/taoq-ai/wuwei/issues/942)) ([4db1e26](https://github.com/taoq-ai/wuwei/commit/4db1e2662ca37e984e6cb89b2b34cb8a897e9c68))
+* **github:** a refusal with secondary evidence reads as a secondary limit even when its headers say 0 left ([#938](https://github.com/taoq-ai/wuwei/issues/938)) ([#943](https://github.com/taoq-ai/wuwei/issues/943)) ([7f2c2cc](https://github.com/taoq-ai/wuwei/commit/7f2c2cc8d76a6e5c976ba7c4fd6592546bc64c4f))
+* **owner:** a card answer binds the leading exact command and token, context after it does not unbind it, and a mismatch says why ([#940](https://github.com/taoq-ai/wuwei/issues/940)) ([#944](https://github.com/taoq-ai/wuwei/issues/944)) ([eb56ad8](https://github.com/taoq-ai/wuwei/commit/eb56ad89a6579b8da7473d8a48c35283dad5392e))
+* **seat:** a seat's report survives the transcript race, a SendMessage continue closes its round, and reconcile names the worktree conflict ([#937](https://github.com/taoq-ai/wuwei/issues/937), [#930](https://github.com/taoq-ai/wuwei/issues/930)) ([#945](https://github.com/taoq-ai/wuwei/issues/945)) ([a30d25f](https://github.com/taoq-ai/wuwei/commit/a30d25fb5ec834fc3ed65de75fed42eb655dd389))
+
 ## [0.31.0](https://github.com/taoq-ai/wuwei/compare/v0.30.0...v0.31.0) (2026-10-12)
 
 
