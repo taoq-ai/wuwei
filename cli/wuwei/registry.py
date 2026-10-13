@@ -13,7 +13,8 @@ from wuwei.exits import UNRUN, ADAPTER_DATA, DAMAGED
 PARAMETERS = {
     'transcripts': {'recent': ('since',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
-    'host': {'free_memory': (), 'free_percent': (), 'hand_over': ('target', 'argv', 'env')},
+    'host': {'free_memory': (), 'free_percent': (), 'hand_over': ('target', 'argv', 'env'),
+             'processes': ('orphans', 'pid'), 'terminate_process': ('record', 'grace')},
     'checks': {'run': ('path', 'command', 'timeout')},
     'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',), 'created': ('item',),

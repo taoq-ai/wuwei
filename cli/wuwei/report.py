@@ -117,6 +117,9 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
+    reaped = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'process.reaped']
+    if reaped:
+        lines += ['', '## Housekeeping', *(f"- pid {row['pid']} ({row['purpose']}): {row['reason']}" for row in reaped)]
     lines += ['', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'

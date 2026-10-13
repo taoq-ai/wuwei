@@ -34,3 +34,22 @@ def unchecked_ziran():
     # #896 P8: the adapter remembers a passed version check per process; each test fakes its own.
     from wuwei import registry
     registry.CHECKED.clear()
+
+
+@pytest.fixture(autouse=True)
+def isolated_process_table(monkeypatch):
+    # #952: lifecycle tests must never inspect or signal the developer's processes.
+    from adapters.host import local
+    from fakes.host import process_table
+    from wuwei import registry
+    read, load = local.processes, registry.load
+    def refuse(record, grace, root=None):
+        raise AssertionError('test attempted to signal a real process')
+    def isolated(kind, config):
+        adapter = load(kind, config)
+        if kind == 'host' and config['adapters']['host'] == 'local':
+            adapter.processes = lambda orphans=False, pid=None, root=None: registry.Result(0, process_table())
+            adapter.terminate_process = refuse
+        return adapter
+    monkeypatch.setattr(registry, 'load', isolated)
+    return read

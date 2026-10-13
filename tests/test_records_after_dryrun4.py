@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from fakes.host import Fake as ProcessHost
+
 from wuwei import plan, registry, state, workspace
 from wuwei.__main__ import main
 from test_plan import candidate
@@ -68,7 +70,7 @@ def test_one_close_steward_review_per_day(steward_root, monkeypatch, capsys):
     calls = []
     fake = SimpleNamespace(dispatch=lambda *args, **kwargs: calls.append(args)
                            or registry.Result(0, {'agent_type': 'wuwei:steward'}))
-    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: ProcessHost() if kind == 'host' else fake)
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'OWED: retro'))
     monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))

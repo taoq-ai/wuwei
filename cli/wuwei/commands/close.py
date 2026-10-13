@@ -63,6 +63,12 @@ def run(args):
         names, notes = [], []
         code, reason = closing.unresolved(root, pr_actions.evaluate(root)[1], open_items=names, notes=notes)
         if not names and code < 2:
+            from wuwei import watch
+            process_code, findings = watch.housekeeping(root, reap=True, closing=True)
+            if findings:
+                print('\n'.join(f"{row['why']}: {row['command']}" for row in findings))
+            if any(row['kind'] in ('seat', 'build') or row.get('reap_failed') for row in findings):
+                return process_code
             steward.run(root, trigger='close')
             code, reason = closing.check(root)
             if code == 0:

@@ -17,6 +17,8 @@ CALLS = [
     ('host', 'free_memory', (), True),
     ('host', 'free_percent', (), True),
     ('host', 'hand_over', ('target', 'argv', 'env'), False),
+    ('host', 'processes', ('orphans', 'pid'), True),
+    ('host', 'terminate_process', ('record', 'grace'), False),
     ('checks', 'run', ('path', 'command', 'timeout'), True),
     ('code_host', 'auth_status', (), True),
     ('code_host', 'viewer_login', (), True),

@@ -3,7 +3,7 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
+SILENT = ('process.started', 'process.reaped', 'process.cleanup_failed', 'process.orphan_listed', 'item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override', 'hook.stop_blocked',
           'worktree.adopted', 'worktree.created',

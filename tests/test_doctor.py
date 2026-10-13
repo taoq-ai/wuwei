@@ -683,7 +683,7 @@ def test_healthy_workspace_exits_zero(ws, capsys):
     assert main(['doctor']) == 0
     out = capsys.readouterr().out
     headers = [line for line in out.splitlines() if line in doctor.SECTIONS.values()]
-    assert headers == list(doctor.SECTIONS.values())
+    assert headers == [title for section, title in doctor.SECTIONS.items() if section != 'processes']
     assert 'fix:' not in out
     assert out.splitlines()[-1] == 'doctor: ok'
     assert listing() == before

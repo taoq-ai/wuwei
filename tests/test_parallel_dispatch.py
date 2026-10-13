@@ -705,7 +705,7 @@ def test_a_loop_that_died_at_once_is_a_timed_wait(day):
         loop={'pid': 2**22 + 7, 'started_at': '2026-09-29T12:00:00+00:00'}), day.root)  # a dead pid
     step = json.loads(day.run('next', '--json'))
     assert (step['state'], step['action'], step['until']) == ('wait', 'background', '2026-09-29T12:02:01+00:00')
-    assert step['command'].startswith('sleep ') and 'A' in step['why']
+    assert step['command'].startswith('wuwei next --background -- sleep ') and 'A' in step['why']
     day.patch.setenv('WUWEI_NOW', '2026-09-29T12:03:00Z')
     assert [launch['action'] for launch in json.loads(day.run('next', '--json'))['launches']][0] == 'run'
 

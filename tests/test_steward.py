@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from fakes.host import Fake as ProcessHost
+
 from wuwei import state, workspace
 
 
@@ -108,7 +110,7 @@ def test_close_retry_uses_existing_steward_run(root, monkeypatch):
 
     state.append_event('steward.run', {'trigger': 'close', 'tool_calls': 0}, root)
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
-    monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('duplicate steward dispatch'))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: ProcessHost() if kind == 'host' else pytest.fail('duplicate steward dispatch'))
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'pending'))
     monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))
     monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows, **_: (0, ''))

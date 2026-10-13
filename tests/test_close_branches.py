@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from adapters.vcs import git
+from fakes.host import Fake as ProcessHost
 from fakes.code_host import Fake as Host
 from fakes.replay import install_replay
 from fakes.vcs import Fake as VCS
@@ -59,7 +60,7 @@ def case(tmp_path, monkeypatch):
         'memory/CHANGELOG.md': '- ' + DAY + ' builder changed\n- (2026-09-01) Keep tests.\n'})
     vcs.results['workspace_changes'] = Result(0, [])
     runtime = SimpleNamespace(dispatch=lambda *args, **kwargs: Result(0, {'agent_type': 'wuwei:steward'}))
-    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs,
+    monkeypatch.setattr(registry, 'load', lambda kind, config: {'host': ProcessHost(), 'code_host': host, 'vcs': vcs,
                                                                'runtime': runtime}[kind])
     return tmp_path, host, vcs
 
@@ -163,7 +164,7 @@ def test_close_without_amendments_needs_no_git_repository(case, monkeypatch):
     root, host, _ = case
     vcs = importlib.import_module('adapters.vcs.git')
     runtime = SimpleNamespace(dispatch=lambda *args, **kwargs: Result(0, {'agent_type': 'wuwei:steward'}))
-    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs,
+    monkeypatch.setattr(registry, 'load', lambda kind, config: {'host': ProcessHost(), 'code_host': host, 'vcs': vcs,
                                                                'runtime': runtime}[kind])
     monkeypatch.chdir(root)
     assert not (root / '.git').exists()
@@ -363,8 +364,20 @@ def test_close_check_table(case, change, expected):
         assert REF in reason and 'thread:T17' in reason and 'triage review threads' in reason
 
 
-def test_close_command_retries(case, monkeypatch, capsys):
+@pytest.mark.parametrize('inspection', ['measured', 'none', 'ps', 'lsof'])
+def test_close_command_retries(case, monkeypatch, capsys, inspection):
     root, host, _ = case
+    if inspection != 'measured':
+        from adapters.host import none
+        process_host = none if inspection == 'none' else SimpleNamespace(processes=lambda **kw:
+            Result(2, None, 'ps unavailable') if inspection == 'ps' else Result(0, {
+                41001: {'pid': 41001, 'ppid': 1, 'command': 'worker', 'error': 'lsof unavailable'}}))
+        load = registry.load
+        monkeypatch.setattr(registry, 'load', lambda kind, config:
+                            process_host if kind == 'host' else load(kind, config))
+        if inspection == 'none':
+            config = root / '.wuwei/config.toml'
+            config.write_text(config.read_text() + '\n[adapters]\nhost="none"\n')
     own(root)
     module('pr_actions').evaluate(root)
     monkeypatch.chdir(root)
@@ -374,6 +387,9 @@ def test_close_command_retries(case, monkeypatch, capsys):
     assert REF in capsys.readouterr().out
     host.results['pr'].data.update(state='closed', merged=True)
     assert main(['close']) == 0
+    if inspection != 'measured':
+        assert ('lsof unavailable' if inspection == 'lsof' else 'unmeasured') in capsys.readouterr().out
+    assert any(row['kind'] == 'day.closed' for row in watch.records(workspace.day_dir(root) / 'events.jsonl'))
 
 
 def test_close_outside_workspace(case, monkeypatch):

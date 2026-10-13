@@ -28,9 +28,9 @@ def session_start(payload):
     except ERRORS as exc:
         return 2, f'session unmeasured: {exc}'
     from wuwei.commands import next as next_command
-    code, lines = 0, []
+    code, lines, findings = 0, [], []
     try:
-        row = next_command.step(root)
+        row = next_command.step(root, findings=findings)
     except ERRORS as exc:
         code, row = 2, next_command._row('unmeasured', str(exc), 'wuwei doctor')
     from wuwei import specmode
@@ -57,20 +57,10 @@ def session_start(payload):
     except ERRORS as exc:
         code = 2
         lines.append(f'memory unmeasured: {exc}')
-    try:
-        for directory in watch.days(root):
-            if directory == workspace.day_dir(root):
-                continue
-            seats = state.read_state(directory=directory)['seats']
-            for name, seat in seats.items():
-                if seat['status'] == 'running':
-                    code = max(code, 1)
-                    lines.append(f'orphan process candidate: {name} from {directory.name}; '
-                                 'unclosed reservation, liveness unmeasured')
-            break
-    except ERRORS as exc:
-        code = 2
-        lines.append(f'session continuity unmeasured: {exc}')
+    code = max(code, 2 if any(row['kind'] == 'unmeasured' for row in findings) else int(bool(findings)))
+    if findings:
+        lines.append('Housekeeping:')
+        lines.extend(f"{row['why']}: {row['command']}" for row in findings)
     return code, '\n'.join(lines)
 
 

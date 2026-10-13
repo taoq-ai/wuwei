@@ -100,6 +100,9 @@ PROPOSE = 'run wuwei plan propose '
 def register(subparsers):
     parser = subparsers.add_parser('next', help='Print where the day stands and the one next action')
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--housekeeping', action='store_true', help='Reap owned leftovers and list current findings')
+    parser.add_argument('--background', action='store_true', help='Record and run a background wait')
+    parser.add_argument('argv', nargs='*')
     parser.set_defaults(func=run)
 
 
@@ -246,7 +249,7 @@ def refill(root, data):
                 brief=f'{days}/briefs/{name}.md')
 
 
-def step(root, ran=()):
+def step(root, ran=(), *, findings=None):
     """The first due action row; root None means no workspace here. Hook-safe: it only reads.
     ran: the (state, key) pairs whose command ran since the last recorded action.
     ponytail: one row, not a list; the first runnable item wins and its rows name the rest (#666)."""
@@ -261,6 +264,17 @@ def step(root, ran=()):
     directory = workspace.day_dir(root)
     days = f'.wuwei/days/{directory.name}'
     data = state.read_state(directory=directory)
+    from wuwei import watch
+    live_waits = []
+    process_code, processes = watch.housekeeping(root, data=data, live_waits=live_waits)
+    if findings is not None:
+        findings.extend(processes)
+    if any(row['kind'] == 'process' for row in processes):
+        return {'state': 'set', 'action': 'set', 'launches': [], 'decision': None, 'parks': [], 'rows': [],
+                'duties': [{'item': 'day', 'duty': 'housekeeping',
+                            'prompt': 'Reap owned waits; inspect the remaining cleanup listing.',
+                            'record': 'wuwei next --housekeeping'}],
+                'why': 'Housekeeping: ' + '; '.join(row['why'] for row in processes), 'then': THEN['set']}
     if not data.get('planner_session_id'):
         # Inline, not sessions.current(): hook.py imports this module on every event.
         session = os.environ.get('WUWEI_SESSION_ID', '').strip() or '<session id>'
@@ -325,6 +339,9 @@ def step(root, ran=()):
     from wuwei import derive
     launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
                  'command': brief.recovery(name, seats[name])} for name in stuck]
+    launches += [{'kind': 'stop', 'item': row.get('item', 'day'), 'why': row['why'],
+                  'command': row['command']} for row in processes if row['kind'] in ('seat', 'build')
+                 and row['command'] not in {launch['command'] for launch in launches}]
     launches += [{'kind': 'finding', 'item': ident, 'command': _finding_command(ident, finding, data, config),
                   'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
                  for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once
@@ -378,6 +395,9 @@ def step(root, ran=()):
     if held:
         return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
+    if live_waits:
+        return _row('wait', 'The recorded PR wait is still running; it reports when PRs change.',
+                    'wuwei status --line', 'wait', rows=found['rows'])
     if prs:  # #666: a PR waiting on people is a wait, never a row to run; #887: pr wait wakes it
         waits = ', '.join(row['item'] for row in prs if row['state'] == 'pr')
         why = [f'{waits}: the PR waits on people; wuwei pr wait exits when it changes.'] if waits else []
@@ -442,7 +462,7 @@ def _widget(argv):
     return found
 
 
-def resolve(row, root):
+def _resolve(row, root):
     """The row with its prompts: each launch of a set resolved through its resolver (the launch
     set, within CAP and the free host seats), a seat launch row through its brief, a card row
     with its widget list. Called by the next command only; it never loops."""
@@ -495,6 +515,19 @@ def resolve(row, root):
         widget = _widget(shlex.split(row['command'])[1:])
         return {**row, 'widget': widget}
     return row
+
+
+def resolve(row, root):
+    """Record only long waits; one-shot state writers finish without reaping."""
+    return recorded(_resolve(row, root))
+
+
+def recorded(action):
+    """Format wait ownership without resolving seats or writing state."""
+    command = action.get('command', '')
+    if action['action'] == 'background' and (command == 'wuwei pr wait' or command.startswith('sleep ')):
+        action = {**action, 'command': f'wuwei next --background -- {command}'}
+    return action
 
 
 def named(action):
@@ -571,7 +604,9 @@ def orientation(row, enforce, spec=None, session=None):
                 'planner session runs the day.'
     else:
         entry = LOOP
-    shown = text(row).replace('<session id>', session) if session else text(row)
+    shown = text(recorded(row))
+    if session:
+        shown = shown.replace('<session id>', session)
     return '\n'.join([
         HEADER,
         "WUWEI runs this workspace's coding day the way a careful engineering team works: the "
@@ -605,6 +640,18 @@ def _supervise(root, config, refreshed):
 
 
 def run(args):
+    if getattr(args, 'argv', None) and (getattr(args, 'housekeeping', False)
+                                       or not getattr(args, 'background', None)):
+        raise ValueError('next takes no positional arguments; run wuwei next --help')
+    if getattr(args, 'housekeeping', False):
+        from wuwei import watch
+        code, rows = watch.housekeeping(workspace.find_workspace(), reap=True)
+        for row in rows:
+            print(f"{row['kind']}: {row['why']}\n{row['command']}")
+        return code
+    if getattr(args, 'background', None):
+        from wuwei import watch
+        return watch.background(workspace.find_workspace(), args.argv)
     code = CLEAN
     try:
         try:
@@ -653,7 +700,11 @@ def run(args):
                     print(f'wuwei next: PR listing not refreshed ({failed}); those PR rows are unmeasured '
                           'until wuwei next reads them again after pr.poll_seconds', file=sys.stderr)
             _supervise(root, config, refreshed)
-        row = step(root, map(tuple, ran))
+        findings = []
+        row = step(root, map(tuple, ran), findings=findings)
+        for finding in findings:
+            if finding['kind'] not in ('process', 'seat', 'build'):
+                print(f"Housekeeping: {finding['why']}; review: {finding['command']}", file=sys.stderr)
         if root is not None:
             from wuwei import dispatch
             from wuwei.commands.build import PortExit

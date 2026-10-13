@@ -252,7 +252,12 @@ def oracle(day):
 def answer(root):
     """next as a list of (kind, item) offers: every launch, every due duty and the one owner
     decision of the set, or the day row."""
-    row = next_command.step(root)
+    from wuwei import registry
+    from fakes.host import Fake as ProcessHost
+    load = registry.load
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(registry, 'load', lambda kind, config: ProcessHost() if kind == 'host' else load(kind, config))
+        row = next_command.step(root)
     if row['state'] != 'set':
         return [(row['state'], row.get('item', ''))]
     return ([(launch['kind'], launch['item']) for launch in row['launches']]
