@@ -630,10 +630,10 @@ def wait_cap(tmp_path, monkeypatch, seconds):
 @pytest.mark.parametrize('step,until,left', [
     # #867: the failed call's own resource (a REST read spends core), never the emptier bucket.
     ({'stdout': limits(4990, 4800, NOW + 3600)}, NOW + 60, f' ({SECONDARY_PR}4990 of 5000 core calls left)'),
-    ({'stdout': limits(0, 4800, NOW + 900)}, NOW + 900, ' (0 of 5000 core calls left)'),
-    ({'exit': 1, 'stderr': 'gh: boom'}, NOW + 60, ''),
-    ({'stdout': 'not json'}, NOW + 60, ''),
-], ids=['secondary', 'primary', 'read-fails', 'not-json'])
+    ({'stdout': limits(0, 4800, NOW + 900)}, NOW + 60, f' (secondary limit on repos/acme/widget/pulls/7)'),
+    ({'exit': 1, 'stderr': 'gh: boom'}, NOW + 60, f' (secondary limit on repos/acme/widget/pulls/7)'),
+    ({'stdout': 'not json'}, NOW + 60, f' (secondary limit on repos/acme/widget/pulls/7)'),
+], ids=['secondary', 'zero-header', 'rate-limit-read-fails', 'rate-limit-not-json'])
 def test_rate_limit_is_named_not_redacted(stderr, step, until, left, tmp_path, monkeypatch):
     # #738: the reason names the limit and its reset, built from numbers only.
     wait_cap(tmp_path, monkeypatch, 0)
@@ -652,7 +652,7 @@ MERGED = next(c for c in CASES if c['operation'] == 'merged_prs')
 
 
 @pytest.mark.parametrize('core,graphql,until,left', [
-    (4000, 0, NOW + 900, ' (0 of 5000 graphql calls left)'),
+    (4000, 0, NOW + 60, ' (secondary limit on graphql)'),
     (0, 4989, NOW + 60, ' (secondary limit on graphql, 4989 of 5000 graphql calls left)'),
 ], ids=['graphql-empty', 'core-empty'])
 def test_graphql_rate_limit_names_graphql(core, graphql, until, left, tmp_path, monkeypatch):
@@ -696,21 +696,41 @@ def test_the_refused_replys_headers_decide(tmp_path, monkeypatch):
     assert calls == [['gh', *FIELD]]
 
 
+def test_actions_jobs_secondary_limit_does_not_hold_pulls(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    slept = install_clock(monkeypatch)
+    jobs = ['api', 'repos/acme/widget/actions/jobs/123', '--include', '--hostname', 'github.com']
+    pulls = ['api', 'repos/acme/widget/pulls/7', '--include', '--hostname', 'github.com']
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': jobs, 'exit': 1, 'stdout': headers('core', 0, NOW + 900, 'Retry-After: 30\r\n'),
+         'stderr': SECONDARY},
+        {'argv': pulls, 'stdout': 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 5000\r\n\r\n'
+                                    '{"number":7}'},
+    ])
+    with pytest.raises(ValueError) as error:
+        adapter()._run(['api', 'repos/acme/widget/actions/jobs/123'])
+    result = adapter()._run(['api', 'repos/acme/widget/pulls/7'])
+    assert result == {'number': 7}
+    assert str(error.value) == (f'GitHub rate limit until {hms(NOW + 30)} UTC '
+                                '(secondary limit on repos/acme/widget/actions/jobs/123, '
+                                'Retry-After 30 s); retry after it')
+    assert calls == [['gh', *jobs], ['gh', *pulls]] and slept == []
+
+
 @pytest.mark.parametrize('stderr,remaining,extra,expected', [
     (SECONDARY, 4990, '', f'GitHub rate limit until {hms(NOW + 60)} UTC (secondary limit on '
                           'repos/acme/widget/pulls/7, 4990 of 5000 core calls left); retry after it'),
     (PRIMARY, 4990, 'Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 30)} UTC (secondary limit on '
                                            'repos/acme/widget/pulls/7, Retry-After 30 s, 4990 of 5000 core calls '
                                            'left); retry after it'),
-    (SECONDARY, 0, 'Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 941)} UTC (0 of 5000 core calls '
-                                          'left); retry after it'),
+    (SECONDARY, 0, 'Retry-After: 30\r\n', f'GitHub rate limit until {hms(NOW + 30)} UTC (secondary '
+                                          'limit on repos/acme/widget/pulls/7, Retry-After 30 s); retry after it'),
     (PRIMARY, 4990, '', f'GitHub rate limit until {hms(NOW + 60)} UTC (GitHub refused repos/acme/widget/pulls/7 '
                         'with a rate limit while its headers say 4990 of 5000 core calls left); retry after it'),
-], ids=['secondary-wording', 'retry-after', 'empty-beats-secondary', 'primary-with-calls-left'])
+], ids=['secondary-wording', 'retry-after', 'secondary-beats-empty', 'primary-with-calls-left'])
 @pytest.mark.parametrize('operation', ['pr', 'probe'])
 def test_included_headers_decide(operation, stderr, remaining, extra, expected, tmp_path, monkeypatch):
-    # #899: secondary only on gh's secondary wording or Retry-After; remaining 0 is the bucket until
-    # its reset. A plain and a conditional read both hold the headers; rate_limit is never asked.
+    # A plain and a conditional read both hold the headers; rate_limit is never asked.
     wait_cap(tmp_path, monkeypatch, 0)
     install_clock(monkeypatch)
     argv = FIELD if operation == 'pr' else ['api', 'repos/acme/widget/pulls/7', '--include', '--hostname', 'github.com']
@@ -796,7 +816,7 @@ def test_wait_override_never_waits(tmp_path, monkeypatch):
     wait_cap(tmp_path, monkeypatch, 120)
     monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '0')
     clock = install_clock(monkeypatch)
-    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY},
                                                {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 30)}])
     result = adapter().pr('acme/widget#7')
     assert result.exit == 2 and f'until {hms(NOW + 30)} UTC' in result.reason
@@ -809,7 +829,7 @@ def test_rate_limit_within_the_cap_waits_and_retries(reset, slept, tmp_path, mon
     monkeypatch.chdir(tmp_path)
     clock = install_clock(monkeypatch)
     case = next(c for c in CASES if c['operation'] == 'pr')
-    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY},
                                                {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, reset)},
                                                *case['steps']])
     result = adapter().pr(*case['args'])
@@ -821,7 +841,7 @@ def test_rate_limit_beyond_the_cap_names_the_reset(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
     clock = install_clock(monkeypatch)
-    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY},
                                                {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 121)}])
     result = adapter().pr('acme/widget#7')
     assert result.exit == 2 and f'until {hms(NOW + 121)} UTC' in result.reason
@@ -832,9 +852,9 @@ def test_rate_limit_retries_once_only(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
     clock = install_clock(monkeypatch)
-    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': PRIMARY},
                                                {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 30)},
-                                               {'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': PR, 'exit': 1, 'stderr': PRIMARY},
                                                {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 90)}])
     result = adapter().pr('acme/widget#7')
     assert result.exit == 2 and f'until {hms(NOW + 90)} UTC' in result.reason
@@ -856,16 +876,17 @@ AUTH_FAILED = ('github.com\n  X Failed to log in to github.com account octocat (
                '  - Active account: true\n  - The token in keyring is invalid.\n')
 
 
-@pytest.mark.parametrize('stdout,reset,left', [
-    (limits(5000, 5000, NOW + 3600), NOW + 60, '(secondary limit on user, 5000 of 5000 core calls left)'),
-    (limits(0, 5000, NOW + 900), NOW + 900, '(0 of 5000 core calls left)'),
+@pytest.mark.parametrize('stderr,stdout,reset,left', [
+    (SECONDARY, limits(5000, 5000, NOW + 3600), NOW + 60,
+     '(secondary limit on user, 5000 of 5000 core calls left)'),
+    (PRIMARY, limits(0, 5000, NOW + 900), NOW + 900, '(0 of 5000 core calls left)'),
 ], ids=['secondary', 'primary'])
-def test_auth_status_rate_limit_is_not_missing(stdout, reset, left, tmp_path, monkeypatch):
+def test_auth_status_rate_limit_is_not_missing(stderr, stdout, reset, left, tmp_path, monkeypatch):
     # #784: gh auth status says "token invalid" on a 403 rate limit; the probe names the limit.
     wait_cap(tmp_path, monkeypatch, 0)
     slept = install_clock(monkeypatch)
     calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH, 'exit': 1, 'stdout': AUTH_FAILED},
-                                               {'argv': USER, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': USER, 'exit': 1, 'stderr': stderr},
                                                {'argv': RATE_LIMIT, 'stdout': stdout}])
     result = adapter().auth_status()
     assert result.exit == 2

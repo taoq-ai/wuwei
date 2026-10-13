@@ -571,7 +571,7 @@ def test_rate_limited_doctor_never_waits(ws, monkeypatch):
     # #867 acceptance: every GitHub call is rate limited with a reset 100 s out; doctor waits for
     # none, the gh and config check rows wait, and the override does not outlive the run.
     import subprocess
-    from fakes.replay import NOW, SECONDARY, hms, install_clock, limits
+    from fakes.replay import NOW, hms, install_clock, limits
     slept = install_clock(monkeypatch)
     real_run, real_load = subprocess.run, REAL_LOAD
     fakes = {'host': ws.host, 'vcs': ws.vcs}
@@ -584,7 +584,7 @@ def test_rate_limited_doctor_never_waits(ws, monkeypatch):
             return subprocess.CompletedProcess(argv, 0, limits(0, 4000, NOW + 100), '')
         if argv[1:3] == ['auth', 'status']:
             return subprocess.CompletedProcess(argv, 1, 'The token in keyring is invalid.', '')
-        return subprocess.CompletedProcess(argv, 1, '', SECONDARY)
+        return subprocess.CompletedProcess(argv, 1, '', 'gh: API rate limit exceeded. (HTTP 403)')
     monkeypatch.setattr(subprocess, 'run', run)
     monkeypatch.delenv('WUWEI_RATE_LIMIT_WAIT', raising=False)
     rows = doctor.diagnose()
@@ -1304,5 +1304,4 @@ def test_two_installs_named_with_the_fix(ws, tmp_path):
     assert row(rows, 'executable')['status'] == 'ok'
     ws.mp.setattr(integrity, 'PLUGIN', a)
     assert 'installs' not in names(doctor.diagnose(), 'install')
-
 
