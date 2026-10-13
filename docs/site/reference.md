@@ -29,7 +29,7 @@ These are the commands `bin/wuwei --help` lists. `bin/wuwei <command> --help` sh
 | `bin/wuwei dora` | Prints the DORA four keys with their sources. | [dora](#dora) |
 | `bin/wuwei agents` | Builds or checks the generated role agents. | [agents](#agents) |
 
-Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan set <item> governed_by=<path>`, `plan resume`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
+Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan set <item> governed_by=<path>`, `plan resume`, `plan done`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
 
 ## init
 
@@ -85,6 +85,7 @@ A PARK verdict parks the item with no card. `report` and `why` show the reason.
 | `add <item> [--goal G] [--size N] [--title T] [--ticket ID] [--from-finding] [--note TEXT]` | Admits an item after the gate. `--from-finding` admits a seat's finding. |
 | `carry <item> [--reason]` | Carries an open item to tomorrow. |
 | `park <item> [--reason]` | Parks an open item. |
+| `done <item> --reason <text>` | Marks an owner completed item done after your Yes on its Owner step card. It refuses while a seat is live. |
 | `resume <item>` | Resumes a parked item on your Yes on its card. |
 | `set <item> <key=value> [--reason]` | Records `spec=required\|skipped`, `ticket=<id>` or `owner_merge=true\|false`. `spec=skipped` needs `--reason`. |
 
@@ -141,7 +142,7 @@ For `rice`, use `reach` (positive), `impact` (0.25, 0.5, 1, 2, 3), `confidence` 
 | Gate role names | `arch`, `quality` and `security`, as `dispatch next` returns them, brief against the `sentinel-<role>` charter. A second opinion is `<role>@<runtime>`. |
 | Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
 | Phases | The first `build next` moves `planned` to `implement`. Passing checks move `implement` to `gate` and `fix` to `delta`. `dispatch next` moves `gate` to `fix` when it returns `fix`. `pr raise` moves `gate` or `delta` to `raised`. An observed merge moves an item to `merged`. |
-| Launch binding | A launch must match a logged brief at an unchanged head. With `guards.enforce` on, the hook refuses any other. |
+| Launch binding | An explicit reference must match a logged brief at an unchanged head. Without a reference, a WUWEI launch registers its prompt privately after the same role, capacity and protected-path checks. |
 | Scratch directory | Each brief names `<your scratchpad>/<item>/<role>/`, or `.wuwei/scratch/<item>/<role>/`. `seat brief` creates it empty. An observed merge removes the item's scratch. |
 | Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` and `steward`. |
 
@@ -150,6 +151,8 @@ For `rice`, use `reach` (positive), `impact` (0.25, 0.5, 1, 2, 3), `confidence` 
 A background seat ends with the harness's hand-back, and its SubagentStop carries no last message. The hook then reads the report from the seat's transcript. When it cannot, or when the result cannot be recorded, it stops the seat as `unmeasured` with a reason, keeps the report its transcript ends with in `reports/<name>.md`, a protected file whose sha256 the seat records, and names the recovery command. A seat never stays `running`. Malformed usage is recorded as unmeasured and never costs the result. A stop from an agent other than the bound one, or a late stop after a relaunch, leaves the seat as it is.
 
 `seat stop <name> --verdict <file>` records the report through the same SubagentStop guards; with no file it records the kept report, or the hand-back the transcript ends with, and `next` offers that before `--unmeasured`. A sentinel's file must pass the verdict lint first. `seat stop <name> --unmeasured "<reason>"` stops the seat so the day can move; a running builder's build parks with that reason. `seat stop` runs from the planner session. `next` and the doctor `stuck seats` row name it.
+
+A WUWEI Agent launched by the planner without a brief reference registers the full prompt privately and binds its traces and stop by the first prompt's digest, role and session. Only its name, description or an explicit `Item:` prompt line can identify a plan item. A builder naming any plan item, even among multiple matches, must use `build next` under the existing enforcement policy; an unbound builder retains normal report recovery and counts against CAP. A prompt-backed seat cannot deliver a gate verdict: use `dispatch next`. Two pending launches with the same prompt, role and session cannot name different items; add an `Item:` line to distinguish their prompts. Later continue messages cannot change its identity. Subagents cannot launch typed WUWEI ad-hoc seats, and planner is not an ad-hoc role. Untyped general-purpose and Explore launches still register from subagents.
 
 An Agent launched with a type outside the WUWEI seats is an ad-hoc seat once the day's `state.json` exists. The launch guard registers it as `adhoc-<n>` with its type and the sha256 of its prompt. A SubagentStop that matches no seat records `subagent.untraced`, which the doctor counts. `why adhoc` lists today's ad-hoc seats. An ad-hoc seat has no report, so a stale one stops with `--unmeasured` only.
 
@@ -424,3 +427,34 @@ Claude Code runs these two commands for you. You never do. `bin/wuwei --help` do
 - `SessionStart`: measures plugin integrity as a warning, and shows the orientation, goals and scoped session memory.
 
 `bin/wuwei status --line [--width N]` prints the status line, 100 columns by default. It shows the gate state, items per phase, running seats against the cap, open pages, and `observe` when `guards.enforce` is false. On a read error it prints `WUWEI ? unmeasured` and exits 2. `status` has no other mode; `next` is the board.
+
+## Housekeeping
+
+`wuwei doctor --section processes` reads local processes and cached day/PR records.
+It reports obsolete recorded waits, duplicate PR waits, inactive seats, workspace
+orphans and finished worktrees without contacting GitHub. Active worktrees and the
+current process's ancestors are excluded from orphan findings.
+
+`wuwei next --json` records only PR waits and sleep timers. Other commands run
+normally. Each wait records its session and day. The oldest live wait for the
+current session and day is kept; waits from other sessions or prior days are obsolete.
+While the current wait lives, next offers a passive status row. SessionStart prints the same
+`wuwei next --background -- wuwei pr wait` wrapper when a new wait is needed.
+`wuwei next --housekeeping` reaps obsolete recorded waits only when their PID,
+command and start identity match. It sends TERM, waits one second, then rechecks
+that PID before KILL. A failed cleanup becomes a finding rather than another duty.
+SessionStart and next skip orphan cwd reads; doctor processes and close perform
+them. Close cleans up before starting the retro. Unmeasured inspection is printed
+and does not prevent close; current seat/build findings and reaps that fail during
+that close attempt still stop it. Housekeeping refuses extra positional arguments,
+including when combined with `--background`.
+
+Unrecorded orphans and finished worktrees appear only in doctor processes and close,
+in a plain listing with exact cleanup commands for the owner. Orphans must have a
+cwd inside the workspace. Outside recorded worktrees, each process identity is listed
+at most once per day; these explicit listings record a daily receipt. WUWEI neither
+executes those commands nor asks for approval. Current inactive seats use `wuwei seat stop <name> --verdict`; prior-day
+seats are listed only in doctor processes and close. With host `none`, next and
+SessionStart skip the optional process check without logging an adapter event.
+Explicit inspection still reports unmeasured. Current Codex-only builds use their
+existing resume command. The configured `host.reservation_timeout_seconds` sets the inactivity threshold.

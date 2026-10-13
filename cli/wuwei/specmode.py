@@ -47,7 +47,7 @@ STEPS = {
 IMPLEMENT = ('implement', 'executing-plans', 'apply')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # #664: the item's governing document: governed_by on the plan item, else this line in spec.md.
-GOVERNING = re.compile(r'^Governing:[ \t]*(\S[^\n]*?)[ \t]*$', re.M)
+GOVERNING = re.compile(r'^(?:- )?(?:Governing:|\*\*Governing(?:\*\*:|:\*\*))[ \t]*(\S[^\n]*?)[ \t]*$', re.M)
 VERDICTS = ('agrees', 'conflicts', 'not covered')
 
 
@@ -71,7 +71,7 @@ def _some(paths, glob, tree):
 
 def _clarified(paths, glob, tree):
     return _one(paths, glob, tree) or (
-        None if re.search(r'^## Clarifications\s*$', _read(paths[0]), re.M)
+        None if re.search(r'^## Clarifications(?:[ \t].*)?$', _read(paths[0]), re.M)
         else f'{_names(paths, tree)} has no ## Clarifications section')
 
 
@@ -291,8 +291,8 @@ def named(root, config, item, row, tree, text):
     effective = mode(config)
     if effective == 'off' or _skipped(root, config, item, row, False):
         return 0, ''
-    from wuwei.verdict import retro_fields  # #902: a Blocked: stop is the owner question (_common.md)
-    if retro_fields(text)[0].get('Blocked', 'none').casefold() != 'none':
+    from wuwei.verdict import blocked_none, retro_fields  # #902: a Blocked: stop is the owner question
+    if not blocked_none(retro_fields(text)[0].get('Blocked', 'none')):
         return 0, ''
     engine = config['spec']['engine']
     location, _ = _location(tree, engine, item)

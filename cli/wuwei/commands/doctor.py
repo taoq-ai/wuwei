@@ -16,14 +16,14 @@ from wuwei import integrity, registry, workspace
 
 SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
             'gates': 'Gates and adapters', 'pr-flow': 'PR flow', 'day': 'Day and sessions',
-            'guards': 'Guards'}
+            'guards': 'Guards', 'processes': 'Processes'}
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
         'host': 'docs/site/index.md#start-here',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
         'gates': 'docs/site/security.md#ziran-integration',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
         'day': 'docs/site/reference.md#stuck-seats',
-        'guards': 'docs/site/reference.md#doctor'}
+        'guards': 'docs/site/reference.md#doctor', 'processes': 'docs/site/reference.md#housekeeping'}
 CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2, 'waiting': 2}
 OUTSIDE = "python3 - <<'EOF'\nprint('gh pr list')\nEOF"  # #323: a heredoc that mentions gh
 REINSTALL = 'reinstall the signed release'
@@ -682,6 +682,10 @@ def _diagnose(section):
             config = workspace.load_config(root, warnings=found)
         except workspace.ConfigError as exc:
             error = str(exc)
+    if section == 'processes':
+        if root is None or config is None:
+            return [_row('processes', 'housekeeping', 'unmeasured', error or 'no workspace', 'wuwei init')]
+        return _processes(root)
     if section == 'pr-flow':
         return pr_flow(config) if config else [
             _row('pr-flow', 'config', 'unmeasured', error or ('no workspace' if root is None else UNLOADED),
@@ -699,6 +703,14 @@ def _diagnose(section):
             if config['adapters']['tracker'] != 'none':
                 rows.append(_tracker_labels(root, config))
     return rows + _guards(root, probes)
+
+
+def _processes(root):
+    from wuwei import watch
+    code, findings = watch.housekeeping(root, orphans=True)
+    return [_row('processes', row['kind'], 'unmeasured' if row['kind'] == 'unmeasured' else 'warn',
+                 row['why'], row['command']) for row in findings] or [
+                     _row('processes', 'housekeeping', 'ok', 'no leftovers')]
 
 
 def _dry(function, args):
@@ -844,7 +856,7 @@ def register(subparsers):
     parser.add_argument('--widget', action='store_true',
                         help='with --fix: print the batch as its Owner step card for AskUserQuestion; apply nothing')
     parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
-    parser.add_argument('--section', choices=['pr-flow'], help='print one section only')
+    parser.add_argument('--section', choices=['pr-flow', 'processes'], help='print one section only')
     parser.set_defaults(func=run)
 
 
@@ -852,7 +864,7 @@ def run(args, confirm=None):
     if (args.widget or args.apply) and not args.fix or args.widget and args.apply:
         print('wuwei doctor: --widget and --apply each need --fix, not both; use bin/wuwei doctor --fix --widget or bin/wuwei doctor --fix --apply <labels>', file=sys.stderr)
         return 2
-    failed = [] if confirm is not None else _hand_over(args)
+    failed = [] if confirm is not None or args.section == 'processes' else _hand_over(args)
     with redirect_stderr(io.StringIO()):  # Adapters print their reasons; the rows carry them.
         rows = diagnose(args.section) + failed
     if args.section == 'pr-flow':

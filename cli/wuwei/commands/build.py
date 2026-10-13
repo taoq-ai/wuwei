@@ -225,6 +225,8 @@ def step(item, root, *paths):
     decides."""
     from wuwei import dispatch
     data = state.read_state(root)
+    if data['items'].get(item, {}).get('status') == 'done':
+        return dispatch.next_step(item, root)
     record = data.get('builds', {}).get(item)
     phase = (data['items'].get(item) or {}).get('phase')
     seat = data.get('seats', {}).get((record or {}).get('seat'), {})
@@ -261,6 +263,9 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     data = state.read_state(root)
     if item not in data['items']:
         raise PortExit(2, f'unknown item {item}')
+    if data['items'][item]['status'] == 'done':
+        from wuwei import dispatch
+        return dispatch.next_step(item, root)
     record = data.get('builds', {}).get(item)
     if _recover_committed(item, record, root):
         return state.read_state(root)['builds'][item]['action']
@@ -795,7 +800,7 @@ def _recover_committed(item, record, root):
         return False
     if seat['status'] == 'unmeasured' and record['seat'] not in brief.stuck(data):
         return False
-    if dispatch._blocked(root, data, item):
+    if dispatch._blocked(root, data, item)[0]:
         return False
     _busy(item, record)
     vcs = registry.load('vcs', workspace.load_config(root))
@@ -1022,7 +1027,7 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                                f'bin/wuwei plan add {item} --goal <G-n>, then rerun')
     if row['phase'] in ('parked', 'escalated'):
         raise state.StateError(f'{item} is {row["phase"]}; resume it with bin/wuwei plan resume {item}, then rerun')
-    if dispatch._blocked(root, data, item):
+    if dispatch._blocked(root, data, item)[0]:
         raise state.StateError(f'builder has an unresolved Blocked line; run bin/wuwei build next {item}')
     ref = pr and merge.reference(pr, root, config, repo=config['repos'][0]['name'] if len(config['repos']) == 1 else None)
     other = next((name for name in (repo, ref and ref.split('#')[0]) if name and row.get('repo') not in (None, name)), None)

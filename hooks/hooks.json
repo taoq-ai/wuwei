@@ -55,6 +55,20 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
+            "args": [
+              "hook",
+              "Stop"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

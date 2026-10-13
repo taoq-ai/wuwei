@@ -25,13 +25,19 @@ CLOUD_VERBS = {'deploy', 'deployment', 'deployments', 'create-deployment',
                'update-function-code', 'update-service', 'up', 'start-deployment'}
 PROGRAMS = ('git', 'gh', *VERBS, 'vercel', 'vc', 'gcloud', 'aws', 'az')
 # Target-dependent actions stay with the hook.
+VERCEL_DENY = [f'Bash({binary}{suffix})'
+               for binary in ('vercel', 'vc')
+               for suffix in ('', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*',
+                              ' rollback*', ' redeploy*', ' alias set*', ' alias rm*',
+                              ' domains add*', ' env add*', ' env rm*', ' env pull*',
+                              ' pull*')]
 PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
-    'helm upgrade*', 'pulumi up*', 'vercel*', 'vc *', 'netlify deploy*',
+    'helm upgrade*', 'pulumi up*', 'netlify deploy*',
     'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
     'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
     'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
-    'gh pr merge * --admin*')]
+    'gh pr merge * --admin*')] + VERCEL_DENY
 SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 # Design 4.5: wrappers that run the rest of the line, and their options that take a value.
 WRAPPERS = {'command': (), 'exec': ('-a',), 'nohup': (), 'nice': ('-n', '--adjustment'),
@@ -46,7 +52,7 @@ DEPTH = 4
 GH_VALUED = ('-t', '--title', '--subject', '-b', '--body', '-F', '--body-file', '-f', '--field',
              '--raw-field', '-X', '--method', '--input', '-H', '--header', '--head', '--hostname',
              '-q', '--jq', '--template', '--cache', '--ref', '-r', '--reviewer', '-B', '--base',
-             '--assignee', '-l', '--label', '-m', '--milestone', '-p', '--project', '-T',
+             '--assignee', '-l', '--label', '-m', '--milestone', '-p', '--project', '--preview', '-T',
              '--match-head-commit', '-A', '--author-email', '--recover', '-R', '--repo')
 PUSH_VALUED = ('--repo', '-o', '--push-option', '--receive-pack', '--exec')
 # Shell words that start a command list or group; the command after them runs (review F2;
@@ -310,7 +316,9 @@ def _recorded(root, config, *, path=None, repo=None, branch=None):
     in repository repo; None when no recorded item matches."""
     from wuwei import merge, registry, state
     vcs = registry.load('vcs', config)
-    for item, row in sorted(state.read_state(root)['items'].items()):
+    data = state.read_state(root)
+    for item, row in sorted(data['items'].items(),
+                            key=lambda pair: (pair[0] not in data['approved_items'], pair[0])):
         if not isinstance(row.get('worktree'), str) or not row['worktree']:
             continue
         tree = (root / row['worktree']).resolve()
@@ -549,12 +557,21 @@ def api(args, config):
     from urllib.parse import unquote, urlsplit
     words, options = _scan(args, GH_VALUED)
     targets = [word for word in words if not word.startswith('-')]
+    paths = [unquote(urlsplit(target).path).strip('/').split('/') for target in targets]
     if len(targets) != 1:
+        if any('deployments' in parts or 'environments' in parts for parts in paths):
+            return deny('deployment/environment API')
         return 0, ''
-    parts = unquote(urlsplit(targets[0]).path).strip('/').split('/')
+    parts = paths[0]
     repo = '/'.join(parts[1:3]) if parts[0] == 'repos' and len(parts) > 2 else None
     if 'deployments' in parts or 'environments' in parts:
-        return deny('deployment/environment API', repo)
+        # Unparsed short clusters can hide a method or field, for example -iXDELETE.
+        if (any(value.upper() != 'GET' for key in ('-X', '--method') for value in options.get(key, []))
+                or any('override' in value.lower() for key in ('-H', '--header') for value in options.get(key, []))
+                or any(word.startswith('-') and not word.startswith('--') and len(word) > 2 for word in words)
+                or any(key in options for key in ('-f', '-F', '--field', '--raw-field', '--input'))):
+            return deny('deployment/environment API', repo)
+        return 0, ''
     method = _last(options, '-X', '--method')
     writes = method.upper() not in ('GET', 'HEAD') if method else any(
         key in options for key in ('-f', '-F', '--field', '--raw-field', '--input'))
@@ -613,7 +630,7 @@ def command_result(argv, config):
             if 'type=registry' in output.split(','):
                 return deny(f'{program} build registry output')
     if program in ('vercel', 'vc') and (not args or args[0] not in (
-            'ls', 'list', 'inspect', 'logs', 'whoami', 'help', '--help', '--version')):
+            'ls', 'list', 'inspect', 'logs', 'whoami', 'help', '--help', '--version')) and args[:2] != ['env', 'ls']:
         return deny(f'{program} deployment')
     if program in ('gcloud', 'aws', 'az') and CLOUD_VERBS.intersection(args):
         return deny(f'{program} deployment')
@@ -651,7 +668,8 @@ def check_deploy(payload):
                 from wuwei.commands import hook
                 text = ' '.join(hook.redacted_target(payload, root).split())
                 if reason := sessions.needs_owner(root, text, f'Run it from the session: {rule[0]}, '
-                                                  'owner-only; it cannot be undone.'):
+                                                  'owner-only; it cannot be undone. '
+                                                  'Only this exact command text is approved; run it alone.'):
                     return 1, f'publish: {reason}'
         return 0, ''
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:

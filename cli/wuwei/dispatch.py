@@ -635,7 +635,7 @@ def _resumed(root, item):
 
 
 def _blocked(root, data, item):
-    """(the stopped builder's Blocked: line, its agent id) when the line is not none, else None."""
+    """Return (blocked line and agent, note after none) from the stopped builder's retro."""
     from wuwei import watch
     ids = {seat.get('agent_id') for seat in brief.seats(data).values()
            if seat['item'] == item and seat['role'] == 'builder'
@@ -645,14 +645,17 @@ def _blocked(root, data, item):
     found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])
              for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
              if row['kind'] in ('retro.captured', 'retro.gap') and row['payload'].get('agent_id') in ids]
-    return found[-1] if found and found[-1][0] and found[-1][0].casefold() != 'none' else None
+    if not found or not found[-1][0]:
+        return None, ''
+    line, agent = found[-1]
+    return (None, line[4:].lstrip('.,; ').strip()) if verdict.blocked_none(line) else ((line, agent), '')
 
 
 def _blocked_card(root, data, item, build=False):
     """(reason, the owner's answer, the card, the line) when a stopped builder's Blocked: line
     asks the owner, else None. Pure: next derives it, dispatch next acts on it. build (#902): the
     build at its checks asks first, on the card of build next."""
-    stopped = _blocked(root, data, item)
+    stopped, _ = _blocked(root, data, item)
     if not stopped:
         return None
     import hashlib
@@ -666,8 +669,9 @@ def _blocked_card(root, data, item, build=False):
     answer = sessions.owner_answer(root, command, token)
     card = sessions.owner_card(command, detail, token, PARKS)
     reason = f'builder blocked: {line}'
-    if answer is None and (mismatch := sessions.owner_mismatch(root, card)):
-        reason += '; ' + mismatch.rstrip('; ')
+    if answer is None:
+        mismatch = sessions.owner_mismatch(root, card)
+        reason += '; ' + (mismatch.rstrip('; ') if mismatch else 'ask this card verbatim')
     return reason, answer, card, line
 
 
@@ -700,6 +704,8 @@ def decide(root, data, config, item):
         if answer != 'Yes':
             return {'step': 'ask', 'why': reason, 'card': card}
         note = f"\nOwner decision: the owner said Yes to the builder's Blocked: line: {line}"
+    if phase == 'gate' and (builder_note := _blocked(root, data, item)[1]):
+        note = f'\nBuilder note on Blocked: {builder_note}'
     gates = gate_set(row)
     current = derive.head(Path(root) / row['worktree']) if row.get('worktree') else None
     if phase == 'delta' and (late := [role for role in gates if _record(data, item, role, 'initial') is None]):
@@ -763,8 +769,8 @@ def next_step(item, root=None):
     data = state.read_state(root)
     row = _item(data, item)
     phase = row['phase']
-    if row['status'] == 'done' and row.get('kind') in ('measure', 'review'):
-        return {'action': 'done', 'reason': _done_reason(data, item, 'gate completed')}
+    if row['status'] == 'done':
+        return {'action': 'done', 'reason': row.get('reason') or _done_reason(data, item, 'gate completed')}
     if phase in ('parked', 'escalated'):  # only the owner resumes it, on plan resume's card
         return {'action': 'escalate', 'reason': (row.get('disposition') or {}).get('reason') or f'{item} is {phase}',
                 'command': 'wuwei plan resume ' + shlex.quote(item)}
@@ -849,6 +855,8 @@ def _act(root, item, found, data=None):
         action = {'action': 'gates', 'roles': found['roles'],
                   'seats': _seats(root, data, item, found['roles'], found['round'], commands,
                                   found['note'], found['stale'], found['current'])}
+        if found['note']:
+            action['note'] = found['note'].strip()
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         row = data['items'][item]
@@ -1060,7 +1068,10 @@ def launch_set(root=None):
                 windows_left[runtime] -= 1
         entries.append({'item': name, 'goal': goal(name), **value})
 
-    offered = [launch for launch in derive.offers(data, root, config)['launches']  # seat steps only
+    found = derive.offers(data, root, config)
+    names = [name for name in names if name not in {row['item'] for row in found['rows']
+             if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}]
+    offered = [launch for launch in found['launches']  # seat steps only
                if derive.seated(data, launch)]
     for launch in sorted((launch for launch in offered if launch['command'] != 'wuwei dispatch next --all'),
                          key=lambda launch: launch['command'].startswith('wuwei build next ')):
@@ -1079,7 +1090,8 @@ def launch_set(root=None):
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
     def partial(name):  # #910: an initial gate batch runs while the rest of its set is not launched
-        gates = [seat for seat in data['seats'].values() if seat['item'] == name and seat['role'].startswith('sentinel-')]
+        gates = [seat for seat in data['seats'].values() if seat['item'] == name
+                 and seat['role'].startswith('sentinel-') and 'prompt_sha256' not in seat]
         try:
             return items[name]['phase'] == 'gate' and len(gates) < len(gate_set(items[name]))
         except ValueError:  # a damaged gate record refuses the item at its own step, never the set
@@ -1087,7 +1099,8 @@ def launch_set(root=None):
     gate_waits = 'held' not in limits and (any(  # #898: a memory hold holds the builds itself
         row['action'] == 'wait' or row.get('deferred') for row in entries  # #910: or launches part of its set
         if items[row['item']]['phase'] in ('gate', 'delta')) or any(
-        partial(seat['item']) for seat in running if seat['role'].startswith('sentinel-')))
+        partial(seat['item']) for seat in running
+        if seat['role'].startswith('sentinel-') and 'prompt_sha256' not in seat))
     starts, skip = {}, []
     for name in first + rest:
         if name in briefed:
@@ -1101,6 +1114,22 @@ def launch_set(root=None):
         if starts[name][0].startswith('wuwei plan park '):  # #603: a park takes no seat, whatever the seats and CAP
             skip.append(name)
             entries.append({'item': name, 'goal': goal(name), 'action': 'park', 'commands': starts[name]})
+    due = []
+    if not gate_waits and 'held' not in limits:
+        candidates = [name for name in first + rest if name not in briefed and name not in skip]
+        candidates = candidates[:max(0, min(free, cap - building))]
+        repos = {repo['name'] for name in candidates
+                 if (repo := derive.item_repo(root, config, name, items[name]))}
+        due = derive.stale(root, config, data, repos) if repos else []
+        if due:
+            failed = derive.refresh(root, config, due)
+            if failed:
+                print(f'wuwei dispatch: PR listing not refreshed ({failed}); run wuwei next after '
+                      'pr.poll_seconds; planned starts continue with their PR check unmeasured', file=sys.stderr)
+            held = {row['item'] for row in derive.offers(data, root, config)['rows']
+                    if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}
+            first = [name for name in first if name not in held]
+            rest = [name for name in rest if name not in held]
     index = 0
     for name in (name for name in first + rest if name not in skip):
         runtime = route(data['seat_policy'].get('builder', {}), config['adapters']['runtime'], windows_left)
@@ -1125,6 +1154,7 @@ def launch_set(root=None):
     for entry in entries:
         entry.setdefault('kind', 'build')
     return {'action': 'set', 'cap': cap, 'bound': bound,
+            'listing_refreshed': bool(due),
             'capacity': limits['text'] + ''.join(f"; {row['text']}" for row in rooms.values() if row['text']),
             'building': building, 'free_seats': start,
             'entries': entries}
@@ -1134,9 +1164,13 @@ def candidate(root, name):
     """Today's proposal row for the item, else its #648 main_broken row (a fix item), or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
-    candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
+    data = state.read_state(root)
+    candidates = [row for refill in data.get('refills', [])
+                  for row in refill['candidates'] if row['id'] in refill['admitted']]
+    candidates += (json.loads(path.read_text(encoding='utf-8')).get('candidates', [])
+                   if path.is_file() and not path.is_symlink() else [])
     return (next((row for row in candidates if row.get('id') == name), None)
-            or state.read_state(root).get('main_broken', {}).get(name))
+            or data.get('main_broken', {}).get(name))
 
 
 def review_action(root, data, item):
@@ -1479,6 +1513,8 @@ def receive(item, role, name, round_name='initial', root=None):
     seat = brief.seats(data).get(name)
     if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
         raise Refused('matching sentinel must stand down before receive; wait for the seat to stop, then rerun the same bin/wuwei dispatch receive')
+    if 'prompt_sha256' in seat:
+        raise Refused(f'an ad-hoc seat cannot deliver a gate verdict; run bin/wuwei dispatch next {item}')
     runtime = role.partition('@')[2] or None
     if seat.get('runtime') != runtime or (runtime and not name.endswith('-' + runtime)):
         raise Refused(f'gate role {role} needs its own runtime seat; start it with bin/wuwei dispatch opinion {item}')

@@ -18,6 +18,7 @@ def register(subparsers):
                          help='Hand the planner role over from the registered session')
     propose = actions.add_parser('propose')
     propose.add_argument('input', type=Path, help='Lead discovery JSON')
+    propose.add_argument('--refill', type=int, help='Number of the exhausted-queue lead pass')
     gate = actions.add_parser('gate', help="Print the morning gate question as an AskUserQuestion widget; writes nothing")
     gate.add_argument('--import-yesterday', action='store_true',
                       help='The plan proposes carrying over unfinished prior-day items')
@@ -51,6 +52,9 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; recorded on the item on one line')
+    done = actions.add_parser('done', help='Record work completed by the owner on an Owner step card')
+    done.add_argument('item')
+    done.add_argument('--reason', required=True, help='What the owner completed')
     actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
                        ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
@@ -96,7 +100,7 @@ def run(args):
             plan.session(args.session_id, take_over=args.take_over)
         elif args.action == 'propose':
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
-            print(plan.propose(json.loads(source)))
+            print(plan.propose(json.loads(source), refill=getattr(args, 'refill', None)))
         elif args.action == 'gate':
             root = workspace.find_workspace()
             print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday)], indent=2))
@@ -130,6 +134,8 @@ def run(args):
             print(f'{outcome} {args.item}')
         elif args.action == 'resume':
             print(plan.resume(args.item))
+        elif args.action == 'done':
+            print(plan.done(args.item, args.reason))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
                          import_yesterday=args.import_yesterday, note=args.note)

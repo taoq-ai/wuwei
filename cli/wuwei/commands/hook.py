@@ -37,7 +37,7 @@ def run(args):
         payload = as_bash(payload)
     except BaseException as exc:
         return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}',
-                      malformed=True)
+                      malformed=True, payload=payload if isinstance(payload, dict) else None)
     try:
         from wuwei import env, workspace
         cwd = Path(payload['cwd']).resolve()
@@ -71,7 +71,7 @@ def run(args):
             return config_failure(args.event, payload, str(exc))
         reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'
                   else f'wuwei hook: {type(exc).__name__}: {exc}')
-        return refuse(args.event, reason, malformed=True)
+        return refuse(args.event, reason, malformed=True, payload=payload)
     selected = [guard for guard in guards if guard.event == args.event]
 
     def outcome(guard):
@@ -114,6 +114,12 @@ def run(args):
             refusals.append((guard.check, message, code))
         elif message:
             context.append(message)
+    if args.event == 'Stop':
+        if any(code == UNRUN for _, _, code in refusals):
+            return stop_error(payload, root)
+        if refusals:
+            print(json.dumps({'decision': 'block', 'reason': refusals[0][1]}))
+        return CLEAN
     # #362: the most specific refusal first: a finding before a could-not-run.
     if args.event != 'SessionStart':
         refusals.sort(key=lambda row: row[2])
@@ -366,7 +372,22 @@ def as_bash(payload):
             'cwd': str(cwd)}
 
 
+def stop_error(payload=None, root=None):
+    """Every Stop error fails open; diagnostics must not delay a session ending."""
+    print('wuwei hook: Stop unmeasured; run bin/wuwei doctor', file=sys.stderr)
+    try:
+        from wuwei import state, workspace
+        root = root or workspace.find_workspace((payload or {}).get('cwd'))
+        state.append_event('hook.stop_error', {'session': (payload or {}).get('session_id'),
+                                              'reason': 'Stop unmeasured'}, root, timeout=0.05)
+    except BaseException:
+        pass  # stderr remains available even when the event log cannot be written.
+    return CLEAN
+
+
 def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=(), payload=None):
+    if event == 'Stop':
+        return stop_error(payload or {'cwd': cwd})
     print(reason, file=sys.stderr)
     if event == 'SessionStart':
         print(json.dumps({'hookSpecificOutput': {

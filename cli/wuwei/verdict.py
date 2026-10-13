@@ -7,6 +7,13 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 RETRO_KEYS = ('Blocked', 'Gap', 'Change')
+
+
+def blocked_none(value):
+    """True when Blocked starts with none and ends there or continues as a note."""
+    return bool(re.match(r'none(?:$|[.,;])', value.strip().casefold()))
+
+
 VERDICTS = ('PASS', 'FIX', 'PARK', 'ESCALATE')
 VERDICT_ROW = r'^(?:## |- )?Verdict:? *(' + '|'.join(VERDICTS) + r')\b'
 CITATION = r'[A-Za-z0-9_./-]+\.[a-z]+:[0-9]+|\bL[0-9]+\b'

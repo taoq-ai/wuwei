@@ -117,6 +117,9 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
+    reaped = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'process.reaped']
+    if reaped:
+        lines += ['', '## Housekeeping', *(f"- pid {row['pid']} ({row['purpose']}): {row['reason']}" for row in reaped)]
     lines += ['', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
@@ -125,7 +128,13 @@ def build(root=None):
         lines.append('none')
     lines += ['', '## Done']
     for name, item in sorted(items.items()):
-        if item['status'] != 'done' or item['phase'] == 'merged' or item.get('kind') not in ('review', 'measure'):
+        if item['status'] != 'done' or item['phase'] == 'merged':
+            continue
+        if item.get('by') == 'owner':
+            detail = f"{item['reason']} (owner)"
+            detail += f"; branch {item['branch']}" if item.get('branch') else ''
+            detail += f"; worktree {item['worktree']}" if item.get('worktree') else ''
+            lines.append(f'- {name}: {detail}')
             continue
         verdicts = [f"{row['role']} {row['verdict']} ({row['file']})"
                     for key, row in data['gate_verdicts'].items()
@@ -133,6 +142,14 @@ def build(root=None):
         lines.append(f'- {name}: ' + ('; '.join(verdicts) or 'verdict unmeasured'))
     if lines[-1] == '## Done':
         lines.append('none')
+    no_work = {goal: refill['goals'][goal]['outcome'] for refill in data.get('refills', [])[-1:]
+               for goal in refill['no_work']}
+    if no_work:
+        lines += ['', '## Goals with no work found',
+                  *(f'- {goal}: {outcome}' for goal, outcome in sorted(no_work.items()))]
+    from wuwei.commands.next import refill_limit
+    if reason := refill_limit(root, data):
+        lines += ['', '## Refill stopped', reason]
     lines += ['', '## Cycle time', *cycle_lines(root)]
     lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']
@@ -141,7 +158,8 @@ def build(root=None):
     if lines[-1] == '## Open at close':
         lines.append('none')
     lines += ['', '## Parked']
-    parked = [(name, item) for name, item in sorted(items.items()) if item['phase'] == 'parked']
+    parked = [(name, item) for name, item in sorted(items.items())
+              if item['phase'] == 'parked' and item['status'] != 'done']
     lines.extend(f"- {name}: {(item.get('disposition') or {}).get('reason') or item['phase']}"
                  for name, item in parked)
     if not parked:

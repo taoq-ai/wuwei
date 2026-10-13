@@ -269,15 +269,39 @@ def _owner_prs(config, root, candidates):
     return rows, f'measured: {len(rows)} open PR{"" if len(rows) == 1 else "s"} by the owner'
 
 
-def propose(data, root=None):
+def propose(data, root=None, *, refill=None):
     root = workspace.find_workspace() if root is None else Path(root)
     # P4: refused before discovery, so a slow scanner is never paid for a refusal.
-    if state.day_started(workspace.day_dir(root)) and state.read_state(root).get('gate_approved'):
+    day = state.read_state(root)
+    if refill is not None:
+        if (type(refill) is not int or refill < 1 or not day['gate_approved']
+                or day.get('close_requested')
+                or any(kind == 'day.closed' for kind, _ in sessions._rows(root))):
+            raise state.StateError('refill requires an approved, unclosed day and a positive number; run bin/wuwei next')
+        history = day.get('refills', [])
+        if refill > len(history) + 1:
+            raise state.StateError('refill number is not the next lead pass; run bin/wuwei next')
+        if refill <= len(history) and not history[refill - 1]['pending']:
+            return workspace.day_dir(root) / f'lead-{refill}.json'
+        from wuwei.commands import next as next_command
+        if reason := next_command.refill_limit(root, day):
+            raise state.StateError(reason + ' Run bin/wuwei next')
+        if refill == len(history) + 1:
+            if any(row['pending'] for row in history):
+                raise state.StateError('finish the pending refill before starting another; run bin/wuwei next')
+            if next_command.step(root)['state'] not in ('refill', 'propose'):
+                raise state.StateError('refill requires an exhausted queue; run bin/wuwei next')
+    elif state.day_started(workspace.day_dir(root)) and day.get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei next for the approved plan')
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
-    recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-    goals_text, provisional = goals.proposed(recorded, data.get('goals') if isinstance(data, dict) else None)
+    if refill is not None:
+        goals_text, provisional = (workspace.day_dir(root) / 'goals.md').read_text(encoding='utf-8'), False
+        data = {**data, 'goals': list(goals.parse(goals_text)),
+                'seat_policy': day['seat_policy'], 'envelope': day['envelope']}
+    else:
+        recorded = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+        goals_text, provisional = goals.proposed(recorded, data.get('goals') if isinstance(data, dict) else None)
     goal_list = goals.parse(goals_text)
     if provisional:  # #848: blocks over recorded goals replace them; name the ids they replace
         data = {**data, 'goals': list(goal_list),
@@ -316,6 +340,9 @@ def propose(data, root=None):
     for item in data['candidates']:  # #864: refused here, never at the brief after the gate
         if 'governed_by' in item:
             governed(item['id'], item['governed_by'], checkout(root, config['repos'], item.get('repo')))
+    if refill is not None:
+        return _refill(data, root, refill, {key: value for key, value in goal_list.items()
+                                          if key in day['goals']}, config)
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
@@ -412,6 +439,94 @@ def _approval(scope, note):
     return '; '.join(part for part in (' '.join(scope.split()), note and f'owner: "{note}"') if part)
 
 
+def _admit(current, candidates, items, framework, found=(), note=None):
+    """The morning gate and refill share the candidate-to-item admission (#949)."""
+    for name in items:
+        row = candidates[name]
+        if record := proposed(row, found):
+            current.setdefault('tickets', {}).setdefault(name, record)
+        current['items'][name] = {
+            'goal': row.get('goal', 'unplanned'), 'track': row['track'], 'flags': row['flags'],
+            'budget_size': row['score']['job_size' if framework == 'wsjf' else 'effort'],
+            **{key: row[key] for key in ('kind', 'tier', 'governed_by', 'repo') if key in row},
+            **({key: row[key] for key in ('pr', 'review_role')} if row.get('kind') == 'review' else {}),
+            'approved_as': _approval(row['scope'], note)}
+
+
+def _refill(data, root, number, opened, config):
+    """Admit safe candidates and ask one content-bound card for the exceptional batch."""
+    from hashlib import sha256
+    directory = workspace.day_dir(root)
+    command = f'bin/wuwei plan propose .wuwei/days/{directory.name}/lead-{number}.json --refill {number}'
+    day = state.read_state(root)
+    history = day.get('refills', [])
+    previous = history[number - 1] if number <= len(history) else None
+    candidates = data['candidates']
+    if previous:
+        if previous['candidates'] != candidates or previous['goals'] != opened:
+            raise state.StateError('refill answer changed while its card is pending; restore the numbered lead JSON')
+    excluded = previous['excluded'] if previous else list(day['items'])
+    candidates = [row for row in candidates if row['id'] not in excluded]
+    framework = config['prioritisation']['framework']
+    size_key, ceiling = ('job_size', 3) if framework == 'wsjf' else ('effort', 1)
+    names = [repo['name'] for repo in config['repos']]
+    from wuwei.merge import matched
+    never_auto = {repo['name']: repo['merge']['never_auto_paths'] for repo in config['repos']}
+    automatic = [row['id'] for row in candidates if row.get('goal') in opened
+                 and row.get('kind', 'build') == 'build'
+                 and row.get('paths') and all(path.strip() for path in row['paths'])
+                 and row.get('repo', names[0] if len(names) == 1 else '') in names
+                 and row['track'] == 'SLICE' and row.get('tier') != 'full'
+                 and not any(row['flags'].values()) and not row.get('owner_actions')
+                 and not any(matched(path, never_auto.get(row.get('repo') or (names[0] if names else ''), []))
+                             for path in row.get('paths', []))
+                 and row['score'][size_key] <= ceiling]
+    exceptional = [row for row in candidates if row['id'] not in automatic]
+    token = sha256(json.dumps([opened, exceptional], sort_keys=True).encode()).hexdigest()
+    answer = sessions.owner_answer(root, command, token) if exceptional else None
+    reason = None
+    if exceptional and answer != 'No':
+        detail = 'Admit refill candidates: ' + '; '.join(
+            f"{row['id']} ({row.get('goal', 'unplanned')}): {row['scope']}; "
+            f"repository {row.get('repo', names[0] if len(names) == 1 else 'unresolved')}; "
+            f"{row['track']}, {size_key} {row['score'][size_key]}, flags {json.dumps(row['flags'])}"
+            + (f"; owner actions {json.dumps(row['owner_actions'])}" if row.get('owner_actions') else '')
+            for row in exceptional)
+        reason = sessions.needs_owner(root, command, detail, token, no='Skip these candidates.')
+    chosen = automatic + ([row['id'] for row in exceptional] if answer == 'Yes' else [])
+    added = [name for name in chosen if name not in day['items']]
+    lookup = {row['id']: row for row in candidates}
+    entry = {'number': number, 'goals': opened, 'candidates': data['candidates'], 'excluded': excluded,
+             'admitted': list(dict.fromkeys((previous or {}).get('admitted', []) + added)),
+             'pending': bool(reason), 'no_work': [goal for goal in opened
+                                                if not any(row.get('goal') == goal for row in candidates)]}
+
+    def update(current):
+        if (current.get('close_requested') or current.get('refills', []) != history
+                or any(name in current['items'] for name in added)):
+            raise state.StateError('day changed during refill; run bin/wuwei next')
+        from wuwei.commands import next as next_command
+        if reason := next_command.refill_limit(root, current):
+            raise state.StateError(reason + ' Run bin/wuwei next')
+        _admit(current, lookup, added, framework, tracked(data))
+        current['approved_items'].extend(added)
+        current['refills'] = history[:number - 1] + [entry]
+
+    state._write_state(update, root, kind='plan.approved',
+                       payload={'refill': number, 'items': added, 'approved_items': added,
+                                'flags': {name: lookup[name]['flags'] for name in added},
+                                'no_work': entry['no_work']})
+    for name in added:
+        if lookup[name].get('kind') == 'review':
+            state._write_state(lambda current, name=name: current['items'][name].update(phase='gate'),
+                               root, kind='state.transition', payload={'item': name, 'phase': 'gate'})
+        if config['adapters']['tracker'] != 'none' and proposed(lookup[name], tracked(data)) is None:
+            dispatch.tracker_call(name, 'create', root, row=lookup[name])
+    if reason:
+        raise state.StateError(reason)
+    return directory / f'lead-{number}.json'
+
+
 def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, note=None):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)
@@ -461,6 +576,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         from wuwei import promotion
         try:
             promotion.save_goals(root, text)
+            workspace.atomic_write(directory / 'goals.md', text)
         except OSError as exc:
             raise OSError(f'{exc}; the goals are not recorded and the day stays unapproved; '
                           'run bin/wuwei doctor, then plan approve again') from exc
@@ -470,24 +586,10 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item')
         if set(current['items']) & (set(imported) | set(items)):
             raise state.StateError('day item already exists; remove the existing ids from --items (bin/wuwei next lists them)')
-        tickets = {**current.get('tickets', {}), **carried}
-        for name in items:
-            if name not in tickets and (record := proposed(candidates[name], found)):
-                tickets[name] = record
-        if tickets:
-            current['tickets'] = tickets
+        if carried:
+            current.setdefault('tickets', {}).update(carried)
+        _admit(current, candidates, items, framework, found, note)
         current['items'].update(imported)
-        current['items'].update({name: {'goal': candidates[name].get('goal', 'unplanned'),
-                                       'track': candidates[name]['track'],
-                                       'flags': candidates[name]['flags'],
-                                       'budget_size': candidates[name]['score'][
-                                           'job_size' if framework == 'wsjf' else 'effort'],
-                                       **{key: candidates[name][key] for key in ('kind', 'tier', 'governed_by')
-                                          if key in candidates[name]},
-                                       **({key: candidates[name][key] for key in ('pr', 'review_role')}
-                                          if candidates[name].get('kind') == 'review' else {}),
-                                       'approved_as': _approval(candidates[name]['scope'], note)}
-                                 for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
                        seat_policy=data['seat_policy'], goal_seats=_seats(data),
                        envelope=data['envelope'], goals=data['goals'],
@@ -757,6 +859,8 @@ def dispose(item, outcome, reason=None, root=None):
             raise state.StateError((f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids"))
         record = data['items'][item]
+        if record['status'] == 'done':
+            raise state.StateError(f'{item} is already done; run bin/wuwei why {item} to read its completion')
         record['disposition'] = {'kind': outcome, 'reason': reason}
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
             record.update(phase='parked', status='blocked')
@@ -767,6 +871,44 @@ def dispose(item, outcome, reason=None, root=None):
 def park(item, reason, root=None):
     """Park one item in code (the round cap, a PARK verdict, the owner's No)."""
     dispose(item, 'parked', reason, root)
+
+
+def done(item, reason, root=None):
+    """Record the owner's completion after one item and reason bound Owner step Yes."""
+    import hashlib
+    import shlex
+    root = workspace.find_workspace(root)
+    reason = ' '.join(reason.split())
+    if not reason:
+        raise state.StateError('plan done requires a nonempty --reason; pass --reason "<what was done>"')
+    data = state.read_state(root)
+
+    def check(fresh):
+        row = fresh['items'].get(item)
+        if row is None:
+            raise state.StateError(f'no item {item} today; use an id from today\'s plan')
+        if row['status'] == 'done':
+            raise state.StateError(f'{item} is already done; run bin/wuwei why {item} to read its completion')
+        if row['phase'] not in ('planned', 'parked', 'implement'):
+            raise state.StateError(f'{item} is {row["phase"]}; run bin/wuwei why {item} to read its state')
+        if any(name == item for _, _, name in state.in_flight(fresh)):
+            raise state.StateError(f'{item} has live work; run bin/wuwei seat stop <seat> first')
+        return row
+
+    row = check(data)
+    command = shlex.join(['bin/wuwei', 'plan', 'done', item, '--reason', reason])
+    token = hashlib.sha256(f'{item}\n{reason}'.encode()).hexdigest()[:12]
+    if refusal := sessions.needs_owner(root, command, f'Mark {item} done: {reason}', token):
+        raise state.StateError(refusal)
+
+    def update(fresh):
+        current = check(fresh)
+        if current != row:
+            raise state.StateError(f'{item} changed during plan done; rerun the command')
+        current.update(status='done', by='owner', reason=reason)
+
+    state._write_state(update, root, kind='plan.done', payload={'item': item, 'by': 'owner', 'reason': reason})
+    return f'{item}: done by owner: {reason}'
 
 
 def resume_token(root, item, data=None):

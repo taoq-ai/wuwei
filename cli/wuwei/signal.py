@@ -3,9 +3,9 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
+SILENT = ('process.started', 'process.reaped', 'process.cleanup_failed', 'process.orphan_listed', 'item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
-          'spec.step', 'spec.skipped', 'spec.override',
+          'spec.step', 'spec.skipped', 'spec.override', 'hook.stop_blocked',
           'worktree.adopted', 'worktree.created',
           'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
@@ -17,7 +17,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'watch: observation', 'plan.session', 'gate.asked', 'owner.approved', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
           'gate.received', 'gate.tiered', 'gate.delta_head', 'gate.released',
-          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
+          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed', 'plan.done',
           'finding.noted',
           'discovery.requested', 'discovery.intake',  # days before #843
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',
@@ -88,7 +88,7 @@ def classify(event, state):
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'warn'), lane
-    if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
+    if kind in ('hook.warning', 'hook.stop_error', 'hook.stop_capped', 'merge.policy_blocked', 'work.outside_goals',
                 'build.parked'):
         return 'warn', lane
     if kind in SILENT:
