@@ -3476,6 +3476,25 @@ def builder_says(root, blocked_line):
         'Blocked': blocked_line, 'Gap': 'none', 'Change': 'none'}, 'missing': [], 'invalid': []}, root)
 
 
+@pytest.mark.parametrize('source', ['builder', 'gate'])
+def test_issue_940_dispatch_names_the_mismatched_answer(root, monkeypatch, source):
+    from fakes import owner
+    from wuwei import dispatch
+    if source == 'builder':
+        builder_says(root, 'the schema change needs the owner')
+    else:
+        blocked(root, monkeypatch)
+    found = dispatch.next_step('A', root)
+    card = dict(found['card'])
+    card['question'] = card['question'].rsplit(' (', 1)[0]
+    owner._record(root, card, 'Yes', 'planner-session', None)
+    refused = dispatch.next_step('A', root)
+    assert refused['action'] == 'escalate'
+    assert 'did not match' in refused['reason']
+    assert 'answered card matched command' in refused['reason']
+    assert refused['card'] == found['card']
+
+
 def test_a_builder_blocked_line_asks_the_owner_before_the_gates(root, monkeypatch):
     from wuwei import dispatch
     builder_says(root, 'the schema change needs the owner')

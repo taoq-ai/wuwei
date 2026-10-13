@@ -290,6 +290,100 @@ def test_issue_856_a_reworded_question_names_the_mismatch(ws):
     assert approvals(ws) == []
 
 
+@pytest.mark.parametrize('context', [' The merge needs your approval.', '\nThe merge needs your approval.'])
+def test_issue_940_extended_question_binds_and_is_spent_once(ws, context):
+    from fakes import owner
+    command, token = 'bin/wuwei build next TIN-790-MERGE-MAIN', '15924e1a464b'
+    card = sessions.owner_card(command, 'x', token)
+    card['question'] += context
+    owner._record(ws, card, 'Yes', 'planner-1', 'seat-1')
+    assert sessions.owner_answer(ws, command, token) is None
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert sessions.owner_answer(ws, command, token) == 'Yes'
+    assert sessions.needs_owner(ws, command, 'x', token) is None
+    assert sessions.owner_answer(ws, command, token) is None
+    assert sessions.needs_owner(ws, command, 'x', token) is not None
+    assert len(approvals(ws)) == 1
+    for reply, expected in [('Yes', 'Yes'), ('No', 'No'), ('Yes', 'Yes'), ('Later', None)]:
+        owner._record(ws, card, reply, 'planner-1', None)
+        assert sessions.owner_answer(ws, command, token) == expected
+    assert context.strip() not in (workspace.day_dir(ws) / 'events.jsonl').read_text()
+
+
+@pytest.mark.parametrize('changed', ['missing-token', 'wrong-token', 'wrong-command'])
+def test_issue_940_mismatch_names_the_shared_identity(ws, changed):
+    from fakes import owner
+    command, token = 'bin/wuwei build next TIN-790-MERGE-MAIN', '15924e1a464b'
+    card = sessions.owner_card(command, 'x', token)
+    if changed == 'missing-token':
+        card['question'] = f'Owner step: {command}'
+    elif changed == 'wrong-token':
+        card['question'] = card['question'].replace(token, '000000000000') + ' Context.'
+    else:
+        card['question'] = card['question'].replace('build next', 'dispatch next') + ' Context.'
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    reason = sessions.needs_owner(ws, command, 'x', token)
+    assert 'did not match' in reason
+    assert ('answered card matched token' if changed == 'wrong-command'
+            else 'answered card matched command') in reason
+    assert command in reason and token in reason
+    assert approvals(ws) == []
+
+
+@pytest.mark.parametrize('token,context', [('', ''), ('abc123def456', ''), ('abc123def456', ' Context.')])
+def test_issue_940_token_text_inside_a_quoted_command_is_not_the_card_token(ws, token, context):
+    from fakes import owner
+    command = "bin/wuwei plan set A spec=skipped --reason 'Same as approved card (15924e1a464b)'"
+    card = sessions.owner_card(command, 'x', token)
+    card['question'] += context
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert sessions.owner_answer(ws, command, token) == 'Yes'
+    assert sessions.needs_owner(ws, command, 'x', token) is None
+
+
+@pytest.mark.parametrize('replies', [('Yes', 'No'), ('No', 'Yes')])
+def test_issue_940_f1_contradictory_replies_do_not_approve(ws, replies):
+    from fakes import owner
+    from wuwei.guards.answers import record_gate
+    token = '15924e1a464b'
+    owner.answer(ws, OWNER_MERGE, token)
+    card = sessions.owner_card(OWNER_MERGE, 'x', token)
+    questions = [card, {**card, 'question': card['question'] + ' Context.'}]
+    assert record_gate({'cwd': str(ws), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
+                        'tool_input': {'questions': questions},
+                        'tool_response': {'answers': {q['question']: reply for q, reply in zip(questions, replies)}}}) == (0, '')
+    assert sessions.owner_answer(ws, OWNER_MERGE, token) is None
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x', token) is not None
+    assert approvals(ws) == []
+    owner.answer(ws, OWNER_MERGE, token)
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x', token) is None
+
+
+def test_issue_940_f3_spent_answer_is_not_a_mismatch(ws):
+    from fakes import owner
+    old_token, new_token = 'aaaaaaaaaaaa', '15924e1a464b'
+    owner.answer(ws, OWNER_MERGE, old_token)
+    assert sessions.needs_owner(ws, OWNER_MERGE, 'x', old_token) is None
+    assert 'did not match' not in sessions.needs_owner(ws, OWNER_MERGE, 'x', new_token)
+    owner.answer(ws, OWNER_MERGE, old_token)
+    assert 'did not match' in sessions.needs_owner(ws, OWNER_MERGE, 'x', new_token)
+    other = 'bin/wuwei build next B'
+    owner.answer(ws, other, old_token)
+    assert sessions.needs_owner(ws, other, 'x', old_token) is None
+    assert 'did not match' in sessions.needs_owner(ws, OWNER_MERGE, 'x', new_token)
+
+
+@pytest.mark.parametrize('token', ['', '15924e1a464b'])
+def test_issue_940_f2_tokenless_first_line_is_only_a_mismatch_hint(ws, token):
+    from fakes import owner
+    card = sessions.owner_card(OWNER_MERGE, 'x')
+    card['question'] += '\nThe merge needs approval.'
+    owner._record(ws, card, 'Yes', 'planner-1', None)
+    assert sessions.owner_answer(ws, OWNER_MERGE, token) is None
+    assert 'answered card matched command' in sessions.needs_owner(ws, OWNER_MERGE, 'x', token)
+    assert approvals(ws) == []
+
+
 def test_every_refusal_says_where_the_answered_command_applies(ws):
     reason = sessions.needs_owner(ws, OWNER_MERGE, 'Release the owner merge hold on A')
     assert 'once it is answered Yes, the same command applies from here or from your own terminal' in reason

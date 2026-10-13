@@ -656,8 +656,12 @@ def _blocked_card(root, data, item, build=False):
               + ('continues it on your answer' if build else 'sends it to its gates with your answer')
               + '; No parks the item.')
     token = hashlib.sha256(f'{agent}\n{line}'.encode()).hexdigest()[:12]
-    return (f'builder blocked: {line}', sessions.owner_answer(root, command, token),
-            sessions.owner_card(command, detail, token, PARKS), line)
+    answer = sessions.owner_answer(root, command, token)
+    card = sessions.owner_card(command, detail, token, PARKS)
+    reason = f'builder blocked: {line}'
+    if answer is None and (mismatch := sessions.owner_mismatch(root, card)):
+        reason += '; ' + mismatch.rstrip('; ')
+    return reason, answer, card, line
 
 
 def _head(result):
@@ -738,6 +742,9 @@ def decide(root, data, config, item):
         if answer == 'No':
             return {'step': 'park', 'why': reason}
         if answer != 'Yes':
+            from wuwei import sessions
+            if mismatch := sessions.owner_mismatch(root, card):
+                reason += '; ' + mismatch.rstrip('; ')
             return {'step': 'ask', 'why': reason, 'card': card}
     return {'step': 'fix', 'roles': blocking, 'records': [results[role] for role in blocking],
             'why': f'gate {blocking[0]} asks for a fix'}

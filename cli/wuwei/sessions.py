@@ -57,9 +57,11 @@ def _rows(root):
             continue  # a damaged row is no answer
 
 
-def _topics(root):
-    """Today's recorded gate.asked topic lists, oldest first."""
-    for kind, payload in _rows(root):
+def _topics(root, command):
+    """Answer topics since this command's last approval, newest first."""
+    for kind, payload in reversed(list(_rows(root))):
+        if kind == 'owner.approved' and payload.get('command') == command:
+            break
         if kind == 'gate.asked' and isinstance(payload.get('topics'), list):
             yield payload['topics']
 
@@ -74,13 +76,31 @@ def owner_answer(root, command, token=''):
         if kind == 'owner.approved' and (payload.get('command'), payload.get('token')) == (command, token):
             answer = None
         elif kind == 'gate.asked' and isinstance(topics := payload.get('topics'), list) and owner_topic(question) in topics:
-            answer = next((reply for reply in ('Yes', 'No') if owner_topic(question, reply) in topics), None)
+            replies = [reply for reply in ('Yes', 'No') if owner_topic(question, reply) in topics]
+            answer = replies[0] if len(replies) == 1 else None
     return answer
 
 
 def step(question):
     """The command part of an Owner step question: without the prefix and a trailing (...)."""
     return re.sub(r' \([^()]*\)$', '', question.strip()).removeprefix(f'{OWNER_STEP}: ')
+
+
+def owner_mismatch(root, card):
+    """Name the shared part of an answered card without storing its question body."""
+    command = card['record']
+    token = card['question'].removeprefix(f'{OWNER_STEP}: {command}').strip()
+    for topics in _topics(root, command):
+        if owner_topic(card['question']) in topics:
+            continue
+        if owner_topic(step(command)) in topics:
+            detail = f'answered card matched command {command}; token missing or different (expected {token or "no token"})'
+        elif token and owner_topic(token) in topics:
+            detail = f'answered card matched token {token}; command differs (expected {command})'
+        else:
+            continue
+        return f'a card for this step was answered but did not match; ask it verbatim; {detail}; '
+    return ''
 
 
 def needs_owner(root, command, detail, token='', no='Nothing changes.'):
@@ -92,10 +112,8 @@ def needs_owner(root, command, detail, token='', no='Nothing changes.'):
         from wuwei import state
         state.append_event('owner.approved', {'command': command, 'token': token}, root)
         return None
-    hints = {owner_topic(step(command))} | ({owner_topic(f'({token})')} if token else set())
-    seen = any(hints & set(topics) and owner_topic(card['question']) not in topics for topics in _topics(root))
     return (f'{command}: waits for the owner; '
-            + ('a card for this step was answered but did not match; ask it verbatim; ' if seen else '')
+            + owner_mismatch(root, card)
             + 'ask this Owner step card with AskUserQuestion; once it is answered Yes, the same command '
             'applies from here or from your own terminal'
             + ('; for a config change you may also edit .wuwei/config.toml by hand' if command.startswith('bin/wuwei config ') else '')
