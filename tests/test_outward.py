@@ -1101,7 +1101,7 @@ def test_unlisted_send_is_refused_with_its_line(configured, monkeypatch, capsys,
     assert not_allowed(SEND) in capsys.readouterr().err
 
 
-def test_listed_send_passes_exactly(configured):
+def _case_listed_send_passes_exactly(configured):
     from wuwei.guards.edges import check_send
     from wuwei.guards.outward import check_lint
     root = configured[0]
@@ -1113,7 +1113,7 @@ def test_listed_send_passes_exactly(configured):
     assert check_send(payload(root, 'Thanks', tool='mcp__x__resolve_library_id', channel='C1')) == (0, '')
 
 
-def test_listed_send_keeps_the_lint_and_canary(configured):
+def _case_listed_send_keeps_the_lint_and_canary(configured):
     from wuwei import security
     from wuwei.guards.edges import check_send
     from wuwei.guards.outward import check_lint
@@ -1123,6 +1123,14 @@ def test_listed_send_keeps_the_lint_and_canary(configured):
     canary = (security.load(root) or security.initialize(root / '.wuwei'))['canary']
     code, reason = check_send(payload(root, f'see {canary}', tool=SEND, channel='C1'))
     assert code == 1 and reason.startswith('outward: security.')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_listed_send_passes_exactly,
+    _case_listed_send_keeps_the_lint_and_canary,
+])
+def test_listed_send_cases_1104(configured, scenario_fn):
+    scenario_fn(configured)
 
 
 def with_surfaces(root):

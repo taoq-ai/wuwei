@@ -88,7 +88,7 @@ def test_transcript_outside_workspace_and_tool_results_excluded(root):
     assert metrics.collect(root)['owner_intervention'] == 'unmeasured'
 
 
-def test_no_tracker_is_unmeasured(root):
+def _case_no_tracker_is_unmeasured(root):
     assert metrics.collect(root)['lead_time'] == 'unmeasured'
 
 
@@ -134,7 +134,7 @@ def test_review_rework_counts_human_threads_followed_by_commit(root, monkeypatch
         'p90_per_pr': 1, 'share_with_rework': 1}
 
 
-def test_tracker_lead_time_and_secondary_durations(root, monkeypatch):
+def _case_tracker_lead_time_and_secondary_durations(root, monkeypatch):
     from wuwei.registry import Result
     from wuwei import registry
 
@@ -237,12 +237,20 @@ def test_invalid_transcript_fails_closed_without_disclosing_text(root):
     assert not (day / 'state.json').exists()
 
 
-def test_no_tracker_with_item_stays_unmeasured(root):
+def _case_no_tracker_with_item_stays_unmeasured(root):
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text() + '\n[adapters]\ncode_host = "none"\n')
     state._write_state(lambda data: data.update(items={'ISSUE-1': {'pr': 'example/project#1'}}),
                        root)
     assert metrics.collect(root)['lead_time'] == 'unmeasured'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_no_tracker_is_unmeasured,
+    _case_no_tracker_with_item_stays_unmeasured,
+])
+def test_no_tracker_cases_91(root, scenario_fn):
+    scenario_fn(root)
 
 
 def test_report_shows_measured_outcome_beside_workspace_baseline(root, monkeypatch):
@@ -291,7 +299,7 @@ def test_missing_code_host_does_not_bias_defect_denominator(root, monkeypatch):
     assert metrics.collect(root)['escaped_defects'] == 'unmeasured'
 
 
-def test_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
+def _case_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
     from wuwei.registry import Result
     from wuwei import registry
 
@@ -325,3 +333,11 @@ def test_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
     monkeypatch.setattr(registry, 'load', lambda kind, config: Tracker() if kind == 'tracker' else Host())
     metrics.collect(root)
     assert calls and all(item == 'ENG-1' for _, item in calls)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_tracker_lead_time_and_secondary_durations,
+    _case_tracker_lead_time_reads_the_recorded_ticket,
+])
+def test_tracker_lead_cases_137(root, monkeypatch, scenario_fn):
+    scenario_fn(root, monkeypatch)

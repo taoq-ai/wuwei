@@ -351,7 +351,7 @@ def test_workspace_rows_healthy(ws):
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
 
-def test_workspace_config_does_not_load(ws):
+def _case_workspace_config_does_not_load(ws):
     config(ws.root, 'repos = []\n' + CONFIG)
     rows = doctor.diagnose()
     found = row(rows, 'config')
@@ -944,11 +944,19 @@ def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'integrity-reconfirm'}, {'apply': 'integrity-reconfirm'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
     assert applied == ['integrity-reconfirm']
-def test_workspace_config_unknown_key_warns(ws):
+def _case_workspace_config_unknown_key_warns(ws):
     config(ws.root, CONFIG.replace('[adapters]\n', '[adapters]\ncode_hst = "github"\n'))
     found = row(doctor.diagnose(), 'config')
     assert (found['status'], found['value']) == ('warn', 'loads; 1 unknown keys')
     assert found['detail'] == ['config.toml: unknown key adapters.code_hst at line 2; did you mean adapters.code_host?']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_workspace_config_does_not_load,
+    _case_workspace_config_unknown_key_warns,
+])
+def test_workspace_config_cases_354(ws, scenario_fn):
+    scenario_fn(ws)
 
 
 def test_in_use_row_names_the_restart(ws):
@@ -1005,7 +1013,7 @@ def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['rows'][0]['fix'] == f'{launcher} init --upgrade'
 
 
-def test_tracker_row(ws):
+def _case_tracker_row(ws):
     from fakes.tracker import Fake
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
     config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "linear"\n'))
@@ -1020,7 +1028,7 @@ def test_tracker_row(ws):
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
 
 
-def test_tracker_row_on_a_rate_limit(ws):
+def _case_tracker_row_on_a_rate_limit(ws):
     # #738: a rate limit is not a broken tracker; the row says when to look again.
     from fakes.tracker import Fake
     config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n'))
@@ -1034,6 +1042,14 @@ def test_tracker_row_on_a_rate_limit(ws):
     assert found['value'] == ('rate limited until 14:05:00 UTC (0 of 5000 graphql calls left); '
                               'retry after it')
     assert 'wait until the reset' in found['fix']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_tracker_row,
+    _case_tracker_row_on_a_rate_limit,
+])
+def test_tracker_row_cases_1008(ws, scenario_fn):
+    scenario_fn(ws)
 
 
 def test_gh_row_on_a_rate_limit(ws, capsys):

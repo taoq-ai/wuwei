@@ -118,7 +118,7 @@ def test_fetch_port_checks_current_host_base(monkeypatch):
     assert len(calls) == 2
 
 
-def test_worktree_identity_port(monkeypatch):
+def _case_worktree_identity_port(monkeypatch):
     # #847: worktree add installs no hooks, so the identity turns worktreeConfig on itself.
     calls = install_replay(monkeypatch, 'git', [{'stdout': ''}, {'stdout': ''}, {'stdout': ''},
                                                 {'stdout': 'true\n'}, {'stdout': ''}, {'stdout': ''}])
@@ -134,12 +134,20 @@ def test_worktree_identity_port(monkeypatch):
         ['-C', '/repo', 'config', '--worktree', 'user.email', 'builder@example.test']]
 
 
-def test_worktree_identity_needs_worktree_config(monkeypatch):
+def _case_worktree_identity_needs_worktree_config(monkeypatch):
     # A bare setting keeps worktreeConfig off; the identity is skipped, never written shared.
     calls = install_replay(monkeypatch, 'git', [{'stdout': 'true\n'}, {'stdout': ''}, {'exit': 1}])
     result = adapter().worktree_identity('/repo', 'Builder', 'builder@example.test')
     assert result.exit == 1 and 'extensions.worktreeConfig' in result.reason
     assert len(calls) == 3
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_worktree_identity_port,
+    _case_worktree_identity_needs_worktree_config,
+])
+def test_worktree_identity_cases_121(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 def test_commit_all_commits_every_change_with_the_given_identity(monkeypatch):
     # #871 L2: a Codex build's changes, committed by WUWEI with the repository identity
@@ -256,7 +264,7 @@ def test_git_exit_is_explained(tmp_path, monkeypatch, capsys):
     assert '/repo' in result.reason and 'private repository path' in result.reason
 
 
-def test_stderr_line_and_fetch_hint(monkeypatch):
+def _case_stderr_line_and_fetch_hint(monkeypatch):
     install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr':
                                          'fatal: Not a valid object name origin/main\nmore'}])
     result = adapter().merge_base('/repo', 'origin/main')
@@ -267,7 +275,7 @@ def test_stderr_line_and_fetch_hint(monkeypatch):
     assert 'more' not in result.reason
 
 
-def test_stderr_line_redacted_and_capped(monkeypatch):
+def _case_stderr_line_redacted_and_capped(monkeypatch):
     secret = 'ghp_' + 'a' * 36
     install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr': f'fatal: https://x:{secret}@github.com/a/b'}])
     result = adapter().head('/repo')
@@ -278,6 +286,14 @@ def test_stderr_line_redacted_and_capped(monkeypatch):
     install_replay(monkeypatch, 'git', [{'exit': 1, 'stderr': '\n  \n'}])
     result = adapter().head('/repo')
     assert result.reason == 'git.head: could not run: git exited 1 (show in /repo)'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_stderr_line_and_fetch_hint,
+    _case_stderr_line_redacted_and_capped,
+])
+def test_stderr_line_cases_259(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 
 def test_not_a_repository_is_named(monkeypatch):
@@ -390,7 +406,7 @@ def test_resolve_commit(exit_code, stdout, expected, monkeypatch):
         assert result.data == {'sha': 'a' * 40}
 
 
-def test_changes_on_date_and_literal_paths(tmp_path, monkeypatch):
+def _case_changes_on_date_and_literal_paths(tmp_path, monkeypatch):
     api = adapter()
     assert hasattr(api, 'changes_on'), 'dated path evidence missing'
     calls = install_replay(monkeypatch, 'git', [{'stdout': '\nroles/a b.md\0roles/planner.md\0'}])
@@ -400,12 +416,20 @@ def test_changes_on_date_and_literal_paths(tmp_path, monkeypatch):
     assert '--until=2026-09-28T23:59:59' in calls[0]
 
 
-def test_changes_on_preserves_git_output_paths(tmp_path, monkeypatch):
+def _case_changes_on_preserves_git_output_paths(tmp_path, monkeypatch):
     paths = ['docs/[draft].md', 'docs/question?.md', 'docs/star*.md', '-notes.md']
     install_replay(monkeypatch, 'git', [{'stdout': '\n' + '\0'.join(paths + paths) + '\0'}])
     result = adapter().changes_on(str(tmp_path), '2026-09-28')
     assert result.exit == 0
     assert result.data == sorted(paths)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_changes_on_date_and_literal_paths,
+    _case_changes_on_preserves_git_output_paths,
+])
+def test_changes_on_cases_393(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize('ref', ['HEAD', 'a' * 40])
@@ -445,7 +469,7 @@ def test_read_tree_batch_rejects_missing_or_non_blob(tmp_path, monkeypatch, outp
     assert adapter().read_tree(str(tmp_path), 'HEAD', ['roles']).exit == 2
 
 
-def test_read_tree_real_git_one_batch(tmp_path, monkeypatch):
+def _case_read_tree_real_git_one_batch(tmp_path, monkeypatch):
     repo = tmp_path / 'repo'
     (repo / 'dir').mkdir(parents=True)
     (repo / 'a b.md').write_text('rule\n')
@@ -461,7 +485,7 @@ def test_read_tree_real_git_one_batch(tmp_path, monkeypatch):
     assert result.data == {'a b.md': 'rule\n', 'dir/c.bin': b'bin\xff\n\x00'.decode('utf-8', 'surrogateescape')}
 
 
-def test_read_tree_large_batch_uses_file_stdin(tmp_path, monkeypatch):
+def _case_read_tree_large_batch_uses_file_stdin(tmp_path, monkeypatch):
     repo = tmp_path / 'repo'
     repo.mkdir()
     tracked = {f'{index:04d}-' + 'x' * 60 + '.txt': 'content\n' * 12
@@ -493,6 +517,14 @@ def test_read_tree_large_batch_uses_file_stdin(tmp_path, monkeypatch):
     result = adapter().read_tree(str(repo), 'HEAD', ['.'])
     assert result.exit == 0
     assert result.data == tracked
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_read_tree_real_git_one_batch,
+    _case_read_tree_large_batch_uses_file_stdin,
+])
+def test_read_tree_cases_448(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize('operation,args', [

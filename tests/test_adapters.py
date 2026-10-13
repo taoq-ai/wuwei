@@ -478,7 +478,7 @@ def test_watch_probe_times_out_a_slow_call(tmp_path):
     assert not sentinel.exists()  # the slow call was killed, not waited for
 
 
-def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):
+def _case_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):
     # #422: telemetry posts; a 409 comes back as a status, never an exception.
     import io
     import urllib.error
@@ -511,7 +511,7 @@ def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):
     assert len(sent) == 2
 
 
-def test_watch_post_does_not_follow_a_redirect(monkeypatch):
+def _case_watch_post_does_not_follow_a_redirect(monkeypatch):
     # A 302 must not carry the Authorization header to the Location host.
     import email.message
     import io
@@ -528,3 +528,11 @@ def test_watch_post_does_not_follow_a_redirect(monkeypatch):
     monkeypatch.setattr(urllib.request.HTTPSHandler, 'https_open', https_open)
     monkeypatch.setattr(urllib.request.HTTPHandler, 'http_open', lambda self, request: pytest.fail('followed'))
     assert watch_service().post('https://example.test/v1', {}, {'Authorization': 'x'}) == 302
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_watch_post_sends_json_over_https_and_returns_the_status,
+    _case_watch_post_does_not_follow_a_redirect,
+])
+def test_watch_post_cases_481(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)

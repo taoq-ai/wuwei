@@ -164,8 +164,9 @@ WRAPPERS = ['command {}', 'command -p {}', 'exec {}', 'exec -a name {}', 'timeou
             'env A=1 command {}', 'command env A=1 timeout 5 {}']
 
 
-# Host merge: on the floor.
+# Irreversible command edges by exact argv.
 @pytest.mark.parametrize(ROW, [
+    # Host merge: on the floor.
     *(refused(command, 'merge policy', f'bin/wuwei merge {pr}') for command, pr in [
         ('gh pr merge 7', '<owner/repo>#7'), ('gh pr merge 7 --squash', '<owner/repo>#7'),
         ('GH_REPO=o/r gh pr merge 7', '<owner/repo>#7'), ('env -i gh pr merge 7', '<owner/repo>#7'),
@@ -195,8 +196,56 @@ WRAPPERS = ['command {}', 'command -p {}', 'exec {}', 'exec -a name {}', 'timeou
         "cat > notes.md <<'EOF'\ngh pr merge 7\nEOF", 'python3 -m pytest -q',
         'for x in 1; do echo x; done', 'export X=1',
     ]),
+    # Admin and branch protection: on the floor.
+    refused('gh pr merge 7 --admin', 'admin merge', 'bin/wuwei merge'),
+    refused('gh pr merge --admin -R o/r 7', 'admin merge', 'bin/wuwei merge'),
+    refused('gh api -X PUT repos/o/r/branches/main/protection', 'branch protection'),
+    refused('gh api -X POST repos/o/r/rulesets -f name=x', 'branch protection'),
+    refused('gh api orgs/o/rulesets/1 -X DELETE', 'branch protection'),
+    allowed('gh api repos/o/r/branches/main/protection'), allowed('gh api repos/o/r/rulesets'),
+    # Force push: blocks with enforce on, logged with it off.
+    *(refused(command, 'force-push is refused', 'git push origin HEAD:refs/heads/<branch>') for command in [
+        'git push --force', 'git push -f origin x', 'git push -uf origin x',
+        'git push --force-with-lease origin x', 'git push origin +x', 'git push --mirror',
+        'git -C repo push --force origin x', 'git push origin +HEAD:refs/heads/x',
+    ]),
+    *(refused(wrapper.format('git push --force origin x'), 'force-push is refused') for wrapper in WRAPPERS),
+    refused('git push -f origin div-1', 'force-push is refused', 'git push origin HEAD:refs/heads/div-1',
+            where='worktrees/DIV-1'),
+    *(allowed(command) for command in [
+        'git push origin x', 'git push origin HEAD:x', 'git fetch --force', 'git push -u origin x',
+        'git push --delete origin x', 'git push origin :x', 'git commit -m "git push --force"',
+    ]),
+    # Default branch push: blocks with enforce on, logged with it off.
+    *(refused(command, 'push to the default branch main is refused', 'bin/wuwei pr raise', '--item DIV-1',
+              where='worktrees/DIV-1') for command in [
+        'git push origin main', 'git push origin HEAD:main', 'git push upstream HEAD:refs/heads/main',
+        'git -C repo push origin main', 'git push --repo origin main',
+        'gh api -X PATCH repos/example/project/git/refs/heads/main -f sha=x',
+    ]),
+    # Review F2: a literal default-branch push in a loop is refused.
+    refused('for r in a b; do git -C $r push origin main; done', 'push to the default branch main'),
+    refused('git push --no-verify origin HEAD:main', 'push to the default branch'),
+    refused('git -c core.hooksPath=/dev/null push origin main', 'push to the default branch'),
+    *(allowed(command) for command in [
+        'git push --no-verify origin HEAD:refs/heads/a', 'git -c core.hooksPath=/dev/null push origin a',
+        'git -ccore.hooksPath=x push origin HEAD:refs/heads/a',
+    ]),
+    *(allowed(command) for command in [
+        'git push origin main-fix', 'git push origin HEAD:refs/heads/div-1', 'git pull origin main',
+        'git fetch origin main',
+    ]),
+    # A bare gh pr create for an item: blocks with enforce on, logged with it off.
+    *(refused(command, 'pr raise: DIV-1 is a WUWEI item', 'bin/wuwei pr raise example/project', '--item DIV-1',
+              where=where) for command, where in [
+        ('gh pr create --title t --body b', 'worktrees/DIV-1'),
+        ('gh pr create --repo example/project --head div-1 --title t --body b', '.'),
+        ('gh -R example/project pr create -H div-1 -t t -b b', '.'),
+        ('cd worktrees/DIV-1 && gh pr create -t t -b b', '.'),
+    ]),
+    allowed('gh pr create -t t -b b'), allowed('gh pr create --repo example/project --head other -t t', '.'),
 ])
-def test_merge_edge(root, command, where, code, fragments):
+def test_irreversible_edge(root, command, where, code, fragments):
     decide(root, command, where, code, fragments)
 
 
@@ -220,64 +269,6 @@ def test_merge_edge(root, command, where, code, fragments):
 def test_approve_edge(root, command, where, code, fragments):
     (root / 'repo/review.json').write_text('{"event": "APPROVE", "body": "ok"}')
     (root / 'repo/comment.json').write_text('{"event": "COMMENT", "body": "ok"}')
-    decide(root, command, where, code, fragments)
-
-
-# Admin and branch protection: on the floor.
-@pytest.mark.parametrize(ROW, [
-    refused('gh pr merge 7 --admin', 'admin merge', 'bin/wuwei merge'),
-    refused('gh pr merge --admin -R o/r 7', 'admin merge', 'bin/wuwei merge'),
-    refused('gh api -X PUT repos/o/r/branches/main/protection', 'branch protection'),
-    refused('gh api -X POST repos/o/r/rulesets -f name=x', 'branch protection'),
-    refused('gh api orgs/o/rulesets/1 -X DELETE', 'branch protection'),
-    allowed('gh api repos/o/r/branches/main/protection'), allowed('gh api repos/o/r/rulesets'),
-])
-def test_admin_edge(root, command, where, code, fragments):
-    decide(root, command, where, code, fragments)
-
-
-# Force push: blocks with enforce on, logged with it off.
-@pytest.mark.parametrize(ROW, [
-    *(refused(command, 'force-push is refused', 'git push origin HEAD:refs/heads/<branch>') for command in [
-        'git push --force', 'git push -f origin x', 'git push -uf origin x',
-        'git push --force-with-lease origin x', 'git push origin +x', 'git push --mirror',
-        'git -C repo push --force origin x', 'git push origin +HEAD:refs/heads/x',
-    ]),
-    *(refused(wrapper.format('git push --force origin x'), 'force-push is refused') for wrapper in WRAPPERS),
-    refused('git push -f origin div-1', 'force-push is refused', 'git push origin HEAD:refs/heads/div-1',
-            where='worktrees/DIV-1'),
-    *(allowed(command) for command in [
-        'git push origin x', 'git push origin HEAD:x', 'git fetch --force', 'git push -u origin x',
-        'git push --delete origin x', 'git push origin :x', 'git commit -m "git push --force"',
-    ]),
-])
-def test_force_push_edge(root, command, where, code, fragments):
-    decide(root, command, where, code, fragments)
-
-
-# The default branch (B6 lead call): blocks with enforce on, logged with it off. #847 F4: WUWEI
-# installs no Git hook, so skipping hooks skips nothing of WUWEI's.
-@pytest.mark.parametrize(ROW, [
-    *(refused(command, 'push to the default branch main is refused', 'bin/wuwei pr raise', '--item DIV-1',
-              where='worktrees/DIV-1') for command in [
-        'git push origin main', 'git push origin HEAD:main', 'git push upstream HEAD:refs/heads/main',
-        'git -C repo push origin main', 'git push --repo origin main',
-        'gh api -X PATCH repos/example/project/git/refs/heads/main -f sha=x',
-    ]),
-    # Review F2: a literal default-branch push in a loop is refused.
-    refused('for r in a b; do git -C $r push origin main; done', 'push to the default branch main'),
-    refused('git push --no-verify origin HEAD:main', 'push to the default branch'),
-    refused('git -c core.hooksPath=/dev/null push origin main', 'push to the default branch'),
-    *(allowed(command) for command in [
-        'git push --no-verify origin HEAD:refs/heads/a', 'git -c core.hooksPath=/dev/null push origin a',
-        'git -ccore.hooksPath=x push origin HEAD:refs/heads/a',
-    ]),
-    *(allowed(command) for command in [
-        'git push origin main-fix', 'git push origin HEAD:refs/heads/div-1', 'git pull origin main',
-        'git fetch origin main',
-    ]),
-])
-def test_default_branch_push_edge(root, command, where, code, fragments):
     decide(root, command, where, code, fragments)
 
 
@@ -464,21 +455,6 @@ def test_deploy_unreadable_config_fails_closed(root, text):
     with pytest.raises(ConfigError):
         load_config(root)
     assert check(root, 'gh workflow run deploy.yml', 'check_deploy')[0] == 2
-
-
-# A bare gh pr create for an item: blocks with enforce on, logged with it off.
-@pytest.mark.parametrize(ROW, [
-    *(refused(command, 'pr raise: DIV-1 is a WUWEI item', 'bin/wuwei pr raise example/project', '--item DIV-1',
-              where=where) for command, where in [
-        ('gh pr create --title t --body b', 'worktrees/DIV-1'),
-        ('gh pr create --repo example/project --head div-1 --title t --body b', '.'),
-        ('gh -R example/project pr create -H div-1 -t t -b b', '.'),
-        ('cd worktrees/DIV-1 && gh pr create -t t -b b', '.'),
-    ]),
-    allowed('gh pr create -t t -b b'), allowed('gh pr create --repo example/project --head other -t t', '.'),
-])
-def test_pr_create_edge(root, command, where, code, fragments):
-    decide(root, command, where, code, fragments)
 
 
 def test_pr_raise_allowed_once_the_item_links_a_pr(root):
@@ -669,4 +645,3 @@ def test_custom_rules_require_literal_executable(root, pattern):
     path.write_text('[deploy]\ndeny = [' + json.dumps(pattern) + ']\n')
     with pytest.raises(ConfigError, match='literal executable'):
         load_config(root)
-

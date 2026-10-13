@@ -45,7 +45,7 @@ def config(root):
 OWNER_MERGE = 'bin/wuwei plan set A owner_merge=false'
 
 
-def test_needs_owner_names_the_card(ws):
+def _case_needs_owner_names_the_card(ws):
     reason = sessions.needs_owner(ws, OWNER_MERGE, 'Release the owner merge hold on A')
     assert f'Owner step: {OWNER_MERGE}' in reason and 'host terminal' not in reason
     card = json.loads(reason[reason.index('{'):])
@@ -53,7 +53,7 @@ def test_needs_owner_names_the_card(ws):
     assert [option['label'] for option in card['options']] == ['Yes', 'No']
 
 
-def test_needs_owner_reads_the_recorded_yes(ws):
+def _case_needs_owner_reads_the_recorded_yes(ws):
     from fakes import owner
     assert owner.answer(ws, OWNER_MERGE, reply='No') == (0, '')
     assert owner.answer(ws, 'bin/wuwei plan set B owner_merge=false') == (0, '')
@@ -65,13 +65,21 @@ def test_needs_owner_reads_the_recorded_yes(ws):
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x', token='abd') is not None
 
 
+@pytest.mark.parametrize("scenario_fn", [
+    _case_needs_owner_names_the_card,
+    _case_needs_owner_reads_the_recorded_yes,
+])
+def test_needs_owner_cases_48(ws, scenario_fn):
+    scenario_fn(ws)
+
+
 def test_a_seat_answer_records_nothing(ws):
     from fakes import owner
     assert owner.answer(ws, OWNER_MERGE, agent='a1') == (0, '')
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is not None
 
 
-def test_owner_answer_records_without_reading_state(ws):
+def _case_owner_answer_records_without_reading_state(ws):
     from fakes import owner
     path = workspace.day_dir(ws) / 'state.json'
     path.chmod(0o644)
@@ -80,11 +88,19 @@ def test_owner_answer_records_without_reading_state(ws):
     assert sessions.needs_owner(ws, 'bin/wuwei state recover', 'x', token='abc') is None
 
 
-def test_owner_answer_counts_with_enforce_off(ws):
+def _case_owner_answer_counts_with_enforce_off(ws):
     from fakes import owner
     (ws / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     assert owner.answer(ws, OWNER_MERGE) == (0, '')
     assert sessions.needs_owner(ws, OWNER_MERGE, 'x') is None
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_owner_answer_records_without_reading_state,
+    _case_owner_answer_counts_with_enforce_off,
+])
+def test_owner_answer_cases_74(ws, scenario_fn):
+    scenario_fn(ws)
 
 
 def test_only_a_recorded_gate_asked_row_counts(ws):

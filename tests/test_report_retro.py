@@ -1,5 +1,6 @@
 """Owner report, evidence retro and promoted charter history."""
 
+import pytest
 import json
 import subprocess
 from types import SimpleNamespace
@@ -227,7 +228,7 @@ def test_report_and_retro_outside_workspace_are_clean(tmp_path, monkeypatch):
     assert main(['retro']) == 0
 
 
-def test_report_lists_merged_items(tmp_path, monkeypatch):
+def _case_report_lists_merged_items(tmp_path, monkeypatch):
     root = tmp_path
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
@@ -397,7 +398,7 @@ def finding(path, text):
     return f'- P2 | {path} | {text} fails when empty | blocks: no\nProbe: not run'
 
 
-def test_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
+def _case_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
     from wuwei import retro
     root = tmp_path
     banded_day(monkeypatch, root)
@@ -449,7 +450,7 @@ def test_retro_pairs_a_moved_second_opinion_with_round_one(tmp_path, monkeypatch
     assert '| A | quality | none |' in section
 
 
-def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
+def _case_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
     # #732, part 14: every non-PASS verdict and what followed it: a fix round or a park in code.
     from wuwei import retro
     root = tmp_path
@@ -479,7 +480,7 @@ def test_retro_lists_blocks_and_what_followed(tmp_path, monkeypatch):
                                         '| C | security initial | PARK | parked: gate security PARK: P1 |']
 
 
-def test_report_lists_spec_warnings(tmp_path, monkeypatch):
+def _case_report_lists_spec_warnings(tmp_path, monkeypatch):
     root = tmp_path
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
@@ -493,7 +494,7 @@ def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     assert '## Spec warnings\n- A: plan (edit)\n' in report.build(root)
 
 
-def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):
+def _case_report_lists_review_seats_per_item(tmp_path, monkeypatch):
     # #622: reviewer seats per item with the tier reason.
     root = tmp_path
     (root / '.wuwei').mkdir()
@@ -537,7 +538,7 @@ def test_report_counts_fix_rounds_and_names_the_cap(tmp_path, monkeypatch):
     assert '## Rounds\n- A: 2 fix rounds, round cap 2 reached\n- B: 1 fix round\n' in report.build(root)
 
 
-def test_retro_lists_seat_findings(tmp_path, monkeypatch):
+def _case_retro_lists_seat_findings(tmp_path, monkeypatch):
     """#646: every finding of the day is in its retro, with its item phase or not added."""
     from wuwei import retro
     root = tmp_path
@@ -564,7 +565,16 @@ def test_retro_lists_seat_findings(tmp_path, monkeypatch):
     assert text.count('## Seat findings') == 1
 
 
-def test_report_lists_skipped_duties(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_retro_lists_findings_unique_to_each_model,
+    _case_retro_lists_blocks_and_what_followed,
+    _case_retro_lists_seat_findings,
+])
+def test_retro_lists_cases_400(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
+
+
+def _case_report_lists_skipped_duties(tmp_path, monkeypatch):
     """#842: a duty the tracker could not take is listed for the owner, never dropped."""
     root = tmp_path
     (root / '.wuwei').mkdir()
@@ -580,6 +590,16 @@ def test_report_lists_skipped_duties(tmp_path, monkeypatch):
     state.append_event('duty.skipped', {**duty, 'error': 'linear: rate limited'}, root)
     assert ('## Skipped duties\n- A: tracker.done on ENG-7: linear: rate limited; '
             'retry: bin/wuwei tracker move A done\n') in report.build(root)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_report_lists_merged_items,
+    _case_report_lists_spec_warnings,
+    _case_report_lists_review_seats_per_item,
+    _case_report_lists_skipped_duties,
+])
+def test_report_lists_cases_230(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def test_report_names_the_create_retry(tmp_path, monkeypatch):

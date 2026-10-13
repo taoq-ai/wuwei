@@ -97,7 +97,7 @@ def test_local_checks_execute_configured_shell_command(tmp_path, monkeypatch, re
     assert calls == [['/bin/sh', '-c', 'unit && lint']]
 
 
-def test_local_checks_use_the_given_timeout(tmp_path, monkeypatch):  # #724
+def _case_local_checks_use_the_given_timeout(tmp_path, monkeypatch):  # #724
     import subprocess
     adapter = importlib.import_module('adapters.checks.local')
 
@@ -111,7 +111,7 @@ def test_local_checks_use_the_given_timeout(tmp_path, monkeypatch):  # #724
     assert adapter.run(str(tmp_path), 'suite').exit == 2
 
 
-def test_local_checks_timeout_names_command_limit_and_setting(tmp_path, monkeypatch):  # #724
+def _case_local_checks_timeout_names_command_limit_and_setting(tmp_path, monkeypatch):  # #724
     import subprocess
     adapter = importlib.import_module('adapters.checks.local')
 
@@ -148,7 +148,7 @@ def test_local_checks_classify_missing_environment(tmp_path, monkeypatch, comman
     assert result.data['environment'] == reason
 
 
-def test_local_checks_leave_application_import_as_code_failure(tmp_path, monkeypatch):
+def _case_local_checks_leave_application_import_as_code_failure(tmp_path, monkeypatch):
     import subprocess
     adapter = importlib.import_module('adapters.checks.local')
     monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
@@ -158,7 +158,7 @@ def test_local_checks_leave_application_import_as_code_failure(tmp_path, monkeyp
     assert 'environment' not in result.data
 
 
-def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_path, monkeypatch):
+def _case_local_checks_leave_application_not_found_message_as_code_failure(tmp_path, monkeypatch):
     import subprocess
     adapter = importlib.import_module('adapters.checks.local')
     monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
@@ -166,6 +166,16 @@ def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_pa
     result = adapter.run(str(tmp_path), 'python3 -m pytest -q')
     assert result.exit == 1
     assert 'environment' not in result.data
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_local_checks_use_the_given_timeout,
+    _case_local_checks_timeout_names_command_limit_and_setting,
+    _case_local_checks_leave_application_import_as_code_failure,
+    _case_local_checks_leave_application_not_found_message_as_code_failure,
+])
+def test_local_checks_cases_100(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize('exit_code,identity', [(0, True), (1, True), (2, True), (0, False)])

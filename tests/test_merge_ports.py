@@ -60,7 +60,7 @@ def test_files_include_rename_source_and_patch(monkeypatch):
     assert result.data[0]['previous_path'] == 'infra/a.py'
 
 
-def test_pr_carries_actual_merge_commit(monkeypatch):
+def _case_pr_carries_actual_merge_commit(monkeypatch):
     case = deepcopy(next(c for c in recordings('code_host') if c['operation'] == 'pr'))
     body = json.loads(case['steps'][0]['stdout'])
     body.update(merged=True, merged_at='2026-09-28T12:00:00Z', merge_commit_sha='b' * 40)
@@ -71,7 +71,7 @@ def test_pr_carries_actual_merge_commit(monkeypatch):
     assert result.data['merged_at'] == '2026-09-28T12:00:00Z'
 
 
-def test_pr_carries_who_merged(monkeypatch):  # #729
+def _case_pr_carries_who_merged(monkeypatch):  # #729
     case = deepcopy(next(c for c in recordings('code_host') if c['operation'] == 'pr'))
     install_replay(monkeypatch, 'gh', case['steps'])
     assert adapter().pr(*case['args']).data['merged_by'] is None
@@ -80,6 +80,14 @@ def test_pr_carries_who_merged(monkeypatch):  # #729
     case['steps'][0]['stdout'] = json.dumps(body)
     install_replay(monkeypatch, 'gh', case['steps'])
     assert adapter().pr(*case['args']).data['merged_by'] == 'owner-login'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_pr_carries_actual_merge_commit,
+    _case_pr_carries_who_merged,
+])
+def test_pr_carries_cases_63(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 
 def commit(sha, parent, message='merge change'):

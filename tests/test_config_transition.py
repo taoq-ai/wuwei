@@ -52,7 +52,7 @@ def replay(monkeypatch, capsys, root, session='test'):
     return code, capsys.readouterr().out
 
 
-def test_unknown_key_warns_with_the_nearest_key(ws):
+def _case_unknown_key_warns_with_the_nearest_key(ws):
     found = []
     assert workspace.load_config(ws, warnings=found)['scanner']['severity_threshold'] == 'high'
     assert found == ['config.toml: ' + WARNING.format(typo_line(TYPO))]
@@ -68,11 +68,19 @@ def test_enforce_off_warns_about_the_unknown_key(ws):
     assert found == ['config.toml: ' + WARNING.format(typo_line(OFF))]
 
 
-def test_unknown_key_without_a_near_key_says_remove_it(ws):
+def _case_unknown_key_without_a_near_key_says_remove_it(ws):
     write(ws, 'nonsense = 1\n[guards]\nenforce = true\n')
     found = []
     workspace.load_config(ws, warnings=found)
     assert 'unknown key nonsense at line 1; remove it or use a documented key' in found[0]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_unknown_key_warns_with_the_nearest_key,
+    _case_unknown_key_without_a_near_key_says_remove_it,
+])
+def test_unknown_key_cases_55(ws, scenario_fn):
+    scenario_fn(ws)
 
 
 @pytest.mark.parametrize('text', [TYPO, OFF], ids=['enforce', 'log-only'])
@@ -94,7 +102,7 @@ def test_template_version_is_a_documented_key(ws):
     assert found == []
 
 
-def test_config_check_prints_the_warning(ws, monkeypatch, capsys):
+def _case_config_check_prints_the_warning(ws, monkeypatch, capsys):
     from fakes.code_host import Fake as CodeHost
     from wuwei import registry
     from wuwei.commands import config
@@ -109,7 +117,7 @@ def test_config_check_prints_the_warning(ws, monkeypatch, capsys):
     assert ('wuwei config check: warning: config.toml: ' + WARNING.format(typo_line(TYPO))) in err
 
 
-def test_config_check_reports_two_tables(ws, monkeypatch, capsys):
+def _case_config_check_reports_two_tables(ws, monkeypatch, capsys):
     from fakes.code_host import Fake as CodeHost
     from wuwei import registry
     from wuwei.commands import config
@@ -127,6 +135,14 @@ def test_config_check_reports_two_tables(ws, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert (f'wuwei config check: code_host_orgs is set in [outbound] (line {good}) and [outward] '
             f'(line {bad})') in err
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_config_check_prints_the_warning,
+    _case_config_check_reports_two_tables,
+])
+def test_config_check_cases_97(ws, monkeypatch, capsys, scenario_fn):
+    scenario_fn(ws, monkeypatch, capsys)
 
 
 def plugin(tmp_path, version, marker=False):
@@ -330,7 +346,7 @@ def test_unread_key_in_an_inline_table_refuses(tmp_path):
         unread(tmp_path, 'owner = { name = "a", mystery = 1 }\n')
 
 
-def test_upgrade_keeps_keys_from_a_newer_template(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_keys_from_a_newer_template(tmp_path, monkeypatch, capsys):
     import re
     from wuwei import integrity
     from wuwei.commands import init
@@ -385,7 +401,7 @@ def test_upgrade_removes_and_reports_retired_keys(tmp_path, monkeypatch, capsys)
     assert 'set budget.<runtime>.five_hour and seven_day instead' in out  # #845
 
 
-def test_upgrade_retires_the_memory_machines(tmp_path, monkeypatch, capsys):
+def _case_upgrade_retires_the_memory_machines(tmp_path, monkeypatch, capsys):
     # #833: consolidation, voice, the note and digest memory keys and memory/forget.json go.
     import tomllib
     from wuwei.commands import init
@@ -538,7 +554,7 @@ def test_upgrade_unhooks_worktrees_and_retires_the_watch(tmp_path, monkeypatch, 
                                   'shepherd.stderr.log') if (root / '.wuwei' / name).exists()]
 
 
-def test_upgrade_keeps_the_shims_a_worktree_still_points_at(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_the_shims_a_worktree_still_points_at(tmp_path, monkeypatch, capsys):
     # #847 F2: a worktree whose hooks path could not be unset keeps .wuwei/git-hooks, named.
     from wuwei import registry
     from wuwei.commands import init
@@ -563,7 +579,7 @@ def test_upgrade_keeps_the_shims_a_worktree_still_points_at(tmp_path, monkeypatc
     assert git(trees['worktrees/shim'][0], 'config', '--worktree', '--get', 'core.hooksPath').stdout == ''
 
 
-def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):
+def _case_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch, capsys):
     # Part 14: autonomy, decisions, steward and the digest verbosity leave config.toml.
     import tomllib
     from wuwei.commands import init
@@ -585,7 +601,7 @@ def test_upgrade_retires_the_decision_and_steward_settings(tmp_path, monkeypatch
     assert tomllib.loads(path.read_text()) == tomllib.loads(clean)
 
 
-def test_upgrade_retires_the_docs_system(tmp_path, monkeypatch, capsys):
+def _case_upgrade_retires_the_docs_system(tmp_path, monkeypatch, capsys):
     # Part 19 (#841): the [docs] table and adapters.docs leave config.toml; the config loads clean.
     import tomllib
     from wuwei.commands import init
@@ -605,6 +621,15 @@ def test_upgrade_retires_the_docs_system(tmp_path, monkeypatch, capsys):
     warnings = []
     workspace.load_config(tmp_path, warnings=warnings)
     assert warnings == []
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_upgrade_retires_the_memory_machines,
+    _case_upgrade_retires_the_decision_and_steward_settings,
+    _case_upgrade_retires_the_docs_system,
+])
+def test_upgrade_retires_cases_388(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('dry_run', [True, False])
@@ -672,7 +697,7 @@ def test_upgrade_retires_the_outward_tiers_and_the_register(tmp_path, monkeypatc
         assert GRAPH_COMMENT not in path.read_text() and not graph.exists()
 
 
-def test_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_a_symlinked_graph_json(tmp_path, monkeypatch, capsys):
     from wuwei.commands import init
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=False, dry_run=False)) == 0
@@ -744,7 +769,7 @@ def test_upgrade_leaves_nothing_retired_from_a_0_27_0_workspace(tmp_path, monkey
     assert config['host']['min_free_memory_pct'] == 0  # #898: the new key, off
 
 
-def test_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):
+def _case_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):
     # #848 review F2: the parsed config copy under generated/ is live, never a stale copy.
     from wuwei import workspace
     from wuwei.commands import init
@@ -756,6 +781,16 @@ def test_upgrade_keeps_the_config_cache(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert init.run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
     assert cache.exists() and 'No workspace changes needed' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_upgrade_keeps_keys_from_a_newer_template,
+    _case_upgrade_keeps_the_shims_a_worktree_still_points_at,
+    _case_upgrade_keeps_a_symlinked_graph_json,
+    _case_upgrade_keeps_the_config_cache,
+])
+def test_upgrade_keeps_cases_333(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
 
 
 def test_calendar_tts_and_editor_ports_are_retired():

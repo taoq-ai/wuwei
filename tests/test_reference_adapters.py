@@ -95,7 +95,7 @@ def test_linear_failure_is_redacted(monkeypatch):
     assert 'private-linear-key' not in result.reason
 
 
-def test_public_linear_create_lint_refusal_reaches_policy_without_http(monkeypatch, tmp_path):
+def _case_public_linear_create_lint_refusal_reaches_policy_without_http(monkeypatch, tmp_path):
     linear = importlib.import_module('adapters.tracker.linear')
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n')
@@ -107,7 +107,7 @@ def test_public_linear_create_lint_refusal_reaches_policy_without_http(monkeypat
     assert calls == []
 
 
-def test_public_linear_create_sends_after_policy_clearance(monkeypatch, tmp_path):
+def _case_public_linear_create_sends_after_policy_clearance(monkeypatch, tmp_path):
     linear = importlib.import_module('adapters.tracker.linear')
     from wuwei import outward
     (tmp_path / '.wuwei').mkdir()
@@ -124,6 +124,14 @@ def test_public_linear_create_sends_after_policy_clearance(monkeypatch, tmp_path
     assert calls[0][2]['variables']['input'] == draft
 
 
+@pytest.mark.parametrize("scenario_fn", [
+    _case_public_linear_create_lint_refusal_reaches_policy_without_http,
+    _case_public_linear_create_sends_after_policy_clearance,
+])
+def test_public_linear_cases_98(monkeypatch, tmp_path, scenario_fn):
+    scenario_fn(monkeypatch, tmp_path)
+
+
 def test_slack_replay(monkeypatch):
     slack = importlib.import_module('adapters.chat.slack')
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'private-slack-token')
@@ -138,7 +146,7 @@ def test_slack_replay(monkeypatch):
     assert calls[0][1]['Authorization'] == 'Bearer private-slack-token'
 
 
-def test_slack_api_base_override(monkeypatch):
+def _case_slack_api_base_override(monkeypatch):
     slack = importlib.import_module('adapters.chat.slack')
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'private-slack-token')
     monkeypatch.setenv('SLACK_API_BASE', 'http://127.0.0.1:9/fake')
@@ -250,13 +258,21 @@ def test_slack_identity_tokens(monkeypatch):
     assert calls[1][1]['Authorization'] == 'Bearer bot-secret'
 
 
-def test_slack_api_error_body_fails_closed(monkeypatch):
+def _case_slack_api_error_body_fails_closed(monkeypatch):
     slack = importlib.import_module('adapters.chat.slack')
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'bot-secret')
     replay(monkeypatch, {'ok': False, 'error': 'bot-secret invalid'})
     with pytest.raises(slack.Failure) as failure:
         slack._send({'channel': 'C1', 'text': 'fixed in abcdef0.'})
     assert 'bot-secret' not in str(failure.value)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_slack_api_base_override,
+    _case_slack_api_error_body_fails_closed,
+])
+def test_slack_api_cases_141(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 
 def test_greptile_error_body_fails_closed(monkeypatch):
@@ -312,7 +328,7 @@ def test_greptile_truncated_findings_are_unmeasured(monkeypatch):
     assert greptile.open_findings('owner/repo#7').exit == 2
 
 
-def test_public_slack_post_returns_the_refused_text_without_http(monkeypatch, tmp_path):
+def _case_public_slack_post_returns_the_refused_text_without_http(monkeypatch, tmp_path):
     slack = importlib.import_module('adapters.chat.slack')
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nname = "Pat"\npronouns = "they/them"\n')
@@ -323,7 +339,7 @@ def test_public_slack_post_returns_the_refused_text_without_http(monkeypatch, tm
     assert calls == []
 
 
-def test_public_slack_custom_app_uses_bot_identity(monkeypatch, tmp_path):
+def _case_public_slack_custom_app_uses_bot_identity(monkeypatch, tmp_path):
     slack = importlib.import_module('adapters.chat.slack')
     from wuwei import outward
     (tmp_path / '.wuwei').mkdir()
@@ -336,6 +352,14 @@ def test_public_slack_custom_app_uses_bot_identity(monkeypatch, tmp_path):
     result = slack.post('C123', 'fixed in abcdef0.', None, root=tmp_path)
     assert result.exit == 0
     assert calls[0][1]['Authorization'] == 'Bearer bot-secret'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_public_slack_post_returns_the_refused_text_without_http,
+    _case_public_slack_custom_app_uses_bot_identity,
+])
+def test_public_slack_cases_315(monkeypatch, tmp_path, scenario_fn):
+    scenario_fn(monkeypatch, tmp_path)
 
 
 def test_greptile_accepts_mcp_event_stream(monkeypatch):

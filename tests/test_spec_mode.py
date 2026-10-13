@@ -469,7 +469,7 @@ def governed_item(ws, item, **fields):
     day_state(ws, {'A': {'phase': 'implement', 'status': 'running', 'worktree': str(item), **fields}})
 
 
-def test_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, unanalysed, monkeypatch, capsys):
+def _case_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, unanalysed, monkeypatch, capsys):
     governed_item(ws, item, governed_by='docs/prereg.md#Pre-registration')
     code, out, err = analysis(ws, monkeypatch, capsys, 'A')
     assert (code, out) == (2, '') and not unanalysed.exists()
@@ -484,7 +484,7 @@ def test_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, una
     assert analysis(ws, monkeypatch, capsys, 'A', stdin=conflicts)[0] == 0
 
 
-def test_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypatch, capsys):
+def _case_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypatch, capsys):
     governed_item(ws, item)
     spec = item / 'specs/001-a/spec.md'
     plain = spec.read_text()
@@ -497,6 +497,14 @@ def test_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypat
     governed_item(ws, item, governed_by='docs/prereg.md#Nope')
     code, out, err = analysis(ws, monkeypatch, capsys, 'A')
     assert (code, out) == (2, '') and 'no heading Nope' in err and not unanalysed.exists()
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_spec_analysis_refuses_a_governed_report_without_the_table,
+    _case_spec_analysis_governed_by_the_spec_line,
+])
+def test_spec_analysis_cases_472(ws, item, unanalysed, monkeypatch, capsys, scenario_fn):
+    scenario_fn(ws, item, unanalysed, monkeypatch, capsys)
 
 
 def test_brief_block_and_gate_line(governed_tree):

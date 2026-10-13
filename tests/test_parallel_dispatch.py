@@ -152,20 +152,7 @@ def test_next_adopts_work_already_started_outside_the_plan(day, evidence, expect
     assert all(row.get('item') != 'A' for row in json.loads(day.run('dispatch', 'next', '--all'))['entries'])
 
 
-def test_next_starts_a_planned_item_when_its_pr_listing_failed(day):
-    from wuwei.registry import Result
-
-    day.plan()
-    day.approve()
-    day.run('plan', 'session', 'planner')
-    day.host.results['pulls'] = Result(2, None, 'recorded host failure')
-    action = json.loads(day.run('next', '--json'))
-    assert action['state'] == 'set'
-    assert any(row['item'] == 'A' and row['action'] == 'start' and 'unmeasured' in row['why']
-               for row in action['launches'])
-
-
-def test_next_never_starts_the_six_reported_items_twice(day):
+def _case_next_never_starts_the_six_reported_items_twice(day):
     from wuwei import state
     from wuwei.registry import Result
 
@@ -212,77 +199,65 @@ def test_next_never_starts_the_six_reported_items_twice(day):
     assert json.loads(day.run('dispatch', 'next', '--all'))['entries'] == []
 
 
-def test_unrelated_pr_and_uncommitted_named_worktree_keep_the_start(day):
-    from wuwei.registry import Result
-
-    day.plan()
-    day.approve()
-    day.run('plan', 'session', 'planner')
-    tree = day.root / 'worktrees/A'
-    tree.parent.mkdir()
-    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
-                   check=True, capture_output=True, env=dict(os.environ))
-    day.host.results['pulls'] = Result(0, [{
-        'number': 3174, 'state': 'open', 'head': day.head, 'branch': 'another-item',
-        'head_repo': 'acme/widget',
-    }])
-
-    action = json.loads(day.run('next', '--json'))
-    assert action['state'] == 'set'
-    assert [(row['item'], row['action']) for row in action['launches']] == [('A', 'start')]
-
-
-def test_normal_start_from_origin_main_ahead_of_checkout_still_launches(day):
-    day.plan()
-    day.approve()
-    day.run('plan', 'session', 'planner')
-    remote = day.root / 'remote-base'
-    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'remote-base', str(remote)],
-                   check=True, capture_output=True, env=dict(os.environ))
-    (remote / 'memory/demo.py').write_text('VALUE = 1\n')
-    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=Builder', '-c',
-                 'user.email=builder@example.test', 'commit', '-q', '-m', 'remote base']):
-        subprocess.run(['git', '-C', str(remote), *argv], check=True, capture_output=True,
-                       env=dict(os.environ))
-    subprocess.run(['git', '-C', str(day.repo), 'update-ref', 'refs/remotes/origin/main',
-                    subprocess.check_output(['git', '-C', str(remote), 'rev-parse', 'HEAD'],
-                                            env=dict(os.environ)).decode().strip()],
-                   check=True, capture_output=True, env=dict(os.environ))
-    tree = day.root / 'worktrees/A'
-    tree.parent.mkdir()
-    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree),
-                    'refs/remotes/origin/main'], check=True, capture_output=True, env=dict(os.environ))
-    action = json.loads(day.run('next', '--json'))
-    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
-
-
-def test_ad_hoc_review_mention_does_not_hold_builder(day):
+@pytest.mark.parametrize('scenario', [
+    'failed_pr_listing', 'unrelated_pr', 'origin_ahead', 'review_mention', 'stale_pr',
+])
+def test_next_keeps_a_planned_start_without_matching_evidence(day, scenario):
     from wuwei import state
-    day.plan()
-    day.approve()
-    day.run('plan', 'session', 'planner')
-    state.append_event('seat adhoc', {'role': 'reviewer', 'prompt': 'Review A'}, day.root)
-    action = json.loads(day.run('next', '--json'))
-    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
-
-
-def test_stale_cached_pr_is_refreshed_before_it_can_hold_a_start(day):
     from wuwei.registry import Result
+
     day.plan()
     day.approve()
     day.run('plan', 'session', 'planner')
-    old = '2020-01-01T00:00:00+00:00'
-    (day.directory / 'prs.json').write_text(json.dumps({
-        'fetched_at': old,
-        'repos': {'acme/widget': {'at': old}},
-        'pulls': [{'ref': 'acme/widget#3174', 'state': 'open', 'branch': 'a',
-                   'head_repo': 'acme/widget'}],
-    }))
-    day.host.results['pulls'] = Result(0, [])
+    if scenario == 'failed_pr_listing':
+        day.host.results['pulls'] = Result(2, None, 'recorded host failure')
+    elif scenario == 'unrelated_pr':
+        tree = day.root / 'worktrees/A'
+        tree.parent.mkdir()
+        subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
+                       check=True, capture_output=True, env=dict(os.environ))
+        day.host.results['pulls'] = Result(0, [{
+            'number': 3174, 'state': 'open', 'head': day.head, 'branch': 'another-item',
+            'head_repo': 'acme/widget',
+        }])
+    elif scenario == 'origin_ahead':
+        remote = day.root / 'remote-base'
+        subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'remote-base', str(remote)],
+                       check=True, capture_output=True, env=dict(os.environ))
+        (remote / 'memory/demo.py').write_text('VALUE = 1\n')
+        for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=Builder', '-c',
+                     'user.email=builder@example.test', 'commit', '-q', '-m', 'remote base']):
+            subprocess.run(['git', '-C', str(remote), *argv], check=True, capture_output=True,
+                           env=dict(os.environ))
+        subprocess.run(['git', '-C', str(day.repo), 'update-ref', 'refs/remotes/origin/main',
+                        subprocess.check_output(['git', '-C', str(remote), 'rev-parse', 'HEAD'],
+                                                env=dict(os.environ)).decode().strip()],
+                       check=True, capture_output=True, env=dict(os.environ))
+        tree = day.root / 'worktrees/A'
+        tree.parent.mkdir()
+        subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree),
+                        'refs/remotes/origin/main'], check=True, capture_output=True, env=dict(os.environ))
+    elif scenario == 'review_mention':
+        state.append_event('seat adhoc', {'role': 'reviewer', 'prompt': 'Review A'}, day.root)
+    else:
+        old = '2020-01-01T00:00:00+00:00'
+        (day.directory / 'prs.json').write_text(json.dumps({
+            'fetched_at': old,
+            'repos': {'acme/widget': {'at': old}},
+            'pulls': [{'ref': 'acme/widget#3174', 'state': 'open', 'branch': 'a',
+                       'head_repo': 'acme/widget'}],
+        }))
+        day.host.results['pulls'] = Result(0, [])
     action = json.loads(day.run('next', '--json'))
+    if scenario in ('failed_pr_listing', 'unrelated_pr'):
+        assert action['state'] == 'set'
+    if scenario == 'failed_pr_listing':
+        assert any(row['item'] == 'A' and row['action'] == 'start' and 'unmeasured' in row['why']
+                   for row in action['launches'])
     assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
-    assert [call for call in day.host.calls if call[0] == 'pulls'] == [
-        ('pulls', ('acme/widget',), day.root)]
+    if scenario == 'stale_pr':
+        assert [call for call in day.host.calls if call[0] == 'pulls'] == [
+            ('pulls', ('acme/widget',), day.root)]
 
 
 def test_held_item_after_owner_no_names_evidence_not_cap(day, monkeypatch):
@@ -301,7 +276,7 @@ def test_held_item_after_owner_no_names_evidence_not_cap(day, monkeypatch):
     assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
 
 
-def test_owner_no_rejects_pr_evidence_and_allows_start(day):
+def _case_owner_no_rejects_pr_evidence_and_allows_start(day):
     from wuwei import sessions, state
     from wuwei.registry import Result
     day.plan()
@@ -319,7 +294,7 @@ def test_owner_no_rejects_pr_evidence_and_allows_start(day):
     assert action['decision'] is None
 
 
-def test_direct_dispatch_refreshes_stale_pr_before_start(day):
+def _case_direct_dispatch_refreshes_stale_pr_before_start(day):
     from wuwei.registry import Result
     day.plan()
     day.approve()
@@ -335,7 +310,7 @@ def test_direct_dispatch_refreshes_stale_pr_before_start(day):
     assert all(entry['action'] != 'start' for entry in entries)
 
 
-def test_pr_and_committed_worktree_share_one_owner_card(day):
+def _case_pr_and_committed_worktree_share_one_owner_card(day):
     from wuwei import state, workspace
     from wuwei.registry import Result
     day.plan()
@@ -366,7 +341,7 @@ def test_pr_and_committed_worktree_share_one_owner_card(day):
     assert action['decision']['why'].startswith('A: open PR')
 
 
-def test_committed_worktree_precedes_seat_and_survives_its_no(day):
+def _case_committed_worktree_precedes_seat_and_survives_its_no(day):
     from wuwei import sessions, state
     day.plan()
     day.approve()
@@ -398,7 +373,7 @@ def test_committed_worktree_precedes_seat_and_survives_its_no(day):
     assert 'adhoc-1' in second['decision']['command']
 
 
-def test_worktree_card_quotes_space_in_path(day):
+def _case_worktree_card_quotes_space_in_path(day):
     from wuwei import state
     day.plan()
     day.approve()
@@ -419,7 +394,7 @@ def test_worktree_card_quotes_space_in_path(day):
     assert shlex.split(command) == ['wuwei', 'build', 'reconcile', 'A', '--worktree', str(tree)]
 
 
-def test_no_on_one_seat_does_not_reject_later_seat(day):
+def _case_no_on_one_seat_does_not_reject_later_seat(day):
     from wuwei import sessions, state
     day.plan()
     day.approve()
@@ -462,7 +437,7 @@ def test_existing_branch_worktree_commit_ceiling(day):
     assert json.loads(day.run('next', '--json'))['decision']['command'].startswith('wuwei build reconcile A')
 
 
-def test_owner_cap_one_stays_sequential(day):
+def _case_owner_cap_one_stays_sequential(day):
     approved(day, 1)
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'wait'), ('C', 'wait'), ('D', 'wait')]
@@ -583,7 +558,7 @@ def test_fresh_workspace_derives_cap_from_the_host_and_starts_four(day):
     assert json.loads(day.run('dispatch', 'next', '--all'))['bound'] == 'host.seats'
 
 
-def test_owner_cap_names_what_the_host_fits(day):
+def _case_owner_cap_names_what_the_host_fits(day):
     approved(day, 1)
     assert ('CAP: cap 1 (owner): config cap; the host fits 4 (subagent runtime, free memory not read; '
             'host.seats unset, 4 cores)'
@@ -592,6 +567,14 @@ def test_owner_cap_names_what_the_host_fits(day):
     config = day.root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('cap = 1\n', ''))
     assert json.loads(day.run('plan', 'template'))['cap'] == 4
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_owner_cap_one_stays_sequential,
+    _case_owner_cap_names_what_the_host_fits,
+])
+def test_owner_cap_cases_102(day, scenario_fn):
+    scenario_fn(day)
 
 
 def test_cap_follows_free_memory_at_each_sweep(day):
@@ -846,3 +829,16 @@ def test_round2_prompt_sentinels_do_not_complete_gate_batch(day, recorded_gates)
     assert ('B', expected) in entries, rows
     if recorded_gates:
         assert 'gate waits for seats' in next(row['reason'] for row in rows if row['item'] == 'B')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_next_never_starts_the_six_reported_items_twice,
+    _case_owner_no_rejects_pr_evidence_and_allows_start,
+    _case_direct_dispatch_refreshes_stale_pr_before_start,
+    _case_pr_and_committed_worktree_share_one_owner_card,
+    _case_committed_worktree_precedes_seat_and_survives_its_no,
+    _case_worktree_card_quotes_space_in_path,
+    _case_no_on_one_seat_does_not_reject_later_seat,
+])
+def test_existing_work_evidence_cases(day, scenario_fn):
+    scenario_fn(day)

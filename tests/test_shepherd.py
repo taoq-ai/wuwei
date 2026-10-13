@@ -282,7 +282,7 @@ def test_a_failed_worktree_step_keeps_the_claim_and_names_the_rerun(case, capsys
     assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
 
 
-def test_claim_refuses_pr_already_raised_today(case):
+def _case_claim_refuses_pr_already_raised_today(case):
     from wuwei.__main__ import main
     root, _, _, _, _ = case
     state._write_state(lambda data: (data['items'].update(A={'pr': REF}),
@@ -292,7 +292,7 @@ def test_claim_refuses_pr_already_raised_today(case):
     assert state.read_state(root) == before
 
 
-def test_claim_refuses_unapproved_item_and_unreadable_pr(case):
+def _case_claim_refuses_unapproved_item_and_unreadable_pr(case):
     from wuwei.__main__ import main
     root, host, _, _, _ = case
     state._write_state(lambda data: data['items'].update(A={}), root)
@@ -303,7 +303,7 @@ def test_claim_refuses_unapproved_item_and_unreadable_pr(case):
     assert 'pr' not in state.read_state(root)['items']['A']
 
 
-def test_claim_refuses_conflicting_link_without_state_change(case):
+def _case_claim_refuses_conflicting_link_without_state_change(case):
     from wuwei.__main__ import main
     root, host, _, _, _ = case
     state._write_state(lambda data: (data['items'].update(A={'pr': 'acme/widget#8'}, B={}),
@@ -315,6 +315,15 @@ def test_claim_refuses_conflicting_link_without_state_change(case):
     before = state.read_state(root)
     assert main(['pr', 'claim', REF, '--item', 'B']) == 1
     assert state.read_state(root) == before
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_claim_refuses_pr_already_raised_today,
+    _case_claim_refuses_unapproved_item_and_unreadable_pr,
+    _case_claim_refuses_conflicting_link_without_state_change,
+])
+def test_claim_refuses_cases_285(case, scenario_fn):
+    scenario_fn(case)
 
 
 @pytest.mark.parametrize('change,expected', [
@@ -535,7 +544,7 @@ def test_raise_refuses_item_already_linked_before_creating_pr(case):
     assert not any(name == 'create_pr' for name, _, _ in host.calls)
 
 
-def test_raise_refuses_failed_gate_without_creating(case, monkeypatch):
+def _case_raise_refuses_failed_gate_without_creating(case, monkeypatch):
     from wuwei import shepherd
     root, host, _, _, vcs = case
     vcs.responses['head'] = Result(0, {'sha': SHA})
@@ -797,7 +806,7 @@ def test_raise_unmeasured_names_vcs_adapter(case, capsys):
     assert 'adapters.vcs' in capsys.readouterr().out
 
 
-def test_thread_reply_rechecks_last_word(case):
+def _case_thread_reply_rechecks_last_word(case):
     from wuwei import obligations
     root, host, _, _, _ = case
     row = {'id': 31, 'author': 'alice', 'is_bot': False, 'body': 'Why?',
@@ -902,7 +911,7 @@ def test_missing_branch_protection_reads_rulesets_for_fallback(monkeypatch):
     assert result.data['required_checks'] == [] and result.data['classic'] is False
 
 
-def test_thread_reply_posts_to_current_root_and_verifies_last_word(case):
+def _case_thread_reply_posts_to_current_root_and_verifies_last_word(case):
     from wuwei import obligations
     root, host, _, _, _ = case
     first = {'id': 31, 'author': 'alice', 'is_bot': False, 'body': 'Why?',
@@ -918,6 +927,14 @@ def test_thread_reply_posts_to_current_root_and_verifies_last_word(case):
     host.comment = post
     assert obligations.reply(REF, 'thread', 31, 'Acknowledged', root) == 0
     assert not state.read_state(root).get('reply_acks')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_thread_reply_rechecks_last_word,
+    _case_thread_reply_posts_to_current_root_and_verifies_last_word,
+])
+def test_thread_reply_cases_800(case, scenario_fn):
+    scenario_fn(case)
 
 
 def test_configured_required_check_fallback_for_unprotected_base(case, monkeypatch):
@@ -1065,7 +1082,7 @@ def would_refuse(root):
             for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
 
 
-def test_raise_gate_miss_warns_with_enforce_off(case, monkeypatch, capsys):
+def _case_raise_gate_miss_warns_with_enforce_off(case, monkeypatch, capsys):
     # #530, #837: a missing gate verdict is logged and warned with guards.enforce = false; the PR is raised.
     from wuwei import shepherd
     root, host = gate_miss(case, monkeypatch, False)
@@ -1075,13 +1092,21 @@ def test_raise_gate_miss_warns_with_enforce_off(case, monkeypatch, capsys):
     assert event['reason'] == GATE_MISS and set(event) == {'guard', 'reason', 'exit', 'target', 'session', 'item'}
 
 
-def test_raise_gate_miss_refuses(case, monkeypatch, capsys):
+def _case_raise_gate_miss_refuses(case, monkeypatch, capsys):
     # #816: no card; the gate reason names the seat's step.
     from wuwei import shepherd
     root, host = gate_miss(case, monkeypatch)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert capsys.readouterr().out.strip() == GATE_MISS and not created(host)
     assert not list((root / '.wuwei/days').glob('*/decisions/D-*.md'))
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_raise_gate_miss_warns_with_enforce_off,
+    _case_raise_gate_miss_refuses,
+])
+def test_raise_gate_cases_1068(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('where', ['.', 'docs'])
@@ -1141,7 +1166,7 @@ def test_raise_without_draft_opens_a_ready_pr(case, monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines()[-2:] == [REF, 'reviewers: alice bob']
 
 
-def test_raise_refuses_a_created_pr_that_is_not_a_draft(case, monkeypatch):
+def _case_raise_refuses_a_created_pr_that_is_not_a_draft(case, monkeypatch):
     from wuwei import shepherd
     root, host, raised = draft_raise(case, monkeypatch, created_draft=False)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1', draft=True) == 2
@@ -1149,6 +1174,14 @@ def test_raise_refuses_a_created_pr_that_is_not_a_draft(case, monkeypatch):
     assert data['raised_prs'] == [REF] and data['items']['ITEM-1'].get('pr') is None
     assert raised() == []
     assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_raise_refuses_failed_gate_without_creating,
+    _case_raise_refuses_a_created_pr_that_is_not_a_draft,
+])
+def test_raise_refuses_cases_538(case, monkeypatch, scenario_fn):
+    scenario_fn(case, monkeypatch)
 
 
 @pytest.mark.parametrize('extra,draft', [([], False), (['--draft'], True)])

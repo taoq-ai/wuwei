@@ -567,7 +567,7 @@ def last_event(root):
     return list(watch.records(workspace.day_dir(root) / 'events.jsonl'))[-1]
 
 
-def test_plan_carry_records_the_disposition(case, monkeypatch, capsys):
+def _case_plan_carry_records_the_disposition(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     monkeypatch.chdir(root)
@@ -608,7 +608,7 @@ def test_plan_park_keeps_paused_phase(case, monkeypatch, capsys, phase):
     assert state.read_state(root)['items']['A']['phase'] == phase
 
 
-def test_plan_carry_unknown_item(case, monkeypatch, capsys):
+def _case_plan_carry_unknown_item(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     monkeypatch.chdir(root)
@@ -616,6 +616,14 @@ def test_plan_carry_unknown_item(case, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert 'Z' in err and 'A' in err
     assert 'disposition' not in state.read_state(root)['items']['A']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_plan_carry_records_the_disposition,
+    _case_plan_carry_unknown_item,
+])
+def test_plan_carry_cases_570(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 def test_plan_park_reason_one_line(case, monkeypatch):
@@ -632,7 +640,7 @@ def question(name, status='queued', phase='planned'):
             f'{name} --reason "<why>". Keep working: finish it, then run bin/wuwei close again.')
 
 
-def test_close_question_line(case, monkeypatch, capsys):
+def _case_close_question_line(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     state._write_state(lambda data: data.update(planner_session_id='planner'), root)
@@ -643,7 +651,7 @@ def test_close_question_line(case, monkeypatch, capsys):
     assert 'needs a park or carry decision' not in out
 
 
-def test_close_question_per_item(case, monkeypatch, capsys):
+def _case_close_question_per_item(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     state._write_state(lambda data: (data['items'].update(B={}), data['approved_items'].append('B')),
@@ -652,6 +660,14 @@ def test_close_question_per_item(case, monkeypatch, capsys):
     assert main(['close']) == 1
     lines = capsys.readouterr().out.splitlines()
     assert question('A') in lines and question('B') in lines
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_close_question_line,
+    _case_close_question_per_item,
+])
+def test_close_question_cases_635(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 def test_retro_line_names_skill(case, monkeypatch, capsys):
@@ -692,7 +708,7 @@ def steward_runs(root):
             if row['kind'] == 'steward.run']
 
 
-def test_close_steward_waits_for_items(case, monkeypatch, capsys):
+def _case_close_steward_waits_for_items(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root)
     monkeypatch.chdir(root)
@@ -707,13 +723,21 @@ def test_close_steward_waits_for_items(case, monkeypatch, capsys):
     assert [run['trigger'] for run in steward_runs(root)] == ['close']
 
 
-def test_close_steward_unmeasured(case, monkeypatch, capsys):
+def _case_close_steward_unmeasured(case, monkeypatch, capsys):
     root, _, _ = case
     approved(root, worktree=5)
     monkeypatch.chdir(root)
     assert main(['close']) == 2
     assert 'item A unmeasured' in capsys.readouterr().out
     assert steward_runs(root) == []
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_close_steward_waits_for_items,
+    _case_close_steward_unmeasured,
+])
+def test_close_steward_cases_695(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 def test_carry_closes_day(case, monkeypatch):

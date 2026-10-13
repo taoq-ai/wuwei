@@ -580,7 +580,7 @@ def test_seat_launched_records_free_mib_and_running(launch, monkeypatch):
     assert launched['free_mib'] == 6144 and launched['running'] == 1
 
 
-def test_builder_cap_is_derived_at_launch(day, monkeypatch):
+def _case_builder_cap_is_derived_at_launch(day, monkeypatch):
     # #528: the guard derives CAP at launch (here the owner's 3), not the day's snapshot of 1.
     from wuwei.guards import agent_launch
     root, directory, _, _ = day
@@ -597,7 +597,7 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
         assert (code, 'CAP 3' in reason) == ((1, True) if name == 'four' else (0, False)), reason
 
 
-def test_builder_cap_counts_build_slots_not_live_builder_seats(day, monkeypatch):
+def _case_builder_cap_counts_build_slots_not_live_builder_seats(day, monkeypatch):
     # #910: one count with derive and the launch set: a Codex build loop (no seat) holds a slot,
     # and a stopped builder ahead in plan order keeps its slot while a later build's seat runs
     from wuwei.guards import agent_launch
@@ -611,6 +611,14 @@ def test_builder_cap_counts_build_slots_not_live_builder_seats(day, monkeypatch)
     building(root, 'X', 'B')
     set_seats({'b': {'item': 'B', 'role': 'builder', 'status': 'running', 'brief': 'b.md'}}, root)
     assert builder(root, directory, monkeypatch, 'X', 'x-two') == (0, '')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_builder_cap_is_derived_at_launch,
+    _case_builder_cap_counts_build_slots_not_live_builder_seats,
+])
+def test_builder_cap_cases_583(day, monkeypatch, scenario_fn):
+    scenario_fn(day, monkeypatch)
 
 
 def test_launch_ceiling_counts_only_live_registered_seats(day, monkeypatch):
@@ -984,7 +992,7 @@ def direct_launch(day, monkeypatch):
     return day, payload
 
 
-def test_direct_launch_records_private_prompt_and_stops(direct_launch, monkeypatch, capsys):
+def _case_direct_launch_records_private_prompt_and_stops(direct_launch, monkeypatch, capsys):
     import io
     import sys
     from wuwei.__main__ import main
@@ -1062,7 +1070,7 @@ def test_direct_launch_preserves_guards(direct_launch, monkeypatch, case, code, 
     assert not list((directory / 'briefs').glob('*.md'))
 
 
-def test_direct_launch_recovery_uses_existing_seat_stop(direct_launch, monkeypatch, capsys):
+def _case_direct_launch_recovery_uses_existing_seat_stop(direct_launch, monkeypatch, capsys):
     from wuwei import brief as module
     from wuwei.__main__ import main
     (root, _, _, _), payload = direct_launch
@@ -1083,7 +1091,7 @@ def test_direct_launch_recovery_uses_existing_seat_stop(direct_launch, monkeypat
     assert state.read_state(root)['seats'][name]['status'] == 'stopped'
 
 
-def test_direct_launch_counts_against_next_host_reservation(direct_launch):
+def _case_direct_launch_counts_against_next_host_reservation(direct_launch):
     (root, _, _, _), payload = direct_launch
     (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 1\n')
     assert check(payload) == (0, '')
@@ -1108,7 +1116,7 @@ def test_direct_stop_remains_bound_after_completion(direct_launch, role):
     assert (directory / 'events.jsonl').read_text() == before
 
 
-def test_direct_launch_protects_committed_paths(direct_launch):
+def _case_direct_launch_protects_committed_paths(direct_launch):
     (root, _, vcs, _), payload = direct_launch
     payload['tool_input'].update(subagent_type='wuwei:sentinel-arch', description='Gate X')
     vcs.results['diff_stat'] = registry.Result(0, [{'path': 'terraform/main.tf'}])
@@ -1117,7 +1125,7 @@ def test_direct_launch_protects_committed_paths(direct_launch):
     assert state.read_state(root)['seats'] == {}
 
 
-def test_direct_launch_unscoped_builder_can_be_recovered(direct_launch, monkeypatch, capsys):
+def _case_direct_launch_unscoped_builder_can_be_recovered(direct_launch, monkeypatch, capsys):
     from wuwei.__main__ import main
     (root, _, _, _), payload = direct_launch
     payload['tool_input']['prompt'] = 'Investigate a general task'
@@ -1128,7 +1136,16 @@ def test_direct_launch_unscoped_builder_can_be_recovered(direct_launch, monkeypa
     assert main(['seat', 'stop', 'adhoc-1', '--verdict', str(report)]) == 0, capsys.readouterr()
 
 
-def test_direct_launch_same_prompt_keeps_roles_separate(direct_launch):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_direct_launch_records_private_prompt_and_stops,
+    _case_direct_launch_recovery_uses_existing_seat_stop,
+    _case_direct_launch_unscoped_builder_can_be_recovered,
+])
+def test_direct_launch_cases_938(direct_launch, monkeypatch, capsys, scenario_fn):
+    scenario_fn(direct_launch, monkeypatch, capsys)
+
+
+def _case_direct_launch_same_prompt_keeps_roles_separate(direct_launch):
     from wuwei.guards import agent_launch
     (root, _, _, _), payload = direct_launch
     payload['tool_input']['prompt'] = 'Investigate a general task'
@@ -1141,6 +1158,15 @@ def test_direct_launch_same_prompt_keeps_roles_separate(direct_launch):
     assert agent_launch.stop(stop) == (0, '')
     seats = state.read_state(root)['seats']
     assert seats['adhoc-1']['status'] == 'running' and seats['adhoc-2']['status'] == 'stopped'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_direct_launch_counts_against_next_host_reservation,
+    _case_direct_launch_protects_committed_paths,
+    _case_direct_launch_same_prompt_keeps_roles_separate,
+])
+def test_direct_launch_cases_1037(direct_launch, scenario_fn):
+    scenario_fn(direct_launch)
 
 
 def test_direct_launch_stop_binds_original_day(direct_launch, monkeypatch):

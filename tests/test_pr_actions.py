@@ -65,7 +65,7 @@ def test_conflict_step_and_done(case, monkeypatch, capsys):
     assert pr_actions.evaluate(root, [REF])[1][0]['exit'] == 0
 
 
-def test_red_ci_opens_fix_round(case, capsys):
+def _case_red_ci_opens_fix_round(case, capsys):
     root, host, _, tree = linked(case)
     completed_build(root, tree)
     host.results['checks'] = Result(0, [{'name': 'tests', 'sha': 'a' * 40,
@@ -77,7 +77,7 @@ def test_red_ci_opens_fix_round(case, capsys):
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
 
 
-def test_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
+def _case_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
     # #844: at the cap red checks open no round; the item parks in code and the owner decides on
     # plan resume's Owner step card, never a refusal with no owner path.
     root, host, _, tree = linked(case)
@@ -91,7 +91,7 @@ def test_red_ci_at_the_round_cap_parks_for_the_owners_resume(case, capsys):
     assert item['phase'] == 'parked' and item['disposition']['reason'].startswith('round cap 2 reached')
 
 
-def test_red_ci_at_the_round_cap_after_the_owners_resume_opens_one_round(case, capsys):
+def _case_red_ci_at_the_round_cap_after_the_owners_resume_opens_one_round(case, capsys):
     # #904: the owner's resume grants one round past the cap; opening it spends the grant.
     root, host, _, tree = linked(case)
     completed_build(root, tree)
@@ -105,6 +105,15 @@ def test_red_ci_at_the_round_cap_after_the_owners_resume_opens_one_round(case, c
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
     from wuwei import dispatch
     assert not dispatch._resumed(root, 'A')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_red_ci_opens_fix_round,
+    _case_red_ci_at_the_round_cap_parks_for_the_owners_resume,
+    _case_red_ci_at_the_round_cap_after_the_owners_resume_opens_one_round,
+])
+def test_red_ci_cases_68(case, capsys, scenario_fn):
+    scenario_fn(case, capsys)
 
 
 def test_unanswered_thread_needs_composed_reply(case, capsys):
@@ -538,7 +547,7 @@ RED = [{'name': 'tests', 'sha': 'a' * 40, 'state': 'completed', 'conclusion': 'f
         'url': 'https://example.test/check'}]
 
 
-def test_pr_act_shepherds_without_a_worktree(case, monkeypatch, capsys):
+def _case_pr_act_shepherds_without_a_worktree(case, monkeypatch, capsys):
     root, host, _, _ = adopted(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
@@ -571,7 +580,7 @@ def test_fix_without_a_worktree_returns_the_adopt_command(case, capsys, listing,
     assert 'checkout' in action['why']
 
 
-def test_adopted_fix_round_writes_the_builder_brief(case, capsys):
+def _case_adopted_fix_round_writes_the_builder_brief(case, capsys):
     root, host, _, tree = adopted(case, 'fast_checks = ["python -m pytest -q"]\n', worktree=True)
     host.results['checks'] = Result(0, RED)
     assert main(['pr', 'act', REF]) == 1
@@ -584,7 +593,7 @@ def test_adopted_fix_round_writes_the_builder_brief(case, capsys):
     assert state.read_state(root)['items']['A']['phase'] == 'implement'  # #879 G1: its gates run next
 
 
-def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):
+def _case_adopted_fix_round_without_fast_checks_names_them(case, capsys):
     root, host, _, _ = adopted(case, worktree=True)
     host.results['checks'] = Result(0, RED)
     # #600: no fast checks is a state, not a wall: the fix round launches and its brief names it
@@ -598,12 +607,21 @@ def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):
     assert json.loads(capsys.readouterr().out)['action'] == 'launch'
 
 
-def test_adopted_fix_round_needs_no_ticket(case, capsys):
+def _case_adopted_fix_round_needs_no_ticket(case, capsys):
     root, host, _, _ = adopted(case, 'fast_checks = ["python -m pytest -q"]\n', worktree=True,
                                extra='[adapters]\ntracker = "linear"\n')
     host.results['checks'] = Result(0, RED)
     assert main(['pr', 'act', REF]) == 1
     assert json.loads(capsys.readouterr().out)['action'] == 'launch'
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_adopted_fix_round_writes_the_builder_brief,
+    _case_adopted_fix_round_without_fast_checks_names_them,
+    _case_adopted_fix_round_needs_no_ticket,
+])
+def test_adopted_fix_cases_574(case, capsys, scenario_fn):
+    scenario_fn(case, capsys)
 
 
 def test_latest_finds_the_last_comment_of_a_bot_thread():
@@ -793,7 +811,7 @@ def test_unreadable_base_is_unmeasured(case, capsys, damage):
     assert row['exit'] == 2 and row['reason'].startswith('PR state unmeasured:')
 
 
-def test_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
+def _case_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
     # #953 field case through pr act: zero headers and a full quota produce a short hold.
     import importlib
     from fakes.replay import NOW, hms, install_clock, install_replay, limits
@@ -814,6 +832,14 @@ def test_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
     assert 'headers say 0 of 5000 core calls left' in out
     assert 'rate_limit shows 5000 of 5000 core calls left' in out
     assert 'token: gh keyring' in out and len(calls) == 2
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_pr_act_shepherds_without_a_worktree,
+    _case_pr_act_names_the_refused_replys_bucket,
+])
+def test_pr_act_cases_541(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 @pytest.mark.parametrize('how', ['act', 'launch', 'thread'])

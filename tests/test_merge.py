@@ -290,7 +290,7 @@ def test_an_owner_rule_says_the_owner_decides(case):
     assert result.data['owner'] is True and result.data['next'] == f'run bin/wuwei merge {REF}' and result.data['evidence']['head'] == SHA
 
 
-def test_cli_check_prints_the_next_step(case, monkeypatch, capsys):
+def _case_cli_check_prints_the_next_step(case, monkeypatch, capsys):
     from wuwei.__main__ import main
     root, host = case
     monkeypatch.chdir(root / 'repo')
@@ -353,9 +353,15 @@ def test_host_refusals(case, field, value, hint):
     assert result.exit in (1, 2) and hint in result.reason, result
 
 
-@pytest.mark.parametrize('path', ['.github/workflows/test.yml', 'package.json',
+@pytest.mark.parametrize('path', [
+    # Existing protected paths.
+    '.github/workflows/test.yml', 'package.json',
     'pkg/package-lock.json', 'src/deploy/a.py', 'infra/main.tf', 'CODEOWNERS',
-    'db/migrations/001.sql', 'schema.sql', 'requirements.txt', 'pyproject.toml'])
+    'db/migrations/001.sql', 'schema.sql', 'requirements.txt', 'pyproject.toml',
+    # CI and infrastructure paths.
+    'ci/check.sh', '.buildkite/pipeline.yml',
+    'setup.py', 'infrastructure/stack.py',
+])
 def test_never_auto_paths(case, path):
     case[1].results['files'].data[0]['path'] = path
     assert check(case).exit == 1
@@ -483,7 +489,7 @@ def test_refused_merge_never_calls_mutation(case):
     assert events(root)[-1]['kind'] == 'merge.policy_blocked'
 
 
-def test_cli_check_and_numeric_merge(case, monkeypatch, capsys):
+def _case_cli_check_and_numeric_merge(case, monkeypatch, capsys):
     from wuwei.__main__ import main
     root, host = case
     monkeypatch.chdir(root / 'repo')
@@ -491,6 +497,14 @@ def test_cli_check_and_numeric_merge(case, monkeypatch, capsys):
     assert not any(c[0] == 'merge' for c in host.calls)
     assert main(['merge', '7']) == 0
     assert 'head' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_cli_check_prints_the_next_step,
+    _case_cli_check_and_numeric_merge,
+])
+def test_cli_check_cases_293(case, monkeypatch, capsys, scenario_fn):
+    scenario_fn(case, monkeypatch, capsys)
 
 
 def test_guard_names_wuwei_merge_without_running_the_policy(case, monkeypatch):
@@ -769,7 +783,7 @@ def test_concurrent_merges_only_one_mutation(case, monkeypatch):
     assert sum(c[0] == 'merge' for c in host.calls) == 1
 
 
-def test_owner_reset_allows_next_policy_evaluation(case):
+def _case_owner_reset_allows_next_policy_evaluation(case):
     root, host = case
     policy().trip(root, 'example/project', workspace.load_config(root)['repos'][0]['merge'], 'test')
     assert check(case).exit == 1
@@ -804,7 +818,7 @@ def test_truncated_patch_is_unmeasured():
         policy().edits({'patch': '@@ -1,3 +1,3 @@\n-a\n+b', 'additions': 1, 'deletions': 1})
 
 
-def test_owner_reset_is_not_undone_by_old_red_entry(case):
+def _case_owner_reset_is_not_undone_by_old_red_entry(case):
     root, host = merged(case)
     host.results['checks'].data[0]['conclusion'] = 'failure'
     assert policy().poll(root) == 1
@@ -812,6 +826,14 @@ def test_owner_reset_is_not_undone_by_old_red_entry(case):
     assert policy().poll(root) == 1
     _, breakers = policy().journals(root)
     assert breakers['example/project']['epoch'] == 0
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_owner_reset_allows_next_policy_evaluation,
+    _case_owner_reset_is_not_undone_by_old_red_entry,
+])
+def test_owner_reset_cases_778(case, scenario_fn):
+    scenario_fn(case)
 
 
 def test_new_red_pr_pages_even_when_repo_already_disabled(case):
@@ -892,13 +914,6 @@ def test_skipped_check_is_named_even_when_host_marks_branch_blocked(case):
     case[1].results['checks'].data[0]['conclusion'] = 'skipped'
     result = check(case)
     assert result.exit == 1 and 'tests' in result.reason
-
-
-@pytest.mark.parametrize('path', ['ci/check.sh', '.buildkite/pipeline.yml',
-                                  'setup.py', 'infrastructure/stack.py'])
-def test_default_never_auto_covers_ci_and_infrastructure(case, path):
-    case[1].results['files'].data[0]['path'] = path
-    assert check(case).exit == 1
 
 
 def test_evidence_does_not_copy_source_patch_to_state_or_events(case):
@@ -1074,7 +1089,7 @@ def move_head(root, host, head):
         (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(head))
 
 
-def test_a_yes_holds_for_its_head_only(case):
+def _case_a_yes_holds_for_its_head_only(case):
     # #816 review F3: the owner's Yes merges that PR at that head, nothing else.
     from fakes.owner import answer_card
     root, host = case
@@ -1088,13 +1103,21 @@ def test_a_yes_holds_for_its_head_only(case):
     assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, moved, 'squash')]
 
 
-def test_a_yes_on_another_pr_never_merges_this_one(case):
+def _case_a_yes_on_another_pr_never_merges_this_one(case):
     from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, 'auto')
     reason = policy().execute(REF, root).reason
     answer_card(root, reason.replace('example/project#7', 'example/project#8'))
     assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_a_yes_holds_for_its_head_only,
+    _case_a_yes_on_another_pr_never_merges_this_one,
+])
+def test_a_yes_cases_1094(case, scenario_fn):
+    scenario_fn(case)
 
 
 @pytest.mark.parametrize('change,hint', [
@@ -1520,7 +1543,7 @@ def gated(root):
         return 2, str(exc)
 
 
-def test_pr_gate_accepts_quality_only_delta_after_fix(gates):
+def _case_pr_gate_accepts_quality_only_delta_after_fix(gates):
     from wuwei import state
     root, fake, decisions = gates
     new_head = 'c' * 40
@@ -1569,7 +1592,7 @@ def test_recorded_gate_refusal_names_only_unpassed_gate_at_head(gates):
     assert 'quality' not in reason
 
 
-def test_pr_gate_accepts_nonblocking_delta_residual(gates):
+def _case_pr_gate_accepts_nonblocking_delta_residual(gates):
     from wuwei import state
     root, fake, decisions = gates
     new_head = 'c' * 40
@@ -1648,7 +1671,7 @@ def test_port_errors(gates, operation, result):
 LIGHT = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
 
 
-def test_pr_gate_accepts_quality_only_for_a_light_item(gates):
+def _case_pr_gate_accepts_quality_only_for_a_light_item(gates):
     from wuwei import state
     root, _, decisions = gates
     path = decisions / 'gate-9-quality.md'
@@ -1737,7 +1760,7 @@ def test_recorded_gates_after_more_than_one_fix_round(gates):
         policy()._recorded_gates(root, SHA, records, '9')
 
 
-def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
+def _case_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
     # #723: every gate passed at BASE, the polish round moved HEAD and quality re-checked it.
     from wuwei import state
     root, fake, decisions = gates
@@ -1763,3 +1786,12 @@ def test_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
     code, reason = policy()._recorded_gates(root, 'd' * 40, records, '9', rounds)
     assert code == 1 and all(role in reason for role in ('arch', 'quality', 'security'))  # #669
 
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_pr_gate_accepts_quality_only_delta_after_fix,
+    _case_pr_gate_accepts_nonblocking_delta_residual,
+    _case_pr_gate_accepts_quality_only_for_a_light_item,
+    _case_pr_gate_accepts_polish_recheck_by_one_passing_gate,
+])
+def test_pr_gate_cases_1524(gates, scenario_fn):
+    scenario_fn(gates)

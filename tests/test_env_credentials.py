@@ -311,7 +311,7 @@ def test_malformed_names_the_shape_never_the_value(case, monkeypatch, name, valu
     assert env.malformed(name) == expected
 
 
-def test_config_check_under_gh_auth_needs_no_token(case, capsys):
+def _case_config_check_under_gh_auth_needs_no_token(case, capsys):
     (case / '.wuwei/config.toml').write_text(
         '[adapters]\ncode_host="none"\ntracker="github"\n[tracker]\nauth="gh"\n')
     assert main(['config', 'check']) == 0
@@ -325,7 +325,7 @@ def test_config_check_under_gh_auth_needs_no_token(case, capsys):
     assert KEY not in output
 
 
-def test_config_check_reports_a_malformed_token_without_printing_it(case, capsys):
+def _case_config_check_reports_a_malformed_token_without_printing_it(case, capsys):
     (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\ntracker="github"\n')
     write_env(case, 'GITHUB_TRACKER_TOKEN=gh auth token ' + KEY + '\n')
     assert main(['config', 'check']) == 1
@@ -714,7 +714,7 @@ def test_owner_dm_channel_is_not_redacted(case, monkeypatch):
         assert redact.known_values('D0123ABC ' + KEY) == 'D0123ABC [REDACTED]'
 
 
-def test_config_check_reports_owner_name(case, capsys):
+def _case_config_check_reports_owner_name(case, capsys):
     from wuwei import outward
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     assert main(['config', 'check']) == 0
@@ -725,6 +725,15 @@ def test_config_check_reports_owner_name(case, capsys):
     assert main(['config', 'check']) == 0
     output = capsys.readouterr().out
     assert 'owner.name: set' in output and outward.OWNER_UNSET not in output
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_config_check_under_gh_auth_needs_no_token,
+    _case_config_check_reports_a_malformed_token_without_printing_it,
+    _case_config_check_reports_owner_name,
+])
+def test_config_check_cases_314(case, capsys, scenario_fn):
+    scenario_fn(case, capsys)
 
 
 def test_notion_and_confluence_credentials_are_scrubbed(case, monkeypatch):

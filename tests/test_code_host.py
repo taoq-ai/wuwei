@@ -541,7 +541,7 @@ def test_default_branch_refuses_an_unusable_name(branch, monkeypatch):
     assert adapter().default_branch('acme/widget').exit == 2
 
 
-def test_stderr_line_and_auth_hint(monkeypatch):
+def _case_stderr_line_and_auth_hint(monkeypatch):
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr':
                                         'To get started with GitHub CLI, please run:  gh auth login'}])
     result = adapter().pr('acme/widget#7')
@@ -550,11 +550,19 @@ def test_stderr_line_and_auth_hint(monkeypatch):
         assert text in result.reason, text
 
 
-def test_stderr_line_search_has_no_email(monkeypatch):
+def _case_stderr_line_search_has_no_email(monkeypatch):
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'HTTP 422: q=author-email:dev@example.test'}])
     result = adapter().author_login('acme/widget', 'dev@example.test')
     assert result.exit == 2 and 'gh exited 1' in result.reason and 'search' in result.reason
     assert 'example.test' not in result.reason
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_stderr_line_and_auth_hint,
+    _case_stderr_line_search_has_no_email,
+])
+def test_stderr_line_cases_544(monkeypatch, scenario_fn):
+    scenario_fn(monkeypatch)
 
 
 def test_issue_opens_through_the_allowlisted_api(tmp_path, monkeypatch):
@@ -705,7 +713,7 @@ FIELD = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '-
 FIELD_RESET = 1_791_809_746  # 2026-10-12 12:55:46 UTC
 
 
-def test_zero_headers_and_full_quota_hold_briefly(tmp_path, monkeypatch):
+def _case_zero_headers_and_full_quota_hold_briefly(tmp_path, monkeypatch):
     # #953 field case: primary wording and zero headers can disagree with the same token's quota.
     wait_cap(tmp_path, monkeypatch, 0)
     install_clock(monkeypatch)
@@ -739,7 +747,7 @@ def test_zero_headers_keep_their_reset_when_quota_cannot_disprove_them(quota, tm
     assert calls == [['gh', *FIELD], ['gh', *RATE_LIMIT]]
 
 
-def test_zero_headers_compare_only_their_resource(tmp_path, monkeypatch):
+def _case_zero_headers_compare_only_their_resource(tmp_path, monkeypatch):
     wait_cap(tmp_path, monkeypatch, 0)
     install_clock(monkeypatch)
     calls = install_replay(monkeypatch, 'gh', [
@@ -748,6 +756,14 @@ def test_zero_headers_compare_only_their_resource(tmp_path, monkeypatch):
     result = adapter().pr('acme/widget#7')
     assert f'until {hms(FIELD_RESET)} UTC (0 of 5000 graphql calls left)' in result.reason
     assert calls == [['gh', *FIELD], ['gh', *RATE_LIMIT]]
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_zero_headers_and_full_quota_hold_briefly,
+    _case_zero_headers_compare_only_their_resource,
+])
+def test_zero_headers_cases_708(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize('child,source', [
@@ -931,7 +947,7 @@ def test_rate_limit_within_the_cap_waits_and_retries(reset, slept, tmp_path, mon
     assert clock == slept and len(calls) == 3
 
 
-def test_rate_limit_beyond_the_cap_names_the_reset(tmp_path, monkeypatch):
+def _case_rate_limit_beyond_the_cap_names_the_reset(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
     clock = install_clock(monkeypatch)
@@ -942,7 +958,7 @@ def test_rate_limit_beyond_the_cap_names_the_reset(tmp_path, monkeypatch):
     assert clock == [] and len(calls) == 2
 
 
-def test_rate_limit_retries_once_only(tmp_path, monkeypatch):
+def _case_rate_limit_retries_once_only(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
     clock = install_clock(monkeypatch)
@@ -953,6 +969,14 @@ def test_rate_limit_retries_once_only(tmp_path, monkeypatch):
     result = adapter().pr('acme/widget#7')
     assert result.exit == 2 and f'until {hms(NOW + 90)} UTC' in result.reason
     assert clock == [30] and len(calls) == 4
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_rate_limit_beyond_the_cap_names_the_reset,
+    _case_rate_limit_retries_once_only,
+])
+def test_rate_limit_cases_934(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
 
 
 def test_json_error_reply_shows_its_message(monkeypatch):

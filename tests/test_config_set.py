@@ -260,7 +260,7 @@ def test_add_and_replace_exclude_each_other(workspace):
 
 
 # #492: with --add a list key keeps its effective items, a named-entry table keeps its entries.
-def test_list_set_appends(workspace):
+def _case_list_set_appends(workspace):
     from wuwei.workspace import SCHEMA
     before = load_config(workspace)['outbound']['code_host_orgs']
     assert config_set('outbound.code_host_orgs', '["C1"]', Confirm(), add=True) == 0
@@ -278,9 +278,17 @@ def test_empty_list_set_writes_empty(workspace, capsys):
     assert load_config(workspace)['spec']['skip_tiers'] == []
 
 
-def test_list_set_replace(workspace):
+def _case_list_set_replace(workspace):
     assert config_set('shepherd.source_exclude', '["C1"]', Confirm(), replace=True) == 0
     assert load_config(workspace)['shepherd']['source_exclude'] == ['C1']
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_list_set_appends,
+    _case_list_set_replace,
+])
+def test_list_set_cases_263(workspace, scenario_fn):
+    scenario_fn(workspace)
 
 
 def test_table_set_adds_entries(workspace):

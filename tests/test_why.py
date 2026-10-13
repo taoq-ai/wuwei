@@ -118,7 +118,7 @@ def full(root):
     return [f'{line} ({tail})' for line, tail in zip(BRIEF, tails)]
 
 
-def test_item_chain_lists_every_recorded_step(root, capsys):
+def _case_item_chain_lists_every_recorded_step(root, capsys):
     merged_item(root)
     assert why(capsys, 'fix-login') == (0, BRIEF, '')
 
@@ -156,7 +156,7 @@ def test_why_reads_local_records_only(root, capsys, monkeypatch, target):
     code, lines, err = why(capsys, *target)
     assert code == (1 if target == ['last refusal'] else 0) and 'network' not in err
 
-def test_item_chain_names_where_the_worktree_started(root, capsys):
+def _case_item_chain_names_where_the_worktree_started(root, capsys):
     # #681: the worktree.created event records the fetched start commit.
     merged_item(root)
     state.append_event('worktree.created', {'item': 'fix-login', 'worktree': 'worktrees/fix-login',
@@ -166,7 +166,7 @@ def test_item_chain_names_where_the_worktree_started(root, capsys):
     assert why(capsys, 'fix-login') == (0, expected, '')
 
 
-def test_item_chain_full_names_event_ids_and_paths(root, capsys):
+def _case_item_chain_full_names_event_ids_and_paths(root, capsys):
     expected = full(root)
     assert why(capsys, 'fix-login', '--full') == (0, expected, '')
 
@@ -399,7 +399,7 @@ def live(capsys, *argv):
     return json.loads('\n'.join(lines))
 
 
-def test_why_json_reads_the_record_at_call_time(root, capsys):
+def _case_why_json_reads_the_record_at_call_time(root, capsys):
     live_item(root)
     out = live(capsys)
     assert 'docs' not in out  # #841
@@ -413,12 +413,12 @@ def test_why_json_reads_the_record_at_call_time(root, capsys):
     assert live(capsys)['ticket'] == 'acme/w#5'
 
 
-def test_why_json_light_tier_and_no_spec_engine(root, capsys):
+def _case_why_json_light_tier_and_no_spec_engine(root, capsys):
     live_item(root, tier='light', config='[spec]\nengine = "none"\n')
     assert live(capsys)['spec'] is None
 
 
-def test_why_json_reads_an_item_only(root, capsys):
+def _case_why_json_reads_an_item_only(root, capsys):
     live_item(root)
     assert why(capsys, 'Y', '--json')[0] == 1
     for target in (['last', 'refusal'], ['2026-09-28:1']):
@@ -432,6 +432,15 @@ def test_why_json_reads_an_item_only(root, capsys):
     assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['ticket']
 
 
+@pytest.mark.parametrize("scenario_fn", [
+    _case_why_json_reads_the_record_at_call_time,
+    _case_why_json_light_tier_and_no_spec_engine,
+    _case_why_json_reads_an_item_only,
+])
+def test_why_json_cases_402(root, capsys, scenario_fn):
+    scenario_fn(root, capsys)
+
+
 def approve_as(root, text, item='fix-login', day=DAY):
     path = day_of(root, day) / 'state.json'
     data = json.loads(path.read_text())
@@ -439,7 +448,7 @@ def approve_as(root, text, item='fix-login', day=DAY):
     path.write_text(json.dumps(data))
 
 
-def test_item_chain_shows_the_recorded_approval(root, capsys):
+def _case_item_chain_shows_the_recorded_approval(root, capsys):
     # #731: the owner's recorded approval is its own step, read from the latest day's record.
     merged_item(root)
     approve_as(root, 'owner: "login only"')
@@ -465,7 +474,7 @@ def test_carried_item_shows_its_approval_once(root, capsys):
     assert why(capsys, 'old')[1].count('approved as: owner: "a"') == 1
 
 
-def test_item_chain_shows_the_planner_note_and_unbriefed_seats(root, capsys):
+def _case_item_chain_shows_the_planner_note_and_unbriefed_seats(root, capsys):
     # #660: a launch's planner note, and an unbriefed seat's prompt, are part of the item's chain.
     merged_item(root)
     path = day_of(root) / 'state.json'
@@ -482,3 +491,14 @@ def test_item_chain_shows_the_planner_note_and_unbriefed_seats(root, capsys):
     expected = [BRIEF[0], 'seat gate (sentinel-arch): planner note: Planner note: watch the cache.',
                 'seat adhoc-1 (wuwei:sentinel-arch, unbriefed): prompt: Review the login gate', *BRIEF[1:]]
     assert why(capsys, 'fix-login') == (0, expected, '')
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_item_chain_lists_every_recorded_step,
+    _case_item_chain_names_where_the_worktree_started,
+    _case_item_chain_full_names_event_ids_and_paths,
+    _case_item_chain_shows_the_recorded_approval,
+    _case_item_chain_shows_the_planner_note_and_unbriefed_seats,
+])
+def test_item_chain_cases_121(root, capsys, scenario_fn):
+    scenario_fn(root, capsys)

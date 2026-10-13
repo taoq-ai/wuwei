@@ -21,7 +21,7 @@ def git(repo, *args, env=None):
     return subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True, env=env)
 
 
-def test_worktree_add_anchors_without_git_hooks(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_anchors_without_git_hooks(tmp_path, monkeypatch, capsys):
     # #847: the anchor finds the workspace from the worktree; no managed Git hook is installed.
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     for key in list(os.environ):
@@ -148,18 +148,26 @@ def test_worktree_add_writes_configured_identity(fake, capsys):
     assert json.loads(capsys.readouterr().out) == {'branch': 'x', 'path': 'p', 'start': 'a' * 40}
 
 
-def test_worktree_add_writes_selected_repository_identity(fake):
+def _case_worktree_add_writes_selected_repository_identity(fake):
     root, vcs = fake
     repos(root, 'app', 'web', identity=True)
     assert main(['worktree', 'add', 'X', '--repo', 'web']) == 0
     assert identities(vcs) == [(str(root / 'worktrees/X'), 'Web', 'web@example.test')]
 
 
-def test_worktree_add_without_identity_writes_none(fake):
+def _case_worktree_add_without_identity_writes_none(fake):
     root, vcs = fake
     repos(root, 'app')
     assert main(['worktree', 'add', 'X']) == 0
     assert not identities(vcs)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_worktree_add_writes_selected_repository_identity,
+    _case_worktree_add_without_identity_writes_none,
+])
+def test_worktree_add_cases_151(fake, scenario_fn):
+    scenario_fn(fake)
 
 
 def test_worktree_identity_failure_exits_2(fake):
@@ -262,7 +270,7 @@ def commit_and_push(tree):
     return (git(tree, 'commit', '-qm', 'new', env=clean), git(tree, 'push', 'origin', 'x', env=clean))
 
 
-def test_worktree_add_leaves_repository_hooks_path_native(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_leaves_repository_hooks_path_native(tmp_path, monkeypatch, capsys):
     # #847: no chain; the repository's own hooks run as they would without WUWEI.
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     marker_hooks(root / 'own', root / 'marker.txt', 'pre-commit', 'pre-push')
@@ -276,7 +284,7 @@ def test_worktree_add_leaves_repository_hooks_path_native(tmp_path, monkeypatch,
     assert git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.strip() == str(root / 'own')
 
 
-def test_worktree_add_leaves_default_hooks_native(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_leaves_default_hooks_native(tmp_path, monkeypatch, capsys):
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     marker_hooks(repo / '.git/hooks', root / 'marker.txt', 'pre-commit')
     assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
@@ -317,7 +325,7 @@ def day_events(root):
     return [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
 
 
-def test_worktree_adopt_anchors(tmp_path, monkeypatch, capsys):
+def _case_worktree_adopt_anchors(tmp_path, monkeypatch, capsys):
     root, repo, tree = adopt_workspace(
         tmp_path, monkeypatch, 'identity = {name = "Builder", email = "builder@example.test"}\n')
     assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 0, capsys.readouterr().err
@@ -335,7 +343,7 @@ def test_worktree_adopt_anchors(tmp_path, monkeypatch, capsys):
     assert (root / 'marker.txt').read_text().split() == ['pre-commit']
 
 
-def test_worktree_adopt_refuses_a_dirty_tree(tmp_path, monkeypatch, capsys):
+def _case_worktree_adopt_refuses_a_dirty_tree(tmp_path, monkeypatch, capsys):
     root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
     (tree / 'a.txt').write_text('changed\n')
     (tree / 'b.txt').write_text('new\n')
@@ -347,7 +355,7 @@ def test_worktree_adopt_refuses_a_dirty_tree(tmp_path, monkeypatch, capsys):
     assert git(repo, 'config', '--local', '--get', 'extensions.worktreeConfig').returncode == 1
 
 
-def test_worktree_adopt_preconditions(tmp_path, monkeypatch, capsys):
+def _case_worktree_adopt_preconditions(tmp_path, monkeypatch, capsys):
     root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
     (root / 'plain').mkdir()
     other = root / 'other'
@@ -368,7 +376,7 @@ def test_worktree_adopt_preconditions(tmp_path, monkeypatch, capsys):
     assert 'gate' in capsys.readouterr().err
 
 
-def test_worktree_adopt_refuses_a_subdirectory_and_a_shared_tree(tmp_path, monkeypatch, capsys):
+def _case_worktree_adopt_refuses_a_subdirectory_and_a_shared_tree(tmp_path, monkeypatch, capsys):
     root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
     assert main(['worktree', 'adopt', str(tree / '.husky'), '--item', 'A']) == 1
     assert str(tree) in capsys.readouterr().err
@@ -380,7 +388,17 @@ def test_worktree_adopt_refuses_a_subdirectory_and_a_shared_tree(tmp_path, monke
     assert 'worktree' not in state.read_state(root)['items']['B']
 
 
-def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_worktree_adopt_anchors,
+    _case_worktree_adopt_refuses_a_dirty_tree,
+    _case_worktree_adopt_preconditions,
+    _case_worktree_adopt_refuses_a_subdirectory_and_a_shared_tree,
+])
+def test_worktree_adopt_cases_320(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
+
+
+def _case_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
     root, repo, _ = adopt_workspace(tmp_path, monkeypatch)
     git(repo, 'worktree', 'remove', str(root / 'house/feature-x'))
     assert main(['worktree', 'add', 'A', '--branch', 'feature-x']) == 0, capsys.readouterr().err
@@ -396,7 +414,7 @@ def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
     assert 'worktree' not in state.read_state(root)['items']['B']
 
 
-def test_worktree_add_reuses_the_branch_worktree_from_an_earlier_day(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_reuses_the_branch_worktree_from_an_earlier_day(tmp_path, monkeypatch, capsys):
     root, _, tree = adopt_workspace(tmp_path, monkeypatch)
     assert main(['worktree', 'add', 'A', '--branch', 'feature-x']) == 0, capsys.readouterr().err
     assert state.read_state(root)['items']['A']['worktree'] == str(tree)
@@ -611,7 +629,7 @@ def test_a_commit_after_the_gate_check_is_not_pushed(tmp_path, monkeypatch, caps
     assert git(root / 'origin.git', 'rev-parse', 'feature-y').stdout.strip() == head
 
 
-def test_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):
     # #520: the bootstrap builds the new worktree's own venv; the check then runs in it.
     boot = tmp_path / 'boot.sh'
     boot.write_text(f'echo run >> "{tmp_path / "count.txt"}"\nmkdir -p .venv/bin\n'
@@ -680,7 +698,7 @@ def test_worktree_add_warns_when_the_check_uses_the_main_worktree(fake, monkeypa
         assert 'warning' not in err
 
 
-def test_worktree_add_starts_at_the_fetched_origin_head(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_starts_at_the_fetched_origin_head(tmp_path, monkeypatch, capsys):
     # #681: local main is one commit behind origin; the new worktree starts at origin's head.
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     origin, other = root / 'origin.git', root / 'other'
@@ -700,7 +718,7 @@ def test_worktree_add_starts_at_the_fetched_origin_head(tmp_path, monkeypatch, c
     assert created == [{'item': 'X', 'worktree': str(tree), 'branch': 'x', 'base': 'origin/main', 'start': ahead}]
 
 
-def test_worktree_add_refuses_when_the_fetch_fails(tmp_path, monkeypatch, capsys):
+def _case_worktree_add_refuses_when_the_fetch_fails(tmp_path, monkeypatch, capsys):
     root, repo = hooked_workspace(tmp_path, monkeypatch)
     git(repo, 'remote', 'set-url', 'origin', str(root / 'missing.git'))
     assert main(['worktree', 'add', 'X']) == 2
@@ -709,4 +727,18 @@ def test_worktree_add_refuses_when_the_fetch_fails(tmp_path, monkeypatch, capsys
     assert not (root / 'worktrees/X').exists()
     assert git(repo, 'branch', '--list', 'x').stdout == ''
     assert len(git(repo, 'worktree', 'list').stdout.splitlines()) == 1
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_worktree_add_anchors_without_git_hooks,
+    _case_worktree_add_leaves_repository_hooks_path_native,
+    _case_worktree_add_leaves_default_hooks_native,
+    _case_worktree_add_on_an_existing_branch,
+    _case_worktree_add_reuses_the_branch_worktree_from_an_earlier_day,
+    _case_worktree_add_runs_checks_bootstrap_once,
+    _case_worktree_add_starts_at_the_fetched_origin_head,
+    _case_worktree_add_refuses_when_the_fetch_fails,
+])
+def test_worktree_add_cases_24(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
 

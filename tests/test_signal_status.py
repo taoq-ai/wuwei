@@ -110,7 +110,7 @@ def test_escalation_without_running_seat_is_warn():
                     {'seats': {}}) == ('warn', 'Decisions')
 
 
-def test_status_line_reads_the_day_and_writes_nothing(tmp_path):
+def _case_status_line_reads_the_day_and_writes_nothing(tmp_path):
     state_data = {'cap': 2, 'items': {'A': {'phase': 'implement'},
                                      'B': {'phase': 'spec'}, 'C': {'phase': 'merged'}},
                   'reply_obligations': [{'due': '2026-09-28T14:00:00+02:00'},
@@ -129,7 +129,7 @@ def test_status_line_reads_the_day_and_writes_nothing(tmp_path):
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
 
 
-def test_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsys):
+def _case_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
     from wuwei.commands import status
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
@@ -207,7 +207,7 @@ def test_budget_below_threshold_is_silent():
     assert classify({'kind': 'budget.usage', 'payload': {'fraction': .79}}, {}) == ('silent', 'Work')
 
 
-def test_status_line_ignores_a_damaged_cruise_file(tmp_path):
+def _case_status_line_ignores_a_damaged_cruise_file(tmp_path):
     # #814: cruise is gone; a stale memory/cruise.json is never read.
     day(tmp_path, {'items': {}, 'cap': 1})
     (tmp_path / '.wuwei/memory').mkdir(parents=True, exist_ok=True)
@@ -508,7 +508,7 @@ def test_telemetry_events_are_quiet(name):
     assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('warn' if name == 'ready' else 'silent')
 
 
-def test_status_line_shows_running_seats_per_goal(tmp_path):
+def _case_status_line_shows_running_seats_per_goal(tmp_path):
     items = {'A': {'phase': 'implement', 'goal': 'G-1'}, 'B': {'phase': 'implement', 'goal': 'G-2'}}
     seats = {name: {'id': name, 'role': role, 'item': item, 'status': 'running'}
              for name, role, item in (('a-1', 'builder', 'A'), ('b-1', 'builder', 'B'),
@@ -623,7 +623,7 @@ def sample_day(tmp_path, monkeypatch, phases=SAMPLE):
             'running': [('2026-09-28T09:10:00+02:00', 'builder', 'ITEM-1')]}
 
 
-def test_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch):
+def _case_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch):
     import re
     from wuwei.commands import status
     data = sample_day(tmp_path, monkeypatch)
@@ -633,13 +633,21 @@ def test_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch
         assert all(text[:match.start()].endswith('seats ') for match in re.finditer(r'\d+/\d+', text)), text
 
 
-def test_issue_641_parked_and_escalated_follow_shipped(tmp_path, monkeypatch):
+def _case_issue_641_parked_and_escalated_follow_shipped(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = sample_day(tmp_path, monkeypatch, {**SAMPLE, 'escalated': 1, 'parked': 1, 'odd': 2})
     assert '3 shipped · 1 parked · 1 escalated · 2 odd · seats 1/3' in status.line(data, 10 ** 6)
 
 
-def test_status_line_width_flag(tmp_path):
+@pytest.mark.parametrize("scenario_fn", [
+    _case_issue_641_the_line_counts_the_days_items_in_words,
+    _case_issue_641_parked_and_escalated_follow_shipped,
+])
+def test_issue_641_cases_626(tmp_path, monkeypatch, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch)
+
+
+def _case_status_line_width_flag(tmp_path):
     seats = {role: {'status': 'running', 'role': role, 'item': 'ITEM-1'} for role in ROLES}
     day(tmp_path, {'cap': 1, 'gate_approved': True, 'items': {}, 'seats': seats})
     result = cli(tmp_path, 'status', '--line', '--width', '42')
@@ -647,6 +655,16 @@ def test_status_line_width_flag(tmp_path):
     assert result.stdout == 'WUWEI seats 4/1 (lead, +3 more) | pages 0\n'
     assert cli(tmp_path, 'status', '--line', '--width', '40').stdout == 'WUWEI seats 4/1 (+4 more) | pages 0\n'
     assert cli(tmp_path, 'status', '--line', '--width', 'x').returncode == 2
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_status_line_reads_the_day_and_writes_nothing,
+    _case_status_line_ignores_a_damaged_cruise_file,
+    _case_status_line_shows_running_seats_per_goal,
+    _case_status_line_width_flag,
+])
+def test_status_line_cases_113(tmp_path, scenario_fn):
+    scenario_fn(tmp_path)
 
 
 def test_status_without_the_line_flag_is_refused(tmp_path):
@@ -799,7 +817,7 @@ class _Broken:
         raise OSError('stdin closed')
 
 
-def test_status_line_saves_claude_window_readings(tmp_path, monkeypatch, capsys):
+def _case_status_line_saves_claude_window_readings(tmp_path, monkeypatch, capsys):
     # #845: the status line stdin's rate_limits are the Claude readings; the line never changes.
     import io
     import time
@@ -832,3 +850,11 @@ def test_status_line_saves_claude_window_readings(tmp_path, monkeypatch, capsys)
     assert json.loads(cache.read_text()) == {'claude': {
         'five_hour': {'used_percent': 42, 'resets_at': '2026-09-28T16:00:00+00:00'},
         'seven_day': {'used_percent': 18.5, 'resets_at': '2026-10-03T16:00:00+00:00'}}}
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_status_line_names_running_seats_and_checks,
+    _case_status_line_saves_claude_window_readings,
+])
+def test_status_line_cases_132(tmp_path, monkeypatch, capsys, scenario_fn):
+    scenario_fn(tmp_path, monkeypatch, capsys)
