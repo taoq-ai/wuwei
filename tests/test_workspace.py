@@ -82,10 +82,10 @@ def test_init_shadow(tmp_path, flags, enforce):
     from wuwei import workspace
     result = cli(tmp_path, 'init', *flags)
     assert result.returncode == 0, result.stderr
-    assert workspace.load_config(tmp_path)['guards'] == {'enforce': enforce}
+    assert workspace.load_config(tmp_path)['guards'] == {'enforce': enforce, 'stop_max_blocks': 20}
     import tomllib
     raw = tomllib.loads((tmp_path / '.wuwei/config.toml').read_text())
-    assert raw['guards'] == {'enforce': enforce} and raw['security'] == {'required': True}
+    assert raw['guards'] == {'enforce': enforce, 'stop_max_blocks': 20} and raw['security'] == {'required': True}
     result = cli(tmp_path, 'init', '--upgrade', '--shadow')
     assert result.returncode == 2 and '--shadow' in result.stderr and 'guards.enforce' in result.stderr
     (tmp_path / 'other').mkdir()
@@ -233,6 +233,7 @@ def test_config_defaults_and_independence(tmp_path):
             'default': 'brief', 'report': ''}},
         'repos': [], 'checks': {'python': '', 'bootstrap': ''},
         'merge': {'owner_paths': []}, 'cap': 0, 'budget': {'claude': {'five_hour': 0, 'seven_day': 0}, 'codex': {'five_hour': 0, 'seven_day': 0}}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'plan': {'max_refills': 3},
         'prioritisation': {'framework': 'wsjf'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
                     'create': ['bugs', 'triage', 'follow-ups'],
@@ -264,7 +265,7 @@ def test_config_defaults_and_independence(tmp_path):
                   'full_path_patterns': []},
         'boundary': {}, 'environments': {},
         'deploy': {'workflows': [], 'deny': []},
-        'guards': {'enforce': True},
+        'guards': {'enforce': True, 'stop_max_blocks': 20},
         'spec': {'engine': 'speckit', 'mode': 'strict', 'skip_tiers': ['light']},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
@@ -430,16 +431,16 @@ def test_owner_verbosity(tmp_path):
 def test_guards_enforce(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
-    assert workspace.load_config(tmp_path)['guards'] == {'enforce': True}
+    assert workspace.load_config(tmp_path)['guards'] == {'enforce': True, 'stop_max_blocks': 20}
     write_config(tmp_path, '[guards]\nenforce = false\n')
-    assert workspace.load_config(tmp_path)['guards'] == {'enforce': False}
+    assert workspace.load_config(tmp_path)['guards'] == {'enforce': False, 'stop_max_blocks': 20}
     write_config(tmp_path, '[guards]\nenforce = "no"\n')
     with pytest.raises(workspace.ConfigError, match='guards.enforce'):
         workspace.load_config(tmp_path)
     found = []
     write_config(tmp_path, '[security]\nposture = "strict"\n[security.areas]\nmcp = "off"\n'
                  '[guards]\nmode = "shadow"\nshadow_days = 3\nshadow_since = "2026-09-25"\n')
-    assert workspace.load_config(tmp_path, warnings=found)['guards'] == {'enforce': True}
+    assert workspace.load_config(tmp_path, warnings=found)['guards'] == {'enforce': True, 'stop_max_blocks': 20}
     assert len(found) == 5, found  # #799: retired keys only warn
 
 
@@ -1335,7 +1336,7 @@ def test_upgrade_maps_the_posture_to_guards_enforce(tmp_path, monkeypatch, capsy
     config = tomllib.loads(path.read_text())
     assert config['security'] == {'required': True}
     assert config['guards'].get('enforce', True) is not bool(was)
-    assert set(config['guards']) <= {'enforce'}
+    assert set(config['guards']) <= {'enforce', 'stop_max_blocks'}
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
 
 
@@ -1346,7 +1347,7 @@ def test_upgrade_keeps_an_explicit_guards_enforce(tmp_path, monkeypatch, capsys)
     assert code == 0, out.err
     assert 'guards.enforce = false' not in out.out
     assert 'Upgraded config.toml: remove security.posture (no longer read)' in out.out.splitlines()
-    assert tomllib.loads(path.read_text())['guards'] == {'enforce': True}
+    assert tomllib.loads(path.read_text())['guards'] == {'enforce': True, 'stop_max_blocks': 20}
 
 
 def test_upgrade_removes_security_areas(tmp_path, monkeypatch, capsys):
@@ -1411,7 +1412,7 @@ def test_upgrade_shadow_from_an_old_workspace(tmp_path, monkeypatch, capsys, sec
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
     config = tomllib.loads(path.read_text())
-    assert 'posture' not in config.get('security', {}) and config['guards'] == {'enforce': False}
+    assert 'posture' not in config.get('security', {}) and config['guards'] == {'enforce': False, 'stop_max_blocks': 20}
 
 
 class Labels:

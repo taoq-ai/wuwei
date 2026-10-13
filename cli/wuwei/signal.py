@@ -5,7 +5,7 @@ from datetime import datetime
 
 SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
-          'spec.step', 'spec.skipped', 'spec.override',
+          'spec.step', 'spec.skipped', 'spec.override', 'hook.stop_blocked',
           'worktree.adopted', 'worktree.created',
           'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
@@ -88,7 +88,7 @@ def classify(event, state):
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'warn'), lane
-    if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
+    if kind in ('hook.warning', 'hook.stop_error', 'hook.stop_capped', 'merge.policy_blocked', 'work.outside_goals',
                 'build.parked'):
         return 'warn', lane
     if kind in SILENT:

@@ -21,7 +21,7 @@ def fixed(module, code, reason, name='check'):
 
 def test_default_config_enforces():
     config = workspace.load_config('.', raw='')
-    assert config['guards'] == {'enforce': True}
+    assert config['guards'] == {'enforce': True, 'stop_max_blocks': 20}
     assert config['security'] == {'required': False}
     for name in ('POSTURES', 'AREAS', 'AREA_LEVELS', 'FLOORS', 'posture', 'posture_source'):
         assert not hasattr(workspace, name), name

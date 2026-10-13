@@ -139,6 +139,14 @@ def build(root=None):
         lines.append(f'- {name}: ' + ('; '.join(verdicts) or 'verdict unmeasured'))
     if lines[-1] == '## Done':
         lines.append('none')
+    no_work = {goal: refill['goals'][goal]['outcome'] for refill in data.get('refills', [])[-1:]
+               for goal in refill['no_work']}
+    if no_work:
+        lines += ['', '## Goals with no work found',
+                  *(f'- {goal}: {outcome}' for goal, outcome in sorted(no_work.items()))]
+    from wuwei.commands.next import refill_limit
+    if reason := refill_limit(root, data):
+        lines += ['', '## Refill stopped', reason]
     lines += ['', '## Cycle time', *cycle_lines(root)]
     lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']

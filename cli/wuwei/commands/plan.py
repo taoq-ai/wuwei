@@ -18,6 +18,7 @@ def register(subparsers):
                          help='Hand the planner role over from the registered session')
     propose = actions.add_parser('propose')
     propose.add_argument('input', type=Path, help='Lead discovery JSON')
+    propose.add_argument('--refill', type=int, help='Number of the exhausted-queue lead pass')
     gate = actions.add_parser('gate', help="Print the morning gate question as an AskUserQuestion widget; writes nothing")
     gate.add_argument('--import-yesterday', action='store_true',
                       help='The plan proposes carrying over unfinished prior-day items')
@@ -99,7 +100,7 @@ def run(args):
             plan.session(args.session_id, take_over=args.take_over)
         elif args.action == 'propose':
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
-            print(plan.propose(json.loads(source)))
+            print(plan.propose(json.loads(source), refill=getattr(args, 'refill', None)))
         elif args.action == 'gate':
             root = workspace.find_workspace()
             print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday)], indent=2))

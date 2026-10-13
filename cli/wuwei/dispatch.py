@@ -1136,9 +1136,13 @@ def candidate(root, name):
     """Today's proposal row for the item, else its #648 main_broken row (a fix item), or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
-    candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
+    data = state.read_state(root)
+    candidates = [row for refill in data.get('refills', [])
+                  for row in refill['candidates'] if row['id'] in refill['admitted']]
+    candidates += (json.loads(path.read_text(encoding='utf-8')).get('candidates', [])
+                   if path.is_file() and not path.is_symlink() else [])
     return (next((row for row in candidates if row.get('id') == name), None)
-            or state.read_state(root).get('main_broken', {}).get(name))
+            or data.get('main_broken', {}).get(name))
 
 
 def review_action(root, data, item):

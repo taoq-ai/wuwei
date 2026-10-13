@@ -179,6 +179,73 @@ def _carry(root, directory):
     return bool(left) and not left & named
 
 
+def refill_limit(root, data):
+    """The approved day's discovery bounds, shared by next, admission and report."""
+    from datetime import date, datetime, time
+    config = workspace.load_config(root)
+    end = data.get('envelope', {}).get('end')
+    if end:
+        now = workspace.now().astimezone(workspace.zone(config))
+        try:
+            deadline = datetime.fromisoformat(end)
+        except (TypeError, ValueError):
+            try:
+                deadline = datetime.combine(date.fromisoformat(workspace.day_dir(root).name),
+                                            time.fromisoformat(end))
+            except (TypeError, ValueError):
+                deadline = None
+        if deadline is not None and deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=now.tzinfo)
+        if deadline is not None and now >= deadline:
+            return f'Refill stopped at envelope.end ({end}).'
+    history = data.get('refills', [])
+    limit = config['plan']['max_refills']
+    if len(history) >= limit and not any(row['pending'] for row in history):
+        return f'Refill limit reached ({limit}).'
+    return ''
+
+
+def refill(root, data):
+    """Read-only continuation of the lead/propose path after an exhausted queue (#949)."""
+    from wuwei import goals
+    if refill_limit(root, data):
+        return None
+    path = workspace.day_dir(root) / 'goals.md'
+    text = path.read_text(encoding='utf-8') if path.is_file() else ''
+    opened = ({key: value for key, value in goals.parse(text).items() if key in data['goals']}
+              if goals.defined(text) else {})
+    history = data.get('refills', [])
+    pending = next((row for row in history if row['pending']), None)
+    number = pending['number'] if pending else len(history) + 1
+    directory = workspace.day_dir(root)
+    days = f'.wuwei/days/{directory.name}'
+    name = f'lead-{number}'
+    if pending:
+        return _row('propose', 'The refill has one owner decision waiting.',
+                    f'wuwei plan propose {days}/{name}.json --refill {number}', then=THEN['propose'])
+    if not opened or any(row['goals'] == opened and not row['admitted'] for row in history):
+        return None
+    seat = data['seats'].get(name)
+    if seat and seat['status'] == 'running':
+        return _row('wait', 'The lead is finding work against open goals.', 'wuwei status --line', 'wait')
+    if (directory / f'{name}.json').is_file() or seat:
+        return _row('propose', 'Admit the refill from the lead answer.',
+                    f'wuwei plan propose {days}/{name}.json --refill {number}', then=THEN['propose'])
+    if not (directory / f'briefs/{name}.md').is_file():
+        import shlex
+        body = (LEAD_BODY + f' Refill only the gate-approved goals in {days}/goals.md; '
+                f'Read approved goal IDs and all items in {days}/state.json, and wuwei status --line. '
+                'Do not re-propose finished, parked or other existing items. '
+                'Memory context is in .wuwei/memory/goals.md; it does not expand today\'s goals. '
+                'Use the morning discovery sources attached to this lead brief. '
+                'Keep the approved seat policy and envelope. Return no candidates if no work is found.')
+        return _row('refill', 'Open goals need another discovery pass.',
+                    f'wuwei seat brief lead day {name} --body ' + shlex.quote(body))
+    return _row('refill', 'Launch the lead on the open goals.', 'wuwei next --json', 'launch',
+                THEN['lead'].format(days=days).replace('/lead.json', f'/{name}.json'),
+                brief=f'{days}/briefs/{name}.md')
+
+
 def step(root, ran=()):
     """The first due action row; root None means no workspace here. Hook-safe: it only reads.
     ran: the (state, key) pairs whose command ran since the last recorded action.
@@ -316,6 +383,8 @@ def step(root, ran=()):
         why = [f'{waits}: the PR waits on people; wuwei pr wait exits when it changes.'] if waits else []
         why += [row['why'] + '.' for row in prs if row['state'] == 'unmeasured']  # #900
         return _row('wait', ' '.join(why), 'wuwei pr wait', 'background', THEN['pr-wait'], rows=found['rows'])
+    if not closed and not data.get('close_requested') and (row := refill(root, data)):
+        return row
     if not data.get('close_requested'):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])
@@ -408,7 +477,7 @@ def resolve(row, root):
     name = row['state']
     keep = {'state': name, **({'item': row['item']} if row.get('item') else {})}
     if row['action'] == 'launch':
-        action = brief.seat_action('lead' if name == 'lead' else 'steward', root / row['brief'],
+        action = brief.seat_action('lead' if name in ('lead', 'refill') else 'steward', root / row['brief'],
                                    root, root)
         return {**keep, **action, 'why': row['why'], 'then': row['then']}
     if row['action'] == 'card' and row['command'].startswith('wuwei '):
