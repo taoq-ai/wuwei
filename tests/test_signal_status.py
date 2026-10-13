@@ -76,6 +76,7 @@ WARN = [
 ]
 SILENT = [
     ({'kind': 'item.progress'}, 'Work'),
+    ({'kind': 'plan.done'}, 'Work'),
     ({'kind': 'decision.two_way'}, 'Decisions'),
     ({'kind': 'merge.auto'}, 'Work'),
     ({'kind': 'reply: acknowledged'}, 'Work'),
@@ -276,7 +277,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'duty.done': 'silent', 'duty.skipped': 'silent',
                 'tracker.logged': 'silent', 'plan.set': 'silent',
                 'steward.run': 'silent',
-                'plan.disposed': 'silent', 'plan.resumed': 'silent',
+                'plan.disposed': 'silent', 'plan.resumed': 'silent', 'plan.done': 'silent',
                 'calibration.drift': 'warn',
                 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'outward.to_owner': 'silent',

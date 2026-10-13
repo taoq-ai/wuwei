@@ -359,7 +359,8 @@ def held(data, name):
     """#648: the fix item a held build waits on while that item has not ended, else None."""
     action = (data.get('builds', {}).get(name) or {}).get('action') or {}
     fix = action.get('fix') if action.get('action') == 'wait' else None
-    ended = data['items'].get(fix, {}).get('phase') in ('merged', 'parked', 'escalated')
+    ended = (data['items'].get(fix, {}).get('phase') in ('merged', 'parked', 'escalated')
+             or data['items'].get(fix, {}).get('status') == 'done')
     return fix if fix and not ended else None
 
 

@@ -51,6 +51,9 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; recorded on the item on one line')
+    done = actions.add_parser('done', help='Record work completed by the owner on an Owner step card')
+    done.add_argument('item')
+    done.add_argument('--reason', required=True, help='What the owner completed')
     actions.add_parser('resume', help="Resume a parked item on the owner's Yes on its Owner step card"
                        ).add_argument('item')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
@@ -130,6 +133,8 @@ def run(args):
             print(f'{outcome} {args.item}')
         elif args.action == 'resume':
             print(plan.resume(args.item))
+        elif args.action == 'done':
+            print(plan.done(args.item, args.reason))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
                          import_yesterday=args.import_yesterday, note=args.note)

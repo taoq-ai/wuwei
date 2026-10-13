@@ -123,6 +123,22 @@ def test_item_chain_lists_every_recorded_step(root, capsys):
     assert why(capsys, 'fix-login') == (0, BRIEF, '')
 
 
+def test_why_shows_owner_completion_without_resume(root, capsys):
+    state._write_state(lambda data: data['items'].update(
+        A={'phase': 'planned', 'status': 'queued'}), root)
+    state._write_state(lambda data: data['items']['A'].update(
+        phase='parked', status='blocked',
+        disposition={'kind': 'parked', 'reason': 'round cap: 3 rounds'}), root)
+    state._write_state(lambda data: data['items']['A'].update(
+        status='done', by='owner', reason='owner sent both'), root,
+        kind='plan.done', payload={'item': 'A', 'by': 'owner', 'reason': 'owner sent both'})
+    code, lines, _ = why(capsys, 'A')
+    assert code == 0
+    assert any('done by wuwei plan done: owner sent both' in line for line in lines)
+    assert any('now: parked (done)' in line for line in lines)
+    assert not any('waiting on: wuwei plan resume' in line for line in lines)
+
+
 
 @pytest.mark.parametrize('target', [['fix-login'], ['acme/app#7'], ['fix-login', '--json'], ['last refusal']])
 def test_why_reads_local_records_only(root, capsys, monkeypatch, target):

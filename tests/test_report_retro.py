@@ -122,6 +122,8 @@ def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
     state._write_state(lambda data: data.update(items={
         'open': {'phase': 'implement', 'status': 'running'},
         'review-done': {'phase': 'gate', 'status': 'done', 'kind': 'review', 'pr': 'acme/widget#7'},
+        'owner-done': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'done', 'kind': 'build', 'by': 'owner',
+                       'reason': 'owner sent both', 'branch': 'owner-branch', 'worktree': 'owner-tree'},
         'measure-done': {'phase': 'gate', 'status': 'done', 'kind': 'measure'},
         'park': {'phase': 'parked', 'resume_phase': 'implement', 'status': 'blocked',
                  'disposition': {'kind': 'parked', 'reason': 'gate quality PARK: P1'}},
@@ -140,7 +142,10 @@ def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
     assert all(section in text for section in ('## Outcome', '## Open at close', '## Parked', '## Carry'))
     assert all(value in text for value in ('0.2', '1.4', '32 minutes', '3 days', 'unmeasured'))
     assert '## Parked\n- held: parked\n- park: gate quality PARK: P1\n' in text
-    assert '## Done\n- measure-done: quality PASS (.wuwei/days/2026-09-29/decisions/measure.md)\n- review-done: arch FIX (.wuwei/days/2026-09-29/decisions/review.md)\n' in text
+    assert '- measure-done: quality PASS (.wuwei/days/2026-09-29/decisions/measure.md)' in text
+    assert '- review-done: arch FIX (.wuwei/days/2026-09-29/decisions/review.md)' in text
+    assert '- owner-done: owner sent both (owner); branch owner-branch; worktree owner-tree' in text
+    assert '- owner-done:' not in text.split('## Carry\n')[1].split('\n\n')[0]
     assert 'decisions/old.md' not in text
     assert '## Decisions answered' not in text and 'D-' not in text
 

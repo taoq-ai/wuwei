@@ -29,7 +29,7 @@ These are the commands `bin/wuwei --help` lists. `bin/wuwei <command> --help` sh
 | `bin/wuwei dora` | Prints the DORA four keys with their sources. | [dora](#dora) |
 | `bin/wuwei agents` | Builds or checks the generated role agents. | [agents](#agents) |
 
-Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan set <item> governed_by=<path>`, `plan resume`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
+Some steps need you. Such a command refuses and prints its Owner step card. The planner asks the card with AskUserQuestion, and on your Yes the same command runs again. These are `config promote`, `config set`, `config add-repo`, `doctor --fix`, `plan set <item> spec=skipped`, `plan set <item> owner_merge=false`, `plan set <item> governed_by=<path>`, `plan resume`, `plan done`, `merge` when the policy does not clear, `telemetry send` and an owner-only Bash edge.
 
 ## init
 
@@ -85,6 +85,7 @@ A PARK verdict parks the item with no card. `report` and `why` show the reason.
 | `add <item> [--goal G] [--size N] [--title T] [--ticket ID] [--from-finding] [--note TEXT]` | Admits an item after the gate. `--from-finding` admits a seat's finding. |
 | `carry <item> [--reason]` | Carries an open item to tomorrow. |
 | `park <item> [--reason]` | Parks an open item. |
+| `done <item> --reason <text>` | Marks an owner completed item done after your Yes on its Owner step card. It refuses while a seat is live. |
 | `resume <item>` | Resumes a parked item on your Yes on its card. |
 | `set <item> <key=value> [--reason]` | Records `spec=required\|skipped`, `ticket=<id>` or `owner_merge=true\|false`. `spec=skipped` needs `--reason`. |
 

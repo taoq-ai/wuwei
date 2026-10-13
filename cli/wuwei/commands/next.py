@@ -118,7 +118,8 @@ def building(data):
     """#910: the one build slot count for derive, the launch set, build next, next and the launch
     guard: approved items in a build phase, not held (#648), in plan order. Running and reserved
     builds alike: a stopped builder awaiting its checks keeps its slot until its handoff."""
-    return [name for name in approved(data) if data['items'][name]['phase'] in state.BUILD_PHASES
+    return [name for name in approved(data) if data['items'][name]['status'] != 'done'
+            and data['items'][name]['phase'] in state.BUILD_PHASES
             and not state.held(data, name)]
 
 

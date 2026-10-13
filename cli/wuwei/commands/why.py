@@ -66,6 +66,7 @@ EVENT_PRODUCERS = {
     'calibration.drift': 'wuwei close',
     'plan.disposed': 'wuwei plan carry or park, wuwei dispatch next or wuwei build',
     'plan.resumed': 'wuwei plan resume',
+    'plan.done': 'wuwei plan done',
     'doctor.fixed': 'owner wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     **{f'telemetry.{action}': 'wuwei telemetry or wuwei report'
@@ -227,6 +228,9 @@ def item(root, name):
                     add('gate', text + f', blocking findings {NOT}')
             if name in payload.get('phase_changes', {}):
                 add('phase', f'phase {payload["phase_changes"][name]} by {EVENT_PRODUCERS.get(kind, kind)}')
+            if kind == 'plan.done' and payload.get('item') == name:
+                add('phase', f'done by {EVENT_PRODUCERS[kind]}: {payload.get("reason", NOT)}',
+                    rel(day / 'events.jsonl'))
             if kind == 'merge.auto' and row.get('pr') and payload.get('pr') == row['pr']:
                 evidence = payload.get('evidence', {})
                 checks = ', '.join(f'{check.get("name")} {check.get("conclusion")}'
@@ -244,7 +248,10 @@ def item(root, name):
         if group in REQUIRED and (group != 'merge' or row['phase'] == 'merged') else [])]
     now = f'now: {row["phase"]} ({row["status"]})'
     action = data.get('watch', {}).get('actions', {}).get(row.get('pr'), {}).get('action')
-    if row['phase'] in ('parked', 'escalated'):  # a park in code shows its reason; the owner resumes it
+    if row['status'] == 'done':
+        if row.get('by') == 'owner':
+            now += f', {row.get("reason", NOT)}'
+    elif row['phase'] in ('parked', 'escalated'):  # a park in code shows its reason; the owner resumes it
         reason = (row.get('disposition') or {}).get('reason')
         now += (f', {reason}' if reason else '') + f'; waiting on: wuwei plan resume {name}'
     elif action:

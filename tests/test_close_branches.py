@@ -441,6 +441,7 @@ def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
 
 @pytest.mark.parametrize('kind,phase,pr', [
     ('review', 'gate', REF), ('measure', 'gate', None),
+    ('build', 'parked', None),
 ])
 def test_done_non_build_item_does_not_hold_close(case, kind, phase, pr):
     root, _, _ = case
@@ -448,6 +449,8 @@ def test_done_non_build_item_does_not_hold_close(case, kind, phase, pr):
     from fakes import records
     data = state.read_state(root)
     data['items']['A'].update(phase=phase, status='done')
+    if phase == 'parked':
+        data['items']['A']['resume_phase'] = 'planned'
     records.write(root, {'items': data['items']})
     assert module('closing').unresolved(root, []) == (0, '')
 
@@ -592,14 +595,16 @@ def test_plan_park_records_and_pauses(case, monkeypatch, capsys, reason):
 
 
 @pytest.mark.parametrize('phase', ['parked', 'escalated', 'merged'])
-def test_plan_park_keeps_paused_phase(case, monkeypatch, phase):
+def test_plan_park_keeps_paused_phase(case, monkeypatch, capsys, phase):
     root, _, _ = case
     approved(root)
     path = ['implement', 'gate', 'raised', 'merged'] if phase == 'merged' else [phase]
     for step in path:
         state.transition('A', step, root=root)
     monkeypatch.chdir(root)
-    assert main(['plan', 'park', 'A']) == 0
+    assert main(['plan', 'park', 'A']) == (1 if phase == 'merged' else 0)
+    if phase == 'merged':
+        assert 'already done' in capsys.readouterr().err
     assert state.read_state(root)['items']['A']['phase'] == phase
 
 

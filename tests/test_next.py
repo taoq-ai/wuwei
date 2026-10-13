@@ -52,6 +52,28 @@ def approved(root, items, cap=1, **extra):
         **extra)
 
 
+def test_done_implement_item_frees_its_build_slot(root):
+    approved(root, {'A': ('implement', {'status': 'done'}),
+                    'B': ('planned', {'status': 'queued'})}, cap=1)
+    data = state.read_state(root)
+    assert next_command.building(data) == []
+    assert next_command.slot(data, 'B', 1)
+
+
+def test_done_fix_item_releases_held_build():
+    data = {'items': {'fix': {'phase': 'implement', 'status': 'done'}},
+            'builds': {'main': {'action': {'action': 'wait', 'fix': 'fix'}}}}
+    assert state.held(data, 'main') is None
+
+
+def test_done_round_cap_item_offers_no_resume_decision(root):
+    from wuwei import derive
+    approved(root, {'A': ('parked', {'resume_phase': 'implement', 'status': 'done',
+                                     'disposition': {'kind': 'parked', 'reason': 'round cap: 3 rounds'}})})
+    data = state.read_state(root)
+    assert derive.offers(data, root, workspace.load_config(root))['decision'] is None
+
+
 def row(capsys, *args):
     capsys.readouterr()
     code = main(['next', '--json', *args])

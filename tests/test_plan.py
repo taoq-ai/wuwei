@@ -52,6 +52,75 @@ def test_propose_writes_plan_without_state_or_worktree(root):
     assert not list(root.glob('**/.git'))
 
 
+@pytest.mark.parametrize('phase', ['planned', 'parked', 'implement'])
+def test_owner_done_records_field_case_once(root, monkeypatch, capsys, phase):
+    from wuwei.__main__ import main
+    from wuwei import dispatch
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    from fakes import records
+    data = state.read_state(root)
+    data['items']['A'].update(phase=phase, status='blocked' if phase == 'parked' else 'queued',
+                              branch='owner-branch', worktree='owner-tree')
+    if phase == 'parked':
+        data['items']['A']['resume_phase'] = 'planned'
+        data['items']['A']['disposition'] = {'kind': 'parked', 'reason': 'DONE, owner sent both'}
+    records.write(root, {'items': data['items']})
+    command = ['plan', 'done', 'A', '--reason', 'owner sent both']
+    assert main(command) == 1
+    refusal = capsys.readouterr().err
+    assert 'Owner step' in refusal
+    owner.answer_card(root, refusal)
+    assert main(command) == 0
+    row = state.read_state(root)['items']['A']
+    assert row['status'] == 'done' and row['by'] == 'owner' and row['reason'] == 'owner sent both'
+    assert row['branch'] == 'owner-branch' and row['worktree'] == 'owner-tree'
+    assert len([event for event in (json.loads(line) for line in
+                (root / '.wuwei/days/2026-09-28/events.jsonl').read_text().splitlines())
+                if event['kind'] == 'plan.done']) == 1
+    assert dispatch.next_step('A', root)['action'] == 'done'
+    assert main(command) == 1
+    assert 'already done' in capsys.readouterr().err
+
+
+def test_owner_done_refuses_live_seat_and_different_reason(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    command = ['plan', 'done', 'A', '--reason', 'owner sent both']
+    assert main(['plan', 'done', 'A', '--reason', '   ']) == 1
+    assert state.read_state(root)['items']['A']['status'] != 'done'
+    capsys.readouterr()
+    assert main(command) == 1
+    owner.answer_card(root, capsys.readouterr().err)
+    from fakes import records
+    data = state.read_state(root)
+    data['seats'] = {'builder': {'status': 'running', 'role': 'builder', 'item': 'A'}}
+    records.write(root, {'seats': data['seats']})
+    assert main(command) == 1
+    assert 'seat stop' in capsys.readouterr().err
+    assert state.read_state(root)['items']['A']['status'] != 'done'
+    records.write(root, {'seats': {}})
+    assert main(['plan', 'done', 'A', '--reason', 'something else']) == 1
+    assert 'Owner step' in capsys.readouterr().err
+    assert main(command) == 0
+
+
+@pytest.mark.parametrize('outcome', ['parked', 'carried'])
+def test_dispose_refuses_owner_done_item(root, outcome):
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    state._write_state(lambda data: data['items']['A'].update(
+        status='done', by='owner', reason='owner sent both'), root)
+    with pytest.raises(state.StateError, match='already done'):
+        plan.dispose('A', outcome, 'later', root)
+    row = state.read_state(root)['items']['A']
+    assert row['status'] == 'done' and row['reason'] == 'owner sent both'
+    assert 'disposition' not in row
+
+
 def test_review_candidate_kind_and_target_are_admitted_and_kept(root):
     data = proposal()
     data['candidates'][0].update(id='PR-3168-DELTA', kind='review', paths=[],

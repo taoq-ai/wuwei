@@ -125,7 +125,13 @@ def build(root=None):
         lines.append('none')
     lines += ['', '## Done']
     for name, item in sorted(items.items()):
-        if item['status'] != 'done' or item['phase'] == 'merged' or item.get('kind') not in ('review', 'measure'):
+        if item['status'] != 'done' or item['phase'] == 'merged':
+            continue
+        if item.get('by') == 'owner':
+            detail = f"{item['reason']} (owner)"
+            detail += f"; branch {item['branch']}" if item.get('branch') else ''
+            detail += f"; worktree {item['worktree']}" if item.get('worktree') else ''
+            lines.append(f'- {name}: {detail}')
             continue
         verdicts = [f"{row['role']} {row['verdict']} ({row['file']})"
                     for key, row in data['gate_verdicts'].items()
@@ -141,7 +147,8 @@ def build(root=None):
     if lines[-1] == '## Open at close':
         lines.append('none')
     lines += ['', '## Parked']
-    parked = [(name, item) for name, item in sorted(items.items()) if item['phase'] == 'parked']
+    parked = [(name, item) for name, item in sorted(items.items())
+              if item['phase'] == 'parked' and item['status'] != 'done']
     lines.extend(f"- {name}: {(item.get('disposition') or {}).get('reason') or item['phase']}"
                  for name, item in parked)
     if not parked:
