@@ -464,3 +464,22 @@ def test_a_day_value_never_changes_cap_or_holds_a_launch(day):
     assert day.data['cap_bound'] != 'load'
     line = day.run('status', '--line')
     assert 'pace' not in line and 'held by load' not in line
+
+
+@pytest.mark.parametrize('recorded_gates', [0, 2])
+def test_round2_prompt_sentinels_do_not_complete_gate_batch(day, recorded_gates):
+    from wuwei import state
+    approved(day, 3)
+    def setup(data):
+        data['items']['A']['phase'] = 'gate'
+        for role in ('arch', 'quality')[:recorded_gates]:
+            data['seats'][role] = {'id': role, 'item': 'A', 'role': 'sentinel-' + role,
+                                    'status': 'running'}
+        data['seats']['adhoc-1'] = {'id': 'adhoc-1', 'item': 'A',
+            'role': 'sentinel-security', 'status': 'running', 'prompt_sha256': 'private-prompt'}
+    state._write_state(setup, day.root)
+    entries, rows = launch_set(day)
+    expected = 'wait' if recorded_gates else 'start'
+    assert ('B', expected) in entries, rows
+    if recorded_gates:
+        assert 'gate waits for seats' in next(row['reason'] for row in rows if row['item'] == 'B')

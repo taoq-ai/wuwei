@@ -75,9 +75,10 @@ def _record(payload, root, findings=(), transcript_path=None):
             try:
                 prompt = brief.first_prompt(transcript_path)
                 digest = brief.prompt_digest(prompt) if isinstance(prompt, str) else None
-                if digest and brief.adhoc_seat(state.read_state(root), digest, payload['session_id']):
+                role = payload.get('agent_type', '').rsplit(':', 1)[-1]
+                if digest and brief.adhoc_seat(state.read_state(root), digest, payload['session_id'], role=role):
                     def bound(data):
-                        name = brief.adhoc_seat(data, digest, payload['session_id'])
+                        name = brief.adhoc_seat(data, digest, payload['session_id'], role=role)
                         return [data['seats'][name]] if name else []
             except (OSError, ValueError, KeyError, TypeError):
                 pass

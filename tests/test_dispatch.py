@@ -3085,15 +3085,19 @@ def test_registered_noted_launch_is_not_offered_again(root, monkeypatch):
     assert 'wuwei dispatch receive A arch arch-1' in outcome['commands']
 
 
-def test_running_unbriefed_seat_makes_its_item_busy(root):
-    from wuwei import dispatch
+def test_running_unbriefed_seat_makes_its_item_busy(root, monkeypatch):
+    from fakes.vcs import Fake as VCS
+    from wuwei import dispatch, registry
     from wuwei.guards import agent_launch
 
-    path = root / '.wuwei/config.toml'  # #837: registered as adhoc with guards.enforce = false
-    path.write_text(path.read_text() + '[guards]\nenforce = false\n')
+    built(root)
+    vcs = VCS()
+    vcs.results.update(head=registry.Result(0, {'sha': 'a' * 40}), status=registry.Result(0, []))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: vcs)
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     payload = {'cwd': str(root), 'tool_name': 'Agent', 'tool_input': {
         'prompt': 'Review the gate', 'description': 'Gate A', 'subagent_type': 'wuwei:sentinel-arch'}}
-    assert agent_launch.check(payload)[0] == 1
+    assert agent_launch.check(payload) == (0, '')
     assert state.read_state(root)['seats']['adhoc-1']['item'] == 'A'
     assert 'A' not in [row['item'] for row in dispatch.launch_set(root)['entries']]
 
@@ -3910,3 +3914,26 @@ def test_windows_read_no_day_log_without_a_budget(workspace_root):
     (workspace_root / '.wuwei/config.toml').write_text('')
     found = dispatch.windows(workspace_root, workspace.load_config(workspace_root), ['claude', 'codex'])
     assert found == {name: {'room': None, 'until': None, 'text': ''} for name in ('claude', 'codex')}
+
+
+def test_review_955_prompt_seat_cannot_deliver_gate_verdict(root, monkeypatch):
+    from fakes.vcs import Fake as VCS
+    from wuwei import registry
+    from wuwei.guards import agent_launch
+
+    built(root)
+    vcs = VCS()
+    vcs.results.update(head=registry.Result(0, {'sha': 'a' * 40}), status=registry.Result(0, []))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: vcs)
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    assert agent_launch.check({'cwd': str(root), 'tool_name': 'Agent', 'tool_input': {
+        'prompt': 'Review the changes', 'description': 'Gate A',
+        'subagent_type': 'wuwei:sentinel-arch'}}) == (0, '')
+    state.stop_seat('adhoc-1', root)
+    directory = workspace.day_dir(root)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'decisions/gate-adhoc-1.md').write_text(PASS.replace('abc1234', 'aaaaaaa'))
+    before = state.read_state(root)
+    with pytest.raises(dispatch.Refused, match='bin/wuwei dispatch next A'):
+        dispatch.receive('A', 'arch', 'adhoc-1', root=root)
+    assert state.read_state(root) == before

@@ -54,7 +54,7 @@ def builder(root, directory, monkeypatch, item, name):
     ('missing-pid', 1, 'builder'), ('cap', 0, ''), ('memory', 1, 'memory'),
     ('memory-error', 2, 'unmeasured'), ('status-error', 2, 'unavailable'),
     ('malformed-event', 2, 'events'), ('missing-state', 0, ''),  # #844: state.json is a cache
-    ('no-marker', 1, 'brief'), ('nested-marker', 0, ''), ('traversal', 2, 'path'),
+    ('no-marker', 0, ''), ('nested-marker', 0, ''), ('traversal', 2, 'path'),
     ('missing-input', 2, 'tool_input'), ('bad-seats', 2, 'seat'),
 ])
 def test_guard_table(launch, monkeypatch, case, code, hint):
@@ -133,7 +133,7 @@ def test_missing_brief_names_the_brief_command(launch, monkeypatch, case):
     assert (state.read_state(root).get('seats'), (directory / 'events.jsonl').read_text()) == before
 
 
-def test_hook_denies_missing_brief(day, monkeypatch, capsys):
+def test_hook_denies_unmeasured_inline_launch(day, monkeypatch, capsys):
     import io
     import sys
     from wuwei.__main__ import main
@@ -243,10 +243,12 @@ def test_unrelated_agents_pass_before_parsing(day, role):
 
 
 @pytest.mark.parametrize('role', ['builder', 'other:builder', 'wuwei:unknown'])
-def test_wuwei_roles_require_briefs(day, role):
+def test_wuwei_roles_register_prompts_or_reject_unknown_role(day, monkeypatch, role):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     code, message = check({'cwd': str(day[0]), 'tool_input': {
         'subagent_type': role, 'prompt': 'body', 'description': 'work'}})
-    assert code == 1 and 'brief' in message
+    assert (code == 2 and 'role' in message) if role == 'wuwei:unknown' else (code, message) == (0, '')
 
 
 def test_plugin_prefix_matches_logged_charter(launch, monkeypatch):
@@ -882,39 +884,24 @@ def unbriefed(root, description='Gate X', prompt=UNBRIEFED_PROMPT):
         'prompt': prompt, 'description': description, 'subagent_type': 'wuwei:sentinel-arch'}}
 
 
+@pytest.mark.parametrize('enforce', [False, True])
 @pytest.mark.parametrize('description,item', [('Gate X', 'X'), ('Gate', None), ('Gate X and Y', None)])
-def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, description, item):
-    # #660: with guards.enforce = false a WUWEI seat type launched with no marker is never
-    # silently unregistered.
+def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, monkeypatch, description, item, enforce):
     from test_brief import events
     from wuwei import brief as module
+    from wuwei.guards import agent_launch
     root, directory, _, _ = day
-    set_enforce(root, False)
-    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root)
-    code, reason = check(unbriefed(root, description))
-    assert code == 1
-    named = item or "<item>"
-    assert reason.startswith('unbriefed launch registered as adhoc seat adhoc-1 for '
-                             + (item or "no item of today's plan")), reason
-    assert f'bin/wuwei seat brief sentinel-arch {named} <name>' in reason
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    set_enforce(root, enforce)
+    state._write_state(lambda data: data['items'].update(
+        X={'phase': 'gate', 'worktree': str(root / 'tree')}, Y={'phase': 'planned'}), root)
+    assert check(unbriefed(root, description)) == (0, '')
     seat = state.read_state(root)['seats']['adhoc-1']
-    assert seat['role'] == 'adhoc' and seat['item'] == (item or 'adhoc-1')
-    assert seat['label'] == 'sentinel-arch' and seat['type'] == 'wuwei:sentinel-arch'
+    assert seat['role'] == 'sentinel-arch' and seat['item'] == (item or 'adhoc-1')
     assert seat['prompt_sha256'] == module.prompt_digest(UNBRIEFED_PROMPT) and seat['status'] == 'running'
+    assert (root / seat['brief']).read_text() == UNBRIEFED_PROMPT
     last = events(directory)[-1]
     assert last['kind'] == 'seat launched' and last['payload']['item'] == (item or 'adhoc-1')
-
-
-def test_unbriefed_typed_launch_is_refused(day, monkeypatch, capsys):
-    # #837: a seat launch must match a logged brief; refused while guards.enforce is on.
-    from test_brief import events
-    from wuwei.__main__ import main
-    root, directory, _, _ = day
-    assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', UNBRIEFED_PROMPT]) == 0
-    before = events(directory)
-    code, reason = check(unbriefed(root))
-    assert code == 1 and 'bin/wuwei seat brief sentinel-arch X <name>' in reason
-    assert state.read_state(root)['seats'] == {} and events(directory) == before
 
 
 def test_launch_refusals_say_the_seat_is_not_registered(launch, monkeypatch):
@@ -926,20 +913,377 @@ def test_launch_refusals_say_the_seat_is_not_registered(launch, monkeypatch):
     assert code == 1 and reason.startswith('seat not registered: no brief logged'), reason
 
 
-def test_unbriefed_seat_stops_and_traces_as_adhoc(day):
-    from test_brief import events
-    from wuwei.guards import agent_launch, traces
+def test_legacy_unbriefed_seat_stops_as_adhoc(day):
+    from wuwei import brief as module
+    from wuwei.guards import agent_launch
+    root, _, _, _ = day
+    set_seats({'adhoc-1': {'role': 'adhoc', 'item': 'X', 'status': 'running',
+                           'prompt_sha256': module.prompt_digest(UNBRIEFED_PROMPT)}}, root)
+    transcript = subagent_transcript(root / 'agent-a1.jsonl', UNBRIEFED_PROMPT)
+    assert agent_launch.stop(adhoc_stop(root, transcript, agent_type='wuwei:sentinel-arch')) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'
+
+
+@pytest.fixture
+def direct_launch(day, monkeypatch):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     root, directory, _, _ = day
-    set_enforce(root, False)
-    assert check(unbriefed(root))[0] == 1
-    transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl', UNBRIEFED_PROMPT)
+    state._write_state(lambda data: data['items']['X'].update(worktree=str(root / 'tree')), root)
+    payload = adhoc_launch(root, 'Implement X\nKeep this entire private task text.',
+                           subagent_type='wuwei:builder')
+    return day, payload
+
+
+def test_direct_launch_records_private_prompt_and_stops(direct_launch, monkeypatch, capsys):
+    import io
+    import sys
+    from wuwei.__main__ import main
+    from wuwei import brief as module
+    from wuwei.guards import agent_launch, traces
+    (root, directory, _, _), payload = direct_launch
+    prompt = payload['tool_input']['prompt'] + '\nToken ghp_' + 'a' * 36
+    payload['tool_input']['prompt'] = prompt
+    payload.update(hook_event_name='PreToolUse', transcript_path=str(root / 'P.jsonl'))
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    assert main(['hook', 'PreToolUse']) == 0
+    assert 'deny' not in capsys.readouterr().out
+    name, seat = next(iter(state.read_state(root)['seats'].items()))
+    assert seat['role'] == 'builder' and seat['item'] == name
+    assert seat['prompt_sha256'] == module.prompt_digest(prompt)
+    kept = root / seat['brief']
+    assert kept.parent == directory / 'briefs'
+    assert kept.read_text() == prompt and kept.stat().st_mode & 0o777 == 0o600
+    assert 'ghp_' not in (directory / 'events.jsonl').read_text()
+    assert 'private task text' not in (directory / 'state.json').read_text()
+    assert not state.read_state(root).get('builds')
+    transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl', prompt)
+    call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),
+            'hook_event_name': 'PostToolUse', 'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'},
+            'agent_id': 'a1', 'agent_type': 'wuwei:builder'}
+    assert traces.check(call) == (0, '')
+    seat = state.read_state(root)['seats'][name]
+    assert seat['trace_sessions'] == ['P:a1'] and seat['transcript'] == str(transcript)
+    assert module.seat_of(call, state.read_state(root)) == seat
+    with transcript.open('a') as stream:
+        stream.write(json.dumps({'type': 'assistant', 'message': {'content': 'Blocked: none\nGap: none\nChange: done'}}) + '\n')
+    assert agent_launch.stop(adhoc_stop(root, transcript, agent_type='wuwei:builder')) == (0, '')
+    assert state.read_state(root)['seats'][name]['status'] == 'stopped'
+    assert 'seat stopped' in (directory / 'events.jsonl').read_text()
+
+
+@pytest.mark.parametrize('case,code,hint', [
+    ('cap', 1, 'CAP'), ('host', 1, 'host seat'), ('memory', 1, 'memory'),
+    ('unknown-role', 2, 'role'), ('runtime', 1, 'runtime'),
+    ('protected', 1, 'protected paths'), ('dirty', 1, 'dirty'),
+    ('live-builder', 1, 'builder'), ('symlink', 2, 'symlink'),
+])
+def test_direct_launch_preserves_guards(direct_launch, monkeypatch, case, code, hint):
+    from wuwei.guards import agent_launch
+    (root, directory, vcs, _), payload = direct_launch
+    if case == 'cap':
+        (root / '.wuwei/config.toml').write_text('cap = 1\n')
+        building(root, 'Y', 'X')
+    elif case == 'host':
+        (root / '.wuwei/config.toml').write_text('[host]\nseats = 1\n')
+        set_seats({'busy': {'role': 'builder', 'item': 'Y', 'status': 'running'}}, root)
+    elif case == 'memory':
+        monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 0)
+    elif case == 'unknown-role':
+        payload['tool_input']['subagent_type'] = 'wuwei:unknown'
+    elif case == 'runtime':
+        monkeypatch.setattr(registry, 'runtime_config', lambda *args: {'adapters': {'runtime': 'codex'}})
+    elif case == 'protected':
+        payload['tool_input']['prompt'] += '\nPaths: terraform/main.tf'
+    elif case in ('dirty', 'live-builder'):
+        payload['tool_input']['subagent_type'] = 'wuwei:sentinel-arch'
+        payload['tool_input']['description'] = 'Gate X'
+        if case == 'dirty':
+            vcs.results['status'] = registry.Result(0, [{'path': 'dirty.py'}])
+        else:
+            set_seats({'busy': {'role': 'builder', 'item': 'X', 'status': 'running'}}, root)
+    elif case == 'symlink':
+        outside = root / 'outside'
+        outside.mkdir()
+        (directory / 'briefs').symlink_to(outside, target_is_directory=True)
+    before = state.read_state(root)['seats']
+    actual, reason = check(payload)
+    assert actual == code and hint in reason, reason
+    assert state.read_state(root)['seats'] == before
+    assert not list((directory / 'briefs').glob('*.md'))
+
+
+def test_direct_launch_recovery_uses_existing_seat_stop(direct_launch, monkeypatch, capsys):
+    from wuwei import brief as module
+    from wuwei.__main__ import main
+    (root, _, _, _), payload = direct_launch
+    assert check(payload) == (0, '')
+    state._write_state(lambda data: data['items']['X'].pop('worktree'), root)
+    name, seat = next(iter(state.read_state(root)['seats'].items()))
+    transcript = subagent_transcript(root / 'agent.jsonl', payload['tool_input']['prompt'])
+    with transcript.open('a') as stream:
+        stream.write(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': module.HANDBACK, 'id': 'done',
+             'input': {'message': 'Blocked: none\nGap: none\nChange: done'}}]}}) + '\n')
+        stream.write(json.dumps({'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
+            {'type': 'tool_result', 'tool_use_id': 'done', 'content': 'ok'}]}}) + '\n')
+    state._write_state(lambda data: data['seats'][name].update(transcript=str(transcript)), root)
+    assert module.stuck(state.read_state(root)) == [name]
+    monkeypatch.chdir(root)
+    assert main(['seat', 'stop', name, '--verdict']) == 0, capsys.readouterr()
+    assert state.read_state(root)['seats'][name]['status'] == 'stopped'
+
+
+def test_direct_launch_counts_against_next_host_reservation(direct_launch):
+    (root, _, _, _), payload = direct_launch
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 1\n')
+    assert check(payload) == (0, '')
+    code, reason = check(payload)
+    assert code == 1 and 'host seat' in reason
+    assert len(state.read_state(root)['seats']) == 1
+
+
+@pytest.mark.parametrize('role', ['builder', 'sentinel-arch'])
+def test_direct_stop_remains_bound_after_completion(direct_launch, role):
+    from wuwei.guards import agent_launch
+    (root, directory, _, _), payload = direct_launch
+    payload['tool_input']['subagent_type'] = 'wuwei:' + role
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'agent-a1.jsonl', payload['tool_input']['prompt'])
+    stop = {**adhoc_stop(root, transcript, agent_type='wuwei:' + role),
+            'last_assistant_message': 'Blocked: none\nGap: none\nChange: done'}
+    assert agent_launch.stop(stop) == (0, '')
+    assert agent_launch.stopping_seat(stop, root) == (directory, 'adhoc-1', role)
+    before = (directory / 'events.jsonl').read_text()
+    assert agent_launch.stop(stop) == (0, '')
+    assert (directory / 'events.jsonl').read_text() == before
+
+
+def test_direct_launch_protects_committed_paths(direct_launch):
+    (root, _, vcs, _), payload = direct_launch
+    payload['tool_input'].update(subagent_type='wuwei:sentinel-arch', description='Gate X')
+    vcs.results['diff_stat'] = registry.Result(0, [{'path': 'terraform/main.tf'}])
+    code, reason = check(payload)
+    assert code == 1 and 'protected paths' in reason
+    assert state.read_state(root)['seats'] == {}
+
+
+def test_direct_launch_unscoped_builder_can_be_recovered(direct_launch, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    (root, _, _, _), payload = direct_launch
+    payload['tool_input']['prompt'] = 'Investigate a general task'
+    assert check(payload) == (0, '')
+    report = root / 'report.md'
+    report.write_text('Blocked: none\nGap: none\nChange: done')
+    monkeypatch.chdir(root)
+    assert main(['seat', 'stop', 'adhoc-1', '--verdict', str(report)]) == 0, capsys.readouterr()
+
+
+def test_direct_launch_same_prompt_keeps_roles_separate(direct_launch):
+    from wuwei.guards import agent_launch
+    (root, _, _, _), payload = direct_launch
+    payload['tool_input']['prompt'] = 'Investigate a general task'
+    assert check(payload) == (0, '')
+    payload['tool_input']['subagent_type'] = 'wuwei:sentinel-arch'
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'agent-a1.jsonl', payload['tool_input']['prompt'])
+    stop = {**adhoc_stop(root, transcript, agent_type='wuwei:sentinel-arch'),
+            'last_assistant_message': 'Blocked: none\nGap: none\nChange: done'}
+    assert agent_launch.stop(stop) == (0, '')
+    seats = state.read_state(root)['seats']
+    assert seats['adhoc-1']['status'] == 'running' and seats['adhoc-2']['status'] == 'stopped'
+
+
+def test_direct_launch_stop_binds_original_day(direct_launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    (root, directory, _, _), payload = direct_launch
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'agent-a1.jsonl', payload['tool_input']['prompt'])
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T00:01:00+00:00')
+    stop = {**adhoc_stop(root, transcript, agent_type='wuwei:builder'),
+            'last_assistant_message': 'Blocked: none\nGap: none\nChange: done'}
+    assert agent_launch.stop(stop) == (0, '')
+    assert state.read_state(directory=directory)['seats']['adhoc-1']['status'] == 'stopped'
+
+
+@pytest.mark.parametrize('case', ['prior-brief', 'failed-event'])
+def test_direct_launch_can_retry_with_existing_prompt_file(direct_launch, monkeypatch, case):
+    (root, directory, _, _), payload = direct_launch
+    if case == 'prior-brief':
+        (directory / 'briefs').mkdir()
+        (directory / 'briefs/adhoc-1.md').write_text('Existing evidence')
+    else:
+        original = state._append_event
+        def fail(*args, **kwargs):
+            raise OSError('log unavailable')
+        monkeypatch.setattr(state, '_append_event', fail)
+        assert check(payload)[0] == 2
+        monkeypatch.setattr(state, '_append_event', original)
+        assert not state.read_state(root)['seats']
+    before = (directory / 'briefs/adhoc-1.md').read_text()
+    assert check(payload) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-2']['status'] == 'running'
+    assert (directory / 'briefs/adhoc-1.md').read_text() == before
+
+
+def test_direct_builders_obey_cap_without_plan_slots(direct_launch):
+    from concurrent.futures import ThreadPoolExecutor
+    (root, _, _, _), payload = direct_launch
+    (root / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 8\n')
+    payload['tool_input']['prompt'] = 'Investigate a general task'
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(check, [payload, payload]))
+    assert sorted(code for code, _ in results) == [0, 1], results
+    assert any('CAP' in reason for _, reason in results)
+    assert len(state.read_state(root)['seats']) == 1
+
+
+def test_untyped_stop_cannot_consume_typed_prompt_seat(direct_launch):
+    from wuwei.guards import agent_launch
+    (root, _, _, _), payload = direct_launch
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'agent-a1.jsonl', payload['tool_input']['prompt'])
+    assert agent_launch.stop(adhoc_stop(root, transcript)) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'running'
+
+
+@pytest.mark.parametrize('build_status', [None, 'ready', 'running'])
+def test_review_955_item_builder_requires_recorded_launch(direct_launch, build_status):
+    (root, directory, _, _), payload = direct_launch
+    payload['tool_input']['description'] = 'Build X'
+    if build_status:
+        def update(data):
+            data.setdefault('builds', {})['X'] = {
+                'status': build_status, 'seat': 'b1', 'action': {'action': 'launch'}}
+            if build_status == 'running':
+                data['seats']['b1'] = {'id': 'b1', 'role': 'builder', 'item': 'X', 'status': 'running'}
+        state._write_state(update, root)
+    before = state.read_state(root)
+    code, reason = check(payload)
+    assert code == 1 and 'bin/wuwei build next X' in reason, reason
+    assert state.read_state(root) == before
+    assert not list((directory / 'briefs').glob('adhoc-*.md'))
+
+
+@pytest.mark.parametrize('inputs,item', [
+    ({'name': 'review-X'}, None),
+    ({'name': 'Review X'}, 'X'),
+    ({'description': 'Review X'}, 'X'),
+    ({'prompt': 'Review this task\nItem: X\nCompare Y as background'}, 'X'),
+    ({'prompt': 'A pasted issue mentions X'}, None),
+    ({'prompt': 'Quoted: Item: X'}, None),
+    ({'prompt': 'Item: X\nItem: Y'}, None),
+])
+def test_review_955_item_binding_is_explicit(direct_launch, inputs, item):
+    (root, _, _, _), payload = direct_launch
+    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root)
+    payload['tool_input'].update(subagent_type='wuwei:sentinel-arch', prompt='Review the task')
+    payload['tool_input'].update(inputs)
+    assert check(payload) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['item'] == (item or 'adhoc-1')
+
+
+@pytest.mark.parametrize('caller', ['planner-role', 'typed-seat'])
+def test_review_955_adhoc_launch_is_not_a_planner_or_nested_seat(direct_launch, caller):
+    (root, directory, _, _), payload = direct_launch
+    payload['tool_input']['prompt'] = 'Investigate this task'
+    if caller == 'planner-role':
+        payload['tool_input']['subagent_type'] = 'wuwei:planner'
+    else:
+        payload['agent_id'] = 'parent-seat'
+    code, reason = check(payload)
+    assert code == 1 and ('planner' in reason or 'seat' in reason), reason
+    assert state.read_state(root)['seats'] == {}
+    assert not list((directory / 'briefs').glob('adhoc-*.md'))
+
+
+def test_review_955_continue_cannot_rebind_prompt_seat(direct_launch):
+    from wuwei import brief as module
+    from wuwei.guards import agent_launch, traces
+    (root, directory, _, _), payload = direct_launch
+    payload['tool_input'].update(subagent_type='wuwei:sentinel-arch', prompt='Review the task')
+    assert check(payload) == (0, '')
+    other = (directory / 'briefs/other.md').relative_to(root).as_posix()
+    state._write_state(lambda data: data['seats'].update(other={
+        'role': 'sentinel-arch', 'item': 'X', 'brief': other, 'status': 'running'}), root)
+    transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl', payload['tool_input']['prompt'])
+    with transcript.open('a') as stream:
+        stream.write(json.dumps({'type': 'user', 'message': {'content': 'Continue\nWUWEI brief: ' + other}}) + '\n')
+        stream.write(json.dumps({'type': 'assistant', 'message': {'content': 'Blocked: none\nGap: none\nChange: done'}}) + '\n')
     call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),
             'hook_event_name': 'PostToolUse', 'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'},
             'agent_id': 'a1', 'agent_type': 'wuwei:sentinel-arch'}
     assert traces.check(call) == (0, '')
-    assert state.read_state(root)['seats']['adhoc-1']['trace_sessions'] == ['P:a1']
+    assert state.read_state(root)['seats']['adhoc-1'].get('trace_sessions') == ['P:a1']
+    assert module.seat_of(call, state.read_state(root))['id'] == 'adhoc-1'
     assert agent_launch.stop(adhoc_stop(root, transcript, agent_type='wuwei:sentinel-arch')) == (0, '')
-    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'
-    assert check(unbriefed(root))[0] == 1
-    assert agent_launch.stop(adhoc_stop(root, root / 'missing.jsonl', 'a2', 'wuwei:sentinel-arch')) == (0, '')
-    assert events(directory)[-1]['kind'] == 'seat stop unmatched'
+    seats = state.read_state(root)['seats']
+    assert seats['adhoc-1']['status'] == 'stopped' and seats['other']['status'] == 'running'
+
+
+@pytest.mark.parametrize('inputs', [
+    {'description': 'Build X and Y'},
+    {'description': 'Build X', 'prompt': 'Implement the task\nItem: Y'},
+    {'name': 'Build X and Y'},
+    {'prompt': 'Item: X\nItem: Y'},
+])
+@pytest.mark.parametrize('build_status', [None, 'running'])
+def test_round2_ambiguous_builder_cannot_bypass_record(direct_launch, inputs, build_status):
+    (root, directory, _, _), payload = direct_launch
+    def setup(data):
+        data['items']['Y'] = {'phase': 'planned'}
+        if build_status:
+            data.setdefault('builds', {})['X'] = {
+                'status': build_status, 'seat': 'b1', 'action': {'action': 'launch'}}
+            data['seats']['b1'] = {'id': 'b1', 'role': 'builder', 'item': 'X', 'status': 'running'}
+    state._write_state(setup, root)
+    payload['tool_input'].update(inputs)
+    before = state.read_state(root)
+    code, reason = check(payload)
+    assert code == 1 and 'bin/wuwei build next X' in reason, reason
+    assert state.read_state(root) == before
+    assert not list((directory / 'briefs').glob('adhoc-*.md'))
+
+
+@pytest.mark.parametrize('kind', ['general-purpose', 'Explore'])
+def test_round2_untyped_nested_launch_registers(direct_launch, kind):
+    (root, _, _, _), payload = direct_launch
+    payload['agent_id'] = 'parent-subagent'
+    payload['tool_input']['subagent_type'] = kind
+    assert check(payload) == (0, '')
+    seat = state.read_state(root)['seats']['adhoc-1']
+    assert seat['role'] == 'adhoc' and seat['status'] == 'running'
+
+
+def test_round2_same_prompt_different_items_cannot_swap(direct_launch):
+    from wuwei import brief as module
+    from wuwei.guards import traces
+    (root, _, _, _), payload = direct_launch
+    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root)
+    payload['tool_input'].update(subagent_type='wuwei:lead', description='Look at X',
+                                 prompt='Inspect the task')
+    assert check(payload) == (0, '')
+    payload['tool_input']['description'] = 'Look at Y'
+    before = state.read_state(root)
+    code, reason = check(payload)
+    assert code == 1 and 'Item:' in reason, reason
+    assert state.read_state(root) == before
+    payload['tool_input']['prompt'] += '\nItem: Y'
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'P/subagents/agent-y.jsonl', payload['tool_input']['prompt'])
+    trace = {'cwd': str(root), 'session_id': payload['session_id'], 'agent_id': 'y',
+             'agent_type': 'wuwei:lead', 'tool_name': 'Read', 'tool_input': {},
+             'transcript_path': str(root / 'P.jsonl')}
+    assert traces.check(trace) == (0, '')
+    assert module.seat_of(trace, state.read_state(root))['item'] == 'Y'
+    assert not state.read_state(root)['seats']['adhoc-1'].get('trace_sessions')
+
+
+def test_round2_bound_sentinel_without_worktree_has_adhoc_advice(direct_launch):
+    (root, _, _, _), payload = direct_launch
+    state._write_state(lambda data: data['items']['X'].pop('worktree'), root)
+    payload['tool_input'].update(subagent_type='wuwei:sentinel-arch', description='Review X')
+    code, reason = check(payload)
+    assert code == 2 and 'bin/wuwei dispatch next X' in reason, reason
+    assert '--worktree' not in reason
+    assert not state.read_state(root)['seats']
