@@ -225,6 +225,8 @@ def step(item, root, *paths):
     decides."""
     from wuwei import dispatch
     data = state.read_state(root)
+    if data['items'].get(item, {}).get('status') == 'done':
+        return dispatch.next_step(item, root)
     record = data.get('builds', {}).get(item)
     phase = (data['items'].get(item) or {}).get('phase')
     seat = data.get('seats', {}).get((record or {}).get('seat'), {})
@@ -261,6 +263,9 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     data = state.read_state(root)
     if item not in data['items']:
         raise PortExit(2, f'unknown item {item}')
+    if data['items'][item]['status'] == 'done':
+        from wuwei import dispatch
+        return dispatch.next_step(item, root)
     record = data.get('builds', {}).get(item)
     if _recover_committed(item, record, root):
         return state.read_state(root)['builds'][item]['action']

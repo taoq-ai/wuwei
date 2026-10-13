@@ -763,8 +763,8 @@ def next_step(item, root=None):
     data = state.read_state(root)
     row = _item(data, item)
     phase = row['phase']
-    if row['status'] == 'done' and row.get('kind') in ('measure', 'review'):
-        return {'action': 'done', 'reason': _done_reason(data, item, 'gate completed')}
+    if row['status'] == 'done':
+        return {'action': 'done', 'reason': row.get('reason') or _done_reason(data, item, 'gate completed')}
     if phase in ('parked', 'escalated'):  # only the owner resumes it, on plan resume's card
         return {'action': 'escalate', 'reason': (row.get('disposition') or {}).get('reason') or f'{item} is {phase}',
                 'command': 'wuwei plan resume ' + shlex.quote(item)}

@@ -17,7 +17,7 @@ SILENT = ('item.progress', 'traces.noted', 'state.write', 'state.transition',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'watch: observation', 'plan.session', 'gate.asked', 'owner.approved', 'pr.disposition', 'day.close_requested', 'day.closed', 'next.action',
           'gate.received', 'gate.tiered', 'gate.delta_head', 'gate.released',
-          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed',
+          'plan.added', 'steward.run', 'plan.approved', 'state.import', 'plan.disposed', 'plan.resumed', 'plan.done',
           'finding.noted',
           'discovery.requested', 'discovery.intake',  # days before #843
           'build.started', 'build.launched', 'build.checked', 'build.check_started', 'verdict.rejected',

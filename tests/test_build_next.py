@@ -100,6 +100,18 @@ def test_unknown_build_item_exits_two(seat, capsys):
     assert 'build: unknown item' in capsys.readouterr().err
 
 
+def test_manual_build_next_on_owner_done_item_returns_done(seat, capsys):
+    root = seat[0]
+    assert build.next_action('A', root=root)['action'] == 'launch'
+    def complete(data):
+        data.update(gate_approved=True, approved_items=['A'])
+        data['items']['A'].update(phase='implement', status='done', by='owner', reason='owner sent both')
+    state._write_state(complete, root)
+    assert build.next_action('A', root=root)['action'] == 'done'
+    assert main(['build', 'next', 'A']) == 0
+    assert json.loads(capsys.readouterr().out)['action'] == 'done'
+
+
 def test_agent_launch_refuses_role_assigned_to_codex(seat):
     root, _, _, _, _ = seat
     state._write_state(lambda data: data.update(seat_policy={

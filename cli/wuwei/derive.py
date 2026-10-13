@@ -258,7 +258,7 @@ def offers(data, root, config, merges=None):
     for name in data['approved_items']:  # the round cap or a stuck build parked it: the owner decides
         row = items.get(name) or {}
         reason = (row.get('disposition') or {}).get('reason') or ''
-        if row.get('phase') == 'parked' and reason.startswith(ASK_PARKS):
+        if row.get('status') != 'done' and row.get('phase') == 'parked' and reason.startswith(ASK_PARKS):
             from wuwei import plan, sessions
             if sessions.owner_answer(root, f'bin/wuwei plan resume {name}', plan.resume_token(root, name, data)) is None:
                 ask(name, reason, f'wuwei plan resume {name}')

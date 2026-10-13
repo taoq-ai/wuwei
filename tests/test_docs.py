@@ -32,6 +32,12 @@ def test_site_pages_are_plain_markdown():
     assert (ROOT / 'skills/wuwei-plan/SKILL.md').is_file()
 
 
+def test_reference_lists_owner_completed_plan_command():
+    page = (SITE / 'reference.md').read_text()
+    assert '`plan done`' in page.split('## init')[0]
+    assert '| `done <item> --reason <text>` |' in page.split('## plan')[1].split('### Goals')[0]
+
+
 def test_mkdocs_nav_covers_every_page():
     config = (ROOT / 'mkdocs.yml').read_text()
     for phrase in ('site_name: WUWEI', 'site_url: https://taoq-ai.github.io/wuwei/',

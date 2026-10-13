@@ -757,6 +757,8 @@ def dispose(item, outcome, reason=None, root=None):
             raise state.StateError((f"no item {item} today; today's items: "
                                    f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids"))
         record = data['items'][item]
+        if record['status'] == 'done':
+            raise state.StateError(f'{item} is already done; run bin/wuwei why {item} to read its completion')
         record['disposition'] = {'kind': outcome, 'reason': reason}
         if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
             record.update(phase='parked', status='blocked')
@@ -767,6 +769,44 @@ def dispose(item, outcome, reason=None, root=None):
 def park(item, reason, root=None):
     """Park one item in code (the round cap, a PARK verdict, the owner's No)."""
     dispose(item, 'parked', reason, root)
+
+
+def done(item, reason, root=None):
+    """Record the owner's completion after one item and reason bound Owner step Yes."""
+    import hashlib
+    import shlex
+    root = workspace.find_workspace(root)
+    reason = ' '.join(reason.split())
+    if not reason:
+        raise state.StateError('plan done requires a nonempty --reason; pass --reason "<what was done>"')
+    data = state.read_state(root)
+
+    def check(fresh):
+        row = fresh['items'].get(item)
+        if row is None:
+            raise state.StateError(f'no item {item} today; use an id from today\'s plan')
+        if row['status'] == 'done':
+            raise state.StateError(f'{item} is already done; run bin/wuwei why {item} to read its completion')
+        if row['phase'] not in ('planned', 'parked', 'implement'):
+            raise state.StateError(f'{item} is {row["phase"]}; run bin/wuwei why {item} to read its state')
+        if any(name == item for _, _, name in state.in_flight(fresh)):
+            raise state.StateError(f'{item} has live work; run bin/wuwei seat stop <seat> first')
+        return row
+
+    row = check(data)
+    command = shlex.join(['bin/wuwei', 'plan', 'done', item, '--reason', reason])
+    token = hashlib.sha256(f'{item}\n{reason}'.encode()).hexdigest()[:12]
+    if refusal := sessions.needs_owner(root, command, f'Mark {item} done: {reason}', token):
+        raise state.StateError(refusal)
+
+    def update(fresh):
+        current = check(fresh)
+        if current != row:
+            raise state.StateError(f'{item} changed during plan done; rerun the command')
+        current.update(status='done', by='owner', reason=reason)
+
+    state._write_state(update, root, kind='plan.done', payload={'item': item, 'by': 'owner', 'reason': reason})
+    return f'{item}: done by owner: {reason}'
 
 
 def resume_token(root, item, data=None):
