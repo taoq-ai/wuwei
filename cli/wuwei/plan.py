@@ -112,9 +112,20 @@ def _proposal(data, goals_text, framework="wsjf"):
 
 
 def _admitted(name, item, tree=None):
-    """#868: the track, flags and governed_by checks plan propose and plan add share."""
+    """The candidate checks shared by plan propose and plan add."""
     if item.get('track') not in ('SLICE', 'FULL'):
         raise ValueError(f'{name}: track must be SLICE or FULL; {PLAN_JSON}')
+    kind = item.get('kind', 'build')
+    if kind not in ('build', 'review', 'measure'):
+        raise ValueError(f'{name}: kind must be build, review or measure; {PLAN_JSON}')
+    if kind in ('review', 'measure') and item.get('paths', []):
+        raise ValueError(f'{name}: {kind} item paths must be empty; {PLAN_JSON}')
+    if kind == 'review' and (not isinstance(item.get('pr'), str) or
+                             not re.fullmatch(REPO + r'#[1-9][0-9]*', item['pr']) or
+                             item.get('review_role') not in ('arch', 'quality', 'security', 'goal')):
+        raise ValueError(f'{name}: review needs pr owner/repo#number and review_role arch, quality, security or goal; {PLAN_JSON}')
+    if kind != 'review' and (item.get('pr') is not None or item.get('review_role') is not None):
+        raise ValueError(f'{name}: pr and review_role are only for review items; {PLAN_JSON}')
     flags = item.get('flags')
     if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
         raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
@@ -471,8 +482,10 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                        'flags': candidates[name]['flags'],
                                        'budget_size': candidates[name]['score'][
                                            'job_size' if framework == 'wsjf' else 'effort'],
-                                       **{key: candidates[name][key] for key in ('tier', 'governed_by')
+                                       **{key: candidates[name][key] for key in ('kind', 'tier', 'governed_by')
                                           if key in candidates[name]},
+                                       **({key: candidates[name][key] for key in ('pr', 'review_role')}
+                                          if candidates[name].get('kind') == 'review' else {}),
                                        'approved_as': _approval(candidates[name]['scope'], note)}
                                  for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
@@ -485,6 +498,10 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                  payload={'items': sorted(imported) if import_yesterday else items,
                                           'approved_items': items,
                                           'flags': {name: candidates[name]['flags'] for name in items}})
+    for name in items:
+        if candidates[name].get('kind') == 'review':
+            state._write_state(lambda current, name=name: current['items'][name].update(phase='gate'),
+                               root, kind='state.transition', payload={'item': name, 'phase': 'gate'})
     if config['adapters']['tracker'] != 'none':  # #842: a new item's ticket opens as a duty
         from wuwei import dispatch
         for name in items:
@@ -497,7 +514,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
 
 
 def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None, note=None,
-        repo=None, track='SLICE', governed_by=None, flags=()):
+        repo=None, track='SLICE', governed_by=None, flags=(), kind='build', pr=None, review_role=None):
     """Admit one item after the gate: an item the owner names under a goal (the owner naming it
     is the decision) or a seat's finding. #868: the owner's repo, track, governed_by and flags
     pass the checks plan propose applies."""
@@ -537,6 +554,9 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     candidate = {'id': item, 'goal': goal, 'track': track, 'source': source or 'owner',
                  'flags': {key: key in flags for key in FLAGS},
                  'title': title or item, 'score': {size_key: 1 if size is None else size},
+                 'kind': kind,
+                 **({'pr': pr} if pr is not None else {}),
+                 **({'review_role': review_role} if review_role is not None else {}),
                  **({'ticket': ticket} if ticket else {}),
                  **({'tier': 'light'} if source == 'finding' else {}),
                  **({'repo': repo} if repo else {}),
@@ -557,6 +577,9 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
             raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
+                                  'kind': candidate['kind'],
+                                  **({key: candidate[key] for key in ('pr', 'review_role')}
+                                     if kind == 'review' else {}),
                                   **{key: candidate[key] for key in ('tier', 'governed_by', 'repo') if key in candidate},
                                   **({'source': source} if source else {}),
                                   **({'title': candidate['title']} if source or title else {}),
@@ -569,12 +592,46 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     state._write_state(admit, root, kind='plan.added',
                        payload={'item': item, 'source': candidate['source'],
                                 'flags': {item: candidate['flags']}})
+    if kind == 'review':
+        state._write_state(lambda current: current['items'][item].update(phase='gate'), root,
+                           kind='state.transition', payload={'item': item, 'phase': 'gate'})
     if not chosen and config['adapters']['tracker'] != 'none':  # #842: best effort, never a wall
         from wuwei import dispatch
         dispatch.tracker_call(item, 'create', root, row={
             'scope': candidate['title'], 'goal': candidate['goal'], 'track': candidate['track'],
             'evidence': 'named by the owner'})
-    return {'action': 'build next', 'item': item}
+    return {'action': 'dispatch next' if kind == 'review' else 'build next', 'item': item}
+
+
+def set_kind(item, kind, root=None, *, pr=None, review_role=None):
+    """Correct an admitted item's kind before its first seat."""
+    root = workspace.find_workspace(root)
+    data = state.read_state(root)
+    row = data['items'].get(item)
+    if row is None or row['phase'] != 'planned' or any(
+            seat['item'] == item for seat in data['seats'].values()):
+        raise state.StateError(f'{item}: kind can change only while planned before its first seat; '
+                               f'run bin/wuwei why {item} for its current step')
+    candidate = {**row, 'kind': kind}
+    candidate.pop('pr', None)
+    candidate.pop('review_role', None)
+    if pr is not None:
+        candidate['pr'] = pr
+    if review_role is not None:
+        candidate['review_role'] = review_role
+    _admitted(item, candidate)
+    def update(current):
+        fresh = current['items'][item]
+        fresh['kind'] = kind
+        fresh.pop('pr', None)
+        fresh.pop('review_role', None)
+        if kind == 'review':
+            fresh.update(pr=pr, review_role=review_role, phase='gate')
+    _owner_confirm(root, [item, f'kind={kind}',
+                          *(['--pr', pr, '--review-role', review_role] if kind == 'review' else [])],
+                   f'Set {item} kind to {kind}' + (f' for {pr} ({review_role})' if kind == 'review' else ''))
+    state._write_state(update, root, kind='plan.set', payload={'item': item, 'kind': kind})
+    return f'{item}: kind {kind}'
 
 
 def _owner_confirm(root, argv, detail, token=''):
@@ -765,4 +822,3 @@ def resume(item, root=None):
         current.pop('decision', None)
     state._write_state(update, root, kind='plan.resumed', payload={'item': item})
     return f'{item}: resumed'
-

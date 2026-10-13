@@ -537,6 +537,12 @@ def test_worktrees_and_checkout_existing_branch(tmp_path):
     assert adapter().worktree_checkout(repo, 'feature-x', str(tmp_path / 'again')).exit == 2
 
 
+def test_worktree_checkout_refuses_pull_ref(tmp_path):
+    result = adapter().worktree_checkout(tmp_path, 'refs/pull/7/head', str(tmp_path / 'tree'), 'origin')
+    assert result.exit == 2 and 'pull refs are unsupported' in result.reason
+    assert not (tmp_path / 'tree').exists()
+
+
 @pytest.mark.parametrize('stdout', ['worktree /r\0HEAD x\0\0', 'HEAD ' + 'a' * 40 + '\0\0', 'worktree /r'])
 def test_worktrees_rejects_malformed_records(stdout, monkeypatch):
     install_replay(monkeypatch, 'git', [{'stdout': stdout}])

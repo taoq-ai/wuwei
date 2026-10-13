@@ -104,6 +104,48 @@ def test_green_on_second_iteration_records_two_usages(tmp_path, monkeypatch):
     assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
 
 
+def test_zero_diff_measurement_finishes_without_fast_check_or_commit(tmp_path, monkeypatch):
+    from wuwei import dispatch
+    from wuwei.commands import build
+
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [], spec='')
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), tmp_path)
+    monkeypatch.setattr(dispatch, '_changes', lambda root, config, row: ({}, []))
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    record = state.read_state(tmp_path)['builds']['A']
+    assert record['status'] == 'done' and record['commands'] == []
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+    assert not [row for row in events(day) if row['kind'] == 'build.check_started']
+    assert runtime.vcs.commits == []
+
+
+def test_measurement_with_dirty_worktree_does_not_commit_it(tmp_path, monkeypatch):
+    from wuwei import dispatch
+    from wuwei.commands import build
+
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [], spec='')
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), tmp_path)
+    monkeypatch.setattr(dispatch, '_changes', lambda root, config, row: ({}, []))
+    runtime.vcs.status = lambda *args, **kwargs: registry.Result(0, [{'path': 'src/probe.py'}])
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert runtime.vcs.commits == []
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
+    assert not [row for row in events(day) if row['kind'] == 'build.check_started']
+
+
+def test_measurement_on_existing_pr_branch_does_not_own_prior_diff(tmp_path, monkeypatch):
+    from wuwei import derive, dispatch
+    from wuwei.commands import build
+
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [], spec='')
+    monkeypatch.setattr(derive, 'head', lambda path: 'a' * 40)
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), tmp_path)
+    monkeypatch.setattr(dispatch, '_changes', lambda root, config, row: (
+        {}, [{'path': 'src/pr.py', 'additions': 1, 'deletions': 0}]))
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+
+
 def test_unmeasured_check_exits_two(tmp_path, monkeypatch):
     from wuwei.commands import build
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(2, reason='tool missing')])

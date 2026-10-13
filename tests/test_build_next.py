@@ -85,6 +85,16 @@ def test_claude_stop_records_available_usage(seat):
                         'cost': 'unmeasured', 'model': 'sonnet', 'duration': 3.2}
 
 
+def test_measurement_claude_stop_completes_once(seat, monkeypatch):
+    from wuwei import dispatch
+    root, _, _, _, _ = seat
+    state._write_state(lambda data: data['items']['A'].update(kind='measure'), root)
+    monkeypatch.setattr(dispatch, '_changes', lambda root, config, row: ({}, []))
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    assert state.read_state(root)['builds']['A']['status'] == 'done'
+
+
 def test_unknown_build_item_exits_two(seat, capsys):
     assert main(['build', 'next', 'missing']) == 2
     assert 'build: unknown item' in capsys.readouterr().err

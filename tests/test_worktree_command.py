@@ -396,6 +396,13 @@ def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
     assert 'worktree' not in state.read_state(root)['items']['B']
 
 
+def test_worktree_add_reuses_the_branch_worktree_from_an_earlier_day(tmp_path, monkeypatch, capsys):
+    root, _, tree = adopt_workspace(tmp_path, monkeypatch)
+    assert main(['worktree', 'add', 'A', '--branch', 'feature-x']) == 0, capsys.readouterr().err
+    assert state.read_state(root)['items']['A']['worktree'] == str(tree)
+    assert not (root / 'worktrees/A').exists()
+
+
 def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
     from fakes.code_host import Fake as Host
     root, repo, house = adopt_workspace(tmp_path, monkeypatch, 'fast_checks = ["true"]\n')
@@ -699,5 +706,4 @@ def test_worktree_add_refuses_when_the_fetch_fails(tmp_path, monkeypatch, capsys
     assert not (root / 'worktrees/X').exists()
     assert git(repo, 'branch', '--list', 'x').stdout == ''
     assert len(git(repo, 'worktree', 'list').stdout.splitlines()) == 1
-
 

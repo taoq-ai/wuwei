@@ -335,7 +335,7 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     if feedback:
         action['feedback'] = feedback
         action['prompt'] += '\n\n' + feedback + previous['action']['prompt'].partition('\n\n' + feedback)[2]
-    commands = list(repo['fast_checks'])
+    commands = [] if data['items'][item].get('kind') == 'measure' else list(repo['fast_checks'])
     from wuwei import derive  # #871 L2: the head the build must move past
     if used:  # #892: the head the seat launched at
         start = data['seats'][used].get('head')
@@ -518,6 +518,8 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage,
                                 'runtime': record['runtime']})
+    if updated['items'][item].get('kind') == 'measure':
+        complete_checks(item, [], root=root, expected=updated['builds'][item])
     if result.get('windows'):
         from wuwei import dispatch
         dispatch.save_windows(root, record['runtime'], result['windows'])
@@ -592,6 +594,8 @@ def stopped(item, name, payload, *, root):
         reported = {}  # #905: usage the runtime got wrong is unmeasured; the finished result still counts
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
+    if data['items'][item].get('kind') == 'measure':
+        return True
     measured = data.get('fast_checks', {}).get(record['repo'], {})
     rows = [measured.get(command, {}) for command in record['commands']]
     if not all(row.get('build') == check_binding(item, record)
@@ -643,6 +647,18 @@ def complete_checks(item, results, *, root, expected=None):
     config = workspace.load_config(root)
     data = state.read_state(root)
     row = data['items'][item]
+    if row.get('kind') == 'measure':
+        from wuwei import brief, dispatch
+        try:
+            vcs = registry.load('vcs', config)
+            changed = (brief.read(vcs.head, record['worktree'], root=root)['sha'] != record['start']
+                       if record.get('start') else bool(dispatch._changes(
+                           root, config, {'worktree': record['worktree']})[1]))
+            dirty = brief.status(vcs, record['worktree'], root)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise ValueError(f'measurement diff unmeasured: {exc}') from exc
+        if changed or dirty:
+            failures.append(('change', {'error': 'measurement changed the worktree; remove its code diff and hand off the evidence'}))
     broken = failures and _main_broken(root, config, data, item, record, failures)
     if broken and _admit(root, row, broken, record['repo']):
         _hold(item, record, root, expected, broken)
@@ -654,7 +670,7 @@ def complete_checks(item, results, *, root, expected=None):
                                       build=True, where='gates')
         if code:
             failures.append(('spec', {'error': reason}))
-    if not failures:  # #901 review D1: a recheck at a gate is a whole build check as well
+    if not failures and row.get('kind') != 'measure':  # a measurement hands off evidence, not a commit
         failures += _unbuilt(record, root, config)
     if not failures:  # #901 review: the head the checks passed on is the only head a gate reads
         record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data))
@@ -950,7 +966,8 @@ def run_loop(item, brief, worktree, *, root=None):
                 running = state.read_state(root)['builds'][item]
                 _save(item, {**running, 'status': 'ready'}, root, 'build.failed', running, {'reason': str(exc)})
                 raise
-            refused = _commit(item, root, config)
+            refused = (None if state.read_state(root)['items'][item].get('kind') == 'measure'
+                       else _commit(item, root, config))
             recorded = record_result(item, _data(runtime.result(job, root=root), 'result'),
                                      root=root, model=status.get('model'))
             if refused and recorded:

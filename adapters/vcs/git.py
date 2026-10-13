@@ -388,6 +388,8 @@ def worktree_checkout(repo, branch, path, remote=None, root=None):
     """A worktree on an existing branch (#510); worktree_add creates a new one. A branch that is
     only on remote is fetched first, so the checkout tracks it (#879)."""
     branch = _revision(branch)
+    if branch.startswith('refs/pull/'):
+        raise ValueError('pull refs are unsupported; use a branch in the configured repository')
     path = os.fspath(path)
     if not path:
         raise ValueError('missing worktree path')

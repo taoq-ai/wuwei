@@ -416,7 +416,7 @@ def seat_disposition(root, kind='parked'):
 
 
 @pytest.mark.parametrize('mode,expected', [
-    ('open', 1), ('blocked', 1), ('phase_only', 1), ('done_only', 1),
+    ('open', 1), ('blocked', 1), ('phase_only', 1), ('done_only', 0),
     ('merged', 1), ('parked', 0), ('carried', 0),
 ])
 def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
@@ -437,6 +437,34 @@ def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
     assert main(['close']) == expected
     if expected:
         assert 'A' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('kind,phase,pr', [
+    ('review', 'gate', REF), ('measure', 'gate', None),
+])
+def test_done_non_build_item_does_not_hold_close(case, kind, phase, pr):
+    root, _, _ = case
+    approved(root, kind=kind, pr=pr)
+    from fakes import records
+    data = state.read_state(root)
+    data['items']['A'].update(phase=phase, status='done')
+    records.write(root, {'items': data['items']})
+    assert module('closing').unresolved(root, []) == (0, '')
+
+
+def test_unfinished_review_does_not_get_missing_pr_finding(case):
+    root, _, vcs = case
+    approved(root, kind='review', pr=REF, worktree='repo')
+    from fakes import records
+    data = state.read_state(root)
+    data['items']['A'].update(phase='gate', status='running')
+    records.write(root, {'items': data['items']})
+    (root / 'repo').mkdir()
+    vcs.results['branch'] = Result(0, {'name': 'review-branch'})
+    vcs.results['pushed_branches'] = Result(0, ['review-branch'])
+    code, reason = module('closing').unresolved(root, [])
+    assert code == 1 and 'A is still open' in reason
+    assert 'pushed branch' not in reason
 
 
 @pytest.mark.parametrize('mode,expected', [
