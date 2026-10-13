@@ -428,7 +428,7 @@ def test_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
     result = github.created('acme/app#1', root=gh_root)
     assert result.exit == 2 and result.reason == (
         f'github.created: could not run: GitHub rate limit until {hms(NOW + 20)} UTC '
-        '(0 of 5000 graphql calls left); retry after it')
+        '(0 of 5000 graphql calls left); retry after it (token: gh keyring)')
 
 
 def limited(code, headers, url='https://api.github.com/graphql'):

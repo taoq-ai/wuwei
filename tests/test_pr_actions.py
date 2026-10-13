@@ -794,11 +794,9 @@ def test_unreadable_base_is_unmeasured(case, capsys, damage):
 
 
 def test_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
-    # #899 field case through pr act and the real GitHub adapter: the refused PR read's own headers
-    # say core 0 until 12:55:46 while gh api rate_limit would say 5000 of 5000. The headers decide,
-    # rate_limit is never asked and no token hint is printed.
+    # #953 field case through pr act: zero headers and a full quota produce a short hold.
     import importlib
-    from fakes.replay import NOW, install_clock, install_replay, limits
+    from fakes.replay import NOW, hms, install_clock, install_replay, limits
     root, _, vcs, _ = linked(case)
     github = importlib.import_module('adapters.code_host.github')
     monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': github, 'vcs': vcs}[kind])
@@ -812,8 +810,10 @@ def test_pr_act_names_the_refused_replys_bucket(case, monkeypatch, capsys):
         {'argv': ['api', 'rate_limit', '--hostname', 'github.com'], 'stdout': limits(5000, 5000, NOW + 3600)}])
     assert main(['pr', 'act', REF]) == 2
     out = capsys.readouterr().out
-    assert 'GitHub rate limit until 12:55:46 UTC (0 of 5000 core calls left); retry after it' in out
-    assert 'same token' not in out and len(calls) == 1
+    assert f'GitHub rate limit until {hms(NOW + 60)} UTC' in out
+    assert 'headers say 0 of 5000 core calls left' in out
+    assert 'rate_limit shows 5000 of 5000 core calls left' in out
+    assert 'token: gh keyring' in out and len(calls) == 2
 
 
 @pytest.mark.parametrize('how', ['act', 'launch', 'thread'])
