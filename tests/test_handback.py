@@ -48,6 +48,8 @@ def test_stop_text(tmp_path):
         assert brief.stop_text({**message, 'agent_transcript_path': str(path)}) == REPORT
     with pytest.raises(ValueError, match='agent_transcript_path'):
         brief.stop_text({})
+    with pytest.raises(ValueError, match='agent_transcript_path'):
+        brief.stop_text({'transcript_path': str(path)})  # never read the planner as a seat
     tool_only = write(tmp_path / 'tool.jsonl', {'type': 'assistant', 'message': {'content': [
         {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'ls'}}]}})
     with pytest.raises(ValueError, match='no report'):
@@ -108,6 +110,110 @@ def test_mismatched_message_still_refused(seat):
     code, reason = handback_stop(seat, last_assistant_message='something else')
     assert code == 2 and 'no matching assistant completion' in reason
     assert state.read_state(root)['builds']['A']['status'] == 'running'
+
+
+def test_field_default_stop_waits_for_final_text_row(seat, monkeypatch, capsys):
+    root = seat[0]
+    launch(seat, build.next_action('A', root=root))
+    path = root / 'agent.jsonl'
+    with path.open('a') as stream:
+        stream.write(json.dumps({'type': 'assistant', 'agentId': 'agent-builder', 'message': {
+            'content': [{'type': 'thinking', 'thinking': 'Finishing the report'}]}}) + '\n')
+    original = brief.last_turn
+    reads = []
+
+    def delayed_text(path):
+        found = original(path)
+        if not reads:
+            with Path(path).open('a') as stream:
+                stream.write(json.dumps({'type': 'assistant', 'agentId': 'agent-builder', 'message': {
+                    'content': [{'type': 'text', 'text': REPORT}]}}) + '\n')
+        reads.append(found)
+        return found
+    monkeypatch.setattr(brief, 'last_turn', delayed_text)
+    payload = json.loads((PAYLOADS / 'plain-final.json').read_text())
+    payload.update(cwd=str(root), agent_transcript_path=str(path), last_assistant_message=REPORT)
+    code, reason = hook_stop(monkeypatch, capsys, **payload)
+    assert code == 0, reason
+    assert len(reads) >= 2 and reads[0][1] == ''
+    assert state.read_state(root)['builds']['A']['result']['text'] == REPORT
+
+
+@pytest.mark.parametrize('initially_torn', [False, True])
+def test_stop_retries_a_partial_final_row(seat, monkeypatch, capsys, initially_torn):
+    import threading
+    import time
+    root = seat[0]
+    launch(seat, build.next_action('A', root=root))
+    path = root / 'agent.jsonl'
+    final = json.dumps({'type': 'assistant', 'message': {'content': REPORT}}) + '\n'
+    with path.open('a') as stream:
+        stream.write(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'thinking', 'thinking': 'Finishing'}]}}) + '\n')
+        if initially_torn:
+            stream.write(final[:20])
+
+    def finish():
+        if not initially_torn:
+            time.sleep(0.1)
+            with path.open('a') as stream:
+                stream.write(final[:20])
+        time.sleep(0.3)
+        with path.open('a') as stream:
+            stream.write(final[20:])
+    writer = threading.Thread(target=finish)
+    writer.start()
+    try:
+        code, reason = hook_stop(monkeypatch, capsys, cwd=str(root), session_id='abc123',
+                                 agent_type='wuwei:builder', agent_id='agent-builder',
+                                 agent_transcript_path=str(path), last_assistant_message=REPORT,
+                                 permission_mode='default')
+    finally:
+        writer.join()
+    assert code == 0, reason
+    assert state.read_state(root)['builds']['A']['result']['text'] == REPORT
+
+
+@pytest.mark.parametrize('manual', [False, True])
+def test_field_sendmessage_continuation_records_same_agent_stop(seat, monkeypatch, capsys, manual):
+    root = seat[0]
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    launch(seat, build.next_action('A', root=root))
+    assert handback_stop(seat) == (0, '')
+
+    def continued(data):
+        record = data['builds']['A']
+        record.update(status='ready', answered='Proceed with the committed work',
+                      action=build._continue(root, record, 'Owner answered Yes'))
+        data['seats']['builder']['transcript'] = str(root / 'agent.jsonl')
+    state._write_state(continued, root)
+    payload = {'cwd': str(root), 'agent_type': 'wuwei:builder', 'agent_id': 'agent-builder',
+               'agent_transcript_path': str(root / 'agent.jsonl')}
+    assert agent_launch.stop(payload) == (0, '')  # duplicate completion is not a continued round
+    assert build.step('A', root)['action'] == 'continue'
+    if manual:
+        before = state.read_state(root)['builds']['A']
+        report = root / 'forged.md'
+        report.write_text('Another seat wrote this.\nBlocked: none\nGap: none\nChange: none\n')
+        assert seat_stop(capsys, 'builder', '--verdict', report)[0] == 1
+        assert state.read_state(root)['builds']['A'] == before
+        assert seat_stop(capsys, 'builder', '--verdict')[0] == 1  # no new completion
+        assert state.read_state(root)['builds']['A'] == before
+    # SendMessage delivers the continuation without an Agent launch hook.
+    with (root / 'agent.jsonl').open('a') as stream:
+        stream.write(json.dumps({'type': 'user', 'message': {'content': 'Owner answered Yes'}}) + '\n')
+    if manual:
+        with (root / 'agent.jsonl').open('a') as stream:
+            stream.write(HANDBACK)
+        code, out = seat_stop(capsys, 'builder', '--verdict')
+        assert code == 0, out.err
+        assert state.read_state(root)['builds']['A']['completion'] == brief.last_turn(root / 'agent.jsonl')[0]
+    else:
+        assert handback_stop(seat) == (0, '')
+        assert agent_launch.stop(payload) == (0, '')
+    assert build.step('A', root)['action'] == 'check'
+    assert build.step('A', root)['action'] == 'check'
+    assert state.read_state(root)['builds']['A']['iteration'] == 2
 
 
 def add_seat(root, name, role, status='running'):
@@ -256,7 +362,7 @@ def test_stuck(tmp_path):
     seats['torn'] = seat('running', HANDBACK + '{"type": "assist')
     seats['owner'] = seat('unmeasured', reason='gone', by='owner')
     seats['stopped'] = seat('stopped', HANDBACK)
-    assert brief.stuck({'seats': seats}) == ['a-hook', 'b-handback']
+    assert brief.stuck({'seats': seats}) == ['b-handback']
 
 
 def test_next_names_stuck_seat(seat):
@@ -281,6 +387,7 @@ def test_doctor_seats_probe(seat):
     stuck_day(root)
     result, value = doctor._seats(root)
     assert result == 'failed' and value.startswith('dead: stuck;') and 'wuwei seat stop stuck --verdict' in value
+    assert '--unmeasured' not in value
 
 
 REPORT_FILE = 'Built it.\nBlocked: none\nGap: none\nChange: none\n'
@@ -317,7 +424,7 @@ def test_seat_stop_verdict_after_unmeasured(seat, monkeypatch, capsys):
     root, report = stuck_builder(seat, monkeypatch)
     (root / 'agent.jsonl').write_text((root / 'agent.jsonl').read_text().replace(HANDBACK, ''))
     assert torn_stop(root, 'builder', 'builder', root / 'agent.jsonl')[0] == 2
-    assert brief.stuck(state.read_state(root)) == ['builder']
+    assert brief.stuck(state.read_state(root)) == []
     code, out = seat_stop(capsys, 'builder', '--verdict', report)
     assert code == 0, out.err
     data = state.read_state(root)
@@ -383,7 +490,7 @@ def stop_offers(root):
     state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
                                                 planner_session_id='S'), root)
     state.append_event('next.action', {'state': 'x', 'done': [['calibrate', '']]}, root)
-    return [launch['command'] for launch in next_command.step(root)['launches'] if launch['kind'] == 'stop']
+    return [launch['command'] for launch in next_command.step(root).get('launches', []) if launch['kind'] == 'stop']
 
 
 def stop_kinds(day):
@@ -405,7 +512,7 @@ def test_malformed_usage_keeps_the_result(seat, usage):
 
 def test_unrecorded_result_ends_the_seat_and_keeps_its_report(seat, monkeypatch, capsys):
     # #905: a result that cannot be recorded never leaves a dead seat running; the report is
-    # kept, next offers to record it, and the result is recorded once.
+    # kept for explicit recovery, and the result is recorded once.
     root, _, _, day, _ = seat
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     launch(seat, build.next_action('A', root=root))
@@ -421,8 +528,8 @@ def test_unrecorded_result_ends_the_seat_and_keeps_its_report(seat, monkeypatch,
     record = data['seats']['builder']
     assert record['status'] == 'unmeasured' and (root / record['report']).read_text() == REPORT
     assert data['builds']['A']['status'] == 'running'
-    assert brief.stuck(data) == ['builder']
-    assert stop_offers(root)[0] == 'wuwei seat stop builder --verdict'
+    assert brief.stuck(data) == []  # no recorded terminal evidence; the task may still be alive
+    assert stop_offers(root) == []
     monkeypatch.setattr(build, 'record_result', original)
     code, out = seat_stop(capsys, 'builder', '--verdict')
     assert code == 0, out.err
@@ -449,12 +556,12 @@ def test_stuck_seat_offers_its_transcript_report(seat, monkeypatch, capsys):
     assert (state.workspace.day_dir(root) / 'reports/quality.md').read_text() == REPORT
 
 
-def test_unreadable_report_still_offers_unmeasured(seat):
+def test_unreadable_report_never_offers_an_automatic_stop(seat):
     root, _, _, _, _ = seat
     transcript = add_seat(root, 'quality', 'sentinel-quality')
     assert torn_stop(root, 'quality', 'sentinel-quality', transcript)[0] == 2
     assert 'report' not in state.read_state(root)['seats']['quality']
-    assert stop_offers(root)[0] == 'wuwei seat stop quality --unmeasured "seat ended with no recorded result"'
+    assert stop_offers(root) == []
 
 
 def test_duplicate_stop_records_once(seat):
@@ -576,3 +683,50 @@ def test_symlinked_reports_directory_keeps_nothing(seat, monkeypatch, tmp_path_f
     assert code == 2 and '--verdict <file>' in reason
     assert 'report' not in state.read_state(root)['seats']['builder']
     assert not list(elsewhere.iterdir())
+
+
+@pytest.mark.parametrize('ending', ['pending', 'refused', 'unrelated'])
+def test_live_task_with_attempted_handback_has_no_stop_offer(seat, ending):
+    root = seat[0]
+    transcript = add_seat(root, 'builder', 'builder')
+    rows = [json.loads(line) for line in HANDBACK.splitlines()]
+    if ending == 'pending':
+        rows = rows[:1]
+    elif ending == 'refused':
+        rows[1]['message']['content'][0].update(is_error=True, content='Session is not in auto mode')
+        rows[1]['toolUseResult'] = 'Error: Only the auto-mode classifier can allow SubagentHandback'
+        rows[1]['toolDenialKind'] = 'permission'
+        rows[1]['toolEndsTurn'] = False
+    else:
+        rows[1]['message']['content'][0]['tool_use_id'] = 'another-call'
+    with transcript.open('a') as stream:
+        stream.write(''.join(json.dumps(row) + '\n' for row in rows))
+    state._write_state(lambda data: data['seats']['builder'].update(transcript=str(transcript)), root)
+    assert stop_offers(root) == []
+    assert state.read_state(root)['seats']['builder']['status'] == 'running'
+
+
+def test_resumed_task_and_non_object_rows_are_not_stuck(seat):
+    root = seat[0]
+    transcript = stuck_day(root)
+    with transcript.open('a') as stream:
+        stream.write(json.dumps({'type': 'user', 'message': {'content': 'Continue with the remaining work'}}) + '\n')
+        stream.write('null\n[]\n')
+    assert stop_offers(root) == []
+
+
+def test_rejected_unreadable_stop_is_not_completion_evidence(seat, monkeypatch, capsys):
+    root = seat[0]
+    launch(seat, build.next_action('A', root=root))
+    code, _ = hook_stop(monkeypatch, capsys, cwd=str(root), agent_type='wuwei:builder',
+                       agent_id='agent-builder', agent_transcript_path=str(root / 'agent.jsonl'))
+    assert code == 2  # the runtime continues after the hook blocks its attempted stop
+    assert stop_offers(root) == []
+
+
+def test_unreadable_stop_records_a_result_gap(seat):
+    root, _, _, day, _ = seat
+    transcript = add_seat(root, 'quality', 'sentinel-quality')
+    assert torn_stop(root, 'quality', 'sentinel-quality', transcript)[0] == 2
+    gap = [row['payload'] for row in events(day) if row['kind'] == 'seat.result_gap'][-1]
+    assert gap['name'] == 'quality' and gap['reason']

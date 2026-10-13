@@ -253,7 +253,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'warn',
                 'build.fix_opened': 'silent', 'polish.skipped': 'warn', 'pr.action.done': 'silent',
-                'retro.gap': 'warn', 'seat stop unmatched': 'warn',
+                'retro.gap': 'warn', 'seat.result_gap': 'warn', 'seat stop unmatched': 'warn',
                 'seat adhoc': 'silent', 'subagent.untraced': 'warn',
                 'traces.gap': 'warn', 'traces.slow': 'warn', 'hook.refusal': 'silent',
                 'guard.would_refuse': 'silent', 'config.newer_template': 'warn',

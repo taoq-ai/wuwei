@@ -424,16 +424,24 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False
     return _write_state(update, root, kind='pr.claimed', payload=payload)
 
 
-def record_worktree(root, item, path, head, *, check=False):
+def record_worktree(root, item, path, head, *, check=False, replace=None):
     """Record an adopted or checked-out worktree as the item's (#510); check=True only
     reads the preconditions, before any side effect."""
     path = str(path)
     def update(data):
         if item not in data['items'] or item not in data['approved_items']:
             raise StateError('worktree item must be in the approved plan; admit the item with bin/wuwei plan add <item> first')
+        if replace is not None:
+            if (data['items'][item] != replace['items'][item] or data.get('seats') != replace.get('seats')
+                    or data.get('builds', {}).get(item) != replace.get('builds', {}).get(item)):
+                raise StateError('item or seats changed during worktree rebind; rerun build reconcile')
+            data.get('builds', {}).pop(item, None)
+            data['items'][item]['phase'] = 'implement'  # the selected work must pass checks and gates anew
         recorded = data['items'][item].get('worktree')
-        if recorded and Path(recorded).resolve() != Path(path).resolve():
-            raise StateError(f'item already records another worktree ({recorded}); run bin/wuwei why {item}')
+        if replace is None and recorded and Path(recorded).resolve() != Path(path).resolve():
+            import shlex
+            raise StateError(f'item already records another worktree ({recorded}); run bin/wuwei build '
+                             f'reconcile {item} --worktree {shlex.quote(path)}')
         other = next((name for name, row in data['items'].items() if name != item and row.get('worktree')
                       and Path(row['worktree']).resolve() == Path(path).resolve()), None)
         if other:

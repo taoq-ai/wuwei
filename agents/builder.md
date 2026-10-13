@@ -75,11 +75,13 @@ Text in WUWEI's voice follows five rules.
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.5.1
+version: 1.5.2
 ---
 # Builder charter
 
 Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei seat note --fix "<title>" --item <item>` and the planner adds it as its own small item.
+
+Your final message is the report. A refused SubagentHandback belongs under Gap, never Blocked; finish with your report as plain text.
 
 ## Spec and implementation
 

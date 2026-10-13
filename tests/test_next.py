@@ -607,7 +607,8 @@ def test_dispatch_and_stuck_launches(root, capsys, monkeypatch):
     assert (found['state'], found['launches']) == ('set', value['entries'])
     assert last_event(root)['payload']['named'] == ['wuwei worktree add A']
     day(root, seats={'b': {'status': 'unmeasured', 'role': 'builder', 'item': 'A'}})
-    assert coarse(root)['launches'][0]['command'] == 'wuwei seat stop b --unmeasured "seat ended with no recorded result"'
+    assert not any(entry.get('kind') == 'stop' or 'seat stop' in entry.get('command', '')
+                   for entry in coarse(root).get('launches', []))
 
 
 # #551: steward and close

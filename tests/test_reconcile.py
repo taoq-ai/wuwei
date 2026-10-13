@@ -199,7 +199,7 @@ def test_reconcile_refuses_what_needs_an_explicit_resolution(ws, capsys, case):
     before = (workspace.day_dir(root) / 'state.json').read_bytes()
     assert reconcile(item, *args) == 1
     err = capsys.readouterr().err
-    assert {'unplanned': 'plan add D', 'other-repo': 'acme/web', 'other-worktree': 'another worktree',
+    assert {'unplanned': 'plan add D', 'other-repo': 'acme/web', 'other-worktree': 'different repositories',
             'parked': 'plan resume A'}[case] in err, err
     assert (workspace.day_dir(root) / 'state.json').read_bytes() == before
 
@@ -339,3 +339,107 @@ def test_checked_is_the_head_the_checks_measured(ws, capsys, monkeypatch):
     assert reconcile('A', '--worktree', trees['A']) == 0
     assert state.read_state(root)['builds']['A']['checked'] == measured
     assert dispatch.next_step('A', root)['action'] == 'check'  # the late commit is checked first
+
+
+@pytest.mark.parametrize('change', ['none', 'head', 'live', 'foreign', 'missing', 'reappeared'])
+def test_reconcile_different_tree_needs_owner_on_both_heads(ws, capsys, change):
+    from wuwei import brief, sessions
+    from wuwei.commands import build
+    root, trees, checks = ws
+    old = root / 'house/spec-only'
+    git(trees['A'], 'worktree', 'add', '-q', '-b', 'spec-only', str(old), 'origin/main')
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(old)), root)
+    brief.write('builder', 'A', 'spec-only', 'Finish the spec', worktree=str(old), root=root)
+    build.next_action('A', root=root)
+    if change in ('missing', 'reappeared'):
+        git(trees['A'], 'worktree', 'remove', str(old))
+    requested = trees['B'] if change == 'foreign' else trees['A']
+    before = state.read_state(root)
+    assert reconcile('A', '--worktree', requested) == 1
+    reason = capsys.readouterr().err
+    if change == 'foreign':
+        assert 'not of acme/widget' in reason and 'Owner step' not in reason
+        assert state.read_state(root) == before
+        return
+    assert str(old) in reason and str(requested) in reason
+    assert ('missing' if change in ('missing', 'reappeared') else git(old, 'rev-parse', 'HEAD')) in reason
+    assert git(requested, 'rev-parse', 'HEAD') in reason
+    card = json.loads(reason.split('; card: ', 1)[1])
+    assert card['record'] == f'bin/wuwei build reconcile A --worktree {requested}'
+    assert state.read_state(root) == before and checks == []
+    state.append_event('gate.asked', {'topics': [sessions.owner_topic(card['question']),
+                                              sessions.owner_topic(card['question'], 'Yes')]}, root)
+    if change == 'head':
+        git(requested, 'commit', '-q', '--allow-empty', '-m', 'moved after approval')
+    elif change == 'live':
+        state._write_state(lambda data: data['seats'].update(builder={
+            'item': 'A', 'role': 'builder', 'status': 'running', 'brief': 'brief.md'}), root)
+    elif change == 'reappeared':
+        git(trees['A'], 'worktree', 'add', '-q', str(old), 'spec-only')
+    code = reconcile('A', '--worktree', requested)
+    if change not in ('none', 'missing'):
+        assert code == 1, capsys.readouterr().err
+        assert state.read_state(root)['items']['A']['worktree'] == str(old) and checks == []
+        return
+    assert code == 0, capsys.readouterr().err
+    data = state.read_state(root)
+    assert data['items']['A']['worktree'] == str(requested)
+    assert data['items']['A']['phase'] == 'gate' and checks == ['A']
+    assert data['builds']['A']['checked'] == git(requested, 'rev-parse', 'HEAD')
+
+
+@pytest.mark.parametrize('completed', [False, True])
+def test_explicit_reconcile_requires_completion_after_lost_stop(ws, capsys, completed):
+    from wuwei import brief
+    from wuwei.commands import build
+    root, trees, checks = ws
+    tree = trees['A']
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
+    relative = brief.write('builder', 'A', 'builder', 'Finish the brief', worktree=str(tree), root=root)
+    build.next_action('A', root=root)
+    start = git(tree, 'rev-parse', 'origin/main')
+
+    def lost(data):
+        data['seats']['builder'] = {'role': 'builder', 'item': 'A', 'brief': relative,
+                                    'status': 'unmeasured', 'reason': 'stop payload unreadable'}
+        data['builds']['A'].update(status='running', seat='builder', start=start)
+    state._write_state(lost, root)
+    if not completed:
+        before = state.read_state(root)
+        assert reconcile('A', '--worktree', tree) == 1
+        assert 'wait for' in capsys.readouterr().err
+        assert state.read_state(root) == before and checks == []
+        return
+    from test_handback import HANDBACK
+    transcript = root / 'finished.jsonl'
+    transcript.write_text(HANDBACK)
+    state._write_state(lambda data: data['seats']['builder'].update(transcript=str(transcript)), root)
+    for _ in range(2):
+        assert reconcile('A', '--worktree', tree) == 0, capsys.readouterr().err
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'gate' and checks == ['A']
+    assert 'result' not in data['builds']['A']
+    assert data['seats']['builder']['status'] == 'unmeasured'
+    assert dispatch.next_step('A', root)['action'] == 'gates'
+
+
+@pytest.mark.parametrize("seat_status", ["stopped", "unmeasured"])
+def test_reconcile_resultless_build_preserves_business_blocker(ws, capsys, seat_status):
+    from wuwei import brief
+    from wuwei.commands import build
+    root, trees, checks = ws
+    tree = trees['A']
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
+    relative = brief.write('builder', 'A', 'builder', 'Finish the brief', worktree=str(tree), root=root)
+    build.next_action('A', root=root)
+
+    def blocked(data):
+        data['seats']['builder'] = {'role': 'builder', 'item': 'A', 'brief': relative,
+                                    'status': seat_status, 'agent_id': 'agent-builder'}
+        data['builds']['A'].update(seat='builder', status='running' if seat_status == 'unmeasured' else 'ready')
+    state._write_state(blocked, root)
+    state.append_event('retro.captured', {'agent_id': 'agent-builder', 'fields': {
+        'Blocked': 'owner approval required for schema change', 'Gap': 'none', 'Change': 'none'}}, root)
+    assert reconcile('A', '--worktree', tree) == 1
+    assert 'build next A' in capsys.readouterr().err
+    assert checks == [] and state.read_state(root)['items']['A']['phase'] == 'implement'

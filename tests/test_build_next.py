@@ -996,3 +996,117 @@ def test_a_seat_built_item_whose_head_moves_after_its_checks_goes_back_to_them(s
         brief.gate_ready(state.read_state(root), 'A', 'b' * 40)
     assert dispatch.next_step('A', root)['action'] == 'check'
     assert state.read_state(root)['builds']['A']['status'] == 'check'
+
+
+@pytest.mark.parametrize('status,entry', [('ready', 'next'), ('ready', 'check'),
+                                        ('running', 'next'), ('running', 'check'), ('outside', 'next')])
+def test_committed_build_without_result_recovers_to_checks_and_gates(seat, entry, status):
+    root = committed_without_result(seat, outside_record=status == 'outside')
+    day, results = seat[3:]
+    if status == 'ready':
+        def legacy(data):
+            record = data['builds']['A']
+            record.update(status='ready', action=build._continue(root, record,
+                          'Seat b-526 ran this brief before WUWEI recorded its build. Finish, commit, and stop.'))
+        state._write_state(legacy, root)
+    if entry == 'next':
+        for _ in range(2):
+            assert build.next_action('A', root=root)['action'] == 'check'
+    results.append(registry.Result(0))
+    assert build.check('A', root=root) == 0
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'gate'
+    assert data['builds']['A']['status'] == 'done' and data['builds']['A']['checked'] == 'b' * 40
+    assert 'result' not in data['builds']['A']
+    assert data['seats']['builder']['status'] == 'stopped'
+    assert not [row for row in events(day) if row['kind'] == 'seat.usage']
+    assert len([row for row in events(day) if row['kind'] == 'build.reconciled']) == 1
+
+
+@pytest.mark.parametrize('case', ['dirty', 'unchanged', 'diverged', 'live', 'failed-check'])
+def test_committed_recovery_requires_finished_seat_and_new_clean_ancestry(seat, case):
+    root, repo, _, _, _ = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    action = build.next_action('A', root=root)
+    launch(seat, action)
+    if case != 'live':
+        state.stop_seat('builder', root)
+        def ready(data):
+            record = data['builds']['A']
+            record.update(status='ready', action=build._continue(root, record, 'Finish the work'))
+            if case == 'failed-check':
+                record.update(result={'text': 'done'}, iteration=1, signature='failed', repeats=1)
+        state._write_state(ready, root)
+    head = ('a' if case == 'unchanged' else 'b') * 40
+    (repo / '.git/HEAD').write_text(head + '\n')
+    vcs = registry.load('vcs', None)
+    vcs.head = lambda *a, **kw: registry.Result(0, {'sha': head})
+    vcs.merge_base = lambda *a, **kw: registry.Result(0, {'sha': ('c' if case == 'diverged' else 'a') * 40})
+    vcs.status = lambda *a, **kw: registry.Result(0, [{'path': 'app.py', 'status': 'M'}] if case == 'dirty' else [])
+    before = state.read_state(root)
+    if case == 'live':
+        with pytest.raises(ValueError, match='still running'):
+            build.next_action('A', root=root)
+    else:
+        assert build.next_action('A', root=root)['action'] == 'continue'
+    assert state.read_state(root) == before
+
+
+def committed_without_result(seat, outside_record=False):
+    from wuwei import brief
+    root, repo, path, _, _ = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    if outside_record:
+        outside(seat, brief.seat_action('builder', path, repo, root))
+    else:
+        launch(seat, build.next_action('A', root=root))
+    state.stop_seat('builder', root, agent_id='agent-builder')
+    (repo / '.git/HEAD').write_text('b' * 40 + '\n')
+    vcs = registry.load('vcs', None)
+    vcs.head = lambda *a, **kw: registry.Result(0, {'sha': 'b' * 40})
+    vcs.merge_base = lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40})
+    vcs.touched = lambda *a, **kw: registry.Result(0, ['cli/app.py'])
+    return root
+
+
+def test_recovered_build_failure_resumes_builder_instead_of_rechecking(seat):
+    root = committed_without_result(seat)
+    assert build.next_action('A', root=root)['action'] == 'check'
+    seat[4].append(registry.Result(1, {'test_ids': ['test_work'], 'error': 'work failed'}))
+    assert build.check('A', root=root) == 1
+    for _ in range(2):
+        action = build.next_action('A', root=root)
+        assert action['action'] == 'continue' and 'test_work' in action['feedback']
+    launch(seat, action)
+    assert stop(seat) == (0, '')
+    seat[4].append(registry.Result(0))
+    assert build.check('A', root=root) == 0 and phase(root) == 'gate'
+
+
+def test_resultless_recovery_preserves_business_blocker(seat):
+    root = committed_without_result(seat)
+    state.append_event('retro.captured', {'agent_id': 'agent-builder', 'fields': {
+        'Blocked': 'owner approval required for schema change', 'Gap': 'none', 'Change': 'none'}}, root)
+    assert build.step('A', root)['action'] == 'escalate'
+    with pytest.raises(ValueError, match='build next A'):
+        build.check('A', root=root)
+    assert not seat[4] and phase(root) == 'implement'
+
+
+def test_unlaunched_record_cannot_escalate_a_stale_agent_blocker(seat):
+    root = seat[0]
+    action = build.next_action('A', root=root)
+    state._write_state(lambda data: data['builds']['A'].update(agent_id='old-agent'), root)
+    state.append_event('retro.captured', {'agent_id': 'old-agent', 'fields': {
+        'Blocked': 'owner approval for previous brief', 'Gap': 'none', 'Change': 'none'}}, root)
+    assert build.step('A', root) == action
+
+
+def test_unmeasured_stop_alone_does_not_recover_a_live_task(seat):
+    root = committed_without_result(seat)
+    state.stop_seat('builder', root, reason='hook could not read payload')
+    with pytest.raises(ValueError, match='still running'):
+        build.next_action('A', root=root)
+    assert state.read_state(root)['builds']['A']['status'] == 'running'
