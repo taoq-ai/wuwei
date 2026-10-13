@@ -92,6 +92,255 @@ def recorder():
     return guards[0].check
 
 
+def test_gh_pr_create_in_item_worktree_without_gates_is_unclaimed(trace_workspace, call_payload,
+                                                                  monkeypatch):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    (tree / 'src').mkdir()
+    state._write_state(lambda data: (data['items'].update(A={
+        'phase': 'gate', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}),
+        data['approved_items'].append('A')), root)
+    from wuwei import registry
+    monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('hook called a port'))
+    call_payload.update(cwd=str(tree / 'src'), tool_name='Bash',
+                        tool_input={'command': 'gh pr create --title fix --body done'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160\n',
+                                       'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    data = state.read_state(root)
+    assert data['items']['A'].get('pr') is None
+    assert data['items']['A']['phase'] == 'gate'
+    assert 'acme/widget#3160' not in data['claimed_prs']
+    events = [json.loads(line) for line in (trace_workspace / 'events.jsonl').read_text().splitlines()]
+    assert any(row['kind'] == 'pr.unclaimed' and row['payload']['item'] == 'A'
+               and 'pr raise' not in row['payload']['reason'] for row in events)
+
+
+def test_gh_pr_create_head_branch_without_gates_is_unclaimed(trace_workspace, call_payload, monkeypatch):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    state._write_state(lambda data: (data['items'].update(A={
+        'phase': 'planned', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}),
+        data['approved_items'].append('A')), root)
+    from wuwei.guards import edges
+    monkeypatch.setattr(edges, '_recorded', lambda *args, **kwargs: ('A', root / 'worktrees/A'))
+    call_payload.update(tool_name='Bash', tool_input={
+        'command': 'gh pr create --repo acme/widget --head feature-a --title fix'},
+        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160', 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert state.read_state(root)['items']['A'].get('pr') is None
+    assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
+
+
+def test_gh_pr_create_without_item_records_unclaimed(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    call_payload.update(tool_name='Bash', tool_input={'command': 'gh pr create --title fix'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160',
+                                       'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    events = [json.loads(line) for line in (trace_workspace / 'events.jsonl').read_text().splitlines()]
+    assert any(row['kind'] == 'pr.unclaimed' and row['payload']['pr'] == 'acme/widget#3160'
+               for row in events)
+
+
+def test_planner_pr_from_external_branch_is_offered_not_item_claimed(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    (root / 'worktrees/IDENTITY-MAPPING-VIEW').mkdir(parents=True)
+    external = root / '.claude/worktrees/identity-mapping-view'
+    external.mkdir(parents=True)
+    state._write_state(lambda data: (data['items'].update(IDENTITY_MAPPING_VIEW={
+        'phase': 'gate', 'worktree': 'worktrees/IDENTITY-MAPPING-VIEW',
+        'repo': 'acme/widget'}), data['approved_items'].append('IDENTITY_MAPPING_VIEW')), root)
+    call_payload.update(cwd=str(external), tool_name='Bash', tool_input={
+        'command': 'gh pr create -R acme/widget --head leone/identity-mapping-view'},
+        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160', 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert state.read_state(root)['items']['IDENTITY_MAPPING_VIEW'].get('pr') is None
+    assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
+
+
+def test_gh_pr_create_outside_configured_repos_records_no_pr(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/other"\npath = "repo"\ndefault_branch = "main"\n')
+    call_payload.update(tool_name='Bash', tool_input={'command': 'gh pr create'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160',
+                                       'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert not (trace_workspace / 'events.jsonl').exists()
+
+
+def test_unclaimed_pr_url_uses_configured_repo_casing(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    call_payload.update(tool_name='Bash', tool_input={'command': 'gh pr create -R ACME/WIDGET'},
+                        tool_response={'stdout': 'https://github.com/Acme/Widget/pull/3160',
+                                       'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    events = [json.loads(line) for line in (trace_workspace / 'events.jsonl').read_text().splitlines()]
+    assert any(row['kind'] == 'pr.unclaimed' and row['payload']['url'] ==
+               'https://github.com/acme/widget/pull/3160' for row in events)
+
+
+def test_gh_pr_create_in_unapproved_worktree_offers_claim(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    state._write_state(lambda data: data['items'].update(A={
+        'phase': 'planned', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}), root)
+    call_payload.update(cwd=str(tree), tool_name='Bash', tool_input={'command': 'gh pr create'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160',
+                                       'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert state.read_state(root)['items']['A'].get('pr') is None
+    assert 'pr.unclaimed' in (trace_workspace / 'events.jsonl').read_text()
+
+
+@pytest.mark.parametrize('command,stdout,unclaimed', [
+    ('gh pr create; gh pr create', 'https://github.com/acme/widget/pull/8', True),
+    ('gh pr create', 'https://github.com/acme/widget/pull/8\nhttps://github.com/acme/widget/pull/9', True),
+    ('echo old-pr && gh pr create', 'https://github.com/acme/widget/pull/8', True),
+    ('gh pr create --dry-run', 'https://github.com/acme/widget/pull/8', False),
+    ('gh pr create --web', 'https://github.com/acme/widget/pull/8', False),
+])
+def test_ambiguous_or_noncreating_gh_output_never_links(trace_workspace, call_payload,
+                                                       monkeypatch, command, stdout, unclaimed):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    state._write_state(lambda data: (data['items'].update(A={
+        'phase': 'gate', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}),
+        data['approved_items'].append('A'),
+        data['gate_verdicts'].update({'A:arch:initial': {}})), root)
+    from wuwei import merge, registry
+    from wuwei.registry import Result
+    monkeypatch.setattr(merge, 'gate_check', lambda *args, **kwargs: (0, ''))
+    class Vcs:
+        def branch(self, path, root=None):
+            return Result(0, {'name': 'feature-a'})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Vcs() if kind == 'vcs'
+                        else pytest.fail('hook called code host'))
+    call_payload.update(cwd=str(tree), tool_name='Bash', tool_input={'command': command},
+                        tool_response={'stdout': stdout, 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert state.read_state(root)['items']['A'].get('pr') is None
+    events = (trace_workspace / 'events.jsonl')
+    assert ('pr.unclaimed' in events.read_text() if events.exists() else False) is unclaimed
+
+
+def test_failed_gh_pr_create_records_nothing(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    call_payload.update(tool_name='Bash', tool_input={'command': 'gh pr create'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160',
+                                       'exitCode': 1})
+    assert recorder()(call_payload) == (0, '')
+    assert not (trace_workspace / 'events.jsonl').exists()
+
+
+def test_gh_pr_autoclaim_error_fails_open(trace_workspace, call_payload, monkeypatch):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    state._write_state(lambda data: (data['items'].update(A={
+        'phase': 'gate', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}),
+        data['approved_items'].append('A'),
+        data['gate_verdicts'].update({'A:arch:initial': {}})), root)
+    from wuwei import merge, registry
+    from wuwei.registry import Result
+    monkeypatch.setattr(merge, 'gate_check', lambda *args, **kwargs: (0, ''))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: type('Vcs', (), {
+        'branch': lambda self, path, root=None: Result(0, {'name': 'feature-a'})})())
+    monkeypatch.setattr(state, 'record_pr', lambda *args, **kwargs: (_ for _ in ()).throw(
+        state.StateError('item already links another PR')))
+    call_payload.update(cwd=str(tree), tool_name='Bash',
+                        tool_input={'command': 'gh pr create'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160', 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    events = (trace_workspace / 'events.jsonl').read_text()
+    assert 'pr.autoclaim_error' in events
+    assert 'pr.unclaimed' in events and 'item already links another PR' in events
+
+
+def test_gh_pr_create_real_branch_match_prefers_approved_item(trace_workspace, call_payload,
+                                                              monkeypatch):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    for name in ('A', 'B'):
+        (root / 'repo/worktrees' / name).mkdir(parents=True)
+    state._write_state(lambda data: (data['items'].update({
+        name: {'phase': 'gate', 'worktree': f'repo/worktrees/{name}', 'repo': 'acme/widget'}
+        for name in ('A', 'B')}), data['approved_items'].append('B'),
+        data['gate_verdicts'].update({'B:arch:initial': {}})), root)
+    from wuwei import merge, registry
+    from wuwei.registry import Result
+    calls = []
+    class Vcs:
+        def branch(self, path, root=None):
+            calls.append(path)
+            return Result(0, {'name': 'feature-b'})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Vcs() if kind == 'vcs'
+                        else pytest.fail('hook called code host'))
+    monkeypatch.setattr(merge, 'gate_check', lambda *args, **kwargs: (0, ''))
+    call_payload.update(tool_name='Bash', tool_input={
+        'command': 'gh pr create -R ACME/WIDGET --head feature-b'},
+        tool_response={'stdout': 'https://github.com/Acme/Widget/pull/3160', 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    data = state.read_state(root)
+    assert data['items']['A'].get('pr') is None
+    assert data['items']['B']['pr'] == 'acme/widget#3160'
+    assert data['items']['B']['branch'] == 'feature-b'
+    assert calls
+
+
+def test_gh_pr_create_worktree_match_records_branch(trace_workspace, call_payload, monkeypatch):
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    state._write_state(lambda data: (data['items'].update(A={
+        'phase': 'gate', 'worktree': 'worktrees/A', 'repo': 'acme/widget'}),
+        data['approved_items'].append('A'),
+        data['gate_verdicts'].update({'A:arch:initial': {}})), root)
+    from wuwei import merge, registry
+    from wuwei.registry import Result
+    monkeypatch.setattr(merge, 'gate_check', lambda *args, **kwargs: (0, ''))
+    class Vcs:
+        def branch(self, path, root=None):
+            return Result(0, {'name': 'feature-a'})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Vcs() if kind == 'vcs'
+                        else pytest.fail('hook called code host'))
+    call_payload.update(cwd=str(tree), tool_name='Bash', tool_input={'command': 'gh pr create'},
+                        tool_response={'stdout': 'https://github.com/acme/widget/pull/3160', 'exitCode': 0})
+    assert recorder()(call_payload) == (0, '')
+    assert state.read_state(root)['items']['A']['branch'] == 'feature-a'
+
+
+def test_gh_pr_autoclaim_timeout_uses_traces_slow(trace_workspace, call_payload, monkeypatch):
+    root = trace_workspace.parents[2]
+    monkeypatch.setattr(__import__('wuwei.guards.traces', fromlist=['_claim_created_pr']),
+                        '_claim_created_pr', lambda *args: (_ for _ in ()).throw(TimeoutError()))
+    assert recorder()(call_payload) == (0, '')
+    events = (trace_workspace / 'events.jsonl').read_text()
+    assert 'traces.slow' in events and 'pr.autoclaim_error' not in events
+
+
 def read_spans(directory):
     # Follow ZIRAN OTelIngestor._process_batch and _get_attribute traversal.
     spans = []

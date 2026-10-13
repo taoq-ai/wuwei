@@ -222,9 +222,42 @@ def step(root, ran=()):
                     'your answer.', 'wuwei plan gate' + (' --import-yesterday' if _carry(root, directory) else ''),
                     'card', THEN['gate'].format(days=days))
     seats = brief.seats(data)
+    stuck = brief.stuck(data)
+    if not stuck and not closed:
+        from wuwei import derive
+        listing = derive.listing(directory)
+        owned = set(data['raised_prs'] + data['claimed_prs'])
+        events = directory / 'events.jsonl'
+        for line in events.read_text(encoding='utf-8').splitlines() if events.is_file() else ():
+            if '"pr.unclaimed"' not in line:
+                continue
+            event = json.loads(line)
+            if event.get('kind') != 'pr.unclaimed':
+                continue
+            payload = event['payload']
+            pr = payload['pr']
+            if pr.split('#')[0].casefold() not in {row['name'].casefold() for row in config['repos']}:
+                continue
+            if pr in owned or ('pr-claim', pr) in returned:
+                continue
+            pull = listing['pulls'].get(pr)
+            repo = listing['repos'].get(pr.split('#')[0]) or {}
+            if (pull and pull.get('state') in ('closed', 'merged')
+                    or repo.get('failed') or not pull and repo.get('at')):
+                continue
+            item = payload.get('item')
+            goal = (data['items'].get(item) or {}).get('goal')
+            choice = goal or (f'<one of {", ".join(data["goals"])}>' if len(data['goals']) > 1 else None)
+            command = f"wuwei pr claim {payload['url']}" + (f' --item {item}' if item else '')
+            command += f' --goal {choice}' if choice else ''
+            why = (f"{pr} belongs to {item}. Run {item}'s gates first, then claim its existing PR."
+                   if item else f'{pr} was opened outside WUWEI; claim it before starting more work.')
+            if payload.get('reason'):
+                why += f' Earlier automatic claim refused: {payload["reason"]}.'
+            return _row('pr-claim', why, command, 'owner' if choice and not goal else 'run', item=pr)
     from wuwei import derive
     launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
-                 'command': brief.recovery(name, seats[name])} for name in brief.stuck(data)]
+                 'command': brief.recovery(name, seats[name])} for name in stuck]
     launches += [{'kind': 'finding', 'item': ident, 'command': _finding_command(ident, finding, data, config),
                   'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
                  for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once
@@ -387,6 +420,9 @@ def resolve(row, root):
 def named(action):
     """The exact commands an action names, a command its then line names included."""
     found = [action['command']] if action.get('command') else []
+    if action.get('state') == 'pr-claim' and action.get('command'):
+        prefix = action['command'].split(' --goal ', 1)[0]
+        found += [prefix, prefix + ' --goal *']
     found += [widget['record'] for widget in action.get('widget', []) if widget.get('record')]
     found += action.get('commands', [])
     found += [duty['record'] for duty in action.get('duties', [])]
@@ -499,7 +535,38 @@ def run(args):
         if root is not None and state.day_started(workspace.day_dir(root)):
             from wuwei import derive
             config = workspace.load_config(root)
-            refreshed = derive.stale(root, config, state.read_state(root))
+            data = state.read_state(root)
+            refreshed = derive.stale(root, config, data)
+            directory = workspace.day_dir(root)
+            log = directory / 'events.jsonl'
+            owned = set(data['raised_prs'] + data['claimed_prs'])
+            extra = set()
+            done, _, closed, _ = _seen(directory)
+            done.update(map(tuple, ran))
+            if not closed:
+                listing = derive.listing(directory)
+                for line in log.read_text(encoding='utf-8').splitlines() if log.is_file() else ():
+                    if '"pr.unclaimed"' not in line:
+                        continue
+                    event = json.loads(line)
+                    if event.get('kind') != 'pr.unclaimed':
+                        continue
+                    ref = event['payload']['pr']
+                    if (ref in owned or ('pr-claim', ref) in done
+                            or (listing['pulls'].get(ref) or {}).get('state') in ('closed', 'merged')):
+                        continue
+                    repo = ref.split('#')[0]
+                    configured = next((row['name'] for row in config['repos']
+                                       if row['name'].casefold() == repo.casefold()), None)
+                    if configured:
+                        at = derive.when((listing['repos'].get(configured) or {}).get('at')
+                                         or (None if listing['repos'] else listing['fetched_at']))
+                        created = derive.when(event['ts'])
+                        if (at is None or created and at < created
+                                or (workspace.now() - at).total_seconds() >= config['pr']['poll_seconds']):
+                            extra.add(configured)
+            if extra:
+                refreshed = sorted(set(refreshed if not isinstance(refreshed, bool) else ()) | extra)
             if refreshed:
                 failed = derive.refresh(root, config, refreshed)  # #907: each due repository on its own
                 if failed:
