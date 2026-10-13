@@ -413,7 +413,7 @@ def test_missing_body_file_is_unreadable_but_outside_scope_passes(case, monkeypa
             'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': command}})))
         assert main(['hook', 'PreToolUse']) == expected
         if expected:
-            assert 'cannot read outbound body file' in capsys.readouterr().out
+            assert 'body file does not exist; write it in a separate command first' in capsys.readouterr().out
 
 
 def test_json_body_disposition_marker_is_checked_after_decoding(case, monkeypatch, capsys):

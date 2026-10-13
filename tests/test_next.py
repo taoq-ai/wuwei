@@ -700,6 +700,30 @@ def test_a_once_row_is_done_when_its_command_ran_not_when_returned(root, capsys)
     assert last_event(root)['payload']['done'] == [['pr-flow', '']]
 
 
+def test_pr_flow_compound_run_explains_standalone_requirement(root, capsys):
+    calibrated(root)
+    day(root, planner_session_id='S')
+    found = row(capsys)[1]
+    assert found['state'] == 'pr-flow'
+    ran(root, 'cd project; wuwei doctor --section pr-flow')
+    repeated = row(capsys)[1]
+    assert repeated['state'] == 'pr-flow'
+    assert 'as its own command' in repeated['then']
+    ran(root, 'wuwei doctor --section pr-flow')
+    assert row(capsys)[1]['state'] == 'lead'
+
+
+def test_pr_flow_doctor_in_compound_command_records_completion(root, capsys, monkeypatch):
+    from wuwei.commands import doctor
+    calibrated(root)
+    day(root, planner_session_id='S')
+    assert row(capsys)[1]['state'] == 'pr-flow'
+    monkeypatch.setattr(doctor, '_hand_over', lambda args: [])
+    main(['doctor', '--section', 'pr-flow'])
+    ran(root, 'cd project && wuwei doctor --section pr-flow')
+    assert row(capsys)[1]['state'] == 'lead'
+
+
 def test_a_once_row_returned_three_times_is_done(root, capsys):
     calibrated(root)
     day(root, planner_session_id='S')

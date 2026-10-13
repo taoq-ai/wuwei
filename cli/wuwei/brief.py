@@ -408,7 +408,7 @@ def status(vcs, tree, root):
 
 
 def rulings(body, directory, tree, data):
-    ids = sorted(set(re.findall(r'D-[A-Z0-9]+(?:-[A-Za-z0-9]+)+', body)))
+    ids = sorted(set(re.findall(r'(?<![A-Za-z0-9/_-])D-[A-Z0-9]+(?:-[A-Za-z0-9]+)+', body)))
     ids = [key for key in ids if not key.endswith('-N')]
     if not ids:
         return []

@@ -55,7 +55,8 @@ THEN = {
     'pr-wait': ('Run the command through Bash in the background (or Monitor: one line per PR change); '
                 'run wuwei next when it exits. Then end the turn with the output of wuwei status --line.'),
     # Planner-facing lines of single rows; step formats {days} and {dm}.
-    'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
+    'pr-flow': ('Run wuwei doctor --section pr-flow as its own command. On exit 1 show its output to the owner '
+                'unchanged, once; then run wuwei next.'),
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
