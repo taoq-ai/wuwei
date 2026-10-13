@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tempfile
 
 from wuwei.redact import redact
 from wuwei.registry import Result, together as _together  # Independent reads, concurrently.
