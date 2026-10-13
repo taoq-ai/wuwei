@@ -776,7 +776,7 @@ def test_adhoc_prompt_helpers(tmp_path):
     data['seats']['adhoc-2']['trace_sessions'] = ['P:a2']
     assert module.adhoc_seat(data, digest, 'P:a3') == 'adhoc-3'
     data['seats']['adhoc-3']['status'] = 'stopped'
-    assert module.adhoc_seat(data, digest, 'P:a3') is None
+    assert module.adhoc_seat(data, digest, 'P:a3') == 'b'  # #955: typed seats bind by prompt too
     assert module.adhoc_seat(data, 'missing', 'P:a9') is None
 
 

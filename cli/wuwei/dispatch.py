@@ -1079,7 +1079,8 @@ def launch_set(root=None):
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
     def partial(name):  # #910: an initial gate batch runs while the rest of its set is not launched
-        gates = [seat for seat in data['seats'].values() if seat['item'] == name and seat['role'].startswith('sentinel-')]
+        gates = [seat for seat in data['seats'].values() if seat['item'] == name
+                 and seat['role'].startswith('sentinel-') and 'prompt_sha256' not in seat]
         try:
             return items[name]['phase'] == 'gate' and len(gates) < len(gate_set(items[name]))
         except ValueError:  # a damaged gate record refuses the item at its own step, never the set
@@ -1087,7 +1088,8 @@ def launch_set(root=None):
     gate_waits = 'held' not in limits and (any(  # #898: a memory hold holds the builds itself
         row['action'] == 'wait' or row.get('deferred') for row in entries  # #910: or launches part of its set
         if items[row['item']]['phase'] in ('gate', 'delta')) or any(
-        partial(seat['item']) for seat in running if seat['role'].startswith('sentinel-')))
+        partial(seat['item']) for seat in running
+        if seat['role'].startswith('sentinel-') and 'prompt_sha256' not in seat))
     starts, skip = {}, []
     for name in first + rest:
         if name in briefed:
@@ -1479,6 +1481,8 @@ def receive(item, role, name, round_name='initial', root=None):
     seat = brief.seats(data).get(name)
     if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
         raise Refused('matching sentinel must stand down before receive; wait for the seat to stop, then rerun the same bin/wuwei dispatch receive')
+    if 'prompt_sha256' in seat:
+        raise Refused(f'an ad-hoc seat cannot deliver a gate verdict; run bin/wuwei dispatch next {item}')
     runtime = role.partition('@')[2] or None
     if seat.get('runtime') != runtime or (runtime and not name.endswith('-' + runtime)):
         raise Refused(f'gate role {role} needs its own runtime seat; start it with bin/wuwei dispatch opinion {item}')

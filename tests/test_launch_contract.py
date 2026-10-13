@@ -92,17 +92,17 @@ def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
     assert_registered(root, job, capsys, monkeypatch)
 
 
-def test_missing_brief_line_names_the_brief_command(workspace):
-    # #660, #837: with guards.enforce = false a launch with no brief line registers as an adhoc
-    # seat and names the fix.
+def test_missing_brief_line_registers_the_prompt(workspace):
+    # #955: the prompt is sufficient; the actual role is kept for guards and recovery.
     root, _ = workspace
     with (root / '.wuwei/config.toml').open('a') as config:
         config.write('\n[guards]\nenforce = false\n')
     code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'Do work'}})
-    assert code == 1
-    assert 'bin/wuwei seat brief builder <item> <name>' in message
-    assert [seat['role'] for seat in state.read_state(root)['seats'].values()] == ['adhoc']
+    assert (code, message) == (0, '')
+    seat, = state.read_state(root)['seats'].values()
+    assert seat['role'] == 'builder'
+    assert (root / seat['brief']).read_text() == 'Do work'
 
 
 def test_brief_line_on_a_later_line_is_read(workspace):

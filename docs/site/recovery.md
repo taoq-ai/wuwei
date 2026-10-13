@@ -32,7 +32,7 @@ A seat whose report cannot be read or recorded is stopped as `unmeasured`, never
 - `bin/wuwei seat stop <name> --verdict <file>` records the report from a file. Both run the same stop guards, and a sentinel's report must pass the verdict lint first.
 - `bin/wuwei seat stop <name> --unmeasured "<reason>"` stops it so the day can move. A builder's running build parks with that reason.
 
-An adhoc seat has no report, so only `--unmeasured` clears it. See [stuck seats](reference.md#stuck-seats).
+A general-purpose adhoc seat has no report, so only `--unmeasured` clears it. A WUWEI seat registered from its prompt supports the normal report recovery. See [stuck seats](reference.md#stuck-seats).
 
 ### A damaged event log line
 
@@ -56,8 +56,10 @@ Review the files the integrity row names first. The command prints the installat
 
 The prompt carries the line `WUWEI brief: <path>`, relative to the workspace root, such as `.wuwei/days/<date>/briefs/builder-1.md`. A note you add before or after it stays on the seat. The launch guard still needs the logged, unchanged brief, the matching role and free capacity.
 
-A builder launch needs its build record: the guard refuses one with none and names `bin/wuwei build next <item>`, whose launch then registers. Work already done outside the record comes back with `bin/wuwei build reconcile <item> --worktree <path>`.
+A builder launch from a logged brief needs its build record: the guard refuses one with none and names `bin/wuwei build next <item>`, whose launch then registers. Work already done outside the record comes back with `bin/wuwei build reconcile <item> --worktree <path>`.
 
 To brief a seat by hand, write and log the brief with `bin/wuwei seat brief <role> <item> <name> --body TEXT`, or `--file PATH` (`-` reads stdin).
 
-A WUWEI seat type launched without the line is refused while `guards.enforce` is on, naming `seat brief`. With it off, the launch is registered as an adhoc seat with a warning, which WUWEI can trace and stop but not continue. An agent of another type is an adhoc seat once the day has records. Record it first with `bin/wuwei seat start --role <role> --adhoc "<prompt>"` to label it.
+A WUWEI seat type launched by the planner without the line registers its prompt automatically as a private brief in the day directory. It keeps its role and the one plan item named in its name, description or an explicit `Item:` prompt line; with no unique item it uses its generated seat name. Role, runtime, CAP, memory and protected-path checks still apply, as do gate checks for a named item. A builder naming any plan item, even among multiple matches, must use `bin/wuwei build next <item>` under the existing enforcement policy. An unbound builder can launch and counts against CAP. An ad-hoc review cannot deliver a gate verdict; use `bin/wuwei dispatch next <item>` for that. Traces, SubagentStop and `seat stop` bind to the first prompt, even after a continue message. Subagents cannot launch typed WUWEI ad-hoc seats, and planner is not an ad-hoc role. Untyped general-purpose and Explore launches still register from subagents. Two pending launches with the same prompt, role and session cannot name different items; add an `Item:` line to distinguish their prompts. An explicit brief reference still requires matching logged evidence.
+
+An agent of another type remains an adhoc seat once the day has records. `bin/wuwei seat start --role <role> --adhoc "<prompt>"` still labels that launch.

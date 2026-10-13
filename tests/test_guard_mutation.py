@@ -11,7 +11,7 @@ from wuwei.guards import discover
 PROBES = {
     ('agent_launch', 'PreToolUse', 'Agent', 'check'):
         ('Agent', {'prompt': 'launch without brief', 'description': 'build',
-                   'subagent_type': 'wuwei:builder'}, 1),
+                   'subagent_type': 'wuwei:builder'}, 2),
     ('agent_launch', 'SubagentStop', None, 'stop'): ('stop event', {}, 'event'),
     ('answers', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
         ('AskUserQuestion', {'questions': [{'header': 'Owner step'}]}, 2),

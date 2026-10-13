@@ -67,7 +67,7 @@ def check_stop(payload):
     try:
         data = state.read_state(directory=directory)
         item = brief.seats(data)[name]['item']
-        row = data['items'][item]
+        row = data['items'].get(item, {})  # #955: an ad-hoc builder may have no plan item
         if not isinstance(row.get('worktree'), str) or not row['worktree']:
             return CLEAN, ''
         from wuwei import specmode

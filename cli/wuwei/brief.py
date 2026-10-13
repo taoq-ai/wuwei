@@ -196,8 +196,9 @@ def reference(text):
 
 
 def transcript_reference(path):
-    """Read the same brief reference for session binding and seat stop."""
-    return next(filter(None, map(reference, _user_messages(path))), None)
+    """Bind from the launch prompt; later continue messages cannot change seats."""
+    prompt = first_prompt(path)
+    return reference(prompt) if prompt is not None else None
 
 
 def subagent_transcript(payload):
@@ -219,6 +220,12 @@ def seat_of(payload, data):
         return None
     try:
         reference = transcript_reference(path)
+        if reference is None:
+            prompt = first_prompt(path)
+            name = adhoc_seat(data, prompt_digest(prompt),
+                              f"{payload.get('session_id', '')}:{payload['agent_id']}",
+                              role=payload.get('agent_type', '').rsplit(':', 1)[-1]) if prompt else None
+            return seats(data).get(name)
     except OSError:
         return None
     return next((seat for seat in seats(data).values() if seat.get('brief') == reference), None)
@@ -235,15 +242,20 @@ def prompt_digest(text):
     return hashlib.sha256(text.strip().encode()).hexdigest()
 
 
-def adhoc_seat(data, digest, session):
-    """#676: the running adhoc seat of a subagent: the one already bound to its trace
-    session, else the oldest with its prompt digest and no session yet; None when none."""
-    # ponytail: two running adhoc seats with one prompt may swap; same prompt, same audit record.
-    running = [(name, seat) for name, seat in seats(data).items()
-               if seat['role'] == 'adhoc' and seat['status'] == 'running'
-               and seat.get('prompt_sha256') == digest]
-    return next((name for name, seat in running if session in seat.get('trace_sessions', ())),
-                next((name for name, seat in running if not seat.get('trace_sessions')), None))
+def adhoc_seat(data, digest, session, *, role=None):
+    """A prompt-bound seat: its bound session, else the oldest unbound running match.
+    #955: role is part of identity; a bound seat remains identifiable after stopping."""
+    parent, _, agent = session.rpartition(':')
+    matches = [(name, seat) for name, seat in seats(data).items()
+               if seat.get('prompt_sha256') == digest
+               and (not role or seat['role'] in ('adhoc', role))]
+    bound = next((name for name, seat in matches
+                  if session in seat.get('trace_sessions', ())
+                  or agent and seat.get('agent_id') == agent and seat.get('launcher_session_id') == parent), None)
+    # ponytail: identical prompts in one role/session use launch order until a trace binds them.
+    return bound or next((name for name, seat in matches if seat['status'] == 'running'
+                          and not seat.get('trace_sessions') and not seat.get('agent_id')
+                          and seat.get('launcher_session_id', parent) == parent), None)
 
 
 HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)
@@ -469,6 +481,26 @@ def candidates(root):
     return '\n' + '\n'.join(lines) + '\n'
 
 
+def worktree_repo(root, config, tree):
+    """The repository whose default branch supplies brief path evidence."""
+    repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), None)
+    if repo is None and config['repos']:
+        from wuwei.commit_push import context
+        repo = context(tree, {}, {}, root, identity=False)[0]
+    return repo or {}
+
+
+def check_paths(body, paths, config, track):
+    """The protected-path boundary for file briefs and ad-hoc launch prompts."""
+    for line in body.splitlines():
+        if line.startswith('Paths:'):
+            paths.extend(re.split(r'[,\s]+', line[6:].strip()))
+    patterns = [re.compile(p, re.I) for p in config['brief']['full_path_patterns']]
+    protected = [path for path in paths if any(p.search(path) for p in patterns)]
+    if track == 'SLICE' and protected:
+        raise Refused('SLICE brief touches protected paths: ' + ', '.join(protected) + '; use --track FULL')
+
+
 def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None, second_opinion=None,
           root=None):
     root = workspace.find_workspace(root)
@@ -537,11 +569,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if tree:
             changed = status(vcs, tree, root)
             head = read(vcs.head, tree, root=root)['sha']
-            repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), None)
-            if repo is None and config['repos']:
-                from wuwei.commit_push import context
-                repo = context(tree, {}, {}, root, identity=False)[0]
-            repo = repo or {}
+            repo = worktree_repo(root, config, tree)
             remote = config['brief']['remote']
             ref = remote + '/' + repo.get('default_branch', 'main')
             try:
@@ -563,13 +591,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         paths += [row['original_path'] for row in changed if row.get('original_path')]
         if tree:
             paths.append(tree.name + '/')
-        for line in body.splitlines():
-            if line.startswith('Paths:'):
-                paths.extend(re.split(r'[,\s]+', line[6:].strip()))
-        patterns = [re.compile(p, re.I) for p in config['brief']['full_path_patterns']]
-        protected = [path for path in paths if any(p.search(path) for p in patterns)]
-        if track == 'SLICE' and protected:
-            raise Refused('SLICE brief touches protected paths: ' + ', '.join(protected) + '; use --track FULL')
+        check_paths(body, paths, config, track)
         header.append(f'Track: {track}')
         if role == 'builder':
             from wuwei import specmode
