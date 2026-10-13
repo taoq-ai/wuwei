@@ -25,13 +25,19 @@ CLOUD_VERBS = {'deploy', 'deployment', 'deployments', 'create-deployment',
                'update-function-code', 'update-service', 'up', 'start-deployment'}
 PROGRAMS = ('git', 'gh', *VERBS, 'vercel', 'vc', 'gcloud', 'aws', 'az')
 # Target-dependent actions stay with the hook.
+VERCEL_DENY = [f'Bash({binary}{suffix})'
+               for binary in ('vercel', 'vc')
+               for suffix in ('', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*',
+                              ' rollback*', ' redeploy*', ' alias set*', ' alias rm*',
+                              ' domains add*', ' env add*', ' env rm*', ' env pull*',
+                              ' pull*')]
 PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
-    'helm upgrade*', 'pulumi up*', 'vercel*', 'vc *', 'netlify deploy*',
+    'helm upgrade*', 'pulumi up*', 'netlify deploy*',
     'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
     'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
     'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
-    'gh pr merge * --admin*')]
+    'gh pr merge * --admin*')] + VERCEL_DENY
 SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 # Design 4.5: wrappers that run the rest of the line, and their options that take a value.
 WRAPPERS = {'command': (), 'exec': ('-a',), 'nohup': (), 'nice': ('-n', '--adjustment'),

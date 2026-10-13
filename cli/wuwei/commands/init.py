@@ -13,7 +13,9 @@ import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 from wuwei import env, integrity, security, workspace
-from wuwei.guards.edges import PERMISSIONS_DENY
+from wuwei.guards.edges import PERMISSIONS_DENY, VERCEL_DENY
+
+LEGACY_VERCEL_DENY = {'Bash(vercel*)', 'Bash(vc *)'}
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
   protect each repository's default_branch: required status checks including the test jobs,
@@ -53,7 +55,8 @@ def run(args):
     denials = permissions.setdefault('deny', [])
     if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
         raise ValueError(f'workspace permissions.deny must be a list of strings; {DAMAGED}')
-    permissions['deny'] = list(dict.fromkeys([*denials, *PERMISSIONS_DENY]))
+    permissions['deny'] = list(dict.fromkeys(
+        [*(rule for rule in denials if rule not in LEGACY_VERCEL_DENY), *PERMISSIONS_DENY]))
     template = Path(__file__).resolve().parents[3] / "templates/workspace"
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging = tempfile.mkdtemp(prefix=".wuwei-init-", dir=destination.parent)
@@ -475,6 +478,20 @@ def upgrade(args):
         print('wuwei init: config.toml and executable must not be symlinks; replace them with regular files, then rerun bin/wuwei init --upgrade', file=sys.stderr)
         return UNRUN
     try:
+        settings_changed = False
+        try:
+            settings_path, settings_data = settings(destination.parent)
+            denials = settings_data.get('permissions', {}).get('deny', [])
+            if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
+                raise ValueError(f'workspace permissions.deny must be a list of strings; {DAMAGED}')
+            settings_changed = any(rule in LEGACY_VERCEL_DENY for rule in denials)
+            if settings_changed:
+                narrowed = [rule for rule in denials if rule not in LEGACY_VERCEL_DENY]
+                narrowed.extend(rule for rule in VERCEL_DENY if rule not in narrowed)
+                settings_data['permissions']['deny'] = narrowed
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(f'wuwei init: warning: .claude/settings.json migration skipped: {exc}; '
+                  'repair .claude/settings.json, then rerun bin/wuwei init --upgrade', file=sys.stderr)
         env.load(destination.parent)
         raw = config_path.read_text(encoding='utf-8')
         text = _without_empty_repos(raw)
@@ -518,6 +535,8 @@ def upgrade(args):
         tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
                                   write=not args.dry_run)
         if not args.dry_run:
+            if settings_changed:
+                workspace.atomic_write(settings_path, json.dumps(settings_data, indent=2) + '\n')
             if security_data is None:
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
@@ -541,6 +560,8 @@ def upgrade(args):
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
             print(f'{prefix} private .wuwei/env and Git ignore rule')
+        if settings_changed:
+            print(f'{prefix} .claude/settings.json: narrow Vercel denials')
         if text != raw:
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in removed:
@@ -588,6 +609,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not removed and not retired and not stamp_changed and not pointer_changed and not env_changed
+                and not settings_changed
                 and not guide_changed and not stale and not graph_comments and text == raw
                 and not tickets and not units and not unhooked and not any(line.startswith(prefix) for line in labelled)):  # a not-created line changes nothing
             print('No workspace changes needed')

@@ -5,6 +5,7 @@ import io
 import json
 import shlex
 import sys
+from fnmatch import fnmatchcase
 from types import SimpleNamespace
 
 import pytest
@@ -548,7 +549,8 @@ def test_init_permissions(tmp_path, monkeypatch):
     project = tmp_path / 'project'
     (project / '.claude').mkdir(parents=True)
     settings = project / '.claude/settings.json'
-    settings.write_text(json.dumps({'permissions': {'deny': ['Bash(custom *)'],
+    settings.write_text(json.dumps({'permissions': {'deny': ['Bash(custom *)',
+                                                            'Bash(vercel*)', 'Bash(vc *)'],
                                                    'allow': ['Read']}, 'extra': True}))
     assert run(SimpleNamespace(path=str(project))) == 0
     data = json.loads(settings.read_text())
@@ -559,13 +561,89 @@ def test_init_permissions(tmp_path, monkeypatch):
     assert set(deny) == {'Bash(custom *)', *(
         f'Bash({command})' for command in (
             'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
-            'helm upgrade*', 'pulumi up*', 'vercel*', 'vc *', 'netlify deploy*',
+            'helm upgrade*', 'pulumi up*', 'netlify deploy*',
             'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
             'podman push*', 'gh release create*', 'git push --tags*',
             'git push * --tags*', 'gh pr review --approve*',
             'gh pr review * --approve*', 'gh pr review * -a*',
-            'gh pr merge * --admin*'))}
+            'gh pr merge * --admin*',
+            *(f'{binary}{suffix}' for binary in ('vercel', 'vc') for suffix in (
+                '', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*', ' rollback*',
+                ' redeploy*', ' alias set*', ' alias rm*', ' domains add*',
+                ' env add*', ' env rm*', ' env pull*', ' pull*'))))}
+    assert 'Bash(vercel*)' not in deny and 'Bash(vc *)' not in deny
     assert global_settings.read_text() == '{"owner": true}'
+    patterns = [rule[5:-1] for rule in deny if rule.startswith('Bash(')]
+    for binary in ('vercel', 'vc'):
+        for command in ('--yes', '--prebuilt', '--prebuilt --prod', '--prod',
+                        '--yes --prod', '--cwd x deploy', '--scope t deploy',
+                        '-t TOKEN --prod', '--debug env pull', '--help', '--version',
+                        '.', './web', './*',
+                        'pull', 'pull --environment=production', 'alias set target',
+                        'alias rm target'):
+            assert any(fnmatchcase(f'{binary} {command}', pattern) for pattern in patterns)
+        assert not any(fnmatchcase(f'{binary} alias ls', pattern) for pattern in patterns)
+
+
+@pytest.mark.parametrize('legacy,damage', [
+    (['Bash(vercel*)', 'Bash(vc *)'], 'broken'),
+    (['Bash(vc *)'], 'nonobject'),
+    (['Bash(vercel*)', 'Bash(vc *)'], 'symlink_file'),
+    (['Bash(vc *)'], 'symlink_dir'),
+])
+def test_upgrade_replaces_legacy_vercel_denials_only(tmp_path, legacy, damage, capsys):
+    from wuwei.commands.init import run
+    assert run(SimpleNamespace(path=str(tmp_path))) == 0
+    settings = tmp_path / '.claude/settings.json'
+    original = {
+        'permissions': {
+            'allow': ['Read'],
+            'deny': ['Bash(custom *)', *legacy, 'Bash(other *)'],
+        },
+        'extra': {'owner': True},
+    }
+    settings.write_text(json.dumps(original, indent=2) + '\n')
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=True)) == 0
+    assert 'Would upgrade .claude/settings.json: narrow Vercel denials' in capsys.readouterr().out
+    assert json.loads(settings.read_text()) == original
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    migrated = json.loads(settings.read_text())
+    assert migrated['extra'] == original['extra']
+    assert migrated['permissions']['allow'] == original['permissions']['allow']
+    deny = migrated['permissions']['deny']
+    assert [rule for rule in deny if rule in ('Bash(custom *)', 'Bash(other *)')] == [
+        'Bash(custom *)', 'Bash(other *)']
+    assert 'Bash(vercel*)' not in deny and 'Bash(vc *)' not in deny
+    for binary in ('vercel', 'vc'):
+        for suffix in ('', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*', ' rollback*',
+                       ' redeploy*', ' alias set*', ' alias rm*', ' domains add*',
+                       ' env add*', ' env rm*', ' env pull*', ' pull*'):
+            assert deny.count(f'Bash({binary}{suffix})') == 1
+    after = settings.read_text()
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert settings.read_text() == after
+    capsys.readouterr()
+    if damage == 'broken':
+        settings.write_text('{')
+    elif damage == 'nonobject':
+        settings.write_text('[]')
+    else:
+        outside = tmp_path / 'outside'
+        outside.mkdir()
+        (outside / 'settings.json').write_text(after)
+        settings.unlink()
+        if damage == 'symlink_file':
+            settings.symlink_to(outside / 'settings.json')
+        else:
+            settings.parent.rmdir()
+            settings.parent.symlink_to(outside, target_is_directory=True)
+    before = settings.read_text()
+    pointer = tmp_path / '.wuwei/executable'
+    pointer.unlink()
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert settings.read_text() == before
+    assert pointer.is_file()
+    assert '.claude/settings.json migration skipped' in capsys.readouterr().err
 
 
 def test_init_creates_local_settings(tmp_path):
