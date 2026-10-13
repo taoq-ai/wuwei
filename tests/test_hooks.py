@@ -76,7 +76,7 @@ def install(plugin, source, name='fake'):
     (path / (name + '.py')).write_text(source)
 
 
-def test_hook_configuration():
+def _case_hook_configuration():
     path = ROOT / 'hooks/hooks.json'
     assert path.exists(), 'four hook mappings must exist'
     config = json.loads(path.read_text())
@@ -124,14 +124,14 @@ def test_payloads_use_neutral_paths(payload_path):
         assert payload['agent_transcript_path'] == '/workspace/.claude/projects/example/subagents/agent-def456.jsonl'
 
 
-def test_scratchpad_fixtures_use_neutral_paths():
+def _case_scratchpad_fixtures_use_neutral_paths():
     for path in PAYLOADS:
         payload = json.loads(path.read_text())
         if 'scratchpad_dir' in payload:
             assert payload['scratchpad_dir'] == '/tmp/scratch/example', path
 
 
-def test_discovery_returns_plain_list():
+def _case_discovery_returns_plain_list():
     from wuwei.guards import discover
     from wuwei.guards.outward import GUARDS
     assert type(discover()) is list
@@ -143,7 +143,7 @@ def test_discovery_returns_plain_list():
                and record.check.__module__ == 'wuwei.guards.edges' for record in discover())
 
 
-def test_import_map_matches_guard_tables():
+def _case_import_map_matches_guard_tables():
     from importlib import import_module
     import pkgutil
     import wuwei.guards
@@ -367,7 +367,7 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
             'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
 
 
-def test_integrity_import_leaves_registry_out():
+def _case_integrity_import_leaves_registry_out():
     # #562: status --line asks integrity for the version and the restart line only.
     script = 'import sys; sys.path[:0] = sys.argv[1:3]; import wuwei.integrity; print("wuwei.registry" in sys.modules)'
     result = subprocess.run([sys.executable, '-I', '-c', script, str(ROOT / 'cli'), str(ROOT)],
@@ -375,7 +375,7 @@ def test_integrity_import_leaves_registry_out():
     assert result.stdout == 'False\n', result.stderr
 
 
-def test_together_runs_concurrently_and_raises_in_call_order():
+def _case_together_runs_concurrently_and_raises_in_call_order():
     import threading
     from wuwei.registry import together
     barrier = threading.Barrier(3, timeout=2)
@@ -388,7 +388,7 @@ def test_together_runs_concurrently_and_raises_in_call_order():
         together(lambda: 1, lambda: fail('first'), lambda: fail('second'))
 
 
-def test_guard_modules_defer_heavy_imports():
+def _case_guard_modules_defer_heavy_imports():
     import ast
     for path in (ROOT / 'cli/wuwei/guards').glob('*.py'):
         roots = set()
@@ -419,7 +419,7 @@ def test_calibrate_is_off_every_hook_path(tmp_path):
     assert 'calibrat' not in (ROOT / 'hooks/hooks.json').read_text()
 
 
-def test_private_guard_module_is_ignored(plugin):
+def _case_private_guard_module_is_ignored(plugin):
     install(plugin, 'raise RuntimeError("private helper imported")', '_helper')
     result = replay(plugin, 'SubagentStop', json.dumps(fixture('SubagentStop')))
     assert result.returncode == 0, result.stderr
@@ -470,7 +470,7 @@ GUARDS = [Guard({event!r}, None, lambda payload: ({code}, 'guard reason'))]
         assert result.stdout == (json.dumps(expected) + '\n' if event == 'SessionStart' else '')
 
 
-def test_matching_and_all_refusing_reasons(plugin):
+def _case_matching_and_all_refusing_reasons(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
 GUARDS = [
@@ -501,7 +501,7 @@ GUARDS = [Guard('SubagentStop', None, lambda p: (1, str(p['stop_hook_active'])))
     assert_refusal(replay(plugin, 'SubagentStop', json.dumps(payload)), 'SubagentStop', str(active))
 
 
-def test_session_context_is_combined_and_safe_json(plugin):
+def _case_session_context_is_combined_and_safe_json(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
 GUARDS = [Guard('SessionStart', None, lambda p: (0, '{"decision":"block"}')),
@@ -514,7 +514,7 @@ GUARDS = [Guard('SessionStart', None, lambda p: (0, '{"decision":"block"}')),
         'additionalContext': '{"decision":"block"}\nmemory context'}}
 
 
-def test_session_start_guards_run_together_in_guard_order(plugin):
+def _case_session_start_guards_run_together_in_guard_order(plugin):
     # #346: SessionStart's guards wait on git, ssh-keygen and fsync; run together, each one's
     # waits overlap the others' work. Each guard below returns only once both are running.
     install(plugin, '''
@@ -600,7 +600,7 @@ def test_optional_fields_may_be_absent(plugin, path, field):
     assert result.returncode == 0, result.stderr
 
 
-def test_guard_missing_field_still_fails_closed(plugin):
+def _case_guard_missing_field_still_fails_closed(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
 GUARDS = [Guard('SubagentStop', None, lambda p: (0, p['last_assistant_message']))]
@@ -687,7 +687,7 @@ GUARDS = [Guard({event!r}, None, lambda p: (0 if p['future_field']['value'] == 4
     assert result.returncode == 0, result.stderr
 
 
-def test_unknown_tool_is_extensible(plugin):
+def _case_unknown_tool_is_extensible(plugin):
     payload = fixture('PreToolUse')
     payload.update(tool_name='mcp__example__operation', tool_input={'future': 1})
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
@@ -708,7 +708,7 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
         discover()
 
 
-def test_unaccounted_shell_mention_blocks_hook(plugin):
+def _case_unaccounted_shell_mention_blocks_hook(plugin):
     install(plugin, '''
 from wuwei.guards import Guard
 from wuwei.shell import normalize
@@ -1034,7 +1034,7 @@ def test_logged_target_is_the_normalised_command(plugin, command, target):
     assert events_of(plugin, 'guard.would_refuse')[0]['target'] == target
 
 
-def test_logged_target_is_redacted(plugin):
+def _case_logged_target_is_redacted(plugin):
     from wuwei import report, security, workspace
     security.initialize(plugin[0] / '.wuwei')
     canary = json.loads((plugin[0] / '.wuwei/security.json').read_text())['canary']
@@ -1058,7 +1058,7 @@ def forget_guards():
         vars(wuwei.guards).pop(name.rsplit('.', 1)[-1], None)
 
 
-def test_floor_at_the_hook(plugin):
+def _case_floor_at_the_hook(plugin):
     # #837: with guards.enforce = false the floor still blocks, with the reason alone.
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
     enforce(plugin)
@@ -1089,7 +1089,7 @@ def test_floor_at_the_hook(plugin):
 FORCE = 'force-push is refused; push a branch instead'
 
 
-def test_refusal_records_guard_and_target_for_why(plugin):
+def _case_refusal_records_guard_and_target_for_why(plugin):
     from wuwei.__main__ import main
     install(plugin, refusing('PreToolUse', FORCE))
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
@@ -1104,7 +1104,7 @@ def test_refusal_records_guard_and_target_for_why(plugin):
         assert line in lines
 
 
-def test_refusal_without_a_target_is_still_recorded_and_enforced(plugin):
+def _case_refusal_without_a_target_is_still_recorded_and_enforced(plugin):
     from wuwei.commands import hook
     install(plugin, refusing('PreToolUse', FORCE))
     plugin[1].setattr(hook, 'redacted_target', lambda payload, root: 1 / 0)
@@ -1114,7 +1114,7 @@ def test_refusal_without_a_target_is_still_recorded_and_enforced(plugin):
         {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE, 'exit': 1}]}]
 
 
-def test_refusal_from_two_guards_lists_both_in_order(plugin):
+def _case_refusal_from_two_guards_lists_both_in_order(plugin):
     install(plugin, refusing('PreToolUse', 'first; a'), 'first')
     install(plugin, refusing('PreToolUse', 'second'), 'second')
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
@@ -1152,7 +1152,7 @@ def event_count(plugin):
     return len(path.read_text().splitlines()) if path.exists() else 0
 
 
-def test_event_count_per_hook_path(plugin):
+def _case_event_count_per_hook_path(plugin):
     # #422: telemetry adds no record to a hook: allowed 0, refused 1, warned 1, doctor probe 0.
     payload = json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
     install(plugin, exiting(0, ''))
@@ -1228,7 +1228,7 @@ def test_terminal_as_bash(tmp_path):
             as_bash({**call, 'tool_input': inputs})
 
 
-def test_stop_is_registered_and_precompact_stays_retired():
+def _case_stop_is_registered_and_precompact_stays_retired():
     # #949 restores Stop as an advisory planner wake; PreCompact stays retired.
     from wuwei.__main__ import main
     hooks = json.loads((Path(__file__).resolve().parents[1] / 'hooks/hooks.json').read_text())['hooks']
@@ -1271,30 +1271,26 @@ def test_session_start_table(start_case, condition, expected):
     assert 'watch' not in message
 
 
-def _case_session_start_names_orphan_seats(start_case):
+def _case_session_start_leaves_historical_seats_to_doctor(start_case):
     from wuwei import state, workspace
     from wuwei.guards import lifecycle
     root = start_case
     prior = workspace.day_dir(root).parent / '2026-09-27'
     state._write_state(lambda data: data.update(seats={
-        'old-builder': {'status': 'running'}, 'finished': {'status': 'stopped'}}),
+        'old-builder': {'status': 'running', 'role': 'builder', 'item': 'old',
+                        'started_at': '2026-09-27T01:00:00+00:00'},
+        'finished': {'status': 'stopped', 'role': 'builder', 'item': 'old'}}),
         directory=prior)
     code, message = lifecycle.session_start({'cwd': str(root)})
-    assert code == 1
-    assert 'orphan' in message and 'old-builder' in message and 'finished' not in message
+    assert code == 0
+    assert 'old-builder' not in message and 'finished' not in message
+    from wuwei.commands import doctor
+    assert 'old-builder' in str(doctor.diagnose('processes'))
 
 
 def _case_session_start_outside_scope(start_case):
     from wuwei.guards import lifecycle
     assert lifecycle.session_start({'cwd': str(start_case.parent / 'unrelated')}) == (0, '')
-
-
-@pytest.mark.parametrize("scenario_fn", [
-    _case_session_start_names_orphan_seats,
-    _case_session_start_outside_scope,
-])
-def test_session_start_cases_1254(start_case, scenario_fn):
-    scenario_fn(start_case)
 
 
 def test_session_start_exports_the_session_id(start_case, monkeypatch, tmp_path):
@@ -1305,7 +1301,7 @@ def test_session_start_exports_the_session_id(start_case, monkeypatch, tmp_path)
     assert env_file.read_text() == 'export WUWEI_SESSION_ID=abc\n'
 
 
-def test_session_real_cli_boundary(start_case):
+def _case_session_real_cli_boundary(start_case):
     root = start_case
     project = Path(__file__).resolve().parents[1]
     payload = {'cwd': str(root), 'hook_event_name': 'SessionStart',
@@ -1318,9 +1314,52 @@ def test_session_real_cli_boundary(start_case):
     assert 'Memory spine' in context and 'Size:' in context and 'watch' not in context
 
 
-def test_session_payload_names_why_not_the_records(start_case):
+def _case_session_payload_names_why_not_the_records(start_case):
     from wuwei import memory
     content, size, tokens = memory.session_payload(start_case)
     assert 'Full day state: wuwei why <item>' in content and '"raised_prs"' not in content
     assert size == len(content.encode('utf-8'))
     assert tokens == memory.estimated_tokens(content)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_hook_configuration,
+    _case_scratchpad_fixtures_use_neutral_paths,
+    _case_discovery_returns_plain_list,
+    _case_import_map_matches_guard_tables,
+    _case_integrity_import_leaves_registry_out,
+    _case_together_runs_concurrently_and_raises_in_call_order,
+    _case_guard_modules_defer_heavy_imports,
+    _case_stop_is_registered_and_precompact_stays_retired,
+])
+def test_hook_contract_cases(scenario_fn):
+    scenario_fn()
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_private_guard_module_is_ignored,
+    _case_matching_and_all_refusing_reasons,
+    _case_session_context_is_combined_and_safe_json,
+    _case_session_start_guards_run_together_in_guard_order,
+    _case_guard_missing_field_still_fails_closed,
+    _case_unknown_tool_is_extensible,
+    _case_unaccounted_shell_mention_blocks_hook,
+    _case_logged_target_is_redacted,
+    _case_floor_at_the_hook,
+    _case_refusal_records_guard_and_target_for_why,
+    _case_refusal_without_a_target_is_still_recorded_and_enforced,
+    _case_refusal_from_two_guards_lists_both_in_order,
+    _case_event_count_per_hook_path,
+])
+def test_hook_plugin_cases(plugin, scenario_fn):
+    scenario_fn(plugin)
+
+
+@pytest.mark.parametrize("scenario_fn", [
+    _case_session_start_leaves_historical_seats_to_doctor,
+    _case_session_start_outside_scope,
+    _case_session_real_cli_boundary,
+    _case_session_payload_names_why_not_the_records,
+])
+def test_session_start_cases_1254(start_case, scenario_fn):
+    scenario_fn(start_case)

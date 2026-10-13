@@ -1,0 +1,15 @@
+# Requirements Quality
+- [x] CHK001 User outcomes, priorities and independent acceptance scenarios are defined.
+- [x] CHK002 Every functional requirement has task and test coverage planned.
+- [x] CHK003 PID reuse, missing caches, read failures and cross-day records are specified.
+- [x] CHK004 Automatic cleanup authority and owner-only boundaries are explicit.
+- [x] CHK005 Seat inactivity, grace period and supported launch scope are defined.
+- [x] CHK006 Success criteria are measurable and no clarification markers remain.
+- [x] CHK007 Review scope explicitly defines safe wrapper commands, fast inspection and failed cleanup behavior.
+- [x] CHK008 Historical seats and external cleanup require no clock override or meaningless approval.
+- [x] CHK009 Live-wait suppression and the four-round field case are explicit in FR-008.
+- [x] CHK010 Historical findings, host none and orientation wrapper scope are explicit in FR-009/011.
+- [x] CHK011 Runtime refusal, removed arguments and orphan containment/cadence are explicit in FR-010/012.
+- [x] CHK012 Close inspection exceptions and current versus historical cleanup failures are explicit in FR-013.
+- [x] CHK013 Wait notification scope, day rollover and legacy records are specified in FR-014 and round 3 assumptions.
+- [x] CHK014 Combined-flag argument refusal and side-effect ordering are explicit in FR-015.

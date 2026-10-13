@@ -6,6 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from fakes.host import Fake as ProcessHost
+
 from adapters.runtime import claude
 from wuwei import registry, state, workspace
 from wuwei.__main__ import main
@@ -33,7 +35,7 @@ def seat(tmp_path, monkeypatch):
                           repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}))
     monkeypatch.setattr(registry, 'load', lambda kind, config: {
-        'runtime': claude, 'checks': checks, 'vcs': vcs}[kind])
+        'host': ProcessHost(), 'runtime': claude, 'checks': checks, 'vcs': vcs}[kind])
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *a: 8 * 1024**3)
     return tmp_path, repo, path, day, results
 

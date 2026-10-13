@@ -13,3 +13,11 @@ def free_percent(root=None):
 
 def hand_over(target, argv, env, root=None):
     return record_none('host', 'hand_over', root, measurement=False)
+
+
+def processes(orphans=False, pid=None, root=None):
+    return record_none('host', 'processes', root)
+
+
+def terminate_process(record, grace, root=None):
+    return record_none('host', 'terminate_process', root, measurement=False)

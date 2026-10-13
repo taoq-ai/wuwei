@@ -427,3 +427,34 @@ Claude Code runs these two commands for you. You never do. `bin/wuwei --help` do
 - `SessionStart`: measures plugin integrity as a warning, and shows the orientation, goals and scoped session memory.
 
 `bin/wuwei status --line [--width N]` prints the status line, 100 columns by default. It shows the gate state, items per phase, running seats against the cap, open pages, and `observe` when `guards.enforce` is false. On a read error it prints `WUWEI ? unmeasured` and exits 2. `status` has no other mode; `next` is the board.
+
+## Housekeeping
+
+`wuwei doctor --section processes` reads local processes and cached day/PR records.
+It reports obsolete recorded waits, duplicate PR waits, inactive seats, workspace
+orphans and finished worktrees without contacting GitHub. Active worktrees and the
+current process's ancestors are excluded from orphan findings.
+
+`wuwei next --json` records only PR waits and sleep timers. Other commands run
+normally. Each wait records its session and day. The oldest live wait for the
+current session and day is kept; waits from other sessions or prior days are obsolete.
+While the current wait lives, next offers a passive status row. SessionStart prints the same
+`wuwei next --background -- wuwei pr wait` wrapper when a new wait is needed.
+`wuwei next --housekeeping` reaps obsolete recorded waits only when their PID,
+command and start identity match. It sends TERM, waits one second, then rechecks
+that PID before KILL. A failed cleanup becomes a finding rather than another duty.
+SessionStart and next skip orphan cwd reads; doctor processes and close perform
+them. Close cleans up before starting the retro. Unmeasured inspection is printed
+and does not prevent close; current seat/build findings and reaps that fail during
+that close attempt still stop it. Housekeeping refuses extra positional arguments,
+including when combined with `--background`.
+
+Unrecorded orphans and finished worktrees appear only in doctor processes and close,
+in a plain listing with exact cleanup commands for the owner. Orphans must have a
+cwd inside the workspace. Outside recorded worktrees, each process identity is listed
+at most once per day; these explicit listings record a daily receipt. WUWEI neither
+executes those commands nor asks for approval. Current inactive seats use `wuwei seat stop <name> --verdict`; prior-day
+seats are listed only in doctor processes and close. With host `none`, next and
+SessionStart skip the optional process check without logging an adapter event.
+Explicit inspection still reports unmeasured. Current Codex-only builds use their
+existing resume command. The configured `host.reservation_timeout_seconds` sets the inactivity threshold.

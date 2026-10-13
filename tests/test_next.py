@@ -621,7 +621,7 @@ def test_orientation_precedes_integrity_line(root, monkeypatch, capsys):
 def test_unmeasured_row_still_prints_block(root, monkeypatch, capsys):
     calibrated(root)
 
-    def broken(root):
+    def broken(root, **kwargs):
         raise ValueError('broken')
     monkeypatch.setattr(next_command, 'step', broken)
     capsys.readouterr()
@@ -723,14 +723,14 @@ def test_seats_at_cap_name_the_waiting_item_and_the_first_seat(root, capsys):
     assert [(launch['kind'], launch['item']) for launch in found['launches']] == [
         ('build', 'ITEM-1'), ('build', 'ITEM-2'), ('build', 'ITEM-3')]
     day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
-                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
-                                            ('b-2', 'ITEM-2', '2026-09-29T10:00:00+00:00'))})
+                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-30T09:00:00+00:00'),
+                                            ('b-2', 'ITEM-2', '2026-09-30T08:00:00+00:00'))})
     found = coarse(root)
     assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('build', 'ITEM-3')]
     approved(root, items, cap=2)
     day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
-                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
-                                            ('b-2', 'ITEM-2', '2026-09-29T10:00:00+00:00'))})
+                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-30T09:00:00+00:00'),
+                                            ('b-2', 'ITEM-2', '2026-09-30T08:00:00+00:00'))})
     found = coarse(root)
     assert found['state'] == 'wait'
     assert 'ITEM-3 waits: 2 of CAP 2 building; b-2 started first' in found['why']
@@ -1182,7 +1182,7 @@ def test_a_set_held_by_the_memory_floor_is_a_timed_wait(root, capsys, monkeypatc
     monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 38)
     code, found = row(capsys)
     assert (code, found['state'], found['action']) == (0, 'wait', 'background'), found
-    assert found['until'] == '2026-09-30T10:01:00+00:00' and found['command'] == 'sleep 121'
+    assert found['until'] == '2026-09-30T10:01:00+00:00' and found['command'] == 'wuwei next --background -- sleep 121'
     assert 'held: free memory 38% < 40%' in found['why']
     monkeypatch.setattr(agent_launch, 'free_percent', lambda config, root: 41)
     code, found = row(capsys)
@@ -1198,14 +1198,15 @@ def test_a_set_held_only_by_a_spent_window_is_a_timed_wait(root, capsys, monkeyp
     code, found = row(capsys)
     assert (code, found['state'], found['action']) == (0, 'wait', 'background'), found
     assert found['until'] == '2026-09-30T13:00:00+00:00' and found['then'] == next_command.THEN['background']
-    assert found['command'].startswith('sleep ') and int(found['command'].split()[1]) >= 3 * 3600
+    assert found['command'].startswith('wuwei next --background -- sleep ') and int(found['command'].split()[-1]) >= 3 * 3600
     assert 'claude' in found['why'] and 'wuwei next' in found['why']
     duty = {'duty': 'ping', 'item': 'ITEM-2', 'prompt': 'Ping.', 'record': 'wuwei duty done ITEM-2 ping'}
+    original_duties = derive.duties
     monkeypatch.setattr(derive, 'duties', lambda *args, **kwargs: [duty])
     code, found = row(capsys)
     assert found['state'] == 'set' and found['duties'] == [duty]
     assert [launch.get('until') for launch in found['launches']] == ['2026-09-30T13:00:00+00:00']
-    monkeypatch.undo()
+    monkeypatch.setattr(derive, 'duties', original_duties)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:30:00+00:00')
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
@@ -1235,7 +1236,8 @@ def test_issue_acceptance_907_an_unchanged_next_makes_no_remote_call(root, capsy
                                        'mergeable': 'mergeable', 'labels': []} for n in range(1, 6)])
                 return Result(2, None, 'gh: HTTP 502')
             return call
-    monkeypatch.setattr(registry, 'load', lambda kind, config: Host())
+    from fakes.host import Fake as ProcessHost
+    monkeypatch.setattr(registry, 'load', lambda kind, config: ProcessHost() if kind == 'host' else Host())
     approved(root, {f'I{i}': ('raised', {'pr': f'{repos[i % 3]}#{i // 3 + 1}'}) for i in range(13)}, cap=13)
     (root / '.wuwei/config.toml').write_text(''.join(
         f'[[repos]]\nname = "{name}"\npath = "{name[8:]}"\ndefault_branch = "main"\n' for name in repos))

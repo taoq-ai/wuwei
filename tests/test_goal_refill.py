@@ -174,10 +174,39 @@ def test_stop_blocks_only_changed_active_rows(root, monkeypatch, capsys, row):
 
 @pytest.mark.parametrize('case', [
     'wait', 'owner', 'closed', 'closing', 'unstarted', 'seat', 'agent', 'role', 'error',
+    'live pr wait', 'live pr wait without queue row',
 ])
 def test_stop_exemptions(root, monkeypatch, capsys, case):
     fields = {}
-    if case == 'error':
+    if case.startswith('live pr wait'):
+        from fakes.host import Fake
+        from wuwei import registry
+        monkeypatch.setenv('WUWEI_SESSION_ID', 'planner')
+        assert next_command.step(root)['state'] == 'refill'
+        directory = workspace.day_dir(root)
+        if case == 'live pr wait without queue row':
+            records.write(root, {'raised_prs': ['acme/client#7']},
+                          directory=directory.parent / '2026-10-12')
+        else:
+            records.write(root, {'items': {'A': {'phase': 'raised', 'status': 'queued',
+                                               'pr': 'acme/client#7'}}})
+            (directory / 'prs.json').write_text(json.dumps({'fetched_at': workspace.now().isoformat(),
+                'pulls': [{'ref': 'acme/client#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+        process = {'pid': 41001, 'ppid': 42, 'command': 'python next --background',
+                   'identity': 'recorded start'}
+        state.append_event('process.started', {**process, 'purpose': 'pr-wait',
+                           'session_id': 'planner', 'day': directory.name}, root)
+        host = Fake({'processes': registry.Result(0, {41001: process})})
+        load = registry.load
+        monkeypatch.setattr(registry, 'load', lambda port, config:
+                            host if port == 'host' else load(port, config))
+        before = list(sessions._rows(root))
+        for active in (False, True):
+            row = next_command.step(root)
+            assert (row['state'], row['action'], row['command']) == ('wait', 'wait', 'wuwei status --line')
+            assert stop(root, monkeypatch, capsys, stop_hook_active=active) is None
+        assert list(sessions._rows(root)) == before
+    elif case == 'error':
         def broken(root):
             raise ValueError('broken data')
         monkeypatch.setattr(next_command, 'step', broken)

@@ -249,6 +249,8 @@ def test_emitted_kinds_have_intended_tiers():
     expected = {'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'scanner.unmeasured': 'warn', 'state.write': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
+                'process.started': 'silent', 'process.reaped': 'silent', 'process.cleanup_failed': 'silent',
+                'process.orphan_listed': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',

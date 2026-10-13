@@ -4,6 +4,8 @@ from datetime import timedelta
 
 import pytest
 
+from fakes.host import Fake as ProcessHost
+
 from fakes import records
 from wuwei import derive, registry, workspace
 from wuwei.__main__ import main
@@ -47,7 +49,7 @@ def day(tmp_path, monkeypatch):
                   'B': {'phase': 'raised', 'status': 'running', 'pr': 'example/project#2'}}})
     (workspace.day_dir(tmp_path) / 'plan.md').write_text('# Plan\n')
     host = Listing()
-    monkeypatch.setattr(registry, 'load', lambda kind, config: host)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: ProcessHost() if kind == 'host' else host)
     return tmp_path, host
 
 
