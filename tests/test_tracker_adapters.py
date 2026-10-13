@@ -418,12 +418,13 @@ def no_wait(root):
 def test_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
     from adapters.tracker import github
     slept = install_clock(monkeypatch)
-    calls = limited_gh(monkeypatch, [(1, SECONDARY), CREATED], NOW + 20)
+    primary = 'gh: API rate limit exceeded. (HTTP 403)'
+    calls = limited_gh(monkeypatch, [(1, primary), CREATED], NOW + 20)
     result = github.created('acme/app#1', root=gh_root)
     assert (result.exit, result.data) == (0, '2026-09-28T10:00:00Z')
     assert slept == [20] and len(calls) == 3
     no_wait(gh_root)
-    limited_gh(monkeypatch, [(1, SECONDARY)], NOW + 20)
+    limited_gh(monkeypatch, [(1, primary)], NOW + 20)
     result = github.created('acme/app#1', root=gh_root)
     assert result.exit == 2 and result.reason == (
         f'github.created: could not run: GitHub rate limit until {hms(NOW + 20)} UTC '
@@ -443,6 +444,8 @@ PRIMARY = {'X-RateLimit-Remaining': '0', 'X-RateLimit-Limit': '5000',
 
 @pytest.mark.parametrize('code,headers,reason', [
     (403, PRIMARY, f'GitHub rate limit until {hms(NOW + 10)} UTC (0 of 5000 graphql calls left); retry after it'),
+    (403, PRIMARY | {'Retry-After': '30'}, f'GitHub rate limit until {hms(NOW + 30)} UTC '
+     '(secondary limit on graphql, Retry-After 30 s); retry after it'),
     (429, {'Retry-After': '30'}, f'GitHub rate limit until {hms(NOW + 30)} UTC; retry after it'),
     (429, {}, f'GitHub rate limit until {hms(NOW + 60)} UTC; retry after it'),
     (403, {}, 'HTTP 403: credential has no access'),
