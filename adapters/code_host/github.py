@@ -65,7 +65,7 @@ def _errors(value):
             _errors(child)
 
 
-def _run(args, payload=None, *, json_output=True, env=None):
+def _run(args, payload=None, *, json_output=True, env=None, token_source=None):
     allowed = False
     match args:
         case ['auth', 'status', '--hostname', 'github.com']:
@@ -140,7 +140,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
             seen = [found.get('x-ratelimit-' + key, '') for key in ('resource', 'remaining', 'limit', 'reset')]
             valid = re.fullmatch(r'[a-z_]+', seen[0]) and all(map(str.isdigit, seen[1:]))
             raise gh_limit(result.stderr, env, resource, where, int(after) if after.isdigit() else None,
-                           (seen[0], *map(int, seen[1:])) if valid else None)
+                           (seen[0], *map(int, seen[1:])) if valid else None, source=token_source)
         return result
     try:
         result = retry(call)
@@ -722,7 +722,7 @@ def token_scopes(variable, root=None):
     # The child sees only the measured token, as GH_TOKEN, so gh reports exactly its scopes.
     child = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
     child['GH_TOKEN'] = os.environ[variable]
-    output = _run(['api', '--include', 'user'], json_output=False, env=child)
+    output = _run(['api', '--include', 'user'], json_output=False, env=child, token_source=variable)
     headers = re.split(r'\r?\n\r?\n', output, maxsplit=1)[0]
     match = re.search(r'^x-oauth-scopes:(.*)$', headers, re.IGNORECASE | re.MULTILINE)
     scopes = [s.strip() for s in match[1].split(',') if s.strip()] if match else []

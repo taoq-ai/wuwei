@@ -55,7 +55,8 @@ def operation(name):
 class RateLimited(Failure):
     """#738: a GitHub rate limit and its reset (epoch seconds); the text is numbers and fixed words."""
 
-    def __init__(self, reset, remaining=None, limit=None, resource=None, where=None, after=None, note=None):
+    def __init__(self, reset, remaining=None, limit=None, resource=None, where=None, after=None, note=None,
+                 source=None):
         self.reset = reset
         # #867: calls left on the named resource means a secondary limit, not an empty bucket.
         # #891: it names the endpoint GitHub refused and GitHub's Retry-After when one was read.
@@ -63,7 +64,8 @@ class RateLimited(Failure):
                      f"{f', Retry-After {after} s' if after else ''}, ") if remaining else ''
         left = (f" ({secondary}{remaining} of {limit} {resource} calls left)"
                 if None not in (remaining, limit, resource) else f' ({note})' if note else '')
-        super().__init__(f'GitHub rate limit until {_hms(reset)} UTC{left}; retry after it')
+        super().__init__(f'GitHub rate limit until {_hms(reset)} UTC{left}; retry after it'
+                         + (f' (token: {source})' if source else ''))
 
 
 def _hms(epoch):
@@ -81,39 +83,49 @@ def cap(root=None):
         return 120
 
 
-def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=None):
-    """A RateLimited when gh's stderr names a rate limit. #899: the refused reply's own X-RateLimit
-    headers (seen: resource, remaining, limit, reset) decide; gh api rate_limit for the resource the
-    call spends is read only when the reply carried none. Explicit secondary evidence takes
-    precedence over an empty bucket; otherwise an empty bucket waits for its reset."""
+def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=None, source=None):
+    """#899: headers name the bucket; #938: secondary wins; #953: re-read primary zero before reset."""
     if not re.search(r'rate limit', stderr or '', re.I):
         return None
     secondary = after is not None or re.search(r'secondary', stderr, re.I)
     delay = after if after is not None else WAIT
+    child_env = os.environ if env is None else env
+    source = source or next((name for name in ('GH_TOKEN', 'GITHUB_TOKEN') if child_env.get(name)), 'gh keyring')
     detail = (f"secondary limit on {where or resource}"
               f"{f', Retry-After {after} s' if after is not None else ''}")
     if seen:
         resource, remaining, limit, reset = seen
-    else:
+    if not seen or (remaining == 0 and not secondary):
         try:
             result = subprocess.run(['gh', 'api', 'rate_limit', '--hostname', 'github.com'],
                                     capture_output=True, text=True, timeout=30, env=env)
             resources = json.loads(result.stdout)['resources'] if result.returncode == 0 else {}
-            remaining, limit, reset = (resources[resource][key] for key in ('remaining', 'limit', 'reset'))
-            if not all(type(value) is int for value in (remaining, limit, reset)):
+            quota_left, quota_limit, quota_reset = (resources[resource][key]
+                                                     for key in ('remaining', 'limit', 'reset'))
+            if not all(type(value) is int for value in (quota_left, quota_limit, quota_reset)):
                 raise TypeError
         except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-            return RateLimited(time.time() + delay, note=detail if secondary else None)
+            if not seen:
+                return RateLimited(time.time() + delay, note=detail if secondary else None, source=source)
+        else:
+            if not seen:
+                remaining, limit, reset = quota_left, quota_limit, quota_reset
+            elif remaining == 0 and quota_left > 0 and not secondary:
+                return RateLimited(time.time() + delay, note=(
+                    f'GitHub refused {where or resource} with a rate limit; headers say 0 of {limit} '
+                    f'{resource} calls left, rate_limit shows {quota_left} of {quota_limit} '
+                    f'{resource} calls left'), source=source)
     if secondary:
         if remaining == 0:
-            return RateLimited(time.time() + delay, note=detail)
-        return RateLimited(time.time() + delay, remaining, limit, resource, where, after)
+            return RateLimited(time.time() + delay, note=detail, source=source)
+        return RateLimited(time.time() + delay, remaining, limit, resource, where, after, source=source)
     if remaining == 0:
-        return RateLimited(reset, 0, limit, resource)
+        return RateLimited(reset, 0, limit, resource, source=source)
     # Fixed words and numbers only: GitHub's primary wording with calls left, never echoed.
     told = ' while its headers say' if seen else ', but rate_limit shows'
     return RateLimited(time.time() + WAIT, note=f'GitHub refused {where or resource} with a rate limit'
-                                                f'{told} {remaining} of {limit} {resource} calls left')
+                                                f'{told} {remaining} of {limit} {resource} calls left',
+                       source=source)
 
 
 def retry(call, root=None):
