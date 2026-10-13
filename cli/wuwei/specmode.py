@@ -47,7 +47,7 @@ STEPS = {
 IMPLEMENT = ('implement', 'executing-plans', 'apply')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # #664: the item's governing document: governed_by on the plan item, else this line in spec.md.
-GOVERNING = re.compile(r'^Governing:[ \t]*(\S[^\n]*?)[ \t]*$', re.M)
+GOVERNING = re.compile(r'^(?:- )?(?:Governing:|\*\*Governing(?:\*\*:|:\*\*))[ \t]*(\S[^\n]*?)[ \t]*$', re.M)
 VERDICTS = ('agrees', 'conflicts', 'not covered')
 
 
@@ -71,7 +71,7 @@ def _some(paths, glob, tree):
 
 def _clarified(paths, glob, tree):
     return _one(paths, glob, tree) or (
-        None if re.search(r'^## Clarifications\s*$', _read(paths[0]), re.M)
+        None if re.search(r'^## Clarifications(?:[ \t].*)?$', _read(paths[0]), re.M)
         else f'{_names(paths, tree)} has no ## Clarifications section')
 
 
