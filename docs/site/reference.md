@@ -112,7 +112,7 @@ Optional keys:
 - `tier` (`light`, `standard` or `full`) raises the review tier `dispatch next` computes from the diff. A lower one is refused. A docs-only diff keeps one reviewer.
 - `paths` lists repository-relative files, so the CLI can name the item's repository.
 - `ticket` names an existing ticket such as `ENG-12` or `owner/repo#12`. Any other value refuses the proposal.
-- `owner_actions` lists owner-only steps the gate pre-approves.
+- `owner_actions` lists owner-only steps, one `{"action", "target"}` each. The plan lists them as owner steps; the morning gate does not pre-approve them.
 
 An empty `ticket` or `tier` counts as absent.
 
@@ -129,7 +129,7 @@ For `rice`, use `reach` (positive), `impact` (0.25, 0.5, 1, 2, 3), `confidence` 
 | Subcommand | Effect |
 | --- | --- |
 | `brief ROLE ITEM NAME [--worktree P] [--pr REF] [--gate] [--track T] (--body TEXT \| --file PATH)` | Writes and logs a seat brief. `--file -` reads stdin. With neither body option it exits 2. |
-| `note --fix "<title>"` | Records a small fix a seat found. `next` proposes it; `plan add <id> --from-finding` admits it. |
+| `note --fix "<title>" [--item I]` | Records a small fix a seat found. With `--item` the fix keeps that item's goal and repository. `next` proposes it; `plan add <id> --from-finding` admits it, and asks for `--goal` or `--repo` when the finding names none and the day has several. |
 | `start --role ROLE --adhoc PROMPT` | Records an ad-hoc seat before its Agent launch. |
 | `stop NAME (--verdict FILE \| --unmeasured REASON)` | Records a stuck seat's report, or stops it as unmeasured. |
 
@@ -158,10 +158,13 @@ An Agent launched with a type outside the WUWEI seats is an ad-hoc seat once the
 | Operation | Effect |
 | --- | --- |
 | `next <item> [<brief> <worktree>]` | Prints the next builder action as JSON. Past the build it answers what `dispatch next` decides. Exits 1 on `escalate`. |
+| `reconcile <item> [--worktree PATH] [--pr owner/repo#n] [--repo NAME --branch B] [--track FULL]` | Brings work done outside the record back in. It registers the worktree (uncommitted files included), or the repository's worktree on the branch, or claims the PR. Before the gates it writes a builder brief at HEAD and a build record that starts at the fast checks, without a builder seat, and runs them. Prints JSON with what exists (`head`, `start`, `changed`, `dirty`, `pr`), what was `verified` and what stays `unmeasured`, and the `next` command. A rerun with HEAD and the uncommitted files unchanged writes nothing; an interrupted one finishes. Only passing checks are listed as `verified`; failing ones are under `failed`. Exits 1 and changes nothing for an item outside the approved plan, a parked item, a running builder seat, a worktree, branch or PR of another repository than the item's, or another recorded worktree. `--track FULL` records the track a protected path needs. |
 | `check <item>` | Runs and records the fast checks after the builder stops. A passing check satisfies the push guard. A build that leaves uncommitted changes, touches a credential file in any commit since the head it started from (even one deleted again), or makes no change over the head it started from, is not done: the builder gets the reason and runs again. A second build with no change parks the item; other repeats park it after `build.stuck_after` with the cause as the reason. |
 | `analysis <item> [--file PATH]` | Saves the spec-kit analyze report as `analysis.md` in the item's one spec directory. The report comes on stdin or from `--file`. |
 | `classes <worktree>` | Lists the sweep classes the item's diff touches. Read-only. |
 | `<item> <brief> <worktree>` | Runs the Codex builder loop. WUWEI commits each completed job's changes with the repository identity. It never commits a credential file (the locations the trace check of `scanner` names: `.ssh`, `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.gnupg`, `.aws/credentials`, `gh/hosts.yml`, `*.pem`, `*.key`, `.wuwei/env`, `.env` or `.env.*` other than `.example`, `.sample` and `.template`); that file, or a commit a hook rejects, goes back to the builder as the next iteration's feedback. |
+
+Nothing reconcile registers counts as tested or approved: the fast checks run, uncommitted files keep the build from passing (a builder `continue` names them), and the gates follow. A builder launch needs a build record: the launch guard refuses one with none and names `build next <item>` and `build reconcile`. With `guards.enforce` off the seat registers and the refusal is logged. A new build past CAP waits: `build next` says so instead of recording it. Every passing check records the HEAD it passed on; a gate reads only that head. When the worktree has moved past it, `dispatch next` puts the build back to `build check`, and a gate brief or launch at another head is refused.
 
 `build analysis` exits 2 and writes nothing for an unknown item, no worktree, no or two spec directories, no `spec.md`, a symlink or an empty report. A governed item's report also needs the `## Governing` table. `build classes` prints `Depth: light; no class sweep` at light depth and exits 2 when the diff cannot be read.
 
@@ -183,7 +186,7 @@ After the morning gate, `bin/wuwei worktree add <item>` creates `worktrees/<item
 
 `worktree add <item> --branch <name>` checks an existing branch out instead and records it (`worktree.adopted`). A branch that is only on `brief.remote` is fetched first and the checkout tracks it.
 
-`worktree adopt <path> --item <item>` registers an existing clean worktree. It records the path and HEAD and prints `item`, `path` and `head`. It exits 1 and changes nothing for a path that is not a linked worktree of a configured repository. The same holds for uncommitted or untracked files, an item outside the approved plan, or an item that already has a worktree. `pr claim` runs it for a clean worktree on the PR branch. With none, `pr claim` runs `worktree add <item> --branch <PR branch>`. A PR whose head is on a fork gets no worktree: `pr claim` exits 1 and prints a read-only fetch of it.
+`worktree adopt <path> --item <item>` registers an existing clean worktree; `build reconcile` registers one as it is and brings its build in. It records the path and HEAD and prints `item`, `path` and `head`. It exits 1 and changes nothing for a path that is not a linked worktree of a configured repository. The same holds for uncommitted or untracked files, an item outside the approved plan, or an item that already has a worktree. `pr claim` runs it for a clean worktree on the PR branch. With none, `pr claim` runs `worktree add <item> --branch <PR branch>`. A PR whose head is on a fork gets no worktree: `pr claim` exits 1 and prints a read-only fetch of it.
 
 Without gate approval both subcommands exit 1 and create nothing.
 
@@ -193,9 +196,10 @@ Without gate approval both subcommands exit 1 and create nothing.
 | --- | --- |
 | `state [refs ...]` | Prints fresh state and dispatch data for owned PRs. |
 | `raise REPO --base B --title T --body-file F --item I [--draft]` | Raises a prepared, pushed branch. |
-| `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one. |
+| `claim <ref> [--item I] [--goal G]` | Claims an existing PR. With no item it creates one, `PR-<n>`, or `PR-<owner>_<repo>-<n>` with several repositories, in the PR's repository. |
 | `ping <ref>` | Requests reviewers and posts when the gates clear. |
-| `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --push]` | Executes the next owned PR action. |
+| `act <ref> [--run \| --complete \| --ready \| --reply TEXT \| --fix WHY \| --scope WHY \| --push] [--thread ID]` | Executes the next owned PR action. |
+| `wait [--timeout SECONDS]` | Blocks until a raised or claimed PR changes in a way `next` acts on. |
 | `disposition <ref> parked\|carried --comment TEXT` | Records a verified disposition on the PR. |
 
 ### Raising a PR
@@ -206,7 +210,17 @@ Reviewers are the top committers to the changed source paths, plus `shepherd.lea
 
 `--draft` opens a draft. An `owner_merge` item opens as a draft without the flag. `pr act <ref> --ready` marks a draft ready. On a PR that is not a draft it prints `already ready for review` and exits 0.
 
-On a claimed PR with a worktree, a conflict, red checks or a fix asked in review opens a fix round, and `wuwei next` returns its builder as a launch. For a conflict the builder merges the base; it never rebases the teammate's commits. The round runs the normal gates. Once every gate passes at the worktree head, `pr act <ref> --push` pushes the branch, leased on the PR head, and the item is raised again. Before that, `--push` exits 1. It also pushes nothing when the PR moved past what the worktree holds, so a teammate's newer commit is never overwritten: a fix round merges it and the gates run again. It refuses a head that changed after the gate check. A seat's own `git push` to a claimed PR's branch, or from its worktree, is refused. When the PR moved and no fix round is left, the item parks for the owner. `wuwei next` never merges, posts or marks a claimed PR ready; those stay a `pr act` run. A PR whose head branch is the default branch gets no worktree.
+On a claimed PR with a worktree, a conflict, red checks or a `--fix` the shepherd seat asks opens a fix round, and `wuwei next` returns its builder as a launch. For a conflict the builder merges the base; it never rebases the teammate's commits. The round runs the normal gates.
+
+A raised PR and a claimed PR share what follows. Red checks at the head the item holds open a fix round, whatever phase the item is in, and `wuwei next` returns its builder as a launch; checks red at the base too (`base_red`) leave the item to its gates. A fix round on an item with a PR always ends in arch's delta review (the item's one gate when its set has no arch), even when every gate passed before; a head moved outside a fix round is re-read by every gate. Once every gate passes at the worktree head, `pr act <ref> --push` pushes the branch, leased on the PR head, and the item is raised again; an item with a linked PR is never raised a second time. Before that, `--push` exits 1. It also pushes nothing when the PR moved past what the worktree holds, so a teammate's newer commit is never overwritten: a fix round merges it and the gates run again. It refuses a head that changed after the gate check. A seat's own `git push` to the PR's branch, or from its worktree, is refused. `pr act <ref> --complete` pushes a resolved rebase only while the PR head is still the one `pr act <ref> --run` started from. When the PR moved and no fix round is left, the item parks for the owner. `wuwei next` never merges, posts or marks a claimed PR ready; those stay a `pr act` run. A PR whose head branch is the default branch gets no worktree.
+
+### Review threads
+
+`pr act <ref>` on an owed review reply prints it as `{"action": "reply", "thread": ..., "question": ..., "owed": [...]}` and opens nothing; WUWEI never reads intent from the words. The shepherd seat answers each owed id with `--thread <id>` and one of `--reply TEXT` (posted first, through the outward lint), `--fix WHY` (a fix round with the thread and the reason as feedback) or `--scope WHY` (the Owner step card; Yes opens the fix round, No returns the defer reply). An open P1 bot thread is owed too; answer it with `--fix` (a reply is refused, since only the fix outdates it). A `--thread` that is no longer owed, or an empty reason, exits 2. Without `--thread` the first owed reply is answered. When no shepherd seat is offered or running, `next` lists the `shepherd` duty with `pr act` as its step.
+
+### Waiting on PRs
+
+`pr wait [--timeout SECONDS]` (default 3600) blocks until a raised or claimed PR changes in a way `next` acts on: a review thread or comment, a review, checks, mergeability, a moved head, a merge or a close. It prints one line per new step, `<item> <kind> <pr>: <why>` (for example `B shepherd acme/widget#2: ...`), and exits 1. At the timeout it prints nothing and exits 0; with no raised or claimed PR it exits 0 at once. A tick reads the PR listing only for repositories holding such a PR and only once their listing is `pr.poll_seconds` old: one GraphQL request per repository, whatever the PR count, and none while `next` read it recently. A rate-limit refusal holds the next read until its reset. `next` returns it, in the background, while only PRs wait on people.
 
 ## merge
 
@@ -214,7 +228,7 @@ On a claimed PR with a worktree, a conflict, red checks or a fix asked in review
 
 ## duty
 
-`bin/wuwei duty <item> <duty> --evidence <link>` records an outward duty `next` listed as done. Duties are `ping`, `shepherd`, `tracker` and `summary`. Use `day` as the item for the day's summary. `--skipped <why>` records a duty that cannot be done; the day report lists it. A duty that is not due is refused.
+`bin/wuwei duty <item> <duty> --evidence <link>` records an outward duty `next` listed as done. Duties are `ping`, `shepherd`, `tracker` and `summary`. Use `day` as the item for the day's summary. `--skipped <why>` records a duty that cannot be done; the day report lists it. A duty that is not due is refused. The `shepherd` duty takes no `--evidence`: a PR read (`pr act`, `pr state`, `close`) that finds no reply owed records it.
 
 Outward duties follow the item phase: the ping after a PR is raised, shepherd replies, the tracker or Notion update, and the day-end summary. `close` waits on them.
 

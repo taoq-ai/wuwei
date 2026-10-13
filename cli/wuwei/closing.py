@@ -226,11 +226,11 @@ def scanner_hold(root):
     token = hashlib.sha256('\n'.join(found).encode()).hexdigest()[:12]
     chains = list(dict.fromkeys(' -> '.join(map(str, json.loads(row).get('chain', []))) for row in found))
     shown = '; '.join(chains[:5]) + (f'; and {len(chains) - 5} more' if len(chains) > 5 else '')
-    if reason := sessions.needs_owner(root, 'bin/wuwei close', f'Critical tool sequences ran today: {shown}. '
-                                      'Yes closes the day with them investigated; No keeps the day open.',
-                                      token, 'The day stays open.'):
-        return 1, reason
-    return 0, ''
+    if sessions.owner_answer(root, 'bin/wuwei close', token) == 'Yes':  # #856: a hold check spends nothing
+        return 0, ''
+    return 1, sessions.needs_owner(root, 'bin/wuwei close', f'Critical tool sequences ran today: {shown}. '
+                                   'Yes closes the day with them investigated; No keeps the day open.',
+                                   token, 'The day stays open.')
 
 
 def check(root):

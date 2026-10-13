@@ -787,14 +787,12 @@ GATES = ('arch', 'quality', 'security')
 
 def _recorded_gates(root, sha, records, item, items=None):
     """Check the bounded fix and delta path recorded by the receive producer."""
-    from wuwei import verdict
-    from wuwei.dispatch import base, depth, gate_set
+    from wuwei.dispatch import gate_set
     candidates = [item] if item is not None else sorted({
         key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
     failures = []
     for candidate in candidates:
         roles = gate_set((items or {}).get(candidate, {}))
-        light = depth((items or {}).get(candidate, {}), gate=True) == 'light'  # #567
         initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
         missing = [role for role, row in zip(roles, initial) if row is None]
         if missing:
@@ -816,23 +814,8 @@ def _recorded_gates(root, sha, records, item, items=None):
                 complete = False
                 missing.append(role)
                 continue
-            path = root / row['file']
-            expected = workspace.day_dir(root) / 'decisions'
-            if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
-                raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
-            text = path.read_text(encoding='utf-8')
-            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True, light=light)
-            if code:
-                raise ValueError(f'{role} verdict: {reason}')
-            active = verdict.active_text(text)
-            heads = verdict.rows(active, 'Head')
-            decisions = re.findall(verdict.VERDICT_ROW, active, re.M)
-            if heads != [row['head']] or decisions != [row['verdict']]:
-                raise ValueError(f'{role} recorded verdict differs from file; receive the verdict again with bin/wuwei dispatch receive')
-            actual_blocks = any(re.search(verdict.BLOCKS_YES, block, re.I)
-                                for block in verdict.finding_blocks(active))
-            if row['blocks'] is not actual_blocks:
-                raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
+            # #902, #844 F3: the receipt is the record. receive linted the file when it recorded it;
+            # a file changed afterwards changes nothing, as derive reads it.
             # #844, design 5.3: a PASS counts at HEAD, or at the head a recorded fix round made
             # from it; a head moved any other way is stale (#669)
             from wuwei import derive

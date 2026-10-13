@@ -110,6 +110,7 @@ An item needs none to start, build, pass its gates or raise its PR.
 
 An item made from work begun outside WUWEI.
 `pr claim` on an open PR creates it, and `worktree adopt` registers an existing worktree as its checkout.
+`build reconcile` brings a plan item's outside work in: its worktree, its PR and a build that starts at the fast checks.
 
 ## Roles
 
@@ -178,6 +179,8 @@ Every seat prompt ends with the [mandate](#mandate) block. A two-way open questi
 
 A command that needs your answer refuses and prints its Owner step card. The planner asks it in the session with AskUserQuestion. On Yes the same command runs again and passes. The only other card is the morning gate (`wuwei plan gate`).
 
+Your Yes counts for the card's question: the exact command and its token. The option text is there for you to review, so a shortened diff still counts. A Yes counts once; running the command again later asks again. After your Yes the command applies from the session or from your own terminal.
+
 Owner commands include `config set`, `config add-repo`, `config promote`, `plan resume`, a `merge` past the policy, a deploy and `doctor --fix`. No config line and no hook answers a card for you.
 
 ## Duties
@@ -187,7 +190,7 @@ A duty is an outward step the day owes. `wuwei next` lists each due one, the pla
 Each duty is due while its channel is configured; `duties.on` turns one off:
 
 - `ping`: post the review request once the PR is raised (`wuwei pr ping`);
-- `shepherd`: answer new review threads on the PR;
+- `shepherd`: answer new review activity on the PR; `wuwei next` launches the shepherd seat once per activity, and a PR read that finds no reply owed records it;
 - `tracker`: update the ticket or page once merged (`wuwei tracker move <item> done`);
 - `summary`: post the day summary to your DM once the report is written.
 

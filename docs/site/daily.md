@@ -63,13 +63,19 @@ To keep an item's merge for yourself, say so at the gate or later. The planner r
 ## Starting with work in progress
 
 Your open PRs, branches and worktrees stay as they are. The gate card names the open PRs you
-authored, for example `Claims PR-12 (owner/repo#12)`. Approving claims each one as an
-[adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
+authored, for example `Claims PR-12 (owner/repo#12)`, or `PR-owner_repo-12` with several
+repositories. Approving claims each one as an [adopted](concepts.md#adopted) item. A PR opened after the gate is claimed with
 `wuwei pr claim owner/repo#12 --goal G-1`.
 
 The claim gives the item a checkout of the PR branch: a clean worktree you have on it, or
 `worktrees/<item>`, fetched when the branch is only on the remote. A conflict, red checks or
 a fix asked in review then comes back from `wuwei next` as a fix-round builder.
+
+Work on a plan item that was done outside WUWEI, by hand or by a seat that ran unregistered,
+comes back with `wuwei build reconcile <item> --worktree <path>` (or `--repo <name> --branch
+<branch>`, or `--pr owner/repo#12`). It records the worktree as it is, runs the fast checks and
+leaves the gates to `wuwei next`. Uncommitted files go to a builder to commit first. Running it
+again changes nothing. Nothing done outside counts as tested or approved.
 
 ## 4. Through the day
 
@@ -96,8 +102,9 @@ first runs every step of the [spec engine](concepts.md#spec-engine). `done` move
 **Gates.** `wuwei dispatch next <item>` sets the [tier](concepts.md#tier) and names the gate
 roles. The planner writes one brief per role, for example
 `wuwei seat brief quality <item> quality-1 --gate --worktree <path> --file -`, and launches
-them together. After each seat stops, `wuwei dispatch receive <item> <role> <seat>` records
-its verdict at the item's head.
+the ones that fit the free seats together; `next` offers the rest after those verdicts. After
+each seat stops, `wuwei dispatch receive <item> <role> <seat>` records its verdict at the item's
+head.
 
 **Fix and delta.** A FIX opens a fix round: the builder continues as a fresh Agent with the
 verdicts as feedback. Then the gates that asked for the fix review again, the
@@ -112,10 +119,17 @@ code host. Red checks, a conflict or a moved head come back from `wuwei next` as
 act <pr>` or a new gate pass.
 
 **Duties.** With a review channel set, a raised PR brings the `ping` duty: post the review
-request. New review threads bring the `shepherd` duty. With a tracker or an owner page, a merge
-brings the `tracker` duty. The
-planner writes each one and records it with `wuwei duty <item> <duty> --evidence <link>`.
-See [duties](concepts.md#duties).
+request. With a tracker or an owner page, a merge brings the `tracker` duty. The planner writes
+each one and records it with `wuwei duty <item> <duty> --evidence <link>`. New review activity
+brings the `shepherd` duty, which `wuwei next` returns as a seat launch, once per activity. The
+seat answers each owed thread with `wuwei pr act <pr> --thread <id>` and `--reply`, `--fix` or
+`--scope` (your card). A PR read that finds no reply owed records it. See
+[duties](concepts.md#duties).
+
+**PR loop.** While only PRs wait on people, `wuwei next` returns `wuwei pr wait`, which the planner
+runs in the background. It exits on the first change `wuwei next` acts on (a review thread, red
+checks, a conflict, a moved head, a merge) with one line naming the item, and the planner runs
+`wuwei next`. You do not have to ask for it.
 
 **Merge.** When the checks are green, `wuwei next` offers `wuwei merge <pr>`. It applies the
 merge policy: gates at head, required checks, approvals, threads, the soak and the merge

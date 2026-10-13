@@ -20,9 +20,9 @@ Every other row stays printed with the command that fixes it. See [doctor](refer
 
 ### config.toml does not load
 
-Every tool call is refused with the parse error. A `Read`, `Grep` or `Glob` of the config or charters still passes, and so does `config set` with its card. Run `bin/wuwei config check`; it names the key, the line and the fix.
+Every tool call is refused with the parse error. A `Read`, `Grep` or `Glob` of the config or charters still passes, and so do `bin/wuwei config check`, and `config set` and `doctor --fix` with their cards. Run `bin/wuwei config check`; it names the key, the line and the fix.
 
-A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei init --upgrade` removes the line, and `doctor --fix` offers it.
+A `repos = []` line next to `[[repos]]` tables is the usual cause. `bin/wuwei doctor --fix` offers `init-upgrade`, which removes the line, on its Owner step card.
 
 ### A stuck seat
 
@@ -55,6 +55,8 @@ Review the files the integrity row names first. The command prints the installat
 `wuwei next` returns each ready launch with its prompt. Builder and gate launches come from `bin/wuwei build next` and `bin/wuwei dispatch next`. Pass the prompt to Agent unchanged, with `wuwei:<role>` as `subagent_type`, from the workspace root.
 
 The prompt carries the line `WUWEI brief: <path>`, relative to the workspace root, such as `.wuwei/days/<date>/briefs/builder-1.md`. A note you add before or after it stays on the seat. The launch guard still needs the logged, unchanged brief, the matching role and free capacity.
+
+A builder launch needs its build record: the guard refuses one with none and names `bin/wuwei build next <item>`, whose launch then registers. Work already done outside the record comes back with `bin/wuwei build reconcile <item> --worktree <path>`.
 
 To brief a seat by hand, write and log the brief with `bin/wuwei seat brief <role> <item> <name> --body TEXT`, or `--file PATH` (`-` reads stdin).
 

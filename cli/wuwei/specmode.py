@@ -284,9 +284,13 @@ def record(root, config, item, row, tree):
 
 def named(root, config, item, row, tree, text):
     """SubagentStop: (0, '') when the builder's last message names the item's artifacts
-    (the feature directory or change, or the superpowers files), else strict (1, reason)."""
+    (the feature directory or change, or the superpowers files) or stops on a Blocked: line,
+    else strict (1, reason)."""
     effective = mode(config)
     if effective == 'off' or _skipped(root, config, item, row, False):
+        return 0, ''
+    from wuwei.verdict import retro_fields  # #902: a Blocked: stop is the owner question (_common.md)
+    if retro_fields(text)[0].get('Blocked', 'none').casefold() != 'none':
         return 0, ''
     engine = config['spec']['engine']
     location, _ = _location(tree, engine, item)

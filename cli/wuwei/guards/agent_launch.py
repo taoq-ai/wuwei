@@ -72,6 +72,11 @@ def _fix(role, item):
             f'bin/wuwei build next {item} or bin/wuwei dispatch next {item} returns')
 
 
+UNRECORDED = ('no build record for {item}: a builder launches only from the action bin/wuwei build next '
+              '{item} returns; run it and launch with its prompt. Work already done outside the record comes '
+              'back with bin/wuwei build reconcile {item} --worktree {worktree}')
+
+
 def _named_item(data, inputs):
     """#660: the one plan item named as a whole word in the Agent name, description or prompt."""
     import re
@@ -221,9 +226,16 @@ def _check(payload):
     if available < floor:
         raise brief.Refused(f'free memory {available} bytes below floor {floor}; wait for a seat to finish, or ask the owner to lower host.free_memory_mb')
     event = {'name': logged['name'], 'item': logged['item']}
+    unrecorded = UNRECORDED.format(item=logged['item'], worktree=logged.get('worktree') or '<path>')
     def reserve(data):
         existing = brief.seats(data).get(logged['name'])
         build = data.get('builds', {}).get(logged['item'])
+        # #901 (owner decision): a builder runs on its build record; with guards.enforce off the
+        # seat registers as before and the hook logs the refusal (#892 continues it)
+        if role == 'builder' and build is None:
+            if config['guards']['enforce']:
+                raise brief.Refused(unrecorded)
+            event['unrecorded'] = True
         resume = inputs.get('resume')
         stopped = bool(existing) and existing['status'] == 'stopped'
         # #614: Claude Code's Agent has no resume, so a fresh launch without one binds the
@@ -261,7 +273,7 @@ def _check(payload):
                 raise brief.Refused('worktree HEAD changed since brief was written; write the brief again with bin/wuwei seat brief, then launch with the name and role it returns')
         if logged['gate'] or logged['role'].startswith('sentinel-'):
             try:
-                brief.gate_ready(data, logged['item'])
+                brief.gate_ready(data, logged['item'], head)
             except brief.Refused as exc:
                 raise brief.Refused(str(exc) + stale_note) from exc
             tree = logged.get('worktree')
@@ -277,12 +289,14 @@ def _check(payload):
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         event.update(free_mib=available // 2**20, running=len(running))
         live = brief.live(data)  # #898: adhoc and handed-back seats hold no slot
-        builders = sum(seat['role'] == 'builder' for seat in live)
         from wuwei.dispatch import host  # lazy: hook path (#346); #528: derived at launch
+        from wuwei.commands.next import building, slot  # #910: the launch set's build slot count
         limits = host(root, config, running=len(live), free=available // 2**20,
                                 policy=data['seat_policy'])
-        if role == 'builder' and builders >= limits['cap']:
-            raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
+        if role == 'builder' and not slot(data, logged['item'], cap := limits['cap']):
+            holders = building(data)
+            raise brief.Refused(f'build slots {len(holders)} at CAP {cap}: held by {", ".join(holders[:cap])}; '
+                                'wait for a build to hand off, then retry' + stale_note)
         if len(live) >= limits['seats']:
             raise brief.Refused(f'running seats {len(live)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
         data['seats'][logged['name']] = {
@@ -296,6 +310,9 @@ def _check(payload):
         if role == 'builder':
             build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
     state._write_state(reserve, root, kind='seat launched', payload=event)
+    if event.get('unrecorded'):
+        return 1, (f'{unrecorded}. Seat {logged["name"]} is registered (guards.enforce is off), so bin/wuwei '
+                   f'build next {logged["item"]} continues it once it stops')
     return 0, ''
 
 

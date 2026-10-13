@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 
-from wuwei.registry import Result
+from wuwei.registry import CHECKED, Result
 
 
 LEVELS = ('critical', 'high', 'medium', 'low')
@@ -118,12 +118,15 @@ def _execute(argv):
 
 
 def _version():
+    if 'ziran' in CHECKED:  # P8: once per process while it succeeds; a failure is retried
+        return
     process = subprocess.run(['ziran', '--version'], timeout=60, capture_output=True, text=True)
     match = re.fullmatch(r'(?:ziran,? (?:version )?)([0-9]+)\.([0-9]+)\.([0-9]+)\s*',
                          process.stdout, re.I)
     if (process.returncode != 0 or not match
             or tuple(map(int, match.groups())) < (0, 39, 0)):
         raise ValueError('ZIRAN >= 0.39.0 required; version unavailable or unsupported')
+    CHECKED.add('ziran')
 
 
 def audit(path, *, root=None):

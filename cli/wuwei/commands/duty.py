@@ -24,6 +24,11 @@ def run(args):
             print(f'wuwei duty: {args.item} {args.duty} is not a due duty; run wuwei next for the '
                   'duties it lists', file=sys.stderr)
             return FINDINGS
+        if args.duty == 'shepherd' and args.skipped is None:  # #906: the obligation ledger records it
+            pr = state.read_state(root)['items'][args.item]['pr']
+            print(f'wuwei duty: the shepherd duty is recorded when no reply is owed on {pr}: run bin/wuwei pr '
+                  f'act {pr}, or --skipped with why it cannot be done', file=sys.stderr)
+            return FINDINGS
         text = (args.evidence if args.skipped is None else args.skipped).strip()
         if not text:
             print('wuwei duty: pass --evidence with the link that shows it was done, or --skipped with why '

@@ -1,6 +1,7 @@
 """The owner's answers to cards asked in the session, recorded for the commands that read them."""
 
 from pathlib import Path
+import re
 
 from wuwei import workspace
 from wuwei.guards import Guard
@@ -30,21 +31,21 @@ def record_gate(payload):
             return 0, ''
         root, _ = context
         from wuwei import state
-        from wuwei.sessions import OWNER_STEP, owner_topic
+        from wuwei.sessions import OWNER_STEP, owner_topic, step
         session = payload.get('session_id')
         questions = payload['tool_input']['questions']
         # #831: the owner's reply to an Owner step card, from any main session, before state:
-        # the asked topic and the answer bound to the options as asked.
+        # the asked topic, the answer bound to the question (#856), and the command part and the
+        # token it carries, which only name a card that did not match.
         owner = [question for question in questions if question.get('header') == OWNER_STEP
                  and required_text(question, 'question').startswith(f'{OWNER_STEP}: ')]
         found = set()
         for question in owner:
             if reply := _answer(payload, question['question']):
-                found.add(owner_topic(question['question'], (), ''))
-                try:
-                    found.add(owner_topic(question['question'], question['options'], reply))
-                except (KeyError, TypeError):
-                    pass  # options not as printed: only the asked topic, which counts as no
+                found.update((owner_topic(question['question']), owner_topic(question['question'], reply),
+                              owner_topic(step(question['question']))))
+                if token := re.search(r'\([0-9a-f]{12}\)$', question['question'].strip()):
+                    found.add(owner_topic(token[0]))
         if found:
             state.append_event('gate.asked', {'session_id': session, 'topics': sorted(found)}, root)
         return 0, ''

@@ -353,8 +353,8 @@ def _git_edge(args, cwd, root, config, env=None):
     verb, rest = _git(args)
     if verb != 'push':
         return 0, ''
-    if claimed := _claimed(args[:len(args) - len(rest) - 1], rest, env or {}, cwd, root):
-        return claimed
+    if owned := _owned(args[:len(args) - len(rest) - 1], rest, env or {}, cwd, root):
+        return owned
     if _forced(rest):
         return 1, ('force-push is refused; commit the change on top and run '
                    f'git push origin HEAD:refs/heads/{_branch(cwd, root)[1]}')
@@ -365,9 +365,10 @@ def _git_edge(args, cwd, root, config, env=None):
     return _default(name, cwd, root) if name else (0, '')
 
 
-def _claimed(options, rest, env, cwd, root):
-    """#879: a push to a claimed PR's branch, or from its worktree (-C, --git-dir, --work-tree,
-    GIT_DIR, GIT_WORK_TREE included): only bin/wuwei pr act --push puts a gated head on it."""
+def _owned(options, rest, env, cwd, root):
+    """#879, #903: a push to a raised or claimed PR's branch (recorded on a claim), or from its
+    worktree (-C, --git-dir, --work-tree, GIT_DIR, GIT_WORK_TREE included): only bin/wuwei pr act
+    --push puts a gated head on it."""
     from wuwei import state
     base = Path(cwd)
     places = [base / env[key] for key in ('GIT_DIR', 'GIT_WORK_TREE') if env.get(key)]
@@ -383,11 +384,11 @@ def _claimed(options, rest, env, cwd, root):
     every = bool({'--all', '--branches'} & set(rest)) or any('*' in target for target in targets)
     for name, row in data['items'].items():
         tree = row.get('worktree')
-        if row.get('pr') in data.get('claimed_prs', ()) and (
+        if row.get('pr') and (
                 (row.get('branch') and (every or row['branch'] in targets)) or (
                 isinstance(tree, str) and tree
                 and any(place.is_relative_to((root / tree).resolve()) for place in places))):
-            return 1, (f'{name} is claimed PR {row["pr"]}: its branch takes only the gated push; run '
+            return 1, (f'{name} owns PR {row["pr"]}: its branch takes only the gated push; run '
                        f'bin/wuwei pr act {row["pr"]} --push once every gate passed')
     return None
 

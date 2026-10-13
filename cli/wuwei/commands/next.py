@@ -15,10 +15,10 @@ ENFORCE = {
             'let the call through. Records (state, events, config, verdicts, decisions) still refuse; '
             'deploys, releases and approve-tier messages ask on a card; merges and approvals stay '
             "owner-only. The day report's ## Shadow section lists the would-be refusals."),
-    True: ('Guards enforce: records, publishing, plugin integrity and seat launches without a '
-           'matching brief block; deploys, releases and approve-tier messages ask on a card; merges '
-           'and approvals stay owner-only; outward text, scratch paths and seat capacity '
-           'are logged. A refusal names its reason and the accepted form: '
+    True: ('Guards enforce: records, publishing and seat launches without a matching brief '
+           'block; plugin integrity only warns; deploys, releases and approve-tier messages ask on '
+           'a card; merges and approvals stay owner-only; outward text, scratch paths and seat '
+           'capacity are logged. A refusal names its reason and the accepted form: '
            'use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
@@ -51,6 +51,9 @@ THEN = {
     'wait': ('End the turn with the output of wuwei status --line; run wuwei next when a '
              'completion notification arrives.'),
     'done': 'The day is closed; tomorrow starts with wuwei next.',
+    # #887: the PR loop between owner messages
+    'pr-wait': ('Run the command through Bash in the background (or Monitor: one line per PR change); '
+                'run wuwei next when it exits. Then end the turn with the output of wuwei status --line.'),
     # Planner-facing lines of single rows; step formats {days} and {dm}.
     'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
@@ -106,6 +109,20 @@ def approved(data):
     """Approved items in queue order, less those plan carry or park disposed of."""
     return [name for name in data['approved_items'] if name in data['items']
             and (data['items'][name].get('disposition') or {}).get('kind') not in ('carried', 'parked')]
+
+
+def building(data):
+    """#910: the one build slot count for derive, the launch set, build next, next and the launch
+    guard: approved items in a build phase, not held (#648), in plan order. Running and reserved
+    builds alike: a stopped builder awaiting its checks keeps its slot until its handoff."""
+    return [name for name in approved(data) if data['items'][name]['phase'] in state.BUILD_PHASES
+            and not state.held(data, name)]
+
+
+def slot(data, item, cap):
+    """#910: item's builder may launch: it is among the first CAP holders, or a slot is free."""
+    holders = building(data)
+    return item in holders[:cap] or len(holders) < cap
 
 
 def _seen(directory):
@@ -204,13 +221,17 @@ def step(root, ran=()):
     from wuwei import derive
     launches = [{'kind': 'stop', 'item': seats[name]['item'], 'why': f'Seat {name} ended with no recorded result.',
                  'command': brief.recovery(name, seats[name])} for name in brief.stuck(data)]
-    launches += [{'kind': 'finding', 'item': ident, 'command': f'wuwei plan add {ident} --from-finding',
+    launches += [{'kind': 'finding', 'item': ident, 'command': _finding_command(ident, finding, data, config),
                   'why': f"A seat found a small fix: {finding['scope']}. Add it as a small item."}
                  for ident, finding in data.get('seat_findings', {}).items()  # #646: proposed once
                  if ident not in data['items'] and ('finding', ident) not in returned]
     found = derive.offers(data, root, config, merges)
     launches += found['launches']
-    due = derive.duties(root, config, directory, data)
+    # #906: the shepherd duty is a launch; it stays a due row (pr act its step) only where a seat
+    # could have launched and did not: a raised item with no launch offered and nothing in flight
+    busy = {launch['item'] for launch in found['launches']} | {item for _, _, item in state.in_flight(data)}
+    due = [duty for duty in derive.duties(root, config, directory, data) if duty['duty'] != 'shepherd'
+           or (data['items'].get(duty['item']) or {}).get('phase') == 'raised' and duty['item'] not in busy]
     decision = found['decision']
     if decision:
         pr = decision['command'].split()[-1]
@@ -227,7 +248,7 @@ def step(root, ran=()):
     rows = state.in_flight(data)
     items = data['items']
     names = approved(data)
-    building = sum(items[name]['phase'] in state.BUILD_PHASES and not state.held(data, name) for name in names)
+    count = len(building(data))
     waiting = next((name for name in names if items[name]['phase'] == 'planned'), None)
     held = next(((name, fix) for name in names if items[name]['phase'] in state.BUILD_PHASES
                  and (fix := state.held(data, name))), None)
@@ -243,7 +264,7 @@ def step(root, ran=()):
                       if seat['status'] == 'running' and seat['role'] == 'builder')
     text = state.in_flight_text(rows)
     if waiting and builders:
-        return _row('wait', f'{waiting} waits: {building} of CAP {data["cap"]} building; '
+        return _row('wait', f'{waiting} waits: {count} of CAP {data["cap"]} building; '
                     f'{builders[0][1]} started first ({builders[0][0] or "start unrecorded"}) and '
                     f'is expected to free first; SubagentStop records each result. Running: {text}',
                     'wuwei status --line', 'wait')
@@ -253,11 +274,11 @@ def step(root, ran=()):
     if held:
         return _row('wait', f'{held[0]} waits on fix item {held[1]}: main is broken; it rebases and '
                     f'reruns its checks once {held[1]} merges.', 'wuwei status --line', 'wait')
-    if prs:  # #666: a PR waiting on people is a wait, never a row to run
+    if prs:  # #666: a PR waiting on people is a wait, never a row to run; #887: pr wait wakes it
         waits = ', '.join(row['item'] for row in prs if row['state'] == 'pr')
-        why = [f'{waits}: the PR waits on people; the listing shows when it changes.'] if waits else []
+        why = [f'{waits}: the PR waits on people; wuwei pr wait exits when it changes.'] if waits else []
         why += [row['why'] + '.' for row in prs if row['state'] == 'unmeasured']  # #900
-        return _row('wait', ' '.join(why), 'wuwei status --line', 'wait', rows=found['rows'])
+        return _row('wait', ' '.join(why), 'wuwei pr wait', 'background', THEN['pr-wait'], rows=found['rows'])
     if not data.get('close_requested'):
         return _row('close', 'Every approved item is merged, parked, carried or escalated; close '
                     'the day.', 'wuwei close', then=THEN['close'])
@@ -336,7 +357,17 @@ def resolve(row, root):
             reasons = '; '.join(dict.fromkeys(launch['reason'] for launch in launches))
             return _row('wait', f'{reasons}; running seats finish. wuwei next offers them again after the reset.',
                         f'sleep {seconds}', 'background', until=until)
-        return {**row, 'launches': launches, **({'capacity': value['capacity']} if value.get('capacity') else {})}
+        decision = row['decision']
+        asked = next((launch for launch in launches if launch['action'] == 'escalate'), None)
+        # #902: a launch that resolved to a park, a finished build or an owner step is no launch;
+        # the first owner step is the set's decision, the rest come back on the next derivation
+        launches = [launch for launch in launches if launch['action'] not in ('escalate', 'parked', 'done')]
+        if decision is None and asked:
+            decision = {'item': asked['item'], 'why': f"{asked['item']}: {asked['reason']}",
+                        'command': asked['command'], **({'card': asked['card']} if asked.get('card') else {}),
+                        'then': THEN['decide'] if asked.get('card') else THEN['owner-step']}
+        return {**row, 'launches': launches, 'decision': decision,
+                **({'capacity': value['capacity']} if value.get('capacity') else {})}
     name = row['state']
     keep = {'state': name, **({'item': row['item']} if row.get('item') else {})}
     if row['action'] == 'launch':
@@ -400,6 +431,13 @@ def _ran(root):
         except ValueError:
             continue  # an unparsed command names nothing
     return []
+
+
+def _finding_command(ident, finding, data, config):
+    """#908: a finding's plan add, with the goal and repository selections it cannot infer."""
+    choices = (('goal', data.get('goals', [])), ('repo', [repo['name'] for repo in config['repos']]))
+    return ' '.join([f'wuwei plan add {ident} --from-finding', *(
+        f'--{key} <one of {", ".join(values)}>' for key, values in choices if not finding.get(key) and len(values) > 1)])
 
 
 def orientation(row, enforce, spec=None, session=None):

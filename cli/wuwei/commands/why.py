@@ -47,7 +47,7 @@ EVENT_PRODUCERS = {
     'seat adhoc': 'wuwei seat start', 'subagent.untraced': 'wuwei hook SubagentStop',
     'fast_checks.record': 'wuwei build check', 'reply: acknowledged': 'wuwei pr act',
     'reply: thread_posted': 'wuwei pr act', 'pr.disposition': 'wuwei pr disposition',
-    'scanner.finding': 'wuwei dispatch receive',
+    'scanner.finding': 'the trace sweep (wuwei dispatch receive or wuwei close) or a honeytoken read',
     'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',
     'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
     'pr.claimed': 'wuwei pr claim',

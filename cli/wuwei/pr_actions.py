@@ -2,7 +2,6 @@
 
 from datetime import timedelta
 import json
-from pathlib import Path
 import re
 import shlex
 import sys
@@ -135,11 +134,18 @@ def _base_red(host, ref, measured, root):
     return None
 
 
-def observe(root, host, ref, config, measured):
-    """Produce an episode under the shared writer lock from a fresh port read."""
+def observe(root, host, ref, config, measured, as_of=None):
+    """Produce an episode under the shared writer lock from a fresh port read; as_of, the time the
+    read started, records a due shepherd duty done when no reply is owed (#906)."""
     data = state.read_state(root)
     me, acks = obligations._owner_login(config), obligations._ledger(data).get(ref, {})
     current = classify(measured, me, acks)
+    if as_of and not obligations._replies(measured['reviews'], measured['threads'], me, acks):
+        from wuwei import derive
+        for duty in derive.duties(root, config, data=data):
+            if duty['duty'] == 'shepherd' and (data['items'].get(duty['item']) or {}).get('pr') == ref:
+                state.append_event('duty.done', {'item': duty['item'], 'duty': 'shepherd', 'as_of': as_of,
+                                                 'evidence': f'no reply owed on {ref}'}, root)
     reason = _base_red(host, ref, measured, root) if current == 'ci_red' else None
     current = 'base_red' if reason else current
     dispositions = data.get('pr_dispositions', {})
@@ -160,6 +166,10 @@ def observe(root, host, ref, config, measured):
     def update(data):
         value = data.setdefault('watch', {})
         actions, reviews = value.setdefault('actions', {}), value.setdefault('reviews', {})
+        if reason:  # #903 review F1: next leaves a head red at its base too to the gates
+            value.setdefault('base_red', {})[ref] = measured['pr']['head']
+        else:
+            value.get('base_red', {}).pop(ref, None)
         if not isinstance(actions, dict) or not isinstance(reviews, dict):
             raise ValueError(f'invalid PR action or review ledger; {DAMAGED}')
         episode = actions.get(ref)
@@ -249,10 +259,11 @@ def evaluate(root, refs=None, read=None):
             try:
                 if ref not in owned:
                     raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
+                as_of = workspace.now().isoformat()
                 measured = watch.evidence(host, ref, root)
                 if read is not None:
                     read[ref] = measured
-                rows.append(observe(root, host, ref, config, measured))
+                rows.append(observe(root, host, ref, config, measured, as_of))
             except watch.ERRORS as exc:
                 rows.append({'pr': ref, 'exit': 2, 'reason': f'PR state unmeasured: {exc}'})
     except watch.ERRORS as exc:
@@ -291,6 +302,14 @@ def _rebase(root, ref, item, tree, measured, *, resume=False):
     repo, actual, _ = commit_push.context(tree, {}, {}, root)
     if repo['name'] != pr['repo']:
         raise ValueError('item worktree belongs to another PR repository; use the worktree made for this PR item (bin/wuwei worktree add <item>), then retry')
+    started = ((state.read_state(root).get('watch') or {}).get('actions', {}).get(ref) or {}).get('run_head')
+    if resume and started != pr['head']:  # #903: the lease is the head --run started from
+        raise ValueError(f'PR head moved to {pr["head"][:12]} since --run started from {str(started)[:12]}; '
+                         'nothing is pushed, so a teammate commit is not overwritten. Bring the worktree to the '
+                         'PR head, then rerun bin/wuwei pr act --run' if started else
+                         'no --run started this conflict resolution, so its start head is unknown; reset the '
+                         f'worktree to the PR head (git rebase --abort, or git reset --keep {pr["head"]}), '
+                         'then run bin/wuwei pr act --run')
     local = commit_push.data(vcs.head(str(tree), root=root))['sha']
     if not resume and local != pr['head']:
         raise ValueError('item worktree HEAD differs from PR head; bring the worktree to the PR head first, then rerun bin/wuwei pr act --run')
@@ -303,6 +322,12 @@ def _rebase(root, ref, item, tree, measured, *, resume=False):
     if not isinstance(base_sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base_sha):
         raise ValueError(f'invalid PR base SHA; {DAMAGED}')
     if not resume:
+        def lease(data):
+            episode = data.get('watch', {}).get('actions', {}).get(ref)
+            if not isinstance(episode, dict) or episode.get('state') != 'conflicted':
+                raise ValueError(f'conflict action changed before the rebase; {RACE}')
+            episode['run_head'] = pr['head']
+        state._write_state(lease, root, payload={'pr': ref, 'run_head': pr['head']})
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
@@ -355,15 +380,16 @@ def _push(root, tree, pr, repo, actual, vcs, config, head=None):
 
 
 def _gated_push(root, ref, item, tree):
-    """#879: a claimed PR's fix reaches its branch only after every gate passed at the worktree
-    head (the owner's gates hold on a taken-over PR too); the item is raised again."""
-    from wuwei import commit_push, derive, merge
+    """#879, #903: a raised or claimed PR's fix reaches its branch only after every gate passed at
+    the worktree head (the owner's gates hold on a taken-over PR too); the item is raised again."""
+    from wuwei import commit_push, derive, dispatch, merge
     config, data = workspace.load_config(root), state.read_state(root)
-    if ref not in data['claimed_prs'] or tree is None:
-        raise ValueError(f'--push applies to a claimed PR with a worktree; run bin/wuwei pr act {ref}')
+    if tree is None:
+        raise ValueError(f'--push applies to a PR item with a worktree; run bin/wuwei pr act {ref}')
     phase, gated = data['items'][item]['phase'], derive.head(tree)  # H3: the head the gates read
-    kind, why = (derive._gate(root, data, config, item) if phase in ('gate', 'delta')
-                 else (phase, f'{item} is in {phase}'))
+    found = (dispatch.decide(root, data, config, item) if phase in ('gate', 'delta')
+             else {'step': phase, 'why': f'{item} is in {phase}'})
+    kind, why = found['step'], found['why']
     if kind != 'raise':
         print(f'{ref}: no push before every gate passes ({why}); run bin/wuwei dispatch next {item}')
         return 1
@@ -376,7 +402,6 @@ def _gated_push(root, ref, item, tree):
     commit_push.data(vcs.fetch(str(tree), remote, pr['branch'], pr['head'], root=root))
     if commit_push.data(vcs.merge_base(str(tree), pr['head'], root=root))['sha'] != pr['head']:
         # H1: a teammate pushed after the round started; the lease would overwrite it. Merge it first.
-        from wuwei import dispatch
         from wuwei.commands import build
         if cap := dispatch.capped(root, config, data, item):  # J1, K1: the owner's resume grants one
             reason = f'round cap {cap} reached: PR {ref} moved to {pr["head"][:12]} again'
@@ -408,20 +433,11 @@ def _adopt(root, ref, item, pr, why):
 
 def _adoption(root, ref, item, pr, why):
     from wuwei.shepherd import _settings
-    config = workspace.load_config(root)
-    repo = _settings(config, ref)
-    path = workspace.branch_worktree(registry.load('vcs', config),
-                                     (root / Path(repo['path']).expanduser()).resolve(), pr['branch'], root)
-    command = (['bin/wuwei', 'worktree', 'adopt', path, '--item', item] if path else
-               ['bin/wuwei', 'worktree', 'add', item, '--branch', pr['branch'], '--repo', repo['name']])
+    repo = _settings(workspace.load_config(root), ref)  # #901: the one re-entry command
+    command = ['bin/wuwei', 'build', 'reconcile', item, '--repo', repo['name'], '--branch', pr['branch']]
     return {'action': 'adopt', 'pr': ref, 'item': item, 'command': shlex.join(command),
             'why': f'{why} needs a checkout of {pr["branch"]}; the item has no worktree',
             'then': f'bin/wuwei pr act {ref}'}
-
-
-SCOPE = re.compile(r'\b(scope|out of scope|disagree|instead)\b', re.I)
-FIXES = re.compile(r'\b(fix|change|update|correct)\b', re.I)
-FIX_STATES = ('conflicted', 'ci_red', 'changes_requested', 'threads_unanswered')
 
 
 def _merge_feedback(root, ref, why, branch):
@@ -439,28 +455,23 @@ def _conflict(root, ref, measured):
 
 
 def launch(root, ref):
-    """#879: next's fix step for a claimed PR: the builder launch of its fix round, opened only
-    for a conflict, red checks or a fix asked in review, else the pr act run the planner does.
-    It never merges, posts, replies or marks a PR ready (review F1)."""
+    """#879, #903: next's fix step for a raised or claimed PR: the builder launch of its fix round,
+    opened only for red checks or a claimed PR's conflict, else the pr act run the planner does
+    (#906: a review thread is the shepherd seat's to classify, never a keyword's). It never
+    merges, posts, replies or marks a PR ready (review F1)."""
     run = {'action': 'run', 'command': f'wuwei pr act {ref}'}
     read = {}
     _, rows = evaluate(root, [ref], read)
     row, = rows
-    if row['exit'] != 1 or row['parked'] or row['state'] not in FIX_STATES:
-        return run
+    if row['exit'] != 1 or row['parked'] or row['state'] not in ('conflicted', 'ci_red') or (
+            row['state'] == 'conflicted' and ref not in state.read_state(root)['claimed_prs']):
+        return run  # #903: a raised PR's conflict is its rebase run
     try:
         item, tree = _item(root, ref)
         if tree is None:
             return run
         measured = read[ref]
-        feedback = None
-        if row['state'] == 'conflicted':
-            feedback = _conflict(root, ref, measured)
-        elif row['state'] != 'ci_red':
-            owed = _owed(root, ref, measured)
-            feedback = owed[3]['body'] if owed else ''
-            if SCOPE.search(feedback) or not FIXES.search(feedback):
-                return run  # a scope card, a question or a reply: pr act shows it
+        feedback = _conflict(root, ref, measured) if row['state'] == 'conflicted' else None
         _, action = _fix_round(root, ref, item, tree, measured, feedback)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return run
@@ -478,12 +489,12 @@ def _fix(root, ref, item, tree, measured, feedback=None):
 def _fix_round(root, ref, item, tree, measured, feedback=None):
     """(exit, output) of a fix round: its builder action (a dict) or what stops it. The caller
     prints it; next's launch set returns the action (#879)."""
-    from wuwei import dispatch
+    from wuwei import derive, dispatch
     from wuwei.commands import build
     data = state.read_state(root)
     row = data['items'][item]
-    if row['phase'] == 'delta':
-        return 1, {'action': 'gate', 'item': item, 'gate': 'arch_delta'}
+    if row['phase'] == 'delta' and (tree is None or derive.head(tree) != measured['pr']['head']):
+        return 1, {'action': 'gate', 'item': item, 'gate': 'arch_delta'}  # #903: the fix on top is in review
     red = [check for check in measured['checks'] if check['state'] == 'completed'
            and check['conclusion'] not in ('success', 'neutral', 'skipped')]
     if feedback is None and red:
@@ -521,15 +532,13 @@ def _fix_round(root, ref, item, tree, measured, feedback=None):
 
 
 def _owed(root, ref, measured):
-    """(surface, target, thread or None, the comment answered) of the first owed reply, or None."""
+    """[(surface, target, thread or None, the comment answered)] of every owed reply, in order."""
     me = obligations._owner_login(workspace.load_config(root))
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
                                 obligations._ledger(state.read_state(root)).get(ref, {}))
-    for key in owed:
-        surface, target = key.split(':', 1)
-        if surface in ('thread', 'review', 'comment'):
-            return (surface, target, *_latest(measured, surface, target))
-    return None
+    return [(surface, target, *_latest(measured, surface, target))
+            for surface, target in (key.split(':', 1) for key in owed)
+            if surface in ('thread', 'review', 'comment', 'bot-p1')]  # F4: a P1 bot thread is answered too
 
 
 def _latest(measured, surface, target):
@@ -542,34 +551,50 @@ def _latest(measured, surface, target):
     return thread, latest
 
 
-def _thread(root, ref, item, tree, measured, reply=None):
-    for surface, target, thread, latest in filter(None, [_owed(root, ref, measured)]):
-        text, answer = latest['body'], {}
-        if SCOPE.search(text):
-            from wuwei import sessions  # the owner decides a scope change on the card of pr act
-            command = f'bin/wuwei pr act {ref}'
-            detail = (f'Reviewer asks a scope change on {ref} ({target}): {json.dumps(text[:200])}. '
-                      'Yes makes it in a fix round; No leaves the thread for you.')
-            token, no = obligations._fingerprint(latest)[:12], 'The planner replies that the thread is deferred to you.'
-            owner = sessions.owner_answer(root, command, detail, token, no)
-            if owner == 'Yes':
-                return _fix(root, ref, item, tree, measured, feedback=text)
-            if owner != 'No':
-                print(sessions.needs_owner(root, command, detail, token, no), file=sys.stderr)
-                return 1
-            answer = {'option': 'defer'}
-        elif FIXES.search(text):
-            return _fix(root, ref, item, tree, measured, feedback=text)
-        if reply is None:
-            print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface,
-                              'thread': target, 'question': text, **answer}))
-            return 1
+def _thread(root, ref, item, tree, measured, reply=None, target=None, fix=None, scope=None):
+    """#906: the owed reply named by target (else the first) and the shepherd seat's answer to it:
+    a reply posts first; a fix opens a round; a scope decision asks the owner's card. With none of
+    them it prints the reply action; it never reads intent from the words."""
+    owed = _owed(root, ref, measured)
+    if not owed:
+        raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
+    chosen = next((row for row in owed if target in (None, row[1])), None)
+    if chosen is None:
+        raise ValueError(f'{target} is not owed a reply; run bin/wuwei pr act {ref} for the owed ones')
+    surface, target, thread, latest = chosen
+    text = latest['body']
+    if not (fix if fix is not None else scope or 'reason').strip():
+        raise ValueError('--fix and --scope need the reason against the item promise; pass it, for example '
+                         f'bin/wuwei pr act {ref} --thread {target} --fix "<what the item promised and what is wrong>"')
+    if reply is not None and surface == 'bot-p1':  # D3: no reply clears it; the fix outdates it
+        raise ValueError(f'{target} is a P1 bot thread: use --fix; a P1 bot thread clears when the fix makes it outdated')
+    if reply is not None:
         if not reply.strip():
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
         # #838: posted through the code-host port, which runs the canary check and the lint.
-        return obligations.reply(ref, surface,
-                                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)
-    raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
+        return obligations.reply(ref, surface, thread['comments'][0]['id'] if thread else latest['id'], reply, root)
+    feedback = lambda why: f'Review {surface} {target} on {ref}: {text}\nShepherd: {why}'
+    if fix is not None:
+        return _fix(root, ref, item, tree, measured, feedback=feedback(fix))
+    answer = {}
+    if scope is not None:
+        from wuwei import sessions  # the owner decides a scope change on the card of this command
+        command = f'bin/wuwei pr act {ref} --thread {target} --scope {shlex.quote(scope)}'
+        detail = (f'The shepherd asks a scope decision on {ref} ({target}): {json.dumps(text[:200])}; '
+                  f'its reason: {scope[:200]}. Yes makes it in a fix round; No leaves the thread for you.')
+        from wuwei import dispatch  # F6: a Yes opens one round; after it the same command asks again
+        rounds = dispatch.rounds_used(state.read_state(root), item)
+        token = f'{obligations._fingerprint(latest)[:12]}-r{rounds}'
+        no = 'The planner replies that the thread is deferred to you.'
+        if sessions.owner_answer(root, command, token) != 'No':
+            if (refusal := sessions.needs_owner(root, command, detail, token, no)) is None:
+                return _fix(root, ref, item, tree, measured, feedback=feedback(scope))
+            print(refusal, file=sys.stderr)
+            return 1
+        answer = {'option': 'defer'}
+    print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface, 'thread': target, 'question': text,
+                      'owed': [f'{row[0]}:{row[1]}' for row in owed], **answer}))
+    return 1
 
 
 def _ready(root, ref, ready):
@@ -587,7 +612,8 @@ def _ready(root, ref, ready):
     return 0
 
 
-def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=False):
+def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=False, thread=None,
+        fix=None, scope=None):
     """Execute safe PR actions and surface work requiring a builder or owner."""
     ref = pull_request(ref)
     read = {}
@@ -617,8 +643,8 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
     if (run or complete) and row['state'] != 'conflicted':
         print('--run and --complete require a conflicted PR')
         return 2
-    if reply is not None and row['state'] not in ('changes_requested', 'threads_unanswered'):
-        print('--reply requires an unanswered review question')
+    if (reply, thread, fix, scope) != (None,) * 4 and row['state'] not in ('changes_requested', 'threads_unanswered'):
+        print('--reply, --thread, --fix and --scope require an unanswered review question')
         return 2
     if row['parked'] or row['state'] in ('merged', 'waiting'):
         return 0
@@ -651,9 +677,75 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
                 raise ValueError(f'--run and --complete apply only to a conflicted PR; run bin/wuwei pr act {ref} without them')
             if row['state'] == 'ci_red':
                 return _fix(root, ref, item, tree, measured)
-            return _thread(root, ref, item, tree, measured, reply)
+            return _thread(root, ref, item, tree, measured, reply, thread, fix, scope)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             print(f'{ref}: PR action unmeasured: {exc}')
             return 2
     print(f'{ref}: {row["action"]}')
     return 1
+
+
+def _pending(root):
+    """{(item, kind, why): line} of every step wuwei next returns for an item with a PR."""
+    from wuwei import derive
+    from wuwei.commands.next import step
+    data, row = state.read_state(root), step(root)
+    pulls = derive.listing(workspace.day_dir(root))['pulls']
+    prs = {name: item['pr'] for name, item in data['items'].items() if item.get('pr')}
+    # F5: a merge or a close on the host is a step even when it brings no launch or duty
+    ended = {name: 'merged' if data['items'][name]['phase'] == 'merged' else (pulls.get(pr) or {}).get('state')
+             for name, pr in prs.items()}
+    steps = [(name, state_, f'PR {prs[name]} is {state_}') for name, state_ in ended.items()
+             if state_ in ('merged', 'closed')]
+    if row['state'] == 'set':
+        steps += [(launch['item'], launch['kind'], launch['why']) for launch in row['launches']]
+        steps += [(duty['item'], duty['duty'], duty['prompt']) for duty in row['duties']]
+        steps += [(row['decision']['item'], 'owner', row['decision']['why'])] if row['decision'] else []
+    return {(item, kind, why): f'{item} {kind} {prs[item]}: {why}' for item, kind, why in steps if item in prs}
+
+
+def _reset(failed):
+    """Seconds until the reset a #899 rate-limit refusal names (GitHub rate limit until HH:MM:SS UTC),
+    else None. A time more than 12 hours behind is tomorrow's."""
+    from datetime import timezone
+    found = re.search(r'rate limit until (\d\d):(\d\d):(\d\d) UTC', failed or '')
+    if not found:
+        return None
+    now = workspace.now().astimezone(timezone.utc)
+    at = now.replace(hour=int(found[1]), minute=int(found[2]), second=int(found[3]), microsecond=0)
+    at += timedelta(days=1) if at < now - timedelta(hours=12) else timedelta()
+    return max(0, int((at - now).total_seconds()) + 1)
+
+
+def wait(root, timeout):
+    """#887: block until a raised or claimed PR changes in a way wuwei next acts on; print one line
+    per new step (item, kind, PR, why) and exit 1, or exit 0 at the timeout. A tick reads the listing
+    only of the repositories holding such a PR, only once pr.poll_seconds old (derive.stale): one
+    GraphQL request per repository, whatever the PR count. A rate limit holds it until the reset.
+    ponytail: one request per repository; an aliased multi-repository query if days carry many."""
+    import time
+    from wuwei import derive
+    config = workspace.load_config(root)
+    deadline = workspace.now() + timedelta(seconds=timeout)
+    seen = _pending(root)  # what next saw: a change before the first read is still reported
+    while True:
+        data, pulls = state.read_state(root), derive.listing(workspace.day_dir(root))['pulls']
+        repos = {ref.rsplit('#', 1)[0] for ref in data['raised_prs'] + data['claimed_prs']
+                 if (pulls.get(ref) or {}).get('state') in (None, 'open')}
+        if not repos:
+            print('wuwei pr wait: no raised or claimed PR to wait on', file=sys.stderr)
+            return 0
+        due = [name for name in derive.stale(root, config, data) if name in repos]
+        failed = derive.refresh(root, config, due) if due else None
+        found = _pending(root)
+        if lines := [line for key, line in found.items() if key not in seen]:
+            print('\n'.join(lines), flush=True)
+            return 1
+        seen = found  # a step that leaves and comes back is new again
+        left = (deadline - workspace.now()).total_seconds()
+        if left <= 0:
+            return 0
+        pause = max(config['pr']['poll_seconds'], _reset(failed) or 0)
+        if failed:
+            print(f'wuwei pr wait: listing not read ({failed}); next read in {pause} s', file=sys.stderr)
+        time.sleep(min(pause, left))
