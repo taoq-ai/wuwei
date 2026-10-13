@@ -208,6 +208,7 @@ lead_login = "lead"
         vcs.results['merge_base'] = Result(0, {'sha': initial})
         vcs.results['authorship'] = Result(0, [{'email': ('builder' if solo else 'reviewer') + '@example.test', 'commits': 2}])
         self.host = CodeHost()
+        self.host.results['pulls'] = Result(0, [])
         self.host.results['reviews'] = Result(0, [])
         self.host.results['threads'] = Result(0, {'comments': [], 'threads': []})
         self.host.results['request_reviewers'] = Result(0, {'requested': ['reviewer', 'lead']})

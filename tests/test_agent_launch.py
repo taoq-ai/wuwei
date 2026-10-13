@@ -681,6 +681,42 @@ def test_adhoc_seat_redacts_prompt_and_names_launcher(day):
     assert 'ghp_' not in seat['prompt'] and seat['launcher'] == 'adhoc'
 
 
+@pytest.mark.parametrize('inputs,expected', [
+    ({'name': 'Build X', 'description': 'Implement work', 'prompt': 'Start here'}, 'adhoc-1'),
+    ({'description': 'Build X.', 'prompt': 'Start here'}, 'adhoc-1'),
+    ({'description': 'Implement work', 'prompt': 'Start here\nItem: X.\nShip it'}, 'adhoc-1'),
+    ({'description': 'Investigate', 'prompt': 'Start here\nA launch once mentioned X.'}, 'adhoc-1'),
+    ({'description': 'Write a parser test', 'prompt': 'Investigate'}, 'adhoc-1'),
+    ({'name': 'a quick look', 'prompt': 'Investigate'}, 'adhoc-1'),
+    ({'description': 'Build x', 'prompt': 'Start here'}, 'adhoc-1'),
+    ({'prompt': 'Item X.\nShip it'}, 'adhoc-1'),
+])
+def test_unrecorded_adhoc_does_not_link_an_item(day, inputs, expected):
+    root = day[0]
+    assert check(adhoc_launch(root, **inputs)) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['item'] == expected
+
+
+def test_explore_description_does_not_put_item_in_flight(day):
+    from wuwei.guards import agent_launch
+    root = day[0]
+    payload = {'cwd': str(root), 'session_id': 'P', 'tool_name': 'Agent',
+               'tool_input': {'subagent_type': 'Explore', 'description': 'Review X diff',
+                              'prompt': 'look'}}
+    assert agent_launch.check(payload) == (0, '')
+    assert all(item != 'X' for _, _, item in state.in_flight(state.read_state(root)))
+
+
+def test_recorded_builder_adhoc_links_explicit_item(day):
+    from wuwei import brief
+    root = day[0]
+    prompt = 'Item X.\nBuild it.'
+    state.append_event('seat adhoc', {'role': 'builder', 'sha256': brief.prompt_digest(prompt),
+                                      'prompt': 'Item X.'}, root)
+    assert check(adhoc_launch(root, prompt, subagent_type='general-purpose')) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['item'] == 'X'
+
+
 @pytest.mark.parametrize('prompt', [None, '', '  '])
 def test_untyped_launch_needs_a_prompt_in_a_day(day, prompt):
     code, reason = check(adhoc_launch(day[0], prompt, subagent_type='general-purpose'))
@@ -902,6 +938,19 @@ def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, monkeypatch, descri
     assert (root / seat['brief']).read_text() == UNBRIEFED_PROMPT
     last = events(directory)[-1]
     assert last['kind'] == 'seat launched' and last['payload']['item'] == (item or 'adhoc-1')
+
+
+@pytest.mark.parametrize('enforce,item', [(True, 'adhoc-1'), (False, 'X')])
+def test_unbriefed_typed_prompt_prose_links_only_without_enforcement(day, monkeypatch, enforce, item):
+    from wuwei.guards import agent_launch
+    root = day[0]
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    set_enforce(root, enforce)
+    state._write_state(lambda data: data['items'].update(
+        X={'phase': 'gate', 'worktree': str(root / 'tree')}), root)
+    payload = unbriefed(root, description='Review', prompt='Review item X today.')
+    assert check(payload) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['item'] == item
 
 
 def test_launch_refusals_say_the_seat_is_not_registered(launch, monkeypatch):
@@ -1170,6 +1219,9 @@ def test_review_955_item_builder_requires_recorded_launch(direct_launch, build_s
     ({'name': 'Review X'}, 'X'),
     ({'description': 'Review X'}, 'X'),
     ({'prompt': 'Review this task\nItem: X\nCompare Y as background'}, 'X'),
+    ({'prompt': 'Review this task\nItem X.\nCompare Y as background'}, 'X'),
+    ({'prompt': 'Review this task\nItem X-extra.'}, None),
+    ({'prompt': 'Review this task\nItem x.'}, None),
     ({'prompt': 'A pasted issue mentions X'}, None),
     ({'prompt': 'Quoted: Item: X'}, None),
     ({'prompt': 'Item: X\nItem: Y'}, None),

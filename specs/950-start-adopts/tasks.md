@@ -1,0 +1,21 @@
+# Tasks: 950-start-adopts
+
+- [x] T001 Reproduce an already raised PR and ad-hoc or Codex work as a planned item in a failing `next` test.
+- [x] T002 Add focused tests for a named worktree commit, failed PR listing and an untouched item.
+- [x] T003 Run the tests and confirm the expected failure.
+- [x] T004 Implement evidence detection at `derive.offers` and feed it a refreshed listing from the existing `next` path.
+- [x] T005 Make `next.step` report evidence rows as waiting work.
+- [x] T006 Run all test files importing changed modules with the named interpreter and explicit file arguments.
+- [x] T007 Review the diff for duplicate logic, false positives and owner-only action handling.
+- [x] T008 Add red regressions for F1 to F3: remote base ahead of checkout, builder brief or record, branch suffix, Git worktree registry, and failed listing.
+- [x] T009 Add red regressions for F4 to F8 and F10: exact decision commands, seat metadata and Item line, targeted PR polling, one event read, damaged proposal and punctuation.
+- [x] T010 Implement start evidence and Owner step cards in the shared `derive.offers` path, with targeted refresh in `dispatch.launch_set` and explicit ad-hoc links at registration.
+- [x] T011 Verify held rows' commands and the normal start path after an owner No answer.
+- [x] T012 Add a red stale-cache regression and refresh before trusting an old open PR row at the start boundary.
+- [x] T013 Run all importing test files plus `tests/test_signal_status.py`, review the final diff and record exact results.
+- [x] T014 Add round 2 red regressions for Owner No, spec seats, carried worktree reflogs, direct dispatch refresh, combined evidence, path expansion and refusal wording.
+- [x] T015 Move planned-start refresh to `dispatch.launch_set`, unify evidence cards and use the worktree's own creation commit.
+- [x] T016 Run all importing test files plus `tests/test_signal_status.py`, review the final diff and record round 2 results.
+- [x] T017 Port round 3 regressions for evidence ordering, untyped seat linking and the accepted existing-branch worktree ceiling; observe red failures.
+- [x] T018 Order and filter evidence candidates, quote worktree paths, name seat park commands and restore unbriefed prompt prose lookup.
+- [x] T019 Run every importing test file plus `tests/test_signal_status.py`, inspect the final diff and record round 3 results: 2130 passed, 1 expected failure.
