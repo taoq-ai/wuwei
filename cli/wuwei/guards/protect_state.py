@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 
-from wuwei.guards import Guard
+from wuwei.guards import EVENTS, Guard
 from wuwei.shell import WORKSPACE_ROOT, _cd_target, _cwd, _text
 from wuwei.workspace import contains_workspace, worktree_workspace
 from wuwei.exits import DAMAGED, PAYLOAD
@@ -13,6 +13,8 @@ from wuwei.exits import DAMAGED, PAYLOAD
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes; '
                'owner edits run outside agent tools.')
+_HOOK_HINT = ('wuwei hook runs only from Claude Code hooks, never from a tool call; '
+              'run the command the hook guards instead')
 # Pattern strings compile on first use (re's cache); most Bash calls never reach them.
 # #647: a seat's own scratch scripts are not state, unless the path climbs out with ..
 _SCRATCH = r'[\\/]scratch[\\/](?![^\s\x27"]*\.\.)'
@@ -24,18 +26,27 @@ _WRITE_CONSTRUCT = (r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|
 
 
 def _wuwei_action(argv):
-    program = Path(argv[0]).name if argv else ''
+    program = Path(argv[0]).name.lower() if argv else ''
     if program == 'wuwei':
         return argv[1:]
     if re.fullmatch(r'(?:python|pypy)[\d.]*', program):
-        for index, arg in enumerate(argv[1:], 1):
-            if arg == '-m' and argv[index + 1:index + 2] == ['wuwei']:
+        options = iter(enumerate(argv[1:], 1))
+        for index, arg in options:
+            if arg == '--check-hash-based-pycs' or re.fullmatch(r'-[bBdEhiIOPqRsSuvVx]*[WX]', arg):
+                next(options, None)  # Interpreter option value, not a script operand.
+                continue
+            if re.fullmatch(r'-[A-Za-z]*m', arg) and argv[index + 1:index + 2] == ['wuwei']:
                 return argv[index + 2:]
             if re.fullmatch(r'-[A-Za-z]*mwuwei', arg):
                 return argv[index + 1:]
             if not arg.startswith('-') or arg in ('-c', '-m'):
                 break
     return None
+
+
+def _hook_words(text):
+    bare = re.sub(r'''['"\\]''', '', text)
+    return re.search(r'(?i)\bwuwei\b', bare) and re.search(r'\bhook\b', bare)
 
 
 _INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
@@ -297,11 +308,14 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError(f'missing or invalid command; {DAMAGED}')
-        from wuwei.shell import ParseError, UNPARSED, normalize, reads, snippet_write
+        from wuwei.shell import ParseError, UNPARSED, inline_code, normalize, reads, snippet_write
 
         try:
             commands = normalize(script)
         except ParseError:
+            # #960: hook forgery must not become a log-only unparsed call (#839).
+            if _hook_words(script):
+                return 2, _HOOK_HINT
             # #839: a call the parser cannot read is logged, never refused.
             if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
                 return 2, WORKSPACE_ROOT
@@ -314,9 +328,22 @@ def check_bash(payload):
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
-            if root is not None and (_wuwei_action(command.argv) or [''])[0] == 'hook':  # #831
-                return 2, ('wuwei hook runs only from Claude Code hooks, never from a tool call; '
-                           'run the command the hook guards instead')
+            action = _wuwei_action(command.argv) or []
+            # --workspace consumes a value; other global options are flags.
+            while action and action[0].startswith('-'):
+                action = action[2 if action[0] == '--workspace' else 1:]
+            # #960: aliases and other launchers still expose the hook/event pair.
+            if (action[:1] == ['hook']
+                    or any((a == 'hook' or '$' in a) and b in EVENTS
+                           for a, b in zip(command.argv, command.argv[1:]))):
+                return 2, _HOOK_HINT
+            snippets = command.argv[1:] if inline_code(command.argv) else []
+            if program == 'git':
+                snippets = [b for a, b in zip(command.argv, command.argv[1:])
+                            if a == '-c' and b.startswith('alias.')]
+                snippets += [arg for arg in command.argv[1:] if arg.startswith('-calias.')]
+            if any(_hook_words(snippet) for snippet in snippets):
+                return 2, _HOOK_HINT
             # #349: a script run with no state operand passes; -m json.tool with one file reads.
             # #643: so does a python -c snippet with no write-like token; a refusal names it.
             if (re.fullmatch(_INTERPRETER, program)
