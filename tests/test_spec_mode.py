@@ -99,6 +99,10 @@ def test_speckit_rules(tmp_path):
     assert specmode.status(path, 'speckit', 'ENG-7', build=True) is None
     gap = specmode.status(path, 'speckit', 'A')
     assert gap['step'] == 'specify' and gap['command'] == '/speckit.specify'
+    spec = path / 'specs/003-eng-7/spec.md'
+    spec.write_text(spec.read_text().replace('## Clarifications', '## Clarifications (section 12)'))
+    assert specmode.status(path, 'speckit', 'ENG-7') is None
+    assert ('clarify', 'specs/003-eng-7/spec.md') in specmode.done(path, 'speckit', 'ENG-7')
 
 
 def test_openspec_validation_and_archive(tmp_path):
@@ -469,7 +473,7 @@ def governed_item(ws, item, **fields):
     day_state(ws, {'A': {'phase': 'implement', 'status': 'running', 'worktree': str(item), **fields}})
 
 
-def _case_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, unanalysed, monkeypatch, capsys):
+def _case_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, unanalysed, monkeypatch, capsys, _label):
     governed_item(ws, item, governed_by='docs/prereg.md#Pre-registration')
     code, out, err = analysis(ws, monkeypatch, capsys, 'A')
     assert (code, out) == (2, '') and not unanalysed.exists()
@@ -484,13 +488,16 @@ def _case_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, un
     assert analysis(ws, monkeypatch, capsys, 'A', stdin=conflicts)[0] == 0
 
 
-def _case_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypatch, capsys):
+def _case_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypatch, capsys, label):
+    from wuwei import specmode
     governed_item(ws, item)
     spec = item / 'specs/001-a/spec.md'
     plain = spec.read_text()
     assert analysis(ws, monkeypatch, capsys, 'A')[0] == 0 and unanalysed.read_text() == REPORT
     unanalysed.unlink()
-    spec.write_text(plain + '\nGoverning: docs/prereg.md#Pre-registration\n')
+    spec.write_text(plain + f'\n{label} docs/prereg.md#Pre-registration\n')
+    assert 'governed by docs/prereg.md#Pre-registration' in specmode.brief_line(
+        config(), 'A', {}, item, True)
     code, out, err = analysis(ws, monkeypatch, capsys, 'A')
     assert (code, out) == (2, '') and 'docs/prereg.md#Pre-registration' in err and not unanalysed.exists()
     spec.write_text(plain)
@@ -499,12 +506,15 @@ def _case_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypa
     assert (code, out) == (2, '') and 'no heading Nope' in err and not unanalysed.exists()
 
 
-@pytest.mark.parametrize("scenario_fn", [
-    _case_spec_analysis_refuses_a_governed_report_without_the_table,
-    _case_spec_analysis_governed_by_the_spec_line,
+@pytest.mark.parametrize("scenario_fn, label", [
+    (_case_spec_analysis_refuses_a_governed_report_without_the_table, None),
+    (_case_spec_analysis_governed_by_the_spec_line, 'Governing:'),
+    (_case_spec_analysis_governed_by_the_spec_line, '**Governing**:'),
+    (_case_spec_analysis_governed_by_the_spec_line, '**Governing:**'),
+    (_case_spec_analysis_governed_by_the_spec_line, '- Governing:'),
 ])
-def test_spec_analysis_cases_472(ws, item, unanalysed, monkeypatch, capsys, scenario_fn):
-    scenario_fn(ws, item, unanalysed, monkeypatch, capsys)
+def test_spec_analysis_cases_472(ws, item, unanalysed, monkeypatch, capsys, scenario_fn, label):
+    scenario_fn(ws, item, unanalysed, monkeypatch, capsys, label)
 
 
 def test_brief_block_and_gate_line(governed_tree):
