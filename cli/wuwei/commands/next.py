@@ -381,6 +381,17 @@ def resolve(row, root):
     if row['state'] == 'set':
         from wuwei import derive, dispatch
         value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        if value.get('listing_refreshed') and any(
+                launch['command'] == 'wuwei dispatch next --all' for launch in row['launches']):
+            row = step(root)
+            if row['state'] != 'set':
+                return row
+            value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        starts = {launch['item']: launch['why'] for launch in row['launches']
+                  if launch['command'] == 'wuwei dispatch next --all'}
+        for entry in value['entries']:
+            if entry['action'] == 'start' and entry['item'] in starts:
+                entry['why'] = starts[entry['item']]
         data = state.read_state(root)
         runs = [launch for launch in row['launches']  # PR, merge, seat stop and finding steps run as is
                 if not derive.seated(data, launch)]

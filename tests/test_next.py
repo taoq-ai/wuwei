@@ -50,6 +50,9 @@ def approved(root, items, cap=1, **extra):
     day(root, gate_approved=True, approved_items=list(items), cap=cap, planner_session_id='S',
         items={name: {'phase': phase, **fields} for name, (phase, fields) in items.items()},
         **extra)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': NOW, 'pulls': [], 'repos': {'example/project': {'at': NOW}},
+    }))
 
 
 def test_done_implement_item_frees_its_build_slot(root):
@@ -87,6 +90,9 @@ def coarse(root):
 
 def test_next_offers_unclaimed_pr_before_restarting_work(root):
     approved(root, {'A': ('planned', {})})
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': NOW, 'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': 'example/project#950', 'state': 'open'}]}))
     state.append_event('pr.unclaimed', {
         'pr': 'example/project#950',
         'url': 'https://github.com/example/project/pull/950'}, root)
@@ -98,6 +104,9 @@ def test_next_offers_unclaimed_pr_before_restarting_work(root):
 
 def test_unclaimed_pr_with_multiple_goals_names_choice(root):
     approved(root, {}, goals=['G-1', 'G-2'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': NOW, 'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': 'example/project#8', 'state': 'open'}]}))
     state.append_event('pr.unclaimed', {
         'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
     found = coarse(root)
@@ -110,6 +119,9 @@ def test_unclaimed_pr_with_multiple_goals_names_choice(root):
 
 def test_unclaimed_item_pr_uses_item_goal(root):
     approved(root, {'A': ('gate', {'goal': 'G-2'})}, goals=['G-1', 'G-2'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': NOW, 'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': 'example/project#8', 'state': 'open'}]}))
     state.append_event('pr.unclaimed', {'pr': 'example/project#8', 'item': 'A',
         'url': 'https://github.com/example/project/pull/8',
         'reason': 'A: pre-PR gates not passed'}, root)
@@ -135,6 +147,8 @@ def test_next_refreshes_unclaimed_repo_before_offering(root, monkeypatch, capsys
     from wuwei import derive
     approved(root, {})
     directory = workspace.day_dir(root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': '2026-09-30T09:59:00+00:00',
+        'repos': {'example/project': {'at': '2026-09-30T09:59:00+00:00'}}, 'pulls': []}))
     state.append_event('pr.unclaimed', {
         'pr': 'example/project#8', 'url': 'https://github.com/example/project/pull/8'}, root)
     refreshed = []
@@ -249,6 +263,9 @@ def test_stuck_seat_precedes_unclaimed_pr(root, monkeypatch):
 def test_refused_claim_is_dismissed_after_its_command_runs(root):
     approved(root, {})
     ref = 'example/project#8'
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': NOW, 'repos': {'example/project': {'at': NOW}},
+        'pulls': [{'ref': ref, 'state': 'open'}]}))
     state.append_event('pr.unclaimed', {'pr': ref,
         'url': 'https://github.com/example/project/pull/8', 'reason': 'item already links another PR'}, root)
     found = coarse(root)
@@ -1175,6 +1192,10 @@ def test_a_set_held_only_by_a_spent_window_is_a_timed_wait(root, capsys, monkeyp
     monkeypatch.undo()
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:30:00+00:00')
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': '2026-09-30T13:30:00+00:00', 'pulls': [],
+        'repos': {'example/project': {'at': '2026-09-30T13:30:00+00:00'}},
+    }))
     code, found = row(capsys)
     assert found['state'] == 'set' and [launch['action'] for launch in found['launches']] == ['start']
 

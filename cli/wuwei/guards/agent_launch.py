@@ -67,13 +67,24 @@ UNRECORDED = ('no build record for {item}: a builder launches only from the acti
               'back with bin/wuwei build reconcile {item} --worktree {worktree}')
 
 
-def _named_items(data, inputs):
-    """All items named in Agent metadata or explicit Item: prompt lines."""
+def _named_items(data, inputs, prose=False):
+    """Plan items in Agent metadata or explicit item lines."""
     import re
     text = '\n'.join(value for key in ('name', 'description')
                      if isinstance(value := inputs.get(key), str))
-    explicit = {line.removeprefix('Item:').strip() for line in inputs.get('prompt', '').splitlines()
-                if line.startswith('Item:')}
+    prompt = inputs.get('prompt', '')
+    explicit = set()
+    if isinstance(prompt, str):
+        if prose:
+            text += '\n' + prompt
+        else:
+            for line in prompt.splitlines():
+                if line.startswith('Item:'):
+                    explicit.add(line.removeprefix('Item:').strip())
+                else:
+                    match = re.fullmatch(r'Item ([A-Z][A-Z0-9-]*)\.', line)
+                    if match:
+                        explicit.add(match[1])
     return [item for item in data['items']
             if item in explicit or re.search(rf'(?<![\w.-]){re.escape(item)}(?![\w.-])', text)]
 
@@ -89,7 +100,7 @@ def _unbriefed(root, inputs, role):
         raise brief.Refused('planner is not an ad-hoc seat role; use the existing planner session')
     _, data = brief.read_day(root)
     config = workspace.load_config(root)
-    named = _named_items(data, inputs)
+    named = _named_items(data, inputs, prose=not config['guards']['enforce'])
     item = named[0] if len(named) == 1 else None
     current = data['items'].get(item, {})
     tree = (root / current['worktree']).resolve() if current.get('worktree') else None
@@ -136,9 +147,11 @@ def _adhoc(payload):
         taken = [int(name[6:]) for name in brief.seats(data)
                  if name.startswith('adhoc-') and name[6:].isdigit()]
         name = f'adhoc-{max(taken, default=0) + 1}'
-        event.update(name=name, item=name)
+        named = _named_items(data, inputs) if started and started[-1]['role'] in ('builder', 'spec') else []
+        item = named[0] if len(named) == 1 else name
+        event.update(name=name, item=item)
         data['seats'][name] = {
-            'id': name, 'role': 'adhoc', 'item': name, 'type': kind,
+            'id': name, 'role': 'adhoc', 'item': item, 'type': kind,
             'label': started[-1]['role'] if started else kind,
             'launcher': (isinstance(session, str) and sessions.registered(data, session)) or 'adhoc',
             'prompt': redact(prompt.strip().splitlines()[0])[:200], 'prompt_sha256': digest,

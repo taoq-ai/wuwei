@@ -1,7 +1,10 @@
 """Issue #474: the day starts in parallel, through the hooks on the fixture day."""
 
 import json
+import os
 from pathlib import Path
+import shlex
+import subprocess
 
 import pytest
 
@@ -97,6 +100,366 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     assert step['state'] == 'wait'
     assert 'D waits' in step['why'] and 'A-builder started first' in step['why']
     assert 'seats 3/3 by owner (builder, builder, builder)' in day.run('status', '--line')
+
+
+@pytest.mark.parametrize('evidence,expected,detail', [
+    ('pr', 'review', 'acme/widget#3174'),
+    ('adhoc', 'wait', 'ad-hoc seat'),
+    ('commit', 'blocked', 'worktrees/A'),
+])
+def test_next_adopts_work_already_started_outside_the_plan(day, evidence, expected, detail):
+    from wuwei import state
+    from wuwei.registry import Result
+
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.host.results['pulls'] = Result(0, [])
+    if evidence == 'pr':
+        day.host.results['pulls'] = Result(0, [{
+            'number': 3174, 'state': 'open', 'head': day.head, 'branch': 'a',
+            'head_repo': 'acme/widget', 'checks': 'green', 'labels': [],
+        }])
+    elif evidence == 'adhoc':
+        state.append_event('seat adhoc', {'role': 'builder', 'item': 'A', 'prompt': 'Item: A.'}, day.root)
+        state._write_state(lambda data: data['seats'].update({'adhoc-1': {
+            'role': 'adhoc', 'label': 'builder', 'item': 'A', 'prompt': 'Item: A.', 'status': 'stopped',
+        }}), day.root)
+    else:
+        tree = day.root / 'worktrees/A'
+        tree.parent.mkdir()
+        subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
+                       check=True, capture_output=True, env=dict(os.environ))
+        state.append_event('worktree.created', {'item': 'A', 'worktree': str(tree),
+                                                'start': day.head}, day.root)
+        (tree / 'memory/demo.py').write_text('VALUE = 17\n')
+        for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=Builder', '-c',
+                     'user.email=builder@example.test', 'commit', '-q', '-m', 'built']):
+            subprocess.run(['git', '-C', str(tree), *argv], check=True, capture_output=True,
+                           env=dict(os.environ))
+
+    action = json.loads(day.run('next', '--json'))
+    assert action['state'] == 'set'
+    assert any(row['item'] == 'A' and row['state'] == expected and detail in row['why']
+               for row in action['rows'])
+    if evidence == 'adhoc':
+        assert action['decision']['command'].startswith('wuwei plan park A --reason')
+    else:
+        assert action['decision']['command'].startswith('wuwei build reconcile A --')
+    assert action['decision']['card']['record'] == action['decision']['command']
+    assert not action['decision']['why'].startswith('A: A:')
+    assert all(row.get('item') != 'A' for row in action.get('launches', []))
+    assert all(row.get('item') != 'A' for row in json.loads(day.run('dispatch', 'next', '--all'))['entries'])
+
+
+def test_next_starts_a_planned_item_when_its_pr_listing_failed(day):
+    from wuwei.registry import Result
+
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.host.results['pulls'] = Result(2, None, 'recorded host failure')
+    action = json.loads(day.run('next', '--json'))
+    assert action['state'] == 'set'
+    assert any(row['item'] == 'A' and row['action'] == 'start' and 'unmeasured' in row['why']
+               for row in action['launches'])
+
+
+def test_next_never_starts_the_six_reported_items_twice(day):
+    from wuwei import state
+    from wuwei.registry import Result
+
+    names = ('INDEX-TIMEOUT-ANALYZER', 'SLACK-TWO-WINDOWS-R4-FOLLOWUP',
+             'TIN-PROD-API-PROXY-DNS', 'ASK-ORACLE-PROGRESS',
+             'STAKEHOLDER-PUBLICATION-SPEC', 'IDENTITY-MAPPING-VIEW-S4')
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    state._write_state(lambda data: (data.update(approved_items=list(names), cap=6),
+                                    data['items'].update({
+                                        name: {'phase': 'planned', 'status': 'queued', 'goal': 'G-1'}
+                                        for name in names})), day.root)
+    proposal = json.loads((day.directory / 'proposal.json').read_text())
+    proposal['candidates'] = [{'id': name, 'depends_on': ['OTHER-SLICE'] if name == names[-1] else []}
+                              for name in names]
+    (day.directory / 'proposal.json').write_text(json.dumps(proposal))
+    day.host.results['pulls'] = Result(0, [
+        {'number': number, 'state': 'open', 'head': day.head, 'branch': name.lower(),
+         'head_repo': 'acme/widget'} for name, number in zip(names[:2], (3174, 3175))])
+    for name in names[2:4]:
+        state.append_event('seat adhoc', {'role': 'builder', 'item': name,
+                                          'prompt': f'Item: {name}.'}, day.root)
+    tree = day.root / 'worktrees' / names[4]
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', names[4].lower(), str(tree)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    state.append_event('worktree.created', {'item': names[4], 'worktree': str(tree),
+                                            'start': day.head}, day.root)
+    (tree / 'memory/demo.py').write_text('VALUE = 17\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=Builder', '-c',
+                 'user.email=builder@example.test', 'commit', '-q', '-m', 'built']):
+        subprocess.run(['git', '-C', str(tree), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+
+    action = json.loads(day.run('next', '--json'))
+    assert action['state'] == 'set'
+    assert [row['state'] for row in action['rows']] == [
+        'review', 'review', 'wait', 'wait', 'blocked', 'wait']
+    assert all(row['item'] in names for row in action['rows'])
+    assert action.get('launches', []) == []
+    assert action['decision']['command'] == 'wuwei build reconcile INDEX-TIMEOUT-ANALYZER --pr acme/widget#3174'
+    assert all(row.get('command') for row in action['rows'])
+    assert json.loads(day.run('dispatch', 'next', '--all'))['entries'] == []
+
+
+def test_unrelated_pr_and_uncommitted_named_worktree_keep_the_start(day):
+    from wuwei.registry import Result
+
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    tree = day.root / 'worktrees/A'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    day.host.results['pulls'] = Result(0, [{
+        'number': 3174, 'state': 'open', 'head': day.head, 'branch': 'another-item',
+        'head_repo': 'acme/widget',
+    }])
+
+    action = json.loads(day.run('next', '--json'))
+    assert action['state'] == 'set'
+    assert [(row['item'], row['action']) for row in action['launches']] == [('A', 'start')]
+
+
+def test_normal_start_from_origin_main_ahead_of_checkout_still_launches(day):
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    remote = day.root / 'remote-base'
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'remote-base', str(remote)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    (remote / 'memory/demo.py').write_text('VALUE = 1\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=Builder', '-c',
+                 'user.email=builder@example.test', 'commit', '-q', '-m', 'remote base']):
+        subprocess.run(['git', '-C', str(remote), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+    subprocess.run(['git', '-C', str(day.repo), 'update-ref', 'refs/remotes/origin/main',
+                    subprocess.check_output(['git', '-C', str(remote), 'rev-parse', 'HEAD'],
+                                            env=dict(os.environ)).decode().strip()],
+                   check=True, capture_output=True, env=dict(os.environ))
+    tree = day.root / 'worktrees/A'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree),
+                    'refs/remotes/origin/main'], check=True, capture_output=True, env=dict(os.environ))
+    action = json.loads(day.run('next', '--json'))
+    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
+
+
+def test_ad_hoc_review_mention_does_not_hold_builder(day):
+    from wuwei import state
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    state.append_event('seat adhoc', {'role': 'reviewer', 'prompt': 'Review A'}, day.root)
+    action = json.loads(day.run('next', '--json'))
+    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
+
+
+def test_stale_cached_pr_is_refreshed_before_it_can_hold_a_start(day):
+    from wuwei.registry import Result
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    old = '2020-01-01T00:00:00+00:00'
+    (day.directory / 'prs.json').write_text(json.dumps({
+        'fetched_at': old,
+        'repos': {'acme/widget': {'at': old}},
+        'pulls': [{'ref': 'acme/widget#3174', 'state': 'open', 'branch': 'a',
+                   'head_repo': 'acme/widget'}],
+    }))
+    day.host.results['pulls'] = Result(0, [])
+    action = json.loads(day.run('next', '--json'))
+    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
+    assert [call for call in day.host.calls if call[0] == 'pulls'] == [
+        ('pulls', ('acme/widget',), day.root)]
+
+
+def test_held_item_after_owner_no_names_evidence_not_cap(day, monkeypatch):
+    from wuwei import sessions, state
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    state.append_event('seat adhoc', {'role': 'builder', 'item': 'A', 'prompt': 'Item: A.'}, day.root)
+    state._write_state(lambda data: data['seats'].update({'other-builder': {
+        'id': 'other-builder', 'role': 'builder', 'item': 'B', 'status': 'running',
+        'started_at': '2026-10-13T09:00:00+00:00',
+    }}), day.root)
+    monkeypatch.setattr(sessions, 'owner_answer', lambda *args: 'No')
+    action = json.loads(day.run('next', '--json'))
+    assert action['state'] == 'set'
+    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
+
+
+def test_owner_no_rejects_pr_evidence_and_allows_start(day):
+    from wuwei import sessions, state
+    from wuwei.registry import Result
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.host.results['pulls'] = Result(0, [{'number': 3174, 'state': 'open', 'head': day.head,
+                                            'branch': 'leone/a', 'head_repo': 'acme/widget'}])
+    first = json.loads(day.run('next', '--json'))
+    command = first['decision']['command']
+    question = sessions.owner_card(command, '')['question']
+    state.append_event('gate.asked', {'topics': [sessions.owner_topic(question),
+                                                 sessions.owner_topic(question, 'No')]}, day.root)
+    action = json.loads(day.run('next', '--json'))
+    assert [(entry['item'], entry['action']) for entry in action['launches']] == [('A', 'start')]
+    assert action['decision'] is None
+
+
+def test_direct_dispatch_refreshes_stale_pr_before_start(day):
+    from wuwei.registry import Result
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    old = '2020-01-01T00:00:00+00:00'
+    pull = {'number': 3174, 'state': 'open', 'head': day.head,
+            'branch': 'leone/a', 'head_repo': 'acme/widget'}
+    (day.directory / 'prs.json').write_text(json.dumps({
+        'fetched_at': old, 'repos': {'acme/widget': {'at': old}},
+        'pulls': [{**pull, 'ref': 'acme/widget#3174'}]}))
+    day.host.results['pulls'] = Result(0, [pull])
+    entries = json.loads(day.run('dispatch', 'next', '--all'))['entries']
+    assert all(entry['action'] != 'start' for entry in entries)
+
+
+def test_pr_and_committed_worktree_share_one_owner_card(day):
+    from wuwei import state, workspace
+    from wuwei.registry import Result
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    tree = day.root / 'worktrees/A'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    (tree / 'memory/demo.py').write_text('VALUE = 17\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=B', '-c',
+                 'user.email=b@example.test', 'commit', '-q', '-m', 'built']):
+        subprocess.run(['git', '-C', str(tree), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+    state.append_event('worktree.created', {'item': 'A', 'worktree': str(tree),
+                                            'start': day.head}, day.root)
+    pull = {'number': 3174, 'state': 'open', 'head': day.head,
+            'branch': 'leone/a', 'head_repo': 'acme/widget'}
+    now = workspace.now().isoformat()
+    (day.directory / 'prs.json').write_text(json.dumps({
+        'fetched_at': now, 'repos': {'acme/widget': {'at': now}},
+        'pulls': [{**pull, 'ref': 'acme/widget#3174'}]}))
+    day.host.results['pulls'] = Result(0, [pull])
+    action = json.loads(day.run('next', '--json'))
+    command = f'wuwei build reconcile A --worktree {tree} --pr acme/widget#3174'
+    assert action['decision']['command'] == command
+    assert action['decision']['card']['record'] == command
+    assert action['decision']['why'].startswith('A: open PR')
+
+
+def test_committed_worktree_precedes_seat_and_survives_its_no(day):
+    from wuwei import sessions, state
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    state._write_state(lambda data: data['seats'].update({'adhoc-1': {
+        'id': 'adhoc-1', 'role': 'adhoc', 'label': 'builder', 'item': 'A',
+        'prompt': 'Item A.', 'status': 'stopped'}}), day.root)
+    tree = day.root / 'elsewhere/a'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'side-a', str(tree)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    (tree / 'memory/demo.py').write_text('VALUE = 17\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=B', '-c',
+                 'user.email=b@example.test', 'commit', '-q', '-m', 'built']):
+        subprocess.run(['git', '-C', str(tree), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+    state.append_event('worktree.created', {'item': 'A', 'worktree': str(tree),
+                                            'start': day.head}, day.root)
+
+    first = json.loads(day.run('next', '--json'))
+    assert first['decision']['command'] == f'wuwei build reconcile A --worktree {tree}'
+    assert 'next evidence' in first['decision']['card']['options'][1]['description']
+    command = first['decision']['command']
+    question = sessions.owner_card(command, '')['question']
+    state.append_event('gate.asked', {'topics': [sessions.owner_topic(question),
+                                                 sessions.owner_topic(question, 'No')]}, day.root)
+    second = json.loads(day.run('next', '--json'))
+    assert second['decision']['command'].startswith('wuwei plan park A --reason')
+    assert 'adhoc-1' in second['decision']['command']
+
+
+def test_worktree_card_quotes_space_in_path(day):
+    from wuwei import state
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    tree = day.root / 'worktrees/A with space'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(tree)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), day.root)
+    state.append_event('worktree.created', {'item': 'A', 'worktree': str(tree),
+                                            'start': day.head}, day.root)
+    (tree / 'memory/demo.py').write_text('VALUE = 17\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=B', '-c',
+                 'user.email=b@example.test', 'commit', '-q', '-m', 'built']):
+        subprocess.run(['git', '-C', str(tree), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+    command = json.loads(day.run('next', '--json'))['decision']['command']
+    assert shlex.split(command) == ['wuwei', 'build', 'reconcile', 'A', '--worktree', str(tree)]
+
+
+def test_no_on_one_seat_does_not_reject_later_seat(day):
+    from wuwei import sessions, state
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    def add_seat(data, name):
+        data['seats'][name] = {'id': name, 'role': 'adhoc', 'label': 'builder',
+                               'item': 'A', 'prompt': 'Item A.', 'status': 'stopped'}
+    state._write_state(lambda data: add_seat(data, 'adhoc-1'), day.root)
+    first = json.loads(day.run('next', '--json'))
+    command = first['decision']['command']
+    assert 'adhoc-1' in command
+    question = sessions.owner_card(command, '')['question']
+    state.append_event('gate.asked', {'topics': [sessions.owner_topic(question),
+                                                 sessions.owner_topic(question, 'No')]}, day.root)
+    state._write_state(lambda data: add_seat(data, 'adhoc-2'), day.root)
+    second = json.loads(day.run('next', '--json'))
+    assert second['decision']['command'] != command
+    assert 'adhoc-2' in second['decision']['command']
+
+
+@pytest.mark.xfail(reason='existing branch tip is the first worktree reflog entry', strict=True)
+def test_existing_branch_worktree_commit_ceiling(day):
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    side = day.root / 'side'
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', '-b', 'a', str(side)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    (side / 'memory/demo.py').write_text('VALUE = 17\n')
+    for argv in (['add', 'memory/demo.py'], ['-c', 'user.name=B', '-c',
+                 'user.email=b@example.test', 'commit', '-q', '-m', 'built']):
+        subprocess.run(['git', '-C', str(side), *argv], check=True, capture_output=True,
+                       env=dict(os.environ))
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'remove', '--force', str(side)],
+                   check=True, capture_output=True, env=dict(os.environ))
+    tree = day.root / 'elsewhere/A'
+    tree.parent.mkdir()
+    subprocess.run(['git', '-C', str(day.repo), 'worktree', 'add', '-q', str(tree), 'a'],
+                   check=True, capture_output=True, env=dict(os.environ))
+    assert json.loads(day.run('next', '--json'))['decision']['command'].startswith('wuwei build reconcile A')
 
 
 def test_owner_cap_one_stays_sequential(day):

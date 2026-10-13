@@ -500,6 +500,9 @@ def test_next_never_merges_posts_or_readies_a_claimed_pr(tmp_path, monkeypatch, 
     host.results['pr'].data.update(mergeable=True, merge_state='clean', author='teammate')
     host.results['reviews'] = registry.Result(0, [{'id': 11, 'author': 'reviewer', 'state': 'approved',
         'body': '', 'sha': head, 'submitted_at': '2026-09-28T11:00:00Z', 'is_bot': False}])
+    host.results['pulls'] = registry.Result(0, [{
+        'number': 7, 'state': 'open', 'head': head, 'branch': 'feature-y', 'checks': 'green',
+        'mergeable': 'mergeable', 'labels': [], 'activity_at': '2026-09-28T11:00:00Z'}])
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
         {'ref': 'acme/widget#7', 'number': 7, 'state': 'open', 'head': head, 'checks': 'green',
          'mergeable': 'mergeable', 'labels': [], 'activity_at': '2026-09-28T11:00:00Z'}]}))

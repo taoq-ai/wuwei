@@ -1060,7 +1060,10 @@ def launch_set(root=None):
                 windows_left[runtime] -= 1
         entries.append({'item': name, 'goal': goal(name), **value})
 
-    offered = [launch for launch in derive.offers(data, root, config)['launches']  # seat steps only
+    found = derive.offers(data, root, config)
+    names = [name for name in names if name not in {row['item'] for row in found['rows']
+             if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}]
+    offered = [launch for launch in found['launches']  # seat steps only
                if derive.seated(data, launch)]
     for launch in sorted((launch for launch in offered if launch['command'] != 'wuwei dispatch next --all'),
                          key=lambda launch: launch['command'].startswith('wuwei build next ')):
@@ -1103,6 +1106,22 @@ def launch_set(root=None):
         if starts[name][0].startswith('wuwei plan park '):  # #603: a park takes no seat, whatever the seats and CAP
             skip.append(name)
             entries.append({'item': name, 'goal': goal(name), 'action': 'park', 'commands': starts[name]})
+    due = []
+    if not gate_waits and 'held' not in limits:
+        candidates = [name for name in first + rest if name not in briefed and name not in skip]
+        candidates = candidates[:max(0, min(free, cap - building))]
+        repos = {repo['name'] for name in candidates
+                 if (repo := derive.item_repo(root, config, name, items[name]))}
+        due = derive.stale(root, config, data, repos) if repos else []
+        if due:
+            failed = derive.refresh(root, config, due)
+            if failed:
+                print(f'wuwei dispatch: PR listing not refreshed ({failed}); run wuwei next after '
+                      'pr.poll_seconds; planned starts continue with their PR check unmeasured', file=sys.stderr)
+            held = {row['item'] for row in derive.offers(data, root, config)['rows']
+                    if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}
+            first = [name for name in first if name not in held]
+            rest = [name for name in rest if name not in held]
     index = 0
     for name in (name for name in first + rest if name not in skip):
         runtime = route(data['seat_policy'].get('builder', {}), config['adapters']['runtime'], windows_left)
@@ -1127,6 +1146,7 @@ def launch_set(root=None):
     for entry in entries:
         entry.setdefault('kind', 'build')
     return {'action': 'set', 'cap': cap, 'bound': bound,
+            'listing_refreshed': bool(due),
             'capacity': limits['text'] + ''.join(f"; {row['text']}" for row in rooms.values() if row['text']),
             'building': building, 'free_seats': start,
             'entries': entries}

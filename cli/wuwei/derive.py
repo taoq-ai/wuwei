@@ -2,11 +2,12 @@
 
 Everything here only reads: the worktree HEAD from git's files, the verdict files, the cached PR
 listing (prs.json) and the day's records. No write, no subprocess, so `next` stays hook-safe;
-`refresh` is the one call out, made by `wuwei next` and WUWEI's own PR commands.
+`refresh` is the one call out, made by `wuwei next`, `dispatch` and WUWEI's own PR commands.
 """
 
 import json
 import re
+import shlex
 from pathlib import Path
 
 from wuwei import state, workspace
@@ -17,6 +18,18 @@ DUTIES = ('ping', 'shepherd', 'tracker', 'summary')
 # that stopped twice without a PR (#902)
 ASK_PARKS = ('round cap', 'fix round already used', 'same fast-check failure repeated',
              'maximum build iterations reached', 'environment:', 'shepherd stopped')
+
+
+def _ref(gitdir, common, ref):
+    loose = next((base / ref for base in (gitdir, common) if (base / ref).is_file()), None)
+    if loose is not None:
+        value = loose.read_text(encoding='utf-8').strip()
+    else:
+        packed = common / 'packed-refs'
+        lines = packed.read_text(encoding='utf-8').splitlines() if packed.is_file() else ()
+        value = next((line.split()[0] for line in lines if line.endswith(' ' + ref)), '')
+    value = value.lower()
+    return value if SHA.fullmatch(value) else None
 
 
 def head(path):
@@ -40,14 +53,7 @@ def head(path):
             common = gitdir / (gitdir / 'commondir').read_text(encoding='utf-8').strip()
         value = (gitdir / 'HEAD').read_text(encoding='utf-8').strip()
         if value.startswith('ref: '):
-            ref = value[5:].strip()
-            loose = next((base / ref for base in (gitdir, common) if (base / ref).is_file()), None)
-            if loose is not None:
-                value = loose.read_text(encoding='utf-8').strip()
-            else:
-                packed = common / 'packed-refs'
-                lines = packed.read_text(encoding='utf-8').splitlines() if packed.is_file() else ()
-                value = next((line.split()[0] for line in lines if line.endswith(' ' + ref)), '')
+            return _ref(gitdir, common, value[5:].strip())
         value = value.lower()
         return value if SHA.fullmatch(value) else None
     except (OSError, UnicodeError):
@@ -89,20 +95,26 @@ LISTING_EVENTS = (b'"pr.raised"', b'"pr.claimed"', b'"pr.pushed"', b'"merge.auto
                   b'"merge.revert"')
 
 
-def stale(root, config, data):
-    """The repositories whose listing is due, when an item has a PR (#907: each on its own): never
-    read, read pr.poll_seconds ago or more (a failed read retries then, never sooner), or read
-    before WUWEI's own last raise, claim or merge."""
-    if not any(row.get('pr') for row in data['items'].values()):
+def stale(root, config, data, names=None, events=None, found=None):
+    """The repositories whose listing is due for a PR or imminent planned start (#907): never read, read
+    pr.poll_seconds ago or more (a failed read retries then), or read before WUWEI's own last
+    raise, claim or merge."""
+    if names is None and not any(row.get('pr') for row in data['items'].values()):
         return []
     from datetime import datetime
     directory = workspace.day_dir(root)
-    found = listing(directory)
-    log = directory / 'events.jsonl'
-    acted = [json.loads(line)['ts'] for line in (log.read_bytes().splitlines() if log.is_file() else ())
-             if any(kind in line for kind in LISTING_EVENTS)]
+    found = listing(directory) if found is None else found
+    if events is None:
+        log = directory / 'events.jsonl'
+        acted = [json.loads(line)['ts'] for line in (log.read_bytes().splitlines() if log.is_file() else ())
+                 if any(kind in line for kind in LISTING_EVENTS)]
+    else:
+        acted = [event['ts'] for event in events
+                 if ('"' + event['kind'] + '"').encode() in LISTING_EVENTS]
     due = []
     for repo in config['repos']:
+        if names is not None and repo['name'] not in names:
+            continue
         # a listing written before #907 has one time for every repository
         at = (found['repos'].get(repo['name']) or {}).get('at') or (None if found['repos'] else found['fetched_at'])
         if (not at or (workspace.now() - datetime.fromisoformat(at)).total_seconds() >= config['pr']['poll_seconds']
@@ -214,18 +226,134 @@ def waits_on(root, data, name, pulls=None):
             and (pulls.get((items.get(dep) or {}).get('pr')) or {}).get('state') != 'merged']
 
 
+def item_repo(root, config, name, row):
+    """The configured repository of a planned item, if the proposal identifies one."""
+    from wuwei import dispatch
+    try:
+        proposal = dispatch.candidate(root, name) or {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        proposal = {}
+    named = row.get('repo') or (proposal.get('repo') if isinstance(proposal, dict) else None)
+    repos = config['repos']
+    return next((repo for repo in repos if repo['name'] == named), None) or (
+        repos[0] if len(repos) == 1 else None)
+
+
+def _named(text, name):
+    return bool(re.search(rf'(?<![\w.-]){re.escape(name)}(?![\w-])', text or ''))
+
+
+def existing_start(root, config, data, name, row, found, events=None, due=(), all_evidence=False):
+    """Evidence that a planned item already has work, ordered when requested."""
+    from wuwei import brief
+    events = brief.events(root) if events is None else events
+    repo = item_repo(root, config, name, row)
+    branch = (row.get('branch') or name).rsplit('/', 1)[-1].casefold()
+    matched = None
+    if repo and repo['name'] not in due and not (found['repos'].get(repo['name']) or {}).get('failed'):
+        for ref, pull in found['pulls'].items():
+            pull_branch = pull.get('branch') or ''
+            if (ref.rsplit('#', 1)[0] == repo['name'] and pull.get('state') == 'open'
+                    and pull_branch.rsplit('/', 1)[-1].casefold() == branch
+                    and pull.get('head_repo') in (None, repo['name'])):
+                matched = {'state': 'review', 'item': name, 'pr': ref,
+                           'why': f'open PR {ref} on {pull_branch}; reconcile it before building'}
+                break
+    seats = [seat_name for seat_name, seat in data['seats'].items() if seat.get('role') == 'adhoc'
+             and seat.get('label') in ('builder', 'spec') and seat.get('item') == name]
+    recorded = [event for event in events if event['kind'] == 'seat adhoc'
+                and event['payload'].get('role') in ('builder', 'spec')
+                and (event['payload'].get('item') == name or any(
+                    (line.lstrip().lower().startswith('item:') or line.lstrip().startswith('Item '))
+                    and _named(line, name)
+                    for line in (event['payload'].get('prompt') or '').splitlines()))]
+    evidence = []
+    seat_evidence = [{'state': 'wait', 'item': name, 'seat': seat_name,
+                      'why': f'recorded ad-hoc seat {seat_name} already names this item; park it before building'}
+                     for seat_name in seats]
+    if not seats and recorded:
+        seat_evidence.append({'state': 'wait', 'item': name,
+                              'why': 'recorded ad-hoc seat already names this item; park it before building'})
+    if repo is None or data.get('builds', {}).get(name) or any(
+            event['kind'] == 'brief written' and event['payload'].get('item') == name
+            and event['payload'].get('role') == 'builder' for event in events):
+        ordered = ([matched] if matched else []) + seat_evidence
+        return ordered if all_evidence else next(iter(ordered), None)
+    trees = [Path(root) / row['worktree']] if row.get('worktree') else []
+    repo_path = Path(repo['path']).expanduser()
+    repo_path = repo_path if repo_path.is_absolute() else Path(root) / repo_path
+    registry = repo_path / '.git/worktrees'
+    for link in registry.glob('*/gitdir'):
+        try:
+            pointer = Path(link.read_text(encoding='utf-8').strip())
+            pointer = pointer if pointer.is_absolute() else link.parent / pointer
+            path = pointer.resolve().parent
+            git_head = (link.parent / 'HEAD').read_text(encoding='utf-8').strip()
+            segment = git_head.rsplit('/', 1)[-1] if git_head.startswith('ref: ') else ''
+            if path.name.casefold() == name.casefold() or segment.casefold() == name.casefold():
+                trees.append(path)
+        except (OSError, UnicodeError):
+            continue
+    for path in dict.fromkeys(path.resolve() for path in trees):
+        if not path.is_dir():
+            continue
+        current = head(path)
+        start = next((event['payload'].get('start') for event in reversed(events)
+                      if event['kind'] == 'worktree.created'
+                      and (event['payload'].get('item', '').casefold() == name.casefold()
+                           or Path(event['payload'].get('worktree', '')).resolve() == path)), None)
+        base = start
+        if not base:
+            try:
+                pointer = path / '.git'
+                gitdir = (Path(pointer.read_text(encoding='utf-8').strip()[7:].strip())
+                          if pointer.is_file() else pointer)
+                gitdir = gitdir if gitdir.is_absolute() else path / gitdir
+                with (gitdir / 'logs/HEAD').open(encoding='utf-8') as log:
+                    fields = log.readline().split()
+                # ponytail: an existing branch starts at its tip, so earlier branch commits
+                # are invisible here; use merge-base off the hook path if that case matters.
+                base = fields[1].lower() if len(fields) > 1 and SHA.fullmatch(fields[1].lower()) else None
+            except (OSError, UnicodeError, IndexError):
+                pass
+        if not base:
+            common = repo_path / '.git'
+            try:
+                base = _ref(common, common, f"refs/remotes/{config['brief']['remote']}/{repo['default_branch']}")
+            except (OSError, UnicodeError):
+                base = None
+        if current and current != base:
+            if base is None:
+                continue
+            try:
+                tree = str(path.relative_to(root))
+            except ValueError:
+                tree = str(path)
+            if matched and 'worktree' not in matched:
+                matched['worktree'] = str(path)
+                matched['why'] += f'; {tree} has commit {current[:12]}'
+            evidence.append({'state': 'blocked', 'item': name, 'worktree': str(path),
+                             'why': f'{tree} has commit {current[:12]}; reconcile the build before starting another'})
+    ordered = ([matched] if matched else []) + evidence + seat_evidence
+    return ordered if all_evidence else next(iter(ordered), None)
+
+
 def offers(data, root, config, merges=None):
     """The decision table (#844), pure: {launches, decision, parks, rows} over the approved
     items in plan order. A launch is {kind, item, command, why}; the decision the first owner
     decision in plan order; parks the items a PARK verdict or the owner's No parks in code
     (wuwei next records them); rows one status row per open item, runnable first, PRs last."""
-    from wuwei import dispatch, merge
+    from wuwei import brief, dispatch, merge
     from wuwei.commands.next import TERMINAL, approved, building
     merges = merges or {}
     found = listing(workspace.day_dir(root))
     pulls, listing_at = found['pulls'], found['fetched_at']
     items = data['items']
     names = approved(data)
+    events = brief.events(root) if any((items.get(name) or {}).get('phase') == 'planned'
+                                      for name in names) else ()
+    due = set(stale(root, config, data, [repo['name'] for repo in config['repos']],
+                    events=events, found=found)) if events else set()
     running = {item for _, _, item in state.in_flight(data)}
     merged = {name for name, row in items.items() if row['phase'] == 'merged'
               or (pulls.get(row.get('pr')) or {}).get('state') == 'merged'}
@@ -239,17 +367,18 @@ def offers(data, root, config, merges=None):
         why = why.replace(name, f'{name} ({ticket})', 1) if ticket else why
         launches.append({'kind': kind, 'item': name, 'command': command, 'why': why})
 
-    def ask(name, why, command, card=False):
-        """card: the decision is the owner's Yes on this command's card (a park); after a No
-        the item stays as it is and is not asked again."""
+    def ask(name, why, command, card=False, reject=False):
+        """A card asks for the owner's Yes on the command; No is remembered for that command."""
         nonlocal decision
         if decision is None and card:
             from wuwei import sessions
-            detail = f'{name}: {why}. Yes parks it; No keeps it as it is.'
+            detail = f'{name}: {why}. Yes runs {command}.' if reject else f'{name}: {why}. Yes parks it.'
             if sessions.owner_answer(root, command) == 'No':
                 return
             decision = {'item': name, 'why': f'{name}: {why}', 'command': command,
-                        'card': sessions.owner_card(command, detail)}
+                        'card': sessions.owner_card(command, detail, no=(
+                            'Reject this evidence; review the next evidence or use the normal start path.'
+                            if reject else 'Nothing changes.'))}
         decision = decision or {'item': name, 'why': f'{name}: {why}', 'command': command}
 
     def park(name, reason):
@@ -290,11 +419,33 @@ def offers(data, root, config, merges=None):
                 launch('fix' if phase == 'fix' else 'build', name, f'wuwei build next {name}',
                        f'{name} is in {phase}; this is its build loop step.')
         elif phase == 'planned':
-            if needs := waits_on(root, data, name, pulls):  # #637: an item waiting on another takes no seat
+            from wuwei import sessions
+            evidence = None
+            for candidate in existing_start(root, config, data, name, row, found, events, due,
+                                            all_evidence=True):
+                reason = ('recorded ad-hoc seat ' + candidate['seat'] + ' already worked on this item'
+                          if candidate.get('seat') else 'recorded ad-hoc seat already worked on this item')
+                candidate['command'] = (f'wuwei build reconcile {name}'
+                                        + (f" --worktree {shlex.quote(candidate['worktree'])}"
+                                           if candidate.get('worktree') else '')
+                                        + (f" --pr {candidate['pr']}" if candidate.get('pr') else '')
+                                        if candidate['state'] != 'wait' else
+                                        f'wuwei plan park {name} --reason "{reason}"')
+                if sessions.owner_answer(root, candidate['command']) != 'No':
+                    evidence = candidate
+                    break
+            if evidence:
+                rows.append(evidence)
+                ask(name, evidence['why'], evidence['command'], card=True, reject=True)
+            elif needs := waits_on(root, data, name, pulls):  # #637: an item waiting on another takes no seat
                 rows.append({'state': 'wait', 'item': name, 'command': f"waits on {', '.join(needs)}"})
             elif free > 0:
                 free -= 1
-                launch('build', name, 'wuwei dispatch next --all', f'{name} is planned and a seat is free.')
+                repo = item_repo(root, config, name, row)
+                failure = (found['repos'].get(repo['name']) or {}).get('failed') if repo else None
+                note = f' Open PRs in {repo["name"]} are unmeasured ({failure}).' if failure else ''
+                launch('build', name, 'wuwei dispatch next --all',
+                       f'{name} is planned and a seat is free.{note}')
         elif phase in ('gate', 'delta'):
             rows.append({'state': 'verdicts', 'item': name, 'command': f'wuwei dispatch next {name}'})
             if name in running:

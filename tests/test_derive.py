@@ -48,6 +48,176 @@ def test_head_of_a_gone_worktree_is_none(tmp_path):
     assert derive.head(tree) is None
 
 
+def test_existing_start_detects_a_recorded_external_worktree(root):
+    state._write_state(lambda data: None, root)
+    repo = root / 'project'
+    (repo / '.git').mkdir(parents=True)
+    (repo / '.git/HEAD').write_text(SHA + '\n')
+    tree = root.parent / (root.name + '-external')
+    (tree / '.git').mkdir(parents=True)
+    (tree / '.git/HEAD').write_text(OTHER + '\n')
+    found = {'pulls': {}, 'repos': {'example/project': {'at': '2026-10-11T10:00:00+00:00'}}}
+    data = {'seats': {}, 'builds': {}}
+    row = {'worktree': str(tree)}
+    state.append_event('worktree.created', {'item': 'ITEM', 'worktree': str(tree),
+                                            'start': SHA}, root)
+
+    evidence = derive.existing_start(root, workspace.load_config(root), data, 'ITEM', row, found)
+    assert evidence['state'] == 'blocked' and str(tree) in evidence['why']
+
+
+def test_existing_start_skips_a_pr_row_after_its_repository_read_failed(root):
+    state._write_state(lambda data: None, root)
+    found = {'pulls': {'example/project#7': {'state': 'open', 'branch': 'item'}},
+             'repos': {'example/project': {'failed': 'host unavailable'}}}
+
+    evidence = derive.existing_start(root, workspace.load_config(root), {'seats': {}, 'builds': {}},
+                                     'ITEM', {}, found)
+    assert evidence is None
+
+
+def test_existing_start_matches_branch_suffix_and_registered_worktree(root):
+    state._write_state(lambda data: None, root)
+    repo = root / 'project'
+    common = repo / '.git'
+    registry = common / 'worktrees' / 'index-timeout-analyzer'
+    registry.mkdir(parents=True)
+    tree = repo / '.claude/worktrees/index-timeout-analyzer'
+    tree.mkdir(parents=True)
+    (tree / '.git').write_text(f'gitdir: {registry}\n')
+    (registry / 'gitdir').write_text(str(tree / '.git') + '\n')
+    (registry / 'HEAD').write_text(OTHER + '\n')
+    state.append_event('worktree.created', {'item': 'INDEX-TIMEOUT-ANALYZER',
+                                            'worktree': str(tree), 'start': SHA}, root)
+    config = workspace.load_config(root)
+    found = {'pulls': {'example/project#3174': {'state': 'open',
+              'branch': 'leone/index-timeout-analyzer', 'head_repo': 'example/project'}}, 'repos': {}}
+    data = {'seats': {}, 'builds': {}}
+    evidence = derive.existing_start(root, config, data, 'INDEX-TIMEOUT-ANALYZER', {}, found)
+    assert evidence['state'] == 'review' and '3174' in evidence['why']
+    assert evidence['worktree'] == str(tree)
+    assert derive.existing_start(root, config, data, 'INDEX-TIMEOUT-ANALYZER', {},
+                                 {'pulls': {}, 'repos': {}})['state'] == 'blocked'
+    assert derive.existing_start(root, config, data, 'INDEX-TIMEOUT-ANALYZER-2', {},
+                                 {'pulls': {}, 'repos': {}}) is None
+
+
+def test_existing_start_skips_commit_for_own_brief_or_build(root):
+    state._write_state(lambda data: None, root)
+    repo = root / 'project'
+    (repo / '.git').mkdir(parents=True)
+    tree = root / 'worktrees/ITEM'
+    (tree / '.git').mkdir(parents=True)
+    (tree / '.git/HEAD').write_text(OTHER + '\n')
+    state.append_event('worktree.created', {'item': 'ITEM', 'worktree': str(tree),
+                                            'start': SHA}, root)
+    found = {'pulls': {}, 'repos': {}}
+    for data in ({'seats': {}, 'builds': {'ITEM': {'status': 'running'}}},
+                 {'seats': {}, 'builds': {}}):
+        if not data['builds']:
+            state.append_event('brief written', {'item': 'ITEM', 'role': 'builder'}, root)
+        assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM',
+                                     {'worktree': str(tree)}, found) is None
+
+
+def test_existing_start_checks_adhoc_without_resolved_repo_and_punctuation(root):
+    state._write_state(lambda data: None, root)
+    config = workspace.load_config(root)
+    config['repos'] = [{'name': 'one', 'path': 'one'}, {'name': 'two', 'path': 'two'}]
+    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'item': 'ITEM', 'label': 'builder'}}, 'builds': {}}
+    found = {'pulls': {}, 'repos': {}}
+    assert derive.existing_start(root, config, data, 'ITEM', {}, found)['state'] == 'wait'
+    assert derive.existing_start(root, config, data, 'ITEM-2', {}, found) is None
+
+
+def test_existing_start_links_explicit_item_with_trailing_punctuation(root):
+    state._write_state(lambda data: None, root)
+    state.append_event('seat adhoc', {'role': 'builder', 'item': 'ITEM',
+                                      'prompt': 'Item: ITEM.'}, root)
+    data = {'seats': {}, 'builds': {}}
+    found = {'pulls': {}, 'repos': {}}
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM-2', {}, found) is None
+
+
+def test_existing_start_tolerates_bad_proposal_without_hiding_seat(root, monkeypatch):
+    from wuwei import dispatch
+    state._write_state(lambda data: None, root)
+    monkeypatch.setattr(dispatch, 'candidate', lambda *args: (_ for _ in ()).throw(AttributeError('bad')))
+    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'builder', 'item': 'ITEM'}}, 'builds': {}}
+    found = {'pulls': {}, 'repos': {}}
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
+    monkeypatch.setattr(dispatch, 'candidate', lambda *args: [1])
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
+
+
+def test_existing_start_holds_spec_seat_but_not_reviewer(root):
+    state._write_state(lambda data: None, root)
+    found = {'pulls': {}, 'repos': {}}
+    data = {'seats': {'adhoc-1': {'role': 'adhoc', 'label': 'spec', 'item': 'ITEM'}}, 'builds': {}}
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found)['state'] == 'wait'
+    data['seats']['adhoc-1']['label'] = 'reviewer'
+    assert derive.existing_start(root, workspace.load_config(root), data, 'ITEM', {}, found) is None
+    state.append_event('seat adhoc', {'role': 'spec', 'prompt': 'Item ITEM.'}, root)
+    assert derive.existing_start(root, workspace.load_config(root), {'seats': {}, 'builds': {}},
+                                 'ITEM', {}, found)['state'] == 'wait'
+
+
+def test_carried_worktree_uses_its_creation_reflog_before_origin(root):
+    state._write_state(lambda data: None, root)
+    tree, common = worktree(root, 'ref: refs/heads/item')
+    (common / 'refs/heads').mkdir(parents=True)
+    (common / 'refs/heads/item').write_text(SHA + '\n')
+    (common / 'refs/remotes/origin').mkdir(parents=True)
+    (common / 'refs/remotes/origin/main').write_text(OTHER + '\n')
+    logs = common / 'worktrees/item/logs'
+    logs.mkdir()
+    (logs / 'HEAD').write_text(f"{'0' * 40} {SHA} Builder <b@example.test> 1 +0000\tcheckout\n")
+    (common / 'worktrees/item/gitdir').write_text(str(tree / '.git') + '\n')
+    config = workspace.load_config(root)
+    config['repos'][0]['path'] = 'repo'
+    assert derive.existing_start(root, config, {'seats': {}, 'builds': {}}, 'item', {},
+                                 {'pulls': {}, 'repos': {}}) is None
+
+
+def test_existing_start_expands_home_in_repo_path(root, monkeypatch):
+    state._write_state(lambda data: None, root)
+    home = root / 'home'
+    home.mkdir()
+    monkeypatch.setenv('HOME', str(home))
+    tree, common = worktree(home, OTHER)
+    (common / 'worktrees/item/gitdir').write_text(str(tree / '.git') + '\n')
+    (common / 'refs/remotes/origin').mkdir(parents=True)
+    (common / 'refs/remotes/origin/main').write_text(SHA + '\n')
+    config = workspace.load_config(root)
+    config['repos'][0]['path'] = '~/repo'
+    found = derive.existing_start(root, config, {'seats': {}, 'builds': {}}, 'item', {},
+                                  {'pulls': {}, 'repos': {}})
+    assert found['state'] == 'blocked' and found['worktree'] == str(tree)
+
+
+def test_offers_reads_events_once_for_multiple_planned_items(root, monkeypatch):
+    from wuwei import brief
+    state._write_state(lambda data: data.update(
+        approved_items=['A', 'B'], gate_approved=True, cap=2,
+        items={'A': {'phase': 'planned', 'status': 'queued'},
+               'B': {'phase': 'planned', 'status': 'queued'}}), root)
+    calls = []
+    original = brief.events
+    def counted(value):
+        calls.append(value)
+        return original(value)
+    monkeypatch.setattr(brief, 'events', counted)
+    derive.offers(state.read_state(root), root, workspace.load_config(root))
+    assert len(calls) == 1
+
+
+def test_planned_items_do_not_schedule_periodic_pr_listing(root):
+    state._write_state(lambda data: None, root)
+    data = {'approved_items': ['ITEM'], 'items': {'ITEM': {'phase': 'planned'}}}
+    assert derive.stale(root, workspace.load_config(root), data) == []
+
+
 def test_a_pass_counts_at_head_or_through_a_recorded_fix_round():
     row = {'fix_heads': [[SHA, OTHER]]}
     assert derive.at_head({}, SHA[:12], SHA)
