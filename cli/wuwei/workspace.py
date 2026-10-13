@@ -770,7 +770,7 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     return result
 
 
-def adopt_worktree(root, item, path, vcs, dirty=False, repo=None):
+def adopt_worktree(root, item, path, vcs, dirty=False, repo=None, rebind=None):
     """Register an existing clean linked worktree of a configured repository as the item's (#510).
     #901, build reconcile: dirty registers uncommitted work as it is; repo refuses a worktree of
     another repository."""
@@ -806,11 +806,37 @@ def adopt_worktree(root, item, path, vcs, dirty=False, repo=None):
             + f'; commit them, or run git -C {path} stash push --include-untracked, then rerun '
             f'bin/wuwei worktree adopt {path} --item {item}. To register the work as it is, run '
             f'bin/wuwei build reconcile {item} --worktree {path}')
-    state.record_worktree(root, item, path, None, check=True)
-    _anchor(path, root, vcs, repo['identity'])
+    previous = state.read_state(root)
+    recorded = previous['items'].get(item, {}).get('worktree')
+    replace = rebind and recorded and (root / recorded).resolve() != path
     head = data(vcs.head(str(path), root=root))['sha']
+    state.record_worktree(root, item, path, None, check=True, replace=previous if replace else None)
+    if replace:
+        import hashlib
+        import json
+        from wuwei import sessions
+        from wuwei.commands.build import _running
+        _running(previous, item)
+        old = (root / recorded).resolve()
+        old_head = 'missing'
+        if old.exists():
+            old_context = data(vcs.repo_context(str(old), root=root))
+            if Path(old_context['common_dir']).resolve() != Path(actual['common_dir']).resolve():
+                raise state.StateError(f'{old} and {path} belong to different repositories; '
+                                       f'admit the requested work as its own item with bin/wuwei plan add <item> --repo {repo["name"]}')
+            old_head = data(vcs.head(str(old), root=root))['sha']
+        token = hashlib.sha256(json.dumps([previous['items'][item], previous.get('builds', {}).get(item),
+                                          str(path), old_head, head, changes], sort_keys=True).encode()).hexdigest()
+        detail = (f'Rebind {item} from {old} at HEAD {old_head} to {path} at HEAD {head}. '
+                  'Discard the old build evidence and run checks and gates on the selected work.')
+        if reason := sessions.needs_owner(root, rebind, detail, token):
+            raise state.StateError(reason)
+    _anchor(path, root, vcs, repo['identity'])
+    if replace and (head != data(vcs.head(str(path), root=root))['sha']
+                    or old_head != (data(vcs.head(str(old), root=root))['sha'] if old.exists() else 'missing')):
+        raise state.StateError('worktree HEAD changed during rebind; rerun build reconcile')
     if state.read_state(root)['items'][item].get('worktree') != str(path):  # #901: a rerun records nothing
-        state.record_worktree(root, item, path, head)
+        state.record_worktree(root, item, path, head, replace=previous if replace else None)
     return {'item': item, 'path': str(path), 'head': head}
 
 

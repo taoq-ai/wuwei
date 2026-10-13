@@ -139,7 +139,11 @@ def run(args):
     seat = brief.seats(data).get(name)
     if seat is None:
         return refuse(FINDINGS, f'{name} is not a seat today; run wuwei next for the next step')
-    if not (seat['status'] == 'running' or seat['status'] == 'unmeasured' and seat.get('by') != 'owner'):
+    from wuwei.commands import build
+    record = data.get('builds', {}).get(seat['item']) or {}
+    continued = (args.verdict is not None and seat['role'] == 'builder' and record.get('seat') == name
+                 and build.continuing(record, record.get('agent_id')))
+    if not (continued or seat['status'] == 'running' or seat['status'] == 'unmeasured' and seat.get('by') != 'owner'):
         return refuse(FINDINGS, f'{name} is {seat["status"]}; nothing to stop; run wuwei next for the next step')
     if args.verdict is not None and seat['role'] == 'adhoc':
         return refuse(FINDINGS, f'{name} is an adhoc seat with no report to record; '
@@ -157,6 +161,14 @@ def run(args):
             build._park(root, seat['item'], dict(record), f'seat {name} stopped unmeasured: {reason.strip()}', record)
         print(f'seat {name} stopped unmeasured')
         return CLEAN
+    if continued:
+        if args.verdict:
+            return refuse(FINDINGS, f'a continued seat requires its own transcript; run wuwei seat stop {name} --verdict without a file')
+        transcript = seat.get('transcript')
+        if brief.last_turn(transcript)[0] == record.get('completion'):
+            return refuse(FINDINGS, f'{name} has no new completion; wait for its continued report')
+        return stop_with_report(root, data, name, seat, None,
+                                brief.stop_text({'agent_transcript_path': transcript}), transcript=transcript)
     if args.verdict:
         return stop_with_report(root, data, name, seat, args.verdict)
     return stop_with_report(root, data, name, seat, None, kept_report(root, name, seat))
@@ -182,7 +194,7 @@ def kept_report(root, name, seat):
     return text
 
 
-def stop_with_report(root, data, name, seat, path, text=None):
+def stop_with_report(root, data, name, seat, path, text=None, *, transcript=None):
     """Run the registered SubagentStop guards on the stop the hook would have seen. text (#905):
     a kept report already read and checked; it is linted from a private copy, never re-read."""
     import json
@@ -206,11 +218,12 @@ def stop_with_report(root, data, name, seat, path, text=None):
             code, message = verdict.lint_file(path, role=role, root=root)
             if code:
                 return refuse(code, message)
-        transcript = Path(directory) / 'agent.jsonl'
-        transcript.write_text(
-            json.dumps({'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + seat['brief']}}) + '\n'
-            + json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': text}]}}) + '\n',
-            encoding='utf-8')
+        if transcript is None:
+            transcript = Path(directory) / 'agent.jsonl'
+            transcript.write_text(
+                json.dumps({'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + seat['brief']}}) + '\n'
+                + json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': text}]}}) + '\n',
+                encoding='utf-8')
         payload = {'hook_event_name': 'SubagentStop', 'cwd': str(root), 'stop_hook_active': False,
                    'agent_type': 'wuwei:' + role, 'agent_id': agent_id,
                    'agent_transcript_path': str(transcript), 'last_assistant_message': text}

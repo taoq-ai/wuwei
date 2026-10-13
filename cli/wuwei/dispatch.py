@@ -632,7 +632,8 @@ def _blocked(root, data, item):
     """(the stopped builder's Blocked: line, its agent id) when the line is not none, else None."""
     from wuwei import watch
     ids = {seat.get('agent_id') for seat in brief.seats(data).values()
-           if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'stopped'} - {None}
+           if seat['item'] == item and seat['role'] == 'builder'
+           and seat['status'] in ('stopped', 'unmeasured')} - {None}
     # #902: a builder bound by its build record keeps its agent id there, not on the seat
     ids |= {(data.get('builds', {}).get(item) or {}).get('agent_id')} - {None}
     found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])

@@ -287,7 +287,7 @@ def last_turn(path):
 
 
 def tail_turn(path):
-    """(text, handback) of the last assistant entry, read from the end of the file (#516).
+    """(text, completed handback) of the last assistant entry, read from the end (#516).
     ponytail: an assistant entry far back still reads most of the file; fine for transcripts."""
     with open(path, 'rb') as stream:
         size = stream.seek(0, 2)
@@ -298,11 +298,29 @@ def tail_turn(path):
             lines = stream.read(size - start).split(b'\n')
             if start:
                 lines = lines[1:]  # a partial line; the next window reads it whole
+            ended = set()
+            resumed = False
             for line in reversed(lines):
+                row = json.loads(line) if line.strip() else {}
+                if not isinstance(row, dict):
+                    continue
+                message = row.get('message')
+                content = message.get('content', []) if isinstance(message, dict) else []
+                if row.get('type') == 'user' and (not isinstance(content, list) or any(
+                        not isinstance(part, dict) or part.get('type') != 'tool_result' for part in content)):
+                    resumed = True
+                if not resumed and isinstance(content, list) and row.get('toolEndsTurn') is True:
+                    ended.update(part.get('tool_use_id') for part in content
+                                 if isinstance(part, dict) and part.get('type') == 'tool_result'
+                                 and not part.get('is_error'))
                 entry = _entry(line.decode('utf-8'))
                 if entry is not None:
                     text, handback = entry
-                    return (handback, True) if isinstance(handback, str) else (text, False)
+                    if isinstance(handback, str):
+                        completed = any(part.get('id') in ended for part in row['message']['content']
+                                        if part.get('type') == 'tool_use' and part.get('name') == HANDBACK)
+                        return handback, completed
+                    return text, False
             if not start:
                 raise ValueError(f'transcript has no assistant turn; {PAYLOAD}')
             window *= 4
@@ -337,22 +355,18 @@ def keep_report(root, directory, name, text):
 
 
 def recovery(name, seat):
-    """#905: the command that ends a stuck seat: record its report when one is readable, else
-    stop it unmeasured."""
-    if seat.get('report') or seat['status'] == 'running':
-        return f'wuwei seat stop {name} --verdict'
-    return f'wuwei seat stop {name} --unmeasured "seat ended with no recorded result"'
+    """Record the terminal report of a stuck seat."""
+    return f'wuwei seat stop {name} --verdict'
 
 
 def stuck(data):
     """Seats that need bin/wuwei seat stop (#473), sorted: running with a recorded transcript
-    whose last assistant entry is the hand-back (no process, no stop), or unmeasured by the
-    hook (by is not owner)."""
+    whose hand-back has a successful terminal tool result. An unmeasured stop alone
+    is not completion evidence: the hook may have blocked and the task continued."""
     found = []
     for name, seat in seats(data).items():
-        if seat['status'] == 'unmeasured' and seat.get('by') != 'owner':
-            found.append(name)
-        elif seat['status'] == 'running' and isinstance(seat.get('transcript'), str):
+        if (seat['status'] in ('running', 'unmeasured') and seat.get('by') != 'owner'
+                and isinstance(seat.get('transcript'), str)):
             try:
                 if tail_turn(seat['transcript'])[1]:
                     found.append(name)

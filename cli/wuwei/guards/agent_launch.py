@@ -418,8 +418,6 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
-    if reserved['status'] == 'stopped':
-        return 0, ''  # #905: a repeated stop (one sent back for repair); the seat's end counts once
     today = directory == workspace.day_dir(root)
     try:
         if role == 'builder' and today and item in data.get('builds', {}):
@@ -429,6 +427,8 @@ def stop(payload):
                     return 0, ''
             except build.Mismatch as exc:
                 return 2, f'build result could not be recorded: {exc}'  # never another agent's seat
+        if reserved['status'] == 'stopped':
+            return 0, ''  # repeated stop outside a continued build
         if reserved['status'] == 'running':
             brief.stop_text(payload)
         state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
@@ -452,6 +452,7 @@ def _unrecorded(payload, root, directory, name, reserved, exc):
     try:
         state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
                         reason=str(exc), report=report, expected=reserved)
+        state.append_event('seat.result_gap', {'name': name, 'reason': str(exc)}, root, directory=directory)
     except ValueError:  # the seat changed since this stop read it: its result recorded, or relaunched
         return 2, (f'seat {name} changed during its stop (its result is recorded, or it was launched '
                    f'again); a later step failed: {exc}; run bin/wuwei next for the step')

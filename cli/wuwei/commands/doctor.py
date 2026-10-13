@@ -527,8 +527,7 @@ def _seats(root):
     names = brief.stuck(state.read_state(root))
     if not names:
         return 'ok', 'none stuck'
-    return 'failed', (f'dead: {", ".join(names)}; run wuwei seat stop {names[0]} --verdict <file>, '
-                      'or --unmeasured "<reason>"')
+    return 'failed', f'dead: {", ".join(names)}; run {brief.recovery(names[0], {})}'
 
 
 def measure(root):

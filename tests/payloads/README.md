@@ -18,3 +18,7 @@ Only SessionStart was recorded live. All other fixtures are doc-derived examples
 not live recordings. Replace them with recordings when live capture is possible.
 Tests derive malformed variants and install fake guards in temporary plugin copies;
 no test guard ships in the production registry.
+- `SubagentStop/plain-final.json`: compatibility fixture for #937 using documented
+  stop fields including agent_transcript_path and last_assistant_message. Field review inferred
+  these fields from recorded behavior; tests delay the final text row. This
+  is not an exact captured Claude Code desktop 2.1.295 payload.
