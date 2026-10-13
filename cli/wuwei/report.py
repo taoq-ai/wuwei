@@ -123,11 +123,21 @@ def build(root=None):
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
     if lines[-1] == '## Merged':
         lines.append('none')
+    lines += ['', '## Done']
+    for name, item in sorted(items.items()):
+        if item['status'] != 'done' or item['phase'] == 'merged' or item.get('kind') not in ('review', 'measure'):
+            continue
+        verdicts = [f"{row['role']} {row['verdict']} ({row['file']})"
+                    for key, row in data['gate_verdicts'].items()
+                    if key.startswith(f'{name}:') and key.endswith(':initial')]
+        lines.append(f'- {name}: ' + ('; '.join(verdicts) or 'verdict unmeasured'))
+    if lines[-1] == '## Done':
+        lines.append('none')
     lines += ['', '## Cycle time', *cycle_lines(root)]
     lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
-                 if item['phase'] not in ('merged', 'parked'))
+                 if item['phase'] not in ('merged', 'parked') and item['status'] != 'done')
     if lines[-1] == '## Open at close':
         lines.append('none')
     lines += ['', '## Parked']
@@ -137,7 +147,8 @@ def build(root=None):
     if not parked:
         lines.append('none')
     lines += ['', '## Carry']
-    carry = [(name, item) for name, item in sorted(items.items()) if item['phase'] != 'merged']
+    carry = [(name, item) for name, item in sorted(items.items())
+             if item['phase'] != 'merged' and item['status'] != 'done']
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')

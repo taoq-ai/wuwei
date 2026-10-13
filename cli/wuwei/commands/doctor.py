@@ -527,8 +527,7 @@ def _seats(root):
     names = brief.stuck(state.read_state(root))
     if not names:
         return 'ok', 'none stuck'
-    return 'failed', (f'dead: {", ".join(names)}; run wuwei seat stop {names[0]} --verdict <file>, '
-                      'or --unmeasured "<reason>"')
+    return 'failed', f'dead: {", ".join(names)}; run {brief.recovery(names[0], {})}'
 
 
 def measure(root):
@@ -856,6 +855,15 @@ def run(args, confirm=None):
     failed = [] if confirm is not None else _hand_over(args)
     with redirect_stderr(io.StringIO()):  # Adapters print their reasons; the rows carry them.
         rows = diagnose(args.section) + failed
+    if args.section == 'pr-flow':
+        from wuwei import state
+        try:
+            root = workspace.find_workspace()
+        except (OSError, ValueError):
+            root = None
+        if root and state.day_started(workspace.day_dir(root)):
+            state.append_event('next.action', {'state': 'pr-flow', 'action': 'pass', 'item': '',
+                                               'named': []}, root)
     if args.json:
         print(json.dumps({'exit': outcome(rows), 'rows': rows}))
         return outcome(rows)

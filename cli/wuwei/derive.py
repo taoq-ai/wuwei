@@ -265,6 +265,8 @@ def offers(data, root, config, merges=None):
     for name in names:
         row = items[name]
         phase, pr = row['phase'], row.get('pr')
+        if row['status'] == 'done':
+            continue
         pull = pulls.get(pr) if pr else None
         if phase in TERMINAL or name in merged:
             continue  # merged, parked or carried
@@ -301,7 +303,8 @@ def offers(data, root, config, merges=None):
             kind, why = decided['step'], decided['why']
             # #903: red checks at the head the item holds are a fix in place of a review of that head;
             # red at the base too (base_red, recorded by pr act) is not the item's to fix
-            if (kind in ('gates', 'fix', 'raise', 'polish') and (pull or {}).get('checks') == 'red'
+            if (row.get('kind') != 'review' and kind in ('gates', 'fix', 'raise', 'polish')
+                    and (pull or {}).get('checks') == 'red'
                     and not repo.get('failed') and row.get('worktree')
                     and pull.get('head') == head(Path(root) / row['worktree'])
                     and (data.get('watch') or {}).get('base_red', {}).get(pr) != pull.get('head')):
@@ -438,6 +441,8 @@ def duties(root, config, directory=None, data=None):
         from wuwei.commands.next import approved
         for name in approved(values):
             row = values['items'][name]
+            if row.get('kind') == 'review':
+                continue
             pr = row.get('pr')
             pull = pulls.get(pr) or {}
             merged = row['phase'] == 'merged' or pull.get('state') == 'merged'

@@ -287,7 +287,7 @@ def last_turn(path):
 
 
 def tail_turn(path):
-    """(text, handback) of the last assistant entry, read from the end of the file (#516).
+    """(text, completed handback) of the last assistant entry, read from the end (#516).
     ponytail: an assistant entry far back still reads most of the file; fine for transcripts."""
     with open(path, 'rb') as stream:
         size = stream.seek(0, 2)
@@ -298,11 +298,29 @@ def tail_turn(path):
             lines = stream.read(size - start).split(b'\n')
             if start:
                 lines = lines[1:]  # a partial line; the next window reads it whole
+            ended = set()
+            resumed = False
             for line in reversed(lines):
+                row = json.loads(line) if line.strip() else {}
+                if not isinstance(row, dict):
+                    continue
+                message = row.get('message')
+                content = message.get('content', []) if isinstance(message, dict) else []
+                if row.get('type') == 'user' and (not isinstance(content, list) or any(
+                        not isinstance(part, dict) or part.get('type') != 'tool_result' for part in content)):
+                    resumed = True
+                if not resumed and isinstance(content, list) and row.get('toolEndsTurn') is True:
+                    ended.update(part.get('tool_use_id') for part in content
+                                 if isinstance(part, dict) and part.get('type') == 'tool_result'
+                                 and not part.get('is_error'))
                 entry = _entry(line.decode('utf-8'))
                 if entry is not None:
                     text, handback = entry
-                    return (handback, True) if isinstance(handback, str) else (text, False)
+                    if isinstance(handback, str):
+                        completed = any(part.get('id') in ended for part in row['message']['content']
+                                        if part.get('type') == 'tool_use' and part.get('name') == HANDBACK)
+                        return handback, completed
+                    return text, False
             if not start:
                 raise ValueError(f'transcript has no assistant turn; {PAYLOAD}')
             window *= 4
@@ -337,22 +355,18 @@ def keep_report(root, directory, name, text):
 
 
 def recovery(name, seat):
-    """#905: the command that ends a stuck seat: record its report when one is readable, else
-    stop it unmeasured."""
-    if seat.get('report') or seat['status'] == 'running':
-        return f'wuwei seat stop {name} --verdict'
-    return f'wuwei seat stop {name} --unmeasured "seat ended with no recorded result"'
+    """Record the terminal report of a stuck seat."""
+    return f'wuwei seat stop {name} --verdict'
 
 
 def stuck(data):
     """Seats that need bin/wuwei seat stop (#473), sorted: running with a recorded transcript
-    whose last assistant entry is the hand-back (no process, no stop), or unmeasured by the
-    hook (by is not owner)."""
+    whose hand-back has a successful terminal tool result. An unmeasured stop alone
+    is not completion evidence: the hook may have blocked and the task continued."""
     found = []
     for name, seat in seats(data).items():
-        if seat['status'] == 'unmeasured' and seat.get('by') != 'owner':
-            found.append(name)
-        elif seat['status'] == 'running' and isinstance(seat.get('transcript'), str):
+        if (seat['status'] in ('running', 'unmeasured') and seat.get('by') != 'owner'
+                and isinstance(seat.get('transcript'), str)):
             try:
                 if tail_turn(seat['transcript'])[1]:
                     found.append(name)
@@ -408,7 +422,7 @@ def status(vcs, tree, root):
 
 
 def rulings(body, directory, tree, data):
-    ids = sorted(set(re.findall(r'D-[A-Z0-9]+(?:-[A-Za-z0-9]+)+', body)))
+    ids = sorted(set(re.findall(r'(?<![A-Za-z0-9/_-])D-[A-Z0-9]+(?:-[A-Za-z0-9]+)+', body)))
     ids = [key for key in ids if not key.endswith('-N')]
     if not ids:
         return []
@@ -504,10 +518,13 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header.append(f'Charter: {path}')
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
         scratch = root / workspace.SCRATCH / item / role  # #647: one scratch directory per seat
-        header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
-                      'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
-                      'when it holds files you did not write, and write every temporary file there, '
-                      "never at the scratchpad root or in another item's directory")
+        if role == 'builder' and current.get('kind') == 'measure':
+            header.append(f'Scratch: {scratch}/')
+        else:
+            header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
+                          'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
+                          'when it holds files you did not write, and write every temporary file there, '
+                          "never at the scratchpad root or in another item's directory")
         if gate:  # #672: a gate probe never writes in the builder's worktree
             header.append('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX='
                           f'{shlex.quote(str(scratch / "pycache"))}; set it on every command that '
@@ -578,7 +595,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                      [row['path'] for row in changed],
                                      (repo or {}).get('gates', {}).get('trust_paths', []) if tree else [],
                                      current.get('flags')))
-        if role == 'builder' and tree and repo:
+        if role == 'builder' and tree and repo and current.get('kind') != 'measure':
             from wuwei import fast_checks  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
                 found = fast_checks.interpreter(command, tree, repo, root, config)
@@ -591,7 +608,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 header.append(f'{fast_checks.NONE[0].upper()}{fast_checks.NONE[1:]}. '
                               'Write "checks: none configured" in the PR body.')
         host = registry.load('code_host', config) if pr else None
-        header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
+        pull = read(host.pr, pr, root=root) if pr else None
+        if pr and current.get('kind') == 'review':
+            if pull.get('head') != head or pull.get('state') != 'open':
+                raise Refused(f'review PR {pr} is not open at worktree HEAD {head}; update the worktree and write a new brief')
+        header.append('PR head (no-cache): ' + (json.dumps(pull) if pr else 'not applicable'))
         if gate:
             gate_ready(data, item, head)
         row = [value for key, value in data['gate_verdicts'].items()

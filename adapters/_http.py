@@ -84,10 +84,14 @@ def cap(root=None):
 def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=None):
     """A RateLimited when gh's stderr names a rate limit. #899: the refused reply's own X-RateLimit
     headers (seen: resource, remaining, limit, reset) decide; gh api rate_limit for the resource the
-    call spends is read only when the reply carried none. An empty bucket waits for its reset;
-    calls left is a secondary limit only when GitHub says so (the word, or Retry-After as after)."""
+    call spends is read only when the reply carried none. Explicit secondary evidence takes
+    precedence over an empty bucket; otherwise an empty bucket waits for its reset."""
     if not re.search(r'rate limit', stderr or '', re.I):
         return None
+    secondary = after is not None or re.search(r'secondary', stderr, re.I)
+    delay = after if after is not None else WAIT
+    detail = (f"secondary limit on {where or resource}"
+              f"{f', Retry-After {after} s' if after is not None else ''}")
     if seen:
         resource, remaining, limit, reset = seen
     else:
@@ -99,11 +103,13 @@ def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=Non
             if not all(type(value) is int for value in (remaining, limit, reset)):
                 raise TypeError
         except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-            return RateLimited(time.time() + (after or WAIT))
+            return RateLimited(time.time() + delay, note=detail if secondary else None)
+    if secondary:
+        if remaining == 0:
+            return RateLimited(time.time() + delay, note=detail)
+        return RateLimited(time.time() + delay, remaining, limit, resource, where, after)
     if remaining == 0:
         return RateLimited(reset, 0, limit, resource)
-    if after or re.search(r'secondary', stderr, re.I):
-        return RateLimited(time.time() + (after or WAIT), remaining, limit, resource, where, after)
     # Fixed words and numbers only: GitHub's primary wording with calls left, never echoed.
     told = ' while its headers say' if seen else ', but rate_limit shows'
     return RateLimited(time.time() + WAIT, note=f'GitHub refused {where or resource} with a rate limit'
@@ -146,6 +152,9 @@ def _github_limit(code, headers):
              if all(map(str.isdigit, left)) and re.fullmatch(r'[a-z_]+', resource) else ())
     after, reset = headers.get('Retry-After') or '', headers.get('X-RateLimit-Reset') or ''
     if after.isdigit():
+        if code == 403:
+            raise RateLimited(time.time() + int(after),
+                              note=f'secondary limit on {resource or "GitHub"}, Retry-After {after} s') from None
         raise RateLimited(time.time() + int(after), *calls) from None
     if left[0] == '0' and reset.isdigit():
         raise RateLimited(int(reset), *calls) from None

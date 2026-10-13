@@ -262,6 +262,8 @@ def gh_outbound(argv, cwd, root, *, api=False, text_write=False):
         if not name or name == '-':
             return 2, 'outward: cannot inspect outbound stdin or missing body file; pass the body as a regular --body-file'
         try:
+            if not (cwd / name).exists():
+                return 2, 'outward: body file does not exist; write it in a separate command first'
             text = (cwd / name).read_text(encoding='utf-8')
             if json_body:
                 text = json.dumps(json.loads(text), ensure_ascii=False)

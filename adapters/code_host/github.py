@@ -28,7 +28,8 @@ _ETAG = r'(?:W/)?"[\x21\x23-\x7e]*"'
 
 # #844: one listing call per repository for the derived next
 _PULLS = ('query($o:String!,$r:String!){viewer{login} repository(owner:$o,name:$r){pullRequests(first:100,'
-          'orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state isDraft headRefOid mergeable '
+          'orderBy:{field:UPDATED_AT,direction:DESC}){nodes{number state isDraft headRefOid headRefName '
+          'headRepository{nameWithOwner} mergeable '
           'author{login} labels(first:20){nodes{name}} '
           'commits(last:1){nodes{commit{statusCheckRollup{state}}}} '
           'latestReviews(last:20){nodes{author{login} submittedAt}} '
@@ -398,7 +399,9 @@ def pulls(repo, root=None):
                  for node in _list(v[key]['nodes'])  # D2: a teammate author's follow-up on a claimed PR counts
                  if _login(node.get('author')) not in (None, viewer, author if author == viewer else None)]
         rows.append({'number': _field(v, 'number', int), 'state': _field(v, 'state', str).lower(),
-                     'head': _sha(v['headRefOid']), 'draft': _field(v, 'isDraft', bool),
+                     'head': _sha(v['headRefOid']), 'branch': v.get('headRefName'),
+                     'head_repo': (v.get('headRepository') or {}).get('nameWithOwner'),
+                     'draft': _field(v, 'isDraft', bool),
                      'checks': rollup.get(checks, 'pending'),
                      'mergeable': str(v.get('mergeable') or '').lower(),
                      'labels': [_field(label, 'name', str) for label in _list(v['labels']['nodes'])],

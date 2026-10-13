@@ -55,7 +55,8 @@ THEN = {
     'pr-wait': ('Run the command through Bash in the background (or Monitor: one line per PR change); '
                 'run wuwei next when it exits. Then end the turn with the output of wuwei status --line.'),
     # Planner-facing lines of single rows; step formats {days} and {dm}.
-    'pr-flow': 'On exit 1 show its output to the owner unchanged, once; then run wuwei next.',
+    'pr-flow': ('Run wuwei doctor --section pr-flow as its own command. On exit 1 show its output to the owner '
+                'unchanged, once; then run wuwei next.'),
     'lead': ('Pass it to Agent in the background. When its completion notification arrives, save '
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
@@ -85,7 +86,9 @@ LEAD_BODY = ('Propose today. Answer with one JSON object: goals, seat_policy, en
              'ordered candidates, plus seats (goal to seats of CAP) only to change the split the CLI '
              'derives. Each candidate has id, goal, evidence, scope, overlap, track, the three '
              'boolean flags, score and evidence_lines for each component of the configured '
-             'framework. With more than one configured repository each candidate also has repo, the '
+             'framework. Candidate kind defaults to build; use review with pr and review_role '
+             'for a PR verdict, or measure with no paths for read-only evidence. '
+             'With more than one configured repository each candidate also has repo, the '
              'configured repository name it changes. While memory/goals.md has no goals, or when the owner changed '
              'the goals, write each goal as a block '
              '(id, outcome, measure, target, date, priority), never an id alone. Check open '

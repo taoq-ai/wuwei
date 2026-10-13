@@ -169,6 +169,8 @@ def unresolved(root, rows, open_items=None, notes=None):
         for name in data['approved_items']:
             try:
                 item = data['items'][name]
+                if item['status'] == 'done' and item['phase'] != 'merged':
+                    continue
                 ref = item.get('pr')
                 pr = prs.get(ref, {})
                 kept = item.get('disposition') or {}  # plan carry or park, or a park in code
@@ -184,7 +186,7 @@ def unresolved(root, rows, open_items=None, notes=None):
                     if open_items is not None:
                         open_items.append(name)
                 tree = item.get('worktree')
-                if tree is not None and ref not in owned:
+                if tree is not None and ref not in owned and item.get('kind') != 'review':
                     if not isinstance(tree, str) or not tree:
                         raise ValueError(f'invalid item worktree; {DAMAGED}')
                     path = (root / tree).resolve()

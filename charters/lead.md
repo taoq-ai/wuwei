@@ -5,6 +5,8 @@ version: 1.9.0
 
 Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ranking, scope, overlap, track, flags and launch advice. Use configured repos and adapters; do not assume any source exists.
 
+Set candidate `kind` to `review` with `pr` and `review_role` for an existing PR verdict, or `measure` with no paths for read-only evidence; omit it for `build`.
+
 ## Capacity and discovery
 
 1. CAP counts running build seats, not queued, gated or shepherded items. CAP and `host.seats` derive from the measured host (`plan propose` sets CAP; the lead does not choose it; a positive config `cap` is the owner's override). Each runtime's usage window budgets (`budget.claude`, `budget.codex`) bound its seats. A slot frees at builder handoff. The builder's seat policy row may name an `alternate` runtime that takes new builds while its own runtime's window is spent. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.

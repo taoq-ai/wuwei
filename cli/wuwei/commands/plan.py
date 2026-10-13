@@ -40,6 +40,9 @@ def register(subparsers):
                                     'its briefs as Approved as:')
     add.add_argument('--repo', help='Configured repository name; required when several are configured')
     add.add_argument('--track', default='SLICE', help='SLICE (default) or FULL')
+    add.add_argument('--kind', default='build', choices=('build', 'review', 'measure'))
+    add.add_argument('--pr', help='Existing PR for a review item')
+    add.add_argument('--review-role', choices=('arch', 'quality', 'security', 'goal'))
     add.add_argument('--governed-by', help='The governing document: <path> or <path>#<heading>, relative to '
                                            'the repository; a directory names its spec.md')
     for flag in plan.FLAGS:
@@ -56,6 +59,8 @@ def register(subparsers):
     assign.add_argument('assignment', help='spec=required|skipped, ticket=<id>, owner_merge=true|false or '
                                            'governed_by=<path>[#heading]')
     assign.add_argument('--reason', help='Why; required for spec=skipped')
+    assign.add_argument('--pr', help='Existing PR when setting kind=review')
+    assign.add_argument('--review-role', choices=('arch', 'quality', 'security', 'goal'))
     parser.set_defaults(func=run)
 
 
@@ -100,6 +105,7 @@ def run(args):
                                       title=args.title, ticket=args.ticket, note=args.note,
                                       source='finding' if args.from_finding else None,
                                       repo=args.repo, track=args.track, governed_by=args.governed_by,
+                                      kind=args.kind, pr=args.pr, review_role=args.review_role,
                                       flags=[flag for flag in plan.FLAGS if getattr(args, flag)])))
         elif args.action == 'set':
             key, _, value = args.assignment.partition('=')
@@ -111,6 +117,8 @@ def run(args):
                 print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
             elif key == 'governed_by':
                 print(plan.set_governed_by(args.item, value))
+            elif key == 'kind':
+                print(plan.set_kind(args.item, value, pr=args.pr, review_role=args.review_role))
             else:
                 raise ValueError(f'plan set: {args.assignment} is not a spec, ticket, owner_merge or governed_by '
                                  f'value; run bin/wuwei plan set {args.item} spec=required|skipped, '

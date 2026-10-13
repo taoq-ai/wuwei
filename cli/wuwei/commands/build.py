@@ -227,7 +227,10 @@ def step(item, root, *paths):
     data = state.read_state(root)
     record = data.get('builds', {}).get(item)
     phase = (data['items'].get(item) or {}).get('phase')
-    blocked = (record and record['status'] == 'check' and phase in state.BUILD_PHASES
+    seat = data.get('seats', {}).get((record or {}).get('seat'), {})
+    stopped = seat.get('status') in ('stopped', 'unmeasured') and seat.get('brief') == record.get('brief')
+    blocked = (record and (record['status'] == 'check' or 'result' not in record and stopped)
+               and phase in state.BUILD_PHASES
                and dispatch._blocked_card(root, data, item, build=True))
     if blocked and record.get('answered') != blocked[3]:  # one continue per answered line
         reason, answer, card, line = blocked
@@ -259,6 +262,8 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     if item not in data['items']:
         raise PortExit(2, f'unknown item {item}')
     record = data.get('builds', {}).get(item)
+    if _recover_committed(item, record, root):
+        return state.read_state(root)['builds'][item]['action']
     if record is not None and record['status'] == 'running':
         raise ValueError(f'builder is still running; wait for its stop hook, then run bin/wuwei build next {item}')
     if record is not None:
@@ -330,7 +335,7 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     if feedback:
         action['feedback'] = feedback
         action['prompt'] += '\n\n' + feedback + previous['action']['prompt'].partition('\n\n' + feedback)[2]
-    commands = list(repo['fast_checks'])
+    commands = [] if data['items'][item].get('kind') == 'measure' else list(repo['fast_checks'])
     from wuwei import derive  # #871 L2: the head the build must move past
     if used:  # #892: the head the seat launched at
         start = data['seats'][used].get('head')
@@ -354,6 +359,8 @@ def next_action(item, brief=None, worktree=None, *, root=None, runtime=None):
     if previous is None:
         from wuwei import dispatch
         dispatch.tracker_call(item, 'claim', root)
+    if _recover_committed(item, record, root):
+        return state.read_state(root)['builds'][item]['action']
     return action
 
 
@@ -482,9 +489,16 @@ def normalize_usage(reported, model):
     return usage
 
 
+def continuing(record, agent_id):
+    """A SendMessage continuation has no launch hook; only its bound agent can finish it."""
+    return bool(record and agent_id and record.get('agent_id') == agent_id
+                and record['status'] == 'ready' and record['action']['action'] == 'continue'
+                and record['action'].get('resume') == agent_id)
+
+
 def record_result(item, result, *, root, agent_id=None, model=None, completion=None, expected=None):
     record = expected if expected is not None else state.read_state(root)['builds'][item]
-    if record['status'] != 'running':
+    if record['status'] != 'running' and not continuing(record, agent_id):
         return
     if not isinstance(result, dict):
         raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
@@ -504,6 +518,8 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage,
                                 'runtime': record['runtime']})
+    if updated['items'][item].get('kind') == 'measure':
+        complete_checks(item, [], root=root, expected=updated['builds'][item])
     if result.get('windows'):
         from wuwei import dispatch
         dispatch.save_windows(root, record['runtime'], result['windows'])
@@ -533,7 +549,7 @@ def stopped(item, name, payload, *, root):
     record = data.get('builds', {}).get(item)
     if record is None or record.get('seat') != name:
         return False
-    if record['status'] != 'running':
+    if record['status'] != 'running' and not (record['status'] == 'ready' and record['action']['action'] == 'continue'):
         return True
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
@@ -542,13 +558,24 @@ def stopped(item, name, payload, *, root):
         return True  # #614: the replaced agent's late stop; the fresh launch records the round
     if record.get('agent_id') and record['agent_id'] != agent_id:
         raise Mismatch(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
+    if record['status'] == 'ready' and not continuing(record, agent_id):
+        return True
     from wuwei.brief import last_turn
-    completion, message, _ = last_turn(payload['agent_transcript_path'])
     text = payload.get('last_assistant_message')
-    if not isinstance(text, str) or not text.strip():
-        text = message  # #473: a background hand-back carries no message
-    elif message.strip() != text.strip():
-        raise ValueError(f'SubagentStop has no matching assistant completion; {PAYLOAD}')
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            completion, message, _ = last_turn(payload['agent_transcript_path'])
+            if not isinstance(text, str) or not text.strip():
+                text = message  # #473: a background hand-back carries no message
+            if message.strip() == text.strip():
+                break
+        except ValueError:
+            pass  # the writer may still be flushing the final JSON row
+        if time.monotonic() >= deadline:
+            raise ValueError('SubagentStop has no matching assistant completion after waiting for '
+                             f'the transcript; retry bin/wuwei seat stop {name} --verdict <file>')
+        time.sleep(0.05)
     if completion == record.get('completion'):
         return True
     reported = payload.get('usage', {})
@@ -567,6 +594,8 @@ def stopped(item, name, payload, *, root):
         reported = {}  # #905: usage the runtime got wrong is unmeasured; the finished result still counts
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
+    if data['items'][item].get('kind') == 'measure':
+        return True
     measured = data.get('fast_checks', {}).get(record['repo'], {})
     rows = [measured.get(command, {}) for command in record['commands']]
     if not all(row.get('build') == check_binding(item, record)
@@ -618,6 +647,18 @@ def complete_checks(item, results, *, root, expected=None):
     config = workspace.load_config(root)
     data = state.read_state(root)
     row = data['items'][item]
+    if row.get('kind') == 'measure':
+        from wuwei import brief, dispatch
+        try:
+            vcs = registry.load('vcs', config)
+            changed = (brief.read(vcs.head, record['worktree'], root=root)['sha'] != record['start']
+                       if record.get('start') else bool(dispatch._changes(
+                           root, config, {'worktree': record['worktree']})[1]))
+            dirty = brief.status(vcs, record['worktree'], root)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise ValueError(f'measurement diff unmeasured: {exc}') from exc
+        if changed or dirty:
+            failures.append(('change', {'error': 'measurement changed the worktree; remove its code diff and hand off the evidence'}))
     broken = failures and _main_broken(root, config, data, item, record, failures)
     if broken and _admit(root, row, broken, record['repo']):
         _hold(item, record, root, expected, broken)
@@ -629,7 +670,7 @@ def complete_checks(item, results, *, root, expected=None):
                                       build=True, where='gates')
         if code:
             failures.append(('spec', {'error': reason}))
-    if not failures:  # #901 review D1: a recheck at a gate is a whole build check as well
+    if not failures and row.get('kind') != 'measure':  # a measurement hands off evidence, not a commit
         failures += _unbuilt(record, root, config)
     if not failures:  # #901 review: the head the checks passed on is the only head a gate reads
         record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data))
@@ -737,9 +778,48 @@ def recheck_moved(item, root, record, head):
         f'reads only a checked head, so run wuwei build check {item}, then wuwei dispatch next {item}')}
 
 
+def _recover_committed(item, record, root):
+    """#930: missing hand-back, finished seat and committed work: measure it through checks."""
+    from wuwei import brief, derive, dispatch
+    if (not record or record['status'] not in ('ready', 'running') or 'result' in record
+            or record.get('reconciled') or record.get('signature') or record.get('answered')
+            or not derive.SHA.fullmatch(record.get('start') or '')):
+        return False
+    data = state.read_state(root)
+    seats = brief.seats(data)
+    seat = seats.get(record.get('seat'))
+    if (not seat or seat['status'] not in ('stopped', 'unmeasured') or seat['item'] != item
+            or seat.get('brief') != record['brief'] or seat['role'] != 'builder'
+            or any(row['status'] == 'running' and row['role'] == 'builder' and row['item'] == item
+                   for row in seats.values())):
+        return False
+    if seat['status'] == 'unmeasured' and record['seat'] not in brief.stuck(data):
+        return False
+    if dispatch._blocked(root, data, item):
+        return False
+    _busy(item, record)
+    vcs = registry.load('vcs', workspace.load_config(root))
+    tree = record['worktree']
+    head = brief.read(vcs.head, tree, root=root)['sha']
+    if (head == record['start'] or brief.status(vcs, tree, root)
+            or brief.read(vcs.merge_base, tree, record['start'], root=root)['sha'] != record['start']):
+        return False
+    recovered = {**record, 'status': 'check', 'action': recheck(item, record),
+                 'reconciled': {'head': head, 'dirty': [], 'at': workspace.now().isoformat()}}
+
+    def unchanged(current):
+        if current.get('seats') != data.get('seats'):
+            raise ValueError(f'seats changed during build recovery; {RACE}')
+    _save(item, recovered, root, 'build.reconciled', record,
+          {'head': head, 'start': record['start'], 'result': 'unmeasured'}, also=unchanged)
+    return True
+
+
 def check(item, *, root=None):
     root = workspace.find_workspace(root)
     record = state.read_state(root).get('builds', {}).get(item)
+    if _recover_committed(item, record, root):
+        record = state.read_state(root)['builds'][item]
     if record is None or record['status'] != 'check':
         found = 'no build yet' if record is None else f'build {record["status"]}'
         outside = (f'; work done outside the record: bin/wuwei build reconcile {item} --worktree <path>'
@@ -886,7 +966,8 @@ def run_loop(item, brief, worktree, *, root=None):
                 running = state.read_state(root)['builds'][item]
                 _save(item, {**running, 'status': 'ready'}, root, 'build.failed', running, {'reason': str(exc)})
                 raise
-            refused = _commit(item, root, config)
+            refused = (None if state.read_state(root)['items'][item].get('kind') == 'measure'
+                       else _commit(item, root, config))
             recorded = record_result(item, _data(runtime.result(job, root=root), 'result'),
                                      root=root, model=status.get('model'))
             if refused and recorded:
@@ -927,7 +1008,7 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
     the gates, a build record that starts at the fast checks (no builder seat is invented). Each
     step reads what is recorded first, so a rerun finishes an interrupted one and an unchanged
     one writes nothing. Nothing outside counts as tested or approved: the checks and gates run."""
-    from wuwei import merge, shepherd
+    from wuwei import dispatch, merge, shepherd
     from wuwei.brief import identifier, read, status
     from wuwei.commands import worktree as worktrees
     root = workspace.find_workspace(root)
@@ -941,16 +1022,24 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
                                f'bin/wuwei plan add {item} --goal <G-n>, then rerun')
     if row['phase'] in ('parked', 'escalated'):
         raise state.StateError(f'{item} is {row["phase"]}; resume it with bin/wuwei plan resume {item}, then rerun')
-    _running(data, item)  # review F1: a seat still committing stops before its work is verified
+    if dispatch._blocked(root, data, item):
+        raise state.StateError(f'builder has an unresolved Blocked line; run bin/wuwei build next {item}')
     ref = pr and merge.reference(pr, root, config, repo=config['repos'][0]['name'] if len(config['repos']) == 1 else None)
     other = next((name for name in (repo, ref and ref.split('#')[0]) if name and row.get('repo') not in (None, name)), None)
     if other:  # review F2: the item's recorded repository changes only by an explicit decision
         raise state.StateError(f'{item} is for {row["repo"]}, not {other}; pass a worktree, branch or PR of '
                                f'{row["repo"]}, or the owner admits the {other} work as its own item with '
                                f'bin/wuwei plan add <item> --repo {other}')
+    if _recover_committed(item, data.get('builds', {}).get(item), root):
+        data = state.read_state(root)
+    _running(data, item)  # a seat still committing stops before its work is verified
     repo = row.get('repo') or repo
     if worktree:
-        workspace.adopt_worktree(root, item, worktree, vcs, dirty=True, repo=repo)
+        command = ['bin/wuwei', 'build', 'reconcile', item, '--worktree', str(Path(worktree).resolve())]
+        for key, value in (('--pr', pr), ('--repo', repo), ('--branch', branch), ('--track', track)):
+            if value and not (key == '--repo' and value == row.get('repo')):
+                command.extend((key, value))
+        workspace.adopt_worktree(root, item, worktree, vcs, dirty=True, repo=repo, rebind=shlex.join(command))
     elif branch and not row.get('worktree'):
         rows = [found for found in config['repos'] if found['name'] == repo or not repo and len(config['repos']) == 1]
         if len(rows) != 1:
@@ -996,7 +1085,12 @@ def reconcile(item, *, root=None, worktree=None, pr=None, repo=None, branch=None
 
 def _running(data, item):
     """A running builder seat of the item, by its build record or its seat row (review F1)."""
-    from wuwei.brief import seats
+    from wuwei.brief import seats, stuck
+    for name, seat in seats(data).items():
+        if (seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'unmeasured'
+                and name not in stuck(data)):
+            raise state.StateError(f'builder seat {name} has no completion evidence; wait for its stop hook, '
+                                   f'or record its finished report with bin/wuwei seat stop {name} --verdict <file>')
     record = data.get('builds', {}).get(item) or {}
     name = record.get('seat') if record.get('status') == 'running' else next(
         (name for name, seat in seats(data).items()
