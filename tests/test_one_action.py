@@ -224,8 +224,16 @@ def test_a_blocked_stop_passes_the_strict_spec_stop_guard(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text('[spec]\nengine = "speckit"\nmode = "strict"\n')
     config, tree = workspace.load_config(tmp_path), tmp_path / 'tree'
     tree.mkdir()
+    artifact = tree / 'specs/a/spec.md'
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text('# Spec\n')
     row = {'phase': 'implement', 'status': 'running'}
     assert specmode.named(tmp_path, config, 'A', row, tree, 'Blocked: none\nGap: none\nChange: none\n')[0] == 1
+    result = specmode.named(tmp_path, config, 'A', row, tree,
+                            'Blocked: none; context for the gates\nGap: none\nChange: none\n')
+    assert result[0] == 1 and 'final message must name the spec artifacts' in result[1]
+    assert specmode.named(tmp_path, config, 'A', row, tree,
+                          'Blocked: none; context for the gates\nspecs/a\n')[0] == 0
     text = 'Blocked: the schema change needs the owner\nGap: none\nChange: none\n'
     assert specmode.named(tmp_path, config, 'A', row, tree, text) == (0, '')
 
@@ -244,7 +252,7 @@ def test_a_blocked_builder_stops_and_the_owner_is_asked_before_its_checks(day, c
     code, out, _ = act(day, 'build', 'next', 'A')
     asked = json.loads(out)
     assert (code, asked['action'], asked['command']) == (1, 'escalate', 'wuwei build next A')
-    assert asked['reason'] == 'builder blocked: the schema change needs the owner'
+    assert asked['reason'] == 'builder blocked: the schema change needs the owner; ask this card verbatim'
     found = json.loads(act(day, 'next', '--json')[1])
     assert found['decision']['card'] == asked['card']
     card = {**asked['card'], 'question': asked['card']['question'] + context}

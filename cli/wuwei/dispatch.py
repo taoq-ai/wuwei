@@ -635,7 +635,7 @@ def _resumed(root, item):
 
 
 def _blocked(root, data, item):
-    """(the stopped builder's Blocked: line, its agent id) when the line is not none, else None."""
+    """Return (blocked line and agent, note after none) from the stopped builder's retro."""
     from wuwei import watch
     ids = {seat.get('agent_id') for seat in brief.seats(data).values()
            if seat['item'] == item and seat['role'] == 'builder'
@@ -645,14 +645,17 @@ def _blocked(root, data, item):
     found = [(str(row['payload'].get('fields', {}).get('Blocked', '')).strip(), row['payload']['agent_id'])
              for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
              if row['kind'] in ('retro.captured', 'retro.gap') and row['payload'].get('agent_id') in ids]
-    return found[-1] if found and found[-1][0] and found[-1][0].casefold() != 'none' else None
+    if not found or not found[-1][0]:
+        return None, ''
+    line, agent = found[-1]
+    return (None, line[4:].lstrip('.,; ').strip()) if verdict.blocked_none(line) else ((line, agent), '')
 
 
 def _blocked_card(root, data, item, build=False):
     """(reason, the owner's answer, the card, the line) when a stopped builder's Blocked: line
     asks the owner, else None. Pure: next derives it, dispatch next acts on it. build (#902): the
     build at its checks asks first, on the card of build next."""
-    stopped = _blocked(root, data, item)
+    stopped, _ = _blocked(root, data, item)
     if not stopped:
         return None
     import hashlib
@@ -666,8 +669,9 @@ def _blocked_card(root, data, item, build=False):
     answer = sessions.owner_answer(root, command, token)
     card = sessions.owner_card(command, detail, token, PARKS)
     reason = f'builder blocked: {line}'
-    if answer is None and (mismatch := sessions.owner_mismatch(root, card)):
-        reason += '; ' + mismatch.rstrip('; ')
+    if answer is None:
+        mismatch = sessions.owner_mismatch(root, card)
+        reason += '; ' + (mismatch.rstrip('; ') if mismatch else 'ask this card verbatim')
     return reason, answer, card, line
 
 
@@ -700,6 +704,8 @@ def decide(root, data, config, item):
         if answer != 'Yes':
             return {'step': 'ask', 'why': reason, 'card': card}
         note = f"\nOwner decision: the owner said Yes to the builder's Blocked: line: {line}"
+    if phase == 'gate' and (builder_note := _blocked(root, data, item)[1]):
+        note = f'\nBuilder note on Blocked: {builder_note}'
     gates = gate_set(row)
     current = derive.head(Path(root) / row['worktree']) if row.get('worktree') else None
     if phase == 'delta' and (late := [role for role in gates if _record(data, item, role, 'initial') is None]):
@@ -849,6 +855,8 @@ def _act(root, item, found, data=None):
         action = {'action': 'gates', 'roles': found['roles'],
                   'seats': _seats(root, data, item, found['roles'], found['round'], commands,
                                   found['note'], found['stale'], found['current'])}
+        if found['note']:
+            action['note'] = found['note'].strip()
         if commands:  # #551: the exact brief and receive steps, never a remembered action
             action['commands'] = commands
         row = data['items'][item]
