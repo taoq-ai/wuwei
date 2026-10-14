@@ -29,6 +29,8 @@ class Port:
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('''
+[guards]
+enforce = true
 [owner]
 name = "Builder"
 handles = ["U12345", "builder"]
@@ -1067,8 +1069,8 @@ def gate_miss(case, monkeypatch, enforce=True):
     root, host = solo_raise(case, monkeypatch)
     monkeypatch.setattr('wuwei.merge.gate_check', lambda *a, **kw: (1, GATE_MISS))
     if not enforce:
-        with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write('\n[guards]\nenforce = false\n')
+        path = root / '.wuwei/config.toml'
+        path.write_text(path.read_text().replace('enforce = true', 'enforce = false'))
     return root, host
 
 

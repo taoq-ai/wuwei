@@ -190,7 +190,8 @@ def test_discovered_guards_through_hook(workspace, monkeypatch, capsys, tool, to
         assert result['permissionDecision'] == 'deny'
         assert result['permissionDecisionReason'] in captured.err
     else:
-        assert not captured.out and not captured.err
+        assert not captured.err
+        assert not captured.out or 'Nudge:' in captured.out
 
 
 @pytest.mark.parametrize('script', [
@@ -972,7 +973,8 @@ def test_scratch_of_another_item_is_logged(workspace, tmp_path, monkeypatch, cap
     scratch = (workspace / '.wuwei/scratch' if base == 'workspace' else tmp_path / 'scratchpad').resolve()
     code, captured = _scratch_hook(workspace, scratch / 'B/x.sh', monkeypatch, capsys)
     own = f'{scratch}/A/builder/'
-    assert (code, captured.out, captured.err) == (0, '', '')
+    assert (code, captured.err) == (0, '')
+    assert json.loads(captured.out)['hookSpecificOutput']['additionalContext'].startswith('Nudge:')
     [event] = [json.loads(line)['payload'] for path in workspace.glob('.wuwei/days/*/events.jsonl')
                for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
     assert event['reason'].startswith('scratch:') and own in event['reason']

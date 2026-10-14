@@ -42,7 +42,7 @@ TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
 # A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
-RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
+RETIRED = ('deploy.workflows', 'nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
            'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
            'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
            'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest',
@@ -88,7 +88,7 @@ SCHEMA = {
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
-    "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
+    "merge": {"owner_paths": [(str, None)]},  # #997: these and never_auto_paths keep the Owner step card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     # #845: input plus output tokens per runtime and usage window; 0 is no budget.
@@ -142,10 +142,10 @@ SCHEMA = {
     "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
-    "guards": {"enforce": (bool, True), "stop_max_blocks": (int, 20, 0)},  # #837: false logs what a guard would refuse
+    "guards": {"enforce": (bool, False), "stop_max_blocks": (int, 20, 0)},  # #837: false logs what a guard would refuse
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
-    "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
+    "deploy": {"deny": [(str, None)]},
     "outbound": {
         "code_host_orgs": [(str, None)],  # part 20 decides it with tracker label creation
         # #838: the owner's identity per surface; a write whose every destination is the owner's is local.

@@ -555,7 +555,7 @@ def test_only_the_builder_brief_carries_the_spec_line(day, monkeypatch):
     root, directory, vcs, host = day
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
     [line] = spec_line(directory / 'briefs/b1.md')
-    assert line.startswith('Spec: speckit strict;') and '/speckit.specify' in line
+    assert line.startswith('Spec: speckit advisory;') and '/speckit.specify' in line
     assert '## Governing document' not in (directory / 'briefs/b1.md').read_text()
     assert 'create-new-feature.sh --json --short-name x' in line and 'specs/x or specs/*-x' in line
     shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', root / 'tree/specs')

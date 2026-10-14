@@ -68,7 +68,7 @@ def test_the_retired_commands_are_unknown(root, argv):
 OFF = '[guards]\nenforce = false\n'
 
 
-@pytest.mark.parametrize('config,enforce', [('', True), ('[guards]\nenforce = true\n', True), (OFF, False)])
+@pytest.mark.parametrize('config,enforce', [('', False), ('[guards]\nenforce = true\n', True), (OFF, False)])
 def test_status_shows_enforce(root, config, enforce):
     from wuwei.commands import status
     (root / '.wuwei/config.toml').write_text(config)
@@ -80,7 +80,7 @@ def test_status_shows_enforce(root, config, enforce):
     assert not [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
 
 
-@pytest.mark.parametrize('config,on', [('', False), ('[guards]\nenforce = true\n', False), (OFF, True)])
+@pytest.mark.parametrize('config,on', [('', True), ('[guards]\nenforce = true\n', False), (OFF, True)])
 def test_session_start_says_guards_log_only(root, config, on):
     from wuwei.guards import lifecycle
     (root / '.wuwei/config.toml').write_text(config)

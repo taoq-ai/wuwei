@@ -242,8 +242,7 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     path.write_text(path.read_text().replace('fast_checks = ["demo-check"]\n',
                                              'fast_checks = ["demo-check"]\nmerge_deploys = false\n'
                                              'merge = {auto = true, soak_minutes = 0}\n')
-                    + f'[guards]\nenforce = {str(posture).lower()}\n'
-                    + '[deploy]\nworkflows = ["deploy.yml"]\n')
+                    .replace('enforce = true', f'enforce = {str(posture).lower()}'))
 
     def card(day, action):
         for widget in action['widget']:
@@ -262,20 +261,21 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
             steps.add('ping')
             bash(day, f'wuwei pr ping {day.ref}')
             approve_at_head(day)
-            steps.add(allowed(day, planner(tool_name='mcp__slack__post_message',
-                                           tool_input={'channel': 'C0CLIENT', 'text': 'The fix ships today.'})))
+            send = planner(tool_name='mcp__slack__post_message',
+                           tool_input={'channel': 'C0CLIENT', 'text': 'The fix ships today.'})
+            if posture:
+                steps.add(allowed(day, send))
+            else:
+                assert 'Nudge:' in day.hook('PreToolUse', 0, **send)
+                steps.add('sent')
         if any(row[0] == 'merge' for row in day.host.calls) and 'merged' not in steps:
             steps.add('merged')
             day.host.results['pr'].data.update(state='closed', merged=True,
                                                merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
             assert call(day, ['pr', 'state'])[0] == 0
-            if not autonomous:  # a deploy is a publish target: its Owner step card (I18, #816)
-                from fakes.owner import answer_card
-                deploy = planner(tool_name='Bash', tool_input={'command': 'gh workflow run deploy.yml -R acme/widget'})
-                refused = json.loads(day.hook('PreToolUse', 2, **deploy))['hookSpecificOutput']
-                answer_card(day.root, refused['permissionDecisionReason'], session='planner')
-                day.hook('PreToolUse', 0, **deploy)
-                steps.add('deployed')
+            deploy = planner(tool_name='Bash', tool_input={'command': 'gh workflow run deploy.yml -R acme/widget'})
+            day.hook('PreToolUse', 0, **deploy)
+            steps.add('deployed')
     walk(day, card, after)
 
     data, events = day.data, day.events
@@ -296,8 +296,8 @@ def test_enforce_day(tmp_path, monkeypatch, posture):
     assert not any(row['kind'].startswith('grant.') for row in events)
     report = (day.directory / 'report.md').read_text()
     assert 'decision_routes' not in data and '## Taken under mandate' not in report
-    assert 'allowed' in steps and 'drafts' not in data
-    assert workspace.load_config(day.root)['outward']['allow'] == ['mcp__slack__post_message']
+    assert ('sent' if autonomous else 'allowed') in steps and 'drafts' not in data
+    assert workspace.load_config(day.root)['outward']['allow'] == ([] if autonomous else ['mcp__slack__post_message'])
     if autonomous:
         assert sorted({state for state, *_ in answered}) == ['gate']
         assert '## Grants' not in report

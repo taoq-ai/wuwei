@@ -357,13 +357,14 @@ def test_corrupt_ledgers_fail_closed_without_repair(case, change):
 ])
 def test_disposition_argv_only_blocks_text_writes(case, monkeypatch, capsys, command, expected):
     root, _, _ = case
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('\n[guards]\nenforce=true\n')
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({**payload(root),
         'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
         'tool_input': {'command': command}})))
     assert main(['hook', 'PreToolUse']) == expected
     if expected:
         reason = ('cannot inspect outbound stdin' if command.endswith('--body-file -')
-                  else 'merge policy' if 'pr merge' in command  # #839 F1: the edge decides first
                   else 'owner disposition')
         assert reason in refused(root)  # #362: the hook prints one reason and records all
 
@@ -415,6 +416,8 @@ def test_existing_body_file_cannot_forge_disposition(case, monkeypatch, capsys, 
 
 def test_missing_body_file_is_unreadable_but_outside_scope_passes(case, monkeypatch, capsys):
     root, _, _ = case
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('\n[guards]\nenforce=true\n')
     command = 'gh pr comment 7 -R acme/widget --body-file absent.txt'
     for cwd, expected in ((root, 2), (root.parent, 0)):
         monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({**payload(cwd),

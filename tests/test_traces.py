@@ -559,6 +559,7 @@ def test_hook_records_sequence(trace_workspace, call_payload, monkeypatch, capsy
 
 @pytest.mark.parametrize('result', [0, 1, 2])
 def test_post_tool_policy_results_reach_seat(trace_workspace, call_payload, monkeypatch, capsys, result):
+    (workspace.find_workspace() / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n')
     from wuwei.commands import hook
     from wuwei.guards import Guard
     monkeypatch.setattr(hook, 'discover', lambda: [Guard('PostToolUse', None,
@@ -575,6 +576,7 @@ def test_post_tool_policy_results_reach_seat(trace_workspace, call_payload, monk
 
 @pytest.mark.parametrize('failure', ['trace', 'both', 'workspace', 'exception', 'registry', 'malformed', 'input'])
 def test_post_tool_failures_report_without_refusing(trace_workspace, call_payload, monkeypatch, capsys, failure):
+    (workspace.find_workspace() / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n')
     from wuwei.commands import hook
     from wuwei.guards import Guard
     trace_workspace.mkdir(parents=True)

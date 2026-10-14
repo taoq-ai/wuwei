@@ -272,7 +272,7 @@ def enforce(payload, refusals, root, warned=None):
     """#837: per refusal, block when guards.enforce is on (unless the B5 lead call keeps it
     logging) or the refusal is on the floor; else record guard.would_refuse and let the call
     through. Returns (guard, reason, exit); an unreadable config blocks every refusal.
-    warned, when given, collects the launch refusals let through (#660)."""
+    warned, when given, collects nudges for every refusal let through (#997)."""
     from wuwei import state, workspace
     from wuwei.guards import floor, logs
     if root is not None and any(reason.startswith('outward: security.') and 'security.honeytoken' in reason
@@ -296,7 +296,7 @@ def enforce(payload, refusals, root, warned=None):
     enforced, shown, seen = [], None, set()
     for check, reason, code in refusals:
         guard = module(check)
-        blocks = floor(check, reason) or on and not logs(check, reason)
+        blocks = floor(check, reason, code) or on and not logs(check, reason)
         # #347, #839: a call a guard could not read is logged once, never refused.
         if reason in (UNPARSED, WORKSPACE_ROOT):
             if reason in seen:
@@ -312,12 +312,33 @@ def enforce(payload, refusals, root, warned=None):
             state.append_event('guard.would_refuse', {
                 'guard': guard, 'reason': reason, 'exit': code, 'target': shown,
                 'session': payload['session_id']}, root)
-            if warned is not None and guard == 'agent_launch':
-                warned.append(reason)
+            if warned is not None and payload.get('hook_event_name') == 'PreToolUse':
+                warned.append(nudge(payload, root, shown, reason))
         except BaseException as exc:
             print(f'wuwei hook: could not record a logged refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
             enforced.append((guard, reason, code))
     return enforced
+
+
+def nudge(payload, root, shown, reason):
+    """Display guidance, keeping the original reason solely in the refusal event."""
+    from wuwei import outward, security
+    from wuwei.redact import redact
+    inputs = payload.get('tool_input', {})
+    try:
+        destinations = outward._text(inputs)[1] if payload.get('tool_name', '').startswith('mcp__') else []
+    except (ValueError, TypeError, AttributeError):
+        destinations = ['an unmeasured destination']
+    audience = ', '.join(destinations) if destinations else 'the tool target'
+    if reason.startswith('outward:') and ('outward.allow' in reason or 'neither a read' in reason):
+        detail = 'This call may send to other people; check its destination and content.'
+    elif reason.startswith(('merge policy', 'PR approval')):
+        detail = 'This call changes PR review or merge state; check the gates and required CI at this head.'
+    elif 'owner' in reason.lower() or 'refus' in reason.lower():
+        detail = 'Check the intended effect and the available evidence before proceeding.'
+    else:
+        detail = reason
+    return security.redact(redact(f'Nudge: {shown} affects {audience}. {detail}'), security.load(root))
 
 
 def redacted_target(payload, root):

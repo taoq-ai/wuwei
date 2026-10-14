@@ -677,7 +677,7 @@ def complete_checks(item, results, *, root, expected=None, skipped=False):
         if code:
             failures.append(('spec', {'error': reason}))
     if not failures and row.get('kind') != 'measure':  # a measurement hands off evidence, not a commit
-        failures += _unbuilt(record, root, config)
+        failures += _unbuilt(record, root, config, data, item)
     if not failures:  # #901 review: the head the checks passed on is the only head a gate reads
         record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data, skipped=skipped))
     elif _retry(root, config, item, record, failures, expected):
@@ -740,9 +740,10 @@ def _retry(root, config, item, record, failures, expected):
     return False
 
 
-def _unbuilt(record, root, config):
+def _unbuilt(record, root, config, data, item):
     """#871 L2: a build that leaves uncommitted changes, commits a private file, or makes no
-    commit over the head it started from did not build; the gates never get those heads."""
+    commit over the head it started from did not build, unless its fix handback answers every
+    finding with a reason for no change."""
     from wuwei import derive
     from wuwei.brief import read, status
     vcs = registry.load('vcs', config)
@@ -761,6 +762,9 @@ def _unbuilt(record, root, config):
                 f'private files {", ".join(private)} in the commits since the start head; these '
                 f'commits are not pushed yet, so rewrite them locally: git reset --soft {record["start"]}, '
                 'remove the files, add them to .gitignore, and commit again')})]
+        return []
+    from wuwei.dispatch import no_change_answers
+    if no_change_answers(data, item, record):
         return []
     return [('change', {'error': f'no change over the start head {record["start"][:12]}; '
                                  'make the change the brief asks for'})]

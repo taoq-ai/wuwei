@@ -133,7 +133,7 @@ def test_missing_location_and_done_steps(tmp_path):
 
 
 def config(text=''):
-    return workspace.load_config(Path('.'), raw=text)
+    return workspace.load_config(Path('.'), raw=text if '[guards]' in text else text + '\n[guards]\nenforce=true\n')
 
 
 def test_mode_label_and_skip(tmp_path):
@@ -224,7 +224,7 @@ def day_state(root, items, seats=None):
 def item(ws, tmp_path):
     from fakes.integrity import seed
     seed(ws)
-    (ws / '.wuwei/config.toml').write_text('')
+    (ws / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n')
     repo = tmp_path / 'repo'
     (repo / 'src').mkdir(parents=True)
     (repo / '.specify').mkdir()

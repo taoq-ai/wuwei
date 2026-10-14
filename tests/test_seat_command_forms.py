@@ -17,7 +17,7 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.delenv('CDPATH', raising=False)
     from fakes.integrity import seed
     seed(root)
-    (root / '.wuwei/config.toml').write_text('')
+    (root / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n')
     return root
 
 
@@ -79,8 +79,9 @@ def test_issue_330_effectful_forms(workspace, mode, monkeypatch, capsys):
     if mode == 'log':
         (workspace / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     code, output = hook(workspace, 'x=$(cat f); gh pr merge $x', monkeypatch, capsys)
-    assert code == 2 and output['permissionDecisionReason'].startswith('merge policy')
+    assert code == (0 if mode == 'log' else 2)
+    assert ('Nudge:' in output['additionalContext']) if mode == 'log' else output['permissionDecisionReason'].startswith('merge policy')
     assert hook(workspace, 'for r in a b; do git -C $r commit -m wip; done', monkeypatch, capsys) == (0, {})
     code, _ = hook(workspace, 'for r in a b; do git -C $r push --force origin x; done', monkeypatch, capsys)
     assert code == (0 if mode == 'log' else 2)
-    assert len(events(workspace, 'guard.would_refuse')) == (1 if mode == 'log' else 0)
+    assert len(events(workspace, 'guard.would_refuse')) == (2 if mode == 'log' else 0)

@@ -198,6 +198,8 @@ def test_env_write_sets_lines_and_keeps_the_rest(case):
 
 
 def test_hook_loads_payload_workspace_and_keeps_outside_clean(case, monkeypatch, capsys):
+    path = case / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '\n[guards]\nenforce=true\n')
     from wuwei.commands import hook
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
     outside = case.parent / 'outside'

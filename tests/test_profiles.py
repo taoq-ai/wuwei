@@ -21,6 +21,8 @@ def configured(tmp_path, monkeypatch):
     directory = tmp_path / '.wuwei'
     directory.mkdir()
     (directory / 'config.toml').write_text('''
+[guards]
+enforce = true
 [owner]
 name = "Pat Example"
 pronouns = "they/them"
@@ -124,7 +126,7 @@ def test_outward_hook_profiles(configured, monkeypatch, capsys, profile, text, t
     if blocked:
         assert json.loads(out)['hookSpecificOutput']['permissionDecision'] == 'deny'
     elif logged:
-        assert out == err == ''
+        assert 'Nudge:' in out and err == ''
         events, = (configured / '.wuwei').glob('days/*/events.jsonl')
         assert '"guard.would_refuse"' in events.read_text()
     elif text == 'Thanks':
@@ -195,6 +197,9 @@ def test_direct_port_preserves_profile(configured, monkeypatch, capsys, profile)
 def test_hard_guards_under_each_profile(configured, monkeypatch, capsys, command, reason, profile):
     set_profile(configured, profile)
     result, out, err = replay(configured, monkeypatch, capsys, tool='Bash', inputs={'command': command})
+    if 'release create' in command:
+        assert result == 0
+        return
     assert result == 2
     assert json.loads(out)['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert reason in refused(configured)

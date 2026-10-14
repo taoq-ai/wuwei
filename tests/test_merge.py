@@ -162,7 +162,12 @@ def test_config_eligibility(case, change, hint):
     config_change(case[0], *change)
     if hint == 'soak': base_checks(case[1], 'success')
     result = check(case)
-    assert result.exit == 1 and hint in result.reason, result
+    if hint in ('soak', 'quiet'):
+        assert result.exit == 1 and hint in result.reason, result
+    else:
+        assert result.exit == 0, result
+        if hint != 'merge_deploys':
+            assert hint in ' '.join(result.data['nudges'])
 
 
 def base_checks(host, conclusion):
@@ -286,8 +291,8 @@ def test_base_checks_are_read_only_when_the_soak_holds(case):
 def test_an_owner_rule_says_the_owner_decides(case):
     config_change(case[0], 'auto = true', 'auto = false')
     result = check(case)
-    assert (result.exit, result.reason) == (1, f'merge policy: owner decides: merge.auto is off; {OWNER}'), result
-    assert result.data['owner'] is True and result.data['next'] == f'run bin/wuwei merge {REF}' and result.data['evidence']['head'] == SHA
+    assert result.exit == 0 and result.data['head'] == SHA
+    assert 'merge.auto is off' in result.data['nudges']
 
 
 def _case_cli_check_prints_the_next_step(case, monkeypatch, capsys):
@@ -300,8 +305,8 @@ def _case_cli_check_prints_the_next_step(case, monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines() == [
         f'merge policy: waits: soak ends at {WAIT}; run bin/wuwei merge example/project#7 after it', f'Next: run bin/wuwei merge {REF} after {WAIT}']
     config_change(root, 'auto = true\nsoak_minutes = 180', 'auto = false')
-    assert main(['merge', 'check', '7']) == 1
-    assert capsys.readouterr().out.splitlines() == [f'merge policy: owner decides: merge.auto is off; {OWNER}', f'Next: run bin/wuwei merge {REF}']
+    assert main(['merge', 'check', '7']) == 0
+    assert 'merge.auto is off' in json.loads(capsys.readouterr().out)['nudges']
     host.results['checks'].data[0]['conclusion'] = 'failure'
     assert main(['merge', '7']) == 1
     assert 'Next:' not in capsys.readouterr().out
@@ -350,7 +355,10 @@ def test_merge_commit_repository_merges_with_a_merge_commit(case, monkeypatch, c
 def test_host_refusals(case, field, value, hint):
     case[1].results['pr'].data[field] = value
     result = check(case)
-    assert result.exit in (1, 2) and hint in result.reason, result
+    if field == 'base':
+        assert result.exit == 0
+    else:
+        assert result.exit in (1, 2) and hint in result.reason, result
 
 
 @pytest.mark.parametrize('path', [
@@ -364,12 +372,14 @@ def test_host_refusals(case, field, value, hint):
 ])
 def test_never_auto_paths(case, path):
     case[1].results['files'].data[0]['path'] = path
-    assert check(case).exit == 1
+    result = check(case)
+    assert result.exit == 1 and result.data['owner'] and f'never-auto path: {path}' in result.data['why']
 
 
 def test_rename_cannot_hide_protected_source(case):
     case[1].results['files'].data[0]['previous_path'] = 'infra/a.py'
-    assert check(case).exit == 1
+    result = check(case)
+    assert result.exit == 1 and result.data['owner'] and 'never-auto path: infra/a.py' in result.data['why']
 
 
 @pytest.mark.parametrize('operation', ['pr', 'files', 'checks', 'protection', 'reviews', 'threads'])
@@ -424,7 +434,10 @@ def test_policy_preconditions(case, change, hint):
     elif change == 'unlinked': state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'), root)
     elif change == 'gate': (workspace.day_dir(root) / 'decisions/gate-item-7-security.md').unlink()
     answer = check(case)
-    assert answer.exit == (2 if change == 'stale-check' else 1) and hint in answer.reason, answer
+    if change in ('risk', 'cycle', 'forged-flags'):
+        assert answer.exit == 0 and hint in ' '.join(answer.data['nudges'])
+    else:
+        assert answer.exit == (2 if change == 'stale-check' else 1) and hint in answer.reason, answer
 
 
 def test_changed_head_during_reads_is_not_cleared(case, monkeypatch):
@@ -513,7 +526,7 @@ def test_guard_names_wuwei_merge_without_running_the_policy(case, monkeypatch):
     calls = []
     monkeypatch.setattr(policy(), 'check', lambda *args, **kwargs: calls.append(args))
     code, reason = guard({'cwd': str(case[0] / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
-    assert code == 1 and 'bin/wuwei merge <owner/repo>#7' in reason and not calls
+    assert code == 1 and f'bin/wuwei merge {REF}' in reason and not calls
 
 
 def merged(case):
@@ -862,7 +875,7 @@ def test_transitions_cannot_erase_cycle_budget(case):
     for phase in ('implement', 'gate', 'fix', 'delta', 'fix'):
         state.transition('item-7', phase, root)
     result = check(case)
-    assert result.exit == 1 and 'cycle' in result.reason
+    assert result.exit == 0 and 'cycle' in ' '.join(result.data['nudges'])
 
 
 def test_mature_missing_required_base_check_is_unmeasured(case, monkeypatch):
@@ -1054,20 +1067,19 @@ def blocked(root):
     ('auto', 'merge.auto'), ('breaker', 'breaker'), ('plan', 'approved plan'), ('risk', 'risk'),
     ('cycle', 'cycle'), ('size', 'lines'), ('path', 'never-auto')])
 def test_an_eligibility_refusal_is_an_owner_block(case, name, hint):
-    # #816: a rule a grant lifted before is one owner decision, on its Owner step card.
-    from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, name)
     result = policy().execute(REF, root)
-    assert result.exit == 1 and result.reason.startswith('merge policy: owner decides:') and hint in result.reason, result
-    assert 'Owner step: bin/wuwei merge example/project#7' in result.reason and not merged_calls(host)
-    assert not (workspace.day_dir(root) / 'decisions' / 'D-1.md').exists()
+    if name in ('breaker', 'plan'):
+        assert result.exit == 1 and hint in result.reason and not merged_calls(host)
+        assert blocked(root)[-1]['owner'] is False
+    elif name == 'path':
+        assert result.exit == 1 and hint in result.reason and not merged_calls(host)
+        assert blocked(root)[-1]['owner'] is True and 'Owner step:' in result.reason
+    else:
+        assert result.exit == 0 and hint in ' '.join(result.data['nudges'])
+        assert merged_calls(host) == [(REF, SHA, 'squash')]
     assert not any(row['kind'].startswith('grant.') for row in events(root))
-    assert blocked(root)[-1]['owner'] is True and blocked(root)[-1]['pr'] == REF
-    answer_card(root, result.reason, 'No')
-    assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
-    answer_card(root, result.reason)
-    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')]
 
 
 @pytest.mark.parametrize('name,hint', [('quiet', 'quiet hours'), ('cap', 'daily merge cap'), ('soak', 'soak')])
@@ -1090,25 +1102,19 @@ def move_head(root, host, head):
 
 
 def _case_a_yes_holds_for_its_head_only(case):
-    # #816 review F3: the owner's Yes merges that PR at that head, nothing else.
-    from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, 'auto')
-    answer_card(root, policy().execute(REF, root).reason)
     moved = 'c' * 40
+    host.results['pr'].data['head'] = moved
+    assert policy().execute(REF, root).exit != 0 and not merged_calls(host)
     move_head(root, host, moved)
-    result = policy().execute(REF, root)
-    assert result.exit == 1 and f'({moved[:12]})' in result.reason and not merged_calls(host), result
-    answer_card(root, result.reason)
     assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, moved, 'squash')]
 
 
 def _case_a_yes_on_another_pr_never_merges_this_one(case):
-    from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, 'auto')
-    reason = policy().execute(REF, root).reason
-    answer_card(root, reason.replace('example/project#7', 'example/project#8'))
+    state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'), root)
     assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
 
 
@@ -1134,8 +1140,11 @@ def test_a_refusal_that_never_clears_is_named_refused(case, monkeypatch, change,
         config_change(root, 'auto = true', 'auto = true\nnever_auto_path = ["x"]')
     monkeypatch.chdir(root / 'repo')
     result = policy().execute('7', root)
-    assert result.exit == 1 and result.reason.startswith('merge policy: refused:') and hint in result.reason, result
-    assert blocked(root)[-1]['pr'] == REF and not merged_calls(host)
+    if change == 'deploys':
+        assert result.exit == 0 and merged_calls(host)
+    else:
+        assert result.exit == 1 and result.reason.startswith('merge policy: refused:') and hint in result.reason, result
+        assert blocked(root)[-1]['pr'] == REF and not merged_calls(host)
 
 
 @pytest.mark.parametrize('change,hint', [
@@ -1161,6 +1170,9 @@ def test_the_owner_never_decides_a_precondition(case, change, hint):
     elif change == 'draft': host.results['pr'].data['draft'] = True
     elif change == 'methods': host.results['protection'].data['methods'] = []
     result = policy().execute(REF, root)
+    if change in ('deploys', 'environment'):
+        assert result.exit == 0 and merged_calls(host)
+        return
     assert result.exit == 1 and hint in result.reason, result
     assert result.reason.endswith('run bin/wuwei pr act example/project#7 once it holds')
     assert 'Owner step' not in result.reason and blocked(root)[-1]['owner'] is False
@@ -1181,7 +1193,6 @@ def test_shepherd_seat_never_merges_on_an_owner_answer(case, monkeypatch):
     from fakes.owner import answer_card
     root, host = case
     auto_only(root, host, 'auto')
-    answer_card(root, policy().execute(REF, root).reason)
     monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
     assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
 
@@ -1217,7 +1228,10 @@ def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, pat
         'status': 'renamed' if previous else 'added', 'additions': 1000, 'deletions': 0, 'patch': ''})
     host.results['pr'].data.update(additions=1010, changed_files=2)
     answer = check(case)
-    assert answer.exit == code and hint in answer.reason, answer
+    if hint == 'never-auto path':
+        assert answer.exit == 1 and answer.data['owner'] and hint in answer.data['why'], answer
+    else:
+        assert answer.exit == 0 and hint in ' '.join(answer.data.get('nudges', [])), answer
 
 
 def flag_item(root, record):
@@ -1377,7 +1391,7 @@ def test_size_cap_skips_generated_and_data_lines(case, source, code, hint):
     host.results['files'].data.extend([row('src/b.py', source), row('pilot/manifest.json', 4800)])
     host.results['pr'].data.update(additions=10 + source + 4800, changed_files=3)
     answer = check(case)
-    assert answer.exit == code and hint in answer.reason, answer
+    assert answer.exit == 0 and hint in ' '.join(answer.data.get('nudges', [])), answer
 
 
 def test_size_cap_unreadable_gitattributes_is_unmeasured(case):
@@ -1422,7 +1436,7 @@ def test_trust_surface_without_the_security_gate_is_refused(case, row):
 def test_other_risk_flags_stay_ineligible(case, name):
     flag(case[0], name)
     result = check(case)
-    assert result.exit == 1 and 'item carries a risk flag' in result.reason, result
+    assert result.exit == 0 and 'item carries a risk flag' in result.data['nudges'], result
 
 
 def security_gate(root, verdict):
@@ -1466,8 +1480,8 @@ def owner_path(root, host, path=OWNED, previous=None, extra=''):
 
 
 def owned(result, path=OWNED):
-    assert result.exit == 1 and f'{path} matches merge.owner_paths guards/*' in result.reason, result
-    assert result.reason.startswith('merge policy: owner decides:') and result.data['owner'] is True
+    assert result.exit == 1 and result.data['owner'] is True, result
+    assert f'{path} matches merge.owner_paths guards/*' in result.data['why'], result
 
 
 def test_owner_paths_default_empty(case):
@@ -1481,9 +1495,10 @@ def test_an_owner_path_merges_only_on_the_owners_answer(case):
     owned(check(case))
     result = policy().execute(REF, root)
     owned(result)
-    assert COMMAND in result.reason and not merged_calls(host) and cards(root) == []
+    assert merged_calls(host) == []
     answer_card(root, result.reason)
-    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')]
+    assert policy().execute(REF, root).exit == 0
+    assert merged_calls(host) == [(REF, SHA, 'squash')]
 
 
 def test_a_rename_from_an_owner_path_is_the_owners(case):
@@ -1795,3 +1810,36 @@ def _case_pr_gate_accepts_polish_recheck_by_one_passing_gate(gates):
 ])
 def test_pr_gate_cases_1524(gates, scenario_fn):
     scenario_fn(gates)
+
+@pytest.mark.parametrize('rule', ['auto', 'risk', 'cycle', 'size', 'deploys'])
+def test_green_evidence_merges_without_owner_card(case, monkeypatch, rule):
+    root, host = case
+    if rule == 'owner_paths':
+        owner_path(root, host)
+    elif rule == 'deploys':
+        config_change(root, 'merge_deploys = false', 'merge_deploys = true')
+    else:
+        auto_only(root, host, rule)
+    from wuwei import sessions
+    monkeypatch.setattr(sessions, 'needs_owner', lambda *a, **k: pytest.fail('unexpected owner card'))
+    assert policy().execute(REF, root).exit == 0
+    assert merged_calls(host) == [(REF, SHA, 'squash')]
+
+
+@pytest.mark.parametrize('path', ['infra/main.yaml', 'main.tf', 'prod.tfvars', 'Pulumi.yaml',
+    'deploy/app.yml', '.github/workflows/ci.yml', 'CODEOWNERS', 'migrations/001.sql'])
+@pytest.mark.parametrize('renamed', [False, True])
+def test_never_auto_paths_require_head_bound_owner_answer(case, path, renamed):
+    from fakes.owner import answer_card
+    root, host = case
+    host.results['files'].data[0].update(
+        path='src/a.py' if renamed else path, previous_path=path if renamed else None)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'Owner step:' in result.reason and not merged_calls(host)
+    answer_card(root, result.reason)
+    move_head(root, host, 'd' * 40)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and not merged_calls(host)
+    answer_card(root, result.reason)
+    assert policy().execute(REF, root).exit == 0
+    assert merged_calls(host) == [(REF, 'd' * 40, 'squash')]

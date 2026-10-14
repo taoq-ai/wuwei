@@ -7,7 +7,7 @@ import os
 import re
 import sys
 
-from wuwei.exits import CLEAN, FINDINGS, PAYLOAD
+from wuwei.exits import CLEAN, FINDINGS, PAYLOAD, UNRUN
 
 
 EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'Stop')
@@ -27,12 +27,8 @@ MODULES = {
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
-# #837: one switch, guards.enforce. The floor blocks whatever it says (constitution VII):
-# records written by the workflow and the owner's edges (#839): deploy and outward send here,
-# merge, approve, admin and branch protection by their MERGE prefix. Keys are modules or
-# 'module.function'; a LOG_ONLY function is not on its module's floor.
-FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'protect_state', 'edges.check_deploy',
-                   'edges.check_send'})
+# Records remain protected independently of the default nudge policy (#997).
+FLOOR = frozenset({'answers', 'lifecycle', 'verdict', 'protect_state'})
 # B5 lead call (#837): no new walls. With guards.enforce on these still only log, as under the
 # old guarded default: the outward lint, another item's scratch directory,
 # the traces recorder (it never refuses, even when it raises) and the launch capacity
@@ -46,12 +42,12 @@ REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
 
 # #530: the prefix of the PR create refusal; raising is gated by evidence, not the floor.
 RAISE = 'pr raise: '
-# #530, #524: a session merge goes through bin/wuwei merge; approval and override stay
-# the owner's (design 9.2, I1 exempt). The floor.
-MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection')
-# Canary and honeytoken egress, owner disposition markers and (#725) a seat launch naming a
-# brief that does not exist: the records floor.
-RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner',
+# #997: admin and infrastructure changes keep the owner-only floor.
+MERGE = ('admin merge', 'branch protection', 'repository settings', 'infrastructure:')
+# Journaled merges, canary and honeytoken egress, owner disposition markers and (#725) a
+# seat launch naming a brief that does not exist: the records floor.
+RECORDS_FLOOR = ('merge policy: WUWEI-owned PR ', 'outward: security.',
+                 'owner disposition markers must be posted by the owner',
                  'brief .wuwei/days/')
 
 
@@ -60,11 +56,13 @@ def _keys(check):
     return module, f'{module}.{getattr(check, "__name__", "")}'
 
 
-def floor(check, reason):
+def floor(check, reason, code=None):
     """True when the refusal blocks whatever guards.enforce says."""
     if reason.startswith(MERGE + RECORDS_FLOOR):
         return True
     module, key = _keys(check)
+    if key == 'edges.check_send' and code == UNRUN:
+        return True
     return key in FLOOR or module in FLOOR and key not in LOG_ONLY
 
 

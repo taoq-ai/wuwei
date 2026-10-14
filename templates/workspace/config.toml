@@ -128,12 +128,12 @@ full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastr
 # "release/*" = "Release branches"
 
 [deploy]
-workflows = [] # Deploying workflow names, filenames, paths or IDs.
-deny = [] # Literal executable plus argument glob, for example "make publish*".
+deny = [] # Additional infrastructure commands: literal executable plus argument glob, e.g. "make infra-apply*".
 
 [outward]
-# Exact MCP tool names that may send to other people. An unlisted write is refused, naming the
-# bin/wuwei config set outward.allow '["<tool>"]' --add line, which asks your Owner step card.
+# Known MCP tool names; UUID connector server ids may vary across accounts. Unlisted writes
+# nudge by default. With enforce=true, bin/wuwei config set outward.allow '["<tool>"]' --add
+# asks your Owner step card.
 # A write whose every destination is your own surface (outbound.owner) never needs it.
 allow = []
 # banned_characters = ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"] # [] disables character bans.
@@ -205,7 +205,7 @@ max_refills = 3 # Daily goal discovery passes after the queue empties; zero disa
 
 [guards]
 stop_max_blocks = 20 # Daily planner Stop nudges; zero disables them.
-enforce = true # false logs what the guards would refuse and lets the call through; records, merges, deploys and held sends still refuse. init --shadow starts here.
+enforce = false # Nudges are shown to the model. Records, security, config, admin and infrastructure stay protected.
 
 # Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means
 # not asked yet and sends nothing. bin/wuwei telemetry preview prints exactly what would leave.

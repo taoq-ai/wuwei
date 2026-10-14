@@ -97,7 +97,12 @@ def test_state_writes_still_refuse(workspace, posture, command, code, monkeypatc
 def test_read_loop_exits_zero(workspace, posture, probe, monkeypatch, capsys):
     # #347, #470: a loop the guards cannot parse but that only reads, and a git read, pass.
     configure(workspace, posture)
-    assert hook(workspace / '.wuwei', probe, monkeypatch, capsys) == (0, {}, '')
+    code, output, _ = hook(workspace / '.wuwei', probe, monkeypatch, capsys)
+    assert code == 0
+    if probe.startswith('for '):
+        assert output['additionalContext'].startswith('Nudge:')
+    else:
+        assert output == {}
 
 
 DAY = STATE.split('/')[2]

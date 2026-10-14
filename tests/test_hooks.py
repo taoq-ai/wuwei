@@ -362,7 +362,7 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
                              'status', '--line'], text=True, capture_output=True, cwd=tmp_path, env=env)
     assert result.returncode == 0, result.stderr
-    assert result.stdout == 'WUWEI no plan yet | pages 0\n'
+    assert result.stdout == 'WUWEI no plan yet | pages 0 · observe\n'
     assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision', 'copy', 'weakref',
             'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
 
@@ -975,7 +975,8 @@ def test_enforce_off_records_and_allows(plugin, event):
     payload = (json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
                if event == 'PreToolUse' else fixture(event))
     result = replay(plugin, event, json.dumps(payload))
-    assert (result.returncode, result.stdout) == (0, ''), result.stderr
+    assert result.returncode == 0, result.stderr
+    assert ('Nudge:' in result.stdout) if event == 'PreToolUse' else result.stdout == ''
     recorded, = events_of(plugin, 'guard.would_refuse')
     assert recorded['guard'] == 'fake' and recorded['reason'] == 'guard reason'
     assert not {'area', 'level', 'posture'} & set(recorded)
@@ -1074,7 +1075,8 @@ def _case_floor_at_the_hook(plugin):
             forget_guards()
             install(plugin, refusing('PreToolUse', 'kept'), name)
             result = replay(plugin, 'PreToolUse', payload)
-            assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+            assert (result.returncode, result.stderr) == (0, '')
+            assert 'Nudge:' in result.stdout
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
         assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == ['edges', 'fake']
         forget_guards()
@@ -1194,14 +1196,16 @@ def test_unparsed_and_workspace_root_warn_by_reason(plugin, value):
         install(plugin, returning('UNPARSED'), 'deploy')
         install(plugin, returning('UNPARSED'), 'pr')
         result = replay(plugin, 'PreToolUse', payload)
-        assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+        assert (result.returncode, result.stderr) == (0, '')
+        assert 'Nudge:' in result.stdout
         assert [row['reason'] for row in events_of(plugin, 'guard.would_refuse')] == [UNPARSED]
         for module in ('deploy', 'pr'):
             (guards / f'{module}.py').unlink()
         forget_guards()
         install(plugin, returning('WORKSPACE_ROOT', 1), 'protect_state')
         result = replay(plugin, 'PreToolUse', payload)
-        assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+        assert (result.returncode, result.stderr) == (0, '')
+        assert 'Nudge:' in result.stdout
         assert events_of(plugin, 'guard.would_refuse')[-1]['reason'] == WORKSPACE_ROOT
         forget_guards()
         install(plugin, refusing('PreToolUse', 'kept'), 'protect_state')

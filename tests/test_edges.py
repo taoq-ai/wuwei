@@ -27,7 +27,6 @@ merge_deploys = false
 production = "Live"
 "release/*" = "Release branches"
 [deploy]
-workflows = ["deploy.yml", "Production"]
 deny = ["ship release", "make publish*"]
 '''
 
@@ -318,25 +317,23 @@ def test_a_seat_push_from_a_raised_pr_worktree_is_refused(root):
     decide(root, 'git push origin HEAD:refs/heads/other', 'repo', 0, ())
 
 
-# Deploy (design 4.7): on the floor; the owner's Yes on the exact command's card lets it run (#816).
+# Infrastructure keeps exact-command cards; application delivery runs without them.
 @pytest.mark.parametrize(ROW, [
-    *(refused(command, 'publish: ', 'Owner step: ', rule) for command, rule in [
+    *(refused(command, 'infrastructure: ', 'Owner step: ', rule) for command, rule in [
         ('ship release --prod', 'deploy.deny: ship release'), ('make publish-prod', 'deploy.deny'),
-        ('gh workflow run deploy.yml', 'deploy.workflows'), ('gh workflow run Production', 'deploy.workflows'),
-        ('gh -R acme/app workflow run .github/workflows/deploy.yml', 'deploy.workflows'),
-        ('gh run rerun 123', 'deploy.workflows'), ('gh release create v1.2.0', 'release create'),
-        ('git push origin v1.2.0', 'tag push'), ('git push --tags', 'tag push'),
-        ('git push origin HEAD:refs/tags/stable', 'tag push'), ('git push origin production', 'environment'),
-        ('git push origin HEAD:release/next', 'environment'), ('terraform apply', 'terraform apply'),
+        ('terraform apply', 'terraform apply'),
         ("sh -c 'terraform apply -auto-approve'", 'terraform apply'), ('env REGION=x terraform apply', 'terraform'),
         ('kubectl --context prod apply -f a.yml', 'kubectl apply'), ('helm upgrade app chart', 'helm upgrade'),
-        ('docker build --push .', 'docker build --push'), ('vercel --prod', 'vercel'),
-        ('aws deploy create-deployment --application-name app', 'aws'),
-        ('gh api -X POST repos/o/r/deployments', 'deployment/environment API'),
-        ('gh api repos/o/r/releases -f tag_name=v1', 'release API'),
-        ('gh api repos/o/r/actions/workflows/deploy.yml/dispatches -X POST', 'deploy.workflows'),
+        ('aws cloudformation create-stack --stack-name app', 'aws'),
     ]),
     *(allowed(command) for command in [
+        'gh workflow run deploy.yml', 'gh workflow run Production',
+        'gh -R acme/app workflow run .github/workflows/deploy.yml',
+        'gh run rerun 123', 'gh release create v1.2.0', 'git push origin v1.2.0',
+        'git push --tags', 'git push origin HEAD:refs/tags/stable', 'git push origin production',
+        'git push origin HEAD:release/next', 'docker build --push .', 'vercel --prod',
+        'gh api -X POST repos/o/r/deployments', 'gh api repos/o/r/releases -f tag_name=v1',
+        'gh api repos/o/r/actions/workflows/deploy.yml/dispatches -X POST',
         'terraform plan', 'vercel ls', 'git push origin x', 'grep -rn terraform .',
         'echo "terraform apply"', 'ship preview', 'docker build .', 'gh api repos/o/r/issues', 'git merge main',
     ]),
@@ -377,8 +374,12 @@ def test_publish_reads_need_no_card(root, command):
     '-HX-HTTP-Method-Override:POST', '--header="X-Method-OVERRIDE: PUT"',
 ])
 def test_publish_api_non_reads_still_need_owner(root, path, options):
-    code, reason = check(root, f'gh api repos/org/repo/{path} {options}', 'check_deploy')
-    assert code == 1 and 'Owner step:' in reason and 'deployment/environment API' in reason
+    guard = 'check_deploy' if path == 'deployments' else 'check_bash'
+    code, reason = check(root, f'gh api repos/org/repo/{path} {options}', guard)
+    if path == 'deployments':
+        assert (code, reason) == (0, '')
+    else:
+        assert code in (1, 2) and 'Owner step:' in reason and reason.startswith('repository settings')
 
 
 @pytest.mark.parametrize('path', ['deployments', 'environments/production'])
@@ -386,8 +387,11 @@ def test_publish_api_non_reads_still_need_owner(root, path, options):
 @pytest.mark.parametrize('method', ['', '-X POST'])
 def test_publish_api_multiple_targets_need_owner(root, path, targets, method):
     command = f'gh api {targets.format(path=path)} {method}'
-    code, reason = check(root, command, 'check_deploy')
-    assert code == 1 and 'Owner step:' in reason and 'deployment/environment API' in reason
+    code, reason = check(root, command, 'check_deploy' if path == 'deployments' else 'check_bash')
+    if path == 'deployments':
+        assert (code, reason) == (0, '')
+    else:
+        assert code == 1 and 'Owner step:' in reason and reason.startswith('repository settings')
 
 
 @pytest.mark.parametrize('command', [
@@ -397,7 +401,10 @@ def test_publish_api_multiple_targets_need_owner(root, path, targets, method):
 ])
 def test_publish_read_does_not_allow_writes(root, command):
     code, reason = check(root, command, 'check_deploy')
-    assert code == 1 and 'Owner step:' in reason
+    if 'env add' in command or 'env rm' in command:
+        assert code == 1 and 'Owner step:' in reason
+    else:
+        assert (code, reason) == (0, '')
 
 
 def test_publish_read_respects_explicit_deny(root):
@@ -417,7 +424,7 @@ def test_publish_field_reads_through_hook(root, monkeypatch, capsys, command, en
 
 def test_publish_card_explains_exact_command_binding(root):
     from fakes.owner import answer_card
-    command = 'gh workflow run deploy.yml -f ref=abc'
+    command = 'terraform apply -var ref=abc'
     code, reason = check(root, command, 'check_deploy')
     assert code == 1
     card = json.loads(reason.split('; card: ', 1)[1])
@@ -425,7 +432,7 @@ def test_publish_card_explains_exact_command_binding(root):
     assert 'Only this exact command text is approved' in detail
     assert 'run it alone' in detail
     answer_card(root, reason)
-    for changed in ('gh workflow run deploy.yml --ref main',
+    for changed in ('terraform apply -var ref=main',
                     f'git fetch; {command}; sleep 1; gh run list'):
         assert check(root, changed, 'check_deploy')[0] == 1
     assert check(root, command, 'check_deploy') == (0, '')
@@ -435,14 +442,14 @@ def test_publish_card_explains_exact_command_binding(root):
 def test_unmarked_workflow_is_allowed(root):
     (root / '.wuwei/config.toml').write_text('[deploy]\nworkflows = ["deploy.yml"]\n')
     assert check(root, 'gh workflow run ci.yml', 'check_deploy') == (0, '')
-    assert check(root, 'gh workflow run deploy.yml', 'check_deploy')[0] == 1
+    assert check(root, 'gh workflow run deploy.yml', 'check_deploy') == (0, '')
 
 
 def test_deploy_runs_on_the_owners_yes(root):
     from fakes.owner import answer_card
-    command = 'gh release create v1 -R acme/app'
+    command = 'terraform apply -var app=example'
     code, reason = check(root, command, 'check_deploy')
-    assert code == 1 and reason.startswith(f'publish: {command}: waits for the owner')
+    assert code == 1 and reason.startswith(f'infrastructure: {command}: waits for the owner')
     answer_card(root, reason, 'No')
     assert check(root, command, 'check_deploy')[0] == 1
     answer_card(root, reason)
@@ -450,7 +457,7 @@ def test_deploy_runs_on_the_owners_yes(root):
     assert check(root, command + ' --notes x', 'check_deploy')[0] == 1
 
 
-@pytest.mark.parametrize('text', ['[deploy]\nworkflows = "deploy.yml"', '[deploy]\ndeny = [12]'])
+@pytest.mark.parametrize('text', ['[deploy]\ndeny = "ship release"', '[deploy]\ndeny = [12]'])
 def test_deploy_unreadable_config_fails_closed(root, text):
     (root / '.wuwei/config.toml').write_text(text)
     with pytest.raises(ConfigError):
@@ -484,17 +491,17 @@ def test_outward_send_edge(root, tool, allow, code, fragment):
 
 # guards.enforce off: the floor edges block; force push, the default branch and PR raise log.
 @pytest.mark.parametrize('command,where,blocks', [
-    ('gh pr merge 7', 'repo', True), ('gh pr review 7 --approve', 'repo', True),
+    ('gh pr merge 7', 'repo', False), ('gh pr review 7 --approve', 'repo', False),
     ('gh pr merge 7 --admin', 'repo', True), ('gh api -X PUT repos/o/r/branches/main/protection', 'repo', True),
     ('terraform apply', 'repo', True), ('git push --force origin x', 'repo', False),
     ('git push origin main', 'repo', False), ('gh pr create -t t -b b', 'worktrees/DIV-1', False),
     # Review F1: the edge decides before the body scan reads a body file it cannot find.
-    ('gh pr merge 7 --body-file missing.md', 'repo', True),
+    ('gh pr merge 7 --body-file missing.md', 'repo', False),
     ('gh pr merge 7 --admin --body-file missing.md', 'repo', True),
-    ('gh pr review 7 --approve --body-file missing.md', 'repo', True),
-    ('gh api repos/o/r/pulls/7/merge -X PUT --input missing.json', 'repo', True),
-    ('gh api repos/o/r/pulls/7/reviews --input -', 'repo', True),
-    ('gh api repos/o/r/pulls/7/reviews --input missing.json', 'repo', True),
+    ('gh pr review 7 --approve --body-file missing.md', 'repo', False),
+    ('gh api repos/o/r/pulls/7/merge -X PUT --input missing.json', 'repo', False),
+    ('gh api repos/o/r/pulls/7/reviews --input -', 'repo', False),
+    ('gh api repos/o/r/pulls/7/reviews --input missing.json', 'repo', False),
 ])
 def test_enforce_off(root, monkeypatch, capsys, command, where, blocks):
     code, logged = hook(root, monkeypatch, capsys, command, False, cwd=root / where)
@@ -503,10 +510,10 @@ def test_enforce_off(root, monkeypatch, capsys, command, where, blocks):
     assert code == 2
 
 
-def test_enforce_off_outward_send_blocks(root, monkeypatch, capsys):
+def test_enforce_off_outward_send_nudges(root, monkeypatch, capsys):
     code, _ = hook(root, monkeypatch, capsys, '', False, cwd=root, tool=SEND,
                    inputs={'to': 'someone', 'text': 'Hello'})
-    assert code == 2
+    assert code == 0
 
 
 def test_doctor_force_push_probe_is_refused(root, monkeypatch, capsys):
@@ -521,6 +528,7 @@ def test_doctor_force_push_probe_is_refused(root, monkeypatch, capsys):
 
 
 def test_hook_adds_no_resolved_line(root, monkeypatch, capsys):
+    (root / '.wuwei/config.toml').write_text(CONFIG + '[guards]\nenforce = true\n')
     from wuwei.commands.hook import run
     payload = {'session_id': 'edges', 'transcript_path': str(root / 't.jsonl'), 'cwd': str(root / 'repo'),
                'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
@@ -534,8 +542,7 @@ def test_hook_adds_no_resolved_line(root, monkeypatch, capsys):
 # Init writes the deny list; config reads the deploy rules.
 def test_config_contract(root):
     config = load_config(root)
-    assert config['deploy'] == {'workflows': ['deploy.yml', 'Production'],
-                                'deny': ['ship release', 'make publish*']}
+    assert config['deploy'] == {'deny': ['ship release', 'make publish*']}
     assert config['repos'][0]['merge_deploys'] is False
 
 
@@ -558,30 +565,16 @@ def test_init_permissions(tmp_path, monkeypatch):
     assert data['permissions']['allow'] == ['Read']
     deny = data['permissions']['deny']
     assert len(deny) == len(set(deny))
-    assert set(deny) == {'Bash(custom *)', *(
-        f'Bash({command})' for command in (
-            'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
-            'helm upgrade*', 'pulumi up*', 'netlify deploy*',
-            'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
-            'podman push*', 'gh release create*', 'git push --tags*',
-            'git push * --tags*', 'gh pr review --approve*',
-            'gh pr review * --approve*', 'gh pr review * -a*',
-            'gh pr merge * --admin*',
-            *(f'{binary}{suffix}' for binary in ('vercel', 'vc') for suffix in (
-                '', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*', ' rollback*',
-                ' redeploy*', ' alias set*', ' alias rm*', ' domains add*',
-                ' env add*', ' env rm*', ' env pull*', ' pull*'))))}
+    from wuwei.guards.edges import PERMISSIONS_DENY
+    assert set(deny) == {'Bash(custom *)', *PERMISSIONS_DENY}
     assert 'Bash(vercel*)' not in deny and 'Bash(vc *)' not in deny
     assert global_settings.read_text() == '{"owner": true}'
     patterns = [rule[5:-1] for rule in deny if rule.startswith('Bash(')]
     for binary in ('vercel', 'vc'):
-        for command in ('--yes', '--prebuilt', '--prebuilt --prod', '--prod',
-                        '--yes --prod', '--cwd x deploy', '--scope t deploy',
-                        '-t TOKEN --prod', '--debug env pull', '--help', '--version',
-                        '.', './web', './*',
-                        'pull', 'pull --environment=production', 'alias set target',
-                        'alias rm target'):
+        for command in ('alias set target', 'alias rm target', 'domains add example.test', 'env pull', 'pull'):
             assert any(fnmatchcase(f'{binary} {command}', pattern) for pattern in patterns)
+        for command in ('--yes', '--prod', 'deploy', '.', './web', '--help'):
+            assert not any(fnmatchcase(f'{binary} {command}', pattern) for pattern in patterns)
         assert not any(fnmatchcase(f'{binary} alias ls', pattern) for pattern in patterns)
 
 
@@ -604,7 +597,7 @@ def test_upgrade_replaces_legacy_vercel_denials_only(tmp_path, legacy, damage, c
     }
     settings.write_text(json.dumps(original, indent=2) + '\n')
     assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=True)) == 0
-    assert 'Would upgrade .claude/settings.json: narrow Vercel denials' in capsys.readouterr().out
+    assert 'Would upgrade .claude/settings.json: narrow action denials to infrastructure' in capsys.readouterr().out
     assert json.loads(settings.read_text()) == original
     assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
     migrated = json.loads(settings.read_text())
@@ -615,10 +608,9 @@ def test_upgrade_replaces_legacy_vercel_denials_only(tmp_path, legacy, damage, c
         'Bash(custom *)', 'Bash(other *)']
     assert 'Bash(vercel*)' not in deny and 'Bash(vc *)' not in deny
     for binary in ('vercel', 'vc'):
-        for suffix in ('', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*', ' rollback*',
-                       ' redeploy*', ' alias set*', ' alias rm*', ' domains add*',
-                       ' env add*', ' env rm*', ' env pull*', ' pull*'):
+        for suffix in (' alias set*', ' alias rm*', ' domains add*', ' env add*', ' env rm*'):
             assert deny.count(f'Bash({binary}{suffix})') == 1
+        assert f'Bash({binary} deploy*)' not in deny
     after = settings.read_text()
     assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
     assert settings.read_text() == after
@@ -723,3 +715,268 @@ def test_custom_rules_require_literal_executable(root, pattern):
     path.write_text('[deploy]\ndeny = [' + json.dumps(pattern) + ']\n')
     with pytest.raises(ConfigError, match='literal executable'):
         load_config(root)
+
+@pytest.mark.parametrize('command', [
+    'vercel', 'vercel --prod', 'vc deploy --prod --yes', 'vercel ./app',
+    'vercel promote deployment', 'vercel rollback deployment', 'vercel redeploy deployment',
+    'netlify deploy --prod', 'fly deploy', 'docker push org/app',
+    'gh release create v1.0', 'git push origin --tags', 'gh workflow run deploy.yml',
+    'gh api repos/org/repo/deployments -f ref=main', 'gcloud run deploy app',
+    'aws lambda update-function-code --function-name app --zip-file fileb://app.zip',
+])
+def test_app_delivery_needs_no_card(root, command):
+    assert check(root, command, 'check_deploy') == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'terraform apply', 'pulumi up', 'pulumi destroy', 'kubectl apply -f resources.yaml',
+    'vercel domains add example.test', 'vc env add TOKEN production',
+    'vercel project rm app', 'vercel alias set app example.test',
+    'aws ec2 run-instances --image-id image', 'aws route53 change-resource-record-sets',
+    'gcloud dns record-sets create example.test', 'az group create --name app',
+])
+def test_infrastructure_stays_on_floor(root, command):
+    from wuwei import guards
+    from wuwei.guards import edges
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and reason.startswith('infrastructure:')
+    assert guards.floor(edges.check_deploy, reason)
+
+
+def test_host_denies_only_infrastructure_and_admin():
+    from wuwei.guards.edges import PERMISSIONS_DENY
+    for command in ('vercel --prod', 'vc deploy', 'fly deploy', 'docker push org/app',
+                    'gh pr review 7 --approve', 'gh release create v1'):
+        assert not any(fnmatchcase(command, rule[5:-1]) for rule in PERMISSIONS_DENY)
+    for command in ('terraform apply', 'vercel domains add example.test', 'gh pr merge 7 --admin'):
+        assert any(fnmatchcase(command, rule[5:-1]) for rule in PERMISSIONS_DENY)
+
+
+def test_upgrade_removes_shipped_app_rules_and_keeps_explicit_enforcement(tmp_path):
+    from wuwei.commands.init import run
+    assert run(SimpleNamespace(path=str(tmp_path))) == 0
+    settings = tmp_path / '.claude/settings.json'
+    original = json.loads(settings.read_text())
+    original['permissions']['deny'] += ['Bash(vercel --prod*)', 'Bash(docker push*)',
+                                        'Bash(gh pr review * --approve*)', 'Bash(custom *)']
+    settings.write_text(json.dumps(original))
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('enforce = false', 'enforce = true'))
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    denials = json.loads(settings.read_text())['permissions']['deny']
+    assert 'Bash(docker push*)' not in denials
+    assert 'Bash(vercel --prod*)' not in denials
+    assert 'Bash(gh pr review * --approve*)' not in denials
+    assert 'Bash(custom *)' in denials
+    assert load_config(tmp_path)['guards']['enforce'] is True
+    config.write_text(config.read_text().replace('enforce = true', '# enforce unset'))
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert load_config(tmp_path)['guards']['enforce'] is False
+
+@pytest.mark.parametrize('command', ['gh repo edit o/r --visibility public',
+    'gh api repos/o/r -X PATCH -f allow_merge_commit=true', 'gh api repos/o/r/rulesets -X POST'])
+def test_admin_settings_require_a_card(root, command):
+    from fakes.owner import answer_card
+    from wuwei.guards import floor, edges
+    code, reason = check(root, command)
+    assert code == 1 and floor(edges.check_bash, reason) and 'Owner step:' in reason
+    answer_card(root, reason)
+    assert check(root, command) == (0, '')
+
+@pytest.mark.parametrize('prefix', ['gh pr merge 7', 'gh pr review 7 --approve', 'git push --force origin x'])
+@pytest.mark.parametrize('protected', ['gh repo delete o/r --yes', 'gh pr merge 7 --admin',
+    'gh api repos/o/r/branches/main/protection -X DELETE'])
+def test_nudged_first_segment_cannot_hide_later_admin(root, prefix, protected):
+    from wuwei.guards import edges, floor
+    code, reason = check(root, prefix + '; ' + protected)
+    assert code == 1 and floor(edges.check_bash, reason) and 'Owner step:' in reason
+
+@pytest.mark.parametrize('command', ['gh pr review 7 --approve --body-file review.md',
+    'gh pr merge 7 --body-file review.md',
+    'gh api repos/o/r/pulls/7/reviews -f event=APPROVE -F body=@review.md'])
+@pytest.mark.parametrize('marker', ['canary', 'honeytoken', 'disposition'])
+def test_ordinary_actions_still_scan_protected_body_files(root, command, marker):
+    from wuwei import security
+    from wuwei.guards import edges, floor
+    secrets = security.initialize(root / '.wuwei')
+    (root / 'repo/review.md').write_text('WUWEI parked A' if marker == 'disposition' else secrets[marker])
+    code, reason = check(root, command)
+    assert code == 1 and floor(edges.check_bash, reason)
+
+
+@pytest.mark.parametrize('shape', ['dict', 'list', 'string'])
+def test_malformed_send_cannot_hide_canary(root, shape):
+    from wuwei import security
+    from wuwei.guards import edges, floor
+    secrets = security.initialize(root / '.wuwei')
+    inputs = {'dict': {'text': secrets['canary'], 'recipients': 'someone'},
+              'list': [secrets['canary']], 'string': secrets['canary']}[shape]
+    code, reason = edges.check_send({'cwd': str(root), 'tool_name': SEND,
+        'tool_input': inputs})
+    assert code == 1 and floor(edges.check_send, reason)
+
+@pytest.mark.parametrize('command', ['az webapp deploy --resource-group rg --name app --src-path app.zip',
+    'aws deploy create-deployment --application-name app --deployment-group-name prod',
+    'aws ecs update-service --cluster app --service app --force-new-deployment'])
+def test_cloud_app_delivery_is_not_infrastructure(root, command):
+    assert check(root, command, 'check_deploy') == (0, '')
+
+
+@pytest.mark.parametrize('command', ['vercel domains move example.test other-team',
+    'aws ec2 authorize-security-group-ingress --group-id sg-1 --protocol tcp --port 443'])
+def test_infrastructure_ownership_and_access_changes_need_cards(root, command):
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and reason.startswith('infrastructure:')
+
+
+def test_owner_admin_card_does_not_approve_secret_egress(root):
+    from fakes.owner import answer_card
+    from wuwei import security
+    from wuwei.guards import edges, floor
+    secrets = security.initialize(root / '.wuwei')
+    body = root / 'repo/review.md'
+    body.write_text('Reviewed')
+    command = 'gh pr merge 7 --admin --body-file review.md'
+    code, reason = check(root, command)
+    answer_card(root, reason)
+    body.write_text(secrets['canary'])
+    code, reason = check(root, command)
+    assert code == 1 and reason.startswith('outward: security.') and floor(edges.check_bash, reason)
+
+@pytest.mark.parametrize('target', ['repos/o/r/environments%2fproduction',
+    'repos/o/r/environments?name=production'])
+def test_environment_api_encoded_target_stays_owner_only(root, target):
+    code, reason = check(root, f'gh api {target} -X PUT')
+    assert code == 1 and reason.startswith('repository settings') and 'Owner step:' in reason
+
+@pytest.mark.parametrize('command', [
+    'aws cloudformation create-stack --stack-name update-function-code --template-body file://stack.yaml',
+    'aws cloudformation update-stack --stack-name update-service --force-new-deployment',
+])
+def test_app_operation_names_in_values_do_not_authorize_infrastructure(root, command):
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and reason.startswith('infrastructure:')
+
+
+@pytest.mark.parametrize('command', [
+    'netlify env:set TOKEN value', 'ntl sites:delete site',
+    'gcloud sql instances patch db', 'aws rds modify-db-instance --db-instance-identifier db',
+    'aws s3 rb s3://bucket', 'aws ec2 stop-instances --instance-ids i-1',
+    'aws rds reboot-db-instance --db-instance-identifier db', 'fly scale count 0',
+    'gcloud compute disks resize disk --size 20GB',
+    'gcloud --quiet sql instances delete db', 'aws --no-cli-pager rds delete-db-instance --db-instance-identifier db',
+    'aws --output json s3 rb s3://bucket', 'az --only-show-errors group delete -n rg',
+    *[f'gcloud {service} deploy app {flag}' for service in ('run', 'functions')
+      for flag in ('--allow-unauthenticated', '--service-account=admin@example.test', '--set-secrets=KEY=secret:latest')],
+])
+def test_review_infrastructure_commands_require_owner_card(root, command):
+    from fakes.owner import answer_card
+    code, reason = check(root, command, 'check_deploy')
+    assert code == 1 and reason.startswith('infrastructure:') and 'Owner step:' in reason
+    answer_card(root, reason)
+    assert check(root, command, 'check_deploy') == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'aws dynamodb get-item --table-name put-events --key k',
+    'aws --profile production dynamodb get-item --table-name delete-events --key k',
+    'gcloud sql instances describe db --format create',
+])
+def test_review_cloud_option_values_are_not_operations(root, command):
+    assert check(root, command, 'check_deploy') == (0, '')
+
+
+def test_review_upgrade_keeps_secret_pull_denials(tmp_path):
+    from wuwei.commands.init import LEGACY_APP_DENY, run
+    rules = {f'Bash({binary}{suffix})' for binary in ('vercel', 'vc')
+             for suffix in (' env pull*', ' pull*')}
+    assert not rules & LEGACY_APP_DENY
+    assert run(SimpleNamespace(path=str(tmp_path))) == 0
+    settings = tmp_path / '.claude/settings.json'
+    data = json.loads(settings.read_text())
+    data['permissions']['deny'] += sorted(rules)
+    settings.write_text(json.dumps(data))
+    assert run(SimpleNamespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert rules <= set(json.loads(settings.read_text())['permissions']['deny'])
+
+
+REPOSITORY_ADMIN_PATHS = ['collaborators/person', 'hooks', 'hooks/1', 'keys', 'keys/1',
+    'actions/secrets/TOKEN', 'actions/variables/NAME', 'actions/permissions',
+    'actions/permissions/workflow', 'transfer', 'branches/main/rename',
+    'environments', 'environments/production']
+
+
+@pytest.mark.parametrize('command', [
+    *[f'gh api repos/o/r/{path} -X PUT' for path in REPOSITORY_ADMIN_PATHS],
+    *[f'gh {family} {verb} NAME -R o/r' for family in ('secret', 'variable')
+      for verb in ('set', 'delete')],
+    'gh repo deploy-key add key.pub -R o/r', 'gh repo deploy-key delete 1 -R o/r',
+])
+def test_review_repository_admin_writes_require_card(root, command):
+    from fakes.owner import answer_card
+    from wuwei.guards import edges, floor
+    code, reason = check(root, command)
+    assert code == 1 and reason.startswith('repository settings') and floor(edges.check_bash, reason)
+    assert 'Owner step:' in reason
+    answer_card(root, reason)
+    assert check(root, command) == (0, '')
+
+
+@pytest.mark.parametrize('path', REPOSITORY_ADMIN_PATHS)
+def test_review_repository_admin_reads_are_allowed(root, path):
+    assert check(root, f'gh api repos/o/r/{path}') == (0, '')
+
+
+def test_review_admin_body_nudge_still_honors_owner_answer(root):
+    from fakes.owner import answer_card
+    command = 'gh api repos/o/r -X PATCH --input missing.json'
+    code, reason = check(root, command)
+    assert code == 2 and 'Owner step:' in reason
+    answer_card(root, reason)
+    assert check(root, command) == (0, '')
+
+
+@pytest.mark.parametrize('field', ['raised_prs', 'claimed_prs'])
+@pytest.mark.parametrize('command', [
+    'gh pr merge 7', 'gh pr merge 7 -R example/project',
+    'gh pr merge https://github.com/example/project/pull/7',
+    'gh api repos/example/project/pulls/7/merge -X PUT',
+    'gh pr merge div-1', 'gh pr merge',
+    'GH_REPO=example/project gh pr merge 7',
+])
+def test_review_owned_raw_merge_stays_on_floor(root, monkeypatch, capsys, field, command):
+    ref = 'example/project#7'
+    state._write_state(lambda data: (data[field].append(ref),
+        data['items']['DIV-1'].update(pr=ref, branch='div-1')), root)
+    code, reason = check(root, command)
+    assert code == 1 and (f'run bin/wuwei merge {ref}; it merges without a card '
+                         'when the gates and CI are green') in reason
+    assert hook(root, monkeypatch, capsys, command, False)[0] == 2
+
+
+@pytest.mark.parametrize('command', ['gh pr merge 8', 'gh pr merge 7 -R other/repo',
+                                    'GH_REPO=other/repo gh pr merge 7',
+                                    'gh pr review 7 --approve'])
+def test_review_unowned_merge_and_approval_remain_nudges(root, monkeypatch, capsys, command):
+    state._write_state(lambda data: data['raised_prs'].append('example/project#7'), root)
+    assert hook(root, monkeypatch, capsys, command, False)[0] == 0
+
+
+@pytest.mark.parametrize('command', ['gh pr merge', 'gh pr merge div-1'])
+def test_review_raised_merge_resolves_worktree_branch(root, command):
+    from wuwei.guards import edges, floor
+    ref = 'example/project#7'
+    state._write_state(lambda data: (data['raised_prs'].append(ref),
+        data['items']['DIV-1'].update(pr=ref)), root)
+    code, reason = check(root, command, cwd=root / 'worktrees/DIV-1')
+    assert code == 1 and floor(edges.check_bash, reason)
+    assert f'run bin/wuwei merge {ref}' in reason
+
+
+def test_review_environment_card_is_honored_by_the_whole_hook(root, monkeypatch, capsys):
+    from fakes.owner import answer_card
+    command = 'gh api repos/o/r/environments/production -X PUT'
+    code, reason = check(root, command)
+    assert code == 1 and 'Owner step:' in reason
+    answer_card(root, reason)
+    assert hook(root, monkeypatch, capsys, command, False)[0] == 0
