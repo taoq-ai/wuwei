@@ -1,6 +1,7 @@
 """Shared workspace paths and validated configuration."""
 
 from itertools import chain
+import json
 import marshal
 import os
 from pathlib import Path
@@ -232,6 +233,44 @@ def atomic_write(path, text, *, replace=True, mode=None, sync_dir=True):
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def github_hold(root, now, *, until=None, resource=None, reason=None, clear_until=None,
+                claim=None, replace=None):
+    """Read or extend the workspace GitHub hold under one interprocess lock."""
+    # ponytail: one lock per workspace; use per-account locks if workspaces share a credential.
+    directory = Path(root) / '.wuwei'
+    path = directory / 'github_hold.json'
+    with (directory / 'github_hold.lock').open('a') as lock:
+        from wuwei import state
+        try:
+            state.lock_ex(lock, 'github_hold.lock')
+        except TimeoutError:
+            raise ValueError('GitHub hold lock timed out; retry after the other wuwei command finishes') from None
+        try:
+            found = json.loads(path.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            found = None
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError('invalid GitHub hold state; run bin/wuwei doctor') from exc
+        if found is not None and (not isinstance(found, dict)
+                                  or type(found.get('until')) not in (int, float)
+                                  or not isinstance(found.get('resource'), str)
+                                  or not isinstance(found.get('reason'), str)
+                                  or ('claim' in found and (not isinstance(found['claim'], str)
+                                                            or not re.fullmatch('[0-9a-f]{16}', found['claim'])))):
+            raise ValueError('invalid GitHub hold state; run bin/wuwei doctor')
+        if found and (found['until'] <= now or clear_until is not None
+                      and found['until'] <= clear_until):
+            path.unlink()
+            found = None
+        if until is not None and (found is None or until > found['until']
+                                  or replace is not None and found.get('claim') == replace):
+            found = {'resource': resource, 'until': until, 'reason': reason}
+            if claim is not None:
+                found['claim'] = claim
+            atomic_write(path, json.dumps(found) + '\n')
+        return found
 
 
 def find_workspace(start=None, *, use_environment=True):

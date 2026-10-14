@@ -10,9 +10,11 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
 
-from .._http import Failure, credential, gh_limit, operation, request, retry, settings, status
-from wuwei import redact
+from .. import _http
+from .._http import Failure, RateLimited, credential, gh_limit, operation, request, settings, status
+from wuwei import redact, workspace
 from wuwei.registry import outward_operation
 
 
@@ -23,13 +25,14 @@ VARIABLES = '$owner:String!,$name:String!,$number:Int!'
 
 def _query(query, variables, root):
     payload = {'query': query, 'variables': variables}
-    if os.environ.get('GITHUB_TRACKER_TOKEN'):
-        value = retry(lambda: request(URL, credential('GITHUB_TRACKER_TOKEN'), payload), root)
-    elif settings(root)['tracker']['auth'] == 'gh':
-        value = retry(lambda: _gh(payload), root)
-    else:
+    def call():
+        if os.environ.get('GITHUB_TRACKER_TOKEN'):
+            return request(URL, credential('GITHUB_TRACKER_TOKEN'), payload)
+        if settings(root)['tracker']['auth'] == 'gh':
+            return _gh(payload, root=root)
         raise Failure('GITHUB_TRACKER_TOKEN is missing; set it in .wuwei/env, or set '
                       'tracker.auth = "gh" to use your gh login')
+    value = _http.held(root, call, resource='graphql')
     if value.get('errors') or not isinstance(value.get('data'), dict):
         raise _error(value, variables)
     return value['data']
@@ -48,7 +51,7 @@ def _error(value, variables):
                    + (f': {text}' if text else ''))
 
 
-def _gh(payload):
+def _gh(payload, root=None):
     """The owner's gh login (#602); only the exit, an HTTP status and a hint leave, never gh's text."""
     try:
         result = subprocess.run(['gh', 'api', 'graphql', '--hostname', 'github.com', '--input', '-'],
@@ -58,7 +61,14 @@ def _gh(payload):
     except subprocess.TimeoutExpired:
         raise Failure('gh api graphql timed out after 30 s') from None
     if result.returncode:
+        claim = None
+        if re.search(r'rate limit', result.stderr, re.I) and root is not None and (Path(root) / '.wuwei').is_dir():
+            claim = os.urandom(8).hex()
+            workspace.github_hold(root, _http.time.time(), until=_http.time.time() + _http.WAIT,
+                                  resource='graphql', reason='GitHub rate limit while reading refusal details',
+                                  claim=claim)
         if limit := gh_limit(result.stderr, resource='graphql'):
+            limit.hold_claim = claim
             raise limit
         code = re.search(r'\(HTTP ([1-5][0-9][0-9])\)', result.stderr)
         if code:

@@ -1550,6 +1550,9 @@ def _case_plan_add_names_the_repository_in_a_multi_repo_workspace(gated, monkeyp
     assert 'OWN-1' not in state.read_state(gated)['items']
     assert main(['plan', 'add', 'OWN-1', '--goal', 'G-1', '--repo', 'acme/paper']) == 0
     assert state.read_state(gated)['items']['OWN-1']['repo'] == 'acme/paper'
+    now = workspace.now().isoformat()
+    (workspace.day_dir(gated) / 'prs.json').write_text(json.dumps({
+        'fetched_at': now, 'pulls': [], 'repos': {'acme/paper': {'at': now}}}))
     [start] = [row for row in dispatch.launch_set(gated)['entries'] if row['item'] == 'OWN-1']
     assert start['action'] == 'start' and start['commands'][0] == 'wuwei worktree add OWN-1 --repo acme/paper'
 

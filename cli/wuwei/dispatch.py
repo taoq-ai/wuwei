@@ -1132,14 +1132,12 @@ def launch_set(root=None):
                  if (repo := derive.item_repo(root, config, name, items[name]))}
         due = derive.stale(root, config, data, repos) if repos else []
         if due:
-            failed = derive.refresh(root, config, due)
-            if failed:
-                print(f'wuwei dispatch: PR listing not refreshed ({failed}); run wuwei next after '
-                      'pr.poll_seconds; planned starts continue with their PR check unmeasured', file=sys.stderr)
-            held = {row['item'] for row in derive.offers(data, root, config)['rows']
-                    if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}
-            first = [name for name in first if name not in held]
-            rest = [name for name in rest if name not in held]
+            for name in candidates:
+                repo = derive.item_repo(root, config, name, items[name])
+                if repo and repo['name'] in due:
+                    skip.append(name)
+                    entries.append({'item': name, 'goal': goal(name), 'action': 'wait',
+                                    'reason': 'PR listing is stale; run wuwei next to refresh it'})
     index = 0
     for name in (name for name in first + rest if name not in skip):
         runtime = route(data['seat_policy'].get('builder', {}), config['adapters']['runtime'], windows_left)
@@ -1192,9 +1190,6 @@ def review_action(root, data, item):
     if pr.partition('#')[0] not in {repo['name'] for repo in repos}:
         raise Refused(f'{pr} is not a configured repository; run bin/wuwei config add-repo for it')
     pull = derive.listing(workspace.day_dir(root))['pulls'].get(pr)
-    if not pull:
-        from wuwei import registry
-        pull = brief.read(registry.load('code_host', workspace.load_config(root)).pr, pr, root=root)
     if not pull or pull.get('state') != 'open' or not pull.get('head') or not pull.get('branch'):
         return {'action': 'wait', 'reason': f'{pr} open PR head is unmeasured; run wuwei next to refresh the PR listing'}
     if pull.get('head_repo') != pr.partition('#')[0]:

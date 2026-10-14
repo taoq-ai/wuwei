@@ -54,6 +54,9 @@ def approved(day, cap=None, extra='', policy=CLAUDE):
 
 
 def launch_set(day, expected=0):
+    listing = day.directory / 'prs.json'
+    if not listing.exists():
+        listing.write_text(json.dumps({'fetched_at': '2026-09-29T12:00:00Z', 'pulls': []}))
     value = json.loads(day.run('dispatch', 'next', '--all', expected=expected))
     return [(row['item'], row['action']) for row in value['entries']], value['entries']
 
@@ -303,11 +306,11 @@ def _case_direct_dispatch_refreshes_stale_pr_before_start(day):
     pull = {'number': 3174, 'state': 'open', 'head': day.head,
             'branch': 'leone/a', 'head_repo': 'acme/widget'}
     (day.directory / 'prs.json').write_text(json.dumps({
-        'fetched_at': old, 'repos': {'acme/widget': {'at': old}},
-        'pulls': [{**pull, 'ref': 'acme/widget#3174'}]}))
+        'fetched_at': old, 'repos': {'acme/widget': {'at': old}}, 'pulls': []}))
     day.host.results['pulls'] = Result(0, [pull])
     entries = json.loads(day.run('dispatch', 'next', '--all'))['entries']
     assert all(entry['action'] != 'start' for entry in entries)
+    assert not [call for call in day.host.calls if call[0] == 'pulls']
 
 
 def _case_pr_and_committed_worktree_share_one_owner_card(day):

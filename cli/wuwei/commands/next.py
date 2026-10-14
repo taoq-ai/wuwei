@@ -673,7 +673,9 @@ def run(args):
             from wuwei import derive
             config = workspace.load_config(root)
             data = state.read_state(root)
-            refreshed = derive.stale(root, config, data)
+            planned = any(item['phase'] == 'planned' for item in data['items'].values())
+            refreshed = derive.stale(root, config, data,
+                                     [repo['name'] for repo in config['repos']] if planned else None)
             directory = workspace.day_dir(root)
             log = directory / 'events.jsonl'
             owned = set(data['raised_prs'] + data['claimed_prs'])

@@ -540,6 +540,15 @@ def protection_calls(ws):
     return sum(call[0] == 'protection' for call in ws.code_host.calls)
 
 
+def test_diagnostic_github_auth_reads_pass_workspace(ws, monkeypatch):
+    from wuwei.commands import config as config_command
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws.root))
+    config_command.run(SimpleNamespace())
+    doctor._host(ws.root, workspace.load_config(ws.root))
+    assert [call for call in ws.code_host.calls if call[0] == 'auth_status'] == [
+        ('auth_status', (), ws.root), ('auth_status', (), ws.root)]
+
+
 def test_protection_is_read_once_a_day_when_clean(ws):
     # #867: findings and errors are read again, so the owner's fix shows; a clean read is kept.
     ws.code_host.results['protection'] = protected(**CLASSIC_404)
@@ -1320,4 +1329,3 @@ def test_two_installs_named_with_the_fix(ws, tmp_path):
     assert row(rows, 'executable')['status'] == 'ok'
     ws.mp.setattr(integrity, 'PLUGIN', a)
     assert 'installs' not in names(doctor.diagnose(), 'install')
-

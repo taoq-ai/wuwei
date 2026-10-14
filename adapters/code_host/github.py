@@ -1,21 +1,26 @@
 """GitHub mechanics and normalization, with no policy or override capability."""
 
 from datetime import datetime
+from contextvars import ContextVar
 from functools import wraps
 import json
 import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import quote
 
-from .._http import RateLimited, gh_limit, retry
+from .. import _http
+from .._http import RateLimited, gh_limit
 from wuwei.registry import Result, outward_operation
 from wuwei.redact import reply
 from wuwei.references import pull_request, repository as _repo
+from wuwei import workspace
 
 
 TIMEOUT = 30
+_ROOT = ContextVar('github_workspace', default=None)
 _THREADS = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){'
             'pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} '
             'nodes{id isResolved isOutdated path comments(first:100){pageInfo{hasNextPage} '
@@ -42,15 +47,18 @@ _MERGED = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullReques
 def _operation(function):
     @wraps(function)
     def call(*args, **kwargs):
+        token = _ROOT.set(kwargs.get('root'))
         try:
             return Result(0, function(*args, **kwargs))
         except (OSError, subprocess.SubprocessError, ValueError, TypeError,
                 KeyError, AttributeError, IndexError, RecursionError) as exc:
             # Do not print response bodies or arguments, which may contain private text.
-            detail = str(exc) if type(exc) is ValueError else type(exc).__name__
+            detail = str(exc) if isinstance(exc, _http.Failure) or type(exc) is ValueError else type(exc).__name__
             reason = f'github.{function.__name__}: could not run: {detail}'
             print(reason, file=sys.stderr)
             return Result(2, None, reason)
+        finally:
+            _ROOT.reset(token)
     return call
 
 
@@ -129,6 +137,7 @@ def _run(args, payload=None, *, json_output=True, env=None, token_source=None):
     where = 'search' if resource == 'search' else endpoint.split('?')[0] or ' '.join(args[:2])
 
     def call():
+        root = _ROOT.get()
         result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                                 capture_output=True, text=True, timeout=TIMEOUT, env=env)
         if result.returncode and re.search(r'rate limit', result.stderr, re.I):
@@ -139,11 +148,21 @@ def _run(args, payload=None, *, json_output=True, env=None, token_source=None):
             after = found.get('retry-after', '')
             seen = [found.get('x-ratelimit-' + key, '') for key in ('resource', 'remaining', 'limit', 'reset')]
             valid = re.fullmatch(r'[a-z_]+', seen[0]) and all(map(str.isdigit, seen[1:]))
-            raise gh_limit(result.stderr, env, resource, where, int(after) if after.isdigit() else None,
-                           (seen[0], *map(int, seen[1:])) if valid else None, source=token_source)
+            claim = os.urandom(8).hex()
+            if root is not None and (Path(root) / '.wuwei').is_dir():
+                # Hold peers before the one quota read needed to explain a contradictory refusal.
+                workspace.github_hold(root, _http.time.time(),
+                                      until=_http.time.time() + (int(after) if after.isdigit() else _http.WAIT),
+                                      resource=seen[0] if valid else resource,
+                                      reason='GitHub rate limit while reading refusal details', claim=claim)
+            limit = gh_limit(result.stderr, env, resource, where, int(after) if after.isdigit() else None,
+                             (seen[0], *map(int, seen[1:])) if valid else None, source=token_source)
+            limit.hold_claim = claim
+            limit.resource = seen[0] if valid else resource
+            raise limit
         return result
     try:
-        result = retry(call)
+        result = _http.held(_ROOT.get(), call)
     except RateLimited as limit:
         raise ValueError(str(limit)) from None  # _operation shows plain ValueError text only
     if cut and re.match(r'HTTP/\S+ \d{3}', result.stdout):
@@ -400,6 +419,7 @@ def pulls(repo, root=None):
                  if _login(node.get('author')) not in (None, viewer, author if author == viewer else None)]
         rows.append({'number': _field(v, 'number', int), 'state': _field(v, 'state', str).lower(),
                      'head': _sha(v['headRefOid']), 'branch': v.get('headRefName'),
+                     'author': author,
                      'head_repo': (v.get('headRepository') or {}).get('nameWithOwner'),
                      'draft': _field(v, 'isDraft', bool),
                      'checks': rollup.get(checks, 'pending'),
@@ -733,6 +753,7 @@ def token_scopes(variable, root=None):
 
 def auth_status(root=None):
     """Measure gh authentication without exposing account or token output."""
+    token = _ROOT.set(root)
     try:
         code = _run(['auth', 'status', '--hostname', 'github.com'], json_output=False)
         if code == 0:
@@ -744,9 +765,11 @@ def auth_status(root=None):
                 _run(['api', 'user'])
                 return Result(0)
             except ValueError as exc:
-                if str(exc).startswith('GitHub rate limit until '):
+                if str(exc).startswith(('GitHub rate limit until ', 'GitHub hold on ')):
                     return Result(2, reason=str(exc))
             return Result(1, reason='gh auth: missing')
         return Result(2, reason='gh auth: could not run')
     except (OSError, subprocess.SubprocessError, ValueError):
         return Result(2, reason='gh auth: could not run; check gh installation and authentication')
+    finally:
+        _ROOT.reset(token)

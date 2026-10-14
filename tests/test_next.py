@@ -162,6 +162,23 @@ def _case_next_refreshes_unclaimed_repo_before_offering(root, monkeypatch, capsy
     assert refreshed == ['example/project']
 
 
+def test_next_refreshes_never_read_repo_for_planned_item(root, monkeypatch, capsys):
+    from wuwei import derive
+    approved(root, {'A': ('planned', {'status': 'queued', 'repo': 'acme/paper'})})
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[[repos]]\nname = "acme/paper"\npath = "paper"\ndefault_branch = "main"\n')
+    refreshed = []
+
+    def refresh(root, config, names):
+        refreshed.extend(names)
+        return None
+
+    monkeypatch.setattr(derive, 'refresh', refresh)
+    monkeypatch.setattr(next_command, '_supervise', lambda *args: None)
+    assert row(capsys)[0] == 0
+    assert refreshed == ['acme/paper']
+
+
 def test_next_reuses_recent_listing_for_unclaimed_pr(root, monkeypatch, capsys):
     from wuwei import derive
     approved(root, {})
