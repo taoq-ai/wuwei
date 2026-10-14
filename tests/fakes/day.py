@@ -37,6 +37,8 @@ class Runtime:
         self.fresh = False  # #614: Claude Code has no resume; a continue is a fresh agent
         self.raises = True  # the shepherd raises its PR; False: it stops without one (#902)
         self.blocked = None  # a builder's Blocked: line, an owner-only question (#902)
+        self.stop_expected = 0
+        self.stop_message = ''
 
     def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
@@ -114,8 +116,10 @@ class Runtime:
                 lines.write(json.dumps({'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
                     {'type': 'tool_result', 'tool_use_id': 'toolu_scripted',
                      'content': 'Report delivered to your caller.'}]}}) + '\n')
-        day.hook('SubagentStop', agent_type=role, agent_id=agent,
-                 agent_transcript_path=str(transcript), **fields)
+        self.stop_message = day.hook('SubagentStop', agent_type=role, agent_id=agent,
+                                     agent_transcript_path=str(transcript),
+                                     expected=self.stop_expected, **fields)
+        self.stop_expected = 0
         assert day.data['seats'][path.stem]['status'] == 'stopped'
         return Result(0, {'id': path.stem})
 
@@ -351,7 +355,10 @@ lead_login = "lead"
         # The delta round continues the same sentinel seat from its `continue` action.
         [action] = [row for row in self.next()['seats'] if row['agent_type'] == 'wuwei:sentinel-' + role]
         assert action['action'] == ('launch' if round_name == 'initial' else 'continue'), action
+        self.runtime.stop_expected = expected
         self.execute(action)
+        if expected == 2:
+            return self.runtime.stop_message
         return self.run(*shlex.split(action['receive'])[1:], expected=expected)
 
     def raise_pr(self, expected=0):

@@ -1091,6 +1091,17 @@ def test_committed_build_without_result_recovers_to_checks_and_gates(seat, entry
     assert len([row for row in events(day) if row['kind'] == 'build.reconciled']) == 1
 
 
+def test_committed_recovery_delivers_pending_feedback_before_checks(seat):
+    root = committed_without_result(seat)
+    state._write_state(lambda data: data['builds']['A'].update(
+        pending_feedback='Review finding after launch'), root)
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'continue'
+    assert 'Review finding after launch' in action['feedback']
+    record = state.read_state(root)['builds']['A']
+    assert record['status'] == 'ready' and 'pending_feedback' not in record
+
+
 @pytest.mark.parametrize('case', ['dirty', 'unchanged', 'diverged', 'live', 'failed-check'])
 def test_committed_recovery_requires_finished_seat_and_new_clean_ancestry(seat, case):
     root, repo, _, _, _ = seat

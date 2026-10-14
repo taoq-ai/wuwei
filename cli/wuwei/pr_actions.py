@@ -521,8 +521,8 @@ def _fix_round(root, ref, item, tree, measured, feedback=None):
             return exc.code, f'{ref}: {exc}'
         state.transition(item, 'implement', root)
         return 1, action
-    if row['phase'] == 'implement':  # #879: the claimed round in flight answers its current step
-        return 1, build.next_action(item, root=root)
+    if row['phase'] in ('implement', 'fix'):  # feedback belongs to the current builder round
+        return 1, build.supplement(item, feedback, root=root)
     if cap := dispatch.capped(root, workspace.load_config(root), data, item):  # #844: the owner decides on plan resume's card
         reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
         dispatch._parked(root, item, reason)
@@ -573,7 +573,17 @@ def _thread(root, ref, item, tree, measured, reply=None, target=None, fix=None, 
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
         # #838: posted through the code-host port, which runs the canary check and the lint.
         return obligations.reply(ref, surface, thread['comments'][0]['id'] if thread else latest['id'], reply, root)
-    feedback = lambda why: f'Review {surface} {target} on {ref}: {text}\nShepherd: {why}'
+    bot_threads = [("thread", row['id'], row, row['comments'][-1])
+                   for row in measured['threads']['threads']
+                   if not row['resolved'] and not row['outdated']
+                   and all(comment['is_bot'] for comment in row['comments'])
+                   and not any(ident == row['id'] for _, ident, _, _ in owed)]
+    feedback = lambda why: ('Fix every P1 bot finding. Fix or reply to every other review request below.\n\n'
+                            + '\n\n'.join(
+        f'Review {kind} {ident} on {ref}: {comment["body"]}\n'
+        + (f'Shepherd: {why}' if ident == target and kind == surface else
+           'Builder: fix or reply to this review request.')
+        for kind, ident, _, comment in (*owed, *bot_threads)))
     if fix is not None:
         return _fix(root, ref, item, tree, measured, feedback=feedback(fix))
     answer = {}

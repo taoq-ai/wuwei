@@ -136,6 +136,10 @@ def _continue(root, record, feedback):
             'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
 
 
+def _join_feedback(old, new):
+    return old if new in old else new if old and old in new else old + ('\n\n' if old else '') + new
+
+
 def _fix_id(data, repo, path):
     """#648: one fix item per broken file per repository; a merged one gets a successor."""
     base = 'fix-main-' + '-'.join(re.findall(r'[a-z0-9]+', f'{repo} {path}'.lower()))
@@ -207,7 +211,9 @@ def _release(item, record, data, root):
     feedback = (f"Main fix {fix} is {data['items'].get(fix, {}).get('phase')}. Rebase this branch onto "
                 'the current base branch and run the fast checks; change nothing else unless a check '
                 'still fails.')
-    released = {**record, 'action': _continue(root, record, feedback)}
+    pending = record.get('pending_feedback', '')
+    released = {**record, 'action': _continue(root, record, _join_feedback(feedback, pending) if pending else feedback)}
+    released.pop('pending_feedback', None)
     _save(item, released, root, 'build.released', record, {'fix': fix})
     return released['action']
 
@@ -400,9 +406,9 @@ def open_fix(item, feedback, *, root, polish=None, start=None):
         record = data.get('builds', {}).get(item)
     if data['items'][item]['phase'] == 'fix' and record is not None:
         if record['status'] == 'ready':
-            return next_action(item, root / record['brief'], record['worktree'], root=root)
+            return supplement(item, feedback, root=root)
         if record['status'] in ('running', 'check'):
-            return {'action': 'wait', 'item': item, 'status': record['status']}
+            return supplement(item, feedback, root=root)
     if record is None or record['status'] not in ('done', 'ready'):
         raise ValueError(f'fix round needs a completed or ready build; run bin/wuwei build next {item} for the current step')
     from wuwei import dispatch
@@ -413,6 +419,7 @@ def open_fix(item, feedback, *, root, polish=None, start=None):
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised', 'delta'):
         raise ValueError(f'fix round needs a gated, delta or raised item; run bin/wuwei dispatch next {item} for its current step')
+    feedback = _join_feedback(record.get('pending_feedback', ''), feedback)
     brief = root / record['brief']
     # #733: the CI job the feedback names is recorded, and every one of its steps is listed
     refs = sorted({*data['items'][item].get('ci_jobs', ()), *ci_jobs(feedback, record['worktree'])})
@@ -452,13 +459,49 @@ def open_fix(item, feedback, *, root, polish=None, start=None):
                                  'status': 'ready', 'action': action,
                                  'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
+        fresh['builds'][item].pop('pending_feedback', None)
     state._write_state(update, root, kind='build.fix_opened',
                        payload={'item': item, 'round': used + 1, 'cap': cap,
                                 **({'polish': True} if polish else {})})
     return next_action(item, brief, record['worktree'], root=root)
 
 
-def started(data, item, name, fresh=False):
+def supplement(item, feedback, *, root):
+    """Keep new PR feedback on the active build and hand it to its builder."""
+    data = state.read_state(root)
+    record = data.get('builds', {}).get(item)
+    if record is None:
+        raise ValueError(f'no active build for {item}; run bin/wuwei build next {item}')
+    if not feedback or not feedback.strip():
+        raise ValueError(f'supplementary fix feedback is empty; run bin/wuwei pr act for {item} with a review request')
+    status = record['status']
+    ready_action = status == 'ready' and record['action']['action'] in ('launch', 'continue')
+    old = record['action'].get('feedback', '') if ready_action else record.get('pending_feedback', '')
+    if feedback not in old:
+        # The measured PR request may repeat earlier threads. Keep the latest complete set.
+        combined = _join_feedback(old, feedback)
+        updated = dict(record)
+        if ready_action:
+            action = dict(record['action'])
+            action['feedback'] = combined
+            action['prompt'] += '\n\n' + feedback
+            updated['action'] = action
+            updated['pending_feedback'] = _join_feedback(record.get('pending_feedback', ''), feedback)
+        elif status == 'check':
+            updated.update(status='ready', action=_continue(root, record, combined))
+            updated.pop('pending_feedback', None)
+        else:
+            updated['pending_feedback'] = combined
+        _save(item, updated, root, 'build.feedback_added', record)
+        record = updated
+    if ready_action or status == 'check':
+        return {**record['action'], 'delivery': 'active fix round' if ready_action else 'builder continuation'}
+    return {'action': 'wait', 'item': item, 'status': status,
+            'feedback': record.get('pending_feedback', ''),
+            'delivery': 'queued for the next round' if status not in ('ready', 'running') else 'builder continuation'}
+
+
+def started(data, item, name, fresh=False, prompt=None):
     """Bind a Claude iteration inside the existing seat reservation transaction. fresh (#614):
     a new agent continues the round, so the replaced agent's id and transcript binding go."""
     record = data.get('builds', {}).get(item)
@@ -468,6 +511,8 @@ def started(data, item, name, fresh=False):
         raise ValueError(f'build is not ready for a seat; run bin/wuwei build next {item} for the current step (bin/wuwei why {item} explains it)')
     if data['seats'][name]['brief'] != record['brief']:
         raise ValueError(f'seat brief differs from active build; start the seat with the brief that bin/wuwei build next {item} returned')
+    if record.get('pending_feedback') and prompt and record['pending_feedback'] in prompt:
+        record.pop('pending_feedback')
     if fresh:
         record['replaced'] = record.pop('agent_id', None)
         record.pop('completion', None)
@@ -512,14 +557,18 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     # The result and usage share the writer lock, so duplicate hooks cannot charge twice.
     def update(data):
         current = data['builds'][item]
-        if current != record:
+        if ({key: value for key, value in current.items() if key != 'pending_feedback'}
+                != {key: value for key, value in record.items() if key != 'pending_feedback'}):
             raise ValueError(f'build changed during result recording; {RACE}')
         if agent_id is not None:
             data['seats'][record['seat']]['status'] = 'stopped'
             for key in ('reason', 'report', 'report_sha256'):  # recovered from unmeasured (#473, #905)
                 data['seats'][record['seat']].pop(key, None)
-        current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
-                       result=result, action=recheck(item, record))
+        pending = current.pop('pending_feedback', '')
+        current.update(status='ready' if pending else 'check', iteration=iteration,
+                       agent_id=agent_id, completion=completion, result=result,
+                       action=_continue(root, {**record, 'agent_id': agent_id}, pending) if pending
+                       else recheck(item, record))
     updated = state._write_state(update, root, kind='seat.usage',
                        payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage,
                                 'runtime': record['runtime']})
@@ -599,6 +648,8 @@ def stopped(item, name, payload, *, root):
         reported = {}  # #905: usage the runtime got wrong is unmeasured; the finished result still counts
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
+    if expected['status'] == 'ready':  # supplementary feedback arrived while this seat ran
+        return True
     if data['items'][item].get('kind') == 'measure':
         return True
     measured = data.get('fast_checks', {}).get(record['repo'], {})
@@ -816,8 +867,11 @@ def _recover_committed(item, record, root):
     if (head == record['start'] or brief.status(vcs, tree, root)
             or brief.read(vcs.merge_base, tree, record['start'], root=root)['sha'] != record['start']):
         return False
-    recovered = {**record, 'status': 'check', 'action': recheck(item, record),
+    pending = record.get('pending_feedback', '')
+    recovered = {**record, 'status': 'ready' if pending else 'check',
+                 'action': _continue(root, record, pending) if pending else recheck(item, record),
                  'reconciled': {'head': head, 'dirty': [], 'at': workspace.now().isoformat()}}
+    recovered.pop('pending_feedback', None)
 
     def unchanged(current):
         if current.get('seats') != data.get('seats'):
@@ -987,6 +1041,8 @@ def run_loop(item, brief, worktree, *, root=None):
                 else:
                     job = _data(runtime.continue_job(record['job'], action['feedback'], root=root), 'continuation')
                 previous = dict(record)
+                if action['action'] == 'continue' and record.get('pending_feedback') and record['pending_feedback'] in action['feedback']:
+                    record.pop('pending_feedback')
                 record.update(status='running', job=job, started_at=workspace.now().isoformat())
                 _save(item, record, root, 'build.launched', previous)
             try:

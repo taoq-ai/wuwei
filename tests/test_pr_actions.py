@@ -224,7 +224,161 @@ def test_thread_fix_request_opens_fix_round(case, capsys):
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': 'Please fix the parser', 'created_at': workspace.now().isoformat()}]}]
     assert main(['pr', 'act', REF, '--thread', 'T17', '--fix', 'a defect in the promised parser']) == 1
-    assert 'Please fix the parser' in json.loads(capsys.readouterr().out)['prompt']
+    prompt = json.loads(capsys.readouterr().out)['prompt']
+    assert 'Please fix the parser' in prompt
+    assert 'Fix or reply to every other review request' in prompt
+
+
+def test_one_fix_round_carries_every_unanswered_thread(case, capsys):
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    host.results['threads'].data['threads'] = [
+        {'id': name, 'resolved': False, 'outdated': False,
+         'comments': [{'id': number, 'author': author, 'is_bot': bot,
+                       'body': body, 'created_at': workspace.now().isoformat()}]}
+        for name, number, author, bot, body in (
+            ('T17', 3, 'Manu', False, 'Check the parser'),
+            ('T18', 4, 'Greptile', True, '**P1** Check the race'),
+            ('T19', 5, 'Reviewbot', True, 'Check the docs'))]
+    assert main(['pr', 'act', REF, '--thread', 'T17', '--fix', 'parser promise']) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert 'Check the parser' in action['feedback']
+    assert 'Check the race' in action['feedback']
+    assert 'Check the docs' in action['feedback']
+    assert 'fix or reply' in action['feedback']
+
+
+def test_later_thread_reaches_open_fix_round(case, capsys):
+    root, host, _, tree = linked(case)
+    completed_build(root, tree)
+    threads = host.results['threads'].data['threads']
+    threads.append({'id': 'T17', 'resolved': False, 'outdated': False,
+                    'comments': [{'id': 3, 'author': 'Manu', 'is_bot': False,
+                                  'body': 'First finding', 'created_at': workspace.now().isoformat()}]})
+    assert main(['pr', 'act', REF, '--thread', 'T17', '--fix', 'first promise']) == 1
+    capsys.readouterr()
+    threads.append({'id': 'T18', 'resolved': False, 'outdated': False,
+                    'comments': [{'id': 4, 'author': 'Pat', 'is_bot': False,
+                                  'body': 'Second finding', 'created_at': workspace.now().isoformat()}]})
+    assert main(['pr', 'act', REF, '--thread', 'T18', '--fix', 'second promise']) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert 'Second finding' in action['feedback']
+    assert action['delivery'] == 'active fix round'
+    assert state.read_state(root)['builds']['A']['fix_rounds'] == 1
+
+
+def test_running_fix_delivers_later_feedback_after_stop(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    state._write_state(lambda data: (
+        data['builds']['A'].update(status='running', seat='builder'),
+        data['seats'].update(builder={'item': 'A', 'role': 'builder', 'status': 'running'})), root)
+    action = build.supplement('A', 'Second finding', root=root)
+    assert action['delivery'] == 'builder continuation'
+    assert state.read_state(root)['builds']['A']['pending_feedback'] == 'Second finding'
+    build.record_result('A', {'text': 'done', 'usage': {}}, root=root,
+                        agent_id='old-builder')
+    record = state.read_state(root)['builds']['A']
+    assert record['status'] == 'ready'
+    assert record['action']['action'] == 'continue'
+    assert 'Second finding' in record['action']['feedback']
+
+
+def test_stopped_fix_awaiting_checks_takes_later_feedback_first(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    state._write_state(lambda data: data['builds']['A'].update(
+        status='check', action={'action': 'check'}), root)
+    action = build.supplement('A', 'Second finding', root=root)
+    assert action['delivery'] == 'builder continuation'
+    assert state.read_state(root)['builds']['A']['status'] == 'ready'
+    assert 'Second finding' in state.read_state(root)['builds']['A']['action']['feedback']
+
+
+def test_feedback_added_during_stop_is_kept(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    state._write_state(lambda data: (
+        data['builds']['A'].update(status='running', seat='builder'),
+        data['seats'].update(builder={'item': 'A', 'role': 'builder', 'status': 'running'})), root)
+    before_feedback = state.read_state(root)['builds']['A']
+    build.supplement('A', 'Second finding', root=root)
+    build.record_result('A', {'text': 'done', 'usage': {}}, root=root,
+                        agent_id='old-builder', expected=before_feedback)
+    action = state.read_state(root)['builds']['A']['action']
+    assert action['action'] == 'continue' and 'Second finding' in action['feedback']
+
+
+def test_completed_fix_queues_feedback_for_next_round(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    state._write_state(lambda data: data['builds']['A'].update(
+        status='done', action={'action': 'done'}), root)
+    queued = build.supplement('A', 'Second finding', root=root)
+    assert queued['delivery'] == 'queued for the next round'
+    assert state.read_state(root)['builds']['A']['pending_feedback'] == 'Second finding'
+    state.transition('A', 'delta', root)
+    opened = build.open_fix('A', 'Third finding', root=root)
+    assert all(text in opened['feedback'] for text in ('Second finding', 'Third finding'))
+    assert 'pending_feedback' not in state.read_state(root)['builds']['A']
+
+
+def test_ready_feedback_survives_launch_with_old_prompt(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    old_prompt = build.open_fix('A', 'First finding', root=root)['prompt']
+    build.supplement('A', 'Second finding', root=root)
+    state._write_state(lambda data: (
+        data['seats'].update(builder={'item': 'A', 'role': 'builder', 'status': 'running',
+                                     'brief': data['builds']['A']['brief']}),
+        build.started(data, 'A', 'builder', prompt=old_prompt)), root)
+    assert state.read_state(root)['builds']['A']['pending_feedback'] == 'Second finding'
+    build.record_result('A', {'text': 'done', 'usage': {}}, root=root, agent_id='old-builder')
+    action = state.read_state(root)['builds']['A']['action']
+    assert action['action'] == 'continue' and 'Second finding' in action['feedback']
+
+
+def test_started_clears_pending_feedback_in_launched_prompt(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    action = build.supplement('A', 'Second finding', root=root)
+    assert state.read_state(root)['builds']['A']['pending_feedback'] == 'Second finding'
+    state._write_state(lambda data: (
+        data['seats'].update(builder={'item': 'A', 'role': 'builder', 'status': 'running',
+                                     'brief': data['builds']['A']['brief']}),
+        build.started(data, 'A', 'builder', prompt=action['prompt'])), root)
+    record = state.read_state(root)['builds']['A']
+    assert record['status'] == 'running' and 'pending_feedback' not in record
+    build.record_result('A', {'text': 'done', 'usage': {}}, root=root, agent_id='builder')
+    assert state.read_state(root)['builds']['A']['action']['action'] == 'check'
+
+
+def test_ready_wait_queues_feedback_until_release(case):
+    from wuwei.commands import build
+    root, _, _, tree = linked(case)
+    completed_build(root, tree)
+    build.open_fix('A', 'First finding', root=root)
+    state._write_state(lambda data: (
+        data['builds']['A'].update(action={'action': 'wait', 'fix': 'main-fix', 'reason': 'main broken'}),
+        data['items'].update({'main-fix': {'phase': 'planned'}})), root)
+    queued = build.supplement('A', 'Second finding', root=root)
+    assert queued['delivery'] == 'builder continuation'
+    assert state.read_state(root)['builds']['A']['pending_feedback'] == 'Second finding'
+    state._write_state(lambda data: data['items']['main-fix'].update(phase='merged'), root)
+    action = build.next_action('A', root / state.read_state(root)['builds']['A']['brief'], tree, root=root)
+    assert 'Second finding' in action['feedback']
+    assert 'pending_feedback' not in state.read_state(root)['builds']['A']
 
 
 @pytest.mark.parametrize('phase', ['raised', 'fix', 'delta'])

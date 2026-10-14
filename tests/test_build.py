@@ -106,6 +106,22 @@ def test_green_on_second_iteration_records_two_usages(tmp_path, monkeypatch):
     assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
 
 
+def test_codex_continue_consumes_feedback_already_in_action(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, _, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    build.next_action('A', str(brief), str(repo), root=tmp_path)
+    def ready(data):
+        record = data['builds']['A']
+        record.update(job={'id': 'prior'}, action=build._continue(tmp_path, record, 'First finding'))
+    state._write_state(ready, tmp_path)
+    action = build.supplement('A', 'Second finding', root=tmp_path)
+    assert 'Second finding' in action['feedback']
+    assert state.read_state(tmp_path)['builds']['A']['pending_feedback'] == 'Second finding'
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert [call for call in runtime.calls if call[0] == 'continue'] == [
+        ('continue', action['feedback'])]
+
+
 def test_zero_diff_measurement_finishes_without_fast_check_or_commit(tmp_path, monkeypatch):
     from wuwei import dispatch
     from wuwei.commands import build
