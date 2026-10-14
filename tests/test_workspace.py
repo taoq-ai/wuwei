@@ -213,6 +213,14 @@ def _case_initialized_config_checks(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
+def test_memory_floor_default_and_owner_override(tmp_path):
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['host']['min_free_memory_pct'] == 0
+    write_config(tmp_path, '[host]\nmin_free_memory_pct = 30\n')
+    assert load_config(tmp_path)['host']['min_free_memory_pct'] == 30
+
+
 def test_config_defaults_and_independence(tmp_path):
     from wuwei import workspace
     from wuwei.workspace import load_config
@@ -1194,7 +1202,8 @@ def _case_repository_gate_defaults_and_floor_choices(tmp_path):
     assert load_config(tmp_path)['repos'][0]['gates'] == {
         'floor': 'standard', 'light_max_lines': 100,
         'trust_paths': ['guards/*', 'state.py', 'adapters/*', '.claude-plugin/*', '.github/*',
-                        'ci/*', 'workflows/*', 'deploy/*', 'infra/*'],
+                        'ci/*', 'workflows/*', 'deploy/*', 'infra/*', '*auth*', '*session*',
+                        '*token*', '*permission*', '*guard*'],
         'data_paths': []}
     for text, key in (('floor = "lowest"', 'repos.0.gates.floor'),
                       ('light_max_lines = -1', 'repos.0.gates.light_max_lines')):

@@ -82,7 +82,8 @@ SCHEMA = {
                          "data_paths": [(str, None)],  # #657: data globs (a trailing / is a directory) that never count
                          "trust_paths": [(str, None), [
                              "guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*",
-                             "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
+                             "ci/*", "workflows/*", "deploy/*", "infra/*",
+                             "*auth*", "*session*", "*token*", "*permission*", "*guard*"]]},
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520

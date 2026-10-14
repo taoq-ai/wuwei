@@ -114,6 +114,8 @@ def test_builder_brief_names_its_depth(day, monkeypatch):
      'write Mutation: skipped (depth standard)'),
     (['billing/pay.py'], 'standard', ['billing/*'],
      'Depth: standard; step zero: run (billing/pay.py matches billing/*)'),
+    (['billing/pay.py'], 'standard', ['BILLING/*'],
+     'Depth: standard; step zero: run (billing/pay.py matches BILLING/*)'),
     (['cli/wuwei/report.py'], 'full', None, 'Depth: full; step zero: run'),
     (['docs/guide.md'], 'light', None,
      'Depth: light; skip: gate step zero, the Probe or Mutation row, the class-sweep line, '
@@ -124,6 +126,50 @@ def test_gate_brief_says_when_step_zero_runs(day, monkeypatch, diff, tier, trust
     _, directory = depth_day(day, diff, trust=trust, gates=tier)
     assert brief(monkeypatch, 'Review it.', 'quality', 'X', 'g', '--gate', '--worktree', 'tree') == 0
     assert depth_line(directory, 'g') == [expected]
+
+
+@pytest.mark.parametrize('path,pattern', [
+    ('cli/wuwei/workspace_auth.py', '*auth*'),
+    ('cli/wuwei/router_auth.py', '*auth*'),
+    ('src/session/store.py', '*session*'),
+    ('src/token_store.py', '*token*'),
+    ('src/permissions/check.py', '*permission*'),
+    ('src/guard_policy.py', '*guard*'),
+    ('src/AuthService.java', '*auth*'),
+    ('src/Auth/LoginController.ts', '*auth*'),
+    ('app/SessionStore.rb', '*session*'),
+    ('pkg/JWTToken.go', '*token*'),
+    ('src/Permissions.cs', '*permission*'),
+    ('api/RouterAuth.py', '*auth*'),
+])
+def test_gate_brief_names_default_trust_match(day, monkeypatch, path, pattern):
+    _, directory = depth_day(day, [path], gates='standard')
+    assert brief(monkeypatch, 'Review it.', 'security', 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    assert depth_line(directory, 'g') == [
+        f'Depth: standard; step zero: run ({path} matches {pattern})']
+
+
+@pytest.mark.parametrize('path', [
+    'docs/site/sessions.md', 'specs/auth-guard/plan.rst',
+    'charters/_common-authoring.md', 'docs/AuthService.py', 'src/token-guide.txt',
+])
+def test_document_trust_names_do_not_raise_tier_or_run_step_zero(day, monkeypatch, path):
+    from wuwei import dispatch
+    root, directory = depth_day(day, [path], floor='light', gates='standard')
+    config = workspace.load_config(root)
+    row = {**state.read_state(root)['items']['X'], 'worktree': str(root / 'tree')}
+    assert dispatch.tier(root, config, row)['computed'] == 'light'
+    assert brief(monkeypatch, 'Review it.', 'security', 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    assert depth_line(directory, 'g') == [SKIP]
+
+
+def test_pascal_case_trust_path_raises_tier(day):
+    from wuwei import dispatch
+    root, _ = depth_day(day, ['src/AuthService.java'], floor='light')
+    row = {**state.read_state(root)['items']['X'], 'worktree': str(root / 'tree')}
+    record = dispatch.tier(root, workspace.load_config(root), row)
+    assert record['computed'] == 'standard'
+    assert 'src/AuthService.java matches trust path *auth*' in record['reasons']
 
 
 SKIP = ('Depth: standard; step zero: skip (no guard code or trust path in the diff); '
@@ -439,3 +485,14 @@ def test_builder_retro_follows_the_live_diff_not_the_prediction(seat, monkeypatc
     seat.update(agent_type='wuwei:builder', last_assistant_message='done')
     check_retro(seat)
     assert retro_events(seat)[-1]['kind'] == kind
+
+
+@pytest.mark.parametrize('path,patterns,expected', [
+    ('AGENTS.md', ['AGENTS.md'], 'AGENTS.md'),
+    ('charters/builder.md', ['charters/*'], 'charters/*'),
+    ('.github/copilot-instructions.md', ['.github/*'], '.github/*'),
+    ('docs/site/sessions.md', ['*session*'], None),
+])
+def test_document_exclusion_spares_explicit_globs(path, patterns, expected):
+    from wuwei import dispatch
+    assert dispatch._trust_match(path, patterns) == expected

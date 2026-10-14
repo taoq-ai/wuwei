@@ -240,7 +240,7 @@ def oracle(day):
             (decisions if capped else launches).add(('owner' if capped else 'fix', name))
         elif stage == 'raised' and row['pr'] == 'green':
             (decisions if row['owner_merge'] else launches).add(('owner' if row['owner_merge'] else 'merge', name))
-        if stage in ('raised', 'merged') and not row['duties'].get('ping'):
+        if stage == 'raised' and not row['duties'].get('ping'):
             duties.add(('ping', name))
         if stage == 'merged' and not row['duties'].get('tracker'):
             duties.add(('tracker', name))

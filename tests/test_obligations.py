@@ -70,7 +70,8 @@ def owed(root):
     host = registry.load('code_host', config)
     pr = obligations._read(host.pr, REF, root=root)
     reviews, discussion = obligations._evidence(host, REF, root)
-    replies = obligations._replies(reviews, discussion, me, obligations._ledger(data).get(REF, {}))
+    replies = obligations._replies(reviews, discussion, me,
+                                   obligations._ledger(data, root=root).get(REF, {}))
     visibility = obligations._visibility(REF, pr, reviews, data, me, workspace.day_dir(root), config)
     return replies, visibility, obligations._not_applicable(config, data.get('pr_reviewers', {}).get(REF))
 
@@ -271,6 +272,32 @@ def test_reply_pins_day_directory(case, monkeypatch):
     assert reply_command(monkeypatch) == 0
     assert state.read_state(directory=directory)['reply_acks']
     assert not workspace.day_dir(root).exists()
+
+
+def test_reply_ack_survives_days_until_new_comment_or_changed_evidence(case, monkeypatch):
+    from wuwei import pr_actions
+    root, host = case
+    host.results['reviews'] = Result(0, [review()])
+    posting(host)
+    assert reply_command(monkeypatch) == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    measured = {'reviews': host.results['reviews'].data, 'threads': host.results['threads'].data}
+    assert pr_actions._owed(root, REF, measured) == []
+    assert owed(root)[0] == []
+    host.results['threads'].data['comments'].append(comment(101, created_at='2026-09-29T11:00:00Z'))
+    assert owed(root)[0] == ['comment:101']
+    host.results['reviews'].data[0]['body'] = 'Changed request'
+    assert owed(root)[0] == ['comment:101', 'review:1']
+
+
+def test_malformed_prior_day_ack_is_ignored_and_reply_is_owed(case, monkeypatch):
+    from wuwei import pr_actions
+    root, host = case
+    host.results['reviews'] = Result(0, [review()])
+    state._write_state(lambda data: data.update(reply_acks={REF: {'review:1': {'bad': True}}}), root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    measured = {'reviews': host.results['reviews'].data, 'threads': host.results['threads'].data}
+    assert [surface for surface, *_ in pr_actions._owed(root, REF, measured)] == ['review']
 
 
 @pytest.mark.parametrize('surface,id', [('review', 999), ('comment', 999)])
