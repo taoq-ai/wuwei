@@ -58,6 +58,27 @@ def test_config_check_prints_the_fix(ws, monkeypatch, capsys):
     assert HINT in capsys.readouterr().err
 
 
+def test_config_github_checks_pass_workspace(ws, monkeypatch):
+    from wuwei import env
+    from wuwei.commands import config
+    from wuwei.registry import Result
+    calls = []
+    class Host:
+        def protection(self, repo, branch, *, root):
+            calls.append(('protection', root))
+            return Result(2, None, 'held')
+        def token_scopes(self, name, *, root):
+            calls.append(('token_scopes', root))
+            return Result(2, None, 'held')
+    host = Host()
+    repo = {'name': 'example/app', 'default_branch': 'main', 'review_required_checks': []}
+    assert config._protection(host, repo, False, '', ws) == 2
+    monkeypatch.setenv('GH_TOKEN', 'test-token')
+    monkeypatch.setattr(env, '_shadowed', set())
+    assert config._token(host, 'GH_TOKEN', ws) == 2
+    assert calls == [('protection', ws), ('token_scopes', ws)]
+
+
 def test_other_config_errors_have_no_repos_hint(ws):
     (ws / '.wuwei/config.toml').write_text('cap = true\n')
     with pytest.raises(workspace.ConfigError) as caught:
@@ -122,5 +143,4 @@ def test_outside_cwd_reads_the_config_and_runs_unrelated_bash(ws, tmp_path, monk
     assert code == 0
     code, _, _ = replay(monkeypatch, capsys, ws, 'PreToolUse', 'Bash', {'command': 'ls'}, cwd=outside)
     assert code == 0
-
 

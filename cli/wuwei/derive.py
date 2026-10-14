@@ -562,10 +562,11 @@ def duties(root, config, directory=None, data=None):
     rows = [row for day in days for row in _rows(day)]
     found, seen = [], set()
 
-    def add(duty, item, prompt, record):
+    def add(duty, item, prompt, record, as_of=None):
         if (item, duty) not in seen:
             seen.add((item, duty))
-            found.append({'duty': duty, 'item': item, 'prompt': prompt, 'record': record})
+            found.append({'duty': duty, 'item': item, 'prompt': prompt, 'record': record,
+                          **({'as_of': as_of} if as_of is not None else {})})
 
     if config['adapters']['tracker'] != 'none':
         for item, duty, command in tracker.open_duties(rows):
@@ -608,7 +609,7 @@ def duties(root, config, directory=None, data=None):
                 add('shepherd', name, f'Answer the review activity on {pr}: wuwei next launches the shepherd '
                     'seat once per revision; with none offered or running, run wuwei pr act and answer each '
                     'owed id with --thread <id> and --reply, --fix or --scope. A PR read that finds no reply '
-                    'owed records it.', f'wuwei pr act {pr}')
+                    'owed records it.', f'wuwei pr act {pr}', pull['activity_at'])
             ticket = (values.get('tickets', {}).get(name) or {}).get('id')
             page = bool(config['outbound']['owner']['pages'])  # an item with no ticket has a page or no duty
             if 'tracker' in on and merged and (ticket or page) and (name, 'tracker') not in done:

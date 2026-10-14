@@ -37,6 +37,73 @@ def completed_build(root, tree):
         'agent_id': 'old-builder', 'action': {'action': 'done'}}), root)
 
 
+def test_failed_read_does_not_skip_later_comments(case):
+    root, host, _, _ = linked(case)
+    good = host.results['pr']
+    host.results['pr'] = Result(2, None, 'GitHub rate limit')
+    assert pr_actions.evaluate(root, [REF])[0] == 2
+    assert 'last_seen' not in state.read_state(root).get('watch', {})
+    host.results['pr'] = good
+    host.results['threads'].data['comments'] = [
+        {'id': number, 'author': 'reviewer', 'is_bot': False, 'body': f'Comment {number}',
+         'created_at': '2026-09-29T10:00:00Z', 'updated_at': '2026-09-29T10:00:00Z'}
+        for number in (21, 22)]
+    read = {}
+    pr_actions.evaluate(root, [REF], read)
+    assert [row['id'] for row in read[REF]['threads']['comments']] == [21, 22]
+    assert 'last_seen' not in state.read_state(root)['watch']
+
+
+def test_pr_state_comes_from_listing_but_new_thread_reply_is_read(case):
+    root, host, _, _ = linked(case)
+    listing = workspace.day_dir(root) / 'prs.json'
+    row = {'ref': REF, 'state': 'open', 'head': 'a' * 40, 'draft': False,
+           'mergeable': 'mergeable', 'author': 'builder', 'branch': 'feature',
+           'checks': 'green', 'activity_at': None}
+    listing.write_text(json.dumps({'fetched_at': workspace.now().isoformat(), 'pulls': [row]}))
+    host.calls.clear()
+    assert pr_actions.evaluate(root, [REF])[1][0]['state'] == 'waiting'
+    assert 'pr' not in [call[0] for call in host.calls]
+    host.calls.clear()
+    assert pr_actions.act(root, REF) == 0
+    assert 'pr' not in [call[0] for call in host.calls]
+    host.results['threads'].data['comments'] = [{
+        'id': 24, 'author': 'reviewer', 'is_bot': False, 'body': 'A later reply',
+        'created_at': '2026-09-29T10:05:00Z', 'updated_at': '2026-09-29T10:05:00Z'}]
+    host.calls.clear()
+    pr_actions.evaluate(root, [REF])
+    assert 'pr' not in [call[0] for call in host.calls]
+    assert 'last_seen' not in state.read_state(root)['watch']
+
+
+def test_cached_merged_row_does_not_prove_a_merge(case):
+    root, host, _, _ = linked(case)
+    row = {'ref': REF, 'state': 'merged', 'head': 'a' * 40, 'draft': False,
+           'mergeable': 'mergeable', 'author': 'builder', 'branch': 'feature',
+           'checks': 'green', 'activity_at': None}
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': workspace.now().isoformat(), 'pulls': [row]}))
+    host.calls.clear()
+    assert pr_actions.evaluate(root, [REF])[1][0]['state'] == 'waiting'
+    assert 'pr' in [call[0] for call in host.calls]
+
+
+def test_action_refuses_when_cached_head_moved(case, capsys):
+    root, host, _, _ = linked(case)
+    row = {'ref': REF, 'state': 'open', 'head': 'a' * 40, 'draft': False,
+           'mergeable': 'mergeable', 'author': 'builder', 'branch': 'feature',
+           'checks': 'green', 'activity_at': None}
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': workspace.now().isoformat(), 'pulls': [row]}))
+    host.results['pr'].data['head'] = 'b' * 40
+    host.results['reviews'] = Result(0, [{'id': 5, 'author': 'reviewer', 'is_bot': False,
+        'state': 'changes_requested', 'sha': 'a' * 40, 'body': 'Please fix this',
+        'submitted_at': workspace.now().isoformat()}])
+    assert pr_actions.act(root, REF) == 2
+    assert 'head moved' in capsys.readouterr().out
+    assert state.read_state(root)['items']['A']['phase'] == 'raised'
+
+
 def test_conflict_step_and_done(case, monkeypatch, capsys):
     root, host, vcs, tree = linked(case)
     host.results['pr'].data['mergeable'] = False

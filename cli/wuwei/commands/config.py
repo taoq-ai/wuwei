@@ -68,7 +68,7 @@ def run(args):
             continue
         label = f'{kind}.{name}'
         if (kind, name) == ('code_host', 'github'):
-            result = registry.load(kind, config).auth_status()
+            result = registry.load(kind, config).auth_status(root=root)
             print(f'  {label}: gh auth: ' + ('set' if result.exit == 0 else
                   'missing' if result.exit == 1 else 'unmeasured'))
             if result.exit == 2:
@@ -108,7 +108,7 @@ def run(args):
                                          config['shepherd']['review_gate_check'], root))
     print('Seat credentials:')
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
-        status = max(status, _token(host, name))
+        status = max(status, _token(host, name, root))
     return status
 
 
@@ -443,7 +443,7 @@ def _protection(host, repo, solo, gate, root=None):
     except (AttributeError, OSError, ValueError):
         kept = {}
     cached = isinstance(kept.get(key), dict)
-    result = registry.Result(0, kept[key]) if cached else host.protection(repo['name'], branch)
+    result = registry.Result(0, kept[key]) if cached else host.protection(repo['name'], branch, root=root)
     try:
         if result.exit:
             raise ValueError(result.reason)
@@ -497,7 +497,7 @@ def _protection(host, repo, solo, gate, root=None):
     return FINDINGS
 
 
-def _token(host, name):
+def _token(host, name, root=None):
     if not os.environ.get(name):
         print(f'  {name}: not set')
         return CLEAN
@@ -507,7 +507,7 @@ def _token(host, name):
         print(f'{name}: the environment value shadows the .wuwei/env value, which was not measured; unset it in the environment, or remove it from .wuwei/env',
               file=sys.stderr)
         return UNRUN
-    result = host.token_scopes(name)
+    result = host.token_scopes(name, root=root)
     scopes = result.data.get('scopes') if result.exit == 0 and isinstance(result.data, dict) else None
     if not scopes or not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
         print(f'  {name} ({source}): unmeasured')

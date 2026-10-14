@@ -19,7 +19,7 @@ def run(args):
     from wuwei import derive, state, workspace
     try:
         root = workspace.find_workspace()
-        due = {(row['item'], row['duty']) for row in derive.duties(root, workspace.load_config(root))}
+        due = {(row['item'], row['duty']): row for row in derive.duties(root, workspace.load_config(root))}
         if args.duty not in derive.DUTIES or (args.item, args.duty) not in due:
             print(f'wuwei duty: {args.item} {args.duty} is not a due duty; run wuwei next for the '
                   'duties it lists', file=sys.stderr)
@@ -38,6 +38,8 @@ def run(args):
             state.append_event('duty.done', {'item': args.item, 'duty': args.duty, 'evidence': text}, root)
         else:  # listed under Skipped duties in the report, never dropped silently
             duty = {'item': args.item, 'duty': args.duty}
+            if args.duty == 'shepherd':
+                duty['as_of'] = due[(args.item, args.duty)]['as_of']
             state.append_event('duty.due', {**duty, 'command': f'wuwei duty {args.item} {args.duty} --evidence <link>'}, root)
             state.append_event('duty.skipped', {**duty, 'error': text}, root)
         print(f"{args.item}: {args.duty} {'recorded' if args.skipped is None else 'skipped'}")

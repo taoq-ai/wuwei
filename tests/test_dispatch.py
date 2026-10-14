@@ -30,6 +30,17 @@ def root(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_review_action_waits_for_cached_pr_instead_of_polling(root, monkeypatch):
+    from wuwei import registry
+    (root / '.wuwei/config.toml').write_text('[spec]\nengine = "none"\n'
+                                              '[[repos]]\nname = "acme/widget"\npath = "repo"\n'
+                                              'default_branch = "main"\n')
+    state._write_state(lambda data: data['items']['A'].update(
+        kind='review', pr='acme/widget#7'), root)
+    monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('polled GitHub'))
+    assert dispatch.review_action(root, state.read_state(root), 'A')['action'] == 'wait'
+
+
 def _case_gate_dispatch_and_live_builder_refusal(root):
     from wuwei import dispatch
 
@@ -2481,6 +2492,8 @@ def test_start_names_the_repository_when_several_are_configured(day_set, capsys)
     with (root / '.wuwei/config.toml').open('a') as config:
         config.write(''.join(f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n'
                              for name in ('code', 'paper')))
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': workspace.now().isoformat(), 'pulls': []}))
     (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
         {'id': 'P3', 'repo': 'acme/code'}, {'id': 'P1'}]}))
     starts = {row['item']: row['commands'] for row in dispatch.launch_set(root)['entries']

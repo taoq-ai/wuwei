@@ -645,7 +645,7 @@ def test_write_token_in_env_file_is_a_finding(host, case, capsys):
     assert main(['config', 'check']) == 1
     output = str(capsys.readouterr())
     assert 'GH_TOKEN (.wuwei/env): write scopes repo' in output and KEY not in output
-    assert ('token_scopes', ('GH_TOKEN',), None) in host.calls
+    assert ('token_scopes', ('GH_TOKEN',), case) in host.calls
 
 
 def test_env_file_token_shadowed_by_environment_is_unmeasured(host, case, monkeypatch, capsys):

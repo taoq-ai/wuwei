@@ -622,6 +622,20 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
     if row['exit'] == 2:
         print(row['reason'])
         return 2
+    cached = read.get(ref, {}).get('pr', {})
+    if cached and cached.get('base_sha') is None and (row['exit'] == 1 or push or ready):
+        try:
+            host = registry.load('code_host', workspace.load_config(root))
+            current = obligations._read(host.pr, ref, root=root)
+            if current['head'] != cached['head']:
+                raise ValueError('PR head moved since the cached listing; run wuwei next to refresh it')
+            if any(current[key] != cached[key] for key in
+                   ('state', 'merged', 'draft', 'mergeable', 'author', 'branch')):
+                raise ValueError('PR state changed since the cached listing; run wuwei next to refresh it')
+            read[ref]['pr'] = current
+        except watch.ERRORS as exc:
+            print(f'{ref}: PR action unmeasured: {exc}')
+            return 2
     if push:
         try:
             return _gated_push(root, ref, *_item(root, ref))

@@ -10,6 +10,82 @@ import urllib.error
 
 import pytest
 
+
+def test_github_tracker_obeys_workspace_hold(tmp_path, monkeypatch):
+    import importlib
+    import time
+    from wuwei import workspace
+    tracker = importlib.import_module('adapters.tracker.github')
+    (tmp_path / '.wuwei').mkdir()
+    workspace.github_hold(tmp_path, time.time(), until=time.time() + 60,
+                          resource='core', reason='secondary limit')
+    monkeypatch.setenv('GITHUB_TRACKER_TOKEN', 'test-token')
+    monkeypatch.setattr(tracker, 'request', lambda *args, **kwargs: pytest.fail('called GitHub'))
+    with pytest.raises(ValueError, match='secondary limit'):
+        tracker._query('query { viewer { login } }', {}, tmp_path)
+
+
+def test_tracker_gh_holds_peers_before_quota_read(tmp_path, monkeypatch):
+    import importlib
+    import subprocess
+    import threading
+    from fakes.replay import NOW, install_clock, limits
+    from wuwei import workspace
+    tracker = importlib.import_module('adapters.tracker.github')
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[tracker]\nauth = "gh"\n')
+    monkeypatch.delenv('GITHUB_TRACKER_TOKEN', raising=False)
+    monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '0')
+    install_clock(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    def run(argv, **kwargs):
+        if argv[2] == 'graphql':
+            return subprocess.CompletedProcess(argv, 1, '', 'gh: API rate limit exceeded (HTTP 403)')
+        entered.set()
+        assert release.wait(5)
+        return subprocess.CompletedProcess(argv, 0, limits(5000, 5000, NOW + 3600), '')
+    monkeypatch.setattr(subprocess, 'run', run)
+    def first():
+        try:
+            tracker._query('query { viewer { login } }', {}, tmp_path)
+        except ValueError as exc:
+            errors.append(exc)
+    worker = threading.Thread(target=first)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        assert workspace.github_hold(tmp_path, NOW)['resource'] == 'graphql'
+    finally:
+        release.set()
+        worker.join(5)
+    assert errors
+    assert workspace.github_hold(tmp_path, NOW)['resource'] == 'graphql'
+
+
+def test_tracker_retry_obeys_a_newer_shared_hold(tmp_path, monkeypatch):
+    from adapters import _http
+    from fakes.replay import NOW, install_clock
+    from wuwei import workspace
+    tracker = importlib.import_module('adapters.tracker.github')
+    (tmp_path / '.wuwei').mkdir()
+    monkeypatch.setenv('GITHUB_TRACKER_TOKEN', 'test-token')
+    monkeypatch.setenv('WUWEI_RATE_LIMIT_WAIT', '120')
+    install_clock(monkeypatch)
+    def extend(seconds):
+        assert seconds == 30
+        workspace.github_hold(tmp_path, NOW, until=NOW + 120,
+                              resource='core', reason='newer secondary limit')
+    monkeypatch.setattr(_http.time, 'sleep', extend)
+    calls = []
+    def request(*args):
+        calls.append(args)
+        raise _http.RateLimited(NOW + 30, resource='graphql')
+    monkeypatch.setattr(tracker, 'request', request)
+    with pytest.raises(ValueError, match='newer secondary limit'):
+        tracker._query('query { viewer { login } }', {}, tmp_path)
+    assert len(calls) == 1
+
 from fakes.replay import NOW, SECONDARY, hms, install_clock, limits
 from wuwei import outward
 

@@ -355,7 +355,7 @@ def test_the_github_listing_maps_one_call(monkeypatch, viewer, activity):
     monkeypatch.setattr(github, '_run', run)
     result = github.pulls('example/project')
     assert len(calls) == 1 and result.exit == 0
-    assert result.data == [{'number': 7, 'state': 'open', 'head': SHA, 'branch': 'review-7',
+    assert result.data == [{'number': 7, 'state': 'open', 'head': SHA, 'branch': 'review-7', 'author': 'me',
                             'head_repo': 'example/project', 'draft': False, 'checks': 'red',
                             'mergeable': 'conflicting', 'labels': ['owner-merge'],
                             'activity_at': activity}]
@@ -568,8 +568,54 @@ def test_a_shepherd_record_counts_from_the_read_it_rests_on(root):
     assert row['record'] == 'wuwei pr act example/project#1'
 
 
+def test_skipped_shepherd_during_hold_does_not_answer_later_activity(root, monkeypatch):
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(SHEPHERDED)
+    raised(root)
+    day = workspace.day_dir(root)
+    (day / 'prs.json').write_text(json.dumps({'fetched_at': '2026-10-11T09:00:00Z', 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending',
+         'activity_at': '2026-10-11T09:00:00Z'}]}))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-11T10:00:00Z')
+    workspace.github_hold(root, workspace.now().timestamp(), until=workspace.now().timestamp() + 60,
+                          resource='core', reason='rate limited')
+    assert main(['duty', 'A', 'shepherd', '--skipped', 'rate limited']) == 0
+    assert 'shepherd' not in [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
+    skipped = [row['payload'] for row in map(json.loads, (day / 'events.jsonl').read_text().splitlines())
+               if row['kind'] == 'duty.skipped']
+    assert skipped[-1]['as_of'] == '2026-10-11T09:00:00Z'
+    workspace.github_hold(root, workspace.now().timestamp() + 61)
+    (day / 'prs.json').write_text(json.dumps({'fetched_at': '2026-10-11T10:01:00Z', 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending',
+         'activity_at': '2026-10-11T10:01:00Z'}]}))
+    assert 'shepherd' in [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
+
+
+@pytest.mark.parametrize('today_has_item', [False, True])
+def test_skipped_shepherd_from_unclosed_prior_day_uses_prior_activity(root, monkeypatch, today_has_item):
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(SHEPHERDED)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-10T10:00:00Z')
+    raised(root)
+    prior = workspace.day_dir(root)
+    (prior / 'prs.json').write_text(json.dumps({'fetched_at': '2026-10-10T09:00:00Z', 'pulls': [
+        {'ref': 'example/project#1', 'state': 'open', 'checks': 'pending',
+         'activity_at': '2026-10-10T09:00:00Z'}]}))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-11T10:00:00Z')
+    if today_has_item:
+        raised(root)
+    due = [row for row in derive.duties(root, workspace.load_config(root)) if row['duty'] == 'shepherd']
+    assert due[0]['as_of'] == '2026-10-10T09:00:00Z'
+    assert main(['duty', 'A', 'shepherd', '--skipped', 'reviewer left']) == 0
+    skipped = [row['payload'] for row in map(json.loads,
+               (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+               if row['kind'] == 'duty.skipped']
+    assert skipped[-1]['as_of'] == '2026-10-10T09:00:00Z'
+    assert 'shepherd' not in [row['duty'] for row in derive.duties(root, workspace.load_config(root))]
+
+
 def test_the_shepherd_duty_takes_no_evidence_text(root, capsys):
-    # #906: completion comes from the obligation ledger (pr act), never from a link; a skip stays.
+    # #906: completion comes from the obligation ledger (pr act), never from a link; a skip clears it.
     from wuwei.__main__ import main
     (root / '.wuwei/config.toml').write_text(SHEPHERDED)
     raised(root)

@@ -92,7 +92,22 @@ def previous(root):
 
 
 def evidence(host, ref, root):
-    pr = obligations._read(host.pr, ref, root=root)
+    from wuwei import derive
+    found = derive.listing(workspace.day_dir(root))
+    row = found['pulls'].get(ref)
+    repo, number = ref.rsplit('#', 1)
+    if (found['repos'].get(repo) or {}).get('failed'):
+        raise ValueError('PR listing is unmeasured; run wuwei next to refresh it')
+    if (isinstance(row, dict) and isinstance(row.get('author'), str)
+            and type(row.get('draft')) is bool and row.get('mergeable') in
+            ('mergeable', 'conflicting', 'unknown') and row.get('state') == 'open'):
+        pr = {'repo': repo, 'number': int(number), 'state': 'open',
+              'merged': False, 'head': row.get('head'),
+              'mergeable': {'mergeable': True, 'conflicting': False, 'unknown': None}[row['mergeable']],
+              'author': row['author'], 'draft': row['draft'], 'branch': row.get('branch'),
+              'base_sha': None, 'updated_at': (found['repos'].get(repo) or {}).get('at') or found['fetched_at']}
+    else:
+        pr = obligations._read(host.pr, ref, root=root)
     if (pr['state'] not in ('open', 'closed') or
             f'{pr["repo"]}#{pr["number"]}' != ref or
             not isinstance(pr['head'], str) or
@@ -102,6 +117,13 @@ def evidence(host, ref, root):
     obligations._time(pr['updated_at'])
     reviews, threads = obligations._evidence(host, ref, root)
     checks = obligations._list(obligations._read(host.checks, ref, pr['head'], root=root))
+    if pr.get('base_sha') is None and (pr['mergeable'] is None or pr['mergeable'] is False or any(
+            check.get('state') == 'completed' and check.get('conclusion') not in
+            ('success', 'neutral', 'skipped') for check in checks)):
+        live = obligations._read(host.pr, ref, root=root)
+        if live['head'] != pr['head']:
+            raise ValueError('PR head moved since the cached listing; run wuwei next to refresh it')
+        pr = live
     for check in checks:
         if (not isinstance(check, dict) or check.get('sha') != pr['head']
                 or not isinstance(check.get('name'), str) or not check['name']

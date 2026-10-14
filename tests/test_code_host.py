@@ -3,7 +3,11 @@
 from copy import deepcopy
 import importlib
 import json
+import os
 import subprocess
+import sys
+import threading
+from pathlib import Path
 
 import pytest
 
@@ -657,6 +661,118 @@ def wait_cap(tmp_path, monkeypatch, seconds):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
 
 
+def test_shared_hold_refuses_another_call_without_gh(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+        {'argv': RATE_LIMIT, 'stdout': limits(4990, 5000, NOW + 900)},
+    ])
+    first = adapter().pr('acme/widget#7', root=tmp_path)
+    second = adapter().pr('acme/widget#7', root=tmp_path)
+    assert first.exit == second.exit == 2
+    assert len(calls) == 2
+    assert 'secondary limit' in second.reason
+    hold = json.loads((tmp_path / '.wuwei/github_hold.json').read_text())
+    assert hold['resource'] == 'core' and hold['until'] == NOW + 60
+
+
+def test_expired_hold_is_cleared_before_github_call(tmp_path, monkeypatch):
+    from wuwei import workspace
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    workspace.github_hold(tmp_path, NOW - 61, until=NOW - 1,
+                          resource='core', reason='old limit')
+    case = next(c for c in CASES if c['operation'] == 'pr')
+    calls = install_replay(monkeypatch, 'gh', case['steps'])
+    assert adapter().pr('acme/widget#7', root=tmp_path).exit == 0
+    assert calls and not (tmp_path / '.wuwei/github_hold.json').exists()
+
+
+def test_damaged_hold_refuses_without_github_call(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    (tmp_path / '.wuwei/github_hold.json').write_text('{broken')
+    calls = install_replay(monkeypatch, 'gh', [])
+    result = adapter().pr('acme/widget#7', root=tmp_path)
+    assert result.exit == 2 and 'GitHub hold' in result.reason and calls == []
+
+
+def test_hold_is_shared_with_another_process(tmp_path):
+    from wuwei import workspace
+    import time
+    (tmp_path / '.wuwei').mkdir()
+    workspace.github_hold(tmp_path, time.time(), until=time.time() + 60,
+                          resource='graphql', reason='secondary limit')
+    repo = Path(__file__).resolve().parents[1]
+    env = {**os.environ, 'PATH': '', 'PYTHONPATH': os.pathsep.join((str(repo / 'cli'), str(repo)))}
+    child = subprocess.run([sys.executable, '-P', '-c',
+        'import sys; from adapters.code_host import github; '
+        'result = github.pr("acme/widget#7", root=sys.argv[1]); '
+        'print(result.exit, result.reason)', str(tmp_path)],
+        capture_output=True, text=True, env=env, timeout=10)
+    assert child.returncode == 0
+    assert '2 github.pr: could not run: GitHub hold on graphql' in child.stdout
+
+
+def test_hold_lock_timeout_fails_closed(tmp_path, monkeypatch):
+    from wuwei import state
+    (tmp_path / '.wuwei').mkdir()
+    def timeout(*args):
+        raise TimeoutError('GitHub hold remained locked')
+    monkeypatch.setattr(state, 'lock_ex', timeout)
+    calls = install_replay(monkeypatch, 'gh', [])
+    result = adapter().pr('acme/widget#7', root=tmp_path)
+    assert result.exit == 2 and 'GitHub hold lock timed out' in result.reason
+    assert calls == []
+
+
+def test_first_refusal_holds_other_processes_during_quota_read(tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    calls, first = [], []
+    def run(argv, **kwargs):
+        calls.append(argv[1:])
+        if len(calls) > 2:
+            raise AssertionError('another GitHub request during quota read')
+        if argv[1:] == PR:
+            return subprocess.CompletedProcess(argv, 1, '', PRIMARY)
+        assert argv[1:] == RATE_LIMIT
+        entered.set()
+        assert release.wait(5)
+        return subprocess.CompletedProcess(argv, 0, limits(5000, 5000, NOW + 3600), '')
+    monkeypatch.setattr(subprocess, 'run', run)
+    worker = threading.Thread(target=lambda: first.append(adapter().pr('acme/widget#7', root=tmp_path)))
+    worker.start()
+    try:
+        assert entered.wait(5)
+        second = adapter().pr('acme/widget#7', root=tmp_path)
+        assert second.exit == 2 and 'GitHub hold' in second.reason
+        assert len(calls) == 2
+    finally:
+        release.set()
+        worker.join(5)
+    assert len(first) == 1 and first[0].exit == 2
+
+
+def test_retry_respects_a_hold_extended_by_another_process(tmp_path, monkeypatch):
+    from adapters import _http
+    from wuwei import workspace
+    wait_cap(tmp_path, monkeypatch, 120)
+    install_clock(monkeypatch)
+    def extend(seconds):
+        assert seconds == 30
+        workspace.github_hold(tmp_path, NOW, until=NOW + 120,
+                              resource='graphql', reason='newer secondary limit')
+    monkeypatch.setattr(_http.time, 'sleep', extend)
+    calls = install_replay(monkeypatch, 'gh', [
+        {'argv': PR, 'exit': 1, 'stdout': headers('core', 4990, NOW + 900,
+                                                 'Retry-After: 30\r\n'), 'stderr': PRIMARY}])
+    result = adapter().pr('acme/widget#7', root=tmp_path)
+    assert result.exit == 2 and 'newer secondary limit' in result.reason
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize('stderr', [SECONDARY, SECONDARY_JSON], ids=['plain', 'json'])
 @pytest.mark.parametrize('step,until,left', [
     # #867: the failed call's own resource (a REST read spends core), never the emptier bucket.
@@ -727,6 +843,7 @@ def _case_zero_headers_and_full_quota_hold_briefly(tmp_path, monkeypatch):
     assert f'until {hms(NOW + 60)} UTC' in result.reason
     assert 'headers say 0 of 5000 core calls left' in result.reason
     assert 'rate_limit shows 5000 of 5000 core calls left' in result.reason
+    assert 'holding 60 s:' in result.reason
     assert 'GH_TOKEN' in result.reason and 'secret-field-token' not in result.reason
     assert calls == [['gh', *FIELD], ['gh', *RATE_LIMIT]]
 
@@ -1030,6 +1147,45 @@ def test_auth_status_ok_needs_no_probe(monkeypatch):
     calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH}])
     result = adapter().auth_status()
     assert (result.exit, result.reason, len(calls)) == (0, '', 1)
+
+
+def test_auth_status_reports_a_hold_created_before_its_user_probe(tmp_path, monkeypatch):
+    from wuwei import workspace
+    (tmp_path / '.wuwei').mkdir()
+    install_clock(monkeypatch)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv[1:])
+        assert argv[1:] == AUTH
+        workspace.github_hold(tmp_path, NOW, until=NOW + 60,
+                              resource='core', reason='peer reached rate limit')
+        return subprocess.CompletedProcess(argv, 1, AUTH_FAILED, '')
+    monkeypatch.setattr(subprocess, 'run', run)
+    result = adapter().auth_status(root=tmp_path)
+    assert result.exit == 2 and result.reason.startswith('GitHub hold on core')
+    assert calls == [AUTH]
+
+
+def test_auth_status_obeys_workspace_hold(tmp_path, monkeypatch):
+    from wuwei import workspace
+    (tmp_path / '.wuwei').mkdir()
+    workspace.github_hold(tmp_path, NOW, until=NOW + 60,
+                          resource='core', reason='secondary limit')
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [])
+    result = adapter().auth_status(root=tmp_path)
+    assert result.exit == 2 and calls == []
+
+
+def test_shared_hold_wrapper_blocks_a_call(tmp_path, monkeypatch):
+    from adapters import _http
+    from wuwei import workspace
+    (tmp_path / '.wuwei').mkdir()
+    workspace.github_hold(tmp_path, NOW, until=NOW + 60,
+                          resource='core', reason='secondary limit')
+    install_clock(monkeypatch)
+    with pytest.raises(ValueError, match='secondary limit'):
+        _http.held(tmp_path, lambda: pytest.fail('called GitHub'))
 
 
 @pytest.mark.parametrize('repo,expected', [({'full_name': 'someone/widget'}, 'someone/widget'), (None, None)])
