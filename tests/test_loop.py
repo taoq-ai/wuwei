@@ -260,9 +260,12 @@ def answer(root):
         row = next_command.step(root)
     if row['state'] != 'set':
         return [(row['state'], row.get('item', ''))]
-    return ([(launch['kind'], launch['item']) for launch in row['launches']]
-            + [(duty['duty'], duty['item']) for duty in row['duties']]
-            + ([('owner', row['decision']['item'])] if row['decision'] else []))
+    offers = ([(launch['kind'], launch['item']) for launch in row['launches']
+               if launch['kind'] != 'pr-wait']
+              + [(duty['duty'], duty['item']) for duty in row['duties']]
+              + ([('owner', row['decision']['item'])] if row['decision'] else []))
+    return offers or ([('wait', '')] if any(launch['kind'] == 'pr-wait'
+                                          for launch in row['launches']) else [])
 
 
 # --- 1. the property test ------------------------------------------------------------------------

@@ -172,6 +172,18 @@ def test_stop_blocks_only_changed_active_rows(root, monkeypatch, capsys, row):
     assert stop(root, monkeypatch, capsys, stop_hook_active=False)['decision'] == 'block'
 
 
+def test_stop_wakes_planner_for_missing_pr_watcher(root, monkeypatch, capsys):
+    records.write(root, {'items': {'A': {'phase': 'raised', 'status': 'queued',
+                                         'pr': 'acme/client#7'}},
+                         'raised_prs': ['acme/client#7']})
+    directory = workspace.day_dir(root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': workspace.now().isoformat(),
+        'pulls': [{'ref': 'acme/client#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    assert any(launch['kind'] == 'pr-wait' for launch in next_command.step(root)['launches'])
+    wake = stop(root, monkeypatch, capsys)
+    assert wake['decision'] == 'block' and 'wuwei next' in wake['reason']
+
+
 @pytest.mark.parametrize('case', [
     'wait', 'owner', 'closed', 'closing', 'unstarted', 'seat', 'agent', 'role', 'error',
     'live pr wait', 'live pr wait without queue row',

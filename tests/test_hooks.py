@@ -1268,7 +1268,7 @@ def test_session_start_table(start_case, condition, expected):
     assert code == expected
     if condition != 'corrupt':
         assert 'Memory spine' in message and 'Size:' in message
-    assert 'watch' not in message
+    assert 'watch' not in message.replace(str(Path(__file__).resolve().parents[1]), '<plugin>')
 
 
 def _case_session_start_leaves_historical_seats_to_doctor(start_case):
@@ -1311,7 +1311,8 @@ def _case_session_real_cli_boundary(start_case):
         input=json.dumps(payload), text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
-    assert 'Memory spine' in context and 'Size:' in context and 'watch' not in context
+    assert 'Memory spine' in context and 'Size:' in context
+    assert 'watch' not in context.replace(str(Path(__file__).resolve().parents[1]), '<plugin>')
 
 
 def _case_session_payload_names_why_not_the_records(start_case):
