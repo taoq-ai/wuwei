@@ -31,6 +31,8 @@ def seat(tmp_path, monkeypatch):
     results = []
     checks = SimpleNamespace(run=lambda *a, **kw: results.pop(0))
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                          merge_base=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                          diff_stat=lambda *a, **kw: registry.Result(0, [{'path': 'app.py'}]),
                           status=lambda *a, **kw: registry.Result(0, []),
                           repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}))
@@ -464,6 +466,32 @@ def test_replayed_stop_cannot_release_resumed_builder(seat):
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
     assert stop(seat, 'wrong-agent')[0] == 2
     assert state.read_state(root)['seats']['builder']['status'] == 'running'
+
+
+def test_skipped_checks_do_not_complete_a_later_changed_round(seat):
+    root, repo, _, _, results = seat
+    (repo / '.git').mkdir()
+    (repo / '.git/HEAD').write_text('a' * 40 + '\n')
+    vcs = registry.load('vcs', {})
+    vcs.diff_stat = lambda *args, **kwargs: registry.Result(0, [])
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    assert build.check('A', root=root) == 1
+    assert state.read_state(root)['builds']['A']['commands'] == ['test']
+
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'continue'
+    launch(seat, action, action['resume'])
+    (repo / '.git/HEAD').write_text('b' * 40 + '\n')
+    vcs.head = lambda *args, **kwargs: registry.Result(0, {'sha': 'b' * 40})
+    vcs.diff_stat = lambda *args, **kwargs: registry.Result(0, [{'path': 'app.py'}])
+    vcs.touched = lambda *args, **kwargs: registry.Result(0, [])
+    assert stop(seat) == (0, '')
+    assert build.next_action('A', root=root)['action'] == 'check'
+    results.append(registry.Result(0))
+    assert build.check('A', root=root) == 0
+    assert results == []
+    assert 'check_result' not in state.read_state(root)['builds']['A']
 
 
 def test_delayed_checks_cannot_complete_later_iteration(seat, monkeypatch):

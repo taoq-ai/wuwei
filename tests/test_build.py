@@ -49,6 +49,8 @@ def setup(tmp_path, monkeypatch, checks, spec='[spec]\nengine="none"\n'):
             return checks.pop(0)
 
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                          merge_base=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                          diff_stat=lambda *a, **kw: registry.Result(0, [{'path': 'app.py'}]),
                           status=lambda *a, **kw: registry.Result(0, []),
                           repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}),

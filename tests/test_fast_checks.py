@@ -260,6 +260,91 @@ def item_worktree(root, vcs, checks):
     return tree
 
 
+@pytest.mark.parametrize('start,expected_status', [(None, 'done'), (SHA, 'ready')])
+def test_build_check_skips_missing_linter_on_clean_empty_diff(workspace_case, monkeypatch,
+                                                               start, expected_status):
+    from wuwei import derive, workspace
+
+    root, vcs = workspace_case
+    item_worktree(root, vcs, ['eslint .'])
+    if start:
+        state._write_state(lambda data: data['builds']['A'].update(start=start), root)
+        monkeypatch.setattr(derive, 'head', lambda path: start)
+    vcs.results['diff_stat'] = Result(0, [])
+    calls = []
+    runner = SimpleNamespace(run=lambda *args, **kwargs: calls.append(args) or Result(
+        1, {'error': 'sh: eslint: not found', 'environment': 'eslint not found'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runner if kind == 'checks' else vcs)
+
+    assert main(['build', 'check', 'A']) == (1 if start else 0)
+    assert calls == []
+    data = state.read_state(root)
+    assert data['builds']['A']['status'] == expected_status
+    assert data['items']['A']['phase'] != 'parked'
+    assert data['builds']['A']['commands'] == ['eslint .']
+    if start:
+        assert 'check_result' not in data['builds']['A']
+    else:
+        assert data['builds']['A']['check_result'] == 'not applicable: no diff'
+    events = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    assert [row['payload']['checks'] for row in events if row['kind'] == 'build.checked'] == [
+        'not applicable: no diff']
+    assert not data.get('fast_checks', {}).get('example/project')
+
+
+def test_measure_check_uses_build_start_instead_of_origin_base(workspace_case, monkeypatch):
+    root, vcs = workspace_case
+    item_worktree(root, vcs, ['eslint .'])
+    state._write_state(lambda data: (data['items']['A'].update(kind='measure'),
+                                     data['builds']['A'].update(start=SHA)), root)
+    bases = []
+
+    def diff_stat(path, base, head, root=None):
+        bases.append(base)
+        return Result(0, [] if base == SHA else [{'path': 'prior-commit.py'}])
+
+    vcs.diff_stat = diff_stat
+    calls = []
+    runner = SimpleNamespace(run=lambda *args, **kwargs: calls.append(args) or Result(
+        1, {'error': 'eslint missing', 'environment': 'eslint missing'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runner if kind == 'checks' else vcs)
+
+    assert main(['build', 'check', 'A']) == 0
+    assert bases == [SHA]
+    assert calls == []
+    assert state.read_state(root)['builds']['A']['check_result'] == 'not applicable: no diff'
+
+
+@pytest.mark.parametrize('changes,dirty', [([{'path': 'app.py'}], []), ([], [{'path': 'app.py'}])])
+def test_build_check_runs_linter_for_changed_or_dirty_item(workspace_case, monkeypatch, changes, dirty):
+    root, vcs = workspace_case
+    item_worktree(root, vcs, ['eslint .'])
+    vcs.results['diff_stat'] = Result(0, changes)
+    vcs.results['status'] = Result(0, dirty)
+    calls = []
+    runner = SimpleNamespace(run=lambda *args, **kwargs: calls.append(args) or Result(0))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runner if kind == 'checks' else vcs)
+
+    assert main(['build', 'check', 'A']) == (1 if dirty else 0)
+    assert len(calls) == 1
+    assert state.read_state(root)['builds']['A']['commands'] == ['eslint .']
+
+
+@pytest.mark.parametrize('diff', [Result(2, reason='git diff failed'), Result(0, None)])
+def test_build_check_fails_closed_when_diff_unmeasured(workspace_case, monkeypatch, capsys, diff):
+    root, vcs = workspace_case
+    item_worktree(root, vcs, ['eslint .'])
+    vcs.results['diff_stat'] = diff
+    calls = []
+    runner = SimpleNamespace(run=lambda *args, **kwargs: calls.append(args) or Result(0))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runner if kind == 'checks' else vcs)
+
+    assert main(['build', 'check', 'A']) == 2
+    assert not calls
+    assert 'diff' in capsys.readouterr().err
+    assert state.read_state(root)['builds']['A']['status'] == 'check'
+
+
 def real_checks(monkeypatch, vcs, calls=None):
     adapter = importlib.import_module('adapters.checks.local')
 
