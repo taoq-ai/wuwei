@@ -617,15 +617,16 @@ def stopped(item, name, payload, *, root):
     return True
 
 
-def complete_checks(item, results, *, root, expected=None):
+def complete_checks(item, results, *, root, expected=None, skipped=False):
     if expected is None:
         expected = state.read_state(root)['builds'][item]
     record = dict(expected)
     record.pop('check', None)
+    check_result = record.get('check_result')
     if record['status'] != 'check':
         raise ValueError(f'build is not awaiting checks; run bin/wuwei build next {item} for the current step')
     failures = []
-    if len(results) != len(record['commands']):
+    if len(results) != (0 if skipped else len(record['commands'])):
         raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}; if it repeats, run bin/wuwei doctor')
     for command, result in zip(record['commands'], results):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
@@ -678,11 +679,12 @@ def complete_checks(item, results, *, root, expected=None):
     if not failures and row.get('kind') != 'measure':  # a measurement hands off evidence, not a commit
         failures += _unbuilt(record, root, config)
     if not failures:  # #901 review: the head the checks passed on is the only head a gate reads
-        record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data))
+        record.update(status='done', action={'action': 'done'}, checked=_measured(item, record, data, skipped=skipped))
     elif _retry(root, config, item, record, failures, expected):
         return 1
     _save(item, record, root, 'build.checked', expected,
-          {'passed': len(results) - len(failures), 'failed': len(failures)})
+          {'passed': len(results) - len(failures), 'failed': len(failures),
+           **({'checks': check_result} if check_result else {})})
     after = AFTER.get(state.read_state(root)['items'][item]['phase'])  # a paused item: plan resume moves it
     if not failures and after:
         from wuwei import derive
@@ -692,10 +694,10 @@ def complete_checks(item, results, *, root, expected=None):
     return 1 if failures else 0
 
 
-def _measured(item, record, data):
+def _measured(item, record, data, *, skipped=False):
     """#901 review D2: the one HEAD every fast check measured; HEAD when none is configured."""
     from wuwei import derive
-    if not record['commands']:
+    if skipped or not record['commands']:
         return derive.head(record['worktree'])
     rows = data.get('fast_checks', {}).get(record['repo'], {})
     shas = {(rows.get(command) or {}).get('sha') for command in record['commands']}
@@ -722,6 +724,7 @@ def _retry(root, config, item, record, failures, expected):
     """A failed iteration: the builder continues with the failures, or the item parks on a
     repeat. True when parked. #871 B5: an unchanged head parks on its first repeat."""
     signature = _signature(failures)
+    record.pop('check_result', None)
     record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
     record['signature'] = signature
     names = {name for name, _ in failures}
@@ -832,21 +835,38 @@ def check(item, *, root=None):
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
                          f'for its current step{outside}')
     _busy(item, record)
-    from wuwei import fast_checks  # complete on the configured fast checks
+    from wuwei import dispatch, fast_checks  # complete on the configured fast checks
+    from wuwei.brief import status
     config = workspace.load_config(root)
     repo = next((row for row in config['repos'] if row['name'] == record['repo']), None)
     commands = repo['fast_checks'] if repo else record['commands']
+    skip = False
+    if commands:
+        try:
+            _, changes = dispatch._changes(root, config, {
+                'worktree': record['worktree'], 'kind': state.read_state(root)['items'][item].get('kind'),
+                'start': record.get('start')})
+            if not isinstance(changes, list):
+                raise ValueError(f'invalid diff; {DAMAGED}')
+            if not changes:
+                skip = not status(registry.load('vcs', config), record['worktree'], root)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise ValueError(f'fast-check diff unmeasured: {exc}') from exc
     marked = {**record, 'commands': commands,
               'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
+    marked.pop('check_result', None)
+    if skip:
+        marked['check_result'] = 'not applicable: no diff'
     _save(item, marked, root, 'build.check_started', record)
     record = marked
-    fast_checks.record(record['worktree'])
+    if not skip:
+        fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
-    if any(command not in measured for command in record['commands']):
+    if not skip and any(command not in measured for command in record['commands']):
         raise ValueError(f'incomplete fast checks; rerun bin/wuwei build check {item}')
     results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
-               for row in (measured[command] for command in record['commands'])]
-    return complete_checks(item, results, root=root, expected=marked)
+               for row in (measured[command] for command in ([] if skip else record['commands']))]
+    return complete_checks(item, results, root=root, expected=marked, skipped=skip)
 
 
 def _park(root, item, record, reason, expected):
