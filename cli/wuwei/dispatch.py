@@ -268,6 +268,17 @@ def _docs_role(paths, data=()):
     return 'quality' if any(merge.matched(path, SPEC_DOCS) for path in paths) else 'goal'
 
 
+def _trust_match(path, patterns):
+    """Match trust paths case-insensitively; a substring glob (*auth*) skips documentation,
+    an explicit glob (AGENTS.md, charters/*) still matches it."""
+    from wuwei import merge
+    folded = path.casefold()
+    document = folded.startswith(('docs/', 'specs/')) or folded.endswith(('.md', '.rst', '.txt'))
+    return next((pattern for pattern in patterns
+                 if not (document and pattern.startswith('*') and pattern.endswith('*'))
+                 and merge.matched(folded, (pattern.casefold(),)) is not None), None)
+
+
 def tier(root, config, row):
     """Compute the item's gate tier from its diff, flags, track, floor and lead tier."""
     from wuwei import merge
@@ -300,7 +311,7 @@ def tier(root, config, row):
             path = change['path']
             for kind, patterns in (('trust path', gates['trust_paths']),
                                    ('never-auto path', repo['merge']['never_auto_paths'])):
-                pattern = merge.matched(path, patterns)
+                pattern = _trust_match(path, patterns) if kind == 'trust path' else merge.matched(path, patterns)
                 if pattern is not None:
                     rise('standard', f'{path} matches {kind} {pattern}')
             pattern = next((p for p in config['brief']['full_path_patterns'] if re.search(p, path, re.I)), None)
@@ -502,7 +513,6 @@ def step_zero(value, paths, trust_paths, flags=None):
     """#567: None at light; (run, reason) otherwise. At standard step zero runs only when a
     changed path is guard code or a repository trust path, or (#663) the item is flagged
     trust_surface or boundary_relevant, whatever its diff."""
-    from wuwei import merge
     if value == 'light':
         return None
     if value == 'full':
@@ -511,7 +521,7 @@ def step_zero(value, paths, trust_paths, flags=None):
     if named:
         return True, ', '.join(named)
     for path in paths:
-        pattern = merge.matched(path, (*trust_paths, *GUARD_CODE))
+        pattern = _trust_match(path, (*trust_paths, *GUARD_CODE))
         if pattern is not None:
             return True, f'{path} matches {pattern}'
     return False, 'no guard code or trust path in the diff'

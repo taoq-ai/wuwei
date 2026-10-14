@@ -393,6 +393,27 @@ def test_a_review_post_records_the_ping(root):
     assert derive.duties(root, workspace.load_config(root)) == []
 
 
+@pytest.mark.parametrize('pr_state', ['open', 'closed', 'merged'])
+def test_ping_duty_ends_with_pr(root, pr_state):
+    raised(root)
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({
+        'fetched_at': None, 'pulls': [{'ref': 'example/project#1', 'state': pr_state}]}))
+    ping = [row for row in derive.duties(root, workspace.load_config(root))
+            if row['duty'] == 'ping']
+    assert len(ping) == (1 if pr_state == 'open' else 0)
+
+
+def test_carried_ping_ends_when_current_listing_closes_pr(root, monkeypatch):
+    raised(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-12T10:00:00+00:00')
+    today = workspace.day_dir(root)
+    today.mkdir(parents=True)
+    (today / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [
+        {'ref': 'example/project#1', 'state': 'closed'}]}))
+    assert not [row for row in derive.duties(root, workspace.load_config(root))
+                if row['duty'] == 'ping']
+
+
 def test_offers_write_nothing(root):
     raised(root)
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': None, 'pulls': [

@@ -138,7 +138,7 @@ def observe(root, host, ref, config, measured, as_of=None):
     """Produce an episode under the shared writer lock from a fresh port read; as_of, the time the
     read started, records a due shepherd duty done when no reply is owed (#906)."""
     data = state.read_state(root)
-    me, acks = obligations._owner_login(config), obligations._ledger(data).get(ref, {})
+    me, acks = obligations._owner_login(config), obligations._ledger(data, root=root).get(ref, {})
     current = classify(measured, me, acks)
     if as_of and not obligations._replies(measured['reviews'], measured['threads'], me, acks):
         from wuwei import derive
@@ -535,7 +535,7 @@ def _owed(root, ref, measured):
     """[(surface, target, thread or None, the comment answered)] of every owed reply, in order."""
     me = obligations._owner_login(workspace.load_config(root))
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
-                                obligations._ledger(state.read_state(root)).get(ref, {}))
+                                obligations._ledger(state.read_state(root), root=root).get(ref, {}))
     return [(surface, target, *_latest(measured, surface, target))
             for surface, target in (key.split(':', 1) for key in owed)
             if surface in ('thread', 'review', 'comment', 'bot-p1')]  # F4: a P1 bot thread is answered too

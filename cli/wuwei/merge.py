@@ -421,7 +421,8 @@ def check(ref, root=None, *, cwd=None, repo=None):
                      and r['author'] != pr['author'] and r['sha'] == head]
         require(len(approvals) >= integer(protection['approvals']), 'required human approvals missing at head')
         me = obligations._owner_login(config)
-        replies = obligations._replies(reviews, discussion, me, obligations._ledger(data).get(ref, {}))
+        replies = obligations._replies(reviews, discussion, me,
+                                       obligations._ledger(data, root=root).get(ref, {}))
         visibility = obligations._visibility(ref, pr, reviews, data, me, workspace.day_dir(root), config)
         require(not replies and not visibility, 'obligations: ' + ', '.join(replies + visibility))
         for thread in discussion['threads']:

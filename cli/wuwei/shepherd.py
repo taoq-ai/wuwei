@@ -194,7 +194,7 @@ def ping_gate(root, ref):
         merge.bot_evidence(config, settings['merge'], discussion, ref, pr['head'], root)
         reviews = obligations._records(merge.read(host.reviews, ref, root=root), reviews=True)
         me = obligations._owner_login(config)
-        acks = obligations._ledger(state.read_state(root)).get(ref, {})
+        acks = obligations._ledger(state.read_state(root), root=root).get(ref, {})
         merge.require(not obligations._replies(reviews, discussion, me, acks),
                       'review replies are owed')
         fresh = merge.checked_pr(host, ref, root)
