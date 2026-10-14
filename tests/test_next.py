@@ -1031,19 +1031,111 @@ def test_an_owner_merge_block_is_one_owner_decision(root, later, row):
 
 
 def test_a_pr_waiting_on_people_comes_after_the_steward(root):
-    approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})},
+             raised_prs=['example/project#7'])
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
         {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
     found = coarse(root)
-    # #887: only PRs wait: next names the blocking pr wait, run in the background
-    assert (found['state'], found['command'], found['action']) == ('wait', 'wuwei pr wait', 'background')
-    assert 'P' in found['why'] and 'in the background' in found['then']
+    assert found['state'] == 'set' and found['action'] == 'set'
+    assert [(launch['kind'], launch['command']) for launch in found['launches']] == [
+        ('pr-wait', 'wuwei next --background -- wuwei pr wait')]
+    assert found['decision'] is None
     state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md'}, root)
-    assert coarse(root)['state'] == 'steward'
+    assert coarse(root)['state'] == 'set'
 
 
-def test_a_fix_round_with_due_review_activity_is_a_wait_not_a_duty_row(root):
-    # #906 D1: during a fix round (builder running) the shepherd duty is no row to run; next waits.
+def test_open_pr_arms_watcher_alongside_ready_build(root):
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'}),
+                    'B': ('planned', {})}, raised_prs=['example/project#7'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    found = coarse(root)
+    assert found['state'] == 'set'
+    assert any(launch['item'] == 'B' for launch in found['launches'])
+    assert [launch['command'] for launch in found['launches'] if launch['kind'] == 'pr-wait'] == [
+        'wuwei next --background -- wuwei pr wait']
+    assert found['decision'] is None
+
+
+def test_watcher_only_set_resolves_without_dispatch(root, monkeypatch):
+    from wuwei import dispatch
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})},
+             raised_prs=['example/project#7'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    monkeypatch.setattr(dispatch, 'launch_set', lambda root: pytest.fail('no dispatch work'))
+    found = next_command.resolve(coarse(root), root)
+    assert [(launch['kind'], launch['action'], launch['command']) for launch in found['launches']] == [
+        ('pr-wait', 'run', 'wuwei next --background -- wuwei pr wait')]
+
+
+def test_unmeasured_processes_offer_watcher_and_other_work(root, monkeypatch, capsys):
+    from fakes.host import Fake
+    from wuwei import registry
+    from wuwei.registry import Result
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'}),
+                    'B': ('planned', {})},
+             raised_prs=['example/project#7'])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    host = Fake({'processes': Result(2, None, 'process table unavailable')})
+    original = registry.load
+    monkeypatch.setattr(registry, 'load', lambda port, config:
+                        host if port == 'host' else original(port, config))
+    code, found = row(capsys)
+    assert code == 0 and found['state'] == 'set'
+    assert any(launch['item'] == 'B' for launch in found['launches'])
+    assert [launch['kind'] for launch in found['launches'] if launch['kind'] == 'pr-wait'] == ['pr-wait']
+
+
+def test_host_none_does_not_offer_unarmable_watcher(root):
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})},
+             raised_prs=['example/project#7'])
+    (root / '.wuwei/config.toml').write_text(
+        '[adapters]\nhost = "none"\n[[repos]]\nname = "example/project"\n'
+        'path = "project"\ndefault_branch = "main"\n')
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    assert coarse(root)['state'] == 'wait'
+
+
+def test_live_pr_wait_is_not_offered_twice_and_other_work_remains(root, monkeypatch):
+    from fakes.host import Fake
+    from wuwei import registry
+    from wuwei.registry import Result
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'S')
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'}),
+                    'B': ('planned', {})}, raised_prs=['example/project#7'])
+    directory = workspace.day_dir(root)
+    (directory / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
+        {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': []}]}))
+    process = {'pid': 41001, 'ppid': 42, 'command': 'python next --background',
+               'identity': 'recorded start'}
+    state.append_event('process.started', {**process, 'purpose': 'pr-wait',
+                       'session_id': 'S', 'day': directory.name}, root)
+    original = registry.load
+    host = Fake({'processes': Result(0, {41001: process})})
+    monkeypatch.setattr(registry, 'load', lambda port, config:
+                        host if port == 'host' else original(port, config))
+    found = coarse(root)
+    assert found['state'] == 'set'
+    assert any(launch['item'] == 'B' for launch in found['launches'])
+    assert not any(launch['kind'] == 'pr-wait' for launch in found['launches'])
+
+
+@pytest.mark.parametrize('pulls', [[], [{'ref': 'example/project#7', 'state': 'closed'}],
+                                   [{'ref': 'example/project#7', 'state': 'merged'}]])
+def test_no_open_owned_pr_means_no_watcher(root, pulls):
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})},
+             raised_prs=['example/project#7'] if pulls else [])
+    (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW,
+                                                                  'pulls': pulls}))
+    found = coarse(root)
+    assert not any(launch['kind'] == 'pr-wait' for launch in found.get('launches', []))
+
+
+def test_a_fix_round_with_due_review_activity_has_no_shepherd_duty(root):
+    # #906 D1: during a fix round (builder running) the shepherd duty is no row to run.
     approved(root, {'P': ('fix', {'pr': 'example/project#7', 'worktree': str(root)})},
              raised_prs=['example/project#7'])
     (workspace.day_dir(root) / 'prs.json').write_text(json.dumps({'fetched_at': NOW, 'pulls': [
@@ -1051,7 +1143,8 @@ def test_a_fix_round_with_due_review_activity_is_a_wait_not_a_duty_row(root):
          'activity_at': '2026-09-30T09:30:00Z'}]}))
     day(root, seats={'b': {'status': 'running', 'role': 'builder', 'item': 'P'}}, builds={'P': {'status': 'running'}})
     found = coarse(root)
-    assert found['state'] == 'wait' and 'duties' not in found
+    assert found['state'] == 'set' and found['duties'] == []
+    assert [launch['kind'] for launch in found['launches']] == ['pr-wait']
 
 
 def test_review_activity_launches_one_shepherd_seat_per_revision(root, capsys):
@@ -1065,9 +1158,10 @@ def test_review_activity_launches_one_shepherd_seat_per_revision(root, capsys):
         {'ref': 'example/project#7', 'state': 'open', 'checks': 'pending', 'labels': [],
          'activity_at': '2026-09-30T09:30:00Z'}]}))
     found = coarse(root)
-    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [('shepherd', 'P')]
+    assert [(launch['kind'], launch['item']) for launch in found['launches']] == [
+        ('shepherd', 'P'), ('pr-wait', 'day')]
     assert found['duties'] == []
-    [entry] = row(capsys)[1]['launches']
+    entry = next(launch for launch in row(capsys)[1]['launches'] if launch['kind'] == 'shepherd')
     [command] = entry['commands']
     assert entry['action'] == 'shepherd' and entry['seats'] == []
     assert command.startswith('wuwei seat brief shepherd P shepherd-P-20260930093000 ')  # no head listed
@@ -1076,16 +1170,18 @@ def test_review_activity_launches_one_shepherd_seat_per_revision(root, capsys):
     path = workspace.day_dir(root) / 'briefs/shepherd-P-20260930093000.md'
     path.parent.mkdir()
     path.write_text(body + '\n')  # the brief command needs a git worktree; its body is checked above
-    [entry] = row(capsys)[1]['launches']
+    entry = next(launch for launch in row(capsys)[1]['launches'] if launch['kind'] == 'shepherd')
     assert entry['seats'] == [brief.seat_action('shepherd', path, str(root), root)]
     day(root, seats={'shepherd-P-20260930093000': {'status': 'running', 'role': 'shepherd', 'item': 'P'}})
     found = coarse(root)
-    assert found['state'] == 'wait' and 'duties' not in found  # the running seat answers it
+    assert found['state'] == 'set' and found['duties'] == []  # the running seat answers it
+    assert [launch['kind'] for launch in found['launches']] == ['pr-wait']
     # F1: a seat that stopped with a reply still owed (after --fix, a scope No, or a dead seat)
     # leaves the duty on next's list, with pr act as its step, never a silent wait
     day(root, seats={'shepherd-P-20260930093000': {'status': 'stopped', 'role': 'shepherd', 'item': 'P'}})
     found = coarse(root)
-    assert found['launches'] == [] and [(duty['item'], duty['duty'], duty['record']) for duty in found['duties']] == [
+    assert [launch['kind'] for launch in found['launches']] == ['pr-wait']
+    assert [(duty['item'], duty['duty'], duty['record']) for duty in found['duties']] == [
         ('P', 'shepherd', 'wuwei pr act example/project#7')]
 
 

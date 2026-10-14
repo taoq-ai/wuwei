@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from wuwei import metrics, workspace
+from wuwei import metrics, state, workspace
 from wuwei.__main__ import main
 from wuwei.commands.next import THEN
 
@@ -106,7 +106,17 @@ def walk(day, card, after=None, looks=1):
             card(day, action)
         elif kind == 'set':  # #844: every launch and duty, then the one decision
             for entry in action['launches']:
-                if entry['action'] in ('run', 'check', 'polish') and entry.get('command'):
+                if entry['kind'] == 'pr-wait':
+                    from wuwei.registry import Result
+                    command = entry['command']
+                    day.bash(shlex.split(command)[1:])
+                    process = {'pid': 41001, 'ppid': 42, 'command': 'python next --background',
+                               'identity': 'scripted wait'}
+                    day.memory.results['processes'] = Result(0, {41001: process})
+                    state.append_event('process.started', {**process, 'purpose': 'pr-wait',
+                                       'session_id': 'planner', 'day': day.directory.name}, day.root)
+                    day.hook('PostToolUse', tool_name='Bash', tool_input={'command': command})
+                elif entry['action'] in ('run', 'check', 'polish') and entry.get('command'):
                     owner_step(day, entry['command'])
                 for command in entry.get('commands', []):
                     bash(day, command)
@@ -120,6 +130,10 @@ def walk(day, card, after=None, looks=1):
             assert kind == 'wait', action
         if after:
             after(day, action)
+        if day.data['items'].get('A', {}).get('phase') == 'merged':
+            from fakes.host import process_table
+            from wuwei.registry import Result
+            day.memory.results['processes'] = Result(0, process_table())
     pytest.fail(f'the day did not close: {action}')
 
 
