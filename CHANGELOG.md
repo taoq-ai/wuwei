@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.34.0](https://github.com/taoq-ai/wuwei/compare/v0.33.0...v0.34.0) (2026-10-14)
+
+
+### Features
+
+* **guards:** control on evidence, not actions: refusals become nudges; merge, approve, deploy and sends run on the owner's word ([#997](https://github.com/taoq-ai/wuwei/issues/997)) ([#1007](https://github.com/taoq-ai/wuwei/issues/1007)) ([e9d7a76](https://github.com/taoq-ai/wuwei/commit/e9d7a76871f0018fb4c8c9216291a18870d2cb51))
+
+
+### Bug Fixes
+
+* **checks:** build check skips fast checks on a zero-diff item instead of parking on a missing linter ([#865](https://github.com/taoq-ai/wuwei/issues/865)) ([#1003](https://github.com/taoq-ai/wuwei/issues/1003)) ([cbbf99f](https://github.com/taoq-ai/wuwei/commit/cbbf99f9878328c960b4209bd5304983d913734d))
+* **defaults:** trust paths match auth, session, token and permission files in any case; ping duties end with the PR; reply acks carry across days ([#995](https://github.com/taoq-ai/wuwei/issues/995)) ([#1001](https://github.com/taoq-ai/wuwei/issues/1001)) ([0856322](https://github.com/taoq-ai/wuwei/commit/08563221d46ddaf1c76d51335693231ebf75c3ae))
+* **dispatch:** a fix round takes every unanswered review thread, feedback is never dropped between rounds, and a gate seat's stop records its verdict ([#993](https://github.com/taoq-ai/wuwei/issues/993)) ([#1005](https://github.com/taoq-ai/wuwei/issues/1005)) ([e94d9a9](https://github.com/taoq-ai/wuwei/commit/e94d9a90df5f9fd4897a7bf0d6fe871a2aab551c))
+* **github:** one shared hold across WUWEI processes, seats read cached PR state, and a skipped shepherd duty never hides comments that arrived during a hold ([#994](https://github.com/taoq-ai/wuwei/issues/994)) ([#1006](https://github.com/taoq-ai/wuwei/issues/1006)) ([991f02e](https://github.com/taoq-ai/wuwei/commit/991f02eb25dbcbd3f67f219294ea13733895c16a))
+* **next:** the loop arms the PR watcher alongside other work whenever an owned PR is open ([#998](https://github.com/taoq-ai/wuwei/issues/998)) ([#1000](https://github.com/taoq-ai/wuwei/issues/1000)) ([77159bf](https://github.com/taoq-ai/wuwei/commit/77159bf67ce470c8fd9b7f0f03e577257ac3fa65))
+* **verdict:** the lint parses only the Findings section, accepts any failure-scenario sentence, and checks only the file the seat wrote ([#931](https://github.com/taoq-ai/wuwei/issues/931)) ([#1004](https://github.com/taoq-ai/wuwei/issues/1004)) ([168e5b1](https://github.com/taoq-ai/wuwei/commit/168e5b184c99e79ce3146cf8181bcf974b5c5c55))
+
 ## [0.33.0](https://github.com/taoq-ai/wuwei/compare/v0.32.0...v0.33.0) (2026-10-13)
 
 
