@@ -32,6 +32,6 @@
 
 F5 remains unchanged as requested.
 
-Validation: `/Users/leone/taoq-ai/github/wuwei-wt/_pipeline/venv/bin/python -m pytest -q -p no:cacheprovider tests/test_agents.py tests/test_close_branches.py tests/test_dispatch.py tests/test_loop.py tests/test_metrics.py tests/test_process_depth.py tests/test_retro.py tests/test_runtime.py tests/test_verdict.py`
+Validation: `python -m pytest -q -p no:cacheprovider tests/test_agents.py tests/test_close_branches.py tests/test_dispatch.py tests/test_loop.py tests/test_metrics.py tests/test_process_depth.py tests/test_retro.py tests/test_runtime.py tests/test_verdict.py`
 
 Last summary: `978 passed in 12.72s`. `git diff --check` passed.
