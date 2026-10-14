@@ -219,7 +219,7 @@ def test_sentinel_stop_lints_owned_gate(seat, tmp_path, monkeypatch, capsys, rol
     output = capsys.readouterr()
     if sentinel and not active:
         assert json.loads(output.out)['decision'] == 'block'
-        assert 'file:line' in output.err
+        assert 'list findings under a `## Findings` heading' in output.err
         assert 'GaTe-seat-one.MD' in output.err
         assert 'gate-other.md' not in output.err
     rejected = [event for event in events(seat) if event['kind'] == 'verdict.rejected']

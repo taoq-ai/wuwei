@@ -9,7 +9,7 @@ import sys
 
 RETRO = 'Blocked: none\nGap: none\nChange: none\n'
 FINDING = '- P1 | cli/example.py:12 | fails when input is empty | blocks: yes\n'
-VALID = 'Verdict: FIX\nHead: abc1234\n' + FINDING + 'Probe: not run\nVAL: PASS\n' + RETRO
+VALID = 'Verdict: FIX\nHead: abc1234\n## Findings\n' + FINDING + 'Probe: not run\nVAL: PASS\n' + RETRO
 PASS = 'Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\n' + RETRO
 
 
@@ -41,7 +41,7 @@ def test_source_refusals(old, new, reason):
 
 def test_source_refusal_order():
     from wuwei.verdict import lint
-    code, message = lint('Verdict: FIX\n', class_sweep=True)
+    code, message = lint('Verdict: FIX\n## Findings\n', class_sweep=True)
     assert code == 1
     positions = [message.index(fragment) for fragment in (
         'file:line', 'blocks yes/no', 'failure scenario', 'mutation/probe',
@@ -90,8 +90,8 @@ def test_quality_rows(rows, code, reason):
     (VALID.replace('Gap: none', 'Gap:'), 'Gap:'),
     (VALID + 'Gap: another\n', 'Gap:'),
     (VALID.replace(FINDING, FINDING + '- P2 | missing | breaks on retry | blocks: no\n'), 'file:line'),
-    (PASS + FINDING.replace('blocks: yes', ''), 'blocks'),
-    (PASS + FINDING.replace('fails when input is empty', ''), 'scenario'),
+    (PASS + '## Findings\n' + FINDING.replace('blocks: yes', ''), 'blocks'),
+    (PASS + '## Findings\n' + FINDING.replace('fails when input is empty', ''), 'scenario'),
     (VALID.replace('blocks: yes', 'blocking'), 'blocks'),
 ])
 def test_incomplete_or_conflicting_evidence(text, reason):
@@ -154,7 +154,7 @@ def test_table_with_id_before_severity():
 
 
 @pytest.mark.parametrize('contents,code,reason', [
-    (VALID.encode(), 0, 'OK: FIX'), (b'Verdict: FIX\n', 1, 'file:line'),
+    (VALID.encode(), 0, 'OK: FIX'), (b'Verdict: FIX\n', 1, 'list findings under a `## Findings` heading'),
     (None, 2, 'could not read'), (b'\xff', 2, 'could not read'),
 ])
 def test_file_exit_table(tmp_path, contents, code, reason):
@@ -272,10 +272,10 @@ def test_disabled_write_guard_is_caught(tmp_path, monkeypatch, capsys):
                                      '| F1 | P1 | cli/example.py:12 | fails when empty | yes |\n'])
 def test_pass_cannot_carry_blocking_finding(finding):
     from wuwei.verdict import lint
-    code, message = lint(PASS + finding)
+    code, message = lint(PASS + '## Findings\n' + finding)
     assert code == 1
     assert 'PASS verdict carries a blocking finding' in message
-    assert lint(PASS + finding.replace('yes', 'no'))[0] == 0
+    assert lint(PASS + '## Findings\n' + finding.replace('yes', 'no'))[0] == 0
 
 
 @pytest.mark.parametrize('marker', ['1.', '1)', '[F2]', 'F2 (', 'F2:', 'F2.'])
@@ -353,7 +353,7 @@ def test_gate_target_finds_workspace_outside_cwd(tmp_path, tool, key, filename, 
                                    'tool_input': {key: str(path)}})
     assert result == code
     if code:
-        assert 'file:line' in message
+        assert 'list findings under a `## Findings` heading' in message
         event, = (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()
         assert json.loads(event)['payload']['file'] == str(path)
 
@@ -377,35 +377,37 @@ def test_notebook_path_is_linted(tmp_path):
 
 
 @pytest.mark.parametrize('command', [
-    'cat > decisions/gate-arch.md',
-    'cp source decisions/gate-arch.md',
-    "bash -c 'cat > decisions/gate-arch.md'",
-    '(cat > decisions/gate-arch.md)',
-    'env command cp source decisions/gate-arch.md',
-    'cat > DECISIONS/GATE-ARCH.MD',
-    'cd {day}/decisions && cat > gate-arch.md',
-    '(cd {day} && cat > decisions/gate-arch.md)',
-    'd={day}/decisions; cat > "$d/gate-arch.md"',
-    'f={day}/decisions/gate-arch.md; cat > "$f"',
+    'cat > {gate}',
+    'cp source {gate}',
+    "bash -c 'cat > {gate}'",
+    '(cat > {gate})',
+    'env command cp source {gate}',
+    "sed -i 's/FIX/PASS/' {gate}",
+    'dd if=source of={gate}',
+    'cp {gate} -t {day}/decisions',
+    'custom-writer --output={gate}',
+    'cat > {gate} <<',
+    'cd {day}/decisions && cat > GaTe-ARCH.Md',
+    '(cd {day} && cat > decisions/GaTe-ARCH.Md)',
 ])
 def test_bash_gate_writes_reach_lint(tmp_path, monkeypatch, capsys, command):
     from wuwei.__main__ import main
     from wuwei.workspace import day_dir
-    command = command.format(day=day_dir(tmp_path))
     path = day_dir(tmp_path) / 'decisions/GaTe-ARCH.Md'
     path.parent.mkdir(parents=True)
     path.write_text('Verdict: FIX')
+    command = command.format(day=day_dir(tmp_path), gate=path)
     payload = {'cwd': str(tmp_path), 'tool_name': 'Bash', 'tool_input': {'command': command},
                'hook_event_name': 'PostToolUse', 'session_id': 'seat', 'transcript_path': 'unused'}
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
     assert main(['hook', 'PostToolUse']) == 2
-    assert 'file:line' in capsys.readouterr().err
+    assert 'list findings under a `## Findings` heading' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('command,code', [
     ("echo 'unclosed", 0),
     ('python -c "print(42)"', 0),
-    ('cat > decisions/gate-missing.md', 0),
+    ('cat > decisions/gate-missing.md', 2),
     ('cat > decisions/gate-arch.md', 0),
     ("python -c \"open('decisions/gate-arch.md', 'w')\"", 1),
     ("env python3 -c \"open('decisions/gate-arch.md', 'w')\"", 1),
@@ -426,7 +428,7 @@ def test_bash_relevance_and_opaque_commands(tmp_path, command, code):
         assert 'opaque' in message
 
 
-def test_bash_lints_every_daily_gate_even_when_not_named(tmp_path):
+def test_bash_does_not_lint_daily_gates_when_none_was_named(tmp_path):
     from wuwei.guards.verdict import check_write
     from wuwei.workspace import day_dir
     directory = day_dir(tmp_path) / 'decisions'
@@ -437,26 +439,53 @@ def test_bash_lints_every_daily_gate_even_when_not_named(tmp_path):
     (directory / 'other.md').write_text('not a verdict')
     command = 'echo GATE-unrelated > out.txt'  # #616: a bare echo is a read
     assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-                        'tool_input': {'command': command}})[0] == 1
-    records = [json.loads(line) for line in (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()]
-    assert [r['payload']['file'] for r in records] == [str(directory / 'gate-first.md'),
-                                                     str(directory / 'gate-second.md')]
+                        'tool_input': {'command': command}}) == (0, '')
+    assert not (day_dir(tmp_path) / 'events.jsonl').exists()
 
 
-@pytest.mark.parametrize('command', ['echo gate-item > out.txt', 'python -c "print(\'gate-item\')"'])
-def test_daily_gate_scan_records_findings_and_unreadable_files(tmp_path, command):
+def test_bash_write_lints_only_named_gate(tmp_path):
+    from wuwei.guards.verdict import check_write
+    from wuwei.workspace import day_dir
+    directory = day_dir(tmp_path) / 'decisions'
+    directory.mkdir(parents=True)
+    written = directory / 'gate-current.md'
+    written.write_text(PASS)
+    (directory / 'gate-other.md').write_text('Verdict: FIX')
+    assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
+                        'tool_input': {'command': f'cat > {written}'}}) == (0, '')
+
+
+def test_bash_named_gate_missing_after_write_is_unrun(tmp_path):
+    from wuwei.guards.verdict import check_write
+    target = tmp_path / 'decisions/gate-missing.md'
+    code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
+                                 'tool_input': {'command': f'cat > {target}'}})
+    assert code == 2 and 'could not read' in message
+
+
+def test_write_target_outside_workspace_is_ignored(tmp_path):
+    from wuwei.guards.verdict import check_write
+    target = tmp_path.parent / 'external' / 'decisions/gate-other.md'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('Verdict: FIX')
+    assert check_write({'cwd': str(tmp_path), 'tool_name': 'Write',
+                        'tool_input': {'file_path': str(target)}}) == (0, '')
+
+
+def test_bash_targeted_unreadable_gate_returns_unrun(tmp_path):
     from wuwei.guards.verdict import check_write
     from wuwei.workspace import day_dir
     directory = day_dir(tmp_path) / 'decisions'
     directory.mkdir(parents=True)
     (directory / 'gate-bad.md').write_text('Verdict: FIX')
-    (directory / 'gate-unreadable.md').write_bytes(b'\xff')
+    unreadable = directory / 'gate-unreadable.md'
+    unreadable.write_bytes(b'\xff')
     code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
-                                 'tool_input': {'command': command}})
+                                 'tool_input': {'command': f'cat > {unreadable}'}})
     assert code == 2
-    assert 'file:line' in message and 'could not read' in message
+    assert 'could not read' in message
     records = [json.loads(line) for line in (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()]
-    assert {str(path) for path in directory.iterdir()} <= {r['payload']['file'] for r in records}
+    assert [r['payload']['file'] for r in records] == [str(unreadable)]
 
 
 @pytest.mark.parametrize('entry', ['lint_file', 'hook'])
@@ -510,12 +539,12 @@ def test_python_script_with_named_gate_is_linted(tmp_path):
     path.parent.mkdir(parents=True)
     path.write_text(VALID)
     payload = {'cwd': str(tmp_path), 'tool_name': 'Bash',
-               'tool_input': {'command': 'python script.py decisions/gate-arch.md'}}
+               'tool_input': {'command': f'python script.py {path}'}}
     assert check_write(payload)[0] == 0
     path.write_text('Verdict: FIX')
     code, message = check_write(payload)
     assert code == 1
-    assert 'file:line' in message
+    assert 'list findings under a `## Findings` heading' in message
 
 
 def test_bash_quoted_gate_path_with_spaces(tmp_path):
@@ -527,7 +556,7 @@ def test_bash_quoted_gate_path_with_spaces(tmp_path):
     code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
                                 'tool_input': {'command': f'cat > "{path}"'}})
     assert code == 1
-    assert 'file:line' in message
+    assert 'list findings under a `## Findings` heading' in message
 
 
 def bash_post(tmp_path, command, role=''):
@@ -581,7 +610,7 @@ def test_invariant_bash_write_lints_by_file_name(tmp_path):
     quality.write_text('Verdict: FIX')
     for command in (f'cp x {quality}', f'cat x > {quality}'):
         (code, message), events = bash_post(tmp_path, command)
-        assert code == 1 and 'file:line' in message
+        assert code == 1 and 'list findings under a `## Findings` heading' in message
         assert [e['payload']['file'] for e in events if e['kind'] == 'verdict.rejected'] == [str(quality)]
     quality.write_text(VALID + 'Simplicity: none\nDesign: none\n')
     security.write_text(PASS)
@@ -684,7 +713,7 @@ def test_stop_lints_only_registered_seat(registered_stop, tmp_path, monkeypatch,
 
 ASSUMPTION = ('Assumption: medium specs/x/spec.md:12 assumed one process; '
               'would break when two processes share it; blocks: no\n')
-ASSUMED = 'Verdict: FIX\nHead: abc1234\n' + ASSUMPTION + 'Probe: not run\nVAL: PASS\n' + RETRO
+ASSUMED = 'Verdict: FIX\nHead: abc1234\n## Findings\n' + ASSUMPTION + 'Probe: not run\nVAL: PASS\n' + RETRO
 
 
 def test_assumption_is_a_finding_kind():
@@ -692,10 +721,10 @@ def test_assumption_is_a_finding_kind():
     code, message = lint(ASSUMED)
     assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
     assert lint(ASSUMED.replace('FIX', 'PASS')) == (0, 'OK: PASS')
-    code, message = lint(ASSUMED.replace('would break when two processes share it; ', ''))
+    code, message = lint(ASSUMED.replace('assumed one process; would break when two processes share it; ', ''))
     assert code == 1 and 'finding 1: missing failure scenario' in message
     code, message = lint('Verdict: FIX\nHead: abc1234\nAssumptions: reviewed\nProbe: not run\n' + RETRO)
-    assert code == 1 and 'no finding with severity' in message
+    assert code == 1 and 'list findings under a `## Findings` heading' in message
 
 
 def reproduced(first, second):
@@ -739,8 +768,7 @@ def test_fix_without_parsed_blocking_finding_is_refused():
     from wuwei.verdict import lint
     code, message = lint(HEADING_FIX)
     assert code == 1
-    assert ('FIX verdict but no blocking finding parsed; the lines that look like findings are: '
-            'The cache in src/a.py:80') in message
+    assert 'list findings under a `## Findings` heading' in message
     code, message = lint(VALID.replace('blocks: yes', 'blocks: no'))
     assert code == 1 and 'findings are: none' in message and 'Verdict: PASS' in message
     fenced = HEADING_FIX.replace('Probe:', '```\n- P1 | x.py:1 | example | blocks: yes\n```\nProbe:')
@@ -757,7 +785,33 @@ def test_write_guard_refuses_fix_without_parsed_blocker(tmp_path):
     path.write_text(HEADING_FIX)
     code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Write',
                                  'tool_input': {'file_path': str(path), 'content': HEADING_FIX}})
-    assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
+    assert code == 1 and 'list findings under a `## Findings` heading' in message
+
+
+@pytest.mark.parametrize('heading', ['Findings:', '**Findings**', '**Findings:**', 'Blocking findings:',
+                                     '**ZIRAN findings**'])
+def test_legacy_findings_sections_are_read(heading):
+    from wuwei import verdict
+    text = VALID.replace('## Findings', heading)
+    assert verdict.lint(text) == (0, 'OK: FIX')
+    assert len(verdict.finding_blocks(verdict.active_text(text))) == 1
+
+
+def test_argv_naming_a_missing_gate_file_lints_nothing(tmp_path):
+    from wuwei.guards.verdict import check_write
+    from wuwei.workspace import day_dir
+    directory = day_dir(tmp_path)
+    (directory / 'decisions').mkdir(parents=True)
+    for command in ('rm decisions/gate-x.md', 'git diff -- decisions/gate-x.md'):
+        assert check_write({'cwd': str(directory), 'tool_name': 'Bash',
+                            'tool_input': {'command': command}}) == (0, '')
+
+
+@pytest.mark.parametrize('kind', ['FIX', 'PARK', 'ESCALATE'])
+def test_missing_findings_section_has_one_actionable_message(kind):
+    from wuwei.verdict import lint
+    text = VALID.replace('## Findings\n', '').replace('Verdict: FIX', f'Verdict: {kind}')
+    assert lint(text) == (1, 'list findings under a `## Findings` heading\nREJECT: send back to the seat')
 QUALITY_FIX = VALID + 'Simplicity: none\nDesign: none\n'
 def _case_lint_file_takes_no_docs_value(tmp_path, monkeypatch):
     # #841: a finding that calls docs missing lints as any finding; no docs rule refuses it.
@@ -788,6 +842,70 @@ def test_numbered_evidence_is_not_a_finding(heading):
     assert lint(text, class_sweep=True) == (0, 'OK: PASS')
 
 
+def test_cited_closure_bullet_outside_findings_is_not_a_finding():
+    from wuwei.verdict import active_text, finding_blocks, lint
+    text = PASS + '## Round 1 closure\n- Read cli/example.py:12 and closed the review.\n'
+    assert finding_blocks(active_text(text)) == []
+    assert lint(text) == (0, 'OK: PASS')
+
+
+@pytest.mark.parametrize('heading', ['## Round-1 findings closed', '## Findings archive'])
+def test_closure_heading_does_not_reopen_findings(heading):
+    from wuwei.verdict import active_text, finding_blocks, lint
+    text = PASS + '## Findings\n' + heading + '\n- Read cli/example.py:12 and closed the review.\n'
+    assert finding_blocks(active_text(text)) == []
+    assert lint(text) == (0, 'OK: PASS')
+
+
+def test_ziran_findings_heading_is_accepted():
+    from wuwei.verdict import lint
+    assert lint(VALID.replace('## Findings', '## ZIRAN findings')) == (0, 'OK: FIX')
+
+
+def test_malformed_cited_bullet_inside_findings_is_refused():
+    from wuwei.verdict import lint
+    text = PASS + '## Findings\n- cli/example.py:12 has a missing check.\n'
+    code, message = lint(text)
+    assert code == 1 and 'finding 1: missing' in message
+
+
+def test_id_heading_inside_findings_is_checked():
+    from wuwei.verdict import lint
+    text = PASS + '## Findings\n### Q1 high\nFile: cli/example.py:12\nblocks: no\n'
+    code, message = lint(text)
+    assert code == 1 and 'finding 1: missing failure scenario' in message
+
+
+def test_failure_sentence_does_not_need_a_keyword():
+    from wuwei.verdict import lint
+    text = (PASS.replace('Verdict: PASS', 'Verdict: FIX')
+            + '## Findings\n- P1 cli/example.py:12 fails open at admission when policy is absent; blocks: yes\n')
+    assert lint(text) == (0, 'OK: FIX')
+
+
+def test_finding_without_failure_description_is_refused():
+    from wuwei.verdict import lint
+    text = PASS + '## Findings\n- P1 cli/example.py:12 blocks: no\n'
+    code, message = lint(text)
+    assert code == 1 and 'missing failure scenario' in message
+
+
+def test_short_failure_sentence_is_accepted():
+    from wuwei.verdict import lint
+    text = (PASS.replace('Verdict: PASS', 'Verdict: FIX')
+            + '## Findings\n- P1 cli/example.py:12 Crashes. blocks: yes\n')
+    assert lint(text) == (0, 'OK: FIX')
+
+
+def test_closure_note_cannot_supply_a_finding_citation():
+    from wuwei.verdict import lint
+    text = (PASS.replace('Verdict: PASS', 'Verdict: FIX')
+            + '## Findings\n- P1 fails when input is empty; blocks: yes\n'
+            + '## Round 1 closure\n- Read cli/example.py:12\n')
+    code, message = lint(text)
+    assert code == 1 and 'FIX verdict names no file:line' in message
+
+
 def test_fix_with_numbered_evidence_keeps_one_finding():
     from wuwei.verdict import active_text, finding_blocks, lint
     finding = 'F1 medium cli/example.py:12 fails when input is empty. blocks: yes\n'
@@ -810,12 +928,20 @@ def test_numbered_lines_under_findings_are_findings(heading):
                                   '1. Severity: medium. cli/example.py:12 fails when empty. blocks: yes',
                                   '1. F1 medium cli/example.py:12 fails when empty. blocks: yes',
                                   '1. the guard at cli/example.py:12 fails when empty, blocks: yes'])
-def test_numbered_findings_outside_a_heading_still_parse(line):
+def test_numbered_findings_outside_a_heading_still_block_pass(line):
     from wuwei.verdict import active_text, finding_blocks, lint
-    assert len(finding_blocks(active_text(PASS + 'Notes:\n' + line + '\n'))) == 1
-    assert len(finding_blocks(active_text(PASS + line + '\n'))) == 1
-    if 'Severity' not in line and 'P1' not in line and 'F1' not in line:
-        assert 'PASS verdict carries a blocking finding' in lint(PASS + line + '\n')[1]
+    assert finding_blocks(active_text(PASS + 'Notes:\n' + line + '\n')) == []
+    assert finding_blocks(active_text(PASS + line + '\n')) == []
+    assert lint(PASS + line + '\n')[0] == 1
+
+
+@pytest.mark.parametrize('heading', ['', '## Evidence\n'])
+def test_pass_refuses_blocking_line_outside_findings(heading):
+    from wuwei.verdict import lint
+    text = PASS + heading + '- F1 high src/a.py:1 token leaks when logged. blocks: yes\n'
+    code, message = lint(text)
+    assert code == 1
+    assert 'move it under ## Findings or write blocks: no' in message
 
 
 def test_evidence_cannot_lend_a_citation():
@@ -868,12 +994,12 @@ def test_rejections_quote_the_line_and_the_form():
     assert "'Head: abc12'" in message and FORMAT['Head'][0] in message
     _, message = lint(VALID + 'Verdict: FIX\n')
     assert 'expected exactly one Verdict: line' in message and "'Verdict: FIX'" in message
-    _, message = lint(PASS + FINDING)
+    _, message = lint(PASS + '## Findings\n' + FINDING)
     hint = next(row for row in message.splitlines() if row.startswith('PASS verdict carries'))
     assert "'" + FINDING.strip() + "'" in hint and hint.endswith('or blocks: no')
     _, message = lint(VALID.replace('blocks: yes', 'blocks: no'))
     assert 'a number' not in message
-    for text in (VALID.replace('abc1234', 'abc12'), PASS + FINDING):
+    for text in (VALID.replace('abc1234', 'abc12'), PASS + '## Findings\n' + FINDING):
         assert lint(text)[1].endswith('REJECT: send back to the seat')
 
 
@@ -884,7 +1010,8 @@ def test_section_renders_the_format_table():
     rows = [line for line in text.splitlines() if line.startswith('- ')]
     assert rows == [f'- {key}: {form}' for key, (form, _) in FORMAT.items()]
     example = text.split('```text\n')[1].split('```')[0]
-    assert example == ''.join(line + '\n' for _, line in FORMAT.values())
+    assert example == ''.join(('## Findings\n' if key == 'Finding' else '') + line + '\n'
+                              for key, (_, line) in FORMAT.items())
 
 
 # #733: a CI-fix item's verdict carries one result row per CI step its brief lists.

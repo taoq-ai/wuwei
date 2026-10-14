@@ -36,7 +36,7 @@ def is_gate(path):
 
 
 def check_write(payload):
-    from wuwei.workspace import day_dir, find_workspace, guard_scope
+    from wuwei.workspace import find_workspace, guard_scope
 
     root, path = None, '<unknown>'
     try:
@@ -63,6 +63,8 @@ def check_write(payload):
             raise ValueError(f'missing or invalid tool_input; {PAYLOAD}')
         results = []
         bash = not stop and payload.get('tool_name') == 'Bash'
+        commands = []
+        literal_targets = []
         if bash:
             command = required_text(tool_input, 'command', blank=True)
             if 'gate-' not in command.lower():
@@ -71,7 +73,8 @@ def check_write(payload):
             try:
                 commands = shell.normalize(command)
             except shell.ParseError:
-                commands = []
+                literal_targets = re.findall(r'''[^\s'"<>|;&()=]*gate-[^\s'"<>|;&()=]*\.md\b''',
+                                             command, re.I)
             # #616: a call that only reads (cat, grep, shasum) writes no gate.
             if commands and all(not c.writes and shell.reads(c.argv) and not shell.inline_code(c.argv)
                                 for c in commands):
@@ -95,15 +98,32 @@ def check_write(payload):
             directory, name, role = stopping_seat(payload, root)
             paths = sorted((directory / 'decisions').glob(f'[gG][aA][tT][eE]-{name}.[mM][dD]'))
         elif bash:
-            paths = sorted((day_dir(root) / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
+            paths = [Path(cwd) / target for target in literal_targets]
+            directories = {(0,): Path(cwd)}
+            for call in commands:
+                scope = call.scope
+                base = directories.get(scope, directories.get(scope[:-1], Path(cwd)))
+                if call.argv and call.argv[0] == 'cd' and len(call.argv) == 2:
+                    directories[scope] = (base / call.argv[1]).resolve()
+                    continue
+                paths.extend(base / target for target in call.writes if isinstance(target, str))
+                if call.argv and not shell.reads(call.argv) and not shell.inline_code(call.argv):
+                    # An argument names a gate only if the file exists after the call (rm, git diff).
+                    paths.extend(path for path in (base / arg.split('=', 1)[-1] for arg in call.argv[1:])
+                                 if path.exists())
+            paths = sorted({path for path in paths if is_gate(path)})
         else:
             key = 'notebook_path' if 'notebook_path' in tool_input else 'file_path'
             paths = [Path(cwd) / required_text(tool_input, key)]
         for path in paths:
             if not is_gate(path):
                 continue
-            # #616: a Bash call names no one target, so each gate is linted by its own name.
-            code, message = lint_file(path, role='' if bash else role, root=root)
+            try:
+                target_root = find_workspace(path.parent, use_environment=False)
+            except FileNotFoundError:
+                continue
+            # A Bash target uses the file's own name for role-specific rules.
+            code, message = lint_file(path, role='' if bash else role, root=target_root)
             results.append((code, f'{path}: {message}' if stop and code else message))
         return (CLEAN, '') if stop and payload.get('stop_hook_active') else (
                 max((code for code, _ in results), default=CLEAN),

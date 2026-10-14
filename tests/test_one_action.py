@@ -368,7 +368,7 @@ def test_a_polish_offer_is_offered_as_polish(tmp_path, monkeypatch):
         gate_approved=True, approved_items=['A'], items={'A': {'phase': 'gate', 'status': 'queued'}}), root)
     state._write_state(lambda data: data['seats'].update(builder={
         'item': 'A', 'role': 'builder', 'status': 'stopped'}), root)
-    note = PASS + '- P3 | cli/example.py:3 | fails when renamed later | blocks: no\nSimplicity: none\nDesign: none\n'
+    note = PASS + '## Findings\n- P3 | cli/example.py:3 | fails when renamed later | blocks: no\nSimplicity: none\nDesign: none\n'
     for role in ('arch', 'quality', 'security'):
         record(root, role, f'{role}-1', note)
     data, config = state.read_state(root), workspace.load_config(root)

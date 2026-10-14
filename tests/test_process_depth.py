@@ -222,7 +222,7 @@ def test_launch_prompt_repeats_the_depth_line(day, monkeypatch):
 
 
 THREE = 'Verdict: PASS\nHead: abc1234\nFindings: none\n'
-LIGHT_FIX = 'Verdict: FIX\nHead: abc1234\n- P1 | cli/example.py:12 | fails when empty | blocks: yes\n'
+LIGHT_FIX = 'Verdict: FIX\nHead: abc1234\n## Findings\n- P1 | cli/example.py:12 | fails when empty | blocks: yes\n'
 
 
 @pytest.mark.parametrize('text', [THREE, LIGHT_FIX])
@@ -234,11 +234,11 @@ def test_light_lint_accepts_three_rows(text, quality):
 
 
 @pytest.mark.parametrize('text,reason', [
-    ('Verdict: FIX\nHead: abc1234\n', 'no finding with severity'),
-    ('Verdict: FIX\nHead: abc1234\n- P1 | fails when empty | blocks: yes\n', 'file:line'),
+    ('Verdict: FIX\nHead: abc1234\n', 'list findings under a `## Findings` heading'),
+    ('Verdict: FIX\nHead: abc1234\n## Findings\n- P1 | fails when empty | blocks: yes\n', 'file:line'),
     (THREE + 'Verdict: FIX\n', 'exactly one Verdict'),
     ('Verdict: PASS\nFindings: none\n', 'Head:'),
-    ('Verdict: PASS\nHead: abc1234\n- P1 | cli/example.py:12 | fails when empty | blocks: yes\n',
+    ('Verdict: PASS\nHead: abc1234\n## Findings\n- P1 | cli/example.py:12 | fails when empty | blocks: yes\n',
      'PASS verdict carries a blocking finding'),
     (THREE + 'Blocked: none\n', "retro note missing 'Gap:' line"),
 ])

@@ -1645,7 +1645,7 @@ def test_verdict_evidence(gates, kind, code, hint):
     elif kind == 'fenced':
         path.write_text('```\n' + evidence() + '```')
     elif kind == 'blocking':
-        path.write_text(evidence() + '- P1 cli/example.py:1 blocks: yes; fails when changed\n')
+        path.write_text(evidence() + '## Findings\n- P1 cli/example.py:1 blocks: yes; fails when changed\n')
     elif kind == 'unreadable':
         path.write_bytes(b'\xff')
     elif kind == 'other-item':
