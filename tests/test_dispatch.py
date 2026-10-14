@@ -10,7 +10,7 @@ from wuwei import dispatch, state, workspace
 
 
 PASS = 'Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
-FIX = ('Verdict: FIX\nHead: abc1234\n'
+FIX = ('Verdict: FIX\nHead: abc1234\n## Findings\n'
        '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n'
        'Probe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n')
 
@@ -101,6 +101,34 @@ def record(root, role, name, text, round_name='initial', brief='Head: abc1234\n'
                'brief': str((directory / 'briefs' / f'{name}.md').relative_to(root)), **seat}}),
         root)
     return dispatch.receive('A', role, name, round_name, root)
+
+
+@pytest.mark.parametrize('heading', ['Findings:', '**Findings**'])
+@pytest.mark.parametrize('kind', ['FIX', 'PASS'])
+def test_931_legacy_sections_reach_stored_verdict_readers(root, heading, kind):
+    from wuwei import tracker
+    from wuwei.commands import why
+    text = FIX.replace('## Findings', heading).replace('Verdict: FIX', f'Verdict: {kind}')
+    if kind == 'PASS':
+        text = text.replace('blocks: yes', 'blocks: no')
+    value = record(root, 'arch', 'arch-1', text)
+    assert value['blocks'] is (kind == 'FIX')
+    assert len(value['findings']) == 1
+    assert bool(value['notes']) is (kind == 'PASS')
+    steps = why.item(root, 'A')
+    assert any('blocking: - P1' in step[0] for step in steps) is (kind == 'FIX')
+    data = state.read_state(root)
+    data['tickets'] = {'A': {'id': 'acme/app#931'}}
+    entries = tracker._entries(workspace.day_dir(root), data, {'verdicts'})
+    assert len(entries) == 1
+    assert f'{int(kind == "FIX")} blocking findings' in entries[0][3]
+
+
+def test_931_receive_refuses_pass_with_blocker_outside_findings(root):
+    text = FIX.replace('## Findings\n', '').replace('Verdict: FIX', 'Verdict: PASS')
+    with pytest.raises(dispatch.Refused, match='move it under ## Findings'):
+        record(root, 'arch', 'arch-1', text)
+    assert state.read_state(root)['gate_verdicts'] == {}
 
 
 @pytest.mark.parametrize('line, warnings', [('Written: 2099-01-01T00:00:00+00:00\n', 2),
@@ -1725,7 +1753,7 @@ def _case_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates(root, m
 
 def _case_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
     text = QUALITY_PASS.replace('abc1234', 'aaaaaaa').replace(
-        'Probe:', '- P3 | cli/example.py:12 | naming fails when read | blocks: no\nProbe:')
+        'Probe:', '## Findings\n- P3 | cli/example.py:12 | naming fails when read | blocks: no\nProbe:')
     outcome = opinion_fix_round(root, monkeypatch, text)
     assert outcome['action'] == 'raise' and 'naming' in outcome['notes'][0]
 
@@ -2846,7 +2874,7 @@ def _case_issue_677_receive_refuses_fix_without_parsed_blocker(root):
             'The cache in src/a.py:80 is never cleared, so a reload would serve stale data; blocks: yes\n'
             + ASSUMED_NOTE + 'Probe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
             'Simplicity: none\nDesign: none\n')
-    with pytest.raises(dispatch.Refused, match='FIX verdict but no blocking finding parsed'):
+    with pytest.raises(dispatch.Refused, match='list findings under a `## Findings` heading'):
         record(root, 'quality', 'quality-1', text)
     assert state.read_state(root)['gate_verdicts'] == {}
 
@@ -3255,7 +3283,7 @@ OFFER = {'action': 'polish', 'gate': 'quality', 'notes': NOTES,
 
 
 def noted(text, note):
-    return text.replace('Blocked:', note + 'Blocked:')
+    return text.replace('Blocked:', '## Findings\n' + note + 'Blocked:')
 
 
 def polish_ready(root, mode=None, arch=NOTE_A, quality=NOTE_Q):

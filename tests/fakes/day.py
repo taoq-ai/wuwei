@@ -78,7 +78,7 @@ class Runtime:
         elif role.startswith('sentinel-'):
             text = f'Verdict: {self.verdict}\nHead: {day.head}\n'
             if self.verdict in ('FIX', 'ESCALATE', 'PARK'):
-                text += '- P1 | memory/demo.py:1 | fails when value is one | blocks: yes\n'
+                text += '## Findings\n- P1 | memory/demo.py:1 | fails when value is one | blocks: yes\n'
             if 'Depth: light;' in path.read_text():  # #567: three rows and no retro note
                 message = 'Verdict written.\n'
             else:

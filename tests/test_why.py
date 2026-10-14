@@ -30,6 +30,7 @@ def events(root, day=DAY):
 
 
 QUALITY = '''Verdict: FIX
+## Findings
 - P1 src/login.py:12 the token is logged in plain text
   blocks: yes
 - P3 src/login.py:40 a long function

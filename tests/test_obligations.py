@@ -33,7 +33,7 @@ def thread(comments, **extra):
 def gate_file(root, verdict='PASS', head='a' * 40):
     path = workspace.day_dir(root) / 'decisions/gate-arch.md'
     path.parent.mkdir(exist_ok=True)
-    finding = '' if verdict == 'PASS' else 'P1: src/app.py:1 blocks: yes; fails when input is empty.\n'
+    finding = '' if verdict == 'PASS' else '## Findings\nP1: src/app.py:1 blocks: yes; fails when input is empty.\n'
     path.write_text(f'Verdict: {verdict}\nHead: {head}\n{finding}'
                     'Probe: not run\nAUTH: PASS\nBlocked: none\nGap: none\nChange: none\n')
     return path

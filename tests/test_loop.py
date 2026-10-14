@@ -101,7 +101,7 @@ def verdict_text(kind):
     if kind == 'malformed':
         return 'Looks fine to me.\n'
     text = f"Verdict: {'PASS' if kind == 'stale' else kind}\nHead: {OLD if kind == 'stale' else HEAD}\n"
-    return text + (FINDING if kind in ('FIX', 'ESCALATE', 'PARK') else '')
+    return text + ('## Findings\n' + FINDING if kind in ('FIX', 'ESCALATE', 'PARK') else '')
 
 
 def record(name, role, kind, round_name):
@@ -538,7 +538,7 @@ def test_669_a_pass_at_an_old_head_is_no_pass(run):
 
 
 def test_677_q_prefixed_findings_block_like_f_prefixed_ones():
-    text = ('Verdict: FIX\nHead: a1b2c3d\n- Q1 | src/a.py:1 | breaks the parser | blocks: yes\n'
+    text = ('Verdict: FIX\nHead: a1b2c3d\n## Findings\n- Q1 | src/a.py:1 | breaks the parser | blocks: yes\n'
             '- Q2 | src/b.py:2 | drops a row | blocks: yes\n')
     blocks = verdict.finding_blocks(text)
     assert len(blocks) == 2 and all(re.search(verdict.BLOCKS_YES, row, re.I) for row in blocks)

@@ -19,7 +19,6 @@ VERDICT_ROW = r'^(?:## |- )?Verdict:? *(' + '|'.join(VERDICTS) + r')\b'
 CITATION = r'[A-Za-z0-9_./-]+\.[a-z]+:[0-9]+|\bL[0-9]+\b'
 BLOCKS = r'blocks?:? *(yes|no)\b|\| *(yes|no) *\|'
 BLOCKS_YES = r'blocks?:? *yes\b|\| *yes *\|'
-SCENARIO = r'scenario|reproduc|fails? when|would |impact|consequence|breaks? '
 CLASS_NAMES = ('AUTH', 'VAL', 'DOC', 'TEST', 'INF', 'RET', 'ERR', 'STATE', 'CON', 'BUD',
                'DATA', 'PROOF')
 CLASSES = '(' + '|'.join(CLASS_NAMES) + r'): *(PASS|N\.A\.|FINDING)'
@@ -27,6 +26,8 @@ SEVERITY = r'(?:P[0-3]|critical|high|medium|low|info)\b'
 FINDING_ID = r'\[?(?:[FQSAGN]\d+|Finding\s+\d+)\]?(?:[\s(:.]|$)'  # #677: any role's ids
 FIELDS = r'(?:File|Location|Scenario|Severity|blocks?|Probe|Mutation):'
 HEADING = r'^\s*(?:#{1,6}\s+(.+?)|([A-Za-z][\w ()/-]*):)\s*$'  # #665: a section heading
+FINDINGS_TITLE = r'(?:(?:non-)?blocking |ZIRAN )?findings'
+FINDINGS_HEADING = r'^\s*(?:#{1,6}\s+)?' + FINDINGS_TITLE + r':?\s*$'
 FORMAT = {  # #665: the one verdict format; agents build renders section() into the sentinel agents
     'Verdict': ('`Verdict: PASS|FIX|PARK|ESCALATE`, once', 'Verdict: FIX'),
     'Head': ('`Head: <7 to 40 hex>`, the sha you reviewed, once', 'Head: 3f1c2ab'),
@@ -52,7 +53,8 @@ FORMAT = {  # #665: the one verdict format; agents build renders section() into 
 def section():
     """The sentinel agents' verdict section, rendered from FORMAT (#665)."""
     rows = ''.join(f'- {key}: {form}\n' for key, (form, _) in FORMAT.items())
-    example = ''.join(line + '\n' for _, line in FORMAT.values())
+    example = ''.join(('## Findings\n' if key == 'Finding' else '') + line + '\n'
+                      for key, (_, line) in FORMAT.items())
     return ('## Verdict format\n\nWrite these lines; the verdict lint checks them.\n\n' + rows
             + '\nAn example the lint accepts:\n\n```text\n' + example + '```\n')
 
@@ -99,9 +101,24 @@ def retro_fields(text):
 
 def finding_blocks(text):
     blocks, current, findings = [], [], False
+    section_level = None
     for line in text.splitlines():
-        start = re.match(r'^\s*(?:#{1,6}\s+|[-*+]\s+|\|\s*)?\[?'
-                         + SEVERITY, line, re.I)
+        section = re.match(r'^\s*(#{1,6})\s+(.+?)\s*$', line)
+        label = re.match(r'^\s*(' + FINDINGS_TITLE + r'|Evidence|Probes?|Residual risks?|Assumptions?):?\s*$',
+                         line, re.I)
+        if label or section and (section_level is None or len(section[1]) <= section_level):
+            if current:
+                blocks.append('\n'.join(current))
+                current = []
+            title = label[1] if label else section[2]
+            section_level = ((2 if label else len(section[1]))
+                             if re.fullmatch(FINDINGS_TITLE, title, re.I) else None)
+            findings = section_level is not None
+            continue
+        if section_level is None:
+            continue
+        start = re.match(r'^\s*(?:#{1,6}\s+|[-*+]\s+|\|\s*)?\[?(?:'
+                         + SEVERITY + '|' + FINDING_ID + ')', line, re.I)
         explicit = re.match(r'^\s*(?:Severity:\s*' + SEVERITY + r'|(?:[-*+]\s+)?Assumption:)', line, re.I)
         # #665: a numbered line is a finding under a Findings heading, or when a severity or
         # an id leads it or it carries blocks:; a numbered list elsewhere is prose.
@@ -110,7 +127,7 @@ def finding_blocks(text):
         numbered = re.match(r'^\s*(?:\d+[.)]\s+' + lead + '|' + FINDING_ID + ')', line, re.I)
         heading = (not (start or numbered) and re.match(HEADING, line)
                    and not re.match(r'^\s*' + FIELDS, line, re.I))
-        if heading:
+        if heading and not section:
             findings = bool(re.search(r'findings?\b', line, re.I))
         # Table rows can put a finding ID before the severity. Evidence-bearing
         # bullets also start a finding when their severity was accidentally omitted.
@@ -137,6 +154,22 @@ def finding_blocks(text):
     if current:
         blocks.append('\n'.join(current))
     return blocks
+
+
+def has_failure_scenario(block):
+    """A finding needs descriptive prose, without prescribing its opening words."""
+    # ponytail: prose shape cannot prove a failure; require a dedicated field if false positives appear.
+    for line in block.splitlines():
+        if re.match(r'^\s*(?:File|Location|Severity|blocks?|Probe|Mutation|Fix):', line, re.I):
+            continue
+        line = re.sub(CITATION + '|' + BLOCKS + '|' + SEVERITY + '|' + FINDING_ID,
+                      ' ', line, flags=re.I)
+        line = re.sub(r'\b(?:Failure scenario|Scenario|Assumption):|^[\s#*+|.:-]+', ' ', line,
+                      flags=re.I)
+        if len(re.findall(r'[A-Za-z]+', line)) >= 3 or (re.search(r'[A-Za-z]', line)
+                                                      and line.strip().endswith(('.', '!', '?'))):
+            return True
+    return False
 
 
 CI_ROW = re.compile(r'^[ \t]*(?:[-*+][ \t]+)?CI step (\d+):[ \t]*(PASS|FAIL|NOT RUN)\b[ \t]*\S', re.I | re.M)
@@ -169,15 +202,21 @@ def lint(text, *, quality=False, class_sweep=False, light=False, steps=()):
     elif len(lines := re.findall(r'^(?:## |- )?Verdict(?:[: \t]|$).*$', text, re.M)) != 1:
         failures.append('expected exactly one Verdict: line' + _fix('Verdict', '; '.join(lines[1:])))
 
+    blocks = finding_blocks(text)
+    finding_text = '\n'.join(blocks)
+    has_section = re.search(FINDINGS_HEADING, text, re.I | re.M)
     # Keep the production refusals in their original order before added checks.
-    if verdict and verdict != 'PASS':
+    if verdict and verdict != 'PASS' and not has_section:
+        failures.append('list findings under a `## Findings` heading')
+    elif verdict and verdict != 'PASS':
         for pattern, message in (
             (CITATION, f'{verdict} verdict names no file:line (or Lnn for docs)'),
             (BLOCKS + '|blocking', 'no per-finding blocks yes/no'),
-            (SCENARIO, 'no failure scenario stated'),
         ):
-            if not re.search(pattern, text, re.I):
+            if not re.search(pattern, finding_text, re.I):
                 failures.append(message)
+        if not any(has_failure_scenario(block) for block in blocks):
+            failures.append('no failure scenario stated')
     if not light and not re.search(r'^(?:Probes?|Mutation):[ \t]*\S[^\n]*$', text, re.M | re.I):
         failures.append("no mutation/probe line (say 'not run' if the seat could not run them)")
     if not light and (class_sweep or quality) and not re.search(CLASSES, text):
@@ -192,25 +231,28 @@ def lint(text, *, quality=False, class_sweep=False, light=False, steps=()):
         elif key in invalid:
             failures.append(f"retro note has duplicate '{key}:' lines")
 
-    blocks = finding_blocks(text)
     blocking = [block for block in blocks if re.search(BLOCKS_YES, block, re.I)]
     if verdict == 'PASS' and blocking:
         failures.append('PASS verdict carries a blocking finding'
                         + _fix('Verdict', blocking[0].splitlines()[0]) + ', or blocks: no')
-    if verdict == 'FIX' and not blocking:
-        lines = [line.strip() for line in text.splitlines() if re.search(BLOCKS_YES, line, re.I)]
+    elif verdict == 'PASS' and re.search(BLOCKS_YES, text, re.I):
+        failures.append('PASS verdict carries a blocking line outside parsed findings; '
+                        'move it under ## Findings or write blocks: no')
+    if verdict == 'FIX' and has_section and not blocking:
+        lines = [line.strip() for line in finding_text.splitlines() if re.search(BLOCKS_YES, line, re.I)]
         failures.append('FIX verdict but no blocking finding parsed; the lines that look like '
                         f'findings are: {"; ".join(lines) or "none"} (start each finding with its '
                         'severity or an id such as F1, Q1 or Finding 1, or list it under a Findings '
                         'heading; write Verdict: PASS when none blocks)')
-    if verdict and verdict != 'PASS' and not blocks:
+    if verdict and verdict != 'PASS' and has_section and not blocks:
         failures.append('no finding with severity (P0-P3, critical, high, medium, low or info)'
                         + _fix('Finding'))
     for number, block in enumerate(blocks, 1):
         missing = [field for pattern, field in ((r'\b' + SEVERITY, 'severity'),
-                                                (CITATION, 'file:line'), (BLOCKS, 'blocks yes/no'),
-                                                (SCENARIO, 'failure scenario'))
+                                                (CITATION, 'file:line'), (BLOCKS, 'blocks yes/no'))
                    if not re.search(pattern, block, re.I)]
+        if not has_failure_scenario(block):
+            missing.append('failure scenario')
         if missing:
             failures.append(f'finding {number}: missing {", ".join(missing)}'
                             + _fix('Finding', block.splitlines()[0]))
