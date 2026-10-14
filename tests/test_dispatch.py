@@ -142,6 +142,86 @@ def test_931_receive_refuses_pass_with_blocker_outside_findings(root):
     assert state.read_state(root)['gate_verdicts'] == {}
 
 
+def test_receive_wrong_round_names_expected_delta(root):
+    record(root, 'arch', 'arch-1', PASS)
+    state.transition('A', 'fix', root)
+    state.transition('A', 'delta', root)
+    with pytest.raises(dispatch.Refused, match='expected --round delta'):
+        dispatch.receive('A', 'arch', 'arch-1', root=root)
+
+
+def test_gate_round_for_seat_resolves_late_initial(root):
+    state.transition('A', 'fix', root)
+    state.transition('A', 'delta', root)
+    assert dispatch.gate_round_for_seat(state.read_state(root), 'A', 'sentinel-arch') == ('arch', 'initial')
+    state._write_state(lambda data: data['gate_verdicts'].update({'A:arch:initial': {'verdict': 'PASS'}}), root)
+    assert dispatch.gate_round_for_seat(state.read_state(root), 'A', 'sentinel-arch') == ('arch', 'delta')
+
+
+def test_gate_stop_receives_its_verdict(root, monkeypatch):
+    from wuwei.guards import agent_launch
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'briefs/arch-1.md').write_text('Head: abc1234\n')
+    (directory / 'decisions/gate-arch-1.md').write_text(PASS)
+    state._write_state(lambda data: data['seats'].update({'arch-1': {
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running',
+        'brief': str((directory / 'briefs/arch-1.md').relative_to(root))}}), root)
+    monkeypatch.setattr(agent_launch, '_unbriefed_stop', lambda payload, root: False)
+    monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (directory, 'arch-1', 'sentinel-arch'))
+    monkeypatch.setattr('wuwei.brief.stop_text', lambda payload: 'done')
+    code, message = agent_launch.stop({'cwd': str(root), 'agent_type': 'wuwei:sentinel-arch'})
+    assert (code, message) == (0, '')
+    assert state.read_state(root)['gate_verdicts']['A:arch:initial']['verdict'] == 'PASS'
+
+
+def test_gate_stop_receives_corrected_verdict_after_lint_failure(root, monkeypatch):
+    from wuwei.guards import agent_launch
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'briefs/arch-1.md').write_text('Head: abc1234\n')
+    verdict = directory / 'decisions/gate-arch-1.md'
+    verdict.write_text('bad verdict\n')
+    state._write_state(lambda data: data['seats'].update({'arch-1': {
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running',
+        'brief': str((directory / 'briefs/arch-1.md').relative_to(root))}}), root)
+    monkeypatch.setattr(agent_launch, '_unbriefed_stop', lambda payload, root: False)
+    monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (directory, 'arch-1', 'sentinel-arch'))
+    monkeypatch.setattr('wuwei.brief.stop_text', lambda payload: 'done')
+    payload = {'cwd': str(root), 'agent_type': 'wuwei:sentinel-arch'}
+    assert agent_launch.stop(payload)[0] == 2
+    assert state.read_state(root)['seats']['arch-1']['status'] == 'stopped'
+    assert agent_launch.stop({**payload, 'stop_hook_active': True}) == (0, '')
+    assert 'A:arch:initial' not in state.read_state(root)['gate_verdicts']
+    verdict.write_text(PASS)
+    assert agent_launch.stop({**payload, 'stop_hook_active': True}) == (0, '')
+    assert state.read_state(root)['gate_verdicts']['A:arch:initial']['verdict'] == 'PASS'
+
+
+def test_gate_stop_allows_blocked_retry_when_round_is_closed(root, monkeypatch):
+    from wuwei.guards import agent_launch
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'briefs/arch-1.md').write_text('Head: abc1234\n')
+    (directory / 'decisions/gate-arch-1.md').write_text(PASS)
+    state._write_state(lambda data: data['seats'].update({'arch-1': {
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running',
+        'brief': str((directory / 'briefs/arch-1.md').relative_to(root))}}), root)
+    state.transition('A', 'raised', root)
+    monkeypatch.setattr(agent_launch, '_unbriefed_stop', lambda payload, root: False)
+    monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (directory, 'arch-1', 'sentinel-arch'))
+    monkeypatch.setattr('wuwei.brief.stop_text', lambda payload: 'done')
+    payload = {'cwd': str(root), 'agent_type': 'wuwei:sentinel-arch'}
+    code, message = agent_launch.stop(payload)
+    assert code == 2 and 'no open gate round' in message
+    assert agent_launch.stop({**payload, 'stop_hook_active': True}) == (0, '')
+    assert state.read_state(root)['seats']['arch-1']['status'] == 'stopped'
+    assert 'A:arch:initial' not in state.read_state(root)['gate_verdicts']
+
+
 @pytest.mark.parametrize('line, warnings', [('Written: 2099-01-01T00:00:00+00:00\n', 2),
                                             ('Written: 2000-01-01T00:00:00+00:00\n', 0), ('', 0)])
 def test_receive_warns_on_scratch_evidence_older_than_its_brief(root, capsys, line, warnings):

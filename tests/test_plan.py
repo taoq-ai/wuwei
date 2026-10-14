@@ -1255,6 +1255,28 @@ def test_plan_resume_continues_from_the_build_record(root, monkeypatch, capsys, 
     assert row['fix_heads'] == [['a' * 40, 'b' * 40 if resumed == 'delta' else None]]
 
 
+def test_plan_resume_delivers_feedback_queued_while_build_parked(root, monkeypatch):
+    from wuwei.commands import build
+    parked_day(root, monkeypatch)
+    plan.park('A', 'builder blocked', root)
+    tree = root / 'tree'
+    tree.mkdir()
+    brief = workspace.day_dir(root) / 'briefs/builder.md'
+    brief.parent.mkdir(exist_ok=True)
+    brief.write_text('Build A.\n')
+    state._write_state(lambda data: data.setdefault('builds', {}).update(A={
+        'status': 'parked', 'action': {'action': 'park', 'reason': 'builder blocked'},
+        'brief': str(brief.relative_to(root)), 'worktree': str(tree)}), root)
+    assert build.supplement('A', 'New review finding', root=root)['delivery'] == 'queued for the next round'
+    monkeypatch.setattr('wuwei.sessions.needs_owner', lambda *args, **kwargs: None)
+    monkeypatch.setattr('wuwei.derive.head', lambda *args: 'a' * 40)
+    plan.resume('A', root)
+    record = state.read_state(root)['builds']['A']
+    assert record['status'] == 'ready'
+    assert 'New review finding' in record['action']['feedback']
+    assert 'pending_feedback' not in record
+
+
 def candidate(name='NEW', track='SLICE'):
     return {
         'id': name, 'goal': 'G-1', 'track': track, 'evidence': 'tracker item',

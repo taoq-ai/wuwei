@@ -944,11 +944,14 @@ def resume(item, root=None):
     # #904: a parked build moves on with the item: an environment park rechecks, any other
     # park continues the builder once; an unchanged failure parks again
     parked = (record.get('action') or {}).get('reason', '') if record.get('status') == 'parked' else None
+    pending = record.get('pending_feedback', '')
     if parked is not None:
-        parked = ({'status': 'check', 'action': build.recheck(item, record)} if parked.startswith('environment:')
-                  else {'status': 'ready', 'action': build._continue(root, record, (
-                      f'The owner resumed {item} after its park: {parked}. Run the fast checks, fix what '
-                      'fails and commit.'))})
+        resume_text = (f'The owner resumed {item} after its park: {parked}. Run the fast checks, '
+                       'fix what fails and commit.')
+        parked = ({'status': 'check', 'action': build.recheck(item, record)}
+                  if parked.startswith('environment:') and not pending else
+                  {'status': 'ready', 'action': build._continue(root, record,
+                   build._join_feedback(resume_text, pending))})
 
     def update(fresh):
         current = fresh['items'][item]
@@ -956,6 +959,7 @@ def resume(item, root=None):
             raise state.StateError(f'{item} changed during plan resume; run bin/wuwei plan resume {item} again')
         if parked:
             fresh['builds'][item] = {**record, **parked}
+            fresh['builds'][item].pop('pending_feedback', None)
         after = build.AFTER.get(current['resume_phase'])
         current.update(phase=current['resume_phase'], status='queued')
         if after and (fresh.get('builds', {}).get(item) or {}).get('status') == 'done':

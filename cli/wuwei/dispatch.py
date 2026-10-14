@@ -1,5 +1,6 @@
 """Planner decisions from recorded seats and gate verdicts."""
 
+import hashlib
 import itertools
 import os
 from pathlib import Path
@@ -250,6 +251,19 @@ def gate_set(row):
             or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', str(second.get('model')))):
         raise ValueError(f'invalid recorded gate set; {DAMAGED}')
     return (*roles, f"{second['role']}@{second['runtime']}")
+
+
+def gate_round_for_seat(data, item, role, runtime=None):
+    """The gate and open round for a sentinel seat, including a late initial gate."""
+    row = data['items'][item]
+    gate = next((gate for gate in gate_set(row)
+                 if base(gate) == role.removeprefix('sentinel-')
+                 and (runtime is None or gate.partition('@')[2] == runtime)), None)
+    round_name = {'gate': 'initial', 'delta': 'delta'}.get(row['phase'])
+    if (round_name == 'delta' and gate is not None
+            and f'{item}:{gate}:initial' not in data['gate_verdicts']):
+        round_name = 'initial'
+    return gate, round_name
 
 
 def base(gate):
@@ -1542,17 +1556,31 @@ def receive(item, role, name, round_name='initial', root=None):
         raise Refused(f'gate role {role} is not in the item gate set; use one of {", ".join(gates)}')
     sentinel = 'sentinel-' + base(role)
     key = f'{item}:{role}:{round_name}'
+    _, expected_round = gate_round_for_seat(data, item, sentinel, role.partition('@')[2] or None)
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
+        raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
+    directory = workspace.day_dir(root)
+    path = directory / 'decisions' / f'gate-{name}.md'
+    if path.is_symlink():
+        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
+    replaced = data['gate_verdicts'].get(key)
+    same_receipt = (replaced is not None and
+                    (data['items'][item]['phase'] == ('gate' if round_name == 'initial' else 'delta')
+                     or replaced.get('late'))
+                    and replaced.get('file') == str(path.relative_to(root))
+                    and path.is_file() and replaced.get('source_sha256') == hashlib.sha256(path.read_bytes()).hexdigest())
     # #902: a gate with no initial verdict in delta reads the current head first (decide)
-    late = round_name == 'initial' and data['items'][item]['phase'] == 'delta' and key not in data['gate_verdicts']
+    late = round_name == 'initial' and data['items'][item]['phase'] == 'delta' and expected_round == 'initial'
     review = data['items'][item].get('kind') == 'review'
-    if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta') and not late:
-        raise Refused(f'gate round does not match item phase {data["items"][item]["phase"]};run bin/wuwei dispatch next {item} for the right round')
+    if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta') and not late and not same_receipt:
+        expected = expected_round
+        raise Refused(f'gate round {round_name} does not match item phase {data["items"][item]["phase"]}; '
+                      + (f'expected --round {expected}; ' if expected else '')
+                      + f'run bin/wuwei dispatch next {item} for the right round')
     if round_name == 'delta':
         first = _record(data, item, role, 'initial')
         if first is None or not rechecks(data, item, role, root):
             raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
-        raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
     seat = brief.seats(data).get(name)
     if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
         raise Refused('matching sentinel must stand down before receive; wait for the seat to stop, then rerun the same bin/wuwei dispatch receive')
@@ -1564,13 +1592,10 @@ def receive(item, role, name, round_name='initial', root=None):
     from wuwei import derive  # #844: a stale receipt (its head moved) is replaced by the re-read
     row = data['items'][item]
     now = derive.head(Path(root) / row['worktree']) if row.get('worktree') else None
-    replaced = data['gate_verdicts'].get(key)
     if replaced is not None and derive.counted(root, row, replaced, now) is not None:
+        if same_receipt:
+            return replaced  # the stop hook already received this exact file
         raise Refused(f'gate already received; run bin/wuwei dispatch next {item} for what remains')
-    directory = workspace.day_dir(root)
-    path = directory / 'decisions' / f'gate-{name}.md'
-    if path.is_symlink():
-        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
     code, message = verdict.lint_file(path, role=sentinel, root=root)
     if code == 2:
         raise OSError(message)
@@ -1641,6 +1666,7 @@ def receive(item, role, name, round_name='initial', root=None):
     value = {'item': item, 'role': role, 'round': 'delta' if late else round_name, **({'late': True} if late else {}),
              'verdict': result,
              'head': head, 'file': str(path.relative_to(root)),
+             'source_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
              'blocks': any(re.search(verdict.BLOCKS_YES, block, re.I) for block in blocks),
              'notes': notes, 'findings': [block.strip() for block in blocks],
              'usage': seat.get('usage') or _seat_usage(seat, data['seat_policy'].get(sentinel, {}))}
