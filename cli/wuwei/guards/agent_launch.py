@@ -516,8 +516,8 @@ def stop(payload):
             path = directory / 'decisions' / f'gate-{name}.md'
             if path.exists() or path.is_symlink():
                 from wuwei import dispatch
-                gate, round_name = dispatch.gate_round_for_seat(data, item, role, reserved.get('runtime'))
                 try:
+                    gate, round_name = dispatch.gate_round_for_seat(data, item, role, reserved.get('runtime'))
                     if round_name is None:
                         raise ValueError(f'item {item} has no open gate round; run bin/wuwei dispatch next {item}')
                     if gate is None:
