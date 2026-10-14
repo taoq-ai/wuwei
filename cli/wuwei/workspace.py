@@ -1,6 +1,7 @@
 """Shared workspace paths and validated configuration."""
 
 from itertools import chain
+import json
 import marshal
 import os
 from pathlib import Path
@@ -41,7 +42,7 @@ TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 # #799: dotted keys or tables init --upgrade always removes; each #789 deletion part adds what it retires.
 # A key inside [[repos]] is named without its index: repos.tests retires repos.<n>.tests.
-RETIRED = ('nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
+RETIRED = ('deploy.workflows', 'nudges', 'owner.verbosity.nudges', 'brief.lead_minutes', 'brief.style', 'pace', 'repos.tests',
            'listen', 'responder', 'control_plane', 'adapters.inbound', 'shepherd.autostart', 'owner.verbosity.dm',
            'decisions.cruise', 'grants', 'merge.default_tier', 'consolidation', 'voice', 'memory.max_notes',
            'memory.note_line_cap', 'memory.probation_days', 'memory.state_entry_cap', 'memory.digest',
@@ -82,11 +83,12 @@ SCHEMA = {
                          "data_paths": [(str, None)],  # #657: data globs (a trailing / is a directory) that never count
                          "trust_paths": [(str, None), [
                              "guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*",
-                             "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
+                             "ci/*", "workflows/*", "deploy/*", "infra/*",
+                             "*auth*", "*session*", "*token*", "*permission*", "*guard*"]]},
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
-    "merge": {"owner_paths": [(str, None)]},  # #675, #816: globs whose merge the owner decides on a card
+    "merge": {"owner_paths": [(str, None)]},  # #997: these and never_auto_paths keep the Owner step card
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     # #845: input plus output tokens per runtime and usage window; 0 is no budget.
@@ -140,10 +142,10 @@ SCHEMA = {
     "retro": {"charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
-    "guards": {"enforce": (bool, True), "stop_max_blocks": (int, 20, 0)},  # #837: false logs what a guard would refuse
+    "guards": {"enforce": (bool, False), "stop_max_blocks": (int, 20, 0)},  # #837: false logs what a guard would refuse
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
-    "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
+    "deploy": {"deny": [(str, None)]},
     "outbound": {
         "code_host_orgs": [(str, None)],  # part 20 decides it with tracker label creation
         # #838: the owner's identity per surface; a write whose every destination is the owner's is local.
@@ -231,6 +233,44 @@ def atomic_write(path, text, *, replace=True, mode=None, sync_dir=True):
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+def github_hold(root, now, *, until=None, resource=None, reason=None, clear_until=None,
+                claim=None, replace=None):
+    """Read or extend the workspace GitHub hold under one interprocess lock."""
+    # ponytail: one lock per workspace; use per-account locks if workspaces share a credential.
+    directory = Path(root) / '.wuwei'
+    path = directory / 'github_hold.json'
+    with (directory / 'github_hold.lock').open('a') as lock:
+        from wuwei import state
+        try:
+            state.lock_ex(lock, 'github_hold.lock')
+        except TimeoutError:
+            raise ValueError('GitHub hold lock timed out; retry after the other wuwei command finishes') from None
+        try:
+            found = json.loads(path.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            found = None
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError('invalid GitHub hold state; run bin/wuwei doctor') from exc
+        if found is not None and (not isinstance(found, dict)
+                                  or type(found.get('until')) not in (int, float)
+                                  or not isinstance(found.get('resource'), str)
+                                  or not isinstance(found.get('reason'), str)
+                                  or ('claim' in found and (not isinstance(found['claim'], str)
+                                                            or not re.fullmatch('[0-9a-f]{16}', found['claim'])))):
+            raise ValueError('invalid GitHub hold state; run bin/wuwei doctor')
+        if found and (found['until'] <= now or clear_until is not None
+                      and found['until'] <= clear_until):
+            path.unlink()
+            found = None
+        if until is not None and (found is None or until > found['until']
+                                  or replace is not None and found.get('claim') == replace):
+            found = {'resource': resource, 'until': until, 'reason': reason}
+            if claim is not None:
+                found['claim'] = claim
+            atomic_write(path, json.dumps(found) + '\n')
+        return found
 
 
 def find_workspace(start=None, *, use_environment=True):

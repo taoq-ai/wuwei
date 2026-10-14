@@ -4,6 +4,7 @@ send, and a bare gh pr create for a recorded item. Nothing else is refused here,
 these guards cannot split is logged, never refused."""
 
 from fnmatch import fnmatchcase
+from itertools import dropwhile, takewhile
 import posixpath
 from pathlib import Path, PurePosixPath
 import re
@@ -14,30 +15,21 @@ from wuwei.shell import UNPARSED, _cwd
 
 
 VERBS = {
-    'kubectl': ('apply', 'create', 'replace', 'rollout', 'patch'),
-    'helm': ('install', 'upgrade', 'rollback'), 'terraform': ('apply', 'destroy'),
-    'tofu': ('apply', 'destroy'), 'pulumi': ('up', 'update'),
-    'netlify': ('deploy',), 'ntl': ('deploy',), 'fly': ('deploy', 'launch'),
-    'flyctl': ('deploy', 'launch'), 'docker': ('push',), 'podman': ('push',),
+    'kubectl': ('apply', 'create', 'replace', 'rollout', 'patch', 'delete'),
+    'helm': ('install', 'upgrade', 'rollback', 'uninstall'),
+    'terraform': ('apply', 'destroy'), 'tofu': ('apply', 'destroy'),
+    'pulumi': ('up', 'update', 'destroy', 'apply'),
 }
-CLOUD_VERBS = {'deploy', 'deployment', 'deployments', 'create-deployment',
-               'create-stack', 'update-stack', 'execute-change-set',
-               'update-function-code', 'update-service', 'up', 'start-deployment'}
-PROGRAMS = ('git', 'gh', *VERBS, 'vercel', 'vc', 'gcloud', 'aws', 'az')
-# Target-dependent actions stay with the hook.
+PROGRAMS = ('gh', *VERBS, 'vercel', 'vc', 'netlify', 'ntl', 'fly', 'flyctl', 'gcloud', 'aws', 'az')
+# Hosting project changes are infrastructure; application deployments are not (#997).
 VERCEL_DENY = [f'Bash({binary}{suffix})'
                for binary in ('vercel', 'vc')
-               for suffix in ('', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*',
-                              ' rollback*', ' redeploy*', ' alias set*', ' alias rm*',
-                              ' domains add*', ' env add*', ' env rm*', ' env pull*',
-                              ' pull*')]
+               for suffix in (' alias set*', ' alias rm*', ' domains add*', ' domains rm*',
+                              ' env add*', ' env rm*', ' env update*', ' project add*',
+                              ' project rm*', ' project update*', ' env pull*', ' pull*')]
 PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
-    'helm upgrade*', 'pulumi up*', 'netlify deploy*',
-    'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
-    'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
-    'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
-    'gh pr merge * --admin*')] + VERCEL_DENY
+    'helm upgrade*', 'pulumi up*', 'gh pr merge * --admin*')] + VERCEL_DENY
 SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 # Design 4.5: wrappers that run the rest of the line, and their options that take a value.
 WRAPPERS = {'command': (), 'exec': ('-a',), 'nohup': (), 'nice': ('-n', '--adjustment'),
@@ -330,12 +322,37 @@ def _recorded(root, config, *, path=None, repo=None, branch=None):
     return None
 
 
-def _merge(pr, admin=False):
-    """Each reason starts with a guards.MERGE prefix: the floor."""
+def _merge(pr, root, cwd, config, admin=False, repo=None):
+    """Owned PRs use the journaled merge path; admin bypasses stay owner-only."""
+    from wuwei import merge, registry, state
+    data = state.read_state(root)
+    owned = set(data['raised_prs'] + data['claimed_prs'])
+    target = pr
+    if owned and (pr.startswith('<owner/repo>#') or '#' not in pr):
+        names = [repo] if repo else merge.configured(root, config, cwd)
+        if pr.startswith('<owner/repo>#') and not pr.endswith('#<pr>'):
+            matches = [ref for ref in owned if ref.rsplit('#', 1)[0] in names
+                       and ref.rsplit('#', 1)[1] == pr.rsplit('#', 1)[1]]
+        else:
+            branch = pr if '#' not in pr else registry.data(
+                registry.load('vcs', config).branch(str(cwd), root=root)).get('name')
+            matches = [row['pr'] for row in data['items'].values()
+                       if row.get('pr') in owned and row['pr'].rsplit('#', 1)[0] in names
+                       and row.get('branch') == branch]
+            for name in names:
+                linked = _recorded(root, config, repo=name, branch=branch)
+                if linked and data['items'][linked[0]].get('pr') in owned:
+                    matches.append(data['items'][linked[0]]['pr'])
+        if len(set(matches)) == 1:
+            target = matches[0]
+    if target in owned:
+        return 1, (f'merge policy: WUWEI-owned PR {target} must keep its journal, cap, breaker '
+                   f'and gate checks; run bin/wuwei merge {target}; it merges without a card '
+                   'when the gates and CI are green')
     if admin:
         return 1, f'admin merge is refused; run bin/wuwei merge {pr}, which never uses --admin'
     return 1, (f'merge policy: a PR merges only through bin/wuwei merge {pr}; it checks the policy '
-               'at the head and asks the Owner step card when the owner decides')
+               'at the head with green gates and required checks')
 
 
 def _approve(pr):
@@ -423,6 +440,8 @@ def _api_edge(args, cwd, root, config):
     """The edge an API write reaches, decided before the body scan (review F1)."""
     from urllib.parse import unquote, urlsplit
     from wuwei.security import gh_outbound
+    if api(args, config)[0]:
+        return 1, 'repository settings change is owner-only; ask the Owner step card for this command'
     words, values = _scan(args, GH_VALUED)
     operands = [word for word in words if not word.startswith('-')]
     if not operands:
@@ -434,9 +453,13 @@ def _api_edge(args, cwd, root, config):
     method = (_last(values, '-X', '--method') or ('POST' if fields or '--input' in values else 'GET')).upper()
     writes = method not in ('GET', 'HEAD', 'OPTIONS')
     if writes:
+        if re.fullmatch(r'repos/[^/]+/[^/]+(?:/(?:collaborators|hooks|keys|'
+                        r'actions/(?:secrets|variables|permissions)|transfer|'
+                        r'branches/.+/rename|environments)(?:/.*)?)?', endpoint, re.I):
+            return 1, 'repository settings change is owner-only; ask the Owner step card for this command'
         match = re.fullmatch(r'repos/([^/]+/[^/]+)/(?:pulls/(\d+)/merge|merges)', endpoint, re.I)
         if match:
-            return _merge(_pr(match[2], match[1]))
+            return _merge(_pr(match[2], match[1]), root, cwd, config)
         if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
                 or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
             return 1, ("branch protection changes are refused; the protected base branch is the owner's; "
@@ -450,11 +473,15 @@ def _api_edge(args, cwd, root, config):
     return gh_outbound(args, cwd, root, api=True, text_write=writes)
 
 
-def _gh_edge(argv, cwd, root, config):
+def _gh_edge(argv, cwd, root, config, env=None):
     """The pr edges first, then the body scan of a text write (review F1)."""
     from wuwei.security import gh_outbound
     repo, args = _gh(argv[1:])
     family, verb = (args + ['', ''])[:2]
+    if (family == 'repo' and (verb in ('edit', 'delete', 'archive', 'rename')
+                             or verb == 'deploy-key' and args[2:3] in (['add'], ['delete']))
+            or family in ('secret', 'variable') and verb in ('set', 'delete')):
+        return 1, 'repository settings change is owner-only; ask the Owner step card for this command'
     if family == 'api':
         return _api_edge(args[1:], cwd, root, config)
     text_write = (family == 'pr' and verb in ('comment', 'create', 'edit', 'review', 'merge')
@@ -466,7 +493,10 @@ def _gh_edge(argv, cwd, root, config):
     operands = [word for word in words if not word.startswith('-')]
     pr = _pr(operands[0] if operands else None, repo)
     if verb == 'merge':
-        return _merge(pr, admin=any(word == '--admin' or word.startswith('--admin=') for word in words))
+        import os
+        return _merge(pr, root, cwd, config,
+                      admin=any(word == '--admin' or word.startswith('--admin=') for word in words),
+                      repo=repo or (env or {}).get('GH_REPO') or os.environ.get('GH_REPO'))
     if verb == 'review' and any(word == '--approve' or word.startswith('--approve=')
                                 or re.fullmatch(r'-[a-zA-Z]*a[a-zA-Z]*', word) for word in words):
         return _approve(pr)
@@ -501,16 +531,42 @@ def check_bash(payload):
         except ValueError:
             return 2, UNPARSED
         config = workspace.load_config(root)
+        advisory = (0, '')
         exported = {}  # K2: an exported GIT_DIR or GIT_WORK_TREE reaches the later git push
         for argv, env, cwd in found:
             program = PurePosixPath(argv[0]).name
             if program == 'export':
                 exported.update(word.split('=', 1) for word in argv[1:] if '=' in word)
             result = (_git_edge(argv[1:], cwd, root, config, {**exported, **env}) if program == 'git'
-                      else _gh_edge(argv, cwd, root, config) if program == 'gh' else (0, ''))
+                      else _gh_edge(argv, cwd, root, config, {**exported, **env}) if program == 'gh' else (0, ''))
             if result[0]:
-                return result
-        return 0, ''
+                from wuwei.guards import MERGE, floor
+                # These early edge results precede _gh_edge's body scan. Other results
+                # already scanned it, including its single security event.
+                if program == 'gh' and result[1].startswith(('merge policy', 'PR approval', *MERGE)):
+                    from wuwei.security import gh_outbound
+                    _, args = _gh(argv[1:])
+                    protected = gh_outbound(args[1:] if args[:1] == ['api'] else argv,
+                                            cwd, root, api=args[:1] == ['api'], text_write=True)
+                    if protected[0]:
+                        if floor(check_bash, protected[1]):
+                            return protected
+                        if floor(check_bash, result[1]):
+                            result = protected[0], result[1] + '; ' + protected[1]
+                        else:
+                            result = protected
+                if result[1].startswith(('admin merge', 'branch protection', 'repository settings')):
+                    from wuwei import sessions
+                    from wuwei.commands.hook import redacted_target
+                    reason = sessions.needs_owner(root, ' '.join(redacted_target(payload, root).split()), result[1])
+                    if reason is None:
+                        continue
+                    return result[0], result[1] + '; ' + reason
+                if floor(check_bash, result[1]):
+                    return result
+                if not advisory[0]:
+                    advisory = result
+        return advisory
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return 2, f'edges guard could not run: {exc}'
 
@@ -520,51 +576,18 @@ def deny(rule, repo=None):
     return 1, (rule, repo)
 
 
-def environment(branch, config):
-    branch = branch.removeprefix('refs/heads/')
-    return any(fnmatchcase(branch, pattern) for pattern in config['environments'])
-
-
-def workflow(target, config, repo=None):
-    if not target:
-        return 0, ''
-    marked = config['deploy']['workflows']
-    if any(target == item or PurePosixPath(target).name == PurePosixPath(item).name
-           for item in marked):
-        return deny('deploy.workflows', repo)
-    # #478: a name or ID that may be a marked workflow is a deploy the owner decides.
-    if marked and (not target.endswith(('.yml', '.yaml')) or
-                   any(not item.endswith(('.yml', '.yaml')) for item in marked)):
-        return deny('deploy.workflows', repo)
-    return 0, ''
-
-
-def git(args, config):
-    verb, rest = _git(args)
-    if verb != 'push':
-        return 0, ''
-    if any(arg in ('--tags', '--follow-tags', '--mirror', 'tag') or 'refs/tags/' in arg for arg in rest):
-        return deny('tag push')
-    for target in _pushed(rest):
-        if environment(target, config):
-            return deny('environment branch push')
-        if re.fullmatch(r'v?\d+\.\d+.*', target):
-            return deny('tag push')
-    return 0, ''
-
-
 def api(args, config):
     from urllib.parse import unquote, urlsplit
     words, options = _scan(args, GH_VALUED)
     targets = [word for word in words if not word.startswith('-')]
     paths = [unquote(urlsplit(target).path).strip('/').split('/') for target in targets]
     if len(targets) != 1:
-        if any('deployments' in parts or 'environments' in parts for parts in paths):
+        if any('environments' in parts for parts in paths):
             return deny('deployment/environment API')
         return 0, ''
     parts = paths[0]
     repo = '/'.join(parts[1:3]) if parts[0] == 'repos' and len(parts) > 2 else None
-    if 'deployments' in parts or 'environments' in parts:
+    if 'environments' in parts:
         # Unparsed short clusters can hide a method or field, for example -iXDELETE.
         if (any(value.upper() != 'GET' for key in ('-X', '--method') for value in options.get(key, []))
                 or any('override' in value.lower() for key in ('-H', '--header') for value in options.get(key, []))
@@ -572,36 +595,6 @@ def api(args, config):
                 or any(key in options for key in ('-f', '-F', '--field', '--raw-field', '--input'))):
             return deny('deployment/environment API', repo)
         return 0, ''
-    method = _last(options, '-X', '--method')
-    writes = method.upper() not in ('GET', 'HEAD') if method else any(
-        key in options for key in ('-f', '-F', '--field', '--raw-field', '--input'))
-    if 'dispatches' in parts and 'workflows' in parts:
-        return workflow(parts[parts.index('workflows') + 1], config, repo)
-    if ('rerun' in parts or 'rerun-failed-jobs' in parts) and config['deploy']['workflows']:
-        return deny('deploy.workflows', repo)
-    if writes and 'releases' in parts:
-        return deny('release API', repo)
-    if writes and ('refs' in parts or 'tags' in parts):
-        return deny('tag or branch ref API', repo)
-    if writes and 'merges' in parts and any(
-            value.startswith('base=') and environment(value[5:], config)
-            for key in ('-f', '-F', '--field', '--raw-field') for value in options.get(key, [])):
-        return deny('environment branch merge API', repo)
-    return 0, ''
-
-
-def gh(args, config):
-    repo, args = _gh(args)
-    if args[:2] == ['release', 'create']:
-        return deny('release create', repo)
-    if args[:1] == ['api']:
-        return api(args[1:], config)
-    if args[:2] == ['run', 'rerun']:
-        return deny('deploy.workflows', repo) if config['deploy']['workflows'] else (0, '')
-    if args[:2] in (['workflow', 'run'], ['workflow', 'rerun']):
-        words, _ = _scan(args[2:], ('-r', '--ref', '-f', '-F', '--field', '--raw-field'))
-        targets = [word for word in words if not word.startswith('-')]
-        return workflow(targets[0] if len(targets) == 1 else '', config, repo)
     return 0, ''
 
 
@@ -613,36 +606,58 @@ def command_result(argv, config):
     for pattern in config['deploy']['deny']:
         if fnmatchcase(text, pattern) or text.startswith(pattern + ' '):
             return deny(f'deploy.deny: {pattern}')
-    # Matching any argv verb is conservative and also catches global options.
     for verb in VERBS.get(program, ()):
         if verb in args:
             return deny(f'{program} {verb}')
     if program == 'kubectl' and any(args[i:i + 2] == ['set', 'image']
                                    for i in range(len(args) - 1)):
         return deny('kubectl set image')
-    if program in ('docker', 'podman') and 'build' in args:
-        for index, arg in enumerate(args):
-            if arg == '--push' or arg.startswith('--push='):
-                return deny(f'{program} build --push')
-            output = (args[index + 1] if arg in ('--output', '-o') and index + 1 < len(args)
-                      else arg.removeprefix('--output=') if arg.startswith('--output=')
-                      else arg[2:].lstrip('=') if arg.startswith('-o') else '')
-            if 'type=registry' in output.split(','):
-                return deny(f'{program} build registry output')
-    if program in ('vercel', 'vc') and (not args or args[0] not in (
-            'ls', 'list', 'inspect', 'logs', 'whoami', 'help', '--help', '--version')) and args[:2] != ['env', 'ls']:
-        return deny(f'{program} deployment')
-    if program in ('gcloud', 'aws', 'az') and CLOUD_VERBS.intersection(args):
-        return deny(f'{program} deployment')
-    if program == 'git':
-        return git(args, config)
-    if program == 'gh':
-        return gh(args, config)
+    if program in ('vercel', 'vc', 'netlify', 'ntl', 'fly', 'flyctl'):
+        if program in ('netlify', 'ntl'):
+            args = [part for arg in args for part in arg.split(':')]
+        # Options may precede the resource, so look for the adjacent resource and verb.
+        resources = {'alias', 'domains', 'dns', 'env', 'project', 'projects', 'sites',
+                     'secrets', 'volumes', 'ips', 'machines', 'apps', 'certs'}
+        writes = {'add', 'rm', 'remove', 'delete', 'set', 'create', 'update', 'destroy',
+                  'import', 'attach', 'detach', 'allocate', 'release', 'unset', 'move', 'transfer'}
+        if any(args[i] in resources and args[i + 1] in writes for i in range(len(args) - 1)):
+            return deny(f'{program} hosting settings')
+        if program in ('fly', 'flyctl') and any(
+                args[i] == 'scale' and args[i + 1] in ('count', 'memory', 'vm')
+                for i in range(len(args) - 1)):
+            return deny(f'{program} scale')
+    if program in ('gcloud', 'aws', 'az'):
+        # Application code delivery leaves resource configuration unchanged.
+        words, _ = _scan(args, ('--profile', '--region', '--endpoint-url', '--project',
+                               '--account', '--configuration', '--subscription',
+                               '--output', '--query', '--format', '--verbosity'))
+        # Leading global flags (--quiet, --no-cli-pager) come before the service words.
+        operations = list(takewhile(lambda word: not word.startswith('-'),
+                                    dropwhile(lambda word: word.startswith('-'), words)))
+        operation = operations[:2]
+        app = (program == 'gcloud' and operation in (
+                    ['run', 'deploy'], ['app', 'deploy'], ['functions', 'deploy'])
+               or program == 'aws' and (operation in (
+                    ['lambda', 'update-function-code'], ['deploy', 'create-deployment'])
+                   or operation == ['ecs', 'update-service'] and '--force-new-deployment' in args
+                   and not any(arg.startswith('--') and arg.split('=')[0] not in (
+                       '--cluster', '--service', '--force-new-deployment', '--region', '--profile',
+                       '--task-definition') for arg in args))
+               or program == 'az' and operation == ['webapp', 'deploy'])
+        if (program == 'gcloud' and operation in (['run', 'deploy'], ['functions', 'deploy'])
+                and any(arg.split('=')[0] in ('--allow-unauthenticated', '--service-account',
+                                             '--set-secrets') for arg in args)):
+            app = False
+        if not app and any(re.match(r'^(?:create|update|delete|destroy|apply|deploy|deployment|'
+                                    r'change|run-instances|terminate|put|set|add|remove|execute|authorize|revoke|attach|detach|'
+                                    r'modify|patch|rb|stop|reboot|scale|resize)(?:-|$)',
+                                    arg) for arg in operations):
+            return deny(f'{program} cloud resources')
     return 0, ''
 
 
 def check_deploy(payload):
-    """Design 4.7 by argv; the owner's Yes on the exact command's Owner step card runs it (#816)."""
+    """Infrastructure only: the exact command needs an Owner step card (#997)."""
     try:
         from wuwei import workspace
         root = workspace.guard_scope(payload)
@@ -670,14 +685,14 @@ def check_deploy(payload):
                 if reason := sessions.needs_owner(root, text, f'Run it from the session: {rule[0]}, '
                                                   'owner-only; it cannot be undone. '
                                                   'Only this exact command text is approved; run it alone.'):
-                    return 1, f'publish: {reason}'
+                    return 1, f'infrastructure: {reason}'
         return 0, ''
     except (ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
-        return 2, f'deploy guard could not run: {exc}'
+        return 2, f'infrastructure: deploy guard could not run: {exc}; run bin/wuwei doctor'
 
 
 def check_send(payload):
-    """#838: an MCP write is local, allowed (exactly on outward.allow) or refused; the canary
+    """#838: an MCP write is local, allowed by outward.allow or refused; the canary
     floor stays on every send. The MCP resolution it shares with the lint lives in outward."""
     from wuwei.guards.outward import _check
     return _check(payload, send=True)

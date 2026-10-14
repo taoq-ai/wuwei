@@ -221,7 +221,7 @@ def _host(root, config):
     elif not shutil.which('gh'):
         rows.append(_row('host', 'gh', 'fail', 'not on PATH', 'install the GitHub CLI, then gh auth login'))
     else:
-        result = registry.load('code_host', config).auth_status()
+        result = registry.load('code_host', config).auth_status(root=root)
         rows.append(_limited('host', 'gh', result.reason) or _row(
             'host', 'gh', ('ok', 'fail', 'unmeasured')[result.exit],
             'authenticated' if result.exit == 0 else result.reason,

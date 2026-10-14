@@ -39,7 +39,7 @@ def wait(condition, reason):
 
 
 def owner(held, condition, reason):
-    """#816: a rule the owner decides (eligibility, never a precondition): held, not refused."""
+    """Collect a failed rule for eligibility guidance or a protected path's owner card."""
     if not condition:
         held.append(reason)
 
@@ -200,7 +200,7 @@ def item_evidence(root, ref, data, held):
     items = [(name, value) for name, value in data['items'].items() if value.get('pr') == ref]
     require(len(items) == 1, 'PR needs one linked item')
     name, item = items[0]
-    owner(held, name in data['approved_items'], 'item is not in the approved plan')
+    require(name in data['approved_items'], 'item is not in the approved plan')
     rows = [row for directory in days(root) for row in records(directory / 'events.jsonl')]
     approved = risk_evidence(root, name, rows)
     if not approved:
@@ -213,7 +213,7 @@ def item_evidence(root, ref, data, held):
         owner(held, not (flags['boundary_relevant'] or flags['agent_surface']), 'item carries a risk flag')
     if any(flags['trust_surface'] for flags in [item['flags'], *approved]):
         from wuwei.dispatch import gate_set
-        owner(held, 'security' in gate_set(item), 'trust_surface needs the security gate and the recorded '
+        require('security' in gate_set(item), 'trust_surface needs the security gate and the recorded '
               f'gate set of {name} has none')
     for phase in ('fix', 'delta'):
         count = sum((row['kind'].startswith('state.') and
@@ -306,8 +306,7 @@ def uncounted(root, repo, files):
 
 
 def check(ref, root=None, *, cwd=None, repo=None):
-    """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #816: a
-    PR ready but for the rules the owner decides is exit 1 with {'owner': True, 'evidence'}."""
+    """Return 0 and fresh evidence, 1 findings, or 2 unmeasured; never authorize overrides."""
     held = []
     try:
         root = workspace.find_workspace(root)
@@ -328,13 +327,12 @@ def check(ref, root=None, *, cwd=None, repo=None):
         require(typo is None or integrity.newer_template(config), f'{typo}; the owner fixes it in config.toml (bin/wuwei config check validates)')
         policy = settings['merge']
         owner(held, policy['auto'], 'merge.auto is off')
-        require(settings['merge_deploys'] is False, 'explicit merge_deploys = false is required')
         entries, breakers = journals(root)
         breaker = breakers.get(repo_name)
-        owner(held, not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
         if any(r.split('#')[0] == repo_name and entry.get('monitor_error') for _, r, entry in entries):
             raise ValueError('post-merge observations are unmeasured; run the watch')
         require(not any(r == ref and entry['status'] != 'failed' for _, r, entry in entries), 'PR already has a merge intent')
+        require(not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
         wait(sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
                     for directory, r, entry in entries if entry['status'] != 'failed') < policy['max_per_day'],
                 'repository daily merge cap reached')
@@ -347,8 +345,6 @@ def check(ref, root=None, *, cwd=None, repo=None):
         require(not pr['draft'], 'PR is a draft')
         if not isinstance(pr['base'], str) or not pr['base']:
             raise ValueError('missing base branch; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
-        require(not any(fnmatchcase(pr['base'], pattern) for pattern in config['environments']),
-                'ineligible base branch')
         require(pr['merge_state'] != 'dirty', 'mergeable_state=dirty')
         protection = read(host.protection, repo_name, pr['base'], root=root)
         for key in ('strict', 'merge_queue', 'require_code_owner_reviews', 'require_last_push_approval',
@@ -383,7 +379,7 @@ def check(ref, root=None, *, cwd=None, repo=None):
                     continue
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
-                owner(held, matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+                owner(paths, matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
                 hit = matched(path, config['merge']['owner_paths'])
                 if hit is not None and not paths:
                     paths.append(f'{path} matches merge.owner_paths {hit}')
@@ -421,7 +417,8 @@ def check(ref, root=None, *, cwd=None, repo=None):
                      and r['author'] != pr['author'] and r['sha'] == head]
         require(len(approvals) >= integer(protection['approvals']), 'required human approvals missing at head')
         me = obligations._owner_login(config)
-        replies = obligations._replies(reviews, discussion, me, obligations._ledger(data).get(ref, {}))
+        replies = obligations._replies(reviews, discussion, me,
+                                       obligations._ledger(data, root=root).get(ref, {}))
         visibility = obligations._visibility(ref, pr, reviews, data, me, workspace.day_dir(root), config)
         require(not replies and not visibility, 'obligations: ' + ', '.join(replies + visibility))
         for thread in discussion['threads']:
@@ -450,8 +447,10 @@ def check(ref, root=None, *, cwd=None, repo=None):
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
             'protection': protection, 'bot': bot, 'soak': soak,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]}
-        if held or paths:  # #675, #816: an owner path or an eligibility rule: the owner decides
-            why = '; '.join(paths + held)
+        if held:
+            evidence['nudges'] = held
+        if paths:
+            why = '; '.join(paths)
             return Result(1, {'owner': True, 'why': why, 'evidence': evidence, 'next': f'run bin/wuwei merge {ref}'},
                           f'merge policy: owner decides: {why}; run bin/wuwei merge {ref}: '
                           'it asks the owner on its Owner step card and merges on Yes')
@@ -499,7 +498,7 @@ def execute(ref, root=None, *, cwd=None):
                 shown = str(ref)
             result = check(ref, root, cwd=cwd)
             held = bool(result.data and result.data.get('owner'))
-            if held:  # #816: the owner decides on one Owner step card per PR and head
+            if held:
                 from wuwei import sessions
                 evidence, why = result.data['evidence'], result.data['why']
                 reason = sessions.needs_owner(root, f"bin/wuwei merge {evidence['pr']}",

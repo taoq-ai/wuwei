@@ -562,10 +562,11 @@ def duties(root, config, directory=None, data=None):
     rows = [row for day in days for row in _rows(day)]
     found, seen = [], set()
 
-    def add(duty, item, prompt, record):
+    def add(duty, item, prompt, record, as_of=None):
         if (item, duty) not in seen:
             seen.add((item, duty))
-            found.append({'duty': duty, 'item': item, 'prompt': prompt, 'record': record})
+            found.append({'duty': duty, 'item': item, 'prompt': prompt, 'record': record,
+                          **({'as_of': as_of} if as_of is not None else {})})
 
     if config['adapters']['tracker'] != 'none':
         for item, duty, command in tracker.open_duties(rows):
@@ -586,6 +587,7 @@ def duties(root, config, directory=None, data=None):
                 'summary': config['outbound']['owner_channel'] != 'session'}
     on = {name for name in config['duties']['on'] if channels.get(name)}
     channel = config['shepherd']['review_channel']
+    current_pulls = listing(directory)['pulls']
     for index, day in enumerate(days):
         values = data if index == 0 and data is not None else state.read_state(directory=day)
         pulls = listing(day)['pulls']
@@ -595,9 +597,10 @@ def duties(root, config, directory=None, data=None):
             if row.get('kind') == 'review':
                 continue
             pr = row.get('pr')
-            pull = pulls.get(pr) or {}
+            pull = current_pulls.get(pr) or pulls.get(pr) or {}
             merged = row['phase'] == 'merged' or pull.get('state') == 'merged'
-            if 'ping' in on and pr and (name, 'ping') not in done and (pr, 'ping') not in done:
+            if ('ping' in on and pr and not merged and pull.get('state') != 'closed'
+                    and (name, 'ping') not in done and (pr, 'ping') not in done):
                 add('ping', name, f'Post the review request for {pr}'
                     + (f' to the review channel {channel}.' if channel else '.'),
                     f'wuwei pr ping {pr}' if channel else f'wuwei duty {name} ping --evidence <link>')
@@ -606,7 +609,7 @@ def duties(root, config, directory=None, data=None):
                 add('shepherd', name, f'Answer the review activity on {pr}: wuwei next launches the shepherd '
                     'seat once per revision; with none offered or running, run wuwei pr act and answer each '
                     'owed id with --thread <id> and --reply, --fix or --scope. A PR read that finds no reply '
-                    'owed records it.', f'wuwei pr act {pr}')
+                    'owed records it.', f'wuwei pr act {pr}', pull['activity_at'])
             ticket = (values.get('tickets', {}).get(name) or {}).get('id')
             page = bool(config['outbound']['owner']['pages'])  # an item with no ticket has a page or no duty
             if 'tracker' in on and merged and (ticket or page) and (name, 'tracker') not in done:

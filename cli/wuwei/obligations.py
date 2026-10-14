@@ -69,7 +69,7 @@ def _fingerprint(row):
     return hashlib.sha256(json.dumps(row, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
-def _ledger(data):
+def _ledger(data, root=None):
     ledger = data.get('reply_acks', {})
     if not isinstance(ledger, dict):
         raise ValueError(f'invalid acknowledgement ledger; {DAMAGED}')
@@ -87,7 +87,24 @@ def _ledger(data):
                     or type(entry.get('reply_id')) is not int or entry['reply_id'] <= 0
                     or not isinstance(entry.get('me'), str) or not entry['me'].strip()):
                 raise ValueError(f'invalid acknowledgement record; {DAMAGED}')
-    return ledger
+    if root is None:
+        return ledger
+    from wuwei import watch
+    combined = {ref: entries.copy() for ref, entries in ledger.items()}
+    today = workspace.day_dir(root)
+    # ponytail: read each prior day on demand; compact the ledger if day count makes reads slow.
+    for day in watch.days(root):
+        if day == today or not state.day_started(day):
+            continue
+        try:
+            prior = _ledger(state.read_state(directory=day))
+        except ValueError:
+            continue
+        for ref, entries in prior.items():
+            saved = combined.setdefault(ref, {})
+            for key, entry in entries.items():
+                saved.setdefault(key, entry)
+    return combined
 
 
 def _replies(reviews, discussion, me, acks):

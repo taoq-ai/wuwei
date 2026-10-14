@@ -171,10 +171,10 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor. An untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) in a day is registered as an adhoc seat, never refused; `bin/wuwei seat start --role <role> --adhoc "<prompt>"` labels it (#676). The `WUWEI brief: <path>` line may stand on any line of the prompt; the text around WUWEI's launch prompt is kept on the seat as its planner note, which `wuwei why <item>` shows. A WUWEI seat type launched with no brief line, or with a brief that does not match, is refused naming `bin/wuwei seat brief <role> <item> <name>` while `guards.enforce` is on; with it off the seat is registered as an adhoc seat labelled with its role, with that warning. The CAP, host seat and free memory refusals are logged as `guard.would_refuse` either way (#837), and every launch refusal the hook lets through is shown to the session as `seat not registered: <reason>` (#660) |
 | PreToolUse | `git push` | a force push in any form (`--force*`, `-f` in a flag cluster, `--mirror`, a `+` refspec), or a push to a configured repository's default branch, naming `bin/wuwei pr raise ... --item` (#839); WUWEI installs no Git hook (#789 part 23): `pr raise` and `pr act` check every pushed commit's identity, and `build next` holds the hand-off until the fast checks pass at HEAD |
 | PreToolUse | `gh pr create` | a recorded item that links no PR, naming `bin/wuwei pr raise ... --item` (#783, #837, #839: from the item worktree, after `cd <recorded worktree> &&`, or with `--repo` and `--head` naming its branch); the gate set and the reviewer rule run in `bin/wuwei pr raise` |
-| PreToolUse | `gh pr merge` | always, naming `bin/wuwei merge`, which runs the merge policy (4.6) (#839) |
-| PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
-| PreToolUse | any deploy action (4.7) | always |
-| PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | the call may send to other people (a write), whatever `guards.enforce` says; the outward-text lint (4.3) logs its findings |
+| PreToolUse | `gh pr merge` | a raised or claimed PR, naming `bin/wuwei merge`, which runs the merge policy (4.6); unowned PRs nudge by default (#997) |
+| PreToolUse | `gh pr review --approve`, `--admin`, protection changes | approval nudges by default; admin and protection changes require the owner's card |
+| PreToolUse | any deploy action (4.7) | infrastructure needs the owner's card; app delivery runs |
+| PreToolUse | an MCP tool not on `outward.allow` that is not local (4.9) | unlisted writes nudge by default; canary egress and unrun send checks block; the outward-text lint (4.3) logs its findings |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; the workflow's commands write the day records |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
@@ -237,9 +237,8 @@ were retired with the audience classes (owner, 2026-10-11, #838).
 
 ### 4.4 Profiles
 
-- `strict` (default): every guard above blocks.
-- `standard`: the outward-text lint warns instead of blocking. The merge policy, the
-  approve refusal and the deployment ban are unchanged.
+- `strict` (default) and `standard` select outward lint treatment. The enforcement switch
+  and protected floor in 9.1 determine blocking; profiles do not restore action cards.
 
 ### 4.5 Matching and bypass resistance (owner, 2026-09-28; amended 2026-09-30, #237)
 
@@ -277,99 +276,44 @@ exact `gh pr merge --squash --match-head-commit <sha>` that `wuwei merge` issues
 positive allowlist for all development commands is rejected: allowing an interpreter or the
 test runner allows arbitrary code, so it would add refusals without adding a guarantee.
 
-### 4.6 Merge policy (owner, 2026-09-28)
+### 4.6 Merge policy (owner, 2026-10-14, #997)
 
-WUWEI may merge a pull request when the policy clears it; otherwise the merge is a decision
-for the owner. The policy is one CLI function, `wuwei merge check <pr>`, used by the merge
-guard, the shepherd and the report; `wuwei merge <pr>` runs the check and merges in one step.
-A merge the policy does not clear is the owner's decision on the Owner step card of
-`wuwei merge <pr>` (5.8), with the conditions below unchanged.
+`wuwei merge check <pr>` reads the evidence; `wuwei merge <pr>` checks and merges under one
+lock. With the gates and CI green, ordinary merges need no Owner step card. Ordinary
+eligibility (`merge.auto`, risk flags, size and cycle budget) is recorded as guidance.
+Changes matching `never_auto_paths` or `merge.owner_paths`, including rename sources,
+still need the owner's Yes on a head-bound Owner step card for infrastructure, config
+or admin changes. An app-deploying merge is allowed. The approved plan, explicit
+`owner_merge` hold, circuit breaker, daily cap, quiet hours and soak still apply.
 
-Eligibility, per repository in `config.toml` (default off):
+Every pre-PR gate must pass at the current head, with no open blocking finding. A
+`trust_surface` item must include the security gate. Required checks must be green, human
+approvals must satisfy protection, review threads and reply/visibility obligations must
+be clear, and configured review-bot evidence must hold. The branch must be current or use
+the repository's merge queue. Unreadable evidence is exit 2 and never authorizes a merge.
 
-- `merge.auto = true`, and `merge_deploys = false` declared explicitly. A repository whose
-  merge to the base branch triggers a deployment, or that does not declare it, is never
-  auto-merged: for it, merging is deploying (4.7).
-- The item carries none of `trust_surface`, `boundary_relevant`, `agent_surface`, and its
-  diff touches none of the configured never-auto paths (defaults: CI and workflow files,
-  dependency manifests and lockfiles, migrations and schemas, infrastructure code,
-  `CODEOWNERS`, anything under a `deploy` or `infra` directory).
-- The diff is at most `merge.max_changed_lines` (default 400) and the item went through at
-  most the negotiation budget (5.3).
+The command uses `--match-head-commit <sha>` and the repository's allowed merge method
+(`repos.merge_method`, default auto choosing squash, rebase, then merge). It never uses
+`--admin` or changes protection. The soak may be skipped for a measured fix of broken base
+checks (`merge.soak_skip = "base_fix"`). A fresh read detects changes during checking.
 
-Preconditions, all read fresh at the current head sha, never from cache or from
-`state.json`:
+Merge intent and evidence are journaled before the external call. `merge.poll`, called by
+`wuwei next` and the report, monitors the merge commit. Red base checks open a revert PR,
+page the owner and trip the breaker. Reverts and the escaped-defect threshold also trip it;
+resetting it is a config change for the owner.
 
-- every pre-PR gate verdict is PASS for this head, and no finding with `blocks: yes` is open;
-- every required status check is green (a skipped or neutral required check is not green);
-- the repository's own branch protection is satisfied without override: required human
-  approvals present from people other than the author, no changes requested outstanding;
-- every review thread is resolved or answered, and the reply and visibility obligations
-  (4.2) for this PR are clear;
-- the review bot, when configured, reports no open blocking finding on this head;
-- the branch is up to date with its base, or the repository uses a merge queue;
-- a soak window has passed since the last approval or push (`merge.soak_minutes`, default
-  30), during which the owner can veto from the control plane (retired by #789, owner, 2026-10-10).
+### 4.7 Deployment boundary (owner, 2026-10-14, #997)
 
-Mechanics: `gh pr merge --squash --match-head-commit <sha>` (or the repository's merge queue),
-so a push between the check and the merge makes it fail rather than merge unreviewed code.
-Never `--admin`, never a change to branch protection, never an approval. At most
-`merge.max_per_day` auto-merges per repository (default 5); none during quiet hours.
+App deployments, release and tag publication, image pushes and application workflows run
+on the owner's word without an exact-command card. Infrastructure changes remain owner-only:
+cloud resources, DNS, hosting project settings, Kubernetes/Helm resources and IaC apply or
+destroy. `deploy.deny` adds explicit infrastructure command patterns. These changes retain
+the exact-command Owner step card, regardless of `guards.enforce`.
 
-After the merge: `merge.poll` follows the base branch's checks for the merge commit, run by
-`wuwei next` with each PR listing refresh and by `wuwei report` (#789 part 23). A red check
-opens a revert PR at once, pages the owner, and trips the breaker. Every merge is an event
-carrying the evidence (head sha, verdicts, checks, approvals).
-
-Circuit breaker: auto-merge turns off for a repository, until the owner turns it back on,
-when a merged PR is reverted or red on the base branch, or when the rolling 14-day escaped
-defect rate for auto-merged PRs (5.6) exceeds the owner's baseline. Any precondition that
-cannot be read is exit 2: not cleared, so the merge goes to the owner.
-
-Amended (owner, 2026-10-11, #816): the merge policy alone decides a merge.
-Quiet hours, the daily cap and the soak are waits the policy clears later; every precondition
-above holds at the current head and names its condition. The eligibility rules (`merge.auto`,
-the breaker, the approved plan, risk flags, the cycle budget, never-auto paths, size and
-`[merge] owner_paths`) are the owner's decision: when only they stand, `wuwei merge` prints one
-Owner step card for that PR at its head, `wuwei next` names it, and the owner's recorded Yes
-merges it, journaled and watched like an auto-merge.
-
-Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
-green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
-rule still holds. A held merge reads either `waits: soak ends at <time>` or
-`owner merges: <rule>`, and `wuwei merge check` prints the next step on a `Next:` line.
-
-Amended (owner, 2026-10-10, #675): `trust_surface` makes the security gate required instead of
-the item ineligible. A flagged item is eligible once `security` is in its recorded gate set and
-its verdict is PASS at the head, delta round included; until then the PR waits on the gate,
-never on the owner. `boundary_relevant` and `agent_surface` are unchanged. A diff touching a
-`[merge] owner_paths` glob, renames included, is the owner's decision (#816); the reason names
-the path and the glob.
-
-Amended (owner, 2026-10-10, #785): the merge method follows the repository:
-`repos.merge_method` (`auto`, the default, `squash`, `rebase` or `merge`). Under `auto` WUWEI
-uses the first method the repository and its rulesets allow of squash, rebase, merge; an
-explicit method is used only when allowed. Where the text above says `--squash` it reads
-`--<method>`, and where it says the repository must allow squash merges it reads the chosen
-method; `wuwei merge check` names it. A merge commit or rebase merge is followed for red base
-checks and reverts; the 14-day line outcome is measured for squash merges.
-
-### 4.7 Deployment ban (owner, 2026-09-28)
-
-WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
-normalisation in 4.5: dispatching or re-running a workflow the config marks as deploying,
-`gh release create` and tag pushes, pushes and merges to branches in the configured
-environment register (for example `production`, `release/*`), GitHub deployment and
-environment API calls, and the deploy commands of common tools (`kubectl apply`, `helm
-upgrade`/`install`, `terraform apply`, `pulumi up`, `vercel`/`netlify` deploy, `fly deploy`,
-`gcloud`/`aws`/`az` deploy verbs, `docker push`), extendable by `deploy.deny` in config. A
-merge into a repository with `merge_deploys = true` is a deployment and goes to the owner.
-
-Amended (owner, 2026-10-11, #816): the guard refuses and prints the Owner step card of that
-exact command; only the owner's recorded Yes on it lets that command through, the same day. No
-standing line, seat, default or hook answers for the owner. The hook matches these by exact
-argv (#839); a session merge is refused naming `bin/wuwei merge`, which checks
-`merge_deploys` and environment bases.
+The generated host deny list covers infrastructure and admin bypasses. `init --upgrade`
+removes known shipped app-deploy and PR-approval denies, including old broad Vercel rules,
+and preserves unrelated settings. Reads pass, consistent with #986. Target-dependent
+hosting changes are checked by the hook.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
@@ -377,17 +321,13 @@ Retired by #789 (owner, 2026-10-11, #833).
 
 ### 4.9 Outward sends (owner, 2026-10-11, #838)
 
-The approval tiers, audience classes, drafts, learning cards and the register of 2026-09-28
-were retired by #789 (owner, 2026-10-11, #838). Outward sending is one exact allowlist.
+Outward sends run without another Owner step card (owner, 2026-10-14, #997).
 
-- An MCP send to other people leaves only through a tool named exactly in `outward.allow`
-  (no pattern, prefix or case folding). Any other write is refused on the floor, naming the
-  one line the owner adds: `bin/wuwei config set outward.allow '["<tool>"]' --add`, which asks
-  its Owner step card in the session (#831). For a canvas or page id the refusal first names
-  `outbound.owner.pages`; for mail, `outbound.owner.mail` only while it is unset, never with an
-  address filled in. Reads
-  pass. A tool that is neither a read nor a write by name and names no channel runs; the lint
-  guard logs the line (B5 lead call: no new walls).
+- `outward.allow` identifies known tools. Named servers match exactly. When both tool ids
+  use UUID connector servers, only the exact tool name must match, so switching accounts
+  does not reset the permission. Unlisted writes produce a visible nudge by default;
+  explicit `guards.enforce = true` still enforces the list. Reads pass. Unknown names
+  produce guidance. Canary and honeytoken checks apply even to allowed sends.
 - Local: a tool that acts only on the owner's machine (#727), and a call whose every
   destination is the owner's own surface, are never outward sends. The canary check and the
   outward lint still run; the lint skips its third-person rules for the owner's surfaces.
@@ -471,7 +411,8 @@ A PR head a rebase or a push moved past its verdicts opens a round every gate re
 closed unmerged, or a worktree whose HEAD cannot be read, is one owner decision to park. The planner does every launch and duty and asks the decision on its Owner
 step card. Code decides what is ready, due or waiting on the owner; the model writes every
 text. A PARK verdict parks in code; an ESCALATE, a builder's `Blocked:` line, the round cap,
-red checks at the cap, `owner_merge` and a merge the policy does not clear are the decision.
+red checks at the cap and an explicit `owner_merge` hold are the decision. Missing merge
+evidence waits for its condition; eligibility guidance alone does not ask for a card (#997).
 `close` waits on every open duty, also one carried from an earlier day closed without close.
 
 ### 5.3 Rules
@@ -564,6 +505,12 @@ red checks at the cap, `owner_merge` and a merge the policy does not clear are t
   "not run"); residual risk; the retro note.
 - Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:` (at light, only
   when a line is not `none`; an absent note is recorded as `none` on every line).
+- No-change fix rounds (owner, 2026-10-14, #997). A clean unchanged fix head may advance to
+  delta after fast checks when the recorded builder handback answers every blocking finding
+  with `No change: <gate> <blocking finding number>: <reason>`. The fix brief provides the
+  one-based numbers. Delta reviewers receive the handback, including resumed and fresh seats
+  and second opinions, and decide the findings at that head. A missing or partial answer
+  keeps the existing retry and park limits; an initial build still needs a change.
 - Build loop (owner, 2026-09-28; adapted from ralph-starter). The runtime adapter runs a
   builder seat as a loop rather than a single dispatch: dispatch, run the item's fast checks
   (backpressure), feed failures back into the same seat, repeat until green or until
@@ -1389,11 +1336,9 @@ the owner's user account, and they hold when no hook runs:
 
 - the code host's server-side rules (protected refs, required checks, required reviews),
   which the merge policy never overrides (4.6);
-- publication credentials kept out of seat environments: no seat holds a token that can
-  approve, release or deploy, and a merge lands only through the protected ref's required
+- infrastructure and administrative credentials kept out of ordinary seat environments;
+  app publication follows the owner's delegated work and the protected ref's required
   checks and reviews (4.6, 4.5);
-- the owner's exact `outward.allow` list: an MCP send to other people leaves only through a
-  tool the owner added on an Owner step card (4.9);
 - the out-of-process control plane (M5) for anything decided remotely (retired by #789, owner, 2026-10-10).
 
 Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
@@ -1415,25 +1360,20 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
 - guards that concern roles (brief, retro, verdicts) apply to WUWEI role seats only, not to
   other subagents.
 
-Enforcement (owner, 2026-10-11, #837). One switch, `guards.enforce` (default true), replaces
-the postures, areas and floors of #331. With it on, a guard refusal blocks with its reason. With
-it off, the hook records it as `guard.would_refuse` (guard, reason, exit, target, session, item)
-and lets the call through; a launch refusal is also shown to the session (#660). `init
---shadow` writes `false`; `init --upgrade` maps `security.posture = "observe"` and
-`guards.mode = "shadow"` to `false`, keeps an explicit `guards.enforce` and removes the
-retired keys.
+Enforcement (owner, 2026-10-14, #997). `guards.enforce` defaults to false. Every let-through
+PreToolUse refusal is shown as redacted `additionalContext`, describing what the call does
+and its destination. The `guard.would_refuse` event (guard, reason, exit, target, session,
+item) is unchanged. Nudges do not instruct the owner to add a permission. Explicit true
+still blocks ordinary refusals except existing log-only checks. `init --upgrade` fills
+missing defaults and preserves explicit owner values, including true.
 
-The floor blocks whatever the switch says (constitution VII):
-
-- records written by the workflow: the state-file guard, the Owner step answer recorder,
-  `lifecycle`, the verdict lint, canary and honeytoken egress, owner disposition markers and a
-  seat launch naming a brief that does not exist;
-- the owner's edges: deploy, merge, admin, approval and branch protection, and an MCP send to
-  other people through a tool not on `outward.allow` (#838). A deploy, release or publish runs
-  only on the owner's recorded Yes on the Owner step card of that exact command (#816); an
-  unlisted send names the `config set outward.allow ... --add` line, whose card adds it. A merge
-  happens only through the merge policy; a merge it does not clear for an eligibility rule is
-  one owner decision from `wuwei next` (4.6, #816).
+The floor blocks whatever the switch says (constitution VII): state writes, answer records,
+verdict lint, canary and honeytoken egress, owner disposition markers, missing launch briefs,
+and config, admin and infrastructure changes. Stop behavior remains unchanged pending #989.
+Merge policy and PR approval prefixes and the send/deploy functions are not blanket floor
+entries; infrastructure refusals have their own prefix. Unrun send checks and raw merges
+of raised or claimed PRs still block. Raw merges name bin/wuwei merge as the next step.
+Ordinary merges and app deploys need no card; protected merge paths retain theirs (4.6).
 
 No new walls (B5 lead call, #837): with the switch on, what blocked under the old guarded
 default still blocks (the floor, the force push and default-branch edges, day close, the spec check before the gates),
@@ -1470,17 +1410,17 @@ the owner's own shell; nothing reads a terminal answer.
 ### 9.2 Process edges (owner, 2026-10-11, #789)
 
 An edge is an action WUWEI cannot take back: it changes what others see or leaves the
-workspace. The hooks refuse each edge outside its one path. Every other process rule lives in
+workspace. The hooks nudge ordinary actions and refuse protected owner-only changes. Every other process rule lives in
 code (`next`, dispatch, the verdict lint, the merge policy) and is tested where it lives.
 
 | Edge | Rule | Guard | Test |
 | --- | --- | --- | --- |
-| Host merge | A PR merges only through `bin/wuwei merge` under the merge policy (4.6): at the head the gates checked, with green required checks, never with `owner_merge` set; a session `gh pr merge` or a merge API call is refused naming it; a push to a default branch is refused naming `bin/wuwei pr raise --item` | `guards/edges.py` (`check_bash`), `merge.check` | `tests/test_edges.py`, `tests/test_merge.py` |
-| Approve | WUWEI never approves a PR: `gh pr review --approve` and an APPROVE review event are refused, and the code host port has no approval call | `guards/edges.py` (`check_bash`) | `tests/test_edges.py`, `tests/test_code_host.py` |
-| Admin | `--admin` and branch protection or ruleset writes are refused | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
-| Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`, a `+refspec`) is refused | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
-| Deploy | WUWEI never deploys (4.7) | `guards/edges.py` (`check_deploy`) | `tests/test_edges.py` |
-| Outward send | An MCP send to other people only through a tool on `outward.allow`; the owner's own surfaces are local (4.9) | `guards/edges.py` (`check_send`) | `tests/test_edges.py`, `tests/test_outward.py` |
+| Host merge | A raised or claimed PR merges only through `bin/wuwei merge` under the merge policy (4.6): at the head the gates checked, with green required checks, never with `owner_merge` set; raw `gh pr merge` and merge API calls block to preserve the journal, daily cap and breaker. Unowned PR merges and default-branch pushes remain nudges by default | `guards/edges.py` (`check_bash`), `merge.check` | `tests/test_edges.py`, `tests/test_merge.py` |
+| Approve | PR approval runs without a card by default; explicit enforcement still refuses it; the code host port adds no approval call | `guards/edges.py` (`check_bash`) | `tests/test_edges.py`, `tests/test_code_host.py` |
+| Admin | `--admin`, repository settings and branch protection or ruleset writes require an Owner step card | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
+| Force push | `git push --force` in every form (`-f`, `--force-with-lease`, `--mirror`, a `+refspec`) is nudged by default and refused with explicit enforcement | `guards/edges.py` (`check_bash`) | `tests/test_edges.py` |
+| Deploy | App deploys run; infrastructure changes require an Owner step card (4.7) | `guards/edges.py` (`check_deploy`) | `tests/test_edges.py` |
+| Outward send | Unlisted sends nudge by default; UUID connector tools survive account changes; canary egress blocks (4.9) | `guards/edges.py` (`check_send`) | `tests/test_edges.py`, `tests/test_outward.py` |
 | PR raise | An item's PR is raised with `wuwei pr raise --item`, which links it and refuses unless every gate passed at the head; a `gh pr create` for a recorded item is refused naming it while `guards.enforce` is on (#837) | `guards/edges.py` (`check_bash`), `shepherd.raise_pr` | `tests/test_edges.py`, `tests/test_shepherd.py` |
 
 `tests/test_invariants.py` keeps one check across all guards: no guard reason is a wall,

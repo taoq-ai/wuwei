@@ -491,7 +491,7 @@ def proposal(raw, targets):
     """
     present = tomllib.loads(raw)
     defaults = MERGE_SCHEMA['never_auto_paths'][1]
-    wanted, deploy, registers = [], {'workflows': set(), 'deny': set()}, {'environments': {}, 'boundary': {}}
+    wanted, deploy, registers = [], {'deny': set()}, {'environments': {}, 'boundary': {}}
     for index, facts in targets:
         base = ('repos', index)
         for key, value in (('fast_checks', facts['fast_checks']),
@@ -503,7 +503,6 @@ def proposal(raw, targets):
         if facts['never_auto']:
             wanted.append(((*base, 'merge'), 'never_auto_paths',
                            [*defaults, *(p for p in facts['never_auto'] if p not in defaults)]))
-        deploy['workflows'].update(facts['deploy_workflows'])
         deploy['deny'].update(facts['deploy_deny'])
         registers['environments'].update(facts['environments'])
         registers['boundary'].update(facts['boundary'])

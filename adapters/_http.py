@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from functools import wraps
+from pathlib import Path
 
 from wuwei import env
 from wuwei.registry import Result
@@ -58,6 +59,7 @@ class RateLimited(Failure):
     def __init__(self, reset, remaining=None, limit=None, resource=None, where=None, after=None, note=None,
                  source=None):
         self.reset = reset
+        self.resource = resource
         # #867: calls left on the named resource means a secondary limit, not an empty bucket.
         # #891: it names the endpoint GitHub refused and GitHub's Retry-After when one was read.
         secondary = (f"secondary limit{f' on {where}' if where else ''}"
@@ -112,9 +114,9 @@ def gh_limit(stderr, env=None, resource='core', where=None, after=None, seen=Non
                 remaining, limit, reset = quota_left, quota_limit, quota_reset
             elif remaining == 0 and quota_left > 0 and not secondary:
                 return RateLimited(time.time() + delay, note=(
-                    f'GitHub refused {where or resource} with a rate limit; headers say 0 of {limit} '
-                    f'{resource} calls left, rate_limit shows {quota_left} of {quota_limit} '
-                    f'{resource} calls left'), source=source)
+                    f'holding {delay} s: GitHub refused {where or resource}; the refused reply headers say '
+                    f'0 of {limit} {resource} calls left, but rate_limit shows {quota_left} of '
+                    f'{quota_limit} {resource} calls left'), source=source)
     if secondary:
         if remaining == 0:
             return RateLimited(time.time() + delay, note=detail, source=source)
@@ -139,6 +141,36 @@ def retry(call, root=None):
             raise
         time.sleep(max(0, wait))
     return call()
+
+
+def held(root, call, resource='core'):
+    """Share a GitHub refusal across workspace calls, including one bounded retry."""
+    if root is None or not (Path(root) / '.wuwei').is_dir():
+        return retry(call, root)
+    from wuwei import workspace
+    attempted = False
+    released = None
+
+    def guarded():
+        nonlocal attempted, released
+        hold = workspace.github_hold(root, time.time())
+        if hold and (not attempted or released is None or hold['until'] > released):
+            raise Failure(f"GitHub hold on {hold['resource']} until {_hms(hold['until'])} UTC: "
+                          f"{hold['reason']}")
+        attempted = True
+        try:
+            result = call()
+        except RateLimited as limit:
+            released = limit.reset
+            workspace.github_hold(root, time.time(), until=limit.reset,
+                                  resource=limit.resource or resource, reason=str(limit),
+                                  replace=getattr(limit, 'hold_claim', None))
+            raise
+        if released is not None:
+            workspace.github_hold(root, time.time(), clear_until=released)
+        return result
+
+    return retry(guarded, root)
 
 
 def credential(name):

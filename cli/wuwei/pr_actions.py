@@ -138,7 +138,7 @@ def observe(root, host, ref, config, measured, as_of=None):
     """Produce an episode under the shared writer lock from a fresh port read; as_of, the time the
     read started, records a due shepherd duty done when no reply is owed (#906)."""
     data = state.read_state(root)
-    me, acks = obligations._owner_login(config), obligations._ledger(data).get(ref, {})
+    me, acks = obligations._owner_login(config), obligations._ledger(data, root=root).get(ref, {})
     current = classify(measured, me, acks)
     if as_of and not obligations._replies(measured['reviews'], measured['threads'], me, acks):
         from wuwei import derive
@@ -521,8 +521,8 @@ def _fix_round(root, ref, item, tree, measured, feedback=None):
             return exc.code, f'{ref}: {exc}'
         state.transition(item, 'implement', root)
         return 1, action
-    if row['phase'] == 'implement':  # #879: the claimed round in flight answers its current step
-        return 1, build.next_action(item, root=root)
+    if row['phase'] in ('implement', 'fix'):  # feedback belongs to the current builder round
+        return 1, build.supplement(item, feedback, root=root)
     if cap := dispatch.capped(root, workspace.load_config(root), data, item):  # #844: the owner decides on plan resume's card
         reason = f"round cap {cap} reached: PR {ref} still fails: {' '.join(feedback.split())[:200]}"
         dispatch._parked(root, item, reason)
@@ -535,7 +535,7 @@ def _owed(root, ref, measured):
     """[(surface, target, thread or None, the comment answered)] of every owed reply, in order."""
     me = obligations._owner_login(workspace.load_config(root))
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
-                                obligations._ledger(state.read_state(root)).get(ref, {}))
+                                obligations._ledger(state.read_state(root), root=root).get(ref, {}))
     return [(surface, target, *_latest(measured, surface, target))
             for surface, target in (key.split(':', 1) for key in owed)
             if surface in ('thread', 'review', 'comment', 'bot-p1')]  # F4: a P1 bot thread is answered too
@@ -573,7 +573,17 @@ def _thread(root, ref, item, tree, measured, reply=None, target=None, fix=None, 
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
         # #838: posted through the code-host port, which runs the canary check and the lint.
         return obligations.reply(ref, surface, thread['comments'][0]['id'] if thread else latest['id'], reply, root)
-    feedback = lambda why: f'Review {surface} {target} on {ref}: {text}\nShepherd: {why}'
+    bot_threads = [("thread", row['id'], row, row['comments'][-1])
+                   for row in measured['threads']['threads']
+                   if not row['resolved'] and not row['outdated']
+                   and all(comment['is_bot'] for comment in row['comments'])
+                   and not any(ident == row['id'] for _, ident, _, _ in owed)]
+    feedback = lambda why: ('Fix every P1 bot finding. Fix or reply to every other review request below.\n\n'
+                            + '\n\n'.join(
+        f'Review {kind} {ident} on {ref}: {comment["body"]}\n'
+        + (f'Shepherd: {why}' if ident == target and kind == surface else
+           'Builder: fix or reply to this review request.')
+        for kind, ident, _, comment in (*owed, *bot_threads)))
     if fix is not None:
         return _fix(root, ref, item, tree, measured, feedback=feedback(fix))
     answer = {}
@@ -622,6 +632,20 @@ def act(root, ref, *, run=False, complete=False, reply=None, ready=False, push=F
     if row['exit'] == 2:
         print(row['reason'])
         return 2
+    cached = read.get(ref, {}).get('pr', {})
+    if cached and cached.get('base_sha') is None and (row['exit'] == 1 or push or ready):
+        try:
+            host = registry.load('code_host', workspace.load_config(root))
+            current = obligations._read(host.pr, ref, root=root)
+            if current['head'] != cached['head']:
+                raise ValueError('PR head moved since the cached listing; run wuwei next to refresh it')
+            if any(current[key] != cached[key] for key in
+                   ('state', 'merged', 'draft', 'mergeable', 'author', 'branch')):
+                raise ValueError('PR state changed since the cached listing; run wuwei next to refresh it')
+            read[ref]['pr'] = current
+        except watch.ERRORS as exc:
+            print(f'{ref}: PR action unmeasured: {exc}')
+            return 2
     if push:
         try:
             return _gated_push(root, ref, *_item(root, ref))

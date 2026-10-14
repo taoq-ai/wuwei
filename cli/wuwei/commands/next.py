@@ -266,7 +266,7 @@ def step(root, ran=(), *, findings=None):
     data = state.read_state(directory=directory)
     from wuwei import watch
     live_waits = []
-    process_code, processes = watch.housekeeping(root, data=data, live_waits=live_waits)
+    _, processes = watch.housekeeping(root, data=data, live_waits=live_waits)
     if findings is not None:
         findings.extend(processes)
     if any(row['kind'] == 'process' for row in processes):
@@ -348,6 +348,15 @@ def step(root, ran=(), *, findings=None):
                  if ident not in data['items'] and ('finding', ident) not in returned]
     found = derive.offers(data, root, config, merges)
     launches += found['launches']
+    owned = set(data['raised_prs'] + data['claimed_prs'])
+    owned.difference_update(item['pr'] for item in data['items'].values()
+                            if item.get('pr') and watch._terminal(item))
+    pulls = derive.listing(directory)['pulls']
+    open_owned = any(pulls.get(ref, {}).get('state') not in ('closed', 'merged') for ref in owned)
+    if open_owned and config['adapters']['host'] != 'none' and not live_waits:
+        launches.append({'kind': 'pr-wait', 'item': 'day',
+                         'command': 'wuwei next --background -- wuwei pr wait',
+                         'why': 'Open WUWEI PRs need a background watcher.'})
     # #906: the shepherd duty is a launch; it stays a due row (pr act its step) only where a seat
     # could have launched and did not: a raised item with no launch offered and nothing in flight
     busy = {launch['item'] for launch in found['launches']} | {item for _, _, item in state.in_flight(data)}
@@ -469,7 +478,8 @@ def _resolve(row, root):
     import shlex
     if row['state'] == 'set':
         from wuwei import derive, dispatch
-        value = dispatch.launch_set(root) if row['launches'] else {'entries': [], 'capacity': ''}
+        value = (dispatch.launch_set(root) if any(launch['kind'] != 'pr-wait'
+                 for launch in row['launches']) else {'entries': [], 'capacity': ''})
         if value.get('listing_refreshed') and any(
                 launch['command'] == 'wuwei dispatch next --all' for launch in row['launches']):
             row = step(root)
@@ -663,7 +673,9 @@ def run(args):
             from wuwei import derive
             config = workspace.load_config(root)
             data = state.read_state(root)
-            refreshed = derive.stale(root, config, data)
+            planned = any(item['phase'] == 'planned' for item in data['items'].values())
+            refreshed = derive.stale(root, config, data,
+                                     [repo['name'] for repo in config['repos']] if planned else None)
             directory = workspace.day_dir(root)
             log = directory / 'events.jsonl'
             owned = set(data['raised_prs'] + data['claimed_prs'])

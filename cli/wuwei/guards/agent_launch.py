@@ -361,7 +361,8 @@ def _check(payload):
             data['seats'][logged['name']]['planner_note'] = note
         from wuwei.commands import build as build_command
         if role == 'builder' and not adhoc:
-            build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
+            build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume,
+                                  prompt=inputs['prompt'])
     state._write_state(reserve, root, kind='seat launched', payload=event)
     if event.get('unrecorded'):
         return 1, (f'{unrecorded}. Seat {logged["name"]} is registered (guards.enforce is off), so bin/wuwei '
@@ -504,11 +505,28 @@ def stop(payload):
                     return 0, ''
             except build.Mismatch as exc:
                 return 2, f'build result could not be recorded: {exc}'  # never another agent's seat
-        if reserved['status'] == 'stopped':
+        if reserved['status'] == 'stopped' and not role.startswith('sentinel-'):
             return 0, ''  # repeated stop outside a continued build
         if reserved['status'] == 'running':
             brief.stop_text(payload)
-        state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
+        elif reserved['status'] != 'stopped':
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
+        if today and role.startswith('sentinel-') and not reserved.get('prompt_sha256'):
+            path = directory / 'decisions' / f'gate-{name}.md'
+            if path.exists() or path.is_symlink():
+                from wuwei import dispatch
+                try:
+                    gate, round_name = dispatch.gate_round_for_seat(data, item, role, reserved.get('runtime'))
+                    if round_name is None:
+                        raise ValueError(f'item {item} has no open gate round; run bin/wuwei dispatch next {item}')
+                    if gate is None:
+                        raise ValueError(f'{role} is not in the gate set for {item}; '
+                                         f'run bin/wuwei dispatch next {item}')
+                    dispatch.receive(item, gate, name, round_name, root)
+                except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+                    return (0, '') if payload.get('stop_hook_active') else (
+                        2, f'gate verdict could not be received: {exc}')
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return _unrecorded(payload, root, directory, name, reserved, exc)
     return 0, ''

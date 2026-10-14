@@ -56,6 +56,7 @@ An example the lint accepts:
 ```text
 Verdict: FIX
 Head: 3f1c2ab
+## Findings
 F1 medium src/calc.py:19 fails when the input is empty. blocks: yes
 Probe: not run
 CI step 1: PASS ruff check . exited 0

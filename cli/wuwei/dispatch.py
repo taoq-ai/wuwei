@@ -1,5 +1,6 @@
 """Planner decisions from recorded seats and gate verdicts."""
 
+import hashlib
 import itertools
 import os
 from pathlib import Path
@@ -252,6 +253,19 @@ def gate_set(row):
     return (*roles, f"{second['role']}@{second['runtime']}")
 
 
+def gate_round_for_seat(data, item, role, runtime=None):
+    """The gate and open round for a sentinel seat, including a late initial gate."""
+    row = data['items'][item]
+    gate = next((gate for gate in gate_set(row)
+                 if base(gate) == role.removeprefix('sentinel-')
+                 and (runtime is None or gate.partition('@')[2] == runtime)), None)
+    round_name = {'gate': 'initial', 'delta': 'delta'}.get(row['phase'])
+    if (round_name == 'delta' and gate is not None
+            and f'{item}:{gate}:initial' not in data['gate_verdicts']):
+        round_name = 'initial'
+    return gate, round_name
+
+
 def base(gate):
     """The sentinel role a gate runs as; a second opinion runs as its base role."""
     return gate.partition('@')[0]
@@ -266,6 +280,17 @@ def _docs_role(paths, data=()):
             and merge.matched(path, AGENT_DOCS) is None for path in paths):
         return None
     return 'quality' if any(merge.matched(path, SPEC_DOCS) for path in paths) else 'goal'
+
+
+def _trust_match(path, patterns):
+    """Match trust paths case-insensitively; a substring glob (*auth*) skips documentation,
+    an explicit glob (AGENTS.md, charters/*) still matches it."""
+    from wuwei import merge
+    folded = path.casefold()
+    document = folded.startswith(('docs/', 'specs/')) or folded.endswith(('.md', '.rst', '.txt'))
+    return next((pattern for pattern in patterns
+                 if not (document and pattern.startswith('*') and pattern.endswith('*'))
+                 and merge.matched(folded, (pattern.casefold(),)) is not None), None)
 
 
 def tier(root, config, row):
@@ -300,7 +325,7 @@ def tier(root, config, row):
             path = change['path']
             for kind, patterns in (('trust path', gates['trust_paths']),
                                    ('never-auto path', repo['merge']['never_auto_paths'])):
-                pattern = merge.matched(path, patterns)
+                pattern = _trust_match(path, patterns) if kind == 'trust path' else merge.matched(path, patterns)
                 if pattern is not None:
                     rise('standard', f'{path} matches {kind} {pattern}')
             pattern = next((p for p in config['brief']['full_path_patterns'] if re.search(p, path, re.I)), None)
@@ -502,7 +527,6 @@ def step_zero(value, paths, trust_paths, flags=None):
     """#567: None at light; (run, reason) otherwise. At standard step zero runs only when a
     changed path is guard code or a repository trust path, or (#663) the item is flagged
     trust_surface or boundary_relevant, whatever its diff."""
-    from wuwei import merge
     if value == 'light':
         return None
     if value == 'full':
@@ -511,7 +535,7 @@ def step_zero(value, paths, trust_paths, flags=None):
     if named:
         return True, ', '.join(named)
     for path in paths:
-        pattern = merge.matched(path, (*trust_paths, *GUARD_CODE))
+        pattern = _trust_match(path, (*trust_paths, *GUARD_CODE))
         if pattern is not None:
             return True, f'{path} matches {pattern}'
     return False, 'no guard code or trust path in the diff'
@@ -1122,14 +1146,12 @@ def launch_set(root=None):
                  if (repo := derive.item_repo(root, config, name, items[name]))}
         due = derive.stale(root, config, data, repos) if repos else []
         if due:
-            failed = derive.refresh(root, config, due)
-            if failed:
-                print(f'wuwei dispatch: PR listing not refreshed ({failed}); run wuwei next after '
-                      'pr.poll_seconds; planned starts continue with their PR check unmeasured', file=sys.stderr)
-            held = {row['item'] for row in derive.offers(data, root, config)['rows']
-                    if row['state'] in ('review', 'blocked', 'wait') and row.get('why')}
-            first = [name for name in first if name not in held]
-            rest = [name for name in rest if name not in held]
+            for name in candidates:
+                repo = derive.item_repo(root, config, name, items[name])
+                if repo and repo['name'] in due:
+                    skip.append(name)
+                    entries.append({'item': name, 'goal': goal(name), 'action': 'wait',
+                                    'reason': 'PR listing is stale; run wuwei next to refresh it'})
     index = 0
     for name in (name for name in first + rest if name not in skip):
         runtime = route(data['seat_policy'].get('builder', {}), config['adapters']['runtime'], windows_left)
@@ -1182,9 +1204,6 @@ def review_action(root, data, item):
     if pr.partition('#')[0] not in {repo['name'] for repo in repos}:
         raise Refused(f'{pr} is not a configured repository; run bin/wuwei config add-repo for it')
     pull = derive.listing(workspace.day_dir(root))['pulls'].get(pr)
-    if not pull:
-        from wuwei import registry
-        pull = brief.read(registry.load('code_host', workspace.load_config(root)).pr, pr, root=root)
     if not pull or pull.get('state') != 'open' or not pull.get('head') or not pull.get('branch'):
         return {'action': 'wait', 'reason': f'{pr} open PR head is unmeasured; run wuwei next to refresh the PR listing'}
     if pull.get('head_repo') != pr.partition('#')[0]:
@@ -1256,6 +1275,8 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
     actions = []
     rows = brief.events(root) if round_name == 'initial' else []
     body = GATE_BODY.format(item=item)
+    if round_name == 'delta':
+        note += no_change_feedback(data, item)
     review = data['items'][item].get('kind') == 'review'
     if review:
         body = f'Review {data["items"][item]["pr"]} at its HEAD. Return a {roles[0]} gate verdict for {item}; change no code.'
@@ -1351,6 +1372,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
             action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
             feedback = _recheck_feedback(data['items'][item], first,
                                          depth(data['items'][item], gate=True) == 'light', head)
+            feedback += no_change_feedback(data, item)
             ci = brief.ci_block(data['items'][item].get('ci_jobs', ()), root / worktree)  # #733
             feedback += '\n' + ci if ci else ''
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
@@ -1419,9 +1441,44 @@ def _polish_feedback(notes):
             'small local change stays a review note; name it in your handoff.\n' + '\n'.join(notes))
 
 
+def _blocking_findings(record):
+    return [finding for finding in record['findings'] if re.search(verdict.BLOCKS_YES, finding, re.I)]
+
+
+def no_change_answers(data, item, build):
+    """A complete rebuttal is evidence for delta review, never a passing verdict."""
+    row = data['items'][item]
+    if row.get('resume_phase', row['phase']) not in ('fix', 'delta'):
+        return ''
+    text = (build.get('result') or {}).get('text', '')
+    answers = re.findall(r'^No change: ([^\s:]+) ([1-9][0-9]*):[ \t]*(.*)$',
+                         verdict.active_text(text), re.M)
+    keys = [(role, int(number)) for role, number, reason in answers if reason.strip()]
+    required = []
+    for key, record in data['gate_verdicts'].items():
+        if key.startswith(item + ':') and key.endswith(':initial'):
+            role = key[len(item) + 1:-len(':initial')]
+            required.extend((role, n) for n, _ in enumerate(_blocking_findings(record), 1))
+    return text if required and len(answers) == len(keys) == len(set(keys)) and set(keys) == set(required) else ''
+
+
+def no_change_feedback(data, item):
+    build = data.get('builds', {}).get(item) or {}
+    if build.get('start') and build.get('checked') == build['start']:
+        text = no_change_answers(data, item, build)
+        if text:
+            return ('\nThe builder answered every blocking finding with no change; the head is unchanged. '
+                    'Review these reasons and decide each finding; the handback is not a PASS:\n' + text)
+    return ''
+
+
 def _fix_feedback(roles, records):
     return '\n'.join(f'Gate {role} {record["verdict"]}: fix only the blocking findings (blocks: yes) '
-                     f'in {record["file"]}.' for role, record in zip(roles, records))
+                     f'in {record["file"]}. If no code change is needed, answer each finding in your '
+                     'handback with its reason:\n' + '\n'.join(
+                         f'No change: {role} {n}: <reason> (finding: {finding})'
+                         for n, finding in enumerate(_blocking_findings(record), 1))
+                     for role, record in zip(roles, records))
 
 
 def _fix(item, roles):
@@ -1499,17 +1556,31 @@ def receive(item, role, name, round_name='initial', root=None):
         raise Refused(f'gate role {role} is not in the item gate set; use one of {", ".join(gates)}')
     sentinel = 'sentinel-' + base(role)
     key = f'{item}:{role}:{round_name}'
+    _, expected_round = gate_round_for_seat(data, item, sentinel, role.partition('@')[2] or None)
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
+        raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
+    directory = workspace.day_dir(root)
+    path = directory / 'decisions' / f'gate-{name}.md'
+    if path.is_symlink():
+        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
+    replaced = data['gate_verdicts'].get(key)
+    same_receipt = (replaced is not None and
+                    (data['items'][item]['phase'] == ('gate' if round_name == 'initial' else 'delta')
+                     or replaced.get('late'))
+                    and replaced.get('file') == str(path.relative_to(root))
+                    and path.is_file() and replaced.get('source_sha256') == hashlib.sha256(path.read_bytes()).hexdigest())
     # #902: a gate with no initial verdict in delta reads the current head first (decide)
-    late = round_name == 'initial' and data['items'][item]['phase'] == 'delta' and key not in data['gate_verdicts']
+    late = round_name == 'initial' and data['items'][item]['phase'] == 'delta' and expected_round == 'initial'
     review = data['items'][item].get('kind') == 'review'
-    if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta') and not late:
-        raise Refused(f'gate round does not match item phase {data["items"][item]["phase"]};run bin/wuwei dispatch next {item} for the right round')
+    if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta') and not late and not same_receipt:
+        expected = expected_round
+        raise Refused(f'gate round {round_name} does not match item phase {data["items"][item]["phase"]}; '
+                      + (f'expected --round {expected}; ' if expected else '')
+                      + f'run bin/wuwei dispatch next {item} for the right round')
     if round_name == 'delta':
         first = _record(data, item, role, 'initial')
         if first is None or not rechecks(data, item, role, root):
             raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
-        raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
     seat = brief.seats(data).get(name)
     if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
         raise Refused('matching sentinel must stand down before receive; wait for the seat to stop, then rerun the same bin/wuwei dispatch receive')
@@ -1521,13 +1592,10 @@ def receive(item, role, name, round_name='initial', root=None):
     from wuwei import derive  # #844: a stale receipt (its head moved) is replaced by the re-read
     row = data['items'][item]
     now = derive.head(Path(root) / row['worktree']) if row.get('worktree') else None
-    replaced = data['gate_verdicts'].get(key)
     if replaced is not None and derive.counted(root, row, replaced, now) is not None:
+        if same_receipt:
+            return replaced  # the stop hook already received this exact file
         raise Refused(f'gate already received; run bin/wuwei dispatch next {item} for what remains')
-    directory = workspace.day_dir(root)
-    path = directory / 'decisions' / f'gate-{name}.md'
-    if path.is_symlink():
-        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
     code, message = verdict.lint_file(path, role=sentinel, root=root)
     if code == 2:
         raise OSError(message)
@@ -1598,6 +1666,7 @@ def receive(item, role, name, round_name='initial', root=None):
     value = {'item': item, 'role': role, 'round': 'delta' if late else round_name, **({'late': True} if late else {}),
              'verdict': result,
              'head': head, 'file': str(path.relative_to(root)),
+             'source_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
              'blocks': any(re.search(verdict.BLOCKS_YES, block, re.I) for block in blocks),
              'notes': notes, 'findings': [block.strip() for block in blocks],
              'usage': seat.get('usage') or _seat_usage(seat, data['seat_policy'].get(sentinel, {}))}
@@ -1699,6 +1768,8 @@ def opinion(item, root=None):
                         'rewritten to the verdict format, as your final message, in plain lines, not '
                         'in a code block; WUWEI writes it to '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md.')  # #871 L1
+            if round_name == 'delta':
+                feedback += no_change_feedback(data, item)
             ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
             feedback += '\n' + ci if ci else ''  # #733
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
