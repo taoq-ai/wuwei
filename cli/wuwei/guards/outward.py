@@ -135,9 +135,24 @@ def check_lint(payload):
     return _check(payload, send=False)
 
 
+def allow_key(tool):
+    """UUID connector accounts share an exact tool name; named servers remain exact."""
+    from uuid import UUID
+    if tool.startswith('mcp__'):
+        server, separator, name = tool[5:].partition('__')
+        try:
+            UUID(server)
+        except ValueError:
+            pass
+        else:
+            if separator and name:
+                return ('uuid', name)
+    return ('exact', tool)
+
+
 def _check(payload, send):
     """#838: an MCP write is local (a #727 local tool, or every destination the owner's own
-    surface), allowed (exactly on outward.allow) or refused; the canary floor stays on every send."""
+    surface), allowed by outward.allow or refused; the canary floor stays on every send."""
     try:
         from wuwei import security, workspace
         raw = json.dumps(payload.get('tool_input', {}))
@@ -195,19 +210,19 @@ def _check(payload, send):
         inputs = payload.get('tool_input')
         if channels == {'local'}:  # #727: the command guards judge what runs.
             return security.outbound(inputs, root) if send else (CLEAN, '')
-        if not isinstance(inputs, dict):
-            return UNRUN, (f'outward: tool_input is not an object; got {type(inputs).__name__}; '
-                           'pass the tool arguments as a JSON object')
-        outward._text(inputs)  # a payload the lint cannot read fails closed (#501)
         if send:  # the canary floor first, on every MCP write
             code, reason = security.outbound(inputs, root)
             if code:
                 return code, reason
+        if not isinstance(inputs, dict):
+            return UNRUN, (f'outward: tool_input is not an object; got {type(inputs).__name__}; '
+                           'pass the tool arguments as a JSON object')
+        outward._text(inputs)  # Validate shape after the security floor.
         if re.search(DM_TOOL, tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
         channel = next(iter(channels)) if len(channels) == 1 else 'other'
         owner = outward.owner_only(inputs, config, channel)
-        if not owner and tool not in config['outward']['allow']:
+        if not owner and allow_key(tool) not in map(allow_key, config['outward']['allow']):
             if not channels and tool_kind(tool) == 'unknown':
                 return (CLEAN, '') if send else (FINDINGS, UNKNOWN.format(tool=tool))
             return (FINDINGS, refusal(tool, channel, inputs, config)) if send else (CLEAN, '')

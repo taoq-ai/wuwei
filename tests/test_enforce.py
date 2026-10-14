@@ -21,7 +21,7 @@ def fixed(module, code, reason, name='check'):
 
 def test_default_config_enforces():
     config = workspace.load_config('.', raw='')
-    assert config['guards'] == {'enforce': True, 'stop_max_blocks': 20}
+    assert config['guards'] == {'enforce': False, 'stop_max_blocks': 20}
     assert config['security'] == {'required': False}
     for name in ('POSTURES', 'AREAS', 'AREA_LEVELS', 'FLOORS', 'posture', 'posture_source'):
         assert not hasattr(workspace, name), name
@@ -50,13 +50,15 @@ TABLE = [
     (fixed('edges', 1, 'push to the default branch main is refused', 'check_bash'), True, False),
     (fixed('edges', 1, 'pr raise: DIV-1 is a WUWEI item', 'check_bash'), True, False),
     (fixed('edges', 2, 'edges guard could not run: x', 'check_bash'), True, False),
-    (fixed('edges', 1, 'merge policy: a PR merges only through bin/wuwei merge', 'check_bash'), True, True),
+    (fixed('edges', 1, 'merge policy: a PR merges only through bin/wuwei merge', 'check_bash'), True, False),
     (fixed('edges', 1, 'admin merge is refused', 'check_bash'), True, True),
-    (fixed('edges', 1, "PR approval is the owner's", 'check_bash'), True, True),
+    (fixed('edges', 1, "PR approval is the owner's", 'check_bash'), True, False),
     (fixed('edges', 1, 'branch protection changes are refused', 'check_bash'), True, True),
     (fixed('edges', 1, 'outward: security.canary', 'check_bash'), True, True),
-    (fixed('edges', 1, 'publish: terraform apply', 'check_deploy'), True, True),
-    (fixed('edges', 1, 'unlisted send', 'check_send'), True, True),
+    (fixed('edges', 1, 'infrastructure: terraform apply', 'check_deploy'), True, True),
+    (fixed('edges', 1, 'unlisted send', 'check_send'), True, False),
+    (fixed('edges', 2, 'outward: tool_input is not an object', 'check_send'), True, True),
+    (fixed('edges', 2, 'outward: cannot read security material', 'check_send'), True, True),
     (fixed('answers', 2, 'answer not recorded'), True, True),
     (fixed('lifecycle', 2, 'lifecycle failed'), True, True),
     (fixed('verdict', 1, 'verdict lint'), True, True),
@@ -143,6 +145,7 @@ def events(root, kind):
 
 def test_one_reason_most_specific(guarded, monkeypatch, capsys):
     import json
+    (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = true\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
         fixed('spec', 2, 'spec generic'), fixed('edges', 1, 'edges specific', 'check_bash'),
         fixed('stop', 2, 'stop generic')])
@@ -157,8 +160,8 @@ def test_enforce_off_keeps_the_floor(guarded, monkeypatch, capsys):
     (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
         fixed('edges', 1, 'force-push is refused', 'check_bash'),
-        fixed('edges', 2, 'deploy generic', 'check_deploy')])
-    assert code == 2 and out.err.splitlines() == ['deploy generic']
+        fixed('edges', 2, 'infrastructure: deploy generic', 'check_deploy')])
+    assert code == 2 and out.err.splitlines() == ['infrastructure: deploy generic']
     [event] = events(guarded, 'guard.would_refuse')
     assert event['reason'] == 'force-push is refused'
 
@@ -198,21 +201,21 @@ def test_logged_launch_refusal_is_shown_to_the_session(guarded, monkeypatch, cap
     assert code == 0
     [line] = out.out.splitlines()
     assert json.loads(line)['hookSpecificOutput'] == {
-        'hookEventName': 'PreToolUse', 'additionalContext': 'launch reason'}
+        'hookEventName': 'PreToolUse', 'additionalContext': 'Nudge: git push affects the tool target. launch reason'}
     assert [row['reason'] for row in events(guarded, 'guard.would_refuse')] == ['launch reason']
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('outward', 1, 'outward reason')])
-    assert code == 0 and out.out == ''
+    assert code == 0 and 'Nudge:' in out.out
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
-        fixed('agent_launch', 1, 'launch reason'), fixed('edges', 2, 'deploy reason', 'check_deploy')])
+        fixed('agent_launch', 1, 'launch reason'), fixed('edges', 2, 'infrastructure: deploy reason', 'check_deploy')])
     assert code == 2
     [line] = out.out.splitlines()
-    assert json.loads(line)['hookSpecificOutput']['permissionDecisionReason'].startswith('deploy reason')
-    (guarded / '.wuwei/config.toml').write_text('')
+    assert json.loads(line)['hookSpecificOutput']['permissionDecisionReason'].startswith('infrastructure: deploy reason')
+    (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = true\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('agent_launch', 1, 'launch reason')])
     assert code == 2
     assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'] == 'launch reason'
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('agent_launch', 1, CAP)])
-    assert code == 0 and json.loads(out.out)['hookSpecificOutput']['additionalContext'] == CAP
+    assert code == 0 and json.loads(out.out)['hookSpecificOutput']['additionalContext'].endswith(CAP)
 
 
 @pytest.mark.parametrize('enforce', [None, True])
@@ -221,3 +224,44 @@ def test_would_refuse_is_silent(enforce):
     payload = {'guard': 'outward', 'reason': 'r'} | ({'posture': 'guarded'} if enforce else {})
     assert classify({'kind': 'guard.would_refuse', 'payload': payload}, {})[0] == 'silent'
     assert classify({'kind': 'traces.unmatched', 'payload': {}}, {})[0] == 'warn'
+
+@pytest.mark.parametrize('guard,name,reason', [
+    ('edges', 'check_send', "outward: mcp__chat__send may send to other people; the owner adds it"),
+    ('edges', 'check_bash', 'merge policy: use the Owner step card'),
+    ('spec', 'check', 'spec missing'),
+    ('agent_launch', 'check', 'launch reason'),
+])
+def test_every_allowed_refusal_is_a_visible_nudge(guarded, monkeypatch, capsys, guard, name, reason):
+    import json
+    (guarded / '.wuwei/config.toml').write_text('[guards]\nenforce = false\n')
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed(guard, 1, reason, name)])
+    assert code == 0
+    context = json.loads(out.out)['hookSpecificOutput']['additionalContext']
+    assert context.startswith('Nudge:')
+    assert 'owner adds' not in context and 'Owner step' not in context
+    assert events(guarded, 'guard.would_refuse')[0]['reason'] == reason
+
+
+def test_default_is_nudge_and_explicit_true_still_enforces():
+    assert workspace.load_config('.', raw='')['guards']['enforce'] is False
+    assert workspace.load_config('.', raw='[guards]\nenforce=true')['guards']['enforce'] is True
+
+
+def test_only_admin_and_infrastructure_action_refusals_are_floor():
+    from wuwei import guards
+    assert 'edges.check_send' not in guards.FLOOR
+    assert 'edges.check_deploy' not in guards.FLOOR
+    for reason in ('merge policy: held', 'PR approval is owner only', 'unlisted send'):
+        assert not guards.floor(fixed('edges', 1, reason), reason)
+    for reason in ('admin merge', 'branch protection', 'infrastructure: terraform apply'):
+        assert guards.floor(fixed('edges', 1, reason), reason)
+
+
+def test_unreadable_outward_destination_still_nudges(guarded):
+    from wuwei.commands import hook
+    payload = {'session_id': 's', 'hook_event_name': 'PreToolUse',
+               'tool_name': 'mcp__chat__send', 'tool_input': {'recipients': 12}}
+    warned = []
+    assert hook.enforce(payload, [(fixed('outward', 2, 'outward: unreadable'),
+                                  'outward: unreadable', 2)], guarded, warned) == []
+    assert len(warned) == 1 and warned[0].startswith('Nudge:')

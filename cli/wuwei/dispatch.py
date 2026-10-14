@@ -1266,6 +1266,8 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
     actions = []
     rows = brief.events(root) if round_name == 'initial' else []
     body = GATE_BODY.format(item=item)
+    if round_name == 'delta':
+        note += no_change_feedback(data, item)
     review = data['items'][item].get('kind') == 'review'
     if review:
         body = f'Review {data["items"][item]["pr"]} at its HEAD. Return a {roles[0]} gate verdict for {item}; change no code.'
@@ -1361,6 +1363,7 @@ def _seats(root, data, item, roles, round_name, commands, note='', stale=(), cur
             action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
             feedback = _recheck_feedback(data['items'][item], first,
                                          depth(data['items'][item], gate=True) == 'light', head)
+            feedback += no_change_feedback(data, item)
             ci = brief.ci_block(data['items'][item].get('ci_jobs', ()), root / worktree)  # #733
             feedback += '\n' + ci if ci else ''
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
@@ -1429,9 +1432,44 @@ def _polish_feedback(notes):
             'small local change stays a review note; name it in your handoff.\n' + '\n'.join(notes))
 
 
+def _blocking_findings(record):
+    return [finding for finding in record['findings'] if re.search(verdict.BLOCKS_YES, finding, re.I)]
+
+
+def no_change_answers(data, item, build):
+    """A complete rebuttal is evidence for delta review, never a passing verdict."""
+    row = data['items'][item]
+    if row.get('resume_phase', row['phase']) not in ('fix', 'delta'):
+        return ''
+    text = (build.get('result') or {}).get('text', '')
+    answers = re.findall(r'^No change: ([^\s:]+) ([1-9][0-9]*):[ \t]*(.*)$',
+                         verdict.active_text(text), re.M)
+    keys = [(role, int(number)) for role, number, reason in answers if reason.strip()]
+    required = []
+    for key, record in data['gate_verdicts'].items():
+        if key.startswith(item + ':') and key.endswith(':initial'):
+            role = key[len(item) + 1:-len(':initial')]
+            required.extend((role, n) for n, _ in enumerate(_blocking_findings(record), 1))
+    return text if required and len(answers) == len(keys) == len(set(keys)) and set(keys) == set(required) else ''
+
+
+def no_change_feedback(data, item):
+    build = data.get('builds', {}).get(item) or {}
+    if build.get('start') and build.get('checked') == build['start']:
+        text = no_change_answers(data, item, build)
+        if text:
+            return ('\nThe builder answered every blocking finding with no change; the head is unchanged. '
+                    'Review these reasons and decide each finding; the handback is not a PASS:\n' + text)
+    return ''
+
+
 def _fix_feedback(roles, records):
     return '\n'.join(f'Gate {role} {record["verdict"]}: fix only the blocking findings (blocks: yes) '
-                     f'in {record["file"]}.' for role, record in zip(roles, records))
+                     f'in {record["file"]}. If no code change is needed, answer each finding in your '
+                     'handback with its reason:\n' + '\n'.join(
+                         f'No change: {role} {n}: <reason> (finding: {finding})'
+                         for n, finding in enumerate(_blocking_findings(record), 1))
+                     for role, record in zip(roles, records))
 
 
 def _fix(item, roles):
@@ -1709,6 +1747,8 @@ def opinion(item, root=None):
                         'rewritten to the verdict format, as your final message, in plain lines, not '
                         'in a code block; WUWEI writes it to '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md.')  # #871 L1
+            if round_name == 'delta':
+                feedback += no_change_feedback(data, item)
             ci = brief.ci_block(row.get('ci_jobs', ()), root / row['worktree']) if round_name == 'delta' else ''
             feedback += '\n' + ci if ci else ''  # #733
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')

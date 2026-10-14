@@ -76,7 +76,7 @@ def test_init_layout(tmp_path, explicit):
         'template_version = ""', f'template_version = "{version}"', 1)
 
 
-@pytest.mark.parametrize('flags,enforce', [(('--shadow',), False), ((), True)])
+@pytest.mark.parametrize('flags,enforce', [(('--shadow',), False), ((), False)])
 def test_init_shadow(tmp_path, flags, enforce):
     # #837: --shadow writes guards.enforce = false; --posture is gone.
     from wuwei import workspace
@@ -272,8 +272,8 @@ def test_config_defaults_and_independence(tmp_path):
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
         'boundary': {}, 'environments': {},
-        'deploy': {'workflows': [], 'deny': []},
-        'guards': {'enforce': True, 'stop_max_blocks': 20},
+        'deploy': {'deny': []},
+        'guards': {'enforce': False, 'stop_max_blocks': 20},
         'spec': {'engine': 'speckit', 'mode': 'strict', 'skip_tiers': ['light']},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
@@ -439,7 +439,7 @@ def _case_owner_verbosity(tmp_path):
 def _case_guards_enforce(tmp_path):
     from wuwei import workspace
     write_config(tmp_path, '')
-    assert workspace.load_config(tmp_path)['guards'] == {'enforce': True, 'stop_max_blocks': 20}
+    assert workspace.load_config(tmp_path)['guards'] == {'enforce': False, 'stop_max_blocks': 20}
     write_config(tmp_path, '[guards]\nenforce = false\n')
     assert workspace.load_config(tmp_path)['guards'] == {'enforce': False, 'stop_max_blocks': 20}
     write_config(tmp_path, '[guards]\nenforce = "no"\n')
@@ -448,7 +448,7 @@ def _case_guards_enforce(tmp_path):
     found = []
     write_config(tmp_path, '[security]\nposture = "strict"\n[security.areas]\nmcp = "off"\n'
                  '[guards]\nmode = "shadow"\nshadow_days = 3\nshadow_since = "2026-09-25"\n')
-    assert workspace.load_config(tmp_path, warnings=found)['guards'] == {'enforce': True, 'stop_max_blocks': 20}
+    assert workspace.load_config(tmp_path, warnings=found)['guards'] == {'enforce': False, 'stop_max_blocks': 20}
     assert len(found) == 5, found  # #799: retired keys only warn
 
 
@@ -731,6 +731,7 @@ def test_upgrade_previous_workspace(tmp_path):
     assert '# Report stale reservations' in raw
     assert config['adapters']['checks'] == 'local'
     assert config['outward']['allow'] == []
+    assert 'workflows' not in config['deploy']
     assert (directory / 'executable').read_text() == str(ROOT / 'bin/wuwei') + '\n'
     assert 'builder.md' in result.stdout and '0.9.0' in result.stdout
     assert (directory / 'charters/builder.md').read_text().endswith('Local builder\n')
@@ -1368,7 +1369,7 @@ def test_upgrade_maps_the_posture_to_guards_enforce(tmp_path, monkeypatch, capsy
     assert (mapped.replace('Would upgrade', 'Upgraded') in out.out.splitlines()) is bool(was)
     config = tomllib.loads(path.read_text())
     assert config['security'] == {'required': True}
-    assert config['guards'].get('enforce', True) is not bool(was)
+    assert config['guards']['enforce'] is False
     assert set(config['guards']) <= {'enforce', 'stop_max_blocks'}
     assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
 

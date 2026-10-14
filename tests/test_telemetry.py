@@ -110,7 +110,7 @@ def test_aggregate_every_metric(ws):
     assert metrics == EXPECTED
     assert set(telemetry.METRICS) == set(EXPECTED) | {'aggregation_ms'}
     assert 'evidence' not in found
-    assert found['config'] == {'posture': 'guarded', 'profile': 'strict', 'repositories': 0,
+    assert found['config'] == {'posture': 'observe', 'profile': 'strict', 'repositories': 0,
                                'adapters': workspace.load_config(ws)['adapters']}
     assert found['versions']['python'] == f'{sys.version_info[0]}.{sys.version_info[1]}'
     assert (found['schema'], found['week'], found['final']) == (1, '2026-W39', True)
@@ -253,7 +253,7 @@ def test_step_off_writes_nothing(ws):
 def final_week(root, **changes):
     found = {'week': '2026-W39', 'final': True, 'schema': 1,
              'versions': {'plugin': '0.12.0', 'python': '3.12', 'os': 'linux'},
-             'config': {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
+             'config': {'posture': 'observe', 'profile': 'strict', 'repositories': 1,
                         'adapters': {'tracker': 'none', 'code_host': 'github'}},
              'metrics': {'days': 2, 'warnings': {}, 'escaped_by_tier': 'unmeasured',
                          'fix_rounds_per_item': 'unmeasured'}}
@@ -501,9 +501,9 @@ def test_spans_carry_only_the_attributes(ws):
     attributes = [{row['key']: row['value']['stringValue'] for row in span['attributes']} for span in spans]
     assert [span['name'] for span in spans] == ['wuwei.hook', 'wuwei.hook', 'wuwei.seat', 'wuwei.day']
     assert attributes[0] == {'wuwei.event': 'PreToolUse', 'wuwei.guard': 'pr', 'wuwei.outcome': 'unmeasured',
-                             'wuwei.reason_code': 'pr.2', 'wuwei.posture': 'guarded'}
+                             'wuwei.reason_code': 'pr.2', 'wuwei.posture': 'observe'}
     assert attributes[1]['wuwei.outcome'] == 'warn' and attributes[1]['wuwei.item'] == 'A'
-    assert attributes[1]['wuwei.posture'] == 'guarded'  # #837: the workspace's label, not the event's
+    assert attributes[1]['wuwei.posture'] == 'observe'  # #837: the workspace's label, not the event's
     assert int(spans[2]['endTimeUnixNano']) - int(spans[2]['startTimeUnixNano']) == 30 * 60 * 10 ** 9
     assert [event['name'] for event in spans[3]['events']] == ['decision.routed', 'negotiation.loop', 'gate.received']
     assert len({span['traceId'] for span in spans}) == 1 and len({span['spanId'] for span in spans}) == 4
@@ -574,7 +574,7 @@ def test_week_stored_with_an_inbound_adapter_still_validates_previews_and_sends(
     # A week recorded before #810 names adapters.inbound; it stays valid and shareable.
     from fakes import owner
     fake = host
-    old = {'posture': 'guarded', 'profile': 'strict', 'repositories': 1,
+    old = {'posture': 'observe', 'profile': 'strict', 'repositories': 1,
            'adapters': {'tracker': 'none', 'code_host': 'github', 'inbound': 'slack'}}
     final_week(ws, config=old, **VERSIONS)
     telemetry.validate(telemetry.payload(telemetry.load_week(ws, '2026-W39'), token='a' * 32))

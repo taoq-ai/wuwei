@@ -48,7 +48,7 @@ def _case_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
     from pathlib import Path
     from wuwei import dispatch
 
-    (root / '.wuwei/config.toml').write_text('')
+    (root / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n')
     tree = root / 'tree'
     tree.mkdir()
     state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root)
@@ -4190,3 +4190,17 @@ def test_review_955_prompt_seat_cannot_deliver_gate_verdict(root, monkeypatch):
 ])
 def test_gate_and_opinion_dispatch_cases(root, monkeypatch, scenario_fn):
     scenario_fn(root, monkeypatch)
+
+
+def test_no_change_handoff_is_evidence_in_delta_feedback():
+    from wuwei import dispatch
+    record = {'verdict': 'FIX', 'head': 'a' * 40, 'file': 'gate.md',
+              'findings': ['F1 high src/a.py:1 fails when empty. blocks: yes']}
+    answer = 'No change: arch 1: the existing validator rejects empty input.'
+    data = {'items': {'A': {'phase': 'delta'}},
+            'gate_verdicts': {'A:arch:initial': record},
+            'builds': {'A': {'start': 'a' * 40, 'checked': 'a' * 40,
+                             'result': {'text': answer}}}}
+    text = dispatch.no_change_feedback(data, 'A')
+    assert 'unchanged' in text and answer in text
+    assert 'No change: arch 1:' in dispatch._fix_feedback(['arch'], [record])

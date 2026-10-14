@@ -213,7 +213,7 @@ def repo_block(name, extra=''):
     return f'[[repos]]\nname = "{name}"\npath = "{name.split("/")[1]}"\ndefault_branch = "main"\n{extra}\n'
 
 
-DEPLOY_TABLE = '[deploy]\nworkflows = [] # Deploying workflows.\ndeny = []\n'
+DEPLOY_TABLE = '[deploy]\ndeny = []\n'
 
 
 def applied(tmp_path, raw, targets):
@@ -227,7 +227,6 @@ def applied(tmp_path, raw, targets):
     (tmp_path / '.wuwei/config.toml').write_text(text)
     load_config(tmp_path)
     before = tomllib.loads(raw)
-    before.get('deploy', {}).pop('workflows', None)
     assert _preserves_values(before, tomllib.loads(text))
     return text, tomllib.loads(text), edits
 
@@ -257,17 +256,13 @@ def test_present_owner_values_become_hand_edits(tmp_path):
     assert ('repos.0.merge_deploys', False, True) in edits
 
 
-def test_empty_deploy_lists_are_replaced_and_others_kept(tmp_path):
+def test_proposal_does_not_write_retired_deploy_workflows(tmp_path):
     raw = repo_block('acme/widget') + DEPLOY_TABLE
     text, parsed, edits = applied(tmp_path, raw, [(0, facts('deploy'))])
-    assert parsed['deploy'] == {'workflows': ['deploy.yml'], 'deny': []}
+    assert parsed['deploy'] == {'deny': []}
     assert parsed['environments'] == {'production': 'deploy target in .github/workflows/deploy.yml',
                                       'release/*': 'deploy target in .github/workflows/deploy.yml'}
     assert parsed['repos'][0]['merge_deploys'] is True and edits == []
-    raw = raw.replace('workflows = []', 'workflows = ["x.yml"]')
-    text, parsed, edits = applied(tmp_path, raw, [(0, facts('deploy'))])
-    assert parsed['deploy']['workflows'] == ['x.yml']
-    assert edits == [('deploy.workflows', ['x.yml'], ['deploy.yml'])]
 
 
 @pytest.mark.parametrize('line', ['fast_checks = []\n', 'fast_checks = []  # none yet\n'])
@@ -337,7 +332,7 @@ def test_missing_merge_table_lands_after_its_repo(tmp_path):
     text, parsed, _ = applied(tmp_path, raw, [(0, facts('deploy'))])
     assert parsed['repos'][0]['merge']['never_auto_paths'] == [*MERGE_SCHEMA['never_auto_paths'][1], 'k8s/*']
     assert parsed['repos'][1]['merge'] == {'auto': False}
-    assert parsed['deploy']['workflows'] == ['deploy.yml']
+    assert 'workflows' not in parsed.get('deploy', {})
 
 
 def test_boundary_candidates_and_inline_repos(tmp_path):

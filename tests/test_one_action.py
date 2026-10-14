@@ -221,7 +221,7 @@ def test_a_blocked_stop_passes_the_strict_spec_stop_guard(tmp_path):
     # strict mode the stop guard (guards.spec.check_stop) demanded the spec artifacts first.
     from wuwei import specmode
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[spec]\nengine = "speckit"\nmode = "strict"\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[guards]\nenforce=true\n[spec]\nengine = "speckit"\nmode = "strict"\n')
     config, tree = workspace.load_config(tmp_path), tmp_path / 'tree'
     tree.mkdir()
     artifact = tree / 'specs/a/spec.md'

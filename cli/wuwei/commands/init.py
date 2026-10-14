@@ -13,9 +13,18 @@ import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 from wuwei import env, integrity, security, workspace
-from wuwei.guards.edges import PERMISSIONS_DENY, VERCEL_DENY
+from wuwei.guards.edges import PERMISSIONS_DENY
 
 LEGACY_VERCEL_DENY = {'Bash(vercel*)', 'Bash(vc *)'}
+# Exact previously shipped action rules; custom owner rules remain untouched (#997).
+LEGACY_APP_DENY = {f'Bash({command})' for command in (
+    'netlify deploy*', 'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
+    'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
+    'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
+    *(f'{binary}{suffix}' for binary in ('vercel', 'vc') for suffix in (
+        '', ' -*', ' .*', ' deploy*', ' --prod*', ' promote*', ' rollback*',
+        ' redeploy*')))}
+RETIRED_DENY = LEGACY_VERCEL_DENY | LEGACY_APP_DENY
 
 LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
   protect each repository's default_branch: required status checks including the test jobs,
@@ -56,7 +65,7 @@ def run(args):
     if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
         raise ValueError(f'workspace permissions.deny must be a list of strings; {DAMAGED}')
     permissions['deny'] = list(dict.fromkeys(
-        [*(rule for rule in denials if rule not in LEGACY_VERCEL_DENY), *PERMISSIONS_DENY]))
+        [*(rule for rule in denials if rule not in RETIRED_DENY), *PERMISSIONS_DENY]))
     template = Path(__file__).resolve().parents[3] / "templates/workspace"
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging = tempfile.mkdtemp(prefix=".wuwei-init-", dir=destination.parent)
@@ -484,10 +493,10 @@ def upgrade(args):
             denials = settings_data.get('permissions', {}).get('deny', [])
             if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
                 raise ValueError(f'workspace permissions.deny must be a list of strings; {DAMAGED}')
-            settings_changed = any(rule in LEGACY_VERCEL_DENY for rule in denials)
+            settings_changed = any(rule in RETIRED_DENY for rule in denials)
             if settings_changed:
-                narrowed = [rule for rule in denials if rule not in LEGACY_VERCEL_DENY]
-                narrowed.extend(rule for rule in VERCEL_DENY if rule not in narrowed)
+                narrowed = [rule for rule in denials if rule not in RETIRED_DENY]
+                narrowed.extend(rule for rule in PERMISSIONS_DENY if rule not in narrowed)
                 settings_data['permissions']['deny'] = narrowed
         except (OSError, UnicodeError, ValueError) as exc:
             print(f'wuwei init: warning: .claude/settings.json migration skipped: {exc}; '
@@ -561,7 +570,7 @@ def upgrade(args):
         if env_changed:
             print(f'{prefix} private .wuwei/env and Git ignore rule')
         if settings_changed:
-            print(f'{prefix} .claude/settings.json: narrow Vercel denials')
+            print(f'{prefix} .claude/settings.json: narrow action denials to infrastructure')
         if text != raw:
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in removed:

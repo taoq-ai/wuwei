@@ -309,15 +309,15 @@ def test_enforce_off_records_force_push_and_keeps_records_refused(day):
     from wuwei import registry
     from wuwei.registry import Result
     config = day.root / '.wuwei/config.toml'
-    config.write_text(config.read_text().replace(
+    config.write_text(config.read_text().replace('[guards]\nenforce = true\n', '').replace(
         'fast_checks', 'identity = {name = "Builder", email = "builder@example.test"}\nfast_checks')
         + setting)
     # The day fixture has no Git identity (git var exits 128); report the configured one.
     identity = {'name': 'Builder', 'email': 'builder@example.test'}
     day.patch.setattr(registry.load('vcs', None), 'commit_context', lambda repo, *args, root=None: Result(
         0, {**git.repo_context(repo).data, 'author': identity, 'committer': identity}))
-    assert day.hook('PreToolUse', cwd=str(day.repo), tool_name='Bash',
-                    tool_input={'command': 'git push --force origin main'}) == ''
+    assert 'Nudge:' in day.hook('PreToolUse', cwd=str(day.repo), tool_name='Bash',
+                               tool_input={'command': 'git push --force origin main'})
     event = day.events[-1]
     assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'edges'
     assert 'force' in event['payload']['reason'].lower()

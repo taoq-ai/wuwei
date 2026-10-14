@@ -165,6 +165,8 @@ class Day:
             '# Goals\n## G-1\noutcome: Ship a useful result\nmeasure: shipped\n'
             'target: 1\ndate: 2026-10-30\npriority: 1\n')
         (base / 'config.toml').write_text('''
+[guards]
+enforce = true
 [owner]
 name = "Builder"
 handles = ["builder"]

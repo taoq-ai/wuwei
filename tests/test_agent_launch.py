@@ -134,6 +134,7 @@ def test_missing_brief_names_the_brief_command(launch, monkeypatch, case):
 
 
 def test_hook_denies_unmeasured_inline_launch(day, monkeypatch, capsys):
+    set_enforce(day[0], True)
     import io
     import sys
     from wuwei.__main__ import main
@@ -983,6 +984,7 @@ def test_legacy_unbriefed_seat_stops_as_adhoc(day):
 
 @pytest.fixture
 def direct_launch(day, monkeypatch):
+    set_enforce(day[0], True)
     from wuwei.guards import agent_launch
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     root, directory, _, _ = day

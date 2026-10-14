@@ -346,7 +346,7 @@ def test_workspace_rows_healthy(ws):
         'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
         'calibration', 'drift',
         'guards', 'telemetry']
-    assert row(rows, 'guards')['value'] == 'enforce (guards.enforce = true)'
+    assert 'guards.enforce = false' in row(rows, 'guards')['value']
     assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 

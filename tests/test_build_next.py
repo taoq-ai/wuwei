@@ -20,7 +20,7 @@ from test_build import setup, events
 def seat(tmp_path, monkeypatch):
     repo, original, day, runtime = setup(tmp_path, monkeypatch, [])
     config = tmp_path / '.wuwei/config.toml'
-    config.write_text(config.read_text().replace('runtime="codex"', 'runtime="claude"'))
+    config.write_text(config.read_text().replace('runtime="codex"', 'runtime="claude"') + '\n[guards]\nenforce=true\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     path = day / 'briefs/builder.md'
     path.parent.mkdir()
@@ -961,8 +961,8 @@ def test_build_next_never_adopts_another_items_seat(seat):
 
 
 def set_enforce(root, value):
-    with (root / '.wuwei/config.toml').open('a') as config:
-        config.write(f'[guards]\nenforce = {str(value).lower()}\n')
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('enforce=true', f'enforce={str(value).lower()}'))
 
 
 def test_a_builder_launch_with_no_build_record_is_refused_and_build_next_launches_it(seat):

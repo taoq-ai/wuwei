@@ -196,6 +196,7 @@ def test_standard_profile(configured, monkeypatch, capsys, text, invalid, code, 
 def test_hook_integration(configured, monkeypatch, capsys, code):
     from wuwei.commands.hook import run
     root, _ = configured
+    set_enforce(root, 'true')
     if code == 0:
         allow(root, 'mcp__slack__post_message')
     call = payload(root, 'per Pat, the fix is in' if code == 1 else 'fixed in abc1234')
@@ -667,8 +668,10 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
     err = capsys.readouterr().err
     if name in PROBES or server:  # #838 review: an unknown name runs and logs
         assert code == 0
-    else:  # #838: a write is refused until it is on outward.allow
+    elif posture == 'true':
         assert code == 2 and not_allowed(tool) in err
+    else:
+        assert code == 0
 
 
 # #492: claude.ai connectors put a UUID in the server segment and the brand in the tool name.
@@ -1097,8 +1100,12 @@ def test_unlisted_send_is_refused_with_its_line(configured, monkeypatch, capsys,
     call = payload(root, 'Thanks', tool=SEND, channel='C1')
     assert check_send(call) == refused(SEND)
     monkeypatch.chdir(root)
-    assert run_hook(monkeypatch, call) == 2
-    assert not_allowed(SEND) in capsys.readouterr().err
+    assert run_hook(monkeypatch, call) == (2 if enforce == 'true' else 0)
+    out = capsys.readouterr()
+    if enforce == 'true':
+        assert not_allowed(SEND) in out.err
+    else:
+        assert 'Nudge:' in out.out and 'owner adds' not in out.out
 
 
 def _case_listed_send_passes_exactly(configured):
@@ -1269,3 +1276,18 @@ def test_refusal_on_another_channel_names_no_surface(configured):
     tool = 'mcp__linear__save_issue'
     result = check_send(payload(configured[0], 'Hi', tool=tool, channel='C1'))
     assert result == refused(tool) and 'outbound.owner' not in result[1]
+
+@pytest.mark.parametrize('server,allowed', [
+    ('22222222-2222-4222-8222-222222222222', True),
+    ('11111111-1111-4111-8111-111111111111', True),
+    ('named-server', False), ('not-a-uuid', False),
+])
+def test_uuid_allow_survives_account_switch(configured, server, allowed):
+    from wuwei.guards.edges import check_send
+    with (configured[0] / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[outward]\nallow=["mcp__11111111-1111-4111-8111-111111111111__slack_send_message"]\n')
+    payload = {'cwd': str(configured[0]), 'tool_name': f'mcp__{server}__slack_send_message',
+               'tool_input': {'channel': 'C123', 'text': 'Hello'}}
+    assert check_send(payload)[0] == (0 if allowed else 1)
+    payload['tool_name'] = f'mcp__{server}__slack_delete_message'
+    assert check_send(payload)[0] == 1

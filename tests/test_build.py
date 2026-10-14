@@ -470,7 +470,7 @@ def test_build_park_names_plan_resume_and_writes_no_record(tmp_path, monkeypatch
 
 def test_spec_gap_is_a_failing_check_that_parks_when_stuck(tmp_path, monkeypatch):
     from wuwei.commands import build
-    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='')
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='[guards]\nenforce=true\n')
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
     assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
     feedback = runtime.calls[1][1]
@@ -489,7 +489,7 @@ def test_spec_complete_moves_to_gate(tmp_path, monkeypatch):
 def test_light_tier_spec_skip_is_rechecked_against_the_diff(tmp_path, monkeypatch):
     from wuwei import dispatch
     from wuwei.commands import build
-    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='')
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='[guards]\nenforce=true\n')
     data = json.loads((day / 'state.json').read_text())
     data['items']['A']['tier'] = 'light'
     (day / 'state.json').write_text(json.dumps(data))
@@ -505,3 +505,34 @@ def test_advisory_spec_gap_warns_once_and_moves_to_gate(tmp_path, monkeypatch):
     assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
     assert [e['payload'] for e in events(day) if e['kind'] == 'spec.warned'] == [
         {'item': 'A', 'engine': 'speckit', 'step': 'specify', 'where': 'gates'}]
+
+@pytest.mark.parametrize('answer,phase,expected', [
+    ('No change: arch 1: existing validation rejects empty input.\nNo change: quality 1: measured linear time.', 'fix', 0),
+    ('No change: arch 1: existing validation rejects empty input.', 'fix', 1),
+    ('No change: arch 1: \nNo change: quality 1: measured linear time.', 'fix', 1),
+    ('No change: arch 1: validated.\nNo change: arch 1: duplicate.\nNo change: quality 1: measured.', 'fix', 1),
+    ('No change: arch 1: validated.\nNo change: quality 1: measured.', 'implement', 1),
+    ('No code change needed.', 'fix', 1),
+])
+def test_unchanged_fix_requires_each_reason(tmp_path, monkeypatch, answer, phase, expected):
+    from wuwei import derive
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3)
+    monkeypatch.setattr(derive, 'head', lambda *a: 'a' * 40)
+    def seed(data):
+        data['items']['A'].update(phase=phase, fix_heads=[['a' * 40, None]])
+        for role in ('arch', 'quality'):
+            data['gate_verdicts'][f'A:{role}:initial'] = {
+                'verdict': 'FIX', 'head': 'a' * 40, 'file': f'{role}.md',
+                'findings': ['F1 high src/a.py:1 fails when empty. blocks: yes']}
+    state._write_state(seed, tmp_path)
+    runtime.result = lambda *a, **k: registry.Result(0, {
+        'text': answer + '\nBlocked: none\nGap: none\nChange: none', 'usage': {}})
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == expected
+    data = state.read_state(tmp_path)
+    assert data['items']['A']['phase'] == ('delta' if expected == 0 else 'parked')
+    if expected == 0:
+        assert data['builds']['A']['checked'] == 'a' * 40
+        assert data['items']['A']['fix_heads'][-1] == ['a' * 40, 'a' * 40]
+    else:
+        assert data['builds']['A']['repeats'] == 2

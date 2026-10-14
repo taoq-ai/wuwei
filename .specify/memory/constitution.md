@@ -52,16 +52,23 @@ satisfy a principle; Principle V wins a tie.
 
 ### VII. Security first
 
-Least privilege for agent tools. Guards refuse at the moment of action. Secrets, phone
-numbers and message bodies never land in traces, logs or memory unredacted. Autonomy (owner,
-2026-10-05, #530; one switch, 2026-10-11, #837): a guard refusal names the plain form the
-seat runs itself or the card that asks the owner. With `guards.enforce = false` a guard logs
-what it would refuse and lets the call through, with one floor: records are written by the
-workflow and answered by the owner, and merge, approval, admin, deploy and outward sends to
-other people stay the owner's (an exact `outward.allow` list, 2026-10-11, #838). A merge
-happens only through the merge policy, never by approval or override; a merge the policy
-does not clear is the owner's decision, and an owner-only action runs only on the owner's
-recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
+Least privilege for agent tools. Secrets, phone numbers and message bodies never land in
+traces, logs or memory unredacted. The owner delegates work with green evidence (owner,
+2026-10-14, #997). `guards.enforce` defaults to false: every let-through PreToolUse refusal
+is recorded unchanged and shown to the model as a nudge describing the call and its target.
+An explicit true still enforces ordinary guard refusals. Config, admin and infrastructure
+changes remain owner-only on their Owner step cards. State writes, answer records, verdict
+lint, canary and honeytoken egress remain protected regardless of the switch. The Stop
+hook remains unchanged pending #989.
+
+Ordinary merge, PR approval, app deploys and outward sends need no additional owner card.
+Merges touching owner_paths or never_auto_paths retain the owner's head-bound card.
+Raw merges of raised or claimed PRs must use bin/wuwei merge. Unrun send checks remain
+blocking, and canary scanning precedes input shape validation. The merge
+command still requires fresh gates, green required checks and branch protection without
+admin override. A complete reasoned no-change handback may send an unchanged fix head to
+delta review; only the reviewer can resolve its findings. Existing repeat and park limits
+remain.
 
 ## Constraints
 
@@ -109,4 +116,4 @@ recorded Owner step answer (design spec 4.6, 4.7 and 9.2).
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 2.4.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-12
+**Version**: 2.5.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-14
