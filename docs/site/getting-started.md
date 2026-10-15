@@ -19,12 +19,17 @@ For a verified install, use the signed `wuwei.tar.gz` release asset: it carries
 
 ## Create the workspace
 
-From the directory that will own the workspace (usually your main repository):
+The `wuwei` CLI is not on your PATH; it lives inside the installed plugin. From the directory that
+will own the workspace (usually your main repository), call it by its full path:
 
 ```sh
-bin/wuwei init
-bin/wuwei doctor
+WUWEI=$(find ~/.claude/plugins -type f -path '*/bin/wuwei' | sort | tail -n 1)
+"$WUWEI" init
+"$WUWEI" doctor
 ```
+
+Once the workspace exists, each session's start prints the path as `WUWEI CLI: <path>`, so the
+agents call it without help.
 
 `init` creates `.wuwei/` and merges WUWEI's rules into `.claude/settings.json`: an allow list for
 everyday work, deny rules for the doors, ask rules for infrastructure. Your own rules stay as they
