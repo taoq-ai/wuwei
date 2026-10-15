@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/taoq-ai/wuwei/compare/v1.0.0...v1.1.0) (2026-10-15)
+
+
+### Features
+
+* gates before the PR, chosen by the diff, and a flow that keeps going ([a5fef27](https://github.com/taoq-ai/wuwei/commit/a5fef27c5af8e5bc2a7eb544b0e7058b476282e0)), closes [#1047](https://github.com/taoq-ai/wuwei/issues/1047) [#1048](https://github.com/taoq-ai/wuwei/issues/1048) [#1049](https://github.com/taoq-ai/wuwei/issues/1049) [#1050](https://github.com/taoq-ai/wuwei/issues/1050)
+
+
+### Bug Fixes
+
+* **release:** unpin release-as now that v1.0.0 is tagged ([#1054](https://github.com/taoq-ai/wuwei/issues/1054)) ([1435f17](https://github.com/taoq-ai/wuwei/commit/1435f175b3916606d20d162c4f12e50136d89565)), closes [#1053](https://github.com/taoq-ai/wuwei/issues/1053)
+
 ## [1.0.0](https://github.com/taoq-ai/wuwei/compare/v0.34.0...v1.0.0) (2026-10-15)
 
 
