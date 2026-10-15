@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/taoq-ai/wuwei/compare/v0.34.0...v1.0.0) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* 0.x workspaces, commands, config keys and hooks are retired. Run wuwei init for a 1.0 workspace; DORA reads the code host, so no history is lost.
+
+### Features
+
+* WUWEI 1.0, responsible autonomy for agent teams ([#1024](https://github.com/taoq-ai/wuwei/issues/1024)) ([335229c](https://github.com/taoq-ai/wuwei/commit/335229cd878f142d3459a9a59765d70f79d7e9d6))
+
 ## [0.34.0](https://github.com/taoq-ai/wuwei/compare/v0.33.0...v0.34.0) (2026-10-14)
 
 
