@@ -1,212 +1,167 @@
-"""Build the local owner report from recorded day evidence."""
+"""The day report, the close checkpoint and the DORA keys, all read from the ledger, traces and the code host."""
 
 from collections import Counter
-from datetime import timedelta
-import json
+import datetime
+import statistics
+from pathlib import Path
 
-from wuwei import metrics, signal, state, watch, workspace
+import hashlib
 
-FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
+from wuwei import board, evidence, gh, plan, ws
 
 
-def shadow_lines(directories):
-    """Shadow refusals in day directories, oldest first: per guard its count and three most
-    frequent forms, then the forms refused more than FALSE_POSITIVE_AFTER times with no
-    page-tier event after their first refusal. [] when there are none."""
-    guards, forms, first, last_page = Counter(), {}, {}, -1
-    events = [event for directory in directories for event in watch.records(directory / 'events.jsonl')]
-    for position, event in enumerate(events):
-        if event['kind'] != 'guard.would_refuse':
-            if signal.classify(event, {})[0] == 'page':
-                last_page = position
+def _repos(root):
+    return sorted(set(ws.config(root)['repos']) | {i['repo'] for i in plan.items(root) if i.get('repo')})
+
+
+def _count(rows, key):
+    return Counter(str(r['data'].get(key, '')).splitlines()[0][:100] if r['data'].get(key) else '?' for r in rows)
+
+
+def day(root, date=None):
+    date = date or ws.today()
+    out = [f'# WUWEI report {date}', '']
+    rows = lambda kind: ws.rows(root, kind, date)  # noqa: E731
+    passes, closes = rows('plan.pass'), rows('day.closed')
+    done, parked = rows('item.done'), rows('item.parked')
+    out += ['## Plan', f'Plan passes: {len(passes)}. Checkpoints: {len(closes)}. '
+            f'Done today: {len(done)}. Parked today: {len(parked)}.']
+    out += [f'- parked {r["data"]["id"]}: {r["data"].get("reason", "")}' for r in parked]
+    out += since_checkpoint(root, date)
+    out += ['', '## Board', board.text(board.compute(root), root), '', '## Merges']
+    checked = {r['data'].get('pr') for r in ws.rows(root, 'merge.checked')}
+    for repo in _repos(root):
+        try:
+            merged = [pr for pr in gh.merged_prs(repo, date) if (pr.get('mergedAt') or '').startswith(date)]
+        except gh.GhError as exc:
+            out.append(f'- {repo}: unmeasured ({exc})')
             continue
-        guard = str(event['payload'].get('guard'))
-        form = ' '.join(str(event['payload'].get('target', '')).split()[:3])
-        guards[guard] += 1
-        forms.setdefault(guard, Counter())[form] += 1
-        first.setdefault((guard, form), position)
-    if not guards:
+        for pr in merged:
+            ref = f'{repo}#{pr["number"]}'
+            out.append(f'- {ref} merged through WUWEI\'s check' if ref in checked else
+                       f'- {ref} merged without WUWEI reading its evidence (an exception for the retro)')
+    out += [f'- {r["data"]["pr"]} merged with process gaps: {"; ".join(r["data"]["process"])}'
+            for r in rows('merge.checked') if r['data'].get('process')]
+    refused = rows('refused')
+    questions = [r for r in refused if r['data'].get('tool') == 'AskUserQuestion']
+    out += ['', '## Doors', f'Refused: {len(refused)} (questions sent back to the model: {len(questions)}). '
+            f'Asked the owner (infrastructure): {len(rows("asked"))}. Notes: {len(rows("note"))}. '
+            f'Stop reminders: {len(rows("stop.reminded"))}.']
+    out += [f'- {n} x {reason}' for reason, n in _count(refused, 'reason').most_common(8)]
+    replies = [i for i in plan.items(root) if i.get('kind') == 'reply']
+    now = ws.now().isoformat(timespec='seconds')
+    still = [i for i in replies if i.get('status') == 'open']
+    took = sorted(_hours(r['ts'], d['ts']) * 60 for r in rows('reply.owed') for d in rows('item.done')
+                  if d['data'].get('id') == r['data']['id'])
+    out += ['', '## Replies', f'Replies: {len(rows("reply.owed"))} owed today, {len(took)} closed, {len(still)} open, '
+            f'{sum(1 for i in still if i["due"] < now)} overdue'
+            + (f'; median response {statistics.median(took):.0f} min.' if took else '.')]
+    prompts = rows('prompt')
+    out += ['', '## Owner', f'Owner prompts: {len(prompts)}.']
+    out += [f'- {q}' for r in prompts for q in r['data'].get('questions', [])]
+    stops = Counter(r['data'].get('role') for r in rows('seat.stopped'))
+    verdicts = Counter(f'{r["data"].get("gate")} {r["data"].get("verdict")}' for r in rows('attest'))
+    out += ['', '## Seats and gates', 'Seats: ' + (', '.join(f'{k} {v}' for k, v in sorted(stops.items())) or 'none') + '.',
+            'Verdicts: ' + (', '.join(f'{k} {v}' for k, v in sorted(verdicts.items())) or 'none') + '.',
+            f'Verdicts missing after a reminder: {len(rows("verdict.missing"))}.']
+    traces = ws.traces(root, date)
+    tools = Counter(t.get('tool') for t in traces)
+    out += ['', '## Telemetry', f'Tool calls: {len(traces)}; outward (MCP) calls: '
+            f'{sum(n for k, n in tools.items() if str(k).startswith("mcp__"))}.',
+            'Top tools: ' + (', '.join(f'{k} {v}' for k, v in tools.most_common(8)) or 'none') + '.',
+            f'Hook errors: {len(rows("hook.error"))}.']
+    out += learning(root)
+    broken = ws.verify(root)
+    out += ['', 'Ledger: intact' if not broken else f'Ledger: broken at {", ".join(broken)}', '']
+    return '\n'.join(out)
+
+
+def since_checkpoint(root, date):
+    """What changed since the day's last checkpoint, so a second close reads as a diff."""
+    rows = ws.ledger(root)
+    marks = [i for i, row in enumerate(rows) if row.get('kind') == 'day.closed' and row.get('ts', '').startswith(date)]
+    if not marks:
         return []
-    lines = [f'- {guard}: {count} (' + ', '.join(f'{form}: {times}' for form, times
-                                               in forms[guard].most_common(3)) + ')'
-             for guard, count in guards.most_common()]
-    candidates = [f'- {guard}: {form} ({forms[guard][form]} times, no later incident)'
-                  for (guard, form), position in first.items()
-                  if forms[guard][form] > FALSE_POSITIVE_AFTER and last_page < position]
-    return [*lines, '', 'Candidates for a guard fix or a calibration proposal:', *(candidates or ['none'])]
+    after = Counter(row['kind'] for row in rows[marks[-1] + 1:])
+    return ['', f'## Since the last checkpoint ({rows[marks[-1]]["ts"][11:16]} UTC)',
+            ', '.join(f'{kind} {n}' for kind, n in sorted(after.items())) or 'nothing recorded']
 
 
-def round_lines(rows):
-    """#623: fix rounds per item today, and the items whose rounds reached their cap."""
-    opened = [row['payload'] for row in rows if row['kind'] == 'build.fix_opened']
-    lines = []
-    for item in sorted({str(row.get('item')) for row in opened}):
-        mine = [row for row in opened if str(row.get('item')) == item]
-        hits = [row['cap'] for row in mine if isinstance(row.get('round'), int)
-                and isinstance(row.get('cap'), int) and row['round'] >= row['cap']]
-        lines.append(f'- {item}: {len(mine)} fix round{"s" if len(mine) > 1 else ""}'
-                     + (f', round cap {hits[-1]} reached' if hits else ''))
-    return lines
-
-
-def seat_lines(data):
-    """#622: reviewer seats per tiered item, its gate set and the tier reasons. A delta continues
-    a seat, so it counts once; a second opinion is its own seat."""
-    from wuwei import brief, dispatch
-    seats = brief.seats(data).values()
-    lines = []
-    for name, item in sorted(data['items'].items()):
-        if not item.get('gates'):
+def learning(root):
+    """What the shipped work teaches: escapes traced to their gates, gate yield, cost, autonomy, a sample."""
+    out, attests = ['', '## Learning'], ws.rows(root, 'attest')
+    since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
+    week = (ws.now() - datetime.timedelta(days=7)).isoformat()
+    for repo in _repos(root):
+        try:
+            merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            unplanned = [pr for pr in gh.open_prs(repo) if evidence.item_for(root, pr, repo) is None]
+        except gh.GhError as exc:
+            out.append(f'- {repo}: unmeasured ({exc})')
             continue
-        count = sum(seat['item'] == name and seat['role'].startswith('sentinel-') for seat in seats)
-        lines.append(f"- {name}: {count} reviewer seat{'' if count == 1 else 's'} "
-                     f"({', '.join(dispatch.gate_set(item))}); tier {item['gates'].get('tier')}: "
-                     + '; '.join(item['gates'].get('reasons') or ['none recorded']))
-    return lines
+        titles = {pr['title']: pr for pr in merged}
+        for revert in (pr for pr in merged if pr['title'].startswith('Revert "')):
+            original = titles.get(revert['title'][8:].rstrip('"'))
+            if original:
+                ref = f'{repo}#{original["number"]}'
+                passed = [f'{r["data"]["gate"]} ({r["data"].get("confidence") or "?"})' for r in attests
+                          if r['data'].get('pr') == ref and r['data'].get('verdict') == 'PASS']
+                out.append(f'- escaped: {ref} reverted by #{revert["number"]}; it passed: {", ".join(passed) or "no gate"}')
+        spent = evidence.budget(root, repo)
+        if spent['cfr'] is not None:
+            out.append(f'- {repo}: change failure rate {spent["cfr"]:.0%} over 28 days ({spent["merged"]} merges; '
+                       + ('tiers raised one step)' if spent['raised'] else 'tiers as planned)'))
+        out += [f'- Unplanned: {repo}#{pr["number"]} {pr["title"]}' for pr in unplanned[:10]]
+        recent = sorted((pr for pr in merged if pr['mergedAt'] >= week), key=lambda pr: pr['number'])
+        if recent:
+            pick = int(hashlib.sha256(f'{ws.now().isocalendar()[:2]}{repo}'.encode()).hexdigest(), 16) % len(recent)
+            out.append(f'- Sample for you this week: {repo}#{recent[pick]["number"]} (read its evidence comment)')
+    for gate in sorted({r['data'].get('gate') for r in attests if r['data'].get('gate')}):
+        rows = [r for r in attests if r['data'].get('gate') == gate]
+        fixes = sum(1 for r in rows if r['data'].get('verdict') == 'FIX')
+        out.append(f'- gate yield {gate}: {len(rows)} verdicts, {fixes} FIX ({fixes / len(rows):.0%})')
+    spent = Counter()
+    for row in ws.rows(root, 'seat.stopped'):
+        spent[row['data'].get('role')] += row['data'].get('tokens') or 0
+    out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
+    for row in ws.rows(root, 'ruling'):
+        if row['data'].get('kind') == 'exception' and row['data'].get('approved'):
+            d = row['data']
+            out.append(f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}')
+    return out
 
 
-def cycle_lines(root):
-    """#567: median cycle minutes per tier against its target, then one line per merged item."""
-    rows = metrics.cycles(root)
-    tiers = metrics.cycle_by_tier(rows)
-    if tiers == metrics.UNMEASURED:
-        return ['unmeasured']
-    gates = lambda value: value if value == metrics.UNMEASURED else f'{value:.0f} minutes'
-    return [*(f"- {tier}: median {row['median_minutes']:.0f} minutes over {row['items']} items"
-              + (f" (target {row['target']})" if 'target' in row else '') for tier, row in tiers.items()),
-            *(f"- {row['item']} ({row['tier']}): {row['cycle_minutes']:.0f} minutes, gates "
-              f"{gates(row['gate_minutes'])}" for row in rows)]
-
-
-def dora_lines(rows):
-    """#586: the DORA table, one row per key in metrics.DORA order."""
-    def cells(label, form, row):
-        value = row['value'] if row['value'] == metrics.UNMEASURED else form.format(row['value'])
-        return f"| {label} | {value} | {row.get('source', row.get('reason', '')).replace('|', '/')} |"
-    return ['| Key | Value | Source |', '| --- | --- | --- |',
-            *(cells(label, form, rows[key]) for key, label, form in metrics.DORA)]
-
-
-def dora_section(root, config, days=metrics.DORA_WINDOW):
-    until = workspace.now()
-    return [f'## DORA (last {days} days)',
-            *dora_lines(metrics.dora(root, config, until - timedelta(days=days), until))]
-
-
-def build(root=None):
-    root = workspace.find_workspace(root)
-    day = workspace.day_dir(root)
-    if not state.day_started(day):
-        raise ValueError('day state missing; report cannot infer open work; start the day with /wuwei:wuwei-plan')
-    data = state.read_state(root)
-    measured = metrics.collect(root)
-    baseline = measured['baseline']
-
-    def shown(key):
-        measured_value, baseline_value = (
-            json.dumps(value, sort_keys=True, allow_nan=False) if isinstance(value, dict) else value
-            for value in (measured[key], baseline[key]))
-        return f'{measured_value}; baseline: {baseline_value}'
-    level = workspace.verbosity(workspace.load_config(root), 'report')
-    headline = (('Escaped defects', 'escaped_defects'), ('Review rework', 'review_rework'),
-               ('Owner intervention', 'owner_intervention'), ('Lead time', 'lead_time'))
-    if level == 'brief':
-        changed = [f'- {title}: {shown(key)}' for title, key in headline
-                   if measured[key] != baseline[key]][:3]
-        lines = ['# WUWEI report ' + day.name, '', '## Changed', *(changed or ['none'])]
-    else:
-        lines = ['# WUWEI report ' + day.name, '', '## Outcome',
-                 *(f'- {title}: {shown(key)}' for title, key in headline)]
-    reaped = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'process.reaped']
-    if reaped:
-        lines += ['', '## Housekeeping', *(f"- pid {row['pid']} ({row['purpose']}): {row['reason']}" for row in reaped)]
-    lines += ['', '## Merged']
-    items = data['items']
-    lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
-                 for name, item in sorted(items.items()) if item['phase'] == 'merged')
-    if lines[-1] == '## Merged':
-        lines.append('none')
-    lines += ['', '## Done']
-    for name, item in sorted(items.items()):
-        if item['status'] != 'done' or item['phase'] == 'merged':
-            continue
-        if item.get('by') == 'owner':
-            detail = f"{item['reason']} (owner)"
-            detail += f"; branch {item['branch']}" if item.get('branch') else ''
-            detail += f"; worktree {item['worktree']}" if item.get('worktree') else ''
-            lines.append(f'- {name}: {detail}')
-            continue
-        verdicts = [f"{row['role']} {row['verdict']} ({row['file']})"
-                    for key, row in data['gate_verdicts'].items()
-                    if key.startswith(f'{name}:') and key.endswith(':initial')]
-        lines.append(f'- {name}: ' + ('; '.join(verdicts) or 'verdict unmeasured'))
-    if lines[-1] == '## Done':
-        lines.append('none')
-    no_work = {goal: refill['goals'][goal]['outcome'] for refill in data.get('refills', [])[-1:]
-               for goal in refill['no_work']}
-    if no_work:
-        lines += ['', '## Goals with no work found',
-                  *(f'- {goal}: {outcome}' for goal, outcome in sorted(no_work.items()))]
-    from wuwei.commands.next import refill_limit
-    if reason := refill_limit(root, data):
-        lines += ['', '## Refill stopped', reason]
-    lines += ['', '## Cycle time', *cycle_lines(root)]
-    lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
-    lines += ['', '## Open at close']
-    lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
-                 if item['phase'] not in ('merged', 'parked') and item['status'] != 'done')
-    if lines[-1] == '## Open at close':
-        lines.append('none')
-    lines += ['', '## Parked']
-    parked = [(name, item) for name, item in sorted(items.items())
-              if item['phase'] == 'parked' and item['status'] != 'done']
-    lines.extend(f"- {name}: {(item.get('disposition') or {}).get('reason') or item['phase']}"
-                 for name, item in parked)
-    if not parked:
-        lines.append('none')
-    lines += ['', '## Carry']
-    carry = [(name, item) for name, item in sorted(items.items())
-             if item['phase'] != 'merged' and item['status'] != 'done']
-    lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
-    if not carry:
-        lines.append('none')
-    reviewed = seat_lines(data)
-    if reviewed:
-        lines += ['', '## Review seats', *reviewed]
-    rounds = round_lines(watch.records(day / 'events.jsonl'))
-    if rounds:
-        lines += ['', '## Rounds', *rounds]
-    shadow = shadow_lines([day])
-    if shadow:
-        lines += ['', '## Shadow', *shadow]
-    warned = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'spec.warned']
-    if warned:
-        lines += ['', '## Spec warnings', *(f"- {row['item']}: {row['step']} ({row['where']})" for row in warned)]
-    from wuwei import tracker
-    skipped = tracker.skipped_duties(watch.records(day / 'events.jsonl'))  # #842: listed, never dropped
-    if skipped:
-        lines += ['', '## Skipped duties', *(
-            f"- {row['item']}: {row['duty']} on {row['ticket'] or 'a new ticket'}: {row['error']}; "
-            f"retry: bin/wuwei tracker {'create' if row['duty'] == 'tracker.create' else 'move'} "
-            f"{row['item']}{'' if row['duty'] == 'tracker.create' else ' ' + row['duty'][8:]}"
-            for row in skipped)]
-    runs = Counter(str(row['payload'].get('trigger')) for row in watch.records(day / 'events.jsonl')
-                   if row['kind'] == 'steward.run')
-    lines += ['', '## Steward runs', *([f'- {trigger}: {count}' for trigger, count in sorted(runs.items())]
-                                       or ['none'])]
-    if level == 'brief':
-        return '\n'.join([*lines, ''])
-    quality = measured['quality_by_band']
-    lines += ['', '## Quality by band', *(
-        ['unmeasured'] if quality == metrics.UNMEASURED else
-        metrics.band_lines('Hour', quality['hour']))]
-    lines += ['', '## Process metrics', json.dumps(measured, sort_keys=True, allow_nan=False), '']
-    return '\n'.join(lines)
-
-
-def write(root=None):
-    root = workspace.find_workspace(root)
-    path = workspace.day_dir(root) / 'report.md'
-    path.parent.mkdir(parents=True, exist_ok=True)
-    workspace.atomic_write(path, build(root))
+def close(root):
+    """A checkpoint: write the report for the day so far. A later plan pass reopens the day."""
+    path = Path(root) / ws.DIR / 'days' / ws.today() / 'report.md'
+    ws.atomic_write(path, day(root))
+    ws.record(root, 'day.closed', {'report': str(path.relative_to(root))})
     return path
+
+
+def _hours(start, end):
+    parse = lambda text: datetime.datetime.fromisoformat(text.replace('Z', '+00:00'))  # noqa: E731
+    return (parse(end) - parse(start)).total_seconds() / 3600
+
+
+def dora(root, window=28, today=None):
+    end = datetime.date.fromisoformat(today or ws.today())
+    since = (end - datetime.timedelta(days=window)).isoformat()
+    table = {}
+    for repo in _repos(root):
+        try:
+            merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            deploys, source = [d for d in gh.deployments(repo) if d.get('created_at', '') >= since], 'deployments'
+            if not deploys:
+                deploys, source = [r for r in gh.releases(repo) if (r.get('published_at') or '') >= since], 'releases'
+        except gh.GhError as exc:
+            table[repo] = {'unmeasured': str(exc)}
+            continue
+        reverts = sum(1 for pr in merged if pr.get('title', '').startswith('Revert'))
+        table[repo] = {
+            'lead_time_hours': round(statistics.median(_hours(pr['createdAt'], pr['mergedAt']) for pr in merged), 1)
+            if merged else 'unmeasured',
+            'deploys': len(deploys), 'deploy_source': source,
+            'change_failure_rate': round(reverts / len(merged), 2) if merged else 'unmeasured',
+            'merged': len(merged), 'time_to_restore': 'unmeasured'}
+    return table

@@ -1,5 +1,0 @@
-# Cross-artifact analysis
-
-Spec, plan and tasks cover the three issue outcomes: shared hold, cached PR state and refusal wording. The deferred comment scenario has a test across a failed read followed by a successful one. Analysis found one high mismatch: direct dispatch refreshed the PR listing even though only `next` and `pr wait` should refresh it. The implementation moved planned repository refresh to `next` and removed it from direct dispatch. No critical or high finding remains.
-
-The fix round keeps every direct-dispatch candidate in a due repository waiting, including an empty stale listing. Diagnostic auth reads now use the workspace hold, including a hold created between auth status and the user probe. A skipped shepherd duty clears only the activity in the listing at skip time, and the unused last-seen ledger is removed. Cached unknown mergeability already reads the live PR before action in `watch.evidence`. Both GitHub adapters use one shared hold wrapper. No critical or high finding remains.

@@ -1,20 +1,36 @@
 ---
 name: wuwei-plan
-description: Propose the day with lead discovery and run the morning gate before dispatch.
+description: Plan or re-plan the WUWEI day. Use at the start of the day, when the queue runs dry, when the owner adds, drops or changes work, or whenever the day changes. Runs any number of times a day.
 ---
 
-# /wuwei plan
+# /wuwei-plan
 
-Loop on `wuwei next`: run `wuwei next --json`, do every launch and every duty it returns, ask its one decision when there is one, and run it again when a result or a completion notification arrives. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command. Never pass it through a shell variable or a command substitution, and never invoke Python without `-P`. Read `.wuwei/charters/planner.md` when present (what the owner prefers).
+A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, drops or re-ranks.
 
-Each action has a `why` and a `then`; do what `then` says.
-
-- `run`, `check`: run the `command` as one plain Bash call, through Bash in the background when `then` says so.
-- `launch`: pass `prompt` unchanged to Agent in the background, `agent_type` as `subagent_type`, with a short description.
-- `continue`: the same, as a fresh Agent with the returned `prompt`; pass `resume` too only to an Agent tool that takes it (Claude Code's has none; the fresh launch continues the seat).
-- `set`: do every entry this turn. A launch with action `run`, `check` or `polish` runs its `command`; run `wuwei next --background -- wuwei pr wait` through Bash in the background when returned, even while seats run. Run each of its `commands` (briefs and `receive`) in order. Pass every `launch` and `continue`, a gate's `seats` included, to Agent in the background in one message so they run concurrently. A `refused` or `wait` launch names its reason. For each duty, write what it asks, send it through the configured tool and run its `record` command with the link. A `decision` command prints an Owner step card; ask it with AskUserQuestion.
-- `card`: each widget command (`wuwei plan gate` and the rest) prints a list; ask the action's `widget` list with AskUserQuestion, at most four per call, passing `question`, `header`, `options` and `multiSelect` unchanged. Record each answer with its `record` command, `<label>` replaced by the chosen label (labels joined by commas for a multi-select, or the Other text); `Skip` records nothing. A card without a widget is one line to show the owner. An owner question comes from `wuwei next`: a command that refuses with an Owner step card prints it; ask it with AskUserQuestion as printed, then run the same command again on Yes; on No leave it. An outward refusal names `wuwei config set outward.allow ... --add`; run it, it asks its card. Without AskUserQuestion (a headless run), leave the item for `wuwei next`. Seats never ask the owner. A config value the owner changes (CAP, `host.seats` or any other key): run `wuwei config set <key> <value>`; it asks its Owner step card.
-- `wait`: end the turn with the output of `wuwei status --line`. When its command is a background wait, run it through Bash in the background or with Monitor, then run `wuwei next` when it exits.
-- `done`: the day is closed.
-
-Never resume or interrupt a seat to answer the owner; answer from `wuwei status --line`. An item the owner names during the day joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`. Rewrite any text for a person with the `humanizer` skill in embedded mode when it is installed, outward text included (tracker comments, docs pages, DMs, PR comments, review pings). Without it, apply the checklist in `charters/_common-authoring.md` under Writing for a person.
+1. Run `wuwei plan pass --reason "<why this pass: morning, queue dry, owner asked, ...>"`. It reopens a
+   closed day.
+2. Read `.wuwei/goals.md`, `.wuwei/standards.md`, `wuwei plan` and `wuwei status`. On a later pass,
+   start from what changed since the last one.
+3. If `goals.md` has no filled goal, propose up to three goal blocks from the repositories and the
+   owner's words and ask once: `goal: approve these goals?` with Approve and Change.
+4. Launch the lead (agent type `lead`; `spawn_agent` with `agent_type` `lead` in Codex) in the background with the goals, the plan, the board and
+   the owner's words. It returns ready candidates (promise, acceptance scenarios, repository,
+   files, tier, scores with evidence) and names the riskiest item with the cheapest way to learn
+   early whether it works.
+5. Add the lead's candidates in one call: `wuwei plan add --from .wuwei/candidates.json` (scores,
+   promise and acceptance included). One item added later: `wuwei plan add <id> "<title>" --goal G-n
+   --repo owner/name --tier light|standard|full` with `--value --time --risk --size` (WSJF) or
+   `--reach --impact --confidence --effort` (RICE), `--why "<evidence>"`, `--promise "<promise>"` and
+   one `--accept "<given, when, then>"` per scenario. Adding an id again re-scores it in place;
+   `wuwei plan restore <id>` reopens a parked or dropped item. Drop what no longer serves a goal:
+   `wuwei plan drop <id> --reason "..."`. Never edit `.wuwei/plan.json` by hand.
+6. Show the plan as a view: run `wuwei plan view`. With a tool that renders HTML (a visualize or
+   show-widget tool), render the output of `wuwei plan view --html`; otherwise show the printed
+   summary and the path of `.wuwei/plan.html`, which the owner can open in a browser.
+7. Ask once, with the harness's question tool (AskUserQuestion; `request_user_input` in Codex): `plan: approve this plan? <the line wuwei plan view prints>`, options
+   `Approve` and `Change`. On Approve, WUWEI marks the items approved. On Change, apply what the owner
+   said, show the view again and re-ask. The answer is recorded only from that question tool. Work
+   outside the goals sits in the view under unplanned; the same question covers it.
+8. Start the approved work as the planner charter says: builders in parallel, highest score first,
+   none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
+   until the next view is approved.

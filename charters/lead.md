@@ -1,23 +1,45 @@
----
-version: 1.9.0
----
 # Lead charter
 
-Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ranking, scope, overlap, track, flags and launch advice. Use configured repos and adapters; do not assume any source exists.
+You own discovery, ranking, scope and tier for a plan pass. You return candidates; the planner
+adds them with `wuwei plan add`, which computes the score.
 
-Set candidate `kind` to `review` with `pr` and `review_role` for an existing PR verdict, or `measure` with no paths for read-only evidence; omit it for `build`.
+## Discovery
 
-## Capacity and discovery
+1. Read every configured repository's sources you can reach: open issues, red checks on the base
+   branch, review findings, review threads asking for follow-up work, follow-ups recorded in
+   recent PRs, regressions in the report. Mark a source you cannot reach as unmeasured.
+2. Each candidate cites the goal in `.wuwei/goals.md` it serves, or is marked unplanned.
+   Deduplicate against the plan and open PRs. Verify the work is still open.
+3. On a later pass the same day, start from what changed since the last pass: merged items, parked
+   items, the owner's new words.
 
-1. CAP counts running build seats, not queued, gated or shepherded items. CAP and `host.seats` derive from the measured host (`plan propose` sets CAP; the lead does not choose it; a positive config `cap` is the owner's override). Each runtime's usage window budgets (`budget.claude`, `budget.codex`) bound its seats. A slot frees at builder handoff. The builder's seat policy row may name an `alternate` runtime that takes new builds while its own runtime's window is spent. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
-2. Discover at the morning plan. Read the candidates and sources in your brief: every configured repository's tracker backlog, base-branch red checks, review and scanner findings, review threads, outcome-metric regressions and follow-ups from today's PRs through configured adapters. Each candidate carries the `repo` it came from; keep it. Mark missing sources unmeasured.
-3. For each candidate, cite the confirmed goal it serves from `memory/goals.md`, or while it has none the goal object you propose in `goals`, or mark it `unplanned`. While `memory/goals.md` has none, or when the owner changed the goals, write each goal in `goals` as a block (`id`, `outcome`, `measure`, `target`, `date`, `priority`), never an id alone. The blocks replace the recorded goals once the gate approves them. Verify the work is still open, deduplicate against tracker and day items, and state evidence and time of measurement. With a tracker set, give a candidate the open ticket that is its work as `ticket` (same workstream, same title words, from the backlog you queried). Leave `ticket` out when no ticket is its work; approval opens a new one. A small fix you find that is not worth a ranked candidate: record it with `wuwei seat note --fix "<title>"`.
-4. Scope the changed behavior, files and blast radius. Build an overlap matrix from actual diffs. Serialise or combine overlapping work. Name the item promise and what is outside it. List the files it will touch as `paths` (repository-relative strings). When a document section governs the item (a pre-registration, a design section), name it as `governed_by`: `<path>` or `<path>#<heading>`, relative to the repository. With more than one configured repository, name each candidate's repository as `repo` (its configured name); the CLI derives it from `paths` only when they exist in exactly one repository. List an item's owner-only steps as `owner_actions`, one `{"action", "target"}` each. `deploy`, `release` and `publish` take `repo:<org>/<name>`. `merge` takes `repo:<org>/<name>` or `pr:<org>/<name>#<n>`. `message` takes `channel:<id>` or `dm:<id>`; `secret-set` takes `secret:<org>/<name>/<NAME>`. All six are owner steps the plan lists; the gate does not pre-approve them. Anything else is shown on the plan as not understood and asked as written; never edit a written lead.json to fit the CLI.
-5. Flags: trust_surface, boundary_relevant, agent_surface are set from the actual diff. Set `trust_surface` for auth or credentials, input parsing at a trust boundary including LLM output used as instructions, tenant or workspace scoping and permission checks. Set `boundary_relevant` for any change to what a published field can be worth or thresholded at, even without a wire-shape change. Set `agent_surface` for prompts, tool definitions, agent tool permissions or MCP config. Infrastructure, secret, schema and migration paths force FULL and set `trust_surface`. Other never-auto paths route to the owner under step 7. Otherwise select SLICE or FULL by the common track rule. A flagged item cannot start without owner routing. An optional candidate `tier` (light, standard, full) can raise the computed review tier of a code diff, never lower it; for a docs-only diff dispatch measures one reviewer and records `lead tier <t> overridden: docs-only`. A tier in `spec.skip_tiers` (default `light`) also skips the item's spec; the diff re-checks it when the item moves to the gates, so set `light` only for a trivial change.
-6. For `prioritisation.framework = wsjf`, give evidence for value to goal, time criticality, risk reduction or unblocking, and job size, each on the 1, 2, 3, 5, 8, 13, 20 scale. WSJF divides the sum of the first three by size. For `rice`, give evidence for reach, impact (0.25, 0.5, 1, 2, 3), confidence (0.5, 0.8, 1.0) and effort in seat-days; RICE multiplies the first three and divides by effort. Cite each component in one line. `wuwei plan propose` orders the queue by `prioritisation.framework` from this evidence, ties by goal priority; never hand-order it.
-7. Present the ranked queue, goal links, unplanned share, component evidence, scope, overlap, risk, track and CAP for the morning gate. Risk flags, never-auto paths, CAP or budget failures always route to the owner.
+## Ready
 
-## Launch and escalation
+An item is ready when it has a promise, acceptance scenarios (given, when, then), its repository
+and the files it will touch. Return only ready candidates; an item that cannot be made ready is a
+question for its source, not a build.
 
-1. Claim an approved item only at launch. Recheck active work, base head and PR collisions; give the planner a briefable item with its acceptance tests and dependencies.
-2. Resolve local blockers within the item's budget, then park with `wuwei plan park <item> --reason` or resequence. Record a two-way resequence under `Assumptions:`; a resequence that settles an architecture, interface or data shape goes to the owner as the common decision rule says.
+## Scope and tier
+
+1. Name the item's promise and what is outside it, the files it will touch and its repository.
+   Build an overlap matrix from real diffs; serialise or combine overlapping work.
+2. Tier: `light` for a trivial, local change; `standard` by default; `full` for a change to a
+   contract, schema, boundary, auth, secrets, agent tooling or infrastructure. When unsure, go up.
+
+## Ranking
+
+The configured framework ranks the queue; never hand-order it.
+
+- `wsjf`: value to the goal, time criticality, risk reduction or unblocking, and job size, each on
+  1, 2, 3, 5, 8, 13, 20, each with one line of evidence.
+- `rice`: reach, impact (0.25, 0.5, 1, 2, 3), confidence (0.5, 0.8, 1.0) and effort in seat-days,
+  each with one line of evidence.
+
+Red-team the plan: name the riskiest item in the queue and the cheapest way to learn early whether
+it works (a spike, a probe, a prototype), and rank that learning first.
+
+Write the candidates to `.wuwei/candidates.json`, a list of objects with `id`, `title`, `goal`,
+`repo`, `tier`, `scores` (named as the framework names them: `value`, `time`, `risk`, `size`, or
+`reach`, `impact`, `confidence`, `effort`), `promise`, `acceptance` (a list of given, when, then
+scenarios) and a one-line `why`. The planner adds them all with `wuwei plan add --from
+.wuwei/candidates.json`; the plan, not this file, is what seats read.

@@ -1,8 +1,8 @@
 """Generate docs/site/assets/hero-dark.svg and hero-light.svg from one drawing.
 
-One working day as an agentic engineering flow, left to right: you and the ranked queue, the
-agent team in three lanes, the gates, the pull requests the shepherd follows, you again with the
-cards. Items only move forward; loops are drawn where the system loops. Edit the tables here,
+One working day under WUWEI 1.0, left to right: plan passes fill a ranked queue, the agent team
+works three lanes, the gates review at the head, the shepherd follows the pull requests, and a
+merge happens when the evidence has no gaps. You are asked only the one-way question. Items only move forward; loops are drawn where the system loops. Edit the tables here,
 then run `python3 scripts/build-hero.py` and commit both files. A test checks they match.
 """
 import sys
@@ -17,23 +17,25 @@ PAL = {
                   atext='#00735F', warm='#935600'),
 }
 
-ALT = ('A ranked queue you approve feeds an agent team working three parallel lanes that loop build and '
-       'check, every candidate passes the gates within the round cap, pull requests wait in a stack '
-       'the shepherd follows until they merge, and you answer the odd card in the session while guards, '
-       "lead and steward work under the hood and each day's retro feeds tomorrow's plan.")
+ALT = ('Plan passes fill a ranked queue against your goals, an agent team works three parallel lanes that '
+       'loop build and check, the gates review each item at its head, the shepherd follows the pull requests, '
+       'and each merges when its evidence has no gaps. Only a one-way question reaches you; the rest is assumed '
+       'and recorded. WUWEI holds a few doors, a second plan pass refills the queue, and each checkpoint\'s '
+       'retro feeds the next pass.')
 
 STAGES = [  # (name, small line, icon, x of the pill centre)
-    ('Specs and plan', 'you approve, the lead ranks', 'you', 130),
-    ('Agent team', '3 seats in parallel lanes', 'team', 398),
+    ('Plan passes', 'goals are the mandate', 'plan', 130),
+    ('Agent team', 'builders in parallel lanes', 'team', 398),
     ('Gates', 'arch · quality · security', 'gate', 572),
-    ('Pull requests', 'the shepherd follows up', 'pr', 887),
-    ('Review and merge', 'cards: your final say', 'you', 1082),
+    ('Pull requests', 'merged when nothing is missing', 'pr', 887),
+    ('Your decisions', 'only what is yours', 'you', 1082),
 ]
 ICONS = {  # 24-unit line icons, stroke only
     'you': 'M12 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4 21c0-4 4-6 8-6s8 2 8 6',
     'team': 'M5 9h14v10H5zM12 5v4M9 13v1M15 13v1M9 16.5h6M3 13v3M21 13v3',
     'gate': 'M12 3l7 3v5c0 5-3 8-7 10c-4-2-7-5-7-10V6zM9 12l2 2l4-4',
     'pr': 'M6 4v12M6 20a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8c0 5-12 4-12 8',
+    'plan': 'M9 6h11M9 12h11M9 18h11M4.5 6h.5M4.5 12h.5M4.5 18h.5',
 }
 QUEUE = ['rate limits', 'login fix', 'docs page', 'retry policy', 'cache keys']   # rank order
 PLACES = {'off': 295, 'build': 360, 'gates': 530, 'PR': 710}           # x of a pill's centre
@@ -50,25 +52,28 @@ ITEMS = [  # (name, lane, [(k, place)]); an item fades in at its last 'off' and 
 ]
 FIX = ('login fix', .50, .70)          # amber dot, amber outline and the fix loop, one span
 PRS = [('#142 rate limits', .64, .80), ('#143 docs page', .74, .86), ('#144 login fix', .78, .90)]
-PR_LINES = [('ping reviewer · CI green?', 'muted', .65, .78), ('merge at the gated head', 'atext', .80, .91)]
+PR_LINES = [('evidence: 1 gap · CI running', 'muted', .65, .78), ('merged: nothing missing', 'atext', .80, .91)]
 DECISIONS = [  # (asked, answered, open text or None, closed text, asked you)
     (.30, .31, None, 'assumed in the spec', False),
     (.44, .45, None, 'assumed in the spec', False),
-    (.52, .62, 'ship by Friday?', 'answered: Yes', True),
+    (.52, .62, 'one-way: drop old table?', 'answered · ADR written', True),
 ]
-GATE = (.02, .12, .17)                 # gate card on, question becomes "Approved", card off
+PASSES = [(.02, .12, .17, 'ranking the queue', 'ranked · inside the goals'),
+          (.60, .66, .71, 'queue running dry', 'refilled · 1 added')]   # plan pass card: on, settled, off
+ADDED = {'cache keys': .66}             # a pill that joins the queue at the second plan pass
 GUARD = (.36, .40)
-CLOSE = .92                            # report, retro, return arrow, steward, carried
+CHECKPOINTS = [.50, .92]              # report and retro; the last one carries the open items
+CLOSE = CHECKPOINTS[-1]
 STILL_K = .55                          # 13:55, the reduced-motion frame
-LOOPS = ['a one-way question reaches you on one card', 'you answer on a card; seats assume the rest']
-DAY = "tomorrow's plan carries what was learned"
-INDICATORS = ['guards: every call checked, 1 caught', 'lead: morning discovery',
-              'steward: retro at close, you promote']
+LOOPS = ['only a one-way question reaches you', 'the rest is assumed, recorded and reported']
+DAY = "each checkpoint's retro feeds the next plan pass"
+INDICATORS = ['doors: 1 refused, the rest recorded', 'evidence: read at every head',
+              'lead: ranks each plan pass', 'steward: retro at each checkpoint']
 
 A = f'dur="{T:g}s" repeatCount="indefinite"'
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 DOTS = [600, 620, 640]                 # x of the three gate dots: arch, quality, security
-IND_X = [56, 400, 700]                 # x of the three indicators in the band
+IND_X = [56, 340, 610, 860]            # x of the four indicators in the band
 
 
 def pct(x): return f'{x:.4f}'.rstrip('0').rstrip('.') or '0'
@@ -159,7 +164,7 @@ def svg(p):
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" '
         f'font-family="{SANS}" font-size="13">',
-        '<title id="title">WUWEI: agentic delivery, one day</title>',
+        '<title id="title">WUWEI: a process auditor for agent teams, one day</title>',
         f'<desc id="desc">{ALT}</desc>',
         '<style><![CDATA[',
         '.still{display:none}',
@@ -172,12 +177,12 @@ def svg(p):
         '</defs>',
         '<rect width="1200" height="640" rx="28" fill="{bg}"/>',
         text(40, 54, '无为 <tspan fill="{atext}">WUWEI</tspan>', 'text', 38, attrs=' font-weight="700"'),
-        text(40, 84, 'A team of agents runs your delivery day. You set the work and keep the final say.', size=16),
+        text(40, 84, 'Your agent team ships. WUWEI audits the evidence and holds the doors that matter.', size=16),
         '<rect x="960" y="70" width="200" height="4" rx="2" fill="{muted}" opacity="0.25"/>',
         text(960, 92, '09:00'), text(1160, 92, '18:00', attrs=' text-anchor="end"'),
         # the day: the return arrow over the flow
         f'<path id="day-loop" d="{day}"{stroke.format(w=1.5, c="muted")}/>',
-        f'<rect x="{600 - 136}" y="105" width="272" height="18" fill="{{bg}}"/>',
+        f'<rect x="{600 - 175}" y="105" width="350" height="18" fill="{{bg}}"/>',
         text(600, 118, DAY, attrs=' text-anchor="middle"'),
         # the five stages: icon, pill, small line
         *[f'<path id="icon-{i}" d="{ICONS[icon]}" transform="translate({x - 15} 126) scale(1.25)" fill="none" '
@@ -212,16 +217,19 @@ def svg(p):
     for i, (name, _, stops) in enumerate(sorted(ITEMS, key=lambda it: popped(it[2])), 1):
         pill = (f'<rect x="52" y="{202 + 32 * i}" width="156" height="26" rx="13" fill="{{panel}}" stroke="{{muted}}" '
                 f'stroke-opacity="0.5"/><text x="66" y="{219 + 32 * i}" fill="{{text}}">{i} · {name}</text>')
-        live.append(f'<g>{blink("opacity", "1", [(popped(stops), 1, "0")])}{pill}</g>')
-        still.append(pill if popped(stops) > STILL_K else '')
-    on('text', ta(66, 412, 'warm', attrs=' font-weight="600"'), 'waits: CAP 3 seats', [wait], 'waits')
-    on('text', ta(52, 430, size=11), 'answers a card now and then', [(GATE[2], 1)])
-    live.append(f'<g opacity="0">{blink("opacity", "0", [(GATE[0], GATE[2], "1")])}'
-                '<rect x="52" y="394" width="156" height="42" rx="10" fill="{panel}" stroke="{accent}"/>'
-                + text(62, 410, 'Morning gate', 'text', attrs=' font-weight="600"')
-                + text(62, 428, "Approve today's plan?", size=11, extra=blink('opacity', '0', [(0, GATE[1], '1')]), attrs=' opacity="0"')
-                + text(62, 428, 'Approved · 3 seats', 'atext', 11, blink('opacity', '0', [(GATE[1], GATE[2], '1')]),
-                       ' opacity="0" font-weight="600"') + '</g>')
+        added = ADDED.get(name, 0)
+        live.append(f'<g>{blink("opacity", "0", [(added, popped(stops), "1")])}{pill}</g>' if added else
+                    f'<g>{blink("opacity", "1", [(popped(stops), 1, "0")])}{pill}</g>')
+        still.append(pill if added <= STILL_K < popped(stops) else '')
+    on('text', ta(66, 412, 'warm', attrs=' font-weight="600"'), 'waits: lanes busy', [wait], 'waits')
+    on('text', ta(52, 430, size=11), 'asked only what is yours', [(PASSES[0][2], PASSES[1][0]), (PASSES[1][2], 1)])
+    for on_k, settled, off_k, busy, done in PASSES:
+        live.append(f'<g opacity="0">{blink("opacity", "0", [(on_k, off_k, "1")])}'
+                    '<rect x="52" y="394" width="156" height="42" rx="10" fill="{panel}" stroke="{accent}"/>'
+                    + text(62, 410, f'Plan pass {clock(on_k)}', 'text', attrs=' font-weight="600"')
+                    + text(62, 428, busy, size=11, extra=blink('opacity', '0', [(on_k, settled, '1')]), attrs=' opacity="0"')
+                    + text(62, 428, done, 'atext', 11, blink('opacity', '0', [(settled, off_k, '1')]),
+                           ' opacity="0" font-weight="600"') + '</g>')
     # lanes: the lit glyphs and dots, the fix round, the items
     fixed = next(lane for name, lane, _ in ITEMS if name == FIX[0])
     for lane, y in enumerate(LANE_Y):
@@ -264,12 +272,15 @@ def svg(p):
     lit = stroke.format(w=2.5, c='accent')
     on('path', f' d="{ask}"{lit} stroke-dasharray="6 5"', '', [(d[0], d[0] + .02) for d in DECISIONS], 'ask-loop-lit')
     on('path', f' d="{answer}"{lit} stroke-dasharray="6 5"', '', [(d[1], d[1] + .02) for d in DECISIONS], 'answer-loop-lit')
-    on('path', f' d="{day}"{lit}', '', [(CLOSE, 1)], 'day-loop-lit')
+    on('path', f' d="{day}"{lit}', '', [(k, k + .06 if k < CLOSE else 1) for k in CHECKPOINTS], 'day-loop-lit')
     on('circle', f' cx="{IND_X[0] + 7}" cy="570" r="6" fill="{{warm}}"', '', [GUARD])
-    on('circle', f' cx="{IND_X[1] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(pops[-1], pops[-1] + .06)], 'lead')
-    on('circle', f' cx="{IND_X[2] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(CLOSE, 1)])
-    on('text', ta(1144, 604, 'atext', attrs=' text-anchor="end" font-weight="600"'),
-       f'{clock(CLOSE)} close: report written, retro done', [(CLOSE, 1)])
+    on('circle', f' cx="{IND_X[1] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(m - .03, m + .02) for *_, m in PRS], 'evidence')
+    on('circle', f' cx="{IND_X[2] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(p[0], p[2]) for p in PASSES], 'lead')
+    on('circle', f' cx="{IND_X[3] + 7}" cy="570" r="6" fill="{{accent}}"', '', [(k, k + .06 if k < CLOSE else 1) for k in CHECKPOINTS])
+    for k in CHECKPOINTS:
+        on('text', ta(1144, 604, 'atext', attrs=' text-anchor="end" font-weight="600"'),
+           f'{clock(k)} checkpoint: report and retro' + ('; plan again any time' if k == CLOSE else ''),
+           [(k, k + .06 if k < CLOSE else 1)])
     # the day clock
     live += [text(1160, 58, f'{h:02d}:00', 'text', 26, blink('opacity', '0', [((h - 9) / 9, (h - 8) / 9 if h < 17 else 1, '1')]),
                   ' opacity="0" text-anchor="end" font-weight="700"') for h in range(9, 18)]
@@ -277,7 +288,9 @@ def svg(p):
                 f'<animate attributeName="width" values="0;200" keyTimes="0;1" {A}/></rect>')
     still += [text(1160, 58, clock(STILL_K), 'text', 26, attrs=' text-anchor="end" font-weight="700"'),
               f'<rect x="960" y="70" width="{200 * STILL_K:.0f}" height="4" rx="2" fill="{{accent}}"/>']
-    parts += ['<g class="still">', *filter(None, still), '</g>', '<g class="live">', *live, '</g>', '</svg>']
+    label = (f'<rect x="{600 - 175}" y="105" width="350" height="18" fill="{{bg}}"/>'
+             + text(600, 118, DAY, attrs=' text-anchor="middle"'))   # over the lit day loop too
+    parts += ['<g class="still">', *filter(None, still), '</g>', '<g class="live">', *live, '</g>', label, '</svg>']
     out = '\n'.join(parts) + '\n'
     for k, v in p.items():
         out = out.replace('{' + k + '}', v)
@@ -287,4 +300,4 @@ def svg(p):
 if __name__ == '__main__':
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
     for name, pal in PAL.items():
-        (root / f'docs/site/assets/hero-{name}.svg').write_text(svg(pal))
+        (root / f'docs/site/assets/hero-{name}.svg').write_text(svg(pal), encoding='utf-8')

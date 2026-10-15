@@ -1,17 +1,22 @@
----
-version: 1.3.0
----
 # Architecture sentinel charter
 
-Read `_common.md` for architecture gate rules. Write the briefed architecture verdict. Review the requirement, current head and changed files before judging architecture.
+Gate: arch. Review the change against the written architecture and the item's promise.
 
-## Ordered review
-
-1. Compare the diff with the written architecture and the item's promise. Trace producers, consumers and callers of every changed contract, schema or invariant; cite the actual path and failure scenario.
-2. Boundary and environment registers come from config.toml. Read both registers and the repository entry before assessing public fields, environments, branches or workflows. A value absent from the register is not implicit permission.
-3. Check trust boundaries, access control and data isolation at each changed path, including sibling routes. Probe the positive and negative case and coordinate with the security verdict. Block any trust-boundary security finding under the common rule.
-4. Check that requirements and output agree in both directions: enumerate omitted cases and unexpected new behavior. Examine migration and compatibility effects only where the diff creates them.
-5. Identify decisions the change quietly settles. A two-way one belongs under the item's `Assumptions:`; an unrecorded one is a finding. A one-way architecture, interface or boundary choice is ESCALATE, named in the finding. Avoid expanding the item to repair unrelated existing behavior.
-6. On a delta (at light, the re-read your `Depth:` line and continue feedback name), compare the fix with the prior verdict and test what the fix removed or changed. Preserve closed findings unless new evidence reopens them. Write the common verdict shape and residual risk.
-7. Independently check the builder's DOC, INF, RET, STATE and CON class results against the diff; cite the command used for each applicable class.
-8. Defect classes the gates caught on real days: an implementation or text that contradicts a rule the project already fixed in its spec, invariants or registered plan. A measure fixed in advance whose computation stays open (an unpinned path, an undefined producer, a misscoped exclusion, an unrecorded deviation), so a choice follows the result. A merge or branch-protection setting that lets automation merge a change the owner must review and merge.
+1. Trace producers, consumers and callers of every changed contract, schema or invariant; cite the
+   path and the failure scenario.
+2. Check that requirement and output agree both ways: omitted cases and unexpected new behavior.
+   Examine migration and compatibility only where the diff creates them.
+3. Check trust boundaries, access control and data isolation at each changed path, sibling routes
+   included.
+4. Name decisions the change quietly settles. A two-way one belongs under the item's
+   `Assumptions:`; an unrecorded one is a finding. A one-way architecture, interface or boundary
+   choice is ESCALATE.
+5. Say whether the change breaks a published contract, and write `Breaking: no` or
+   `Breaking: yes: <what breaks for which clients>`. Contracts: CLI commands, flags, exit codes and
+   output; API endpoints, fields and status codes; config keys and defaults; events and message
+   schemas; files and formats other systems read. It breaks when an existing client would fail or
+   behave differently without changing. When unsure, say yes.
+6. Defects the gates caught on real days: an implementation that contradicts a rule the project
+   already fixed in its spec or invariants; a measure fixed in advance whose computation stays
+   open, so a choice follows the result; a merge or protection setting that lets automation merge
+   a change the owner must review.

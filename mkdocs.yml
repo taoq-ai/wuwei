@@ -1,7 +1,7 @@
 site_name: WUWEI
 site_url: https://taoq-ai.github.io/wuwei/
-site_description: Autonomous delivery where the safe path is the default one.
-site_author: TaoQ AI
+site_description: Responsible autonomy for agent teams. A process auditor that reads the evidence, holds the few doors that do not reopen, and asks you only what is yours.
+site_author: TaoQ AI Labs
 
 repo_name: taoq-ai/wuwei
 repo_url: https://github.com/taoq-ai/wuwei
@@ -17,13 +17,13 @@ theme:
   name: material
   palette:
     - scheme: slate
-      primary: indigo
+      primary: teal
       accent: cyan
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
     - scheme: default
-      primary: indigo
+      primary: teal
       accent: cyan
       toggle:
         icon: material/brightness-7
@@ -32,6 +32,7 @@ theme:
     - navigation.tabs
     - navigation.sections
     - navigation.expand
+    - navigation.indexes
     - search.highlight
     - content.code.copy
 
@@ -44,11 +45,6 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - attr_list
   - md_in_html
@@ -57,18 +53,21 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting started:
-    - Daily path: daily.md
-    - What the session knows: agent.md
+  - Getting started: getting-started.md
   - Concepts:
-    - Concepts: concepts.md
-    - Security: security.md
-  - Reference:
-    - Operator reference: reference.md
-    - Configuration: configuration.md
-    - Adapters and ports: adapters.md
-    - Charter overrides: charter-overrides.md
-  - Operations:
-    - Recovery: recovery.md
-    - Release rehearsal: rehearsal.md
-    - Integrity: integrity.md
+    - concepts/index.md
+    - Philosophy: concepts/philosophy.md
+    - The day: concepts/the-day.md
+    - The team and its charters: concepts/team.md
+    - Evidence: concepts/evidence.md
+    - The doors: concepts/doors.md
+    - Decisions: concepts/decisions.md
+    - Hooks, the sensei: concepts/hooks.md
+    - Harness permissions: concepts/permissions.md
+    - Learning: concepts/learning.md
+    - Report, telemetry and DORA: concepts/metrics.md
+    - Many repositories: concepts/many-repositories.md
+    - Work in progress: concepts/watch.md
+    - Cloud sessions: concepts/cloud.md
+    - Running on Codex: concepts/codex.md
+  - Reference: reference.md

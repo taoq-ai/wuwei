@@ -1,0 +1,5 @@
+repos = ["acme/app"]
+owner_paths = ["infra/**"]
+prioritisation = "wsjf"
+tracker = "github"
+telemetry = true
