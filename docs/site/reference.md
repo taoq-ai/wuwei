@@ -10,6 +10,7 @@
 | `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light\|standard\|full` | Add an item with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE) and `--why` |
 | `wuwei plan park\|drop\|done <id> --reason "..."` | Change an item's status |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
+| `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |
 | `wuwei status [--json]` | The board: what each open item lacks |
 | `wuwei evidence owner/repo#n [--json] [--record DIR]` | One PR's gaps; exit 1 when there are gaps |
 | `wuwei report [--day YYYY-MM-DD]` | The day report |
@@ -19,6 +20,7 @@
 | `wuwei config [key value]` | Show, or set one of the five keys |
 | `wuwei verify` | Check the ledger's hash chain |
 | `wuwei agents [check\|build]` | Check or build the role agents from the charters |
+| `wuwei --version` | The plugin version |
 | `wuwei hook <event>` | Called by the harness only |
 
 ## Configuration
@@ -38,7 +40,8 @@
 | Path | Holds |
 | --- | --- |
 | `.wuwei/plan.json` | the running queue |
-| `.wuwei/goals.md` | the goals, the standing mandate |
+| `.wuwei/goals.md` | the goals, the direction |
+| `.wuwei/plan.html` | the plan view you approve |
 | `.wuwei/standards.md` | rules the retro promoted, per role |
 | `.wuwei/verdicts/<item>/` | the sentinels' verdict files |
 | `.wuwei/ledger.jsonl` | the hash-chained record |

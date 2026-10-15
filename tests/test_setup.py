@@ -82,3 +82,9 @@ def test_the_hero_matches_its_generator():
     spec.loader.exec_module(hero)
     for name, palette in hero.PAL.items():
         assert (PLUGIN / 'docs' / 'site' / 'assets' / f'hero-{name}.svg').read_text() == hero.svg(palette), name
+
+
+def test_version_is_the_plugin_version(capsys):
+    from wuwei import __main__ as cli
+    assert cli.main(['--version']) == 0
+    assert capsys.readouterr().out.strip() == json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']

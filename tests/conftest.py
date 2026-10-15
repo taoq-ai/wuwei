@@ -58,6 +58,10 @@ class FakeGh:
             if path in self.paths:
                 return {}
             raise gh.GhError('Not Found')
+        if args[:2] == ['auth', 'status']:
+            return 'Logged in'
+        if args[0] == 'api' and '/rules/branches/' in args[1]:
+            return []
         if args[:2] == ['api', 'user']:
             return 'owner'
         if args[0] == 'api' and '--jq' in args and args[args.index('--jq') + 1] == '.default_branch':

@@ -50,7 +50,7 @@ def add(root, item_id, title, goal, repo, tier, scores, why=''):
     framework = ws.config(root)['prioritisation']
     item = {'id': item_id, 'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'status': 'open',
             'framework': framework, 'scores': scores, 'score': score(framework, scores), 'why': why,
-            'added': ws.today()}
+            'added': ws.today(), 'approved': False}
     save(root, items(root) + [item])
     ws.record(root, 'item.added', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
     return item
@@ -73,4 +73,20 @@ def followup(root, title, repo, goal, why):
     item_id = next(f'X-{n}' for n in range(1, len(taken) + 2) if f'X-{n}' not in taken)
     scores = ({'value': 3, 'time': 3, 'risk': 5, 'size': 1} if ws.config(root)['prioritisation'] == 'wsjf'
               else {'reach': 1, 'impact': 1, 'confidence': 1, 'effort': 0.5})
-    return add(root, item_id, title, goal, repo, 'light', scores, why)
+    item = add(root, item_id, title, goal, repo, 'light', scores, why)
+    rows = items(root)
+    next(r for r in rows if r['id'] == item_id)['approved'] = True  # the owner accepted the exception
+    save(root, rows)
+    return item
+
+
+def approve(root, answer):
+    """The owner approved the plan as shown: every open item is approved."""
+    rows = items(root)
+    ids = [row['id'] for row in rows if row.get('status', 'open') == 'open']
+    for row in rows:
+        if row['id'] in ids:
+            row['approved'] = True
+    save(root, rows)
+    ws.record(root, 'plan.approved', {'items': ids, 'answer': answer})
+    return ids

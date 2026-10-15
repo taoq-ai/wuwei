@@ -38,10 +38,37 @@ def atomic_write(path, text):
     os.replace(temp, path)
 
 
-def config(root):
+def raw_config(root):
     path = Path(root) / DIR / 'config.toml'
-    data = tomllib.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
-    return {**DEFAULTS, **{key: value for key, value in data.items() if key in DEFAULTS}}
+    return tomllib.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+
+
+def config(root):
+    """The five keys, read from the 1.0 shape or a 0.34 one ([[repos]] tables, a [prioritisation]
+    table, [merge] owner paths, a [telemetry] table)."""
+    data = raw_config(root)
+    out = {**DEFAULTS, **{key: value for key, value in data.items() if key in DEFAULTS}}
+    out['repos'] = [r['name'] if isinstance(r, dict) else r for r in out['repos'] if isinstance(r, (str, dict))
+                    and (isinstance(r, str) or isinstance(r.get('name'), str))]
+    if isinstance(out['prioritisation'], dict):
+        out['prioritisation'] = out['prioritisation'].get('framework', DEFAULTS['prioritisation'])
+    if isinstance(out['tracker'], dict):
+        out['tracker'] = DEFAULTS['tracker']
+    if isinstance(out['telemetry'], dict):
+        out['telemetry'] = out['telemetry'].get('mode', 'on') not in ('off', 'false')
+    merge = data.get('merge') if isinstance(data.get('merge'), dict) else {}
+    if not data.get('owner_paths'):
+        out['owner_paths'] = [p for key in ('owner_paths', 'never_auto_paths') for p in merge.get(key, [])
+                              if isinstance(p, str)]
+    return out
+
+
+def retired(root):
+    """Top-level keys and tables 1.0 does not read, and the 0.34 table shapes it rewrites."""
+    data = raw_config(root)
+    shapes = [key for key in DEFAULTS if isinstance(data.get(key), dict)
+              or key == 'repos' and any(isinstance(r, dict) for r in data.get('repos', []))]
+    return sorted(set(data) - set(DEFAULTS)) + sorted(f'{key} (0.34 shape)' for key in shapes)
 
 
 def _toml(value):

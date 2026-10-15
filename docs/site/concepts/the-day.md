@@ -2,8 +2,10 @@
 
 ```mermaid
 flowchart LR
-    goals([goals: the standing mandate]) --> pass
-    pass["plan pass<br/>(any number per day)"] --> work["builders, gates, shepherd"]
+    goals([goals: the direction]) --> pass
+    pass --> view{{"plan view: you approve"}}
+    pass["plan pass<br/>(any number per day)"]
+    view --> work["builders, gates, shepherd"]
     work --> evidence{"evidence<br/>complete?"}
     evidence -- gaps --> work
     evidence -- yes --> merge["merge"]
@@ -11,14 +13,19 @@ flowchart LR
     checkpoint -- "standards, vaccines, proposals" --> pass
 ```
 
-## Goals are the mandate
+## Goals and the plan view
 
-Your goals live in `.wuwei/goals.md`: outcome, measure, target, date and priority. They are the
-standing mandate. Work inside them starts without asking you; work outside them is one `scope:`
-question.
+Your goals live in `.wuwei/goals.md`: outcome, measure, target, date and priority. They set the
+direction the lead ranks against.
 
-**Why:** approving every day's plan is a step the process can take for you once the direction is
-clear. What you own is the direction.
+Each plan pass ends with the plan as a picture: `wuwei plan view` writes `.wuwei/plan.html` (light
+and dark, readable on a phone) with the ranking formula, the estimated build hours (one WSJF size
+point is one hour), and a card per goal with its items by score. Then one question: approve or
+change. New items wait on the board as `awaiting plan approval` until you approve; work you already
+approved keeps running.
+
+**Why:** you own the direction and the trade-offs, and you should see them at a glance, not in a
+two-kilobyte paragraph. One picture, one answer.
 
 ## Plan passes
 

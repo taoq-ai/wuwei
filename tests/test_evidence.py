@@ -229,7 +229,7 @@ def test_a_complete_speckit_feature_passes_at_standard(root, fake):
 def test_spec_files_are_read_at_the_head_not_only_from_the_diff(root, fake):
     standard(root)
     speckit(fake)
-    fake.prs['42'] = make_pr(files=(f'{SPEC}/tasks.md', 'src/app.py', 'tests/test_app.py'))
+    fake.prs['42'] = make_pr(files=(f'{SPEC}/spec.md', 'src/app.py', 'tests/test_app.py'))
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
     assert evidence.gaps(root, 'acme/app', 42) == []
@@ -274,10 +274,30 @@ def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
     change = 'openspec/changes/add-rate-limits'
     fake.files.update({f'{change}/proposal.md': '# Why\n', f'{change}/tasks.md': DONE,
                        f'{change}/specs/limits/spec.md': '## ADDED Requirements\n'})
-    fake.prs['42'] = make_pr(files=(f'{change}/tasks.md', 'src/app.py', 'tests/test_app.py'))
+    fake.prs['42'] = make_pr(files=(f'{change}/tasks.md', f'{change}/specs/limits/spec.md', 'src/app.py', 'tests/test_app.py'))
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
     assert evidence.gaps(root, 'acme/app', 42) == []
     del fake.files[f'{change}/proposal.md']
     ws.cache_put(root, 'spec-acme__app', None)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{change}/proposal.md missing: run the spec engine step that writes it']
+
+
+def test_an_old_feature_the_pr_only_amends_is_not_held_to_the_full_spec_set(root, fake):
+    light(root, 'full')
+    files = speckit(fake)
+    old = 'specs/2-identity'
+    fake.files[f'{old}/contracts/api.yaml'] = 'openapi: 3.1.0\n'
+    fake.prs['42'] = make_pr(files=(*files, f'{old}/contracts/api.yaml', 'src/app.py', 'tests/test_app.py'),
+                             body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_a_pr_that_only_amends_a_spec_still_counts_as_touching_the_spec(root, fake):
+    standard(root)
+    speckit(fake)
+    fake.prs['42'] = make_pr(files=(f'{SPEC}/tasks.md', 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert evidence.gaps(root, 'acme/app', 42) == []

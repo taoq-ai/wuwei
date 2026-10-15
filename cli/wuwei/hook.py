@@ -16,7 +16,7 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   /wuwei-close checkpoints it, and the next pass reopens it.
 - Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
   to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:
-  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:. Never ask whether to continue.
+  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:. Never ask whether to continue.
 - Done means evidence: WUWEI-Item: <id>, the repository's PR template sections, a test, under about
   400 lines or a Size: line, Rollback: at full or on owner_paths, the spec engine's artifacts, the
   gates the tier needs at the head, green CI, threads answered, a reviewer, owner review on
@@ -197,6 +197,14 @@ def _answers(root, data, response):
                 item = plan.followup(root, f'Close the exception on {ref}: {match[4]}', match[1],
                                      _goal(root, ref, match[1]), f'owner accepted it at {match[3]}')
                 notes.append(f'WUWEI: exception recorded; {item["id"]} in the plan closes it later.')
+        if question.lower().startswith('plan:') and answer:
+            if yes:
+                plan.approve(root, answer)
+                ws.cache_put(root, 'board', None)
+                notes.append('WUWEI: plan approved; start the work, highest score first.')
+            else:
+                ws.record(root, 'plan.change', {'answer': answer})
+                notes.append('WUWEI: the owner asked for a change: apply it, show the view again and re-ask.')
         if question.lower().startswith('one-way:') and answer:
             notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
                          "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
@@ -213,7 +221,9 @@ PLUGIN = Path(__file__).resolve().parents[2]
 
 
 def session_start(root, payload):
-    parts = [WAY] + [(PLUGIN / 'charters' / name).read_text(encoding='utf-8').strip()
+    cli = str(PLUGIN / 'bin' / 'wuwei')
+    ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
+    parts = [WAY, f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(encoding='utf-8').strip()
                      for name in ('_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
     for name in ('goals.md', 'standards.md'):
         path = Path(root) / ws.DIR / name

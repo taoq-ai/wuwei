@@ -45,10 +45,12 @@ def init(directory):
     base = directory / ws.DIR
     base.mkdir(exist_ok=True)
     done = []
+    from wuwei import upgrade
+    done += upgrade.run(directory)
     if not (base / 'config.toml').is_file():
         repo = guards.origin(str(directory))
         ws.write_config(directory, {**ws.DEFAULTS, 'repos': [repo] if repo else []})
-        done.append(f'config: {base / "config.toml"} (repos: {repo or "none found; wuwei config set repos owner/name"})')
+        done.append(f'config: {base / "config.toml"} (repos: {repo or "none found; wuwei config repos owner/name"})')
     if not (base / 'goals.md').is_file():
         ws.atomic_write(base / 'goals.md', GOALS)
         done.append('goals: .wuwei/goals.md (fill G-1, or let the first plan pass propose goals)')
@@ -81,6 +83,9 @@ def doctor(root):
              ('repos', 'ok' if config['repos'] else 'warn', ', '.join(config['repos']) or 'none configured'),
              ('ledger', 'ok' if not broken else 'fail', 'intact' if not broken else f'broken at lines {broken}'),
              ('canary', 'ok' if (Path(root) / ws.DIR / 'canary').is_file() else 'warn', '.wuwei/canary')]
+    gone = ws.retired(root)
+    if gone:
+        rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))
     settings = Path(root) / '.claude' / 'settings.json'
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
     missing = [r for r in DENY if r not in have.get('deny', [])]

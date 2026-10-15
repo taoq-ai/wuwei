@@ -30,14 +30,15 @@ bin/wuwei doctor
 everyday work, deny rules for the doors, ask rules for infrastructure. Your own rules stay as they
 are. `doctor` checks the install and prints, per repository, how strongly each door holds.
 
-Add more repositories by saying so, or with `bin/wuwei config set repos owner/a,owner/b`.
+Add more repositories by saying so, or with `bin/wuwei config repos owner/a,owner/b`.
 
 ## Your first day
 
 1. Open Claude Code in the workspace directory. The session starts oriented: the way of working,
    the planner charter, your goals and the board.
 2. Run `/wuwei-plan`. With no goals yet, it proposes up to three and asks you once. Then the lead
-   ranks candidates and the work starts.
+   ranks candidates, you see the plan as a view (`.wuwei/plan.html`), approve or change it, and the
+   work starts.
 3. Work with the session as usual. You will be asked only one-way, scope, goal, trust,
    infrastructure, owner-review and exception questions.
 4. Run `/wuwei-close` when you stop. You get the report and the retro; planning again later

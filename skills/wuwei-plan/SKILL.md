@@ -20,7 +20,13 @@ A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, 
 5. Add each candidate: `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light|standard|full`
    with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE), and
    `--why "<evidence>"`. Drop what no longer serves a goal: `wuwei plan drop <id> --reason "..."`.
-6. Show the ranked plan in one short table. Work outside the goals is asked once
-   (`scope: add <title> outside the goals?`); everything inside them starts now.
-7. Start the work as the planner charter says: builders in parallel, highest score first, none in
-   a repository under andon.
+6. Show the plan as a view: run `wuwei plan view`. With a tool that renders HTML (a visualize or
+   show-widget tool), render the output of `wuwei plan view --html`; otherwise show the printed
+   summary and the path of `.wuwei/plan.html`, which the owner can open in a browser.
+7. Ask once, with AskUserQuestion: `plan: approve this plan? <the line wuwei plan view prints>`, options
+   `Approve` and `Change`. On Approve, WUWEI marks the items approved. On Change, apply what the owner
+   said, show the view again and re-ask. The answer is recorded only from AskUserQuestion. Work
+   outside the goals sits in the view under unplanned; the same question covers it.
+8. Start the approved work as the planner charter says: builders in parallel, highest score first,
+   none in a repository under andon. Items added later wait on the board as `awaiting plan approval`
+   until the next view is approved.

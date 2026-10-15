@@ -19,10 +19,10 @@ TEMPLATES = ('.github/pull_request_template.md', '.github/PULL_REQUEST_TEMPLATE.
              'docs/pull_request_template.md')
 # Each engine's artifacts per tier, read at the PR head: (path under the feature, rule).
 SPEC_RULES = {
-    '.specify': (r'^(specs/[^/]+/)', {'standard': (('spec.md', 'present'), ('plan.md', 'present'), ('tasks.md', 'checked')),
+    '.specify': (r'^(specs/[^/]+/)(spec\.md)$', {'standard': (('spec.md', 'present'), ('plan.md', 'present'), ('tasks.md', 'checked')),
                                        'full': (('spec.md', 'clarified'), ('analysis.md', 'clean'),
                                                 ('checklists/', 'checked'))}),
-    'openspec': (r'^(openspec/changes/(?:archive/)?[^/]+/)', {'standard': (('proposal.md', 'present'),
+    'openspec': (r'^(openspec/changes/(?:archive/)?[^/]+/)(proposal\.md|specs/.+)$', {'standard': (('proposal.md', 'present'),
                                                                           ('specs/', 'present'),
                                                                           ('tasks.md', 'checked')),
                                                               'full': ()}),
@@ -38,11 +38,16 @@ def gap(text, actionable=True, owner=False):
     return {'text': text, 'actionable': actionable, 'owner': owner}
 
 
-def item_for(root, pr):
-    """The plan item a PR names with a WUWEI-Item: trailer, or whose id starts its branch name."""
+def item_for(root, pr, repo=None):
+    """The plan item a PR names with a WUWEI-Item: trailer, records among its PRs, or whose id starts
+    its branch name."""
     match = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
     if match:
         return plan.find(root, match[1])
+    ref = f'{repo}#{pr.get("number")}' if repo else None
+    linked = next((item for item in plan.items(root) if ref and ref in item.get('prs', ())), None)
+    if linked:
+        return linked
     branch = (pr.get('headRefName') or '').lower()
     return next((item for item in plan.items(root)
                  if branch == item['id'].lower() or branch.startswith(item['id'].lower() + '-')), None)
@@ -109,12 +114,16 @@ def _rule(repo, path, rule, head):
 
 
 def spec_gaps(repo, engine, tier, files, head):
-    """The spec engine's steps, judged by their artifacts at the head of every feature the diff touches."""
+    """The spec engine's steps, judged by their artifacts at the head, for each feature whose spec
+    (spec-kit spec.md, OpenSpec proposal or spec deltas) the PR adds or edits. A PR that only amends an
+    older feature's other files is held to its own scope, not to that feature's whole set (#1032)."""
     if not engine:
         return []
     pattern, rules = SPEC_RULES[engine]
     features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
     if not features:
+        if any(path.startswith(('specs/', 'openspec/')) for path in files):
+            return []
         return [gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
     found = []
@@ -159,6 +168,9 @@ def verdicts(root, item_id):
             continue
         if hashlib.sha256(body).hexdigest() != data.get('sha256'):
             continue
+        if data.get('imported'):
+            found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
+            continue
         parsed = parse(body.decode('utf-8', 'replace'))
         if not parsed['errors']:
             found.append(parsed)
@@ -174,7 +186,7 @@ def gate_gaps(root, repo, item_id, tier, head, why=''):
     missing = [gate for gate in REQUIRED[tier] if gate not in passed]
     if missing:
         return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')]
-    if not any(v['head'] == head for v in passed.values()):
+    if not any(head.startswith(v['head']) for v in passed.values()):
         return [gap(f'no gate passed at head {head[:7]} (a delta review)')]
     return []
 
@@ -197,7 +209,7 @@ def gaps(root, repo, number):
     try:
         pr = gh.pr(repo, number)
         found = []
-        item = item_for(root, pr)
+        item = item_for(root, pr, repo)
         tier = (item or {}).get('tier', 'standard')
         files = [f['path'] for f in pr.get('files') or ()]
         body = pr.get('body') or ''

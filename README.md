@@ -44,8 +44,9 @@ on the record.
 
 ## A day with WUWEI
 
-1. `/wuwei-plan` ranks work against your goals (WSJF or RICE). Plan again whenever the day
-   changes: the queue runs dry, you add something, priorities shift.
+1. `/wuwei-plan` ranks work against your goals (WSJF or RICE) and shows you the plan as one
+   picture: goals, items by score, estimated hours. You approve or change it. Plan again whenever
+   the day changes: the queue runs dry, you add something, priorities shift.
 2. Builders work items test first, in parallel lanes. Sentinels (architecture, quality, security,
    goal) review each one independently at its head. The shepherd takes PRs to merge.
 3. WUWEI watches through the harness's hooks: it teaches before a PR opens, says what a new PR

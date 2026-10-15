@@ -42,14 +42,15 @@ def compute(root):
                     for i in open_items if i.get('repo') == repo]
             continue
         for item in (i for i in open_items if i.get('repo') == repo):
-            linked = [pr for pr in prs if (evidence.item_for(root, pr) or {}).get('id') == item['id']]
-            done = [pr for pr in merged if (evidence.item_for(root, pr) or {}).get('id') == item['id']]
+            linked = [pr for pr in prs if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]
+            done = [pr for pr in merged if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]
             if not linked and done:
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
             if not linked:
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
-                         if repo in held else evidence.gap('no pull request yet'))
+                         if repo in held else evidence.gap('no pull request yet') if item.get('approved', True)
+                         else evidence.gap('awaiting plan approval', actionable=False, owner=True))
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',

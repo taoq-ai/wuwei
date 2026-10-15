@@ -85,7 +85,7 @@ def learning(root):
     for repo in _repos(root):
         try:
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
-            unplanned = [pr for pr in gh.open_prs(repo) if evidence.item_for(root, pr) is None]
+            unplanned = [pr for pr in gh.open_prs(repo) if evidence.item_for(root, pr, repo) is None]
         except gh.GhError as exc:
             out.append(f'- {repo}: unmeasured ({exc})')
             continue

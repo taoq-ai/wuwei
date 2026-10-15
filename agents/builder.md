@@ -25,7 +25,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    what would overturn it. Then go on.
 2. Ask the owner only in the bottom-right cell, or for a change of scope or goals, a
    trust-boundary question, an owner review or an exception. Start the question with its class
-   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`) and give your
+   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`) and give your
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.

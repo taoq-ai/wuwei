@@ -42,7 +42,8 @@ role's lines of `.wuwei/standards.md`.
 
 ## 4. The day
 
-- Goals in `.wuwei/goals.md` are the standing mandate.
+- Goals in `.wuwei/goals.md` set the direction. Each plan pass ends with the plan as a view
+  (`wuwei plan view`, #990) and one `plan:` question, Approve or Change; new items wait for it.
 - A plan pass (`/wuwei-plan`, `wuwei plan pass`) adds, drops or re-ranks items in a running queue.
   Any number per day. The lead returns only ready candidates (promise, acceptance scenarios,
   repository, files) and red-teams the plan (the riskiest item and the cheapest early test of it).
@@ -58,7 +59,7 @@ role's lines of `.wuwei/standards.md`.
 | Hard to undo | act, with `Rollback:` | ask the owner |
 
 Owner questions start with their class: `one-way:`, `scope:`, `goal:`, `trust:`, `infra:`,
-`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`. Any other
+`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`. Any other
 question is refused back to the model. A `one-way:` answer becomes an ADR in the repository. An
 accepted exception drops that gap at that head and adds a follow-up item that closes it.
 
@@ -142,5 +143,8 @@ lines of stdlib Python (a test holds it). A change that breaks a budget deletes 
 
 ## 13. From 0.x
 
-0.x workspaces are not migrated: `wuwei init` writes a fresh 1.0 workspace, and DORA reads the code
-host, so no history is lost. The 0.x line stays on its tag (v0.34.0).
+`wuwei init` upgrades a 0.34 workspace in place: it reads the old config shape and rewrites it
+(keeping `.wuwei/config.0x.toml`), names each retired key, carries the goals forward, imports the
+open items with their PR links and the latest proposal, and imports the gate verdicts as
+attestations so in-flight PRs need one delta gate, not a full set. DORA reads the code host, so
+no history is lost. The 0.x line stays on its tag (v0.34.0).

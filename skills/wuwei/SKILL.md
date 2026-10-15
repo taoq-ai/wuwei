@@ -42,7 +42,7 @@ Everything else passes and is recorded.
 | Hard to undo | act, with `Rollback:` | ask the owner |
 
 Ask with the class first (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`,
-`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`) and your
+`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`) and your
 recommendation. Never ask whether to continue planned work.
 
 ## Andon

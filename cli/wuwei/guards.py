@@ -23,7 +23,7 @@ SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger\.jsonl$')
 GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/pulls/\d+/merge|/collaborators'
                          r'|/hooks|/keys|/actions/secrets|/environments')
-OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:')
+OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
@@ -251,9 +251,12 @@ def pre_tool(root, payload):
         return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if LEDGER.search(path) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
-        if any(not q.strip().lower().startswith(OWNER_CLASSES) for q in questions):
-            return deny(NOT_OWNERS)
-        return None
+        unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
+        if not unclassed:
+            return None
+        named = '; '.join(f'"{q[:120]}"' for q in unclassed)
+        rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
+        return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':

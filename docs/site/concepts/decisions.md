@@ -36,6 +36,7 @@ A question reaches you only when it starts with its class:
 | `infra:` | an infrastructure change |
 | `owner review: owner/repo#n at <sha7>` | a change under your `owner_paths` |
 | `exception: owner/repo#n at <sha7>: <gap>` | accepting one gap at one head |
+| `plan:` | approving the plan view at the end of a plan pass |
 
 Any other question is sent back to the model: decide it, record the assumption, go on. The model
 never asks whether to continue planned work. Each question comes once, with a recommendation.

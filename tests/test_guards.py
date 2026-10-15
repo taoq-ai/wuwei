@@ -147,3 +147,15 @@ def test_decisions_that_are_the_owners_reach_the_owner(root, question):
 
 def test_an_exception_question_reaches_the_owner(root):
     assert guards.pre_tool(root, ask('exception: acme/app#42 at aaaaaaa: no test in the diff. Accept?')) is None
+
+
+def test_a_batch_names_the_question_without_a_class(root):
+    payload = ask('one-way: drop the table?')
+    payload['tool_input']['questions'].append({'question': 'Shall I tidy the worktrees?'})
+    decision = guards.pre_tool(root, payload)
+    assert decision['decision'] == 'deny' and '"Shall I tidy the worktrees?"' in decision['reason']
+    assert 'resend the classed questions' in decision['reason']
+
+
+def test_the_plan_question_reaches_the_owner(root):
+    assert guards.pre_tool(root, ask('plan: approve this plan? 3 items on 2 goals, about 6 build hours.')) is None

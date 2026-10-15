@@ -10,9 +10,9 @@ and keep the owner's attention for what only the owner decides.
    drops or re-ranks items; the plan is a running queue that carries across days.
 2. A close (`/wuwei-close`) is a checkpoint: the report and the steward's retro for the day so
    far. Closing does not lock anything; a later plan pass reopens the day.
-3. Goals in `.wuwei/goals.md` are the standing mandate. A plan inside the goals starts without a
-   question; show it in one short table. Ask only when work falls outside the goals or the lead
-   cannot fill the queue from them.
+3. Goals in `.wuwei/goals.md` are the direction. Each plan pass ends with the plan as a view
+   (`wuwei plan view`) and one question, `plan: approve this plan? ...`, Approve or Change. New items
+   wait for that answer; everything already approved keeps running.
 
 ## Running the work
 

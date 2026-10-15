@@ -38,6 +38,13 @@ def cmd_plan(args):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
         plan.mark(root, args.id, status, args.reason or '')
         print(f'{args.id} {status}')
+    elif args.action == 'view':
+        from wuwei import view
+        path, summary, line = view.write(root)
+        if args.html:
+            print(view.render(root)[0])
+            return 0
+        print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
     elif args.action == 'pass':
         ws.record(root, 'plan.pass', {'note': args.reason or ''})
         print('plan pass recorded; the day is open')
@@ -131,11 +138,18 @@ def cmd_agents(args):
     return 1 if stale else 0
 
 
+def version():
+    return json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog='wuwei')
+    if (sys.argv[1:] if argv is None else argv)[:1] == ['--version']:
+        print(version())
+        return 0
+    parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {version()}')
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('plan', help='show, add, park, drop, done or pass')
-    p.add_argument('action', nargs='?', default='show', choices=('show', 'add', 'park', 'drop', 'done', 'pass'))
+    p.add_argument('action', nargs='?', default='show', choices=('show', 'add', 'park', 'drop', 'done', 'pass', 'view'))
     p.add_argument('id', nargs='?')
     p.add_argument('title', nargs='?')
     for name in ('goal', 'repo', 'why', 'reason'):
@@ -144,6 +158,7 @@ def main(argv=None):
     for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):
         p.add_argument(f'--{name}', type=float)
     p.add_argument('--json', action='store_true')
+    p.add_argument('--html', action='store_true', help='with view: print the page for a widget')
     p.set_defaults(func=cmd_plan)
     p = sub.add_parser('status', help='the board: what each open item still lacks')
     p.add_argument('--json', action='store_true')
