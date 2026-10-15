@@ -31,8 +31,11 @@ and keep the owner's attention for what only the owner decides.
    fixed and the cord cleared (`wuwei andon <repo> --clear`); work elsewhere goes on.
 6. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
    command. Close those gaps with whatever tools fit.
-7. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
-8. Never resume or interrupt a seat to answer the owner; answer from the board.
+7. Nothing waits on the owner's nudge: keep `/wuwei-watch` running on a schedule (`/loop 20m
+   /wuwei-watch` locally, an hourly routine in the cloud). Record every ask someone is waiting on
+   with `wuwei owe`; a send into its thread closes it.
+8. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+9. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner
 

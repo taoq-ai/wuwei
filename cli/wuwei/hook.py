@@ -23,7 +23,9 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   engine's steps, a reviewer); misfits never block and are recorded for the retro.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
   secrets in outward calls, ledger edits, forged hook calls, questions the process answers.
-- A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".'''
+- A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".
+- Someone waiting on a reply: wuwei owe <thread link> "<what>" --who <name>; a send into the thread
+  closes it. Keep /wuwei-watch on a schedule so no PR or reply waits for the owner's nudge.'''
 
 
 def _hash(text):
@@ -181,6 +183,9 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
+    if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
+            and not re.search(r'read|get|list|search|fetch', tool.lower()):
+        return _replied(root, tool, json.dumps(data))
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', '')))):
         match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
@@ -189,6 +194,25 @@ def post_tool(root, payload):
             ws.cache_put(root, 'board', None)
             if gaps:
                 return context('PostToolUse', f'WUWEI: {match[1]}#{match[2]} still needs: ' + '; '.join(g['text'] for g in gaps))
+    return None
+
+
+def _replied(root, tool, sent):
+    """Close every owed reply whose place this send landed in: a Slack thread link names its channel
+    and thread ts; any other place must appear as given."""
+    closed = []
+    for item in plan.items(root):
+        if item.get('kind') != 'reply' or item.get('status') != 'open':
+            continue
+        thread = re.search(r'/archives/([A-Z0-9]+)/p(\d{10})(\d{6})', item['where'])
+        keys = [thread[1], f'{thread[2]}.{thread[3]}'] if thread else [item['where']]
+        if all(key in sent for key in keys):
+            plan.mark(root, item['id'], 'done', f'replied via {tool}')
+            ws.record(root, 'reply.sent', {'id': item['id'], 'tool': tool})
+            closed.append(item['id'])
+    if closed:
+        ws.cache_put(root, 'board', None)
+        return context('PostToolUse', f'WUWEI: reply recorded, closed {", ".join(closed)}.')
     return None
 
 

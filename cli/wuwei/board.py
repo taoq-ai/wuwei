@@ -26,10 +26,21 @@ def andon(root, repo, reason='', clear=False):
     ws.cache_put(root, 'board', None)
 
 
-def compute(root):
-    out = []
+def replies(root):
+    out, now = [], ws.now().isoformat(timespec='seconds')
+    for item in plan.items(root):
+        if item.get('kind') == 'reply' and item.get('status') == 'open':
+            when = (f'overdue since {item["due"][:16]}' if item['due'] < now else f'due {item["due"][:16]}')
+            out.append({'item': item['id'], 'title': item['title'], 'pr': None,
+                        'gaps': [evidence.gap(f'reply owed to {item["who"]} in {item["where"]}, {when}')]})
+    return out
+
+
+def compute(root, everything=False):
+    out = replies(root)
     held = andons(root)
-    open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open']
+    keep = (lambda gaps: gaps) if everything else evidence.blocking
+    open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open' and item.get('kind') != 'reply']
     for repo in sorted({item.get('repo') for item in open_items if item.get('repo')}):
         key = repo.replace('/', '__')
         since = min(item.get('added', ws.today()) for item in open_items if item.get('repo') == repo)
@@ -54,8 +65,8 @@ def compute(root):
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
-                            'gaps': evidence.blocking(evidence.gaps(root, repo, pr['number']))})
-    for item in (i for i in open_items if not i.get('repo')):
+                            'gaps': keep(evidence.gaps(root, repo, pr['number']))})
+    for item in (i for i in open_items if not i.get('repo')):  # a reply has no repository; see replies()
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})
     return out

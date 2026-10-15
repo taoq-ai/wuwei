@@ -63,8 +63,25 @@ def cmd_plan(args):
 
 def cmd_status(args):
     root = _root()
-    rows = board.compute(root)
+    rows = board.compute(root, everything=args.all)
     print(json.dumps(rows, indent=1) if args.json else board.text(rows, root))
+    return 0
+
+
+def cmd_owe(args):
+    item = plan.owe(_root(), args.where, args.what, args.who, within=args.within, due=args.due)
+    print(f'{item["id"]} reply owed to {item["who"]} in {item["where"]}, due {item["due"]}')
+    return 0
+
+
+def cmd_watch(args):
+    root = _root()
+    if args.record:
+        ws.record(root, 'watch.pass', {'summary': args.record})
+    passes = ws.rows(root, 'watch.pass')
+    open_replies = [r for r in board.replies(root)]
+    print(f'last pass: {passes[-1]["ts"] if passes else "never"}; replies owed: {len(open_replies)} '
+          f'({sum(1 for r in open_replies if "overdue" in r["gaps"][0]["text"])} overdue)')
     return 0
 
 
@@ -162,6 +179,7 @@ def main(argv=None):
     p.set_defaults(func=cmd_plan)
     p = sub.add_parser('status', help='the board: what each open item still lacks')
     p.add_argument('--json', action='store_true')
+    p.add_argument('--all', action='store_true', help='include process gaps (for the watch)')
     p.set_defaults(func=cmd_status)
     p = sub.add_parser('evidence', help='the gaps of one PR, owner/repo#number')
     p.add_argument('pr')
@@ -183,6 +201,16 @@ def main(argv=None):
     p.add_argument('value', nargs='?')
     p.set_defaults(func=cmd_config)
     sub.add_parser('verify', help='check the ledger hash chain').set_defaults(func=cmd_verify)
+    p = sub.add_parser('owe', help='record a reply someone is waiting for')
+    p.add_argument('where', help='the thread link or id')
+    p.add_argument('what')
+    p.add_argument('--who', required=True)
+    p.add_argument('--within', default='4h', help='30m, 4h, 1d')
+    p.add_argument('--due', help='an ISO time instead of --within')
+    p.set_defaults(func=cmd_owe)
+    p = sub.add_parser('watch', help='the last watch pass and replies owed; --record notes a pass')
+    p.add_argument('--record', metavar='SUMMARY')
+    p.set_defaults(func=cmd_watch)
     p = sub.add_parser('andon', help='pull the cord on one repository: no new builds there until cleared')
     p.add_argument('repo')
     p.add_argument('--reason')

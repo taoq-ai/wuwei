@@ -48,6 +48,14 @@ def day(root, date=None):
             f'Asked the owner (infrastructure): {len(rows("asked"))}. Notes: {len(rows("note"))}. '
             f'Stop reminders: {len(rows("stop.reminded"))}.']
     out += [f'- {n} x {reason}' for reason, n in _count(refused, 'reason').most_common(8)]
+    replies = [i for i in plan.items(root) if i.get('kind') == 'reply']
+    now = ws.now().isoformat(timespec='seconds')
+    still = [i for i in replies if i.get('status') == 'open']
+    took = sorted(_hours(r['ts'], d['ts']) * 60 for r in rows('reply.owed') for d in rows('item.done')
+                  if d['data'].get('id') == r['data']['id'])
+    out += ['', '## Replies', f'Replies: {len(rows("reply.owed"))} owed today, {len(took)} closed, {len(still)} open, '
+            f'{sum(1 for i in still if i["due"] < now)} overdue'
+            + (f'; median response {statistics.median(took):.0f} min.' if took else '.')]
     prompts = rows('prompt')
     out += ['', '## Owner', f'Owner prompts: {len(prompts)}.']
     out += [f'- {q}' for r in prompts for q in r['data'].get('questions', [])]

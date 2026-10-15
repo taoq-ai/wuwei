@@ -90,3 +90,23 @@ def approve(root, answer):
     save(root, rows)
     ws.record(root, 'plan.approved', {'items': ids, 'answer': answer})
     return ids
+
+
+def owe(root, where, what, who, within='4h', due=None):
+    """A reply someone is waiting for: where (a thread link or id), what was asked, who asked, when due.
+    One open reply per place; a send into that place closes it (hook.post_tool)."""
+    import datetime
+    rows = items(root)
+    found = next((r for r in rows if r.get('kind') == 'reply' and r.get('status') == 'open' and r['where'] == where), None)
+    if found:
+        return found
+    if due is None:
+        unit = {'m': 'minutes', 'h': 'hours', 'd': 'days'}[within[-1]]
+        due = (ws.now() + datetime.timedelta(**{unit: int(within[:-1])})).isoformat(timespec='seconds')
+    taken = {row['id'] for row in rows}
+    item = {'id': next(f'R-{n}' for n in range(1, len(taken) + 2) if f'R-{n}' not in taken), 'kind': 'reply',
+            'title': what, 'where': where, 'who': who, 'due': due, 'status': 'open', 'score': 0, 'approved': True,
+            'added': ws.today(), 'opened': ws.now().isoformat(timespec='seconds')}
+    save(root, rows + [item])
+    ws.record(root, 'reply.owed', {'id': item['id'], 'where': where, 'who': who, 'due': due})
+    return item

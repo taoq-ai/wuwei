@@ -67,4 +67,5 @@ nav:
     - Learning: concepts/learning.md
     - Report, telemetry and DORA: concepts/metrics.md
     - Many repositories: concepts/many-repositories.md
+    - Work in progress: concepts/watch.md
   - Reference: reference.md

@@ -114,6 +114,8 @@ You own open PRs until they merge or the owner parks them.
 
 ## Follow
 
+The watch pass (`/wuwei-watch`) is when you follow: no PR waits for the owner to ask.
+
 1. Read the PR once per event: CI, conflicts, reviews, threads. Rebuild what is owed from the
    current PR state, not from memory.
 2. For each unanswered thread: a fix request inside the item's promise becomes a fix for the

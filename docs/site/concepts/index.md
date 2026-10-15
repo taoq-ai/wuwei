@@ -28,3 +28,4 @@ says what each one is, why it is there, and where it lives.
 | [The ledger](metrics.md#the-ledger) | A tamper-evident record of what was decided | `.wuwei/ledger.jsonl` |
 | [Replay cases](metrics.md#replay-cases) | The auditor itself is held to its past answers | `tests/replay/` |
 | [Many repositories](many-repositories.md) | One process, the shape of each repository | one workspace |
+| [Work in progress](watch.md) | Nothing waits on your nudge: PRs and replies keep moving | `/wuwei-watch`, `wuwei owe` |

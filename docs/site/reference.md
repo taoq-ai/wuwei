@@ -17,6 +17,9 @@
 | `wuwei report --dora [--window 28]` | The DORA keys per repository |
 | `wuwei close` | Checkpoint: write the report for the day so far |
 | `wuwei andon owner/repo --reason "..."` / `--clear` | Pull or clear the cord on one repository |
+| `wuwei owe <thread link> "<what>" --who <name> [--within 4h \| --due <ISO>]` | Record a reply someone is waiting for |
+| `wuwei watch [--record "<summary>"]` | The last watch pass and replies owed; record a pass |
+| `wuwei status --all` | The board with process fit too (for the watch) |
 | `wuwei config [key value]` | Show, or set one of the five keys |
 | `wuwei verify` | Check the ledger's hash chain |
 | `wuwei agents [check\|build]` | Check or build the role agents from the charters |
