@@ -17,6 +17,17 @@ GENERATED = re.compile(r'(^|/)([\w.-]+\.lock|package-lock\.json|pnpm-lock\.yaml|
                        r'|(^|/)(dist|vendor|__snapshots__)/')
 TEMPLATES = ('.github/pull_request_template.md', '.github/PULL_REQUEST_TEMPLATE.md', 'PULL_REQUEST_TEMPLATE.md',
              'docs/pull_request_template.md')
+# Each engine's artifacts per tier, read at the PR head: (path under the feature, rule).
+SPEC_RULES = {
+    '.specify': (r'^(specs/[^/]+/)', {'standard': (('spec.md', 'present'), ('plan.md', 'present'), ('tasks.md', 'checked')),
+                                       'full': (('spec.md', 'clarified'), ('analysis.md', 'clean'),
+                                                ('checklists/', 'checked'))}),
+    'openspec': (r'^(openspec/changes/(?:archive/)?[^/]+/)', {'standard': (('proposal.md', 'present'),
+                                                                          ('specs/', 'present'),
+                                                                          ('tasks.md', 'checked')),
+                                                              'full': ()}),
+}
+BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET = 400, 3, 0.15
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
@@ -58,6 +69,61 @@ def template_sections(root, repo):
                 continue
         return []
     return _cached(root, 'template-' + repo.replace('/', '__'), read)
+
+
+def _unchecked(path, text):
+    boxes = BOX.findall(text)
+    open_boxes = sum(1 for box in boxes if box == ' ')
+    if not boxes:
+        return f'{path} has no checklist items'
+    return f'{path} has {open_boxes} unchecked item{"s" if open_boxes > 1 else ""}' if open_boxes else None
+
+
+def _rule(repo, path, rule, head):
+    """None when the artifact at the head meets its rule, else the gap text."""
+    if path.endswith('/'):
+        entries = gh.listing(repo, path.rstrip('/'), head)
+        if not entries:
+            return f'{path} missing: run the spec engine step that writes it'
+        if rule != 'checked':
+            return None
+        for entry in (e for e in entries if e.get('type') == 'file' and e['name'].endswith('.md')):
+            problem = _unchecked(entry['path'], gh.file(repo, entry['path'], head))
+            if problem:
+                return problem
+        return None
+    try:
+        text = gh.file(repo, path, head)
+    except gh.GhError:
+        return f'{path} missing: run the spec engine step that writes it'
+    if rule == 'checked':
+        return _unchecked(path, text)
+    if rule == 'clarified' and not re.search(r'^## Clarifications\b', text, re.M):
+        return f'{path} has no ## Clarifications section: run clarify'
+    if rule == 'clean':
+        for line in text.splitlines():
+            cells = {cell.strip().upper() for cell in line.strip().strip('|').split('|')}
+            if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'}:
+                return f'{path} has an open CRITICAL or HIGH finding: {line.strip()[:100]}'
+    return None
+
+
+def spec_gaps(repo, engine, tier, files, head):
+    """The spec engine's steps, judged by their artifacts at the head of every feature the diff touches."""
+    if not engine:
+        return []
+    pattern, rules = SPEC_RULES[engine]
+    features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
+    if not features:
+        return [gap(f'no spec in the diff (the repository uses {engine})')]
+    wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
+    found = []
+    for feature in features:
+        for name, rule in wanted:
+            problem = _rule(repo, feature + name, rule, head)
+            if problem and gap(problem) not in found:
+                found.append(gap(problem))
+    return found
 
 
 def budget(root, repo):
@@ -142,9 +208,7 @@ def gaps(root, repo, number):
         if missing:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
-            engine = spec_engine(root, repo)
-            if engine and not any(path.startswith(('specs/', 'openspec/')) for path in files):
-                found.append(gap(f'no spec in the diff (the repository uses {engine})'))
+            found += spec_gaps(repo, spec_engine(root, repo), tier, files, head)
         code = [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))

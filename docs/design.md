@@ -71,7 +71,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | A test in the diff, or `No test: <reason>` (docs-only exempt) | every PR |
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
-| Spec engine artifacts in the diff | standard and full, when the repo has `.specify/` or `openspec/` |
+| The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
 | Gates passed at an ancestor of the head, one at the head | light quality; standard arch, quality, security; full + goal |
 | CI green, threads answered, a reviewer requested | every PR |
 | Owner review or an owner ruling at that head | `owner_paths` touched |
@@ -137,7 +137,6 @@ lines of stdlib Python (a test holds it). A change that breaks a budget deletes 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
 - Attestations cross-checked against the harness transcript (#962).
-- Spec engine step and content checks beyond artifacts in the diff.
 - A shared standards repository for teams; auditing human PRs as first-class items.
 - The Codex runtime.
 

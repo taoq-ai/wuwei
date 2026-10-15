@@ -91,10 +91,19 @@ def rules(repo, branch):
     return run(['api', f'repos/{repo}/rules/branches/{branch}'])
 
 
-def file(repo, path):
-    """A file's text on the default branch, or GhError."""
+def file(repo, path, ref=None):
+    """A file's text on the default branch (or at ref), or GhError."""
     import base64
-    data = run(['api', f'repos/{repo}/contents/{path}'])
+    data = run(['api', f'repos/{repo}/contents/{path}' + (f'?ref={ref}' if ref else '')])
     if not isinstance(data, dict) or data.get('encoding') != 'base64':
         raise GhError(f'{path} is not a file')
     return base64.b64decode(data['content']).decode('utf-8', 'replace')
+
+
+def listing(repo, path, ref):
+    """The entries of a directory at ref, or [] when it does not exist."""
+    try:
+        data = run(['api', f'repos/{repo}/contents/{path}?ref={ref}'])
+    except GhError:
+        return []
+    return data if isinstance(data, list) else []

@@ -197,3 +197,87 @@ def test_an_error_budget_overrun_raises_the_tier(root, fake):
     attest(root, 'quality')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [
         'gates missing at head aaaaaaa: arch, security (tier raised to standard: change failure rate 40% over 28 days)']
+
+
+SPEC = 'specs/7-rate-limits'
+DONE = '- [x] T001 write the failing test\n- [x] T002 implement\n'
+
+
+def speckit(fake, **override):
+    fake.paths.add('.specify')
+    files = {f'{SPEC}/spec.md': '# Spec\n\n## Clarifications\n- none open\n', f'{SPEC}/plan.md': '# Plan\n',
+             f'{SPEC}/tasks.md': DONE, f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n| C1 | LOW | wording |\n',
+             f'{SPEC}/checklists/requirements.md': '- [x] every requirement is testable\n'}
+    files.update(override)
+    fake.files.update({k: v for k, v in files.items() if v is not None})
+    return [k for k, v in files.items() if v is not None]
+
+
+def full_gates(root):
+    for gate in ('arch', 'quality', 'security', 'goal'):
+        attest(root, gate)
+
+
+def test_a_complete_speckit_feature_passes_at_standard(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_spec_files_are_read_at_the_head_not_only_from_the_diff(root, fake):
+    standard(root)
+    speckit(fake)
+    fake.prs['42'] = make_pr(files=(f'{SPEC}/tasks.md', 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    assert any('?ref=' + HEAD in call[1] for call in fake.calls if call[0] == 'api' and SPEC in call[1])
+
+
+def test_missing_steps_and_unfinished_tasks_are_named(root, fake):
+    standard(root)
+    files = speckit(fake, **{f'{SPEC}/plan.md': None, f'{SPEC}/tasks.md': '- [x] T001\n- [ ] T002\n- [ ] T003\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        f'{SPEC}/plan.md missing: run the spec engine step that writes it',
+        f'{SPEC}/tasks.md has 2 unchecked items']
+
+
+def test_full_tier_needs_clarify_a_clean_analysis_and_checked_checklists(root, fake):
+    light(root, 'full')
+    files = speckit(fake, **{
+        f'{SPEC}/spec.md': '# Spec\n',
+        f'{SPEC}/analysis.md': '| ID | Severity | Summary |\n|---|---|---|\n| A1 | HIGH | FR-2 has no task |\n',
+        f'{SPEC}/checklists/requirements.md': '- [x] testable\n- [ ] measurable\n'})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        f'{SPEC}/spec.md has no ## Clarifications section: run clarify',
+        f'{SPEC}/analysis.md has an open CRITICAL or HIGH finding: | A1 | HIGH | FR-2 has no task |',
+        f'{SPEC}/checklists/requirements.md has 1 unchecked item']
+
+
+def test_a_clean_full_tier_speckit_feature_passes(root, fake):
+    light(root, 'full')
+    fake.prs['42'] = make_pr(files=(*speckit(fake), 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_an_openspec_change_needs_its_proposal_specs_and_tasks(root, fake):
+    standard(root)
+    fake.paths.add('openspec')
+    change = 'openspec/changes/add-rate-limits'
+    fake.files.update({f'{change}/proposal.md': '# Why\n', f'{change}/tasks.md': DONE,
+                       f'{change}/specs/limits/spec.md': '## ADDED Requirements\n'})
+    fake.prs['42'] = make_pr(files=(f'{change}/tasks.md', 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    del fake.files[f'{change}/proposal.md']
+    ws.cache_put(root, 'spec-acme__app', None)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{change}/proposal.md missing: run the spec engine step that writes it']

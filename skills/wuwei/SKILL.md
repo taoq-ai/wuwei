@@ -16,7 +16,10 @@ gh and the repository's tools directly. `wuwei status` shows every open item's g
 - The diff stays under about 400 changed lines (generated files aside), or a `Size: <reason>` line
   says why it cannot be split.
 - At `full` or on `owner_paths`, a `Rollback: <how to undo>` line.
-- At `standard` and `full`, the spec engine's artifacts are in the diff when the repository has one.
+- At `standard` and `full`, when the repository has a spec engine, its steps are done by their artifacts
+  at the head: spec-kit `spec.md`, `plan.md`, `tasks.md` all checked (full adds `## Clarifications`, an
+  `analysis.md` with no open CRITICAL or HIGH, checked checklists); OpenSpec `proposal.md`, a capability
+  spec, `tasks.md` all checked.
 - The gates the tier needs passed at an ancestor of the head, one of them at the head: light
   quality; standard arch, quality, security; full adds goal. When a repository's 28-day change
   failure rate is over 15 percent, every tier there rises one step until it recovers.

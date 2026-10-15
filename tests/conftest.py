@@ -47,7 +47,11 @@ class FakeGh:
             older, newer = args[1].split('/compare/')[1].split('...')
             return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged'}
         if args[0] == 'api' and '/contents/' in args[1]:
-            path = args[1].split('/contents/')[1]
+            path = args[1].split('/contents/')[1].split('?ref=')[0]
+            children = sorted({key[len(path) + 1:].split('/')[0] for key in self.files if key.startswith(path + '/')})
+            if children:
+                return [{'name': name, 'path': f'{path}/{name}',
+                         'type': 'file' if f'{path}/{name}' in self.files else 'dir'} for name in children]
             if path in self.files:
                 import base64
                 return {'encoding': 'base64', 'content': base64.b64encode(self.files[path].encode()).decode()}

@@ -12,7 +12,14 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
 3. At `full`, add a pre-mortem: `How this fails:` with three concrete ways the change could go
    wrong in production. The gates probe those first.
 4. At `standard` and `full`, when the repository uses a spec engine (`.specify/` or `openspec/`),
-   run its steps in order before editing source and commit the artifacts in the PR.
+   run its steps in order before editing source and commit the artifacts in the PR. WUWEI reads
+   them at the PR head:
+   - spec-kit: `spec.md`, `plan.md` and `tasks.md` with every task checked; at `full` also a
+     `## Clarifications` section in `spec.md`, `analysis.md` with no open CRITICAL or HIGH row (fix
+     the finding and re-run analyze), and every checklist item checked. The harness refuses a
+     subagent's Write of a report-named Markdown file, so save the analyze report with a shell
+     redirect (`... > specs/<feature>/analysis.md`).
+   - OpenSpec: `proposal.md`, at least one capability spec under `specs/`, and every task checked.
 5. Record two-way choices under `Assumptions:`. A hard-to-undo choice you are unsure of goes to the
    owner through the planner (`_common.md` Decisions).
 
