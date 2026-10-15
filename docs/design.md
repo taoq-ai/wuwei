@@ -132,9 +132,11 @@ question always answered with the recommendation becomes a rule.
 
 ## 10. Records, report, DORA
 
-`.wuwei/`: `config.toml`, `plan.json`, `goals.md`, `standards.md`, `verdicts/`, `ledger.jsonl`
-(hash-chained, versioned rows, `wuwei verify`), `traces.jsonl`, `days/<date>/report.md`,
-`retro/<date>.md`, `canary`, `cache/`.
+`.wuwei/`: `config.toml`, `plan.json`, `goals.md`, `standards.md`, `verdicts/`, `ledger/<clone>.jsonl`
+(hash-chained, versioned rows, one file per clone, `wuwei verify`), `traces.jsonl`, `days/<date>/report.md`,
+`retro/<date>.md`, `canary`, `cache/`. The state travels on the `wuwei/state` branch (`wuwei
+sync`; pulled at a cloud session's start, pushed at its stops); `wuwei init --cloud` copies the
+plugin into a repository's `.claude/` for cloud sessions, where repository plugins do not load.
 
 The report: plan passes and checkpoints with the diff since the last, the board, merges through the
 check or as exceptions, the doors, owner prompts, seats and verdicts, learning (escapes traced to
@@ -144,7 +146,7 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 
 ## 11. Configuration and budgets
 
-Five keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`. Runtime at most 2,500
+Five keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`. Runtime at most 3,000
 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something first.
 
 ## 12. Deferred

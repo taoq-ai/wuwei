@@ -36,9 +36,11 @@ secrets redacted, duration). It stays on your machine. `telemetry = false` turns
 
 ## The ledger
 
-`.wuwei/ledger.jsonl` records what cannot be read from git or the code host: plan changes,
-attestations, rulings, exceptions, refusals, andon, checkpoints. Each row carries the hash of the
-row before it and a format version. `wuwei verify` checks the chain; a broken link names its line.
+`.wuwei/ledger/` records what cannot be read from git or the code host: plan changes,
+attestations, rulings, exceptions, refusals, andon, checkpoints. Each clone writes its own file,
+`<clone>.jsonl`, so sessions syncing through git never edit the same rows; a 0.34-era
+`ledger.jsonl` is still read. Each row carries the hash of the row before it in its file and a
+format version. `wuwei verify` checks every chain; a broken link names its file and line.
 
 **Why:** an audit trail is only worth something if editing it shows.
 

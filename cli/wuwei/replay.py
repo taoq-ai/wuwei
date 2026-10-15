@@ -8,7 +8,7 @@ import shutil
 
 from wuwei import evidence, gh, ws
 
-KEEP = ('config.toml', 'plan.json', 'ledger.jsonl', 'verdicts')
+KEEP = ('config.toml', 'plan.json', 'ledger.jsonl', 'ledger', 'verdicts')
 
 
 def record(root, repo, number, directory):

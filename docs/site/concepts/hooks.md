@@ -21,6 +21,9 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested |
 | Stop | one reminder per distinct set of actionable gaps; never a loop |
 
+In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
+see [cloud sessions](cloud.md).
+
 ## Why hooks and not only skills
 
 A skill works when the model chooses to load it, and that choice is where guidance fails: the

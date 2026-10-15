@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import sys
 
-from wuwei import board, evidence, guards, plan, verdict, ws
+from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
 WAY = '''WUWEI is this workspace's process auditor. It does not tell you which command to run; it reads
 what you produced and tells you what is still missing (wuwei status, wuwei evidence owner/repo#n).
@@ -320,14 +320,31 @@ def handle(root, event, payload):
         return None
 
 
+VENDORED = PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
+
+
+def _sync(step, arg):
+    try:
+        return step(arg)
+    except Exception as exc:  # the state sync fails open; the next Stop tries again
+        print(f'wuwei sync: {exc}'[:300], file=sys.stderr)
+        return None
+
+
 def main(event):
+    if VENDORED and not sync.remote():
+        return 0  # on a machine the installed plugin serves; the vendored copy is for cloud sessions
     try:
         payload = json.loads(sys.stdin.read() or '{}')
     except ValueError:
         return 0
     root = ws.find(payload.get('cwd'))
+    if sync.remote() and event == 'SessionStart':
+        root = _sync(sync.restore, payload.get('cwd')) or root
     if root is not None:
         out = handle(root, event, payload)
         if out:
             print(json.dumps(out))
+        if sync.remote() and event == 'Stop':
+            _sync(sync.push, root)
     return 0

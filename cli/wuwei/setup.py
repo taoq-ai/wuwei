@@ -4,6 +4,7 @@ doctor says how strongly each rule holds in each repository."""
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 
 from wuwei import gh, guards, ws
@@ -11,7 +12,8 @@ from wuwei import gh, guards, ws
 ALLOW = ['Bash(git:*)', 'Bash(gh:*)', 'Read', 'Edit', 'Write', 'Glob', 'Grep']
 DENY = ['Bash(git push --force:*)', 'Bash(git push -f:*)', 'Bash(git push --mirror:*)',
         'Bash(gh pr merge --admin:*)', 'Bash(gh repo delete:*)',
-        'Edit(.wuwei/ledger.jsonl)', 'Write(.wuwei/ledger.jsonl)']
+        'Edit(.wuwei/ledger.jsonl)', 'Write(.wuwei/ledger.jsonl)',
+        'Edit(.wuwei/ledger/**)', 'Write(.wuwei/ledger/**)']
 ASK = [f'Bash({tool} {verb}:*)' for tool, verbs in (('terraform', ('apply', 'destroy')), ('tofu', ('apply', 'destroy')),
                                                      ('pulumi', ('up', 'destroy')), ('kubectl', ('apply', 'delete')),
                                                      ('helm', ('install', 'upgrade', 'uninstall'))) for verb in verbs]
@@ -40,7 +42,36 @@ def merge_settings(directory):
     return path
 
 
-def init(directory):
+PLUGIN = Path(__file__).resolve().parents[2]
+EVENTS = ('SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop')
+IGNORE = '# The state travels on the wuwei/state branch (wuwei sync), never in a working branch.\n*\n'
+
+
+def vendor(directory):
+    """Copy the plugin into the repository's .claude/ for cloud sessions, where a repository's
+    plugins do not load but its settings, skills and agents do."""
+    claude = Path(directory) / '.claude'
+    shutil.rmtree(claude / 'wuwei', ignore_errors=True)
+    for name in ('bin', 'cli', 'charters', '.claude-plugin'):
+        shutil.copytree(PLUGIN / name, claude / 'wuwei' / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    ws.atomic_write(claude / 'wuwei' / '.gitignore', '__pycache__/\n')
+    for skill in (PLUGIN / 'skills').iterdir():
+        shutil.copytree(skill, claude / 'skills' / skill.name, dirs_exist_ok=True)
+    (claude / 'agents').mkdir(exist_ok=True)
+    for agent in (PLUGIN / 'agents').glob('*.md'):
+        shutil.copy2(agent, claude / 'agents' / agent.name)
+    path = claude / 'settings.json'
+    data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    for event in EVENTS:
+        command = f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}'
+        entries = data.setdefault('hooks', {}).setdefault(event, [])
+        if not any(h.get('command') == command for entry in entries for h in entry.get('hooks', [])):
+            entries.append({'hooks': [{'type': 'command', 'command': command}]})
+    ws.atomic_write(path, json.dumps(data, indent=2) + '\n')
+    return claude
+
+
+def init(directory, cloud=False):
     directory = Path(directory).resolve()
     base = directory / ws.DIR
     base.mkdir(exist_ok=True)
@@ -54,10 +85,14 @@ def init(directory):
     if not (base / 'goals.md').is_file():
         ws.atomic_write(base / 'goals.md', GOALS)
         done.append('goals: .wuwei/goals.md (fill G-1, or let the first plan pass propose goals)')
+    if not (base / '.gitignore').is_file():
+        ws.atomic_write(base / '.gitignore', IGNORE)
     if not (base / 'canary').is_file():
         ws.atomic_write(base / 'canary', f'wuwei-canary-{os.urandom(12).hex()}\n')
     done.append(f'permissions: {merge_settings(directory)} (allow everyday work, deny the doors, ask for infrastructure)')
-    ws.record(directory, 'workspace.init', {'version': json.loads((Path(__file__).resolve().parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']})
+    if cloud:
+        done.append(f'cloud: the plugin copied into {vendor(directory)}; commit .claude/ so cloud sessions load it')
+    ws.record(directory, 'workspace.init', {'version': json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']})
     return done
 
 
@@ -81,7 +116,7 @@ def doctor(root):
     broken = ws.verify(root)
     rows += [('workspace', 'ok', str(root)),
              ('repos', 'ok' if config['repos'] else 'warn', ', '.join(config['repos']) or 'none configured'),
-             ('ledger', 'ok' if not broken else 'fail', 'intact' if not broken else f'broken at lines {broken}'),
+             ('ledger', 'ok' if not broken else 'fail', 'intact' if not broken else f'broken at {", ".join(broken)}'),
              ('canary', 'ok' if (Path(root) / ws.DIR / 'canary').is_file() else 'warn', '.wuwei/canary')]
     gone = ws.retired(root)
     if gone:

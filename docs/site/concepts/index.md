@@ -26,7 +26,8 @@ says what each one is, why it is there, and where it lives.
 | [Calibration and gate yield](learning.md#calibration-and-yield) | Know which reviews pay and which reviewers are overconfident | the report |
 | [Skills and memory proposals](learning.md#skills-and-memory) | Stop re-learning the same repository facts | retro proposals |
 | [Report, telemetry, DORA](metrics.md) | See what happened without asking | `wuwei report` |
-| [The ledger](metrics.md#the-ledger) | A tamper-evident record of what was decided | `.wuwei/ledger.jsonl` |
+| [The ledger](metrics.md#the-ledger) | A tamper-evident record of what was decided | `.wuwei/ledger/` |
 | [Replay cases](metrics.md#replay-cases) | The auditor itself is held to its past answers | `tests/replay/` |
 | [Many repositories](many-repositories.md) | One process, the shape of each repository | one workspace |
+| [Cloud sessions](cloud.md) | A fresh clone starts where the last session stopped | `wuwei init --cloud`, `wuwei sync`, the `wuwei/state` branch |
 | [Work in progress](watch.md) | Nothing waits on your nudge: PRs and replies keep moving | `/wuwei-watch`, `wuwei owe` |

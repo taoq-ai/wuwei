@@ -68,4 +68,5 @@ nav:
     - Report, telemetry and DORA: concepts/metrics.md
     - Many repositories: concepts/many-repositories.md
     - Work in progress: concepts/watch.md
+    - Cloud sessions: concepts/cloud.md
   - Reference: reference.md

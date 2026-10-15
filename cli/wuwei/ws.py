@@ -102,11 +102,24 @@ def _digest(row):
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
-def ledger(root):
-    """Every ledger row, oldest first. A row that does not parse is skipped; verify() reports it."""
-    path = Path(root) / DIR / 'ledger.jsonl'
+def clone(root):
+    """This clone's id. Each clone appends only to its own ledger file, so two sessions syncing
+    through git never edit the same rows."""
+    path = Path(root) / DIR / 'cache' / 'clone'
+    if not path.is_file():
+        atomic_write(path, os.urandom(4).hex() + '\n')
+    return path.read_text(encoding='utf-8').strip()
+
+
+def _ledgers(root):
+    """The 0.34-era single file, then one file per clone."""
+    base = Path(root) / DIR
+    return [path for path in (base / 'ledger.jsonl', *sorted((base / 'ledger').glob('*.jsonl'))) if path.is_file()]
+
+
+def _parse(path):
     rows = []
-    for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
+    for line in path.read_text(encoding='utf-8').splitlines():
         try:
             rows.append(json.loads(line))
         except ValueError:
@@ -114,13 +127,18 @@ def ledger(root):
     return rows
 
 
+def ledger(root):
+    """Every ledger row from every file, oldest first. A row that does not parse is skipped; verify() reports it."""
+    return sorted((row for path in _ledgers(root) for row in _parse(path)), key=lambda row: row.get('ts', ''))
+
+
 def record(root, kind, data):
-    """Append one row; each row carries the hash of the one before it."""
-    rows = ledger(root)
+    """Append one row to this clone's file; each row carries the hash of the one before it there."""
+    path = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
+    mine = _parse(path) if path.is_file() else []
     row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
-           'prev': rows[-1]['hash'] if rows else GENESIS}
+           'prev': mine[-1]['hash'] if mine else GENESIS}
     row['hash'] = _digest(row)
-    path = Path(root) / DIR / 'ledger.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'a', encoding='utf-8') as handle:
         handle.write(json.dumps(row, sort_keys=True) + '\n')
@@ -128,18 +146,19 @@ def record(root, kind, data):
 
 
 def verify(root):
-    """Line numbers where the hash chain breaks; empty means the ledger is intact."""
-    path = Path(root) / DIR / 'ledger.jsonl'
-    broken, prev = [], GENESIS
-    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines() if path.is_file() else (), 1):
-        try:
-            row = json.loads(line)
-            ok = row['prev'] == prev and row['hash'] == _digest(row)
-            prev = row['hash']
-        except (ValueError, KeyError, TypeError):
-            ok = False
-        if not ok:
-            broken.append(number)
+    """Where a hash chain breaks, as file:line; empty means every ledger file is intact."""
+    broken = []
+    for path in _ledgers(root):
+        prev = GENESIS
+        for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+            try:
+                row = json.loads(line)
+                ok = row['prev'] == prev and row['hash'] == _digest(row)
+                prev = row['hash']
+            except (ValueError, KeyError, TypeError):
+                ok = False
+            if not ok:
+                broken.append(f'{path.relative_to(Path(root) / DIR).as_posix()}:{number}')
     return broken
 
 

@@ -9,7 +9,7 @@ back. Everything else passes and is recorded. Adding a door is a design change, 
 | Admin bypass | `gh pr merge --admin`, `gh api` writes to protection, rulesets, statuses, collaborators, hooks, keys, secrets, environments; `gh repo delete` | the repository's own rules are not changed from an agent session |
 | History | force pushes in every form; pushes to or deletion of the default branch | published history does not come back |
 | Secrets | a secret pattern or the workspace canary in an MCP call or a network command | a leaked secret cannot be unleaked |
-| The record | writes to `.wuwei/ledger.jsonl`; a hand-made `wuwei hook` call | an audit you can edit is not an audit |
+| The record | writes to the ledger (`.wuwei/ledger/`, `.wuwei/ledger.jsonl`); a hand-made `wuwei hook` call | an audit you can edit is not an audit |
 | Your attention | an AskUserQuestion without an owner class | a question the process answers costs you for nothing |
 | Infrastructure | asked, not refused: terraform, tofu, pulumi, kubectl and helm writes go to the harness's own prompt | a one-way door you decide |
 

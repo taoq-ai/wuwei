@@ -53,6 +53,6 @@ the repository's tools directly. WUWEI's own commands only read and record.
 
 ## Budgets keep it small
 
-The runtime is standard-library Python held to 2,500 lines by a test, and the configuration has
+The runtime is standard-library Python held to 3,000 lines by a test, and the configuration has
 five keys. A change that would break a budget must delete something first. Process tools tend to
 grow until they are the problem; the budget is the defence.

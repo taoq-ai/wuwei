@@ -32,6 +32,9 @@ are. `doctor` checks the install and prints, per repository, how strongly each d
 
 Add more repositories by saying so, or with `bin/wuwei config repos owner/a,owner/b`.
 
+To run WUWEI in Claude Code on the web too, add `--cloud` and commit `.claude/`; see
+[cloud sessions](concepts/cloud.md).
+
 ## Your first day
 
 1. Open Claude Code in the workspace directory. The session starts oriented: the way of working,

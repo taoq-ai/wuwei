@@ -16,4 +16,6 @@ description: Checkpoint the WUWEI day with the report and the steward's retro. U
 4. Send the owner a short summary where the owner reads it (the session, or a DM through the
    connected tools): what needs the owner first, then done, open gaps, escapes, exceptions,
    andon, decisions taken under Assumptions, the weekly sample PR and the retro's proposals.
-5. Open items carry to the next pass as they are. Do not ask whether to continue tomorrow.
+5. Run `wuwei sync` so the state survives this machine or session (it pushes `.wuwei/` to the
+   `wuwei/state` branch; outside a git repository it says the state stays local).
+6. Open items carry to the next pass as they are. Do not ask whether to continue tomorrow.

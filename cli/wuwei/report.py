@@ -72,7 +72,7 @@ def day(root, date=None):
             f'Hook errors: {len(rows("hook.error"))}.']
     out += learning(root)
     broken = ws.verify(root)
-    out += ['', 'Ledger: intact' if not broken else f'Ledger: broken at lines {broken}', '']
+    out += ['', 'Ledger: intact' if not broken else f'Ledger: broken at {", ".join(broken)}', '']
     return '\n'.join(out)
 
 

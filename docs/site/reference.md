@@ -4,7 +4,8 @@
 
 | Command | What it does |
 | --- | --- |
-| `wuwei init [dir]` | Create `.wuwei/` and merge WUWEI's allow, deny and ask rules into `.claude/settings.json` |
+| `wuwei init [dir] [--cloud]` | Create `.wuwei/` and merge WUWEI's allow, deny and ask rules into `.claude/settings.json`; `--cloud` also copies the plugin into `.claude/` for cloud sessions |
+| `wuwei sync` | Pull, then push `.wuwei/` on the `wuwei/state` branch |
 | `wuwei doctor` | Install, workspace, ledger, harness rules, and each door's strength per repository |
 | `wuwei plan [show]` | The ranked plan; `--json` for machines |
 | `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light\|standard\|full` | Add an item with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE) and `--why` |
@@ -47,7 +48,8 @@
 | `.wuwei/plan.html` | the plan view you approve |
 | `.wuwei/standards.md` | rules the retro promoted, per role |
 | `.wuwei/verdicts/<item>/` | the sentinels' verdict files |
-| `.wuwei/ledger.jsonl` | the hash-chained record |
+| `.wuwei/ledger/<clone>.jsonl` | the hash-chained record, one file per clone |
+| `.wuwei/.gitignore` | keeps the state out of working branches; it travels on `wuwei/state` |
 | `.wuwei/traces.jsonl` | local telemetry |
 | `.wuwei/days/<date>/report.md` | each checkpoint's report |
 | `.wuwei/retro/<date>.md` | the steward's retro |
