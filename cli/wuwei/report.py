@@ -40,8 +40,8 @@ def day(root, date=None):
             ref = f'{repo}#{pr["number"]}'
             out.append(f'- {ref} merged through WUWEI\'s check' if ref in checked else
                        f'- {ref} merged without WUWEI reading its evidence (an exception for the retro)')
-    out += [f'- waived on {r["data"]["pr"]}: {key} ({why})' for r in rows('merge.checked')
-            for key, why in r['data'].get('waived') or ()]
+    out += [f'- {r["data"]["pr"]} merged with process gaps: {"; ".join(r["data"]["process"])}'
+            for r in rows('merge.checked') if r['data'].get('process')]
     refused = rows('refused')
     questions = [r for r in refused if r['data'].get('tool') == 'AskUserQuestion']
     out += ['', '## Doors', f'Refused: {len(refused)} (questions sent back to the model: {len(questions)}). '

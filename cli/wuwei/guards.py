@@ -166,14 +166,12 @@ def gh_command(root, args, cwd, session):
         if not repo or number is None:
             return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
                         'its evidence before the merge.')
-        gaps = evidence.gaps(root, repo, number)
+        found = evidence.gaps(root, repo, number)
+        gaps = evidence.blocking(found)
         if gaps:
             return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
-        try:
-            used = [list(w) for w in evidence.waivers(gh.pr(repo, number).get('body'))]
-        except gh.GhError:
-            used = []
-        ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}', 'waived': used})
+        ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}',
+                                          'process': [g['text'] for g in found if g['kind'] == 'process']})
         return None
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
@@ -258,9 +256,8 @@ def pre_tool(root, payload):
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
             r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open \d+ days", q)]
         if process:
-            return deny('a process gap (spec artifacts, PR template, size, staleness) is yours to settle, not an '
-                        'owner exception: add a line "Waive: <the gap text>: <why it does not apply>" to the PR body. '
-                        'The waiver is recorded at merge and the retro reviews it.')
+            return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
+                        'evidence is complete; the merge records the process fit for the retro.')
         unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
         if not unclassed:
             return None

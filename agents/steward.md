@@ -29,10 +29,11 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
-4. A process gap (spec artifacts, PR template sections, size, staleness) that does not apply to
-   this PR is yours to settle: add `Waive: <the gap text>: <why it does not apply>` to the PR body.
-   Safety gaps (tests, gates, CI, review threads, owner review) cannot be waived; `exception:` is
-   only for those, and only when the owner should carry the risk.
+4. Process fit (spec artifacts, PR template sections, size, staleness, the `Rollback:` line, the
+   plan link, a requested reviewer) never blocks and nobody is asked about it: follow the standards,
+   and the merge records any misfit for the retro. Only safety gaps (tests, gates, CI, review
+   threads, owner review) hold a merge; `exception:` is only for those, when the owner should carry
+   the risk.
 5. When unsure whether a door is one-way, treat it as one-way.
 
 ## Evidence
@@ -127,7 +128,7 @@ item.
 8. Empty the cup: a rule in `.wuwei/standards.md` that caught nothing in 30 days is proposed for
    removal. A new rule starts as a note for its first five days, so its false alarms show before
    it costs anyone time.
-9. A rule the team keeps waiving is a rule that does not fit: propose the fix (a narrower rule, or
-   a WUWEI issue when the rule is the plugin's).
+9. Process gaps the merges recorded show where a standard does not fit or is not followed: propose
+   the fix (a narrower rule, a charter line, or a WUWEI issue when the rule is the plugin's).
 10. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
    that the process decides it.

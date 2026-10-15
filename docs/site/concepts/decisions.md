@@ -47,9 +47,9 @@ rule at the next retro.
 
 ## Exceptions
 
-Sometimes a safety gap is acceptable: a hotfix without the security gate at 2am. (A process gap
-that does not apply, such as a spec rule misfiring on an old feature, is never yours: the team
-waives it with a reasoned `Waive:` line.) You accept it with an
+Sometimes a safety gap is acceptable: a hotfix without the security gate at 2am. (A process gap,
+such as a spec rule misfiring on an old feature, never reaches you: it does not block, and the
+merge records it for the retro.) You accept it with an
 `exception:` question. WUWEI records the ruling, drops that gap at that head, and adds a follow-up
 item to the plan that closes it later. The report lists open exceptions.
 

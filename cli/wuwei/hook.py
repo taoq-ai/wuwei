@@ -17,10 +17,10 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
 - Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
   to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:
   one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:. Never ask whether to continue.
-- Done means evidence: WUWEI-Item: <id>, the repository's PR template sections, a test, under about
-  400 lines or a Size: line, Rollback: at full or on owner_paths, the spec engine's artifacts, the
-  gates the tier needs at the head, green CI, threads answered, a reviewer, owner review on
-  owner_paths, not stale. A process gap that does not apply: Waive: <gap text>: <reason> in the body.
+- Done means safety evidence: a test, the gates the tier needs at the head, green CI, threads
+  answered, owner review on owner_paths. Only these hold a merge or show on the board. Follow the
+  process standards too (WUWEI-Item: <id>, the PR template, small batches, Rollback: at full, the spec
+  engine's steps, a reviewer); misfits never block and are recorded for the retro.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
   secrets in outward calls, ledger edits, forged hook calls, questions the process answers.
 - A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".'''
@@ -169,10 +169,10 @@ def post_tool(root, payload):
                               for argv, _ in guards.segments(str(data.get('command', '')))):
         match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
         if match:
-            gaps = evidence.gaps(root, match[1], int(match[2]))
+            gaps = evidence.blocking(evidence.gaps(root, match[1], int(match[2])))
             ws.cache_put(root, 'board', None)
-            note = 'ready to merge once reviewed' if not gaps else 'still needs: ' + '; '.join(g['text'] for g in gaps)
-            return context('PostToolUse', f'WUWEI: {match[1]}#{match[2]} {note}')
+            if gaps:
+                return context('PostToolUse', f'WUWEI: {match[1]}#{match[2]} still needs: ' + '; '.join(g['text'] for g in gaps))
     return None
 
 

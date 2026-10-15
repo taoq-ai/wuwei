@@ -303,19 +303,11 @@ def test_a_pr_that_only_amends_a_spec_still_counts_as_touching_the_spec(root, fa
     assert evidence.gaps(root, 'acme/app', 42) == []
 
 
-def test_a_process_gap_is_waived_by_a_reasoned_line_in_the_body(root, fake):
-    standard(root)
-    files = speckit(fake, **{f'{SPEC}/tasks.md': '# Tasks\n'})
-    body = f'WUWEI-Item: I-1\nWaive: {SPEC}/tasks.md: amendment only; the feature merged in #3100'
-    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body=body)
-    for gate in ('arch', 'quality', 'security'):
-        attest(root, gate)
-    assert evidence.gaps(root, 'acme/app', 42) == []
-    assert evidence.waivers(body) == [(f'{SPEC}/tasks.md', 'amendment only; the feature merged in #3100')]
-
-
-def test_a_safety_gap_cannot_be_waived(root, fake):
+def test_gaps_are_classed_as_process_or_safety(root, fake):
     light(root)
-    fake.prs['42'] = make_pr(files=('src/app.py',), body='WUWEI-Item: I-1\nWaive: no test in the diff: trust me\n'
-                                                         'Waive: gates missing: later')
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no test in the diff', 'gates missing at head aaaaaaa: quality']
+    fake.prs['42'] = make_pr(files=('src/app.py',), lines=500, requests=(), body='')
+    fake.prs['42']['headRefName'] = 'hotfix'
+    kinds = {g['text']: g['kind'] for g in evidence.gaps(root, 'acme/app', 42)}
+    assert kinds == {'not linked to a plan item (add WUWEI-Item: <id> to the PR body)': 'process',
+                     'no test in the diff': 'safety', '500 changed lines: split it, or add a Size: <reason> line': 'process',
+                     'gates missing at head aaaaaaa: arch, quality, security': 'safety', 'no reviewer requested': 'process'}

@@ -83,7 +83,7 @@ def cmd_evidence(args):
         gaps = replay.record(_root(), *_ref(args.pr), args.record)
         print(f'recorded {args.pr} in {args.record}/case.json; copy it under tests/replay/ to hold future versions to it')
         return 1 if gaps else 0
-    gaps = evidence.gaps(_root(), *_ref(args.pr))
+    gaps = evidence.blocking(evidence.gaps(_root(), *_ref(args.pr)))
     print(json.dumps(gaps, indent=1) if args.json else '\n'.join(
         f'- {g["text"]}' + ('' if g['actionable'] else ' [waiting]') for g in gaps) or 'no gaps: ready to merge')
     return 1 if gaps else 0

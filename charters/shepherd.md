@@ -26,9 +26,9 @@ You own open PRs until they merge or the owner parks them.
 ## Merge
 
 1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
-   gaps, in the order that keeps the base green. WUWEI refuses a merge with gaps and lists them;
-   close them, or waive a process gap that does not apply with a `Waive:` line. Merging and its
-   order are yours, never an owner question.
+   safety gaps, in the order that keeps the base green. WUWEI refuses a merge only on safety gaps
+   and lists them; process fit never holds a merge. Merging and its order are yours, never an
+   owner question.
 2. Before merging, add a short evidence comment to the PR: the gates and the head they passed, CI,
    threads, and any exception the owner accepted. The audit then lives next to the code.
 3. After the merge, watch the base branch's checks once; a red base after your merge is a revert

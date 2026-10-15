@@ -58,7 +58,6 @@
 | `No test: <reason>` | a change no test can hold |
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |
-| `Waive: <gap text>: <reason>` | a process gap (spec artifacts, template, size, staleness) that does not apply |
 
 ## Verdict format
 

@@ -78,9 +78,11 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | Owner review or an owner ruling at that head | `owner_paths` touched |
 | Open under three days | every PR |
 
-Waivers: a process gap (spec artifacts, template sections, size, staleness) that does not apply is
-settled by the team with `Waive: <gap>: <reason>` in the body, recorded at merge; safety gaps are
-not waivable and only those can be an owner `exception:`.
+Safety and process: only safety gaps (a test, gates at the head, CI, threads, owner review,
+readable evidence) hold a merge or show on the board. Process fit (plan link, PR template, size,
+`Rollback:`, the spec engine's steps, a reviewer, staleness) never blocks and is shown to nobody
+while the work flows; the merge records it, the report lists it, the steward learns from it. Only a
+safety gap can be an owner `exception:`.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step. Verdicts count only when attested at

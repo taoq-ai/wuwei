@@ -13,7 +13,8 @@ CASES = sorted(p.parent for p in (Path(__file__).parent / 'replay').glob('*/case
 @pytest.mark.parametrize('case', CASES, ids=[c.name for c in CASES])
 def test_a_recorded_case_gives_the_same_gaps(case, tmp_path, monkeypatch):
     found, expected = replay.replay(case, tmp_path, monkeypatch)
-    assert found == expected
+    keep = lambda gaps: [(g['text'], g['actionable'], g['owner']) for g in gaps]  # noqa: E731
+    assert keep(found) == keep(expected)
 
 
 def test_record_then_replay_round_trips(root, fake, tmp_path, monkeypatch):

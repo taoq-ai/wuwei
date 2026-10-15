@@ -70,6 +70,6 @@ def test_a_second_checkpoint_reports_what_changed_since_the_first(root, fake):
     assert 'item.added 1' in text and 'refused 1' in text
 
 
-def test_the_report_lists_waivers(root, fake):
-    ws.record(root, 'merge.checked', {'pr': 'acme/app#42', 'waived': [['specs/x/tasks.md', 'amendment only']]})
-    assert 'waived on acme/app#42: specs/x/tasks.md (amendment only)' in report.day(root)
+def test_the_report_lists_process_gaps_merged_past(root, fake):
+    ws.record(root, 'merge.checked', {'pr': 'acme/app#42', 'process': ['specs/x/tasks.md has no checklist items']})
+    assert 'acme/app#42 merged with process gaps: specs/x/tasks.md has no checklist items' in report.day(root)

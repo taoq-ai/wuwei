@@ -54,7 +54,7 @@ def compute(root):
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
-                            'gaps': evidence.gaps(root, repo, pr['number'])})
+                            'gaps': evidence.blocking(evidence.gaps(root, repo, pr['number']))})
     for item in (i for i in open_items if not i.get('repo')):
         out.append({'item': item['id'], 'title': item['title'], 'pr': None,
                     'gaps': [evidence.gap('no repository named for this item')]})

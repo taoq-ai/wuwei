@@ -27,7 +27,7 @@ item.
 8. Empty the cup: a rule in `.wuwei/standards.md` that caught nothing in 30 days is proposed for
    removal. A new rule starts as a note for its first five days, so its false alarms show before
    it costs anyone time.
-9. A rule the team keeps waiving is a rule that does not fit: propose the fix (a narrower rule, or
-   a WUWEI issue when the rule is the plugin's).
+9. Process gaps the merges recorded show where a standard does not fit or is not followed: propose
+   the fix (a narrower rule, a charter line, or a WUWEI issue when the rule is the plugin's).
 10. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
    that the process decides it.
