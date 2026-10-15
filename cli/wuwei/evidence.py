@@ -27,8 +27,8 @@ SPEC_RULES = {
                                                                           ('tasks.md', 'checked')),
                                                               'full': ()}),
 }
-# The plan item a PR names: the WUWEI footer ([WUWEI](<site>) · Item <id> · ...), or a WUWEI-Item: line.
-ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
+# The plan item a PR names: the WUWEI footer ([WUWEI <version>](<site>) · Item <id> · ...), or a WUWEI-Item: line.
+ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"

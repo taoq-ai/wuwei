@@ -170,7 +170,8 @@ def gh_command(root, args, cwd, session, command=''):
         found = create_door(root, _repo_number(args, cwd)[0], flag('--head', '-H') or current_branch(cwd),
                             flag('--base', '-B'), text)
         if found or once(root, session, 'pr-standard'):
-            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip()}
+            version = json.loads((PR_STANDARD.parents[1] / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
+            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip().replace('<version>', version)}
     return None
 
 
