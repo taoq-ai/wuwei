@@ -1,0 +1,6 @@
+{
+  "name": "wuwei",
+  "description": "The WUWEI plugin by TaoQ AI Labs.",
+  "owner": {"name": "TaoQ AI Labs"},
+  "plugins": [{"name": "wuwei", "source": "./", "description": "WUWEI 1.0 development source."}]
+}

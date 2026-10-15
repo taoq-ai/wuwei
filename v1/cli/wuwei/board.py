@@ -1,0 +1,58 @@
+"""The board: each open plan item, its pull request and what it still lacks. Gaps, never commands."""
+
+from wuwei import evidence, gh, plan, ws
+
+TTL = 60
+
+
+def _list(root, name, read, ttl=TTL):
+    found = ws.cache_get(root, name, ttl)
+    return ws.cache_put(root, name, read()) if found is None else found
+
+
+def compute(root):
+    out = []
+    open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open']
+    for repo in sorted({item.get('repo') for item in open_items if item.get('repo')}):
+        key = repo.replace('/', '__')
+        since = min(item.get('added', ws.today()) for item in open_items if item.get('repo') == repo)
+        try:
+            prs = _list(root, f'prs-{key}', lambda: gh.open_prs(repo))
+            merged = _list(root, f'merged-{key}', lambda: gh.merged_prs(repo, since), 300)
+        except gh.GhError as exc:
+            out += [{'item': i['id'], 'title': i['title'], 'pr': None,
+                     'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]}
+                    for i in open_items if i.get('repo') == repo]
+            continue
+        for item in (i for i in open_items if i.get('repo') == repo):
+            linked = [pr for pr in prs if (evidence.item_for(root, pr) or {}).get('id') == item['id']]
+            done = [pr for pr in merged if (evidence.item_for(root, pr) or {}).get('id') == item['id']]
+            if not linked and done:
+                plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
+                continue
+            if not linked:
+                out.append({'item': item['id'], 'title': item['title'], 'pr': None,
+                            'gaps': [evidence.gap('no pull request yet')]})
+            for pr in linked:
+                out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
+                            'gaps': evidence.gaps(root, repo, pr['number'])})
+    for item in (i for i in open_items if not i.get('repo')):
+        out.append({'item': item['id'], 'title': item['title'], 'pr': None,
+                    'gaps': [evidence.gap('no repository named for this item')]})
+    return out
+
+
+def rows(root):
+    found = ws.cache_get(root, 'board', TTL)
+    return ws.cache_put(root, 'board', compute(root)) if found is None else found
+
+
+def text(found):
+    if not found:
+        return 'Board: nothing open in the plan.'
+    lines = ['Board (what each open item still lacks):']
+    for row in found:
+        head = f'{row["item"]} {row["title"]}' + (f' ({row["pr"]})' if row['pr'] else '')
+        gaps = '; '.join(g['text'] + ('' if g['actionable'] else ' [waiting]') for g in row['gaps']) or 'ready to merge'
+        lines.append(f'- {head}: {gaps}')
+    return '\n'.join(lines)
