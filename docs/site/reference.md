@@ -62,7 +62,7 @@
 
 | Line | When |
 | --- | --- |
-| `WUWEI-Item: <id>` | always |
+| `` <sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `<id>` · <title> · Goal <G-n> · Tier <tier></sub> `` | always, last line; the older `WUWEI-Item: <id>` still links |
 | `No test: <reason>` | a change no test can hold |
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |

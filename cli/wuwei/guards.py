@@ -180,7 +180,7 @@ def create_door(root, repo, branch, base, text):
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
     except gh.GhError as exc:
         return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; its PR opens once its gates pass there.')
-    named = re.search(r'WUWEI-Item:\s*([\w.-]+)', text or '')
+    named = evidence.ITEM.search(text or '')
     pr = {'body': f'WUWEI-Item: {named[1]}' if named else '', 'headRefName': branch}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
     head = (diff.get('commits') or [{}])[-1].get('sha', '')

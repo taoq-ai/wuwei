@@ -68,7 +68,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 
 | Evidence | Applies |
 |---|---|
-| `WUWEI-Item: <id>` names a plan item | every PR |
+| The WUWEI footer (or a `WUWEI-Item: <id>` line) names a plan item | every PR |
 | The repository's PR template sections | when it has a template |
 | A test in the diff, or `No test: <reason>` (docs-only exempt) | every PR |
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |

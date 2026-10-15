@@ -33,7 +33,7 @@ def test_complete_evidence_has_no_gaps(root, fake):
 def test_missing_gates_tests_and_link_are_named(root, fake):
     fake.prs['42'] = make_pr(files=('src/app.py',), body='')
     found = texts(evidence.gaps(root, 'acme/app', 42))
-    assert 'not linked to a plan item (add WUWEI-Item: <id> to the PR body)' in found
+    assert 'not linked to a plan item (end the PR body with the WUWEI footer naming its item)' in found
     assert 'no test in the diff' in found
     assert any(text.startswith('gates missing at head') for text in found)
 
@@ -311,7 +311,7 @@ def test_gaps_are_classed_as_process_or_safety(root, fake):
     fake.prs['42'] = make_pr(files=('src/app.py',), lines=500, requests=(), body='')
     fake.prs['42']['headRefName'] = 'hotfix'
     kinds = {g['text']: g['kind'] for g in evidence.gaps(root, 'acme/app', 42)}
-    assert kinds == {'not linked to a plan item (add WUWEI-Item: <id> to the PR body)': 'process',
+    assert kinds == {'not linked to a plan item (end the PR body with the WUWEI footer naming its item)': 'process',
                      'no test in the diff': 'safety', '500 changed lines: split it, or add a Size: <reason> line': 'process',
                      'gates missing at head aaaaaaa: arch, quality': 'safety', 'no reviewer requested': 'process'}
 
@@ -498,3 +498,14 @@ def test_a_merged_pr_names_what_it_lacked_as_post_merge(root, fake):
     fake.prs['42']['mergedAt'] = ws.now().isoformat(timespec='seconds')
     attest(root, 'quality', verdict='FIX')
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['post-merge: gates missing at head aaaaaaa: quality']
+
+
+FOOTER = '<sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `G6-DETECTOR` · Detector context · Goal G-6 · Tier standard</sub>'
+
+
+def test_the_wuwei_footer_links_a_pr_to_its_item(root, fake):
+    write_plan(root, [{'id': 'G6-DETECTOR', 'title': 'Detector context', 'goal': 'G-6', 'repo': 'acme/app', 'tier': 'standard'}])
+    fake.prs['42'] = make_pr(body=f'## What and why\nx\n\n---\n{FOOTER}')
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate, item='G6-DETECTOR')
+    assert evidence.gaps(root, 'acme/app', 42) == []
