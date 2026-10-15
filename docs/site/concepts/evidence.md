@@ -14,7 +14,7 @@ head or did not.
 | A test in the diff, or `No test: <reason>` | code changes | safety | test first is the cheapest defect filter there is |
 | Under about 400 changed lines, or `Size: <reason>` | every PR, generated files aside | process | small batches fail less and are reviewed better |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched | process | a change you cannot undo deserves a plan for undoing it |
-| The spec engine's steps, judged by their artifacts at the head | standard and full, when the repo has `.specify/` or `openspec/` | process | the agreement about what to build is part of the change |
+| The spec engine's steps, judged by their artifacts at the head | standard and full, when the repo has `.specify/` or `openspec/` | process at standard, safety at full | the agreement about what to build is part of the change |
 | A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
 | Gates passed, one at the head | per tier | safety | independent review at the commit that merges, not an older one |
 | CI green | every PR | safety | the repository's own checks |
@@ -36,6 +36,10 @@ directory the diff touches, so a later commit that only updates `tasks.md` still
 
 **Why:** a spec nobody finished is worse than no spec, because it looks like agreement. Checking the
 artifacts, not the commands, keeps the rule true whichever way the steps were run.
+
+At `standard` the steps are process fit: a misfit is recorded, never blocking. At `full` they are
+safety gaps and hold the merge, because full is the tier for work where building the wrong thing is
+expensive.
 
 ## Breaking changes
 
@@ -78,9 +82,10 @@ checks the file at stop, however it was written, so a shell edit cannot slip pas
 ## Safety and process
 
 Only **safety** gaps hold a merge and reach the team while it works: a test, the gates at the head,
-green CI, answered threads, owner review, and evidence that can be read. Everything else is
+green CI, answered threads, owner review, a breaking change's announcement and confirmation, the
+spec engine's steps at `full`, and evidence that can be read. Everything else is
 **process fit**: the plan link, the PR template, small batches, the `Rollback:` line, the spec
-engine's steps, a requested reviewer, staleness. Process fit never blocks and is never shown on the
+engine's steps below `full`, a requested reviewer, staleness. Process fit never blocks and is never shown on the
 board or asked about; the merge records it, the report lists it, and the steward turns a rule that
 keeps misfiring, or keeps being skipped, into a fix.
 

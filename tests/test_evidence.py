@@ -391,3 +391,16 @@ def test_a_deferred_task_without_a_reason_still_counts(root, fake):
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate)
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/tasks.md has 1 unchecked item']
+
+
+def test_spec_gaps_block_at_full_tier_and_are_process_fit_below_it(root, fake):
+    files = speckit(fake, **{f'{SPEC}/plan.md': None})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    standard(root)
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert evidence.blocking(evidence.gaps(root, 'acme/app', 42)) == []
+    light(root, 'full')
+    full_gates(root)
+    held = evidence.blocking(evidence.gaps(root, 'acme/app', 42))
+    assert f'{SPEC}/plan.md missing: run the spec engine step that writes it' in texts(held)

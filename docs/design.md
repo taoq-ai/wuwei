@@ -80,8 +80,9 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | Open under three days | every PR |
 
 Safety and process: only safety gaps (a test, gates at the head, CI, threads, owner review,
-readable evidence) hold a merge or show on the board. Process fit (plan link, PR template, size,
-`Rollback:`, the spec engine's steps, a reviewer, staleness) never blocks and is shown to nobody
+readable evidence, breaking changes, the spec engine's steps at full) hold a merge or show on the
+board. Process fit (plan link, PR template, size,
+`Rollback:`, the spec engine's steps below full, a reviewer, staleness) never blocks and is shown to nobody
 while the work flows; the merge records it, the report lists it, the steward learns from it. Only a
 safety gap can be an owner `exception:`.
 

@@ -20,7 +20,7 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   whether to continue. A breaking change to an outward contract needs an Announcement: <link> line,
   then the owner's breaking: confirmation, before it merges.
 - Done means safety evidence: a test, the gates the tier needs at the head, green CI, threads
-  answered, owner review on owner_paths. Only these hold a merge or show on the board. Follow the
+  answered, owner review on owner_paths, the spec at full. Only these hold a merge or show on the board. Follow the
   process standards too (WUWEI-Item: <id>, the PR template, small batches, Rollback: at full, the spec
   engine's steps, a reviewer); misfits never block and are recorded for the retro.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,

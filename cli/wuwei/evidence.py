@@ -289,7 +289,8 @@ def gaps(root, repo, number):
         if missing:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
-            found += spec_gaps(repo, spec_engine(root, repo), tier, files, head)
+            # At full tier the spec is part of the safety case; below it, process fit for the retro.
+            found += [dict(g, kind='safety') if tier == 'full' else g for g in spec_gaps(repo, spec_engine(root, repo), tier, files, head)]
         code = [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
