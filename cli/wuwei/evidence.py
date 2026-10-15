@@ -84,8 +84,30 @@ def template_sections(root, repo):
     return _cached(root, 'template-' + repo.replace('/', '__'), read)
 
 
+DEFERRED = re.compile(r'^(#+)\s+(?:\d+(?:\.\d+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
+REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
+
+
+def _counted(text):
+    """The checklist lines that count: a box under a Deferred or Out of this PR heading is left out
+    when its line says why (#1037); the section ends at the next heading of the same or a higher level."""
+    kept, level = [], None
+    for line in text.splitlines():
+        heading = re.match(r'^(#+)\s', line)
+        if heading and level is not None and len(heading[1]) <= level:
+            level = None
+        deferred = DEFERRED.match(line)
+        if deferred:
+            level = len(deferred[1])
+            continue
+        if level is not None and BOX.match(line) and REASON.search(line):
+            continue
+        kept.append(line)
+    return '\n'.join(kept)
+
+
 def _unchecked(path, text):
-    boxes = BOX.findall(text)
+    boxes = BOX.findall(_counted(text))
     open_boxes = sum(1 for box in boxes if box == ' ')
     if not boxes:
         return f'{path} has no checklist items'
@@ -111,7 +133,7 @@ def _rule(repo, path, rule, head):
         return f'{path} missing: run the spec engine step that writes it'
     if rule == 'checked':
         return _unchecked(path, text)
-    if rule == 'clarified' and not re.search(r'^## Clarifications\b', text, re.M):
+    if rule == 'clarified' and not re.search(r'^##\s+(?:\d+(?:\.\d+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
         return f'{path} has no ## Clarifications section: run clarify'
     if rule == 'clean':
         for line in text.splitlines():

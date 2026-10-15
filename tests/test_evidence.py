@@ -370,3 +370,24 @@ def test_one_exception_can_cover_several_prs_with_loose_gap_text(root, fake):
     ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': 'aaaaaaa', 'gap': 'No test in the diff',
                                'approved': True})
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_house_style_spec_sections_count(root, fake):
+    light(root, 'full')
+    tasks = ('## Slice 1\n- [x] T001 the failing test\n- [x] T002 implement\n\n'
+             '## 7. Deferred\n- [ ] T010 slice 2 export (waits on the platform team PR)\n'
+             '- [ ] T011 slice 5 backfill: blocked by platform#88\n')
+    files = speckit(fake, **{f'{SPEC}/spec.md': '# Spec\n\n## 12. Clarifications\n- none open\n', f'{SPEC}/tasks.md': tasks})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+    full_gates(root)
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_a_deferred_task_without_a_reason_still_counts(root, fake):
+    standard(root)
+    tasks = '- [x] T001 done\n\n## Out of this PR\n- [ ] T010 slice 2 export\n'
+    files = speckit(fake, **{f'{SPEC}/tasks.md': tasks})
+    fake.prs['42'] = make_pr(files=(*files, 'src/app.py', 'tests/test_app.py'))
+    for gate in ('arch', 'quality', 'security'):
+        attest(root, gate)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [f'{SPEC}/tasks.md has 1 unchecked item']
