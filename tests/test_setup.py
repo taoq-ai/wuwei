@@ -114,3 +114,11 @@ def test_init_cloud_vendors_the_plugin_into_the_repository(tmp_path, monkeypatch
                                      text=True, env=env, cwd=tmp_path).stdout
     assert run(env) == ''  # on a machine, the installed plugin serves; the vendored copy stays quiet
     assert 'WUWEI' in run({**env, 'CLAUDE_CODE_REMOTE': 'true'})
+
+
+def test_release_please_is_not_pinned_to_a_version_already_released():
+    config = json.loads((PLUGIN / 'release-please-config.json').read_text())
+    released = json.loads((PLUGIN / '.release-please-manifest.json').read_text())
+    for path, package in config['packages'].items():
+        assert package.get('release-as') != released.get(path), (
+            f'release-as {package["release-as"]} is already released: remove it, or every release stays there')
