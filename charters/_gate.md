@@ -22,7 +22,8 @@ requirement and the running code, not the builder's summary.
 ## The verdict
 
 Write it to `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
-report with the line `Verdict file: <that path>`. WUWEI reads the file when you stop and sends it
+report with the line `Verdict file: <that path>`. If that file already exists, another seat reviewed
+the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you stop and sends it
 back if the shape is wrong; a verdict counts only as WUWEI recorded it.
 
 ```

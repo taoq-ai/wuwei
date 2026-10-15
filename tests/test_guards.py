@@ -234,3 +234,13 @@ def test_auto_merge_with_a_real_gap_is_still_refused(root, fake, repo):
 def test_a_classed_question_that_will_not_parse_is_refused_with_the_template(root, question):
     decision = guards.pre_tool(root, ask(question))
     assert decision['decision'] == 'deny' and 'owner/repo#n at <sha7>' in decision['reason']
+
+
+def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
+    found = guards.segments('r=$(x evidence A-Teams-Network/ai-stacks#3241); [ "$r" = ok ] && '
+                            'gh pr merge 3241 -R A-Teams-Network/ai-stacks --squash')
+    assert any(argv[:3] == ['gh', 'pr', 'merge'] for argv, _ in found)
+
+
+def test_a_force_push_after_a_pr_reference_is_refused(root, repo):
+    assert guards.pre_tool(root, bash('echo acme/app#42 && git push --force origin feature'))['decision'] == 'deny'

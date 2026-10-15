@@ -198,6 +198,8 @@ def verdicts(root, item_id):
         except OSError:
             continue
         if hashlib.sha256(body).hexdigest() != data.get('sha256'):
+            if data.get('verdict') not in (None, 'PASS'):  # a replaced finding still holds as recorded (#1039)
+                found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
             continue
         if data.get('imported'):
             found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
@@ -211,6 +213,9 @@ def verdicts(root, item_id):
 def gate_gaps(root, repo, item_id, tier, head, why=''):
     latest = {}
     for found in verdicts(root, item_id):
+        prior = latest.get(found['gate'])
+        if prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]:
+            continue  # at one head, a later pass does not outvote a finding
         if gh.ancestor(repo, found['head'], head):
             latest[found['gate']] = found
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}

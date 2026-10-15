@@ -159,6 +159,15 @@ def _verdict_problem(root, payload, role):
         body = path.read_bytes()
     except (OSError, ValueError):
         return f'the verdict must be a readable file under .wuwei/verdicts/ (got {match[1]}).'
+    rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
+    earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
+    if any(row.get('sha256') == sha for row in earlier):
+        return None
+    others = [row for row in earlier if row.get('agent') != payload.get('agent_id')]
+    if others:
+        return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and '
+                f'theirs still counts as recorded. Write yours to {path.stem}-2.md beside it (the next free '
+                'number) and end with its Verdict file: line.')
     parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
@@ -166,7 +175,7 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
-    ws.record(root, 'attest', {'path': str(path.relative_to(Path(root).resolve())), 'sha256': hashlib.sha256(body).hexdigest(),
+    ws.record(root, 'attest', {'path': rel, 'sha256': sha,
                                'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}', 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'],
@@ -185,6 +194,14 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
+    role = str(data.get('subagent_type', '')).rsplit(':', 1)[-1]
+    if tool in ('Agent', 'Task') and role.startswith('sentinel-'):
+        # The handback carries the seat's last message: attest from it when the stop could not read it (#1039).
+        response = payload.get('tool_response')
+        parts = response.get('content') if isinstance(response, dict) else None
+        text = '\n'.join(p.get('text', '') for p in parts if isinstance(p, dict)) if isinstance(parts, list) else str(response)
+        _verdict_problem(root, {'last_assistant_message': text, 'agent_id': payload.get('agent_id')}, role)
+        return None
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         return _replied(root, tool, json.dumps(data))

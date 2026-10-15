@@ -73,7 +73,11 @@ re-review, and a merge never relies only on reviews of older code.
 A verdict counts only when WUWEI attested it. When a sentinel stops, the SubagentStop hook reads the
 file it names (`Verdict file: <path>`), checks its shape, and records its hash, gate, item, head,
 confidence and the agent that wrote it. A malformed verdict goes back to the reviewer once with the
-format. A file edited after attestation no longer counts. A verdict file that does not count is
+format. A file edited after attestation no longer counts, except that a finding (FIX or ESCALATE)
+still holds as recorded: replacing it cannot turn it into a pass. At one head, a later pass does not
+outvote a finding; a new head does. A seat that writes over another seat's verdict is sent back to
+write its own file beside it. When the stop cannot read the seat's last message, the handback to the
+lead carries it, and the verdict is attested from there. A verdict file that does not count is
 never silent: the board names it and why (its shape, or that no sentinel attested it).
 
 **Why:** a review is evidence only if a reviewer wrote it and it has not changed since. The hook

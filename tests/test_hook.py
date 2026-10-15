@@ -53,10 +53,10 @@ def test_a_closed_day_stops_quietly_until_the_next_plan_pass(root, fake):
     assert stop(root, session='s2')['decision'] == 'block'
 
 
-def reviewer_stop(root, message, active=False):
+def reviewer_stop(root, message, active=False, agent='rev1', transcript='/t/agent.jsonl'):
     return hook.handle(root, 'SubagentStop', {
-        'session_id': 's1', 'agent_id': 'rev1', 'agent_type': 'wuwei:sentinel-quality', 'stop_hook_active': active,
-        'last_assistant_message': message, 'agent_transcript_path': '/t/agent.jsonl', 'cwd': str(root)})
+        'session_id': 's1', 'agent_id': agent, 'agent_type': 'wuwei:sentinel-quality', 'stop_hook_active': active,
+        'last_assistant_message': message, 'agent_transcript_path': transcript, 'cwd': str(root)})
 
 
 def test_a_reviewer_must_name_its_verdict_file(root):
@@ -254,3 +254,32 @@ def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
                       'status': 'open', 'score': 1} for n in range(14)])
     reason = stop(root)['reason']
     assert reason.count('\n- ') == 10 and 'and 4 more' in reason
+
+
+def test_a_seat_that_replaces_another_seats_verdict_is_sent_back(root):
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev0') is None
+    path.write_text(verdict_text())
+    result = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev1')
+    assert result['decision'] == 'block' and 'quality-aaaaaaa-2.md' in result['reason']
+    assert [r['data']['verdict'] for r in ws.rows(root, 'attest')] == ['FIX']
+    path.write_text(verdict_text())  # the same seat rewriting its own verdict is fine
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev1') is not None
+    path.write_text(verdict_text(verdict='FIX', findings='- [high] src/app.py:9 blocks: yes. Failure: two retries reorder the queue'))
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev0') is None
+
+
+def test_a_verdict_is_attested_from_the_handback_when_the_stop_could_not_read_it(root):
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    reviewer_stop(root, '', active=True, transcript='/nowhere/agent.jsonl')
+    assert not ws.rows(root, 'attest')
+    handback = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'Agent',
+                'tool_input': {'subagent_type': 'wuwei:sentinel-quality'},
+                'tool_response': {'content': [{'type': 'text', 'text': 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/quality.md'}]}}
+    hook.handle(root, 'PostToolUse', handback)
+    hook.handle(root, 'PostToolUse', handback)
+    assert [(r['data']['gate'], r['data']['verdict']) for r in ws.rows(root, 'attest')] == [('quality', 'PASS')]

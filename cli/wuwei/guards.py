@@ -76,6 +76,7 @@ def segments(command):
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
+        lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens = list(lexer)
     except ValueError:
         return []

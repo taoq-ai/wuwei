@@ -1,15 +1,16 @@
+import pytest
 import hashlib
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
 from wuwei import evidence, ws
 
 
-def attest(root, gate, head=HEAD, verdict='PASS', item='I-1'):
-    path = root / ws.DIR / 'verdicts' / item / f'{gate}-{head[:7]}.md'
+def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None):
+    path = root / ws.DIR / 'verdicts' / item / (name or f'{gate}-{head[:7]}.md')
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(verdict_text(gate=gate, verdict=verdict, head=head, item=item))
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-                               'gate': gate, 'item': item, 'head': head, 'role': f'sentinel-{gate}', 'agent': 'x'})
+                               'gate': gate, 'item': item, 'head': head, 'verdict': verdict, 'role': f'sentinel-{gate}', 'agent': 'x'})
     return path
 
 
@@ -404,3 +405,20 @@ def test_spec_gaps_block_at_full_tier_and_are_process_fit_below_it(root, fake):
     full_gates(root)
     held = evidence.blocking(evidence.gaps(root, 'acme/app', 42))
     assert f'{SPEC}/plan.md missing: run the spec engine step that writes it' in texts(held)
+
+
+@pytest.mark.parametrize('order', [('FIX', 'PASS'), ('PASS', 'FIX')])
+def test_one_seat_overwriting_another_at_the_same_head_never_turns_a_finding_green(root, fake, order):
+    light(root)
+    fake.prs['42'] = make_pr()
+    for verdict in order:
+        attest(root, 'quality', verdict=verdict)
+    assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+def test_a_later_pass_at_the_same_head_does_not_outvote_a_finding(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    attest(root, 'quality', verdict='FIX')
+    attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-2.md')
+    assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
