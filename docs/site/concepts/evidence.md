@@ -16,7 +16,7 @@ head or did not.
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched | process | a change you cannot undo deserves a plan for undoing it |
 | The spec engine's steps, judged by their artifacts at the head | standard and full, when the repo has `.specify/` or `openspec/` | process at standard, safety at full | the agreement about what to build is part of the change |
 | A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
-| Gates passed, one at the head | per tier | safety | independent review at the commit that merges, not an older one |
+| The gates the diff needs, passed before the PR opened | the diff, under the tier's ceiling | safety | independent review before anyone else reads the code, and only the reviews the change calls for |
 | CI green | every PR | safety | the repository's own checks |
 | Every review thread answered | every PR | safety | people's questions are obligations |
 | A reviewer requested | every PR | process | a PR nobody is asked to read is not reviewed |
@@ -47,9 +47,8 @@ A change that breaks an outward contract (CLI commands and output, API endpoints
 keys, events, schemas, formats other systems read) is close to a one-way door: the clients it
 breaks cannot be un-broken. WUWEI finds it three ways: the PR declares it (a `!` in the title, a
 `BREAKING CHANGE:` line), the architecture gate states it (every arch verdict carries
-`Breaking: no` or `Breaking: yes: <what breaks for which clients>`), and a light item that touches a
-contract file (OpenAPI, protobuf, GraphQL, JSON schema) is raised to standard so the arch gate
-looks.
+`Breaking: no` or `Breaking: yes: <what breaks for which clients>`), and a change to a contract
+file (OpenAPI, protobuf, GraphQL, JSON schema) takes the arch gate at any tier so it looks.
 
 Before such a change merges it needs evidence, in order:
 
@@ -62,11 +61,29 @@ Before such a change merges it needs evidence, in order:
 **Why:** a break nobody announced is an outage for someone else. The team does the work of finding
 and announcing it; you decide whether it ships.
 
-## Gates at the head
+## Gates before the PR, chosen by the diff
 
-Each required gate must have passed at an ancestor of the PR's head, and at least one gate must
-have passed at the head itself. A fix after review therefore needs one delta review, not a full
-re-review, and a merge never relies only on reviews of older code.
+The gates run on the pushed branch, before its PR opens: `gh pr create` is refused until they pass
+at the branch head, so reviewers and the merge only ever see gated code.
+
+The tier is a ceiling and the diff decides what runs under it:
+
+| The diff | Gates |
+| --- | --- |
+| docs or specs only | none |
+| code | quality |
+| risky paths (auth, sessions, tokens, secrets, crypto, SQL, migrations, policies, infrastructure, CI, dependency manifests) or `owner_paths`, at standard | + security |
+| a contract file (any tier), or more than 200 changed lines or 10 code files (standard) | + arch |
+| full tier | all four |
+
+A one-line config flag costs one gate. After a fix round only the gate that found the problem
+re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
+the earlier passes; a larger one is re-read by the one gate it needs (security for risky paths,
+arch for a contract, quality otherwise). When the error budget is overrun the raised tier takes its
+full gate set.
+
+**Why:** gates that run after the PR opens race the merge, and four gates on a one-line change
+cost more than they find. Review cost follows risk.
 
 ## Attested verdicts
 

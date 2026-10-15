@@ -50,3 +50,8 @@ def test_the_charter_template_wording_parses():
 def test_a_blocking_finding_still_needs_its_failure_scenario():
     text = verdict_text(verdict='FIX', findings='- [HIGH] src/app.py:3 blocks: yes. Note: looks off')
     assert any('Failure:' in e for e in verdict.parse(text)['errors'])
+
+
+def test_a_verdict_written_before_the_pr_opens_names_only_the_repository():
+    parsed = verdict.parse(verdict_text(pr='acme/app'))
+    assert parsed['errors'] == [] and parsed['repo'] == 'acme/app' and parsed['pr'] is None

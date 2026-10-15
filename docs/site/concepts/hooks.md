@@ -19,7 +19,7 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 | PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
 | PostToolUse | a trace per call; what a new PR lacks; owner answers recorded as prompts, rulings, exceptions |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested |
-| Stop | one reminder per distinct set of actionable gaps; never a loop |
+| Stop | one reminder per distinct set of actionable gaps; once to arm the watch or to plan when the flow would stall; never a loop |
 
 In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
 see [cloud sessions](cloud.md).
@@ -41,5 +41,10 @@ waiting items it left out. It never loops and never nags: while any seat is stil
 silent (the seat's completion wakes the planner anyway), the same set of gaps does not block twice,
 waits (CI, the owner, plan approval, an andon) never count, a closed day is quiet, and a turn already
 continued by a Stop hook always passes.
+
+Two more reminders keep the flow from stalling on the owner's nudge, each once per session: when
+only waiting work is left and no watch pass ran in the last hour, it asks the session to arm
+`/wuwei-watch` (nothing else would wake it when CI finishes); when the queue is empty and goals are
+set, it asks for a plan pass from the goals.
 
 **Why:** it turns "honour the promise" into a habit without turning it into a trap.

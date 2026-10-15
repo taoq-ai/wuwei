@@ -28,24 +28,7 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
-PR_STANDARD = '''WUWEI PR standard. Start from this body (keep the repository's own template sections too):
-
-WUWEI-Item: <plan item id>
-
-## What and why
-<what changed and why, in two or three sentences>
-
-## Assumptions
-<each two-way choice you took: what, why, what would overturn it; or none>
-
-## Tests
-<the tests that cover the change; or a line "No test: <reason>">
-
-## Review notes
-<residual non-blocking findings; or none>
-
-Request a reviewer. Before merge every gate the tier needs passes at the head, CI is green and every
-review thread is answered.'''
+PR_STANDARD = Path(__file__).resolve().parents[2] / 'charters' / '_pr.md'
 
 
 def deny(reason):
@@ -159,7 +142,7 @@ def _repo_number(args, cwd):
     return repo or origin(cwd), number
 
 
-def gh_command(root, args, cwd, session):
+def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'merge']:
         if '--admin' in args:
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
@@ -178,9 +161,32 @@ def gh_command(root, args, cwd, session):
         if method in ('POST', 'PUT', 'PATCH', 'DELETE') and GUARDED_API.search(endpoint):
             return deny(f'gh api {method} {endpoint} changes protection, statuses, merges or access: the '
                         'repository rules and the merge door are not changed from an agent session.')
-    if args[:2] == ['pr', 'create'] and once(root, session, 'pr-standard'):
-        return {'decision': 'note', 'reason': PR_STANDARD}
+    if args[:2] == ['pr', 'create']:
+        flag = lambda *names: next((args[i + 1] for i, a in enumerate(args[:-1]) if a in names), '')  # noqa: E731
+        try:
+            text = command + Path(cwd, flag('--body-file', '-F')).read_text(encoding='utf-8') if flag('--body-file', '-F') else command
+        except OSError:
+            text = command
+        found = create_door(root, _repo_number(args, cwd)[0], flag('--head', '-H') or current_branch(cwd),
+                            flag('--base', '-B'), text)
+        if found or once(root, session, 'pr-standard'):
+            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip()}
     return None
+
+
+def create_door(root, repo, branch, base, text):
+    """Gates run on the pushed branch before its PR opens (#1050): review and merge start at a gated head."""
+    try:
+        diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
+    except gh.GhError as exc:
+        return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; its PR opens once its gates pass there.')
+    named = re.search(r'WUWEI-Item:\s*([\w.-]+)', text or '')
+    pr = {'body': f'WUWEI-Item: {named[1]}' if named else '', 'headRefName': branch}
+    item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
+    head = (diff.get('commits') or [{}])[-1].get('sha', '')
+    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier)
+    return deny(f'{repo} {branch} opens as a PR once its gates pass at the branch head (gates run before review):\n'
+                + '\n'.join('- ' + g['text'] for g in found)) if found else None
 
 
 def merge_door(root, repo, number, auto=False):
@@ -245,7 +251,7 @@ def bash(root, command, cwd, session):
                 if found:
                     return found
         elif program == 'gh':
-            found = gh_command(root, argv[1:], cwd, session)
+            found = gh_command(root, argv[1:], cwd, session, command)
             if found:
                 return found
         elif program in INFRA and INFRA[program] & set(argv[1:]):
@@ -272,7 +278,8 @@ def pre_tool(root, payload):
         unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:'))
                     and not re.search(r'[\w.-]+/[\w.-]+#\d+ at [0-9a-f]{7,40}', q)]
         if unparsed:
-            return deny('this question will not be recorded as asked. Use the exact shape: "exception: '
+            return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
+                        'and plan: take any wording). Use the exact shape: "exception: '
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
@@ -287,6 +294,9 @@ def pre_tool(root, payload):
         repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
         return leak(root, json.dumps(data)) or merge_door(root, repo, int(number) if str(number).isdigit() else None,
                                                           auto=tool.endswith('enable_pr_auto_merge'))
+    if tool.startswith('mcp__') and tool.endswith('create_pull_request'):
+        return leak(root, json.dumps(data)) or create_door(root, f'{data.get("owner")}/{data.get("repo")}', str(
+            data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':

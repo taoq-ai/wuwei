@@ -31,6 +31,8 @@ class FakeGh:
         self.comments = {}
         self.graphql = True
         self.ancestors = set()
+        self.deltas = {}
+        self.branches = {}
         self.paths = set()
         self.files = {}
         self.default = 'main'
@@ -83,7 +85,11 @@ class FakeGh:
             return [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted]
         if args[0] == 'api' and '/compare/' in path:
             older, newer = path.split('/compare/')[1].split('...')
-            return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged'}
+            pr = next((pr for pr in self.prs.values() if newer in (pr['headRefOid'], pr['headRefName'])), None)
+            files = self.deltas.get((older, newer), pr['files'] if pr else [])
+            return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged',
+                    'commits': [{'sha': pr['headRefOid'] if pr else self.branches.get(newer, newer)}],
+                    'files': [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions']} for f in files]}
         if args[0] == 'api' and '/contents/' in path:
             path = path.split('/contents/')[1]
             children = sorted({key[len(path) + 1:].split('/')[0] for key in self.files if key.startswith(path + '/')})

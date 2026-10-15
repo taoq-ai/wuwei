@@ -130,7 +130,10 @@ question for its source, not a build.
 1. Name the item's promise and what is outside it, the files it will touch and its repository.
    Build an overlap matrix from real diffs; serialise or combine overlapping work.
 2. Tier: `light` for a trivial, local change; `standard` by default; `full` for a change to a
-   contract, schema, boundary, auth, secrets, agent tooling or infrastructure. When unsure, go up.
+   contract, schema, boundary, auth, secrets, agent tooling or infrastructure. When unsure, go up:
+   the tier is a ceiling, and the diff picks the gates under it, so a small standard change costs
+   one gate. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
+   so in its promise; the planner records its evidence with `wuwei plan run`.
 
 ## Ranking
 

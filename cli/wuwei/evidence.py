@@ -32,8 +32,12 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
                      r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
+# Paths that call the security gate at standard: trust boundaries, data, infrastructure, dependencies.
+RISKY = re.compile(r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|crypt|secur|sql|migrat|polic'
+                   r'|iam|acl|rbac)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
+                   r'|requirements[^/]*\.txt$|package\.json$|pyproject\.toml$|go\.mod$|Cargo\.toml$', re.I)
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
-MAX_LINES, STALE_DAYS, BUDGET = 400, 3, 0.15
+MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 DAY = 86400
 
@@ -174,7 +178,8 @@ def _rule(repo, path, rule, head):
     if rule == 'clean':
         for line in text.splitlines():
             cells = {cell.strip().upper() for cell in line.strip().strip('|').split('|')}
-            if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'}:
+            if line.lstrip().startswith('|') and cells & {'CRITICAL', 'HIGH'} and not any(
+                    c.startswith(('RESOLVED', 'FIXED', 'CLOSED')) for c in cells):  # a recorded resolution (#1047)
                 return f'{path} has an open CRITICAL or HIGH finding: {line.strip()[:100]}'
     return None
 
@@ -220,12 +225,12 @@ def owner_login(root):
     return _cached(root, 'login', gh.login)
 
 
-def verdicts(root, item_id):
-    """Attested, well-formed verdicts for an item, oldest first. An edited file no longer counts."""
+def verdicts(root, item_id, ref=''):
+    """Attested, well-formed verdicts for an item (or its PR), oldest first. An edited file no longer counts."""
     found = []
     for row in ws.rows(root, 'attest'):
         data = row['data']
-        if str(data.get('item', '')).lower() != str(item_id).lower():
+        if str(data.get('item', '')).lower() != str(item_id).lower() and not (ref and data.get('pr', '').lower() == ref.lower()):
             continue
         path = Path(root) / data.get('path', '')
         try:
@@ -245,21 +250,60 @@ def verdicts(root, item_id):
     return found
 
 
-def gate_gaps(root, repo, item_id, tier, head, why=''):
-    latest = {}
-    for found in verdicts(root, item_id):
+def needed(root, tier, files):
+    """The gates a change needs: the tier is the ceiling, the diff decides (#1050). Docs alone need none;
+    security comes for risky or owner paths, arch for a contract or a wide change; full takes all four."""
+    code = [f['path'] for f in files if f['path'].endswith('.txt') and RISKY.search(f['path'])
+            or not DOCS.search(f['path']) and not f['path'].startswith(('specs/', 'openspec/'))]
+    risky = owned(root, code) or any(RISKY.search(p) for p in code)
+    if tier == 'full' and code:
+        return REQUIRED['full']
+    wants = {'quality': code, 'security': tier == 'standard' and risky, 'arch': any(CONTRACT.search(p) for p in code)
+             or tier == 'standard' and (lines(files) > WIDE or len(code) > 10)}
+    return tuple(g for g in REQUIRED['standard'] if wants[g])
+
+
+def lines(files):
+    return sum(f.get('additions', 0) + f.get('deletions', 0) for f in files if not GENERATED.search(f['path']))
+
+
+def owned(root, files):
+    return [path for path in files if any(fnmatch.fnmatch(path, p) for p in ws.config(root)['owner_paths'])]
+
+
+def gates_for(root, repo, pr, files, item):
+    """(item id, tier, the gates the change needs, why) for a PR, or for a branch about to open one."""
+    trailer = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
+    tier, why, spent = (item or {}).get('tier', 'standard'), '', budget(root, repo)
+    if spent['raised'] and tier != 'full':
+        tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
+    gates = REQUIRED[tier] if why else needed(root, tier, files)  # an overrun budget trims nothing
+    return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
+
+
+def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard'):
+    """Each gate the change needs passed at an ancestor of the head. Code moved since the last pass is
+    re-read by the one gate the delta needs; docs or a small change off risky paths carries the passes."""
+    latest, last = {}, None
+    for found in verdicts(root, item_id, ref):
         prior = latest.get(found['gate'])
         if prior and prior['verdict'] != 'PASS' and prior['head'][:7] == found['head'][:7]:
             continue  # at one head, a later pass does not outvote a finding
         if gh.ancestor(repo, found['head'], head):
             latest[found['gate']] = found
+            last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
-    missing = [gate for gate in REQUIRED[tier] if gate not in passed]
+    missing = [gate for gate in gates if gate not in passed]
     if missing:
         return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
-    if not any(head.startswith(v['head']) for v in passed.values()):
-        return [gap(f'no gate passed at head {head[:7]} (a delta review)')] + uncounted(root, item_id)
-    return []
+    if not gates or any(head.startswith(v['head']) for v in passed.values()):
+        return []
+    delta = gh.compare(repo, last, head)['files']
+    want = needed(root, 'light' if tier == 'light' else 'standard', delta)
+    gate = next((g for g in ('security', 'arch', 'quality') if g in want), '')
+    if not gate or lines(delta) <= TRIVIAL and gate == 'quality' or gate in passed and head.startswith(passed[gate]['head']):
+        return []
+    return [gap(f'no gate passed at head {head[:7]} (a delta review by {gate})')] + uncounted(root, item_id)
 
 
 def uncounted(root, item_id):
@@ -288,7 +332,7 @@ def breaking_gaps(root, ref, pr, item_id):
     gate) needs an announcement, then the owner's confirmation at this head."""
     body, head = pr.get('body') or '', pr['headRefOid']
     declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
-    if not (declared or any(v.get('breaking') for v in verdicts(root, item_id))):
+    if not (declared or any(v.get('breaking') for v in verdicts(root, item_id, ref))):
         return []
     if not re.search(r'^Announcement:[ \t]*\S', body, re.M):
         return [gap('breaking change without an announcement: add "Announcement: <link to the client communication, '
@@ -318,8 +362,9 @@ def gaps(root, repo, number):
     try:
         pr = gh.pr(repo, number)
         found = []
-        item = item_for(root, pr, repo)
+        item, ref = item_for(root, pr, repo), f'{repo}#{number}'
         tier = (item or {}).get('tier', 'standard')
+        item_id, raised, gates, why = gates_for(root, repo, pr, pr.get('files') or (), item)
         files = [f['path'] for f in pr.get('files') or ()]
         body = pr.get('body') or ''
         head = pr['headRefOid']
@@ -334,22 +379,14 @@ def gaps(root, repo, number):
         code = [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
-        size = sum(f.get('additions', 0) + f.get('deletions', 0) for f in pr.get('files') or ()
-                   if not GENERATED.search(f['path']))
+        size = lines(pr.get('files') or ())
         if size > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
             found.append(gap(f'{size} changed lines: split it, or add a Size: <reason> line'))
-        patterns = ws.config(root)['owner_paths']
-        owned = [path for path in files if any(fnmatch.fnmatch(path, p) for p in patterns)]
-        if (tier == 'full' or owned) and not re.search(r'^Rollback:\s*\S', body, re.M):
+        owners = owned(root, files)
+        if (tier == 'full' or owners) and not re.search(r'^Rollback:\s*\S', body, re.M):
             found.append(gap('no Rollback: line (how to undo this change)'))
-        why = ''
-        if tier == 'light' and any(CONTRACT.search(path) for path in files):
-            tier, why = 'standard', ' (tier raised to standard: the diff changes a published contract)'
-        spent = budget(root, repo)
-        if spent['raised'] and tier != 'full' and not why:
-            tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
-        found += gate_gaps(root, repo, (item or {}).get('id', ''), tier, head, why)
-        found += breaking_gaps(root, f'{repo}#{number}', pr, (item or {}).get('id', ''))
+        found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
+        found += breaking_gaps(root, ref, pr, item_id)
         found += ci_gaps(pr.get('statusCheckRollup'))
         author = (pr.get('author') or {}).get('login', '')
         threads = gh.unanswered_threads(repo, number, author)
@@ -366,12 +403,14 @@ def gaps(root, repo, number):
             last = approvals[-1]
             found.append(gap(f'the approval from {last["author"]["login"]} is for {str(last.get("commit"))[:7]}, not the head '
                              f'{head[:7]}: re-request review if a check wants it at the head'))
-        if owned and not owner_approved(root, repo, pr):
-            found.append(gap(f'owner review needed (owner_paths: {", ".join(owned[:3])})', actionable=False, owner=True))
+        if owners and not owner_approved(root, repo, pr):
+            found.append(gap(f'owner review needed (owner_paths: {", ".join(owners[:3])})', actionable=False, owner=True))
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
-        return excepted(root, f'{repo}#{number}', head, found)
+        if pr.get('state') == 'MERGED':  # what it lacked when it merged is an escape for the retro (#1050)
+            return [dict(g, text='post-merge: ' + g['text']) for g in blocking(found)]
+        return excepted(root, ref, head, found)
     except (gh.GhError, KeyError, TypeError) as exc:
         return [gap(f'evidence unreadable: {exc}', actionable=False)]
 

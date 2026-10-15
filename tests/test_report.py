@@ -73,3 +73,14 @@ def test_a_second_checkpoint_reports_what_changed_since_the_first(root, fake):
 def test_the_report_lists_process_gaps_merged_past(root, fake):
     ws.record(root, 'merge.checked', {'pr': 'acme/app#42', 'process': ['specs/x/tasks.md has no checklist items']})
     assert 'acme/app#42 merged with process gaps: specs/x/tasks.md has no checklist items' in report.day(root)
+
+
+def test_a_finding_written_after_the_merge_is_an_escape(root, fake):
+    merged = make_pr(number=40, state='MERGED')
+    import datetime
+    merged['mergedAt'] = (ws.now() - datetime.timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    fake.prs['40'] = merged
+    ws.record(root, 'attest', {'pr': 'acme/app#40', 'gate': 'quality', 'verdict': 'PASS', 'head': 'a' * 40})
+    ws.record(root, 'attest', {'pr': 'acme/app#40', 'gate': 'quality', 'verdict': 'FIX', 'head': 'a' * 40})
+    assert 'merged before quality PASS' not in report.day(root)
+    assert '- escaped (post-merge): acme/app#40 merged before quality FIX' in report.day(root)

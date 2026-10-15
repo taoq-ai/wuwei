@@ -66,7 +66,7 @@ def test_old_passes_alone_do_not_cover_a_moved_head(root, fake):
     fake.ancestors.add((OLD, HEAD))
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate, OLD)
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review)']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by quality)']
 
 
 def test_a_fix_verdict_is_not_a_pass(root, fake):
@@ -313,7 +313,7 @@ def test_gaps_are_classed_as_process_or_safety(root, fake):
     kinds = {g['text']: g['kind'] for g in evidence.gaps(root, 'acme/app', 42)}
     assert kinds == {'not linked to a plan item (add WUWEI-Item: <id> to the PR body)': 'process',
                      'no test in the diff': 'safety', '500 changed lines: split it, or add a Size: <reason> line': 'process',
-                     'gates missing at head aaaaaaa: arch, quality, security': 'safety', 'no reviewer requested': 'process'}
+                     'gates missing at head aaaaaaa: arch, quality': 'safety', 'no reviewer requested': 'process'}
 
 
 def test_in_a_cloud_session_threads_come_from_the_ccr_route(root, fake):
@@ -433,3 +433,68 @@ def test_an_approval_for_an_older_commit_is_named_when_a_check_is_red(root, fake
     fake.prs['42'] = make_pr(checks='FAILURE', reviews=(('alice', 'APPROVED'),))
     ws.cache_put(root, 'board', None)
     assert not any(t.startswith('the approval from') for t in texts(evidence.gaps(root, 'acme/app', 42)))
+
+
+def analysis_pr(fake, row):
+    write = lambda name, text: fake.files.__setitem__(f'{SPEC}/{name}', text)  # noqa: E731
+    write('spec.md', '# Spec\n## Clarifications\n- Q: a? A: b\n')
+    write('plan.md', '# Plan\n')
+    write('tasks.md', '- [x] T1\n')
+    write('analysis.md', '| ID | Severity | Disposition |\n|---|---|---|\n' + row + '\n')
+    write('checklists/req.md', '- [x] done\n')
+    fake.paths.add('.specify')
+    fake.prs['42'] = make_pr(files=(f'{SPEC}/spec.md', 'src/app.py', 'tests/test_app.py'), body='WUWEI-Item: I-1\nRollback: revert')
+
+
+def test_a_resolved_high_finding_no_longer_holds_the_merge(root, fake):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'full'}])
+    analysis_pr(fake, '| F6 | HIGH | Resolved: tests/test_app.py::test_grant |')
+    assert not any('analysis.md' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
+    analysis_pr(fake, '| F6 | HIGH | open |')
+    assert any('open CRITICAL or HIGH finding' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
+
+
+@pytest.mark.parametrize('files,lines,gates', [
+    (('config/staging.yaml',), 1, 'quality'),
+    (('src/auth/session.py', 'tests/test_session.py'), 10, 'quality, security'),
+    (('src/a.py', 'tests/test_a.py'), 150, 'arch, quality'),
+    (('requirements.txt',), 1, 'quality, security'),
+    (('src/geometry/diameter.py',), 3, 'quality'),
+    (('docs/auth.md',), 30, None),
+    (('docs/guide.md',), 30, None)])
+def test_the_diff_decides_which_gates_a_standard_item_needs(root, fake, files, lines, gates):
+    standard(root)
+    fake.prs['42'] = make_pr(files=files, lines=lines, body='WUWEI-Item: I-1\nNo test: config')
+    found = [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if 'gate' in t]
+    assert found == ([f'gates missing at head aaaaaaa: {gates}'] if gates else [])
+
+
+def test_a_small_delta_after_review_carries_the_passes_and_a_risky_one_does_not(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr()
+    fake.ancestors.add((OLD, HEAD))
+    attest(root, 'quality', OLD)
+    fake.deltas[(OLD, HEAD)] = [{'path': 'src/app.py', 'additions': 4, 'deletions': 2}]
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.deltas[(OLD, HEAD)] = [{'path': 'src/token.py', 'additions': 4, 'deletions': 2}]
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no gate passed at head aaaaaaa (a delta review by security)']
+
+
+def test_verdicts_count_by_their_pr_when_the_item_is_not_in_the_plan(root, fake):
+    fake.prs['42'] = make_pr(body='WUWEI-Item: OPS-9')
+    attest(root, 'quality', item='OPS-9')
+    assert not any('gate' in t for t in texts(evidence.gaps(root, 'acme/app', 42)))
+    fake.prs['42'] = make_pr(body='')
+    fake.prs['42']['headRefName'] = 'hotfix'
+    path = attest(root, 'quality', item='other')
+    rows = ws.rows(root, 'attest')
+    ws.record(root, 'attest', {**rows[-1]['data'], 'pr': 'acme/app#42'})
+    assert not any('gate' in t for t in texts(evidence.gaps(root, 'acme/app', 42))) and path
+
+
+def test_a_merged_pr_names_what_it_lacked_as_post_merge(root, fake):
+    standard(root)
+    fake.prs['42'] = make_pr(state='MERGED')
+    fake.prs['42']['mergedAt'] = ws.now().isoformat(timespec='seconds')
+    attest(root, 'quality', verdict='FIX')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['post-merge: gates missing at head aaaaaaa: quality']

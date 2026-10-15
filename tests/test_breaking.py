@@ -60,12 +60,11 @@ def test_a_confirmation_does_not_survive_a_moved_head(root, fake):
     assert texts(root)[0].startswith('breaking change needs the owner\'s confirmation')
 
 
-def test_a_contract_file_raises_a_light_item_so_arch_reviews_it(root, fake):
+def test_a_contract_file_calls_the_arch_gate_at_any_tier(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
     fake.prs['42'] = make_pr(files=('api/openapi.yaml', 'tests/test_api.py'))
     attest(root, 'quality')
-    assert texts(root) == ['gates missing at head aaaaaaa: arch, security (tier raised to standard: the diff '
-                           'changes a published contract)']
+    assert texts(root) == ['gates missing at head aaaaaaa: arch']
 
 
 def test_an_arch_verdict_must_say_whether_it_breaks():

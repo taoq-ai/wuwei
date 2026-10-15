@@ -99,6 +99,10 @@ def learning(root):
         except gh.GhError as exc:
             out.append(f'- {repo}: unmeasured ({exc})')
             continue
+        for pr in merged:  # a finding written after the merge: the gate ran too late (#1050)
+            late = [f'{r["data"]["gate"]} {r["data"]["verdict"]}' for r in attests if r['data'].get('verdict') != 'PASS'
+                    and r['data'].get('pr', '').lower() == f'{repo}#{pr["number"]}'.lower() and r['ts'][:19] > pr['mergedAt'][:19]]
+            out += [f'- escaped (post-merge): {repo}#{pr["number"]} merged before {", ".join(late)}'] if late else []
         titles = {pr['title']: pr for pr in merged}
         for revert in (pr for pr in merged if pr['title'].startswith('Revert "')):
             original = titles.get(revert['title'][8:].rstrip('"'))

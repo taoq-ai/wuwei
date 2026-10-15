@@ -74,7 +74,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| Gates passed at an ancestor of the head, one at the head | light quality; standard arch, quality, security; full + goal |
+| The gates the diff needs passed on the branch before its PR opened, each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change; a contract file takes arch at any tier; full takes all four |
 | CI green, threads answered, a reviewer requested | every PR |
 | Owner review or an owner ruling at that head | `owner_paths` touched |
 | Open under three days | every PR |
@@ -87,18 +87,27 @@ while the work flows; the merge records it, the report lists it, the steward lea
 safety gap can be an owner `exception:`.
 
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
-by the arch gate's required `Breaking:` line; a light item touching a contract file is raised to
-standard) needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
+by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
+needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
 head. Both are safety gaps.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
-merges) is over 15 percent, every tier there rises one step. Verdicts count only when attested at
+merges) is over 15 percent, every tier there rises one step and takes its full gate set, untrimmed by
+the diff. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). Gaps are
-actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass.
+actionable, waiting or the owner's; an unreadable code host is a waiting gap, never a pass. A PR read
+after it merged lists what it lacked as `post-merge:` gaps, and the report counts a finding attested
+after the merge as an escape.
+
+Operations items: an item done by a run, not a change (a backfill, a re-drive, an operator step),
+records its run evidence (`wuwei plan run <id> --reason`); the board shows that evidence, not a
+missing PR, and `wuwei plan done` closes it with the final evidence.
 
 ## 7. The doors
 
-Refused: a merge with safety gaps by any route (arming auto-merge passes while only CI runs);
+Refused: a merge with safety gaps by any route (arming auto-merge passes while only CI runs); a PR
+opened (`gh pr create`, a GitHub MCP create tool) before the gates its diff needs pass at the
+branch head, so review starts at a gated head (#1050);
 `--admin`; `gh api` writes to protection, rulesets, statuses,
 collaborators, hooks, keys, secrets and environments; `gh repo delete`; force pushes in every form;
 pushes to or deletion of the default branch; a secret or the canary in an MCP call or network
@@ -120,7 +129,7 @@ flow.
 | PreToolUse | the doors; the PR standard with a ready body once per session |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation |
-| Stop | one reminder per distinct set of actionable gaps; never a loop |
+| Stop | one reminder per distinct set of actionable gaps; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
 
 ## 9. Learning
 

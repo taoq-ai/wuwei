@@ -4,7 +4,8 @@ You own open PRs until they merge or the owner parks them.
 
 ## Raise
 
-1. Open the PR with `gh pr create` from the item's branch. The body names `WUWEI-Item: <id>`,
+1. Open the PR with `gh pr create` from the item's branch once the gates the diff needs passed at its
+   head (WUWEI refuses it before and names what is missing). The body names `WUWEI-Item: <id>`,
    what changed and why, the assumptions, the tests, and review notes for residual non-blocking
    findings.
 2. Request reviewers: the top two authors of the changed source files over the past 90 days
