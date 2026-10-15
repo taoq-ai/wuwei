@@ -27,6 +27,8 @@ SPEC_RULES = {
                                                                           ('tasks.md', 'checked')),
                                                               'full': ()}),
 }
+# The plan item a PR names: the WUWEI footer ([WUWEI](<site>) · Item <id> · ...), or a WUWEI-Item: line.
+ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
@@ -87,9 +89,9 @@ def review_duty(root, ref, pr):
 
 
 def item_for(root, pr, repo=None):
-    """The plan item a PR names with a WUWEI-Item: trailer, records among its PRs, or whose id starts
+    """The plan item a PR names in its WUWEI footer, records among its PRs, or whose id starts
     its branch name."""
-    match = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
+    match = ITEM.search(pr.get('body') or '')
     if match:
         return plan.find(root, match[1])
     ref = f'{repo}#{pr.get("number")}' if repo else None
@@ -273,7 +275,7 @@ def owned(root, files):
 
 def gates_for(root, repo, pr, files, item):
     """(item id, tier, the gates the change needs, why) for a PR, or for a branch about to open one."""
-    trailer = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
+    trailer = ITEM.search(pr.get('body') or '')
     tier, why, spent = (item or {}).get('tier', 'standard'), '', budget(root, repo)
     if spent['raised'] and tier != 'full':
         tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
@@ -369,7 +371,7 @@ def gaps(root, repo, number):
         body = pr.get('body') or ''
         head = pr['headRefOid']
         if item is None:
-            found.append(gap('not linked to a plan item (add WUWEI-Item: <id> to the PR body)'))
+            found.append(gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)'))
         missing = [s for s in template_sections(root, repo) if s.lower() not in body.lower()]
         if missing:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))

@@ -9,7 +9,7 @@ head or did not.
 
 | Evidence | Applies | Kind | Why |
 | --- | --- | --- | --- |
-| `WUWEI-Item: <id>` in the body | every PR | process | work outside the plan is visible, and the audit can trace each change to a goal |
+| The WUWEI footer naming the item | every PR | process | work outside the plan is visible, and the audit can trace each change to a goal |
 | The repository's PR template sections | when the repo has a template | process | the repository's own process comes first |
 | A test in the diff, or `No test: <reason>` | code changes | safety | test first is the cheapest defect filter there is |
 | Under about 400 changed lines, or `Size: <reason>` | every PR, generated files aside | process | small batches fail less and are reviewed better |

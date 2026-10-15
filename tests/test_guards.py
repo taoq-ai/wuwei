@@ -123,7 +123,7 @@ def test_ordinary_sends_pass_without_any_allow_list(root, repo):
 
 def test_pr_create_teaches_the_pr_standard_once_per_session(root, fake, repo):
     first = guards.pre_tool(root, bash('gh pr create --fill'))
-    assert first['decision'] == 'note' and 'WUWEI-Item:' in first['reason']
+    assert first['decision'] == 'note' and '[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `<id>`' in first['reason']
     assert guards.pre_tool(root, bash('gh pr create --fill')) is None
 
 
@@ -269,6 +269,15 @@ def test_the_mcp_create_route_meets_the_same_door(root, fake, repo):
     payload = {'tool_name': 'mcp__github__create_pull_request', 'cwd': '/w', 'tool_input': {
         'owner': 'acme', 'repo': 'app', 'head': 'i-1-change', 'base': 'main', 'title': 'x', 'body': 'WUWEI-Item: I-1'}}
     assert 'gates missing at head aaaaaaa: quality' in guards.pre_tool(root, payload)['reason']
+
+
+def test_the_create_door_reads_the_item_from_the_footer(root, fake, repo):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'G6-DETECTOR', 'title': 'c', 'goal': 'G-6', 'repo': 'acme/app', 'tier': 'light'}])
+    branch(fake, ('src/auth.py', 'tests/test_auth.py'))
+    attest(root, 'quality', item='G6-DETECTOR')
+    body = '<sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item \\`G6-DETECTOR\\` · c · Goal G-6 · Tier light</sub>'
+    assert guards.pre_tool(root, bash(f'gh pr create --title x --body "{body}"'))['decision'] == 'note'
 
 
 def test_a_docs_branch_needs_no_gate_to_open(root, fake, repo):
