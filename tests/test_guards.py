@@ -121,7 +121,7 @@ def test_ordinary_sends_pass_without_any_allow_list(root, repo):
     assert guards.pre_tool(root, payload) is None
 
 
-def test_pr_create_teaches_the_pr_standard_once_per_session(root, repo):
+def test_pr_create_teaches_the_pr_standard_once_per_session(root, fake, repo):
     first = guards.pre_tool(root, bash('gh pr create --fill'))
     assert first['decision'] == 'note' and 'WUWEI-Item:' in first['reason']
     assert guards.pre_tool(root, bash('gh pr create --fill')) is None
@@ -244,3 +244,46 @@ def test_a_pr_reference_does_not_hide_the_rest_of_the_command():
 
 def test_a_force_push_after_a_pr_reference_is_refused(root, repo):
     assert guards.pre_tool(root, bash('echo acme/app#42 && git push --force origin feature'))['decision'] == 'deny'
+
+
+def branch(fake, files=('src/app.py', 'tests/test_app.py')):
+    from conftest import HEAD
+    fake.branches['i-1-change'] = HEAD
+    fake.deltas[('main', 'i-1-change')] = [{'path': p, 'additions': 5, 'deletions': 0} for p in files]
+
+
+def test_a_pr_opens_only_once_its_gates_pass_on_the_branch(root, fake, repo):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard'}])
+    branch(fake, ('src/auth.py', 'tests/test_auth.py'))
+    decision = guards.pre_tool(root, bash('gh pr create --title x --body "WUWEI-Item: I-1"'))
+    assert decision['decision'] == 'deny' and 'gates missing at head aaaaaaa: quality, security' in decision['reason']
+    attest(root, 'quality')
+    attest(root, 'security')
+    assert guards.pre_tool(root, bash('gh pr create --title x --body "WUWEI-Item: I-1"'))['decision'] == 'note'
+
+
+def test_the_mcp_create_route_meets_the_same_door(root, fake, repo):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    branch(fake)
+    payload = {'tool_name': 'mcp__github__create_pull_request', 'cwd': '/w', 'tool_input': {
+        'owner': 'acme', 'repo': 'app', 'head': 'i-1-change', 'base': 'main', 'title': 'x', 'body': 'WUWEI-Item: I-1'}}
+    assert 'gates missing at head aaaaaaa: quality' in guards.pre_tool(root, payload)['reason']
+
+
+def test_a_docs_branch_needs_no_gate_to_open(root, fake, repo):
+    branch(fake, ('docs/guide.md',))
+    assert guards.pre_tool(root, bash('gh pr create --fill'))['decision'] == 'note'
+
+
+@pytest.mark.parametrize('question', ['trust: does the tenant filter hold for acme/app#3?', 'goal: keep G-2?',
+                                      'one-way: drop it?', 'scope: add SSO?', 'infra: add a NAT?', 'plan: approve?'])
+def test_every_class_the_charter_lists_reaches_the_owner(root, question):
+    assert guards.pre_tool(root, ask(question)) is None
+
+
+def test_a_shape_refusal_names_the_question_it_refuses(root):
+    payload = ask('trust: is per-tenant row filtering enough for the grant table?')
+    payload['tool_input']['questions'].append({'question': 'owner review: the grant PR. Merge?'})
+    reason = guards.pre_tool(root, payload)['reason']
+    assert '"owner review: the grant PR. Merge?" will not be recorded' in reason and 'trust:' in reason

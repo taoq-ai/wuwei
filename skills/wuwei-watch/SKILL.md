@@ -20,7 +20,12 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
    reviewer, a review request not yet posted where the team asks (`review not requested in ...`), a
    PR open three days or more (finish, rebase or close it), process gaps that are cheap to close.
    `unplanned` rows are PRs raised by hand: follow them the same way. Merge what has no safety gaps; arm auto-merge where only CI is running.
-5. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
+5. Keep the flow going: an approved item with no pull request and no running seat gets its builder,
+   highest score first; a pushed branch whose builder handed back gets its gates; a branch whose
+   gates passed gets its PR. An operations item (`run:` on the board) gets its run checked and its
+   evidence recorded with `wuwei plan run <id> --reason "..."`. When the queue is empty, run a plan
+   pass from the goals (`/wuwei-plan`).
+6. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
    `nothing changed` and end the turn without a message to the owner.
 
 ## Scheduling

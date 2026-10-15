@@ -34,6 +34,7 @@ def test_stop_never_loops_and_lets_waits_end_the_turn(root, fake):
     import hashlib
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1',
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    ws.record(root, 'watch.pass', {'summary': 'nothing changed'})
     assert stop(root) is None
     fake.prs['42'] = make_pr(files=('src/app.py',))
     ws.cache_put(root, 'board', None)
@@ -225,6 +226,7 @@ def test_process_gaps_never_hold_the_turn(root, fake):
     path.write_text(verdict_text())
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1',
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    ws.record(root, 'watch.pass', {'summary': 'nothing changed'})
     assert stop(root) is None
     assert 'changed lines' not in board.text(board.compute(root), root)
 
@@ -312,3 +314,25 @@ def test_the_flat_verdict_path_is_accepted_too(root):
     path.write_text(verdict_text())
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1-quality-aaaaaaa.md') is None
     assert ws.rows(root, 'attest')
+
+
+def test_waiting_work_with_no_watch_armed_asks_once_to_arm_it(root, fake):
+    plan_one(root)
+    pr = make_pr()
+    pr['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    fake.prs['42'] = pr
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    import hashlib
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1',
+                               'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    assert 'arm /wuwei-watch' in stop(root)['reason']
+    assert stop(root) is None
+
+
+def test_an_empty_queue_with_goals_asks_once_for_a_plan_pass(root, fake):
+    assert stop(root) is None
+    (root / ws.DIR / 'goals.md').write_text('G-1: ship the grant flow\n')
+    assert 'run a plan pass from the goals' in stop(root, session='s2')['reason']
+    assert stop(root, session='s2') is None

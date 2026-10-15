@@ -23,9 +23,12 @@ The rest is process fit: follow it, and the merge records any misfit for the ret
   at the head: spec-kit `spec.md`, `plan.md`, `tasks.md` all checked (full adds `## Clarifications`, an
   `analysis.md` with no open CRITICAL or HIGH, checked checklists); OpenSpec `proposal.md`, a capability
   spec, `tasks.md` all checked.
-- The gates the tier needs passed at an ancestor of the head, one of them at the head: light
-  quality; standard arch, quality, security; full adds goal. When a repository's 28-day change
-  failure rate is over 15 percent, every tier there rises one step until it recovers.
+- The gates the diff needs passed on the branch before its PR opened (`gh pr create` waits for them).
+  The tier is the ceiling: docs need none; code quality; at standard, risky or owner paths add
+  security and a wide change adds arch; a contract file takes arch at any tier; full takes all four.
+  After review fixes, a delta of docs or at most 20 lines off risky paths carries the passes; a
+  larger one is re-read by the one gate `wuwei evidence` names. When a repository's 28-day change
+  failure rate is over 15 percent, every tier there rises one step and takes its full gate set.
 - A breaking change to an outward contract (declared with `!` or `BREAKING CHANGE:`, or found by the
   arch gate) has an `Announcement: <link>` line and the owner's `breaking:` confirmation at the head.
 - CI is green, every review thread is answered, a reviewer is requested, the owner reviewed changes
@@ -33,7 +36,7 @@ The rest is process fit: follow it, and the merge records any misfit for the ret
 
 ## The doors
 
-WUWEI refuses: a merge with gaps; a force push, a push to or deletion of the default branch; admin
+WUWEI refuses: a merge with gaps; a PR opened before its gates pass; a force push, a push to or deletion of the default branch; admin
 merges, protection, status and access writes through `gh api`; a secret or the workspace canary in
 an outward call; writes to `.wuwei/ledger.jsonl`; a hand-made `wuwei hook` call; and a question to
 the owner that the process answers. Infrastructure commands ask the owner through the harness.

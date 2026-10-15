@@ -75,3 +75,15 @@ def test_a_seat_reads_its_item_promise_from_the_plan(root, monkeypatch, capsys):
     assert cli.main(['plan', 'show', 'I-7']) == 0
     item = json.loads(capsys.readouterr().out)
     assert (item['promise'], item['acceptance']) == ('one route per client', ['given A, when B, then C'])
+
+
+def test_an_operations_item_shows_its_run_evidence_not_a_missing_pr(root, fake, monkeypatch):
+    from wuwei import __main__ as cli, board
+    monkeypatch.chdir(root)
+    plan.add(root, 'G1-RESPLIT', 'Slack windows re-split', 'G-1', 'acme/app', 'light', scores())
+    plan.approve(root, 'Approve')
+    assert cli.main(['plan', 'run', 'G1-RESPLIT', '--reason', '63 of 65 windows terminal; 2 re-driven in run r-42']) == 0
+    rows = [r for r in board.compute(root) if r['item'] == 'G1-RESPLIT']
+    assert [g['text'] for g in rows[0]['gaps']] == ['run: 63 of 65 windows terminal; 2 re-driven in run r-42']
+    cli.main(['plan', 'done', 'G1-RESPLIT', '--reason', 'r-42 done: 65 of 65 terminal'])
+    assert not [r for r in board.compute(root) if r['item'] == 'G1-RESPLIT']

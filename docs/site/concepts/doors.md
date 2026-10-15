@@ -6,6 +6,7 @@ back. Everything else passes and is recorded. Adding a door is a design change, 
 | Door | Refused | Why |
 | --- | --- | --- |
 | Merge with gaps | a merge by any route (`gh pr merge`, `gh api` PUT `.../merge`, a GitHub MCP merge tool) while the PR has safety gaps (a breaking change without its announcement and your confirmation among them), listing them; arming auto-merge passes when only CI is still running | the moment code reaches everyone is the moment evidence matters |
+| Ungated PR | `gh pr create` or a GitHub MCP create tool before the gates the diff needs pass at the branch head, listing them | review and merge start at a gated head, so no gate races a merge |
 | Admin bypass | `gh pr merge --admin`, `gh api` writes to protection, rulesets, statuses, collaborators, hooks, keys, secrets, environments; `gh repo delete` | the repository's own rules are not changed from an agent session |
 | History | force pushes in every form; pushes to or deletion of the default branch | published history does not come back |
 | Secrets | a secret pattern or the workspace canary in an MCP call or a network command | a leaked secret cannot be unleaked |

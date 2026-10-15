@@ -1,6 +1,7 @@
 """The hooks: teach at the moment, hold the few doors, remind once, and record. A hook that fails
 lets the work go on and records why."""
 
+import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -10,25 +11,6 @@ import time
 
 from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
-WAY = '''WUWEI is this workspace's process auditor. It does not tell you which command to run; it reads
-what you produced and tells you what is still missing (wuwei status, wuwei evidence owner/repo#n).
-- Work the plan (.wuwei/plan.json, highest score first) with the team: lead, builders, sentinels,
-  shepherd, steward, each under its charter. Plan again whenever the day changes (/wuwei-plan);
-  /wuwei-close checkpoints it, and the next pass reopens it.
-- Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
-  to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:
-  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:, breaking:. Never ask
-  whether to continue. A breaking change to an outward contract needs an Announcement: <link> line,
-  then the owner's breaking: confirmation, before it merges.
-- Done means safety evidence: a test, the gates the tier needs at the head, green CI, threads
-  answered, owner review on owner_paths, the spec at full. Only these hold a merge or show on the board. Follow the
-  process standards too (WUWEI-Item: <id>, the PR template, small batches, Rollback: at full, the spec
-  engine's steps, a reviewer); misfits never block and are recorded for the retro.
-- WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
-  secrets in outward calls, ledger edits, forged hook calls, questions the process answers.
-- A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".
-- Someone waiting on a reply: wuwei owe <thread link> "<what>" --who <name>; a send into the thread
-  closes it. Keep /wuwei-watch on a schedule so no PR or reply waits for the owner's nudge.'''
 
 
 def _hash(text):
@@ -116,6 +98,12 @@ def stop(root, payload):
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'
                  for row in rows for gap in row['gaps'] if gap['actionable']]
     waiting = sum(1 for row in rows for gap in row['gaps'] if not gap['actionable'])
+    recent = (ws.now() - datetime.timedelta(hours=1)).isoformat(timespec='seconds')
+    if not open_work and waiting and not any(r['ts'] >= recent for r in ws.rows(root, 'watch.pass')):
+        open_work = ['nothing will wake this session for the waiting work: arm /wuwei-watch on a schedule '
+                     '(/loop 20m /wuwei-watch locally; in the cloud a PR subscription and a check-in)']
+    elif not rows and (Path(root) / ws.DIR / 'goals.md').is_file():  # the flow never waits on the owner's nudge
+        open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-plan)']
     if not open_work:
         return None
     name = f'stop-{payload.get("session_id", "")}'
@@ -197,7 +185,7 @@ def _verdict_problem(root, payload, role):
         return f'you are {role}; your verdict must say Gate: {gate}.'
     ws.record(root, 'attest', {'path': rel, 'sha256': sha,
                                'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
-                               'pr': f'{parsed["repo"]}#{parsed["pr"]}', 'verdict': parsed['verdict'],
+                               'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
                                'confidence': parsed['confidence'],
                                'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path')})
@@ -328,8 +316,8 @@ PLUGIN = Path(__file__).resolve().parents[2]
 def session_start(root, payload):
     cli = str(PLUGIN / 'bin' / 'wuwei')
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [WAY, f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(encoding='utf-8').strip()
-                     for name in ('_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(
+        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
     for name in ('goals.md', 'standards.md'):
         path = Path(root) / ws.DIR / name
         if path.is_file() and path.read_text(encoding='utf-8').strip():

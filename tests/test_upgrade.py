@@ -79,7 +79,7 @@ def test_an_imported_pass_needs_only_a_delta_gate(tmp_path, fake, monkeypatch):
     fake.ancestors.add((OLD, pr['headRefOid']))
     fake.ancestors.add((OLD[:12], pr['headRefOid']))
     texts = [g['text'] for g in evidence.gaps(root, 'acme/app', 42)]
-    assert texts == ['gates missing at head aaaaaaa: quality, security']
+    assert texts == ['gates missing at head aaaaaaa: quality']
 
 
 def test_doctor_runs_on_a_034_workspace_and_points_at_the_upgrade(tmp_path, fake):

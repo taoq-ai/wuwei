@@ -49,6 +49,8 @@ def cmd_plan(args):
             print(view.render(root)[0])
             return 0
         print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
+    elif args.action == 'run':  # an operations item: done by its run evidence, not a pull request (#1049)
+        print(f'{plan.mark(root, args.id, "open", args.reason or "", kind="run")["id"]} run evidence recorded')
     elif args.action == 'restore':
         print(f'{plan.restore(root, args.id)["id"]} open again')
     elif args.action == 'show' and args.id:
@@ -127,10 +129,7 @@ def cmd_sent(args):
 
 def cmd_report(args):
     root = _root()
-    if args.dora:
-        print(json.dumps(report.dora(root, args.window), indent=1))
-    else:
-        print(report.day(root, args.day))
+    print(json.dumps(report.dora(root, args.window), indent=1) if args.dora else report.day(root, args.day))
     return 0
 
 
@@ -196,11 +195,11 @@ def main(argv=None):
         return 0
     parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {version()}')
     sub = parser.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('plan', help='show [id], add, park, drop, done, restore, pass or view')
+    p = sub.add_parser('plan', help='show [id], add, park, drop, done, run, restore, pass or view')
     p.add_argument('action', nargs='?', default='show',
-                   choices=('show', 'add', 'park', 'drop', 'done', 'restore', 'pass', 'view'))
-    p.add_argument('id', nargs='?')
-    p.add_argument('title', nargs='?')
+                   choices=('show', 'add', 'park', 'drop', 'done', 'run', 'restore', 'pass', 'view'))
+    for name in ('id', 'title'):
+        p.add_argument(name, nargs='?')
     for name in ('goal', 'repo', 'why', 'reason', 'promise'):
         p.add_argument(f'--{name}')
     p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
@@ -208,8 +207,8 @@ def main(argv=None):
     p.add_argument('--tier', default='standard')
     for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):
         p.add_argument(f'--{name}', type=float)
-    p.add_argument('--json', action='store_true')
-    p.add_argument('--html', action='store_true', help='with view: print the page for a widget')
+    for name in ('--json', '--html'):  # --html with view: print the page for a widget
+        p.add_argument(name, action='store_true')
     p.set_defaults(func=cmd_plan)
     p = sub.add_parser('status', help='the board: what each open item still lacks')
     p.add_argument('--json', action='store_true')
@@ -234,8 +233,8 @@ def main(argv=None):
     sub.add_parser('sync', help='pull, then push .wuwei/ on the wuwei/state branch').set_defaults(func=cmd_sync)
     sub.add_parser('doctor', help='install, workspace and the strength of each door').set_defaults(func=cmd_doctor)
     p = sub.add_parser('config', help='show, or set one of the five keys')
-    p.add_argument('key', nargs='?')
-    p.add_argument('value', nargs='?')
+    for name in ('key', 'value'):
+        p.add_argument(name, nargs='?')
     p.set_defaults(func=cmd_config)
     sub.add_parser('verify', help='check the ledger hash chain').set_defaults(func=cmd_verify)
     p = sub.add_parser('sent', help='record a review request posted outside the session, with its link')

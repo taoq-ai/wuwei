@@ -171,5 +171,6 @@ Run the focused tests and the repository's checks from the worktree root. A chec
 on files you did not change means the base is broken: pull the andon cord and report it; do not
 fix it here.
 
-Hand back with: the branch and head, the PR if you opened one (with `WUWEI-Item: <id>` in its
-body), commands and results, residual risk, your confidence, and the retro note.
+Push the branch and hand back; do not open the PR. The gates review the pushed head first, and the PR
+opens once they pass (WUWEI refuses `gh pr create` before). Hand back with: the branch and head,
+commands and results, residual risk, your confidence, and the retro note.
