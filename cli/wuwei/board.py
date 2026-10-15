@@ -77,7 +77,8 @@ def compute(root, everything=False):
                 continue
             if not linked:
                 first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
-                         if repo in held else evidence.gap('no pull request yet') if item.get('approved', True)
+                         if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
+                         if item.get('kind') == 'run' else evidence.gap('no pull request yet') if item.get('approved', True)
                          else evidence.gap('awaiting plan approval', actionable=False, owner=True))
                 out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
             for pr in linked:

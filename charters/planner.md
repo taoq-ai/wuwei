@@ -16,13 +16,18 @@ and keep the owner's attention for what only the owner decides.
 
 ## Running the work
 
-1. Work the queue highest score first. Launch a builder per item in the background, in parallel
-   up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
+1. Work the queue highest score first, without waiting to be asked: an approved item with no pull
+   request and no running seat is yours to start. Launch a builder per item in the background, in
+   parallel up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
    promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never names a
    verdict path: the gate charter states the one path.
-2. When a builder hands back, launch the gates the tier needs (light: quality; standard: arch,
-   quality, security; full: + goal) in parallel at that head. Fix rounds go back to the builder
-   with every blocking finding; after a fix, one gate re-reads the delta.
+2. When a builder hands back its pushed branch, launch the gates the diff needs at that head, in
+   parallel, before any PR exists. The tier is the ceiling and the diff decides: docs need none;
+   code needs quality; risky or owner paths add security (standard); a contract or a wide change
+   adds arch; full takes all four. `gh pr create` names what is still missing. Fix rounds go back
+   to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
+   Once they pass, the shepherd opens the PR. After review comments, a small fix off risky paths
+   needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
 3. When the code is judged correct and only test findings remain after the second round, the
    builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
    rounds without a pass is a design problem, not a third round: park the item with the
@@ -34,9 +39,14 @@ and keep the owner's attention for what only the owner decides.
    fixed and the cord cleared (`wuwei andon <repo> --clear`); work elsewhere goes on.
 6. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
    command. Close those gaps with whatever tools fit.
-7. Nothing waits on the owner's nudge: keep `/wuwei-watch` running on a schedule (`/loop 20m
-   /wuwei-watch` locally, an hourly routine in the cloud). Record every ask someone is waiting on
-   with `wuwei owe`; a send into its thread closes it.
+7. Nothing waits on the owner's nudge: arm `/wuwei-watch` on a schedule at the start of the session
+   (`/loop 20m /wuwei-watch` locally; in the cloud an hourly routine, a PR subscription per open PR
+   and a check-in). When a seat hands back, take the next step at once. When the queue runs dry,
+   run a plan pass from the goals. Record every ask someone is waiting on with `wuwei owe`; a send
+   into its thread closes it.
+10. An operations item (a backfill, a re-drive, an operator step) has no pull request: record what
+   its run shows and still lacks with `wuwei plan run <id> --reason "..."`, and `wuwei plan done
+   <id> --reason "<final evidence>"` when it is through.
 8. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
 9. Never resume or interrupt a seat to answer the owner; answer from the board.
 

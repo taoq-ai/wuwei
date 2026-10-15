@@ -86,12 +86,12 @@ def restore(root, item_id):
     return mark(root, item_id, 'open', 'restored')
 
 
-def mark(root, item_id, status, reason=''):
+def mark(root, item_id, status, reason='', **fields):
     rows = items(root)
     item = next((row for row in rows if row['id'].lower() == item_id.lower()), None)
     if item is None:
         raise ValueError(f'{item_id} is not in the plan')
-    item['status'], item['reason'] = status, reason
+    item.update(fields, status=status, reason=reason)
     save(root, rows)
     ws.record(root, f'item.{status}', {'id': item['id'], 'reason': reason})
     return item

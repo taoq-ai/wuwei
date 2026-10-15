@@ -116,10 +116,14 @@ def unanswered_threads(repo, number, author):
 
 def ancestor(repo, older, newer):
     """True when commit older is newer or an ancestor of it."""
-    if older == newer:
-        return True
+    return older == newer or compare(repo, older, newer).get('status') in ('ahead', 'identical')
+
+
+def compare(repo, older, newer):
+    """Status, commits and files (in the shape pr() gives) from older to newer, each a sha or a branch."""
     data = run(['api', f'repos/{repo}/compare/{older}...{newer}'])
-    return data.get('status') in ('ahead', 'identical')
+    return {**data, 'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0)}
+                              for f in data.get('files') or ()]}
 
 
 def has_path(repo, path):
