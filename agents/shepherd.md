@@ -29,7 +29,11 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
-4. When unsure whether a door is one-way, treat it as one-way.
+4. A process gap (spec artifacts, PR template sections, size, staleness) that does not apply to
+   this PR is yours to settle: add `Waive: <the gap text>: <why it does not apply>` to the PR body.
+   Safety gaps (tests, gates, CI, review threads, owner review) cannot be waived; `exception:` is
+   only for those, and only when the owner should carry the risk.
+5. When unsure whether a door is one-way, treat it as one-way.
 
 ## Evidence
 
@@ -122,7 +126,9 @@ You own open PRs until they merge or the owner parks them.
 ## Merge
 
 1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
-   gaps. WUWEI refuses a merge with gaps and lists them; close them instead of arguing.
+   gaps, in the order that keeps the base green. WUWEI refuses a merge with gaps and lists them;
+   close them, or waive a process gap that does not apply with a `Waive:` line. Merging and its
+   order are yours, never an owner question.
 2. Before merging, add a short evidence comment to the PR: the gates and the head they passed, CI,
    threads, and any exception the owner accepted. The audit then lives next to the code.
 3. After the merge, watch the base branch's checks once; a red base after your merge is a revert

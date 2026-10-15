@@ -78,6 +78,10 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | Owner review or an owner ruling at that head | `owner_paths` touched |
 | Open under three days | every PR |
 
+Waivers: a process gap (spec artifacts, template sections, size, staleness) that does not apply is
+settled by the team with `Waive: <gap>: <reason>` in the body, recorded at merge; safety gaps are
+not waivable and only those can be an owner `exception:`.
+
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step. Verdicts count only when attested at
 the sentinel's stop (shape linted, hash, gate, item, head, confidence, agent recorded). Gaps are

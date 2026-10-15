@@ -159,3 +159,22 @@ def test_a_batch_names_the_question_without_a_class(root):
 
 def test_the_plan_question_reaches_the_owner(root):
     assert guards.pre_tool(root, ask('plan: approve this plan? 3 items on 2 goals, about 6 build hours.')) is None
+
+
+def test_an_exception_for_a_process_gap_goes_back_to_the_model(root):
+    decision = guards.pre_tool(root, ask('exception: acme/app#43 at e750645: specs/tin-258/tasks.md has no checklist '
+                                         'items. Accept the gap so it can merge?'))
+    assert decision['decision'] == 'deny' and 'Waive:' in decision['reason']
+
+
+def test_a_merge_records_the_waivers_it_relied_on(root, fake, repo):
+    import hashlib
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    fake.prs['42'] = make_pr(lines=300, body='WUWEI-Item: I-1\nWaive: 600 changed lines: one generated client')
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1', 'gate': 'quality',
+                               'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    assert guards.pre_tool(root, bash('gh pr merge 42 --squash')) is None
+    assert ws.rows(root, 'merge.checked')[-1]['data']['waived'] == [['600 changed lines', 'one generated client']]

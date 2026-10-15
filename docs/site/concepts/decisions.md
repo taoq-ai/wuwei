@@ -35,7 +35,7 @@ A question reaches you only when it starts with its class:
 | `trust:` | a trust-boundary question a gate cannot settle |
 | `infra:` | an infrastructure change |
 | `owner review: owner/repo#n at <sha7>` | a change under your `owner_paths` |
-| `exception: owner/repo#n at <sha7>: <gap>` | accepting one gap at one head |
+| `exception: owner/repo#n at <sha7>: <gap>` | accepting one safety gap (tests, gates, CI, threads) at one head |
 | `plan:` | approving the plan view at the end of a plan pass |
 
 Any other question is sent back to the model: decide it, record the assumption, go on. The model
@@ -47,7 +47,9 @@ rule at the next retro.
 
 ## Exceptions
 
-Sometimes a gap is acceptable: a hotfix without the security gate at 2am. You accept it with an
+Sometimes a safety gap is acceptable: a hotfix without the security gate at 2am. (A process gap
+that does not apply, such as a spec rule misfiring on an old feature, is never yours: the team
+waives it with a reasoned `Waive:` line.) You accept it with an
 `exception:` question. WUWEI records the ruling, drops that gap at that head, and adds a follow-up
 item to the plan that closes it later. The report lists open exceptions.
 

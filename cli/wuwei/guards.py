@@ -169,7 +169,11 @@ def gh_command(root, args, cwd, session):
         gaps = evidence.gaps(root, repo, number)
         if gaps:
             return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
-        ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}'})
+        try:
+            used = [list(w) for w in evidence.waivers(gh.pr(repo, number).get('body'))]
+        except gh.GhError:
+            used = []
+        ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}', 'waived': used})
         return None
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
@@ -251,6 +255,12 @@ def pre_tool(root, payload):
         return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if LEDGER.search(path) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
+        process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
+            r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open \d+ days", q)]
+        if process:
+            return deny('a process gap (spec artifacts, PR template, size, staleness) is yours to settle, not an '
+                        'owner exception: add a line "Waive: <the gap text>: <why it does not apply>" to the PR body. '
+                        'The waiver is recorded at merge and the retro reviews it.')
         unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
         if not unclassed:
             return None

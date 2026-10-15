@@ -23,6 +23,9 @@ gh and the repository's tools directly. `wuwei status` shows every open item's g
 - The gates the tier needs passed at an ancestor of the head, one of them at the head: light
   quality; standard arch, quality, security; full adds goal. When a repository's 28-day change
   failure rate is over 15 percent, every tier there rises one step until it recovers.
+- A process gap that does not apply (spec artifacts, template sections, size, staleness) is waived
+  with `Waive: <gap text>: <reason>` in the body. Tests, gates, CI, threads and owner review are not
+  waivable.
 - CI is green, every review thread is answered, a reviewer is requested, the owner reviewed changes
   under `owner_paths`, and the PR is not stale (three days or more open).
 

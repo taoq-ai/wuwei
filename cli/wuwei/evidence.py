@@ -28,6 +28,10 @@ SPEC_RULES = {
                                                               'full': ()}),
 }
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
+# Process gaps the team may waive with a reasoned "Waive: <gap>: <reason>" line in the PR body; safety
+# gaps (tests, gates, CI, threads, owner review) are never waivable.
+WAIVABLE = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
+                      r"|open \d+ days)")
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET = 400, 3, 0.15
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
@@ -250,9 +254,19 @@ def gaps(root, repo, number):
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days
         if age >= STALE_DAYS and pr.get('state', 'OPEN') == 'OPEN':
             found.append(gap(f'open {age} days: finish, rebase or close'))
-        return excepted(root, f'{repo}#{number}', head, found)
+        return excepted(root, f'{repo}#{number}', head, waived(body, found))
     except (gh.GhError, KeyError, TypeError) as exc:
         return [gap(f'evidence unreadable: {exc}', actionable=False)]
+
+
+def waivers(body):
+    """[(gap, reason)] from the PR body's Waive: lines."""
+    return [(m[1].strip(), m[2].strip()) for m in re.finditer(r'^Waive:[ \t]*(.+?):[ \t]+(\S.*)$', body or '', re.M)]
+
+
+def waived(body, found):
+    keys = [key for key, _ in waivers(body)]
+    return [g for g in found if not (WAIVABLE.search(g['text']) and any(g['text'].startswith(k) for k in keys))]
 
 
 def excepted(root, ref, head, found):

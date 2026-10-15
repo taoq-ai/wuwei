@@ -20,7 +20,7 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
 - Done means evidence: WUWEI-Item: <id>, the repository's PR template sections, a test, under about
   400 lines or a Size: line, Rollback: at full or on owner_paths, the spec engine's artifacts, the
   gates the tier needs at the head, green CI, threads answered, a reviewer, owner review on
-  owner_paths, not stale.
+  owner_paths, not stale. A process gap that does not apply: Waive: <gap text>: <reason> in the body.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
   secrets in outward calls, ledger edits, forged hook calls, questions the process answers.
 - A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".'''

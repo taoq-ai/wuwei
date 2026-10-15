@@ -68,3 +68,8 @@ def test_a_second_checkpoint_reports_what_changed_since_the_first(root, fake):
     text = report.day(root)
     assert '## Since the last checkpoint' in text
     assert 'item.added 1' in text and 'refused 1' in text
+
+
+def test_the_report_lists_waivers(root, fake):
+    ws.record(root, 'merge.checked', {'pr': 'acme/app#42', 'waived': [['specs/x/tasks.md', 'amendment only']]})
+    assert 'waived on acme/app#42: specs/x/tasks.md (amendment only)' in report.day(root)

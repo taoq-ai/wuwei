@@ -52,9 +52,21 @@ format. A file edited after attestation no longer counts.
 **Why:** a review is evidence only if a reviewer wrote it and it has not changed since. The hook
 checks the file at stop, however it was written, so a shell edit cannot slip past the lint.
 
+## Waivers
+
+Some gaps are about process fit, not safety: spec artifacts, the PR template, size, staleness. When
+one does not apply (a two-line contract fix in an old feature), the team settles it with a line in
+the PR body: `Waive: <the gap text>: <why it does not apply>`. The gap clears, the merge records the
+waiver, the report lists it, and the steward turns a rule the team keeps waiving into a fix.
+
+Safety gaps (tests, gates, CI, review threads, owner review) cannot be waived.
+
+**Why:** you should never be asked to approve a process rule's misfit. The team owns the process;
+you own the risk.
+
 ## Exceptions
 
-You can accept one gap at one head as an exception (see [decisions](decisions.md#exceptions)). The
+For a safety gap only, you can accept one gap at one head as an exception (see [decisions](decisions.md#exceptions)). The
 gap disappears from that head's evidence, the exception stays on the record, and a follow-up item
 in the plan closes it later.
 
