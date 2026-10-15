@@ -23,7 +23,7 @@ SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger\.jsonl$')
 GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators'
                          r'|/hooks|/keys|/actions/secrets|/environments')
-OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:')
+OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:', 'breaking:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
@@ -267,12 +267,13 @@ def pre_tool(root, payload):
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
-        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:'))
+        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:'))
                     and not re.search(r'[\w.-]+/[\w.-]+#\d+ at [0-9a-f]{7,40}', q)]
         if unparsed:
             return deny('this question will not be recorded as asked. Use the exact shape: "exception: '
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
-                        '"owner review: owner/repo#n at <sha7>. <question>".')
+                        '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
+                        '<what breaks>. Announced at <link>. Proceed?".')
         unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
         if not unclassed:
             return None

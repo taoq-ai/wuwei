@@ -11,7 +11,12 @@ Gate: arch. Review the change against the written architecture and the item's pr
 4. Name decisions the change quietly settles. A two-way one belongs under the item's
    `Assumptions:`; an unrecorded one is a finding. A one-way architecture, interface or boundary
    choice is ESCALATE.
-5. Defects the gates caught on real days: an implementation that contradicts a rule the project
+5. Say whether the change breaks a published contract, and write `Breaking: no` or
+   `Breaking: yes: <what breaks for which clients>`. Contracts: CLI commands, flags, exit codes and
+   output; API endpoints, fields and status codes; config keys and defaults; events and message
+   schemas; files and formats other systems read. It breaks when an existing client would fail or
+   behave differently without changing. When unsure, say yes.
+6. Defects the gates caught on real days: an implementation that contradicts a rule the project
    already fixed in its spec or invariants; a measure fixed in advance whose computation stays
    open, so a choice follows the result; a merge or protection setting that lets automation merge
    a change the owner must review.

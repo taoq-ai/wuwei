@@ -61,6 +61,8 @@
 | `No test: <reason>` | a change no test can hold |
 | `Size: <reason>` | over about 400 changed lines |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched |
+| `BREAKING CHANGE: <what>` (and `!` in the title) | a change that breaks an outward contract |
+| `Announcement: <link>` | a breaking change: the client communication, release note or migration guide |
 
 ## Verdict format
 
@@ -71,6 +73,7 @@ Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
 Confidence: low | medium | high
+Breaking: no | yes: <what breaks for which clients>   (arch only)
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes|no. Failure: <the concrete scenario>

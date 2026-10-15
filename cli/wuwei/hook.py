@@ -16,7 +16,9 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   /wuwei-close checkpoints it, and the next pass reopens it.
 - Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
   to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:
-  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:. Never ask whether to continue.
+  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:, breaking:. Never ask
+  whether to continue. A breaking change to an outward contract needs an Announcement: <link> line,
+  then the owner's breaking: confirmation, before it merges.
 - Done means safety evidence: a test, the gates the tier needs at the head, green CI, threads
   answered, owner review on owner_paths. Only these hold a merge or show on the board. Follow the
   process standards too (WUWEI-Item: <id>, the PR template, small batches, Rollback: at full, the spec
@@ -157,7 +159,7 @@ def _verdict_problem(root, payload, role):
         body = path.read_bytes()
     except (OSError, ValueError):
         return f'the verdict must be a readable file under .wuwei/verdicts/ (got {match[1]}).'
-    parsed = verdict.parse(body.decode('utf-8', 'replace'))
+    parsed = verdict.parse(body.decode('utf-8', 'replace'), strict=True)
     if parsed['errors']:
         return ('the verdict does not hold its shape:\n' + '\n'.join('- ' + e for e in parsed['errors'])
                 + '\nRewrite it in this shape:\n' + verdict.FORMAT)
@@ -238,6 +240,10 @@ def _answers(root, data, response):
                     item = plan.followup(root, f'Close the exception on {ref}: {gap_text}', repo,
                                          _goal(root, ref, repo), f'owner accepted it at {head}')
                     notes.append(f'WUWEI: exception recorded on {ref}; {item["id"]} in the plan closes it later.')
+        found = REF.search(question) if question.lower().startswith('breaking:') else None
+        if found and found[1] and answer:
+            ws.record(root, 'ruling', {'kind': 'breaking', 'pr': f'{found[1]}#{found[2]}', 'head': found[3],
+                                       'approved': yes, 'question': question, 'answer': answer})
         if question.lower().startswith('plan:') and answer:
             if yes:
                 plan.approve(root, answer)

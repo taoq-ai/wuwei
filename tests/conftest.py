@@ -126,8 +126,9 @@ def make_pr(number=42, head=HEAD, files=('src/app.py', 'tests/test_app.py'), che
             'reviews': [{'author': {'login': login}, 'state': state} for login, state in reviews]}
 
 
-def verdict_text(gate='quality', verdict='PASS', head=HEAD, item='I-1', pr='acme/app#42', findings='none'):
-    return (f'Verdict: {verdict}\nGate: {gate}\nItem: {item}\nPR: {pr}\nHead: {head}\nConfidence: high\n\n'
+def verdict_text(gate='quality', verdict='PASS', head=HEAD, item='I-1', pr='acme/app#42', findings='none', breaking='no'):
+    said = f'Breaking: {breaking}\n' if gate == 'arch' and breaking is not None else ''
+    return (f'Verdict: {verdict}\nGate: {gate}\nItem: {item}\nPR: {pr}\nHead: {head}\nConfidence: high\n{said}\n'
             f'## Findings\n{findings}\n')
 
 

@@ -37,6 +37,7 @@ A question reaches you only when it starts with its class:
 | `owner review: owner/repo#n at <sha7>` | a change under your `owner_paths` |
 | `exception: owner/repo#n at <sha7>: <gap>` | accepting one safety gap (tests, gates, CI, threads) at one head |
 | `plan:` | approving the plan view at the end of a plan pass |
+| `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?` | shipping a breaking change to an outward contract, after its announcement |
 
 Any other question is sent back to the model: decide it, record the assumption, go on. The model
 never asks whether to continue planned work. Each question comes once, with a recommendation.

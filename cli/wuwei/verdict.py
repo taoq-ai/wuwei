@@ -12,6 +12,7 @@ Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
 Confidence: medium   (exactly one word: low, medium or high; give the reason under Probes)
+Breaking: no   (arch gate only; or "yes: <what breaks for which clients>")
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
@@ -24,7 +25,8 @@ def _field(text, name):
     return match[1].strip() if match else ''
 
 
-def parse(text):
+def parse(text, strict=False):
+    """strict (at attestation) also asks the arch gate for its Breaking: line."""
     errors = []
     result = {'verdict': _field(text, 'Verdict').upper(), 'gate': _field(text, 'Gate').lower(),
               'item': _field(text, 'Item'), 'head': _field(text, 'Head').lower(),
@@ -63,6 +65,10 @@ def parse(text):
                     continue
                 result['findings'].append({'severity': found[1].lower(), 'where': found[2], 'blocks': blocks,
                                            'failure': failure[1] if failure else rest})
+    said = re.match(r'(no|yes)\b[ \t:]*(.*)', _field(text, 'Breaking'), re.I)
+    result['breaking'] = (said[2].strip() or 'yes') if said and said[1].lower() == 'yes' else ''
+    if strict and result['gate'] == 'arch' and not said:
+        errors.append('Breaking: an arch verdict says "Breaking: no" or "Breaking: yes: <what breaks for which clients>"')
     if result['verdict'] == 'PASS' and any(f['blocks'] for f in result['findings']):
         errors.append('PASS with a blocking finding: make it FIX, or mark the finding blocks: no')
     return result

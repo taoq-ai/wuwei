@@ -11,6 +11,7 @@ says what each one is, why it is there, and where it lives.
 | [The team and its charters](team.md) | Independent roles catch what one agent misses | `charters/`, `agents/` |
 | [The evidence contract](evidence.md) | "Done" means something checkable, the same for every PR | `wuwei status`, `wuwei evidence` |
 | [Attested verdicts](evidence.md#attested-verdicts) | A review counts only if a reviewer wrote it and nobody edited it | SubagentStop, the ledger |
+| [Breaking changes](evidence.md#breaking-changes) | Clients you break should hear it from you first, and you decide whether it ships | `Announcement:`, the `breaking:` question |
 | [The doors](doors.md) | Some mistakes cannot be taken back | PreToolUse, harness rules, the code host |
 | [Enforcement levels](doors.md#how-strongly-a-door-holds) | Honesty about what is prevented and what is only detected | `wuwei doctor` |
 | [Reversibility and confidence](decisions.md) | Ask only when a mistake would be costly and you are unsure | `_common.md` |

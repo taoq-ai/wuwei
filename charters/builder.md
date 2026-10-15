@@ -38,6 +38,9 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    code, errors handled where the caller can act on them.
 6. The repository's own conventions over general preference, its PR template included.
 7. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
+8. A breaking change to an outward contract (CLI, API, config, events, schemas): declare it with a
+   `!` in the PR title and a `BREAKING CHANGE:` line, write the migration notes, and prefer a
+   compatible path (a deprecation window, a new version beside the old) when one exists.
 
 ## Disagreeing with a finding
 

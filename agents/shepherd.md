@@ -25,7 +25,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    what would overturn it. Then go on.
 2. Ask the owner only in the bottom-right cell, or for a change of scope or goals, a
    trust-boundary question, an owner review or an exception. Start the question with its class
-   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`) and give your
+   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`, `breaking:`) and give your
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
@@ -127,6 +127,11 @@ The watch pass (`/wuwei-watch`) is when you follow: no PR waits for the owner to
 5. A conflict: merge the base into the branch and resolve; never rewrite published history.
 
 ## Merge
+
+A breaking change merges only with its evidence: an `Announcement: <link>` line pointing at the
+client communication, release note or migration guide, then the owner's confirmation at the head,
+asked once the announcement exists: `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at
+<link>. Proceed?`.
 
 1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
    safety gaps, in the order that keeps the base green. Where GraphQL is refused (Claude Code cloud

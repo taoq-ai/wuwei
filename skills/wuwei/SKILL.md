@@ -26,6 +26,8 @@ The rest is process fit: follow it, and the merge records any misfit for the ret
 - The gates the tier needs passed at an ancestor of the head, one of them at the head: light
   quality; standard arch, quality, security; full adds goal. When a repository's 28-day change
   failure rate is over 15 percent, every tier there rises one step until it recovers.
+- A breaking change to an outward contract (declared with `!` or `BREAKING CHANGE:`, or found by the
+  arch gate) has an `Announcement: <link>` line and the owner's `breaking:` confirmation at the head.
 - CI is green, every review thread is answered, a reviewer is requested, the owner reviewed changes
   under `owner_paths`, and the PR is not stale (three days or more open).
 
@@ -45,7 +47,7 @@ Everything else passes and is recorded.
 | Hard to undo | act, with `Rollback:` | ask the owner |
 
 Ask with the class first (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`,
-`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`) and your
+`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`, `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`) and your
 recommendation. Never ask whether to continue planned work.
 
 ## Andon

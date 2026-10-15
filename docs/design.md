@@ -59,7 +59,8 @@ role's lines of `.wuwei/standards.md`.
 | Hard to undo | act, with `Rollback:` | ask the owner |
 
 Owner questions start with their class: `one-way:`, `scope:`, `goal:`, `trust:`, `infra:`,
-`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`. Any other
+`owner review: owner/repo#n at <sha7>`, `exception: owner/repo#n at <sha7>: <gap>`, `plan:`,
+`breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. Any other
 question is refused back to the model. A `one-way:` answer becomes an ADR in the repository. An
 accepted exception drops that gap at that head and adds a follow-up item that closes it.
 
@@ -83,6 +84,11 @@ readable evidence) hold a merge or show on the board. Process fit (plan link, PR
 `Rollback:`, the spec engine's steps, a reviewer, staleness) never blocks and is shown to nobody
 while the work flows; the merge records it, the report lists it, the steward learns from it. Only a
 safety gap can be an owner `exception:`.
+
+Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
+by the arch gate's required `Breaking:` line; a light item touching a contract file is raised to
+standard) needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
+head. Both are safety gaps.
 
 Error budget: when a repository's 28-day change failure rate (reverts over merges, at least five
 merges) is over 15 percent, every tier there rises one step. Verdicts count only when attested at

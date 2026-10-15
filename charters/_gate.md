@@ -32,6 +32,7 @@ Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
 Confidence: medium
+Breaking: no   (arch only; or "yes: <what breaks for which clients>")
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>

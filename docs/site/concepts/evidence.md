@@ -15,6 +15,7 @@ head or did not.
 | Under about 400 changed lines, or `Size: <reason>` | every PR, generated files aside | process | small batches fail less and are reviewed better |
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched | process | a change you cannot undo deserves a plan for undoing it |
 | The spec engine's steps, judged by their artifacts at the head | standard and full, when the repo has `.specify/` or `openspec/` | process | the agreement about what to build is part of the change |
+| A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
 | Gates passed, one at the head | per tier | safety | independent review at the commit that merges, not an older one |
 | CI green | every PR | safety | the repository's own checks |
 | Every review thread answered | every PR | safety | people's questions are obligations |
@@ -35,6 +36,27 @@ directory the diff touches, so a later commit that only updates `tasks.md` still
 
 **Why:** a spec nobody finished is worse than no spec, because it looks like agreement. Checking the
 artifacts, not the commands, keeps the rule true whichever way the steps were run.
+
+## Breaking changes
+
+A change that breaks an outward contract (CLI commands and output, API endpoints and fields, config
+keys, events, schemas, formats other systems read) is close to a one-way door: the clients it
+breaks cannot be un-broken. WUWEI finds it three ways: the PR declares it (a `!` in the title, a
+`BREAKING CHANGE:` line), the architecture gate states it (every arch verdict carries
+`Breaking: no` or `Breaking: yes: <what breaks for which clients>`), and a light item that touches a
+contract file (OpenAPI, protobuf, GraphQL, JSON schema) is raised to standard so the arch gate
+looks.
+
+Before such a change merges it needs evidence, in order:
+
+1. An `Announcement: <link>` line: the client communication, release note, migration guide or press
+   release.
+2. Your confirmation, asked once the announcement exists:
+   `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at <link>. Proceed?`. It binds to that
+   head; a change after it asks again.
+
+**Why:** a break nobody announced is an outage for someone else. The team does the work of finding
+and announcing it; you decide whether it ships.
 
 ## Gates at the head
 

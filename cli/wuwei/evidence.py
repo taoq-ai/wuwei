@@ -31,6 +31,7 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
                      r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
+CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET = 400, 3, 0.15
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
@@ -242,6 +243,23 @@ def uncounted(root, item_id):
     return found
 
 
+def breaking_gaps(root, ref, pr, item_id):
+    """A breaking change to an outward contract (declared with ! or BREAKING CHANGE:, or found by the arch
+    gate) needs an announcement, then the owner's confirmation at this head."""
+    body, head = pr.get('body') or '', pr['headRefOid']
+    declared = re.match(r'^\w+(\([^)]*\))?!:', pr.get('title') or '') or re.search(r'^BREAKING[ -]CHANGE:', body, re.M)
+    if not (declared or any(v.get('breaking') for v in verdicts(root, item_id))):
+        return []
+    if not re.search(r'^Announcement:[ \t]*\S', body, re.M):
+        return [gap('breaking change without an announcement: add "Announcement: <link to the client communication, '
+                    'release note or migration guide>"')]
+    if any(r['data'].get('kind') == 'breaking' and r['data'].get('approved') and r['data'].get('pr') == ref
+           and head.startswith(r['data'].get('head') or '-') for r in ws.rows(root, 'ruling')):
+        return []
+    return [gap(f'breaking change needs the owner\'s confirmation: ask "breaking: {ref} at {head[:7]}: <what breaks>. '
+                'Announced at <link>. Proceed?"', owner=True)]
+
+
 def ci_gaps(rollup):
     failed, running = [], False
     for check in rollup or ():
@@ -283,11 +301,14 @@ def gaps(root, repo, number):
         owned = [path for path in files if any(fnmatch.fnmatch(path, p) for p in patterns)]
         if (tier == 'full' or owned) and not re.search(r'^Rollback:\s*\S', body, re.M):
             found.append(gap('no Rollback: line (how to undo this change)'))
-        spent = budget(root, repo)
         why = ''
-        if spent['raised'] and tier != 'full':
+        if tier == 'light' and any(CONTRACT.search(path) for path in files):
+            tier, why = 'standard', ' (tier raised to standard: the diff changes a published contract)'
+        spent = budget(root, repo)
+        if spent['raised'] and tier != 'full' and not why:
             tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
         found += gate_gaps(root, repo, (item or {}).get('id', ''), tier, head, why)
+        found += breaking_gaps(root, f'{repo}#{number}', pr, (item or {}).get('id', ''))
         found += ci_gaps(pr.get('statusCheckRollup'))
         author = (pr.get('author') or {}).get('login', '')
         threads = gh.unanswered_threads(repo, number, author)

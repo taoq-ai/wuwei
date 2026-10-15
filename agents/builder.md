@@ -25,7 +25,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    what would overturn it. Then go on.
 2. Ask the owner only in the bottom-right cell, or for a change of scope or goals, a
    trust-boundary question, an owner review or an exception. Start the question with its class
-   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`) and give your
+   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`, `breaking:`) and give your
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
@@ -139,6 +139,9 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
    code, errors handled where the caller can act on them.
 6. The repository's own conventions over general preference, its PR template included.
 7. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
+8. A breaking change to an outward contract (CLI, API, config, events, schemas): declare it with a
+   `!` in the PR title and a `BREAKING CHANGE:` line, write the migration notes, and prefer a
+   compatible path (a deprecation window, a new version beside the old) when one exists.
 
 ## Disagreeing with a finding
 

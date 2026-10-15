@@ -25,7 +25,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    what would overturn it. Then go on.
 2. Ask the owner only in the bottom-right cell, or for a change of scope or goals, a
    trust-boundary question, an owner review or an exception. Start the question with its class
-   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`) and give your
+   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`, `plan:`, `breaking:`) and give your
    recommendation. WUWEI sends any other question back. An instruction the owner already gave is
    the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
@@ -102,6 +102,7 @@ Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
 Confidence: medium
+Breaking: no   (arch only; or "yes: <what breaks for which clients>")
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
@@ -131,7 +132,12 @@ Gate: arch. Review the change against the written architecture and the item's pr
 4. Name decisions the change quietly settles. A two-way one belongs under the item's
    `Assumptions:`; an unrecorded one is a finding. A one-way architecture, interface or boundary
    choice is ESCALATE.
-5. Defects the gates caught on real days: an implementation that contradicts a rule the project
+5. Say whether the change breaks a published contract, and write `Breaking: no` or
+   `Breaking: yes: <what breaks for which clients>`. Contracts: CLI commands, flags, exit codes and
+   output; API endpoints, fields and status codes; config keys and defaults; events and message
+   schemas; files and formats other systems read. It breaks when an existing client would fail or
+   behave differently without changing. When unsure, say yes.
+6. Defects the gates caught on real days: an implementation that contradicts a rule the project
    already fixed in its spec or invariants; a measure fixed in advance whose computation stays
    open, so a choice follows the result; a merge or protection setting that lets automation merge
    a change the owner must review.

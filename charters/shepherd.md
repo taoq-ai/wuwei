@@ -27,6 +27,11 @@ The watch pass (`/wuwei-watch`) is when you follow: no PR waits for the owner to
 
 ## Merge
 
+A breaking change merges only with its evidence: an `Announcement: <link>` line pointing at the
+client communication, release note or migration guide, then the owner's confirmation at the head,
+asked once the announcement exists: `breaking: owner/repo#n at <sha7>: <what breaks>. Announced at
+<link>. Proceed?`.
+
 1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
    safety gaps, in the order that keeps the base green. Where GraphQL is refused (Claude Code cloud
    sessions), merge with `gh api -X PUT repos/<owner>/<repo>/pulls/<n>/merge -f merge_method=squash`.
