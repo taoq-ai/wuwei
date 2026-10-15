@@ -38,5 +38,8 @@ The configured framework ranks the queue; never hand-order it.
 Red-team the plan: name the riskiest item in the queue and the cheapest way to learn early whether
 it works (a spike, a probe, a prototype), and rank that learning first.
 
-Return candidates as a list the planner can add one by one: id, title, goal, repository, tier,
-scores, acceptance scenarios and a one-line why.
+Write the candidates to `.wuwei/candidates.json`, a list of objects with `id`, `title`, `goal`,
+`repo`, `tier`, `scores` (named as the framework names them: `value`, `time`, `risk`, `size`, or
+`reach`, `impact`, `confidence`, `effort`), `promise`, `acceptance` (a list of given, when, then
+scenarios) and a one-line `why`. The planner adds them all with `wuwei plan add --from
+.wuwei/candidates.json`; the plan, not this file, is what seats read.

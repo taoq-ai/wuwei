@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import time
 
 from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
@@ -131,13 +132,32 @@ def stop(root, payload):
         'one line why each waits, then stop.'}
 
 
+def _settled(payload):
+    """The seat's last message, rereading a transcript the harness may still be writing (about 2 s)."""
+    text = last_text(payload)
+    path = payload.get('agent_transcript_path')
+    for _ in range(8):
+        if text.strip() or not path or not Path(path).is_file():
+            break
+        time.sleep(0.25)
+        text = last_text(payload)
+    return text
+
+
 def subagent_stop(root, payload):
+    payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens(payload),
                                      'confidence': _confidence(last_text(payload)),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
-        return None
+        if payload['last_assistant_message'].strip():
+            return None
+        if payload.get('stop_hook_active'):
+            ws.record(root, 'seat.silent', {'role': role, 'agent': payload.get('agent_id')})
+            return None
+        return {'decision': 'block', 'reason': 'WUWEI: you ended without a report. End with it as plain text '
+                '(what you did, Blocked:, Gap:); when SubagentHandback is refused, the last message is the report.'}
     problem = _verdict_problem(root, payload, role)
     if problem is None:
         return None

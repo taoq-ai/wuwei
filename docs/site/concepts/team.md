@@ -33,6 +33,17 @@ share every blind spot. Change it in `cli/wuwei/agents.py` (`MODELS`).
 
 **Why:** a reviewer who shares the author's assumptions finds the author's mistakes only by luck.
 
+## Rounds that converge
+
+A surviving mutant blocks only when the gate can name a concrete bad input it lets through and the
+harm it does; an equivalent or unexploitable mutant is a low note with the missing test. From the
+third round on, a gate blocks only on what the last fix changed, and test-only findings on code
+already judged correct go to one combined final round. Two fix rounds without a pass on the code
+itself park the item for a rethink.
+
+**Why:** a gate that finds a new unpinned quantifier on the same unchanged regex each round costs a
+dozen seats and buys nothing; a defect is a bad input, not a missing test.
+
 ## Seats cannot ask you
 
 Seats have no AskUserQuestion tool. Only the planner reaches you, and only with an owner-class

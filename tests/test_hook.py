@@ -283,3 +283,32 @@ def test_a_verdict_is_attested_from_the_handback_when_the_stop_could_not_read_it
     hook.handle(root, 'PostToolUse', handback)
     hook.handle(root, 'PostToolUse', handback)
     assert [(r['data']['gate'], r['data']['verdict']) for r in ws.rows(root, 'attest')] == [('quality', 'PASS')]
+
+
+def seat_stop(root, message='', active=False, transcript='/nowhere/agent.jsonl'):
+    return hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                              'stop_hook_active': active, 'last_assistant_message': message,
+                                              'agent_transcript_path': transcript, 'cwd': str(root)})
+
+
+def test_a_seat_that_ends_silent_is_asked_for_its_report_in_plain_text(root):
+    assert 'plain text' in seat_stop(root)['reason']
+    assert seat_stop(root, active=True) is None and ws.rows(root, 'seat.silent')
+    assert seat_stop(root, 'Built it; tests pass.\nBlocked: none') is None
+
+
+def test_a_report_written_just_after_the_stop_is_still_read(root, tmp_path):
+    import threading
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text('')
+    row = {'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': 'Built it.\nBlocked: none'}]}}
+    threading.Timer(0.3, lambda: transcript.write_text(json.dumps(row) + '\n')).start()
+    assert seat_stop(root, transcript=str(transcript)) is None
+
+
+def test_the_flat_verdict_path_is_accepted_too(root):
+    path = root / ws.DIR / 'verdicts' / 'I-1-quality-aaaaaaa.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1-quality-aaaaaaa.md') is None
+    assert ws.rows(root, 'attest')

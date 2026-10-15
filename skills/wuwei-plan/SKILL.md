@@ -17,9 +17,13 @@ A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, 
    the owner's words. It returns ready candidates (promise, acceptance scenarios, repository,
    files, tier, scores with evidence) and names the riskiest item with the cheapest way to learn
    early whether it works.
-5. Add each candidate: `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light|standard|full`
-   with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE), and
-   `--why "<evidence>"`. Drop what no longer serves a goal: `wuwei plan drop <id> --reason "..."`.
+5. Add the lead's candidates in one call: `wuwei plan add --from .wuwei/candidates.json` (scores,
+   promise and acceptance included). One item added later: `wuwei plan add <id> "<title>" --goal G-n
+   --repo owner/name --tier light|standard|full` with `--value --time --risk --size` (WSJF) or
+   `--reach --impact --confidence --effort` (RICE), `--why "<evidence>"`, `--promise "<promise>"` and
+   one `--accept "<given, when, then>"` per scenario. Adding an id again re-scores it in place;
+   `wuwei plan restore <id>` reopens a parked or dropped item. Drop what no longer serves a goal:
+   `wuwei plan drop <id> --reason "..."`. Never edit `.wuwei/plan.json` by hand.
 6. Show the plan as a view: run `wuwei plan view`. With a tool that renders HTML (a visualize or
    show-widget tool), render the output of `wuwei plan view --html`; otherwise show the printed
    summary and the path of `.wuwei/plan.html`, which the owner can open in a browser.

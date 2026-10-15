@@ -42,18 +42,48 @@ def save(root, rows):
     ws.atomic_write(_path(root), json.dumps({'items': rows}, indent=1) + '\n')
 
 
-def add(root, item_id, title, goal, repo, tier, scores, why=''):
+# The names a lead may give its scores, mapped to the framework's own.
+ALIASES = {'business_value': 'value', 'user_business_value': 'value', 'time_criticality': 'time',
+           'risk_reduction': 'risk', 'opportunity_enablement': 'risk', 'job_size': 'size'}
+
+
+def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acceptance=()):
+    """Add an item, or update it in place when its id is already in the plan (a parked or dropped
+    item reopens). The promise and acceptance travel with it, so every seat reads them here."""
     if tier not in TIERS:
         raise ValueError(f'tier must be one of {", ".join(TIERS)}')
-    if find(root, item_id):
-        raise ValueError(f'{item_id} is already in the plan')
     framework = ws.config(root)['prioritisation']
-    item = {'id': item_id, 'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'status': 'open',
-            'framework': framework, 'scores': scores, 'score': score(framework, scores), 'why': why,
-            'added': ws.today(), 'approved': False}
-    save(root, items(root) + [item])
+    scores = {ALIASES.get(k, k): v for k, v in scores.items()}
+    fields = {'title': title, 'goal': goal, 'repo': repo, 'tier': tier, 'framework': framework, 'scores': scores,
+              'score': score(framework, scores), 'why': why, 'promise': promise, 'acceptance': list(acceptance)}
+    rows = items(root)
+    item = next((row for row in rows if row.get('id', '').lower() == str(item_id).lower()), None)
+    if item is not None:
+        item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open')
+        save(root, rows)
+        ws.record(root, 'item.updated', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
+        return item
+    item = {'id': item_id, **fields, 'status': 'open', 'added': ws.today(), 'approved': False}
+    save(root, rows + [item])
     ws.record(root, 'item.added', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
     return item
+
+
+def add_from(root, path):
+    """Add the lead's candidates from its JSON file: a list, or {"candidates": [...]}."""
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    found = []
+    for c in data.get('candidates', []) if isinstance(data, dict) else data:
+        scores = c.get('scores') or {k: c[k] for k in (*FIELDS['wsjf'], *FIELDS['rice'], *ALIASES) if k in c}
+        found.append(add(root, c['id'], c['title'], c.get('goal', ''), c.get('repo') or c.get('repository', ''),
+                         c.get('tier', 'standard'), scores, c.get('why', ''), c.get('promise', ''),
+                         c.get('acceptance') or c.get('scenarios') or ()))
+    return found
+
+
+def restore(root, item_id):
+    """Reopen a parked or dropped item as it was."""
+    return mark(root, item_id, 'open', 'restored')
 
 
 def mark(root, item_id, status, reason=''):

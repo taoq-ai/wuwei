@@ -63,7 +63,8 @@ class FakeGh:
             return [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions']}
                     for f in self.pr(m[1])['files']]
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/reviews', path)):
-            return [{'user': {'login': r['author']['login']}, 'state': r['state']} for r in self.pr(m[1])['reviews']]
+            return [{'user': {'login': r['author']['login']}, 'state': r['state'], 'commit_id': r.get('commit')}
+                    for r in self.pr(m[1])['reviews']]
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads', path)):
             if self.graphql:
                 raise gh.GhError('HTTP 404: Not Found')
@@ -123,7 +124,7 @@ def make_pr(number=42, head=HEAD, files=('src/app.py', 'tests/test_app.py'), che
             'files': [{'path': path, 'additions': lines, 'deletions': 0} for path in files],
             'statusCheckRollup': [] if checks is None else [{'name': 'test', 'conclusion': checks, 'status': 'COMPLETED'}],
             'reviewRequests': [{'login': login} for login in requests],
-            'reviews': [{'author': {'login': login}, 'state': state} for login, state in reviews]}
+            'reviews': [{'author': {'login': r[0]}, 'state': r[1], 'commit': r[2] if len(r) > 2 else head} for r in reviews]}
 
 
 def verdict_text(gate='quality', verdict='PASS', head=HEAD, item='I-1', pr='acme/app#42', findings='none', breaking='no'):

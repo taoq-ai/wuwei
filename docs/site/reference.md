@@ -8,8 +8,10 @@
 | `wuwei sent owner/repo#n <link>` | Record a review request posted outside the session |
 | `wuwei sync` | Pull, then push `.wuwei/` on the `wuwei/state` branch |
 | `wuwei doctor` | Install, workspace, ledger, harness rules, and each door's strength per repository |
-| `wuwei plan [show]` | The ranked plan; `--json` for machines |
-| `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light\|standard\|full` | Add an item with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE) and `--why` |
+| `wuwei plan [show] [<id>]` | The ranked plan; `--json` for machines; with an id, that item as JSON (promise and acceptance included) |
+| `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light\|standard\|full` | Add an item with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE) and `--why`, `--promise`, one `--accept` per scenario; an id already in the plan is updated in place |
+| `wuwei plan add --from <file>` | Add the lead's candidates (`.wuwei/candidates.json`) |
+| `wuwei plan restore <id>` | Reopen a parked or dropped item |
 | `wuwei plan park\|drop\|done <id> --reason "..."` | Change an item's status |
 | `wuwei plan pass --reason "..."` | Record a plan pass; reopens a closed day |
 | `wuwei plan view [--html]` | The plan as a view: writes `.wuwei/plan.html`, prints a summary and the question line (`--html` prints the page) |

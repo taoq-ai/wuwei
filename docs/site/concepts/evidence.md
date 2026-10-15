@@ -86,7 +86,9 @@ checks the file at stop, however it was written, so a shell edit cannot slip pas
 ## Duties
 
 A **duty** is work the team owes that does not hold the merge but reaches the team until it is
-done: today, asking for review where the team asks (see [review requests](watch.md#review-requests)).
+done: asking for review where the team asks (see [review requests](watch.md#review-requests)), and,
+when a check is red, re-requesting an approval given at an older commit (the approval is named with
+its commit, so nobody re-runs a review gate that wants an approval at the head).
 Duties show on the board and in the Stop reminder, like safety gaps.
 
 ## Safety and process

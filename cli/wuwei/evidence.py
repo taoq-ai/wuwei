@@ -39,7 +39,7 @@ DAY = 86400
 
 
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
-DUTY = re.compile(r'^review not requested')
+DUTY = re.compile(r'^(review not requested|the approval from)')
 REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|([\w.-]+/[\w.-]+)#(\d+)')
 
 
@@ -359,6 +359,13 @@ def gaps(root, repo, number):
         if not pr.get('reviewRequests') and not reviewers:
             found.append(gap('no reviewer requested'))
         found += review_duty(root, f'{repo}#{number}', pr)
+        approvals = [r for r in pr.get('reviews') or () if r.get('state') == 'APPROVED'
+                     and (r.get('author') or {}).get('login') != author]
+        if approvals and not any(head.startswith(r.get('commit') or '-') for r in approvals) and \
+                any(g['text'].startswith('CI failing') for g in found):
+            last = approvals[-1]
+            found.append(gap(f'the approval from {last["author"]["login"]} is for {str(last.get("commit"))[:7]}, not the head '
+                             f'{head[:7]}: re-request review if a check wants it at the head'))
         if owned and not owner_approved(root, repo, pr):
             found.append(gap(f'owner review needed (owner_paths: {", ".join(owned[:3])})', actionable=False, owner=True))
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days

@@ -422,3 +422,14 @@ def test_a_later_pass_at_the_same_head_does_not_outvote_a_finding(root, fake):
     attest(root, 'quality', verdict='FIX')
     attest(root, 'quality', verdict='PASS', name='quality-aaaaaaa-2.md')
     assert 'gates missing at head aaaaaaa: quality' in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+def test_an_approval_for_an_older_commit_is_named_when_a_check_is_red(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(checks='FAILURE', reviews=(('alice', 'APPROVED', OLD),))
+    attest(root, 'quality')
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert f'the approval from alice is for {OLD[:7]}, not the head aaaaaaa: re-request review if a check wants it at the head' in found
+    fake.prs['42'] = make_pr(checks='FAILURE', reviews=(('alice', 'APPROVED'),))
+    ws.cache_put(root, 'board', None)
+    assert not any(t.startswith('the approval from') for t in texts(evidence.gaps(root, 'acme/app', 42)))

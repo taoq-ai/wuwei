@@ -26,13 +26,17 @@ def _ref(text):
 
 def cmd_plan(args):
     root = _root()
-    if args.action == 'add':
+    if args.action == 'add' and args.source:
+        for item in plan.add_from(root, args.source):
+            print(f'{item["id"]} added with score {item["score"]}')
+    elif args.action == 'add':
         fields = ('value', 'time', 'risk', 'size') if ws.config(root)['prioritisation'] == 'wsjf' else (
             'reach', 'impact', 'confidence', 'effort')
         scores = {name: getattr(args, name) for name in fields}
         scores = {k: int(v) if float(v).is_integer() and k not in ('impact', 'confidence') else float(v)
                   for k, v in scores.items() if v is not None}
-        item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '')
+        item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '',
+                        args.promise or '', args.accept or ())
         print(f'{item["id"]} added with score {item["score"]}')
     elif args.action in ('park', 'drop', 'done'):
         status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
@@ -45,6 +49,13 @@ def cmd_plan(args):
             print(view.render(root)[0])
             return 0
         print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
+    elif args.action == 'restore':
+        print(f'{plan.restore(root, args.id)["id"]} open again')
+    elif args.action == 'show' and args.id:
+        item = plan.find(root, args.id)
+        if item is None:
+            raise ValueError(f'{args.id} is not in the plan')
+        print(json.dumps(item, indent=1))
     elif args.action == 'pass':
         ws.record(root, 'plan.pass', {'note': args.reason or ''})
         print('plan pass recorded; the day is open')
@@ -185,12 +196,15 @@ def main(argv=None):
         return 0
     parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {version()}')
     sub = parser.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('plan', help='show, add, park, drop, done or pass')
-    p.add_argument('action', nargs='?', default='show', choices=('show', 'add', 'park', 'drop', 'done', 'pass', 'view'))
+    p = sub.add_parser('plan', help='show [id], add, park, drop, done, restore, pass or view')
+    p.add_argument('action', nargs='?', default='show',
+                   choices=('show', 'add', 'park', 'drop', 'done', 'restore', 'pass', 'view'))
     p.add_argument('id', nargs='?')
     p.add_argument('title', nargs='?')
-    for name in ('goal', 'repo', 'why', 'reason'):
+    for name in ('goal', 'repo', 'why', 'reason', 'promise'):
         p.add_argument(f'--{name}')
+    p.add_argument('--accept', action='append', help='an acceptance scenario; repeat for each')
+    p.add_argument('--from', dest='source', help="with add: the lead's candidates file")
     p.add_argument('--tier', default='standard')
     for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):
         p.add_argument(f'--{name}', type=float)

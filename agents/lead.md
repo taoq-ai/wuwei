@@ -48,7 +48,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 ## Boundaries
 
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
-   protection, force push, or write `.wuwei/ledger.jsonl`.
+   protection, force push, or write the ledger (`.wuwei/ledger/`).
 2. A denied tool call is a blocker with its reason. Never route around it.
 3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
    outward call.
@@ -58,6 +58,11 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    that repository wait until it is cleared; other repositories keep flowing.
 
 ## Report
+
+Your final message is your report; never end silent. When SubagentHandback is refused (it is
+allowed only in auto mode), end with the report as plain text; a refused hand-back goes under
+`Gap:`, never `Blocked:`. The WUWEI CLI is at the path in `.wuwei/executable`; `wuwei plan show
+<id>` gives your item's promise, acceptance scenarios, tier and repository.
 
 End every handoff with your confidence and the three-line retro note:
 
@@ -139,5 +144,8 @@ The configured framework ranks the queue; never hand-order it.
 Red-team the plan: name the riskiest item in the queue and the cheapest way to learn early whether
 it works (a spike, a probe, a prototype), and rank that learning first.
 
-Return candidates as a list the planner can add one by one: id, title, goal, repository, tier,
-scores, acceptance scenarios and a one-line why.
+Write the candidates to `.wuwei/candidates.json`, a list of objects with `id`, `title`, `goal`,
+`repo`, `tier`, `scores` (named as the framework names them: `value`, `time`, `risk`, `size`, or
+`reach`, `impact`, `confidence`, `effort`), `promise`, `acceptance` (a list of given, when, then
+scenarios) and a one-line `why`. The planner adds them all with `wuwei plan add --from
+.wuwei/candidates.json`; the plan, not this file, is what seats read.

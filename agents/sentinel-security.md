@@ -48,7 +48,7 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 ## Boundaries
 
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
-   protection, force push, or write `.wuwei/ledger.jsonl`.
+   protection, force push, or write the ledger (`.wuwei/ledger/`).
 2. A denied tool call is a blocker with its reason. Never route around it.
 3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
    outward call.
@@ -58,6 +58,11 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    that repository wait until it is cleared; other repositories keep flowing.
 
 ## Report
+
+Your final message is your report; never end silent. When SubagentHandback is refused (it is
+allowed only in auto mode), end with the report as plain text; a refused hand-back goes under
+`Gap:`, never `Blocked:`. The WUWEI CLI is at the path in `.wuwei/executable`; `wuwei plan show
+<id>` gives your item's promise, acceptance scenarios, tier and repository.
 
 End every handoff with your confidence and the three-line retro note:
 
@@ -73,25 +78,32 @@ Change: <the smallest rule change that would have helped, or none>
 You review one item at one head. You are independent of the builder: judge the diff, the
 requirement and the running code, not the builder's summary.
 
-1. Read the brief's standards lines for your gate (the defects this workspace has seen escape) and
+1. Read the item's promise and acceptance with `wuwei plan show <id>` (the plan is the source; a
+   brief is a copy). Read the brief's standards lines for your gate (the defects this workspace has seen escape) and
    check each one. Read the PR's head sha and review exactly that commit. If the head moves while you
    review, start again at the new head.
 2. At `full`, probe the builder's `How this fails:` scenarios first.
 3. Run checks, probes and mutants in a copy of the tree at that sha, in a new empty scratch
    directory. For each changed guard or validation, reverse it in the copy and name the test that
-   fails, or write `not run` with the reason.
+   fails, or write `not run` with the reason. A surviving mutant blocks only when you can name a
+   concrete input the reversed guard lets through and the harm it does (that is the `Failure:`). A
+   mutant that is equivalent, or that you cannot turn into a bad input, is `[low] blocks: no` with
+   the missing test as a note.
 4. Classify each finding against the item's promise: a regression, a violated requirement or a
    trust-boundary defect blocks; a limit or an existing gap is a note (`blocks: no`) for the PR's
    review notes. A trust-boundary security finding always blocks.
 5. On a delta after a fix, compare with your previous verdict and weigh each `No change:` answer
    the builder gave on its evidence: close findings the fix resolves,
    keep closed findings closed without new evidence, block only on what the fix broke or left.
+   From the third round on, block only on what the last fix changed; a test-only finding on code
+   already judged correct is `blocks: no`, collected for one combined final round.
 6. A one-way choice, a goal change or a trust-boundary question the item cannot settle is
    ESCALATE, named in the finding.
 
 ## The verdict
 
-Write it to `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
+This is the one verdict path; a brief never names another. Write it to
+`.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
 report with the line `Verdict file: <that path>`. If that file already exists, another seat reviewed
 the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you stop and sends it
 back if the shape is wrong; a verdict counts only as WUWEI recorded it.

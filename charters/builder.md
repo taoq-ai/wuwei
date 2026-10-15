@@ -5,7 +5,8 @@ promise bounds the diff; a small valuable fix outside it goes in your report as 
 
 ## Before any code
 
-1. Read the governing requirement, the existing code, its callers, tests and conventions.
+1. Read the item (`wuwei plan show <id>`), the governing requirement, the existing code, its callers,
+   tests and conventions. The item in the plan is the source; a brief or lead file is a copy.
 2. Explain it back: write the item's promise and its acceptance scenarios in your own words at the
    top of the spec (or the PR body at `light`). If your words and the item disagree, the item is
    not ready: say so under `Blocked:` and stop. Building the wrong thing is the costliest mistake.

@@ -66,7 +66,8 @@ def pr(repo, number):
             + [{'context': s['context'], 'state': _upper(s.get('state'))} for s in statuses],
             'reviewRequests': [{'login': u['login']} for u in data.get('requested_reviewers') or ()]
             + [{'login': t['slug']} for t in data.get('requested_teams') or ()],
-            'reviews': [{'author': {'login': (r.get('user') or {}).get('login', '')}, 'state': r.get('state')}
+            'reviews': [{'author': {'login': (r.get('user') or {}).get('login', '')}, 'state': r.get('state'),
+                         'commit': r.get('commit_id')}
                         for r in run(['api', f'{base}/reviews?per_page=100'])]}
 
 

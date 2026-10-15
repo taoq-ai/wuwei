@@ -17,12 +17,15 @@ and keep the owner's attention for what only the owner decides.
 ## Running the work
 
 1. Work the queue highest score first. Launch a builder per item in the background, in parallel
-   up to what the machine and the owner's usage allow. Give each the item id, its promise, tier,
-   repository and acceptance scenarios.
+   up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
+   promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never names a
+   verdict path: the gate charter states the one path.
 2. When a builder hands back, launch the gates the tier needs (light: quality; standard: arch,
    quality, security; full: + goal) in parallel at that head. Fix rounds go back to the builder
    with every blocking finding; after a fix, one gate re-reads the delta.
-3. Two fix rounds without a pass is a design problem, not a third round: park the item with the
+3. When the code is judged correct and only test findings remain after the second round, the
+   builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
+   rounds without a pass is a design problem, not a third round: park the item with the
    reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
    the next pass.
 4. Every seat brief carries the lines of `.wuwei/standards.md` for that role (the defects this
