@@ -55,7 +55,7 @@ def init(directory):
     if not (base / 'canary').is_file():
         ws.atomic_write(base / 'canary', f'wuwei-canary-{os.urandom(12).hex()}\n')
     done.append(f'permissions: {merge_settings(directory)} (allow everyday work, deny the doors, ask for infrastructure)')
-    ws.record(directory, 'workspace.init', {'version': '1.0.0'})
+    ws.record(directory, 'workspace.init', {'version': json.loads((Path(__file__).resolve().parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']})
     return done
 
 
