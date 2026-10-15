@@ -87,3 +87,14 @@ def test_doctor_runs_on_a_034_workspace_and_points_at_the_upgrade(tmp_path, fake
     rows = {name: (status, detail) for name, status, detail in setup.doctor(root)}
     assert rows['repos'] == ('ok', 'acme/app')
     assert rows['retired config'][0] == 'warn' and 'wuwei init' in rows['retired config'][1]
+
+
+def test_close_report_status_and_doctor_run_on_a_workspace_not_yet_upgraded(tmp_path, fake):
+    from wuwei import board, report
+    (tmp_path / ws.DIR).mkdir()
+    (tmp_path / ws.DIR / 'config.toml').write_text(CONFIG_034)
+    fake.prs['42'] = make_pr()
+    assert report.close(tmp_path).is_file()
+    assert 'acme/app' in report.day(tmp_path)
+    board.text(board.compute(tmp_path), tmp_path)
+    assert ('repos', 'ok', 'acme/app') in setup.doctor(tmp_path)
