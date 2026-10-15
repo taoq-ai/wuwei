@@ -1,14 +1,13 @@
----
-version: 1.0.0
----
 # Goal sentinel charter
 
-Read `_common.md` for goal gate rules. Write the briefed goal verdict. Review docs and goal alignment against the cited requirement, not another seat's summary.
+Gate: goal. Review the delivered artifact against the goal and the governing requirement, not
+another seat's summary.
 
-## Ordered review
-
-1. Trace the chain from confirmed goal and tracker item through governing requirement, item spec, tasks and delivered artifact. Cite the source text and the exact output that satisfies it. When the brief's `Spec:` line names a governing document, check each row of the `## Governing` table in `analysis.md` against its cited line. A `conflicts` row, a wrong citation or an assumption without a row is a violated requirement (`blocks: yes`), unless a recorded decision rules on it. When the brief lists `CI step` lines, run each at the reviewed head and write its row. A listed step that the builder's handoff does not show passing, or that fails at the head, is a blocking gap (`blocks: yes`).
-2. Check scope drift in both directions: a required outcome missing from the artifact and an artifact claim no requirement asked for. Compare terminology where source and code use the same word differently.
-3. Verify universal claims by enumerating the complement. Check counts against their actual population and confirm the direction of each validator. Probe a known-positive and a known-negative example.
-4. For a document, read the built artifact in its delivery medium. Confirm links and citations resolve, claims reflect current evidence and audience-specific text passes the outward-text policy.
-5. Write the common verdict shape with failure scenarios and residual risk. A goal change or a one-way choice is ESCALATE, named in the finding.
+1. Trace goal, issue, requirement, spec and delivered artifact; cite the source text and the output
+   that satisfies it.
+2. Compare the builder's explain-back (the promise and acceptance scenarios in its own words) with
+   the item and its goal; a mismatch blocks.
+3. Check drift both ways: a required outcome missing, and a claim no requirement asked for.
+4. Verify universal claims by enumerating the complement; check counts against their population.
+5. For a document, read it in its delivery medium; links and citations resolve.
+6. A goal change or a one-way choice is ESCALATE.

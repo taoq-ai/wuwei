@@ -20,27 +20,20 @@ any local file. The hard boundaries sit outside the owner's user account: the co
 host's protected refs, required checks and required reviews, and publication credentials
 kept out of seat environments.
 
-The full threat model is in [docs/site/security.md](docs/site/security.md) and in section
-9.1 of the [design spec](docs/specs/2026-09-24-wuwei-design.md).
+The doors and what they leave to the code host are in section 6 of the
+[design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 
 ## What a reviewer asks first
 
-- Hooks: PreToolUse, PostToolUse, SessionStart, Stop, SubagentStop and PreCompact run
-  `bin/wuwei hook`. They read the tool call, exit 0 to allow, 1 to refuse with a reason, 2
-  when they could not measure. They act only inside a `.wuwei/` workspace; elsewhere they
-  exit 0 at once.
-- Runtime: Python 3.11+ standard library only. No package install, no third-party code at
-  run time. pytest is a development dependency.
-- Integrity: every release ships `MANIFEST.sha256` signed with an ED25519 key; the key
-  fingerprint is pinned in [docs/site/integrity.md](docs/site/integrity.md) and `wuwei
-  integrity` verifies the installed tree against it.
-- Network: the plugin makes no network call of its own. Adapters call the services the
-  owner configures (code host, tracker, docs, chat) with the owner's own tools and
-  credentials; telemetry is off unless the owner turns it on and then sends an aggregate the
-  owner has read, to an endpoint named in the config.
-- Credentials: the plugin stores none. It reads tokens from the environment the owner
-  provides to a command and never writes them to records, events, traces or logs; the trace
-  redactor is tested against a corpus of secret shapes.
+- Hooks: SessionStart, PreToolUse, PostToolUse, SubagentStop and Stop run `bin/wuwei hook`.
+  PreToolUse answers with the harness's own deny or ask decision. They act only inside a
+  `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
+  shut; every other hook fails open and records why.
+- Runtime: Python 3.11+ standard library only, at most 2,500 lines.
+- Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
+- Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
+  other network call. Telemetry is local traces only.
+- Credentials: the plugin stores none, and traces redact secret shapes.
 
 ## How to report
 

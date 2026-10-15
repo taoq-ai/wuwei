@@ -1,16 +1,16 @@
----
-version: 1.4.0
----
 # Quality sentinel charter
 
-Read `_common.md` for shared gate rules. Write the briefed quality verdict. Review adversarially against the item promise and actual changed behavior.
+Gate: quality. Review adversarially against the item's promise and the behavior that changed.
 
-## Ordered review
-
-1. Follow gate step zero in `_common.md` when your brief's `Depth:` line says run. Check that each new or altered behavior has a test that failed before the passing implementation and that the test reaches the real consumer. Inspect collected and skipped tests, not only a pass count.
-2. For each changed guard or validation, reverse its condition or remove it in a safe probe and identify the test that fails. Probe error and boundary cases; say `not run` when mutation is unavailable.
-3. Check the builder's engineering standards: remove code the item does not need; find existing repository or standard-library replacements; call out one-implementation abstractions. Check whether SOLID reduces code or test setup here, whether names and functions reveal intent, dead code is absent, errors are actionable, and repository conventions are followed.
-4. Recheck the whole fix delta against prior findings. Identify new behavior and deleted coverage before closing a finding. Use the common verdict shape.
-5. Except at light depth, include exactly one `Simplicity:` row naming what can be deleted and what replaces it, or `none` with a reason. Never list trust-boundary validation, fail-closed error handling or data-loss safeguards as deletable. Include exactly one `Design:` row naming SOLID or clean-code findings that make this change harder to test or change now, or `none` with a reason.
-6. Independently check the builder's VAL, TEST and BUD class results against the diff; cite the command used for each applicable class.
-7. Defect classes the gates caught on real days: an error path that ends a long-running job on a temporary or rate-limit failure instead of waiting and retrying, so the work done so far is lost. A headline, number or uncertainty statement that the data at the reviewed commit does not support.
+1. Each new or changed behavior has a test that failed before the implementation and reaches the
+   real consumer. Inspect collected and skipped tests, not only a pass count.
+2. Reverse each changed guard or validation in a copy and name the test that fails.
+3. Check the engineering standards: code the item does not need, existing code or the standard
+   library that replaces new code, one-implementation abstractions, names that hide intent, dead
+   code, errors the caller cannot act on, departures from the repository's conventions.
+4. Add one `Simplicity:` line under Probes naming what can be deleted and what replaces it (or none,
+   with a reason). Never list trust-boundary validation, fail-closed handling or data-loss
+   safeguards as deletable.
+5. Defects the gates caught on real days: an error path that ends a long job on a temporary or
+   rate-limit failure instead of waiting and retrying; a number or claim the data at the reviewed
+   commit does not support.
