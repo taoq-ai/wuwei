@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / 'cli'))
 
 from wuwei import integrity  # noqa: E402
 
-SHIPPED = ('.claude-plugin', 'cli', 'bin', 'hooks', 'charters', 'skills', 'agents', 'keys')
+SHIPPED = ('.claude-plugin', 'cli', 'hooks', 'charters', 'skills', 'agents', 'keys')
 
 
 def build(output, key):
@@ -18,6 +18,8 @@ def build(output, key):
     stage.mkdir(parents=True)
     for name in SHIPPED:
         shutil.copytree(ROOT / name, stage / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    (stage / 'scripts').mkdir()
+    shutil.copy2(ROOT / 'scripts' / 'wuwei', stage / 'scripts' / 'wuwei')
     for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md'):
         if (ROOT / name).is_file():
             shutil.copyfile(ROOT / name, stage / name)

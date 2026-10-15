@@ -211,7 +211,7 @@ def test_seat_tokens_are_counted_from_the_transcript(root, tmp_path):
 def test_session_start_names_the_cli_and_refreshes_the_pointer(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
-    cli = str(hook.PLUGIN / 'bin' / 'wuwei')
+    cli = str(hook.PLUGIN / 'scripts' / 'wuwei')
     assert f'WUWEI CLI: {cli}' in context
     assert (root / ws.DIR / 'executable').read_text().strip() == cli
 
@@ -312,3 +312,13 @@ def test_the_flat_verdict_path_is_accepted_too(root):
     path.write_text(verdict_text())
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1-quality-aaaaaaa.md') is None
     assert ws.rows(root, 'attest')
+
+
+def test_session_start_without_a_workspace_names_the_cli_for_init(tmp_path, monkeypatch, capsys):
+    import io
+    monkeypatch.delenv('CLAUDE_CODE_REMOTE', raising=False)
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps({'cwd': str(tmp_path)})))
+    hook.main('SessionStart')
+    context = json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
+    assert f"{hook.PLUGIN / 'scripts' / 'wuwei'} init" in context
+    assert not (tmp_path / ws.DIR).exists()

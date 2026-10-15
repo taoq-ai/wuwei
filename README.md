@@ -65,15 +65,18 @@ project directory that owns the workspace:
 /plugin install wuwei@wuwei
 ```
 
+Open Claude Code there. In a directory without a workspace, the session start names the CLI's path
+(the plugin's `scripts/wuwei`); ask the session to run, or run yourself by that path:
+
 ```sh
-bin/wuwei init      # .wuwei/ and the harness permission rules
-bin/wuwei doctor    # install, workspace, and how strongly each door holds per repository
+wuwei init      # .wuwei/ and the harness permission rules
+wuwei doctor    # install, workspace, and how strongly each door holds per repository
 ```
 
-Open Claude Code there and run `/wuwei-plan`.
+Then run `/wuwei-plan`.
 
 On Codex: `codex plugin marketplace add taoq-ai/wuwei`, `codex plugin add wuwei@wuwei`, then
-`bin/wuwei init --codex` (role agents and door rules in `.codex/`). See
+`wuwei init --codex` (role agents and door rules in `.codex/`). See
 [running on Codex](https://taoq-ai.github.io/wuwei/concepts/codex/).
 
 ## Commands

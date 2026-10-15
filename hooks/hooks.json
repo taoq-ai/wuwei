@@ -1,9 +1,9 @@
 {
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SessionStart"}]}],
-    "PreToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PreToolUse"}]}],
-    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook PostToolUse"}]}],
-    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook SubagentStop"}]}],
-    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/wuwei hook Stop"}]}]
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wuwei hook SessionStart"}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wuwei hook PreToolUse"}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wuwei hook PostToolUse"}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wuwei hook SubagentStop"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/wuwei hook Stop"}]}]
   }
 }

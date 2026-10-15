@@ -57,7 +57,12 @@ def test_hooks_json_routes_every_event_to_the_cli():
     hooks = json.loads((PLUGIN / 'hooks' / 'hooks.json').read_text())['hooks']
     assert set(hooks) == {'SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop'}
     for event, entries in hooks.items():
-        assert entries[0]['hooks'][0]['command'] == f'"${{CLAUDE_PLUGIN_ROOT}}"/bin/wuwei hook {event}'
+        assert entries[0]['hooks'][0]['command'] == f'"${{CLAUDE_PLUGIN_ROOT}}"/scripts/wuwei hook {event}'
+
+
+def test_the_plugin_ships_no_bin_directory():
+    # a plugin's bin/ is held for a marketplace reviewer (BUNDLES_BINARIES); the launcher is a script
+    assert not (PLUGIN / 'bin').exists()
 
 
 def test_agent_front_matter_has_no_bare_colon_in_a_value():
@@ -94,17 +99,21 @@ def test_init_cloud_vendors_the_plugin_into_the_repository(tmp_path, monkeypatch
     import os
     import subprocess
     monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
-    setup.init(tmp_path, cloud=True)
-    setup.init(tmp_path, cloud=True)
     claude = tmp_path / '.claude'
-    cli = claude / 'wuwei' / 'bin' / 'wuwei'
+    old = {e: [{'hooks': [{'type': 'command', 'command': f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {e}'}]}]
+           for e in ('SessionStart', 'Stop')}
+    claude.mkdir()
+    (claude / 'settings.json').write_text(json.dumps({'hooks': old}))
+    setup.init(tmp_path, cloud=True)
+    setup.init(tmp_path, cloud=True)
+    cli = claude / 'wuwei' / 'scripts' / 'wuwei'
     assert os.access(cli, os.X_OK) and (claude / 'wuwei' / 'charters' / '_common.md').is_file()
     assert (claude / 'skills' / 'wuwei-plan' / 'SKILL.md').is_file() and (claude / 'agents' / 'builder.md').is_file()
-    assert not list((claude / 'wuwei').rglob('__pycache__'))
+    assert not list((claude / 'wuwei').rglob('__pycache__')) and not (claude / 'wuwei' / 'bin').exists()
     assert (claude / 'wuwei' / '.gitignore').read_text() == '__pycache__/\n'  # running the copy leaves none to commit
     hooks = json.loads((claude / 'settings.json').read_text())['hooks']
     for event in ('SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop'):
-        assert [h['hooks'][0]['command'] for h in hooks[event]] == [f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}']
+        assert [h['hooks'][0]['command'] for h in hooks[event]] == [f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/scripts/wuwei hook {event}']
     assert (tmp_path / ws.DIR / '.gitignore').read_text().splitlines()[-1] == '*'
     version = json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']
     assert subprocess.run([str(cli), '--version'], capture_output=True, text=True).stdout.strip() == version

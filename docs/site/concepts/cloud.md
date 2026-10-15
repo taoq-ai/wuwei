@@ -9,7 +9,7 @@ a fresh clone, so nothing it does not put in git survives.
 In the repository the cloud sessions open, run once:
 
 ```sh
-bin/wuwei init --cloud
+wuwei init --cloud
 ```
 
 and commit `.claude/` to the default branch. It copies the plugin there: the CLI and the charters in

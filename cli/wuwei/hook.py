@@ -326,7 +326,7 @@ PLUGIN = Path(__file__).resolve().parents[2]
 
 
 def session_start(root, payload):
-    cli = str(PLUGIN / 'bin' / 'wuwei')
+    cli = str(PLUGIN / 'scripts' / 'wuwei')
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
     parts = [WAY, f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(encoding='utf-8').strip()
                      for name in ('_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
@@ -407,6 +407,9 @@ def main(event):
     root = ws.find(payload.get('cwd'))
     if sync.remote() and event == 'SessionStart':
         root = _sync(sync.restore, payload.get('cwd')) or root
+    if root is None and event == 'SessionStart':
+        print(json.dumps(context(event, f'WUWEI is installed; no workspace here. To create one: '
+                                        f'{PLUGIN / "scripts" / "wuwei"} init')))
     if root is not None:
         out = handle(root, event, payload)
         if out:

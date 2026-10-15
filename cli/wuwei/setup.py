@@ -52,8 +52,10 @@ def vendor(directory):
     plugins do not load but its settings, skills and agents do."""
     claude = Path(directory) / '.claude'
     shutil.rmtree(claude / 'wuwei', ignore_errors=True)
-    for name in ('bin', 'cli', 'charters', '.claude-plugin'):
+    for name in ('cli', 'charters', '.claude-plugin'):
         shutil.copytree(PLUGIN / name, claude / 'wuwei' / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    (claude / 'wuwei' / 'scripts').mkdir()
+    shutil.copy2(PLUGIN / 'scripts' / 'wuwei', claude / 'wuwei' / 'scripts' / 'wuwei')
     ws.atomic_write(claude / 'wuwei' / '.gitignore', '__pycache__/\n')
     for skill in (PLUGIN / 'skills').iterdir():
         shutil.copytree(skill, claude / 'skills' / skill.name, dirs_exist_ok=True)
@@ -63,8 +65,10 @@ def vendor(directory):
     path = claude / 'settings.json'
     data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
     for event in EVENTS:
-        command = f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}'
+        command = f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/scripts/wuwei hook {event}'
         entries = data.setdefault('hooks', {}).setdefault(event, [])
+        entries[:] = [e for e in entries if not any('/.claude/wuwei/bin/wuwei hook' in h.get('command', '')
+                                                    for h in e.get('hooks', []))]  # the 1.0.0 path
         if not any(h.get('command') == command for entry in entries for h in entry.get('hooks', [])):
             entries.append({'hooks': [{'type': 'command', 'command': command}]})
     ws.atomic_write(path, json.dumps(data, indent=2) + '\n')

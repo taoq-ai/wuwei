@@ -15,7 +15,7 @@ codex plugin add wuwei@wuwei
 Then, in the directory that owns the workspace:
 
 ```sh
-bin/wuwei init --codex
+wuwei init --codex
 ```
 
 That writes what a Codex plugin cannot carry:

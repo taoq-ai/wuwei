@@ -19,21 +19,23 @@ For a verified install, use the signed `wuwei.tar.gz` release asset: it carries
 
 ## Create the workspace
 
-From the directory that will own the workspace (usually your main repository):
+From the directory that will own the workspace (usually your main repository), open Claude Code.
+With no workspace there, the session start names the CLI's path (the plugin's `scripts/wuwei`). Ask
+the session to run these, or run them yourself by that path:
 
 ```sh
-bin/wuwei init
-bin/wuwei doctor
+wuwei init
+wuwei doctor
 ```
 
 `init` creates `.wuwei/` and merges WUWEI's rules into `.claude/settings.json`: an allow list for
 everyday work, deny rules for the doors, ask rules for infrastructure. Your own rules stay as they
 are. `doctor` checks the install and prints, per repository, how strongly each door holds.
 
-Add more repositories by saying so, or with `bin/wuwei config repos owner/a,owner/b`.
+Add more repositories by saying so, or with `wuwei config repos owner/a,owner/b`.
 
 On Codex, install with `codex plugin marketplace add taoq-ai/wuwei` and `codex plugin add
-wuwei@wuwei`, then run `bin/wuwei init --codex`; see [running on Codex](concepts/codex.md).
+wuwei@wuwei`, then run `wuwei init --codex`; see [running on Codex](concepts/codex.md).
 
 To run WUWEI in Claude Code on the web too, add `--cloud` and commit `.claude/`; see
 [cloud sessions](concepts/cloud.md).

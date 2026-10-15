@@ -21,15 +21,17 @@ host's protected refs, required checks and required reviews, and publication cre
 kept out of seat environments.
 
 The doors and what they leave to the code host are in section 6 of the
-[design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
+[design](docs/design.md); `scripts/wuwei doctor` prints how strongly each door holds per repository.
 
 ## What a reviewer asks first
 
-- Hooks: SessionStart, PreToolUse, PostToolUse, SubagentStop and Stop run `bin/wuwei hook`.
+- Hooks: SessionStart, PreToolUse, PostToolUse, SubagentStop and Stop run `scripts/wuwei hook`.
+  `scripts/wuwei` is a six-line POSIX shell launcher that runs the stdlib Python CLI in `cli/wuwei/`
+  in isolated mode; the plugin ships no compiled code and downloads nothing at install.
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
-  `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
+  `.wuwei/` workspace; elsewhere SessionStart names the CLI for `init` and the others return at once. A door that cannot read its evidence stays
   shut; every other hook fails open and records why.
-- Runtime: Python 3.11+ standard library only, at most 2,500 lines.
+- Runtime: Python 3.11+ standard library only, at most 3,000 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
 - Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
   other network call. Telemetry is local traces only.

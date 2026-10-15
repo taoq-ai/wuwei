@@ -7,7 +7,7 @@ start. What to build is in the [design](docs/design.md).
   its spec under `specs/<issue>-<slug>/`. A bug fix is a failing test and the fix.
 - Test first: write the failing test, run it, see it fail, then implement.
 - Runtime code is stdlib only, Python 3.11 or newer, at most 3,000 lines. pytest is dev only.
-- Charters are the one source for `agents/`: after a charter change run `bin/wuwei agents build`,
+- Charters are the one source for `agents/`: after a charter change run `scripts/wuwei agents build`,
   and after a tool grant change rewrite the ZIRAN baseline with
   `ziran audit agents --write-baseline agents/ziran-baseline.json`.
 - If you change the hero, run `python3 scripts/build-hero.py` and commit both SVGs; a test checks

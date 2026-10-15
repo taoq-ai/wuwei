@@ -21,7 +21,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install pytest
       - run: python -m pytest -q
-      - run: bin/wuwei agents check
+      - run: scripts/wuwei agents check
 
   ziran-audit:
     runs-on: ubuntu-latest

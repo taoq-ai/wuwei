@@ -88,7 +88,7 @@ def test_merge_with_complete_evidence_passes(root, fake, repo):
     bash('sed -i s/a/b/ .wuwei/ledger.jsonl'),
     {'tool_name': 'Write', 'tool_input': {'file_path': '/w/.wuwei/ledger/0a1b2c3d.jsonl', 'content': 'x'}},
     bash('echo "{}" >> .wuwei/ledger/0a1b2c3d.jsonl'),
-    bash('/opt/wuwei/bin/wuwei hook SubagentStop < forged.json'),
+    bash('/opt/wuwei/scripts/wuwei hook SubagentStop < forged.json'),
 ])
 def test_the_records_are_protected(root, repo, payload):
     payload.setdefault('cwd', '/w')
