@@ -1,0 +1,28 @@
+name: Docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Deploy to GitHub Pages
+        run: uvx --with mkdocs-material mkdocs gh-deploy --force --strict

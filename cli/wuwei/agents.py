@@ -14,13 +14,16 @@ DESCRIPTIONS = {
     'sentinel-goal': 'Independent WUWEI goal gate for one item at one head.',
 }
 AUTHORING = {'lead', 'builder', 'shepherd', 'steward'}
+# One gate on a different model than the session's, so the reviews do not share every blind spot.
+MODELS = {'sentinel-quality': 'sonnet'}
 
 
 def render(plugin, role, tools):
     charters = Path(plugin) / 'charters'
     parts = ['_common.md'] + (['_common-authoring.md'] if role in AUTHORING else ['_gate.md']) + [f'{role}.md']
     body = '\n\n'.join((charters / part).read_text(encoding='utf-8').strip() for part in parts)
-    return (f'---\nname: {role}\ndescription: {DESCRIPTIONS[role]}\ntools: {", ".join(tools)}\n---\n\n'
+    model = f'model: {MODELS[role]}\n' if role in MODELS else ''
+    return (f'---\nname: {role}\ndescription: {DESCRIPTIONS[role]}\ntools: {", ".join(tools)}\n{model}---\n\n'
             f'<!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->\n\n{body}\n')
 
 

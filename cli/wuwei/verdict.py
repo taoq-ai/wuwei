@@ -4,12 +4,14 @@ import re
 
 GATES = ('arch', 'quality', 'security', 'goal')
 VERDICTS = ('PASS', 'FIX', 'ESCALATE')
+CONFIDENCE = ('low', 'medium', 'high')
 FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (\S+:\d+) blocks: (yes|no)\. Failure: (\S.*)$')
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
+Confidence: low | medium | high (how sure you are this verdict holds)
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes|no. Failure: <the concrete scenario that goes wrong>
@@ -25,6 +27,7 @@ def parse(text):
     errors = []
     result = {'verdict': _field(text, 'Verdict').upper(), 'gate': _field(text, 'Gate').lower(),
               'item': _field(text, 'Item'), 'head': _field(text, 'Head').lower(),
+              'confidence': _field(text, 'Confidence').lower(),
               'repo': '', 'pr': None, 'findings': [], 'errors': errors}
     if result['verdict'] not in VERDICTS:
         errors.append('Verdict: must be PASS, FIX or ESCALATE')
@@ -32,6 +35,8 @@ def parse(text):
         errors.append(f'Gate: must be one of {", ".join(GATES)}')
     if not re.fullmatch(r'[0-9a-f]{40}', result['head']):
         errors.append('Head: must be the full 40-character sha you reviewed')
+    if result['confidence'] not in CONFIDENCE:
+        errors.append('Confidence: must be low, medium or high')
     match = re.fullmatch(r'([\w.-]+/[\w.-]+)#(\d+)', _field(text, 'PR'))
     if match:
         result['repo'], result['pr'] = match[1], int(match[2])

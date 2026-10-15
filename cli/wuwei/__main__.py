@@ -55,12 +55,27 @@ def cmd_plan(args):
 
 
 def cmd_status(args):
-    rows = board.compute(_root())
-    print(json.dumps(rows, indent=1) if args.json else board.text(rows))
+    root = _root()
+    rows = board.compute(root)
+    print(json.dumps(rows, indent=1) if args.json else board.text(rows, root))
+    return 0
+
+
+def cmd_andon(args):
+    root = _root()
+    if not args.clear and not args.reason:
+        raise SystemExit('wuwei: say why: wuwei andon owner/repo --reason "<what is broken for everyone>"')
+    board.andon(root, args.repo, args.reason or '', clear=args.clear)
+    print(f'andon {"cleared" if args.clear else "raised"} on {args.repo}')
     return 0
 
 
 def cmd_evidence(args):
+    if args.record:
+        from wuwei import replay
+        gaps = replay.record(_root(), *_ref(args.pr), args.record)
+        print(f'recorded {args.pr} in {args.record}/case.json; copy it under tests/replay/ to hold future versions to it')
+        return 1 if gaps else 0
     gaps = evidence.gaps(_root(), *_ref(args.pr))
     print(json.dumps(gaps, indent=1) if args.json else '\n'.join(
         f'- {g["text"]}' + ('' if g['actionable'] else ' [waiting]') for g in gaps) or 'no gaps: ready to merge')
@@ -135,6 +150,7 @@ def main(argv=None):
     p.set_defaults(func=cmd_status)
     p = sub.add_parser('evidence', help='the gaps of one PR, owner/repo#number')
     p.add_argument('pr')
+    p.add_argument('--record', metavar='DIR', help='save the case for a replay test')
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_evidence)
     p = sub.add_parser('report', help='the day report, or --dora')
@@ -152,6 +168,11 @@ def main(argv=None):
     p.add_argument('value', nargs='?')
     p.set_defaults(func=cmd_config)
     sub.add_parser('verify', help='check the ledger hash chain').set_defaults(func=cmd_verify)
+    p = sub.add_parser('andon', help='pull the cord on one repository: no new builds there until cleared')
+    p.add_argument('repo')
+    p.add_argument('--reason')
+    p.add_argument('--clear', action='store_true')
+    p.set_defaults(func=cmd_andon)
     p = sub.add_parser('agents', help='check or build the role agents from the charters')
     p.add_argument('action', nargs='?', default='check', choices=('check', 'build'))
     p.set_defaults(func=cmd_agents)

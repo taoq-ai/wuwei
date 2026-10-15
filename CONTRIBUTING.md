@@ -10,6 +10,9 @@ start. What to build is in the [design](docs/design.md).
 - Charters are the one source for `agents/`: after a charter change run `bin/wuwei agents build`,
   and after a tool grant change rewrite the ZIRAN baseline with
   `ziran audit agents --write-baseline agents/ziran-baseline.json`.
+- If you change the hero, run `python3 scripts/build-hero.py` and commit both SVGs; a test checks
+  they match the generator.
+- Preview the docs with `uvx --with mkdocs-material mkdocs serve`; CI publishes them from `main`.
 - No emojis and no em dashes in anything you write.
 
 ## Before you open a pull request

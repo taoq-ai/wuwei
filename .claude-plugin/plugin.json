@@ -1,22 +1,27 @@
 {
   "name": "wuwei",
   "version": "0.34.0",
-  "description": "A process auditor for agent teams: it teaches the way at the moment, reads the evidence, and holds the few doors that do not reopen.",
+  "description": "Responsible autonomy for agent teams. Your agents plan, build, review and ship; WUWEI audits the evidence, holds the few doors that do not reopen, and asks you only what is yours.",
   "author": {
     "name": "TaoQ AI Labs",
     "url": "https://github.com/taoq-ai"
   },
-  "homepage": "https://github.com/taoq-ai/wuwei",
+  "homepage": "https://taoq-ai.github.io/wuwei/",
   "repository": "https://github.com/taoq-ai/wuwei",
   "license": "Apache-2.0",
   "keywords": [
+    "autonomy",
     "agents",
-    "delivery",
     "audit",
-    "hooks",
-    "planning",
+    "governance",
     "code-review",
-    "dora"
+    "quality-gates",
+    "planning",
+    "wsjf",
+    "dora",
+    "hooks",
+    "spec-driven",
+    "engineering-process"
   ],
   "icon": "./.claude-plugin/icon.png"
 }

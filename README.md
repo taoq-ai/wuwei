@@ -1,71 +1,93 @@
+<p align="center"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
+    <img src="docs/site/assets/hero-light.svg" alt="Plan passes fill a ranked queue against your goals, an agent team works three parallel lanes, the gates review each item at its head, the shepherd follows the pull requests, and each merges when its evidence has no gaps. Only a one-way question reaches you." width="100%">
+</picture></p>
+
 <h1 align="center">WUWEI 无为</h1>
 
-<p align="center"><strong>A process auditor for agent teams.</strong></p>
+<p align="center"><strong>Responsible autonomy for agent teams.</strong></p>
 
-<p align="center">无为 (wuwei, said woo-way) means "effortless action": work gets done without forcing it.</p>
+<p align="center">Your agents plan, build, review and ship. WUWEI audits the evidence, holds the few
+doors that do not reopen, and asks you only what is yours.</p>
 
-## What WUWEI is
+<p align="center">
+<a href="https://github.com/taoq-ai/wuwei/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/taoq-ai/wuwei/actions/workflows/tests.yml/badge.svg"></a>
+<a href="https://github.com/taoq-ai/wuwei/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/taoq-ai/wuwei"></a>
+<a href="LICENSE"><img alt="Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
+<img alt="Stdlib Python" src="https://img.shields.io/badge/runtime-stdlib%20Python%203.11%2B-informational">
+</p>
 
-WUWEI is a Claude Code plugin. A chartered team of agents (planner, lead, builder, four
-sentinels, shepherd, steward) works your plan across your repositories. WUWEI teaches the way at
-the moment it matters, reads the evidence the work leaves behind, and holds the few doors that do
-not reopen. It never tells the model which command to run, never wraps git or gh, and never stops
-the work to prevent bad behaviour: the work goes on, and the report shows everything it did.
+<p align="center"><a href="https://taoq-ai.github.io/wuwei/">Documentation</a> · <a href="https://taoq-ai.github.io/wuwei/concepts/">Concepts</a> · <a href="docs/design.md">Design</a></p>
 
-## How a day runs
+无为 (wuwei, said woo-way) means "effortless action": work gets done without forcing it.
 
-- `/wuwei-plan` adds, drops or re-ranks items (WSJF or RICE) against your goals. Run it as often
-  as the day needs: in the morning, when the queue runs dry, when you add or change work.
-- Builders work items test first in parallel; the sentinels review each at its head; the
-  shepherd takes PRs to merge.
-- `/wuwei-close` checkpoints the day with the report and the steward's retro. Planning again
-  reopens it.
+## Why WUWEI
 
-You are asked only for what is yours: goals, work outside them, one-way doors, trust-boundary
-questions, owner reviews and infrastructure. Every other question goes back to the model, which
-records its assumption and carries on.
+Agents are fast and tireless, and they take the shortest path. Left alone they skip the test,
+merge the unreviewed change and ask you a dozen questions you should never have to answer.
+Bolted-on process makes it worse: agents route around rules they cannot see the point of.
 
-## Done means evidence
+WUWEI takes the other road. It never tells the model which command to run. It reads what the
+work produced and says what is missing, it teaches the standard at the moment it matters, and it
+holds a short, closed list of doors that do not reopen. Everything else flows, and everything is
+on the record.
 
-`bin/wuwei status` lists what each open item still lacks; `bin/wuwei evidence owner/repo#n` does
-it for one PR. A PR is ready when it names its plan item (`WUWEI-Item: <id>`), carries a test, has
-the gates its tier needs passing at its head, green CI, every thread answered, a reviewer, and
-your review on `owner_paths`.
+- **Evidence, not ceremony.** A pull request is done when its evidence is: a linked plan item, a
+  test, independent reviews at the head it merges, green CI, answered threads, a way to undo it.
+- **An auditor with narrow police powers.** It refuses only what cannot be taken back: a merge
+  with gaps, a force push, a protection bypass, a secret leaving the machine.
+- **You decide what is yours.** One-way doors, scope and goals, trust boundaries. Every other
+  question goes back to the model, which records its assumption and carries on.
+- **It learns.** Each checkpoint's retro turns escaped defects into standards, retires rules that
+  never catch anything, and proposes memory and skills for your repositories.
 
-## The doors
+## A day with WUWEI
 
-WUWEI refuses a merge with gaps, force pushes, pushes to or deletion of the default branch, admin
-bypasses and protection writes, secrets or the workspace canary in an outward call, edits to its
-ledger, and questions to you that the process answers. Infrastructure commands ask you through
-Claude Code's own prompt. Tool access is Claude Code's permission rules: allow a Slack or Linear
-tool there, as you always would.
+1. `/wuwei-plan` ranks work against your goals (WSJF or RICE). Plan again whenever the day
+   changes: the queue runs dry, you add something, priorities shift.
+2. Builders work items test first, in parallel lanes. Sentinels (architecture, quality, security,
+   goal) review each one independently at its head. The shepherd takes PRs to merge.
+3. WUWEI watches through the harness's hooks: it teaches before a PR opens, says what a new PR
+   still lacks, refuses a merge with gaps, and reminds the team once when it tries to stop with
+   work it can still close.
+4. `/wuwei-close` checkpoints the day: the report, the steward's retro, a short summary sent where
+   you read it. Planning again reopens the day.
+
+## Install
+
+You need Claude Code, Python 3.11 or newer, Git and `gh`. Add the plugin, then from the project
+directory that owns the workspace:
+
+```text
+/plugin marketplace add taoq-ai/wuwei
+/plugin install wuwei@wuwei
+```
+
+```sh
+bin/wuwei init      # .wuwei/ and the harness permission rules
+bin/wuwei doctor    # install, workspace, and how strongly each door holds per repository
+```
+
+Open Claude Code there and run `/wuwei-plan`.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `init` | Create `.wuwei/` and merge WUWEI's rules into `.claude/settings.json` |
+| `status` | The board: what each open item still lacks |
+| `evidence` | The gaps of one PR; `--record` saves it as a replay case |
 | `plan` | `show`, `add`, `park`, `drop`, `done`, `pass` |
-| `status` | The board: what each open item lacks |
-| `evidence` | The gaps of one PR |
 | `report` | The day report; `--dora` for the DORA keys |
 | `close` | Checkpoint the day |
-| `config` | Show, or set one of five keys |
-| `doctor` | Install, workspace and the strength of each door per repository |
-| `verify` | Check the ledger's hash chain |
-| `agents` | Check or build the role agents from the charters |
+| `andon` | Pull or clear the cord on one repository |
+| `init`, `doctor`, `config`, `verify`, `agents` | Set up, check, five config keys, the ledger chain, the role agents |
 
-## Install
+## Learn more
 
-You need Claude Code, Python 3.11 or newer, Git and `gh`. Register the plugin, then from the
-project directory that owns the workspace:
-
-```sh
-bin/wuwei init
-bin/wuwei doctor
-```
-
-Then open Claude Code there and run `/wuwei-plan`.
+- [Concepts](https://taoq-ai.github.io/wuwei/concepts/): every idea in WUWEI and why it is there.
+- [Design](docs/design.md) and [constitution](.specify/memory/constitution.md).
+- [Security](SECURITY.md).
 
 ## Development
 
@@ -73,4 +95,4 @@ Then open Claude Code there and run `/wuwei-plan`.
 python3 -m pytest -q
 ```
 
-See the [design](docs/design.md) and the [constitution](.specify/memory/constitution.md).
+WUWEI audits its own changes: every PR names `WUWEI-Item: <issue>` and passes its gates.

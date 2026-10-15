@@ -1,6 +1,6 @@
 [project]
 name = "wuwei"
-description = "A process auditor for agent teams: it teaches the way, reads the evidence, and holds the few doors that do not reopen."
+description = "Responsible autonomy for agent teams: a process auditor that reads the evidence and holds the few doors that do not reopen."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"

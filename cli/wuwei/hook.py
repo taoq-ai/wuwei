@@ -7,24 +7,23 @@ from pathlib import Path
 import re
 import sys
 
-from wuwei import board, evidence, guards, verdict, ws
+from wuwei import board, evidence, guards, plan, verdict, ws
 
 WAY = '''WUWEI is this workspace's process auditor. It does not tell you which command to run; it reads
-what you produced and tells you what is still missing.
-- Work the plan (.wuwei/plan.json, highest score first). The planner, lead, builder, sentinels,
-  shepherd and steward follow their charters. Decide alone what the charters, standards and goals
-  answer; record two-way choices under Assumptions. Ask the owner only for a one-way door, a change
-  of scope or goals, a trust-boundary question or an owner review, with your recommendation, and
-  start the question with its class: one-way:, scope:, goal:, trust:, infra: or owner review:.
-  The plan is your mandate: never ask whether to continue planned work.
-- Done means evidence: a PR naming its item (WUWEI-Item: <id>), a test in the diff, the gates the
-  tier needs passing at the head (light: quality; standard: arch, quality, security; full: + goal),
-  green CI, every review thread answered, a reviewer requested, owner review on owner_paths.
-- Reviewers write verdict files under .wuwei/verdicts/<item>/ and end with "Verdict file: <path>".
-- WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin bypasses and
-  protection writes, secrets in outward calls, and edits to its ledger. Infrastructure asks the owner.
-- Plan again whenever the day changes: /wuwei-plan adds, drops or re-ranks. /wuwei-close checkpoints
-  the day with the report and retro; planning again reopens it.'''
+what you produced and tells you what is still missing (wuwei status, wuwei evidence owner/repo#n).
+- Work the plan (.wuwei/plan.json, highest score first) with the team: lead, builders, sentinels,
+  shepherd, steward, each under its charter. Plan again whenever the day changes (/wuwei-plan);
+  /wuwei-close checkpoints it, and the next pass reopens it.
+- Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
+  to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:
+  one-way:, scope:, goal:, trust:, infra:, owner review:, exception:. Never ask whether to continue.
+- Done means evidence: WUWEI-Item: <id>, the repository's PR template sections, a test, under about
+  400 lines or a Size: line, Rollback: at full or on owner_paths, the spec engine's artifacts, the
+  gates the tier needs at the head, green CI, threads answered, a reviewer, owner review on
+  owner_paths, not stale.
+- WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
+  secrets in outward calls, ledger edits, forged hook calls, questions the process answers.
+- A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".'''
 
 
 def _hash(text):
@@ -50,6 +49,24 @@ def last_text(payload):
     except (OSError, TypeError, ValueError, AttributeError):
         pass
     return found
+
+
+def tokens(payload):
+    """Input plus output tokens the seat spent, summed from its transcript; None when unreadable."""
+    total = None
+    try:
+        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
+            usage = json.loads(line).get('message', {}).get('usage') or {}
+            if usage:
+                total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
+    except (OSError, TypeError, ValueError, AttributeError):
+        pass
+    return total
+
+
+def _confidence(text):
+    match = re.search(r'^Confidence:\s*(low|medium|high)\b', text or '', re.M | re.I)
+    return match[1].lower() if match else None
 
 
 def context(event, text):
@@ -96,7 +113,8 @@ def stop(root, payload):
 
 def subagent_stop(root, payload):
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
-    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'),
+    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens(payload),
+                                     'confidence': _confidence(last_text(payload)),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
         return None
@@ -131,6 +149,7 @@ def _verdict_problem(root, payload, role):
     ws.record(root, 'attest', {'path': str(path.relative_to(Path(root).resolve())), 'sha256': hashlib.sha256(body).hexdigest(),
                                'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}', 'verdict': parsed['verdict'],
+                               'confidence': parsed['confidence'],
                                'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path')})
     return None
@@ -161,14 +180,33 @@ def _answers(root, data, response):
     questions = [q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)]
     answers = response.get('answers', {}) if isinstance(response, dict) else {}
     ws.record(root, 'prompt', {'questions': questions, 'answers': answers if isinstance(answers, dict) else str(answers)[:500]})
+    notes = []
     for question in questions:
-        match = re.search(r'owner review: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40})', question)
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
+        yes = answer.strip().lower().startswith(('yes', 'approve', 'accept'))
+        match = re.search(r'owner review: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40})', question)
         if match and answer:
-            ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3],
-                                       'approved': answer.strip().lower().startswith(('yes', 'approve')),
+            ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3], 'approved': yes,
                                        'question': question, 'answer': answer})
-    return None
+        match = re.search(r'^exception: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40}): (.+?)(?:\.\s|\.?$)', question)
+        if match and answer:
+            ref = f'{match[1]}#{match[2]}'
+            ws.record(root, 'ruling', {'kind': 'exception', 'pr': ref, 'head': match[3], 'gap': match[4],
+                                       'approved': yes, 'question': question, 'answer': answer})
+            if yes:
+                item = plan.followup(root, f'Close the exception on {ref}: {match[4]}', match[1],
+                                     _goal(root, ref, match[1]), f'owner accepted it at {match[3]}')
+                notes.append(f'WUWEI: exception recorded; {item["id"]} in the plan closes it later.')
+        if question.lower().startswith('one-way:') and answer:
+            notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
+                         "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
+    return context('PostToolUse', '\n'.join(notes)) if notes else None
+
+
+def _goal(root, ref, repo):
+    item_ids = {row['data'].get('item') for row in ws.rows(root, 'attest') if row['data'].get('pr') == ref}
+    found = [i for i in plan.items(root) if i['id'] in item_ids] or [i for i in plan.items(root) if i.get('repo') == repo]
+    return found[0]['goal'] if found else 'unplanned'
 
 
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -182,7 +220,7 @@ def session_start(root, payload):
         if path.is_file() and path.read_text(encoding='utf-8').strip():
             parts.append(f'{name}:\n' + path.read_text(encoding='utf-8').strip()[:3000])
     try:
-        parts.append(board.text(board.rows(root)))
+        parts.append(board.text(board.rows(root), root))
     except Exception as exc:  # the board is orientation; a session never waits on it
         parts.append(f'Board unreadable: {exc}')
     return context('SessionStart', '\n\n'.join(parts))

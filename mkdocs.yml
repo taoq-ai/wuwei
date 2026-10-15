@@ -1,0 +1,70 @@
+site_name: WUWEI
+site_url: https://taoq-ai.github.io/wuwei/
+site_description: Responsible autonomy for agent teams. A process auditor that reads the evidence, holds the few doors that do not reopen, and asks you only what is yours.
+site_author: TaoQ AI Labs
+
+repo_name: taoq-ai/wuwei
+repo_url: https://github.com/taoq-ai/wuwei
+
+docs_dir: docs/site
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts:
+    - concepts/index.md
+    - Philosophy: concepts/philosophy.md
+    - The day: concepts/the-day.md
+    - The team and its charters: concepts/team.md
+    - Evidence: concepts/evidence.md
+    - The doors: concepts/doors.md
+    - Decisions: concepts/decisions.md
+    - Hooks, the sensei: concepts/hooks.md
+    - Harness permissions: concepts/permissions.md
+    - Learning: concepts/learning.md
+    - Report, telemetry and DORA: concepts/metrics.md
+    - Many repositories: concepts/many-repositories.md
+  - Reference: reference.md

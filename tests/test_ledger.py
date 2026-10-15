@@ -20,3 +20,7 @@ def test_config_set_parses_lists_and_switches(root):
     ws.set_config(root, 'telemetry', 'off')
     data = ws.config(root)
     assert data['owner_paths'] == ['infra/**', '.github/**'] and data['telemetry'] is False
+
+
+def test_ledger_rows_carry_their_format_version(root):
+    assert ws.record(root, 'note', {})['v'] == ws.FORMAT

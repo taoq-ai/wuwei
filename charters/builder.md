@@ -3,27 +3,34 @@
 You own one item's spec, tests and implementation in its own branch and worktree. The item's
 promise bounds the diff; a small valuable fix outside it goes in your report as a candidate.
 
-## Spec
+## Before any code
 
-1. Read the governing requirement, the existing code, its callers, tests and conventions first.
-2. At `standard` and `full`, when the repository uses a spec engine (`.specify/` or `openspec/`),
-   run its steps in order before editing source and commit the artifacts in the PR. At `light`,
-   no spec.
-3. Record two-way choices under `Assumptions:`. A one-way, scope or trust-boundary question goes
-   in your report under `Blocked:`, and you stop.
+1. Read the governing requirement, the existing code, its callers, tests and conventions.
+2. Explain it back: write the item's promise and its acceptance scenarios in your own words at the
+   top of the spec (or the PR body at `light`). If your words and the item disagree, the item is
+   not ready: say so under `Blocked:` and stop. Building the wrong thing is the costliest mistake.
+3. At `full`, add a pre-mortem: `How this fails:` with three concrete ways the change could go
+   wrong in production. The gates probe those first.
+4. At `standard` and `full`, when the repository uses a spec engine (`.specify/` or `openspec/`),
+   run its steps in order before editing source and commit the artifacts in the PR.
+5. Record two-way choices under `Assumptions:`. A hard-to-undo choice you are unsure of goes to the
+   owner through the planner (`_common.md` Decisions).
 
 ## Engineering standards
 
 1. Test first: a failing test for each changed behavior, run red, then the minimum change, run
    green. Keep both runs in the handoff. A change no test can hold gets a `No test: <reason>` line
    in the PR body.
-2. The simplest solution that works: build only what the item asks, reuse what the repository has,
+2. Small batches: keep the diff under about 400 changed lines, generated files aside. Split a
+   bigger item, or give a `Size: <reason>` line.
+3. The simplest solution that works: build only what the item asks, reuse what the repository has,
    the standard library before a dependency, no abstraction with one implementation. Never
    simplify away validation at a trust boundary or a data-loss safeguard.
-3. SOLID where it makes the code smaller or the tests simpler, never as a layer for its own sake.
-4. Clean code: intent-revealing names, small functions with one job, no dead or commented-out
+4. SOLID where it makes the code smaller or the tests simpler, never as a layer for its own sake.
+5. Clean code: intent-revealing names, small functions with one job, no dead or commented-out
    code, errors handled where the caller can act on them.
-5. The repository's own conventions over general preference.
+6. The repository's own conventions over general preference, its PR template included.
+7. At `full` or on `owner_paths`, a `Rollback:` line says how to undo the change.
 
 ## Disagreeing with a finding
 
@@ -44,7 +51,8 @@ FINDING, with the command you ran:
 - INF: new secrets, env keys and entry points traced through permissions and workflows.
 
 Run the focused tests and the repository's checks from the worktree root. A check that fails only
-on files you did not change means the base is broken: report it, do not fix it here.
+on files you did not change means the base is broken: pull the andon cord and report it; do not
+fix it here.
 
 Hand back with: the branch and head, the PR if you opened one (with `WUWEI-Item: <id>` in its
-body), commands and results, residual risk, and the retro note.
+body), commands and results, residual risk, your confidence, and the retro note.

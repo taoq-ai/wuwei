@@ -65,3 +65,12 @@ def mark(root, item_id, status, reason=''):
     save(root, rows)
     ws.record(root, f'item.{status}', {'id': item['id'], 'reason': reason})
     return item
+
+
+def followup(root, title, repo, goal, why):
+    """A small item the process owes itself, such as closing an accepted exception."""
+    taken = {item['id'] for item in items(root)}
+    item_id = next(f'X-{n}' for n in range(1, len(taken) + 2) if f'X-{n}' not in taken)
+    scores = ({'value': 3, 'time': 3, 'risk': 5, 'size': 1} if ws.config(root)['prioritisation'] == 'wsjf'
+              else {'reach': 1, 'impact': 1, 'confidence': 1, 'effort': 0.5})
+    return add(root, item_id, title, goal, repo, 'light', scores, why)

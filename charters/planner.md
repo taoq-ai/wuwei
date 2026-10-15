@@ -25,12 +25,22 @@ and keep the owner's attention for what only the owner decides.
 3. Two fix rounds without a pass is a design problem, not a third round: park the item with the
    reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
    the next pass.
-4. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
+4. Every seat brief carries the lines of `.wuwei/standards.md` for that role (the defects this
+   workspace has seen escape, the rules the retro promoted): seats do not see the session context.
+5. A repository under andon (`wuwei status` shows `ANDON`) gets no new builders until the cause is
+   fixed and the cord cleared (`wuwei andon <repo> --clear`); work elsewhere goes on.
+6. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
    command. Close those gaps with whatever tools fit.
-5. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
-6. Never resume or interrupt a seat to answer the owner; answer from the board.
+7. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+8. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner
 
 Only decisions in `_common.md` Decisions 2, each once with your recommendation, batched when
 there are several. Everything else you decide, record and show in the report.
+
+- An owner's `one-way:` answer becomes a short ADR (context, decision, consequences) in the
+  repository's `docs/adr/`, through the item's PR.
+- An owner may accept a gap as an exception (`exception: owner/repo#n at <sha7>: <gap>`). WUWEI
+  records it and adds an item that closes it later; exceptions expire into work, never into
+  silence.

@@ -1,7 +1,7 @@
 import json
 
 from conftest import HEAD, make_pr, verdict_text, write_plan
-from wuwei import board, evidence, hook, ws
+from wuwei import board, evidence, hook, plan, ws
 
 
 def plan_one(root, tier='light'):
@@ -165,3 +165,44 @@ def test_an_unreadable_code_host_is_a_waiting_gap_not_a_crash(root, monkeypatch)
     rows = board.compute(root)
     assert rows[0]['gaps'][0]['text'] == 'acme/app unreadable: HTTP 403' and not rows[0]['gaps'][0]['actionable']
     assert 'unmeasured' in report.day(root)
+
+
+def answer(root, question, reply):
+    return hook.handle(root, 'PostToolUse', {
+        'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
+        'tool_input': {'questions': [{'question': question}]}, 'tool_response': {'answers': {question: reply}}})
+
+
+def test_a_one_way_answer_asks_for_an_adr(root):
+    out = answer(root, 'one-way: drop the legacy sessions table in acme/app?', 'Yes, drop it')
+    assert 'ADR' in out['hookSpecificOutput']['additionalContext']
+
+
+def test_an_accepted_exception_becomes_a_follow_up_item(root):
+    plan_one(root)
+    answer(root, 'exception: acme/app#42 at aaaaaaa: no test in the diff. Merge without a test?', 'Yes')
+    ruling = ws.rows(root, 'ruling')[0]['data']
+    assert (ruling['kind'], ruling['gap'], ruling['approved']) == ('exception', 'no test in the diff', True)
+    follow = [i for i in plan.items(root) if i['id'].startswith('X-')]
+    assert follow and 'acme/app#42' in follow[0]['title'] and follow[0]['goal'] == 'G-1'
+
+
+def test_andon_holds_new_builds_in_one_repo(root, fake):
+    plan_one(root)
+    board.andon(root, 'acme/app', 'base branch red: test_login')
+    gaps = board.compute(root)[0]['gaps']
+    assert gaps[0]['text'].startswith('andon: base branch red') and not gaps[0]['actionable']
+    assert 'ANDON acme/app' in board.text(board.compute(root), root)
+    board.andon(root, 'acme/app', clear=True)
+    assert board.compute(root)[0]['gaps'][0]['text'] == 'no pull request yet'
+
+
+def test_seat_tokens_are_counted_from_the_transcript(root, tmp_path):
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text('\n'.join(json.dumps({'type': 'assistant', 'message': {
+        'content': [{'type': 'text', 'text': 'done'}], 'usage': {'input_tokens': n, 'output_tokens': 10}}})
+        for n in (100, 200)))
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                       'agent_transcript_path': str(transcript), 'last_assistant_message': 'ok',
+                                       'cwd': str(root)})
+    assert ws.rows(root, 'seat.stopped')[0]['data']['tokens'] == 320

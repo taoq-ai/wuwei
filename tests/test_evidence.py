@@ -86,7 +86,7 @@ def test_ci_threads_and_reviews(root, fake):
 
 def test_waiting_states_are_not_actionable(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
-    pr = make_pr(files=('infra/main.tf', 'tests/test_x.py'))
+    pr = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
     pr['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
     fake.prs['42'] = pr
     attest(root, 'quality')
@@ -98,7 +98,8 @@ def test_waiting_states_are_not_actionable(root, fake):
 
 def test_owner_approval_closes_owner_paths(root, fake):
     write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
-    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), reviews=(('owner', 'APPROVED'),))
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), reviews=(('owner', 'APPROVED'),),
+                             body='WUWEI-Item: I-1\nRollback: revert the PR')
     attest(root, 'quality')
     assert evidence.gaps(root, 'acme/app', 42) == []
 
@@ -122,3 +123,77 @@ def test_docs_only_change_needs_no_test(root, fake):
 def test_an_unreadable_pr_is_a_gap_never_clean(root, fake):
     gaps = evidence.gaps(root, 'acme/app', 7)
     assert texts(gaps) == ['evidence unreadable: no pull requests found']
+
+
+def light(root, tier='light'):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': tier}])
+
+
+def test_a_big_batch_asks_to_split_or_say_why(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(lines=300)
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['600 changed lines: split it, or add a Size: <reason> line']
+    fake.prs['42'] = make_pr(lines=300, body='WUWEI-Item: I-1\nSize: one generated migration')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_lockfiles_and_generated_files_do_not_count_toward_size(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('uv.lock', 'src/app.py', 'tests/test_app.py'), lines=180)
+    attest(root, 'quality')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_full_tier_and_owner_paths_need_a_rollback_line(root, fake):
+    light(root, 'full')
+    fake.prs['42'] = make_pr()
+    for gate in ('arch', 'quality', 'security', 'goal'):
+        attest(root, gate)
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['no Rollback: line (how to undo this change)']
+    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1\nRollback: revert the PR; the column is additive')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_a_stale_pr_is_named(root, fake):
+    import datetime
+    light(root)
+    old = (ws.now() - datetime.timedelta(days=5)).isoformat(timespec='seconds')
+    fake.prs['42'] = make_pr(created=old)
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['open 5 days: finish, rebase or close']
+
+
+def test_the_repository_pr_template_is_honoured(root, fake):
+    light(root)
+    fake.files['.github/pull_request_template.md'] = '## Summary\n\n<!-- what -->\n\n## Testing\n'
+    fake.prs['42'] = make_pr()
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        "PR body misses the repository template's sections: Summary, Testing"]
+    fake.prs['42'] = make_pr(body='WUWEI-Item: I-1\n## Summary\nx\n## Testing\ny')
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_an_owner_exception_covers_one_gap_at_one_head(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    attest(root, 'quality')
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': 'aaaaaaa',
+                               'gap': 'no test in the diff', 'approved': True})
+    assert evidence.gaps(root, 'acme/app', 42) == []
+    fake.prs['42'] = make_pr(files=('src/app.py',), head=OLD)
+    attest(root, 'quality', head=OLD)
+    assert 'no test in the diff' in texts(evidence.gaps(root, 'acme/app', 42))
+
+
+def test_an_error_budget_overrun_raises_the_tier(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    for n, title in enumerate(['feat: a', 'feat: b', 'Revert "feat: a"', 'feat: c', 'Revert "feat: c"'], 1):
+        merged = make_pr(number=n, state='MERGED')
+        merged.update(title=title, mergedAt=ws.now().isoformat(timespec='seconds'))
+        fake.prs[str(n)] = merged
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'gates missing at head aaaaaaa: arch, security (tier raised to standard: change failure rate 40% over 28 days)']

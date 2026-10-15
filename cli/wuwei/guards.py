@@ -23,7 +23,7 @@ SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger\.jsonl$')
 GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/pulls/\d+/merge|/collaborators'
                          r'|/hooks|/keys|/actions/secrets|/environments')
-OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:')
+OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)

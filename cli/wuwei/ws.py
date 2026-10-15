@@ -10,6 +10,7 @@ import tomllib
 DIR = '.wuwei'
 DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True}
 GENESIS = '0' * 64
+FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
 
 
 def find(start=None):
@@ -70,7 +71,7 @@ def set_config(root, key, value):
 
 
 def _digest(row):
-    body = {key: row[key] for key in ('ts', 'kind', 'data', 'prev')}
+    body = {key: value for key, value in row.items() if key != 'hash'}
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -89,7 +90,7 @@ def ledger(root):
 def record(root, kind, data):
     """Append one row; each row carries the hash of the one before it."""
     rows = ledger(root)
-    row = {'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
+    row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
            'prev': rows[-1]['hash'] if rows else GENESIS}
     row['hash'] = _digest(row)
     path = Path(root) / DIR / 'ledger.jsonl'

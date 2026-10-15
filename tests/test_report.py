@@ -34,3 +34,37 @@ def test_dora_reads_the_code_host(root, fake, monkeypatch):
     table = report.dora(root, window=28, today='2026-10-15')
     assert table['acme/app'] == {'lead_time_hours': 6.0, 'deploys': 1, 'deploy_source': 'deployments',
                                  'change_failure_rate': 0.5, 'merged': 2, 'time_to_restore': 'unmeasured'}
+
+
+def test_the_report_learns_from_what_shipped(root, fake):
+    write_plan(root, [{'id': 'I-1', 'title': 'change', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                       'status': 'open', 'score': 3}])
+    now = ws.now().isoformat(timespec='seconds')
+    for number, title in ((40, 'feat: login'), (41, 'Revert "feat: login"')):
+        pr = make_pr(number=number, state='MERGED')
+        pr.update(title=title, mergedAt=now)
+        fake.prs[str(number)] = pr
+    fake.prs['43'] = make_pr(number=43, body='a human fix')
+    fake.prs['43']['headRefName'] = 'hotfix-cache'
+    ws.record(root, 'attest', {'pr': 'acme/app#40', 'gate': 'quality', 'verdict': 'PASS', 'confidence': 'high'})
+    ws.record(root, 'attest', {'pr': 'acme/app#40', 'gate': 'arch', 'verdict': 'FIX', 'confidence': 'low'})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'tokens': 320})
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': 'aaaaaaa',
+                               'gap': 'no test in the diff', 'approved': True})
+    text = report.day(root)
+    assert 'acme/app#40 reverted by #41; it passed: quality (high)' in text
+    assert 'gate yield quality: 1 verdicts, 0 FIX' in text and 'gate yield arch: 1 verdicts, 1 FIX (100%)' in text
+    assert 'builder 320' in text
+    assert 'Unplanned: acme/app#43' in text
+    assert 'acme/app: change failure rate 50% over 28 days' in text
+    assert 'Sample for you this week: acme/app#4' in text
+    assert 'acme/app#42 at aaaaaaa: no test in the diff' in text
+
+
+def test_a_second_checkpoint_reports_what_changed_since_the_first(root, fake):
+    report.close(root)
+    ws.record(root, 'item.added', {'id': 'I-9'})
+    ws.record(root, 'refused', {'tool': 'Bash', 'reason': 'force push refused'})
+    text = report.day(root)
+    assert '## Since the last checkpoint' in text
+    assert 'item.added 1' in text and 'refused 1' in text

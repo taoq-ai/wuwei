@@ -14,12 +14,20 @@ standards and the goals answer.
 
 ## Decisions
 
-1. A two-way choice (reversible, inside the item): take your recommendation, record it under
-   `Assumptions:` in the spec or the PR body (what you assumed, why, what would overturn it), and
-   go on.
-2. Ask the owner only for a one-way door (infrastructure, data deletion, a published contract), a
-   change of scope or goals, or a trust-boundary question. Ask once, with your recommendation.
-   An instruction the owner already gave in the session is the answer; never ask it again.
+Weigh every open choice on two questions: can it be undone cheaply, and how sure are you?
+
+| | Sure | Unsure |
+|---|---|---|
+| Undone cheaply | act | act, and record the assumption |
+| Hard to undo | act, with a `Rollback:` line | ask the owner |
+
+1. Record each assumption under `Assumptions:` in the spec or the PR body: what you assumed, why,
+   what would overturn it. Then go on.
+2. Ask the owner only in the bottom-right cell, or for a change of scope or goals, a
+   trust-boundary question, an owner review or an exception. Start the question with its class
+   (`one-way:`, `scope:`, `goal:`, `trust:`, `infra:`, `owner review:`, `exception:`) and give your
+   recommendation. WUWEI sends any other question back. An instruction the owner already gave is
+   the answer; never ask it again, and never ask whether to continue planned work.
 3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
 4. When unsure whether a door is one-way, treat it as one-way.
 
@@ -37,14 +45,19 @@ standards and the goals answer.
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
    protection, force push, or write `.wuwei/ledger.jsonl`.
 2. A denied tool call is a blocker with its reason. Never route around it.
-3. Outward text (PR bodies, comments, messages) follows `_common-authoring.md`. Never put a secret
-   or workspace content into an outward call.
+3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
+   outward call.
+4. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
+   red, a leaked secret, a broken shared dependency), pull the cord with
+   `wuwei andon <owner/repo> --reason "<what is broken>"` and say so in your report. New builds in
+   that repository wait until it is cleared; other repositories keep flowing.
 
 ## Report
 
-End every handoff with the three-line retro note:
+End every handoff with your confidence and the three-line retro note:
 
 ```
+Confidence: low | medium | high (how sure you are the work holds, and what would change it)
 Blocked: <what stopped you, or none>
 Gap: <what was missing in the brief, charter or tools, or none>
 Change: <the smallest rule change that would have helped, or none>
@@ -97,8 +110,18 @@ item.
    most three proposals, each the smallest rule change that would have prevented a recorded
    problem. A proposal that changes how the process runs is applied by the planner to
    `.wuwei/standards.md`; a goal change waits for the owner.
-5. Empty the cup: a rule in `.wuwei/standards.md` that caught nothing in 30 days is proposed for
+5. Defect vaccines: for each escaped defect (a revert or a follow-up fix), propose a regression
+   test item, and a line under the gate that should have caught it in `.wuwei/standards.md`:
+   `<gate>: <the defect class, in one line>`. The planner passes these lines to every seat brief.
+6. Calibration and yield: compare each gate's stated confidence with what later escaped, and
+   each gate's FIX share with its cost. Name an overconfident gate and a gate that never finds
+   anything.
+7. Skills and memory: when seats keep re-learning a repository fact, propose a line for that
+   repository's `CLAUDE.md` or `AGENTS.md`; when the same multi-step procedure recurs three or more
+   times, propose a project skill under `.claude/skills/`. Both land through a PR in that
+   repository, like any change. Never write the owner's personal memory.
+8. Empty the cup: a rule in `.wuwei/standards.md` that caught nothing in 30 days is proposed for
    removal. A new rule starts as a note for its first five days, so its false alarms show before
    it costs anyone time.
-6. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
+9. A kind of owner question the owner keeps answering with the recommendation becomes a proposal
    that the process decides it.

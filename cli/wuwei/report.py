@@ -5,7 +5,9 @@ import datetime
 import statistics
 from pathlib import Path
 
-from wuwei import board, gh, plan, ws
+import hashlib
+
+from wuwei import board, evidence, gh, plan, ws
 
 
 def _repos(root):
@@ -25,7 +27,8 @@ def day(root, date=None):
     out += ['## Plan', f'Plan passes: {len(passes)}. Checkpoints: {len(closes)}. '
             f'Done today: {len(done)}. Parked today: {len(parked)}.']
     out += [f'- parked {r["data"]["id"]}: {r["data"].get("reason", "")}' for r in parked]
-    out += ['', '## Board', board.text(board.compute(root)), '', '## Merges']
+    out += since_checkpoint(root, date)
+    out += ['', '## Board', board.text(board.compute(root), root), '', '## Merges']
     checked = {r['data'].get('pr') for r in ws.rows(root, 'merge.checked')}
     for repo in _repos(root):
         try:
@@ -57,9 +60,65 @@ def day(root, date=None):
             f'{sum(n for k, n in tools.items() if str(k).startswith("mcp__"))}.',
             'Top tools: ' + (', '.join(f'{k} {v}' for k, v in tools.most_common(8)) or 'none') + '.',
             f'Hook errors: {len(rows("hook.error"))}.']
+    out += learning(root)
     broken = ws.verify(root)
     out += ['', 'Ledger: intact' if not broken else f'Ledger: broken at lines {broken}', '']
     return '\n'.join(out)
+
+
+def since_checkpoint(root, date):
+    """What changed since the day's last checkpoint, so a second close reads as a diff."""
+    rows = ws.ledger(root)
+    marks = [i for i, row in enumerate(rows) if row.get('kind') == 'day.closed' and row.get('ts', '').startswith(date)]
+    if not marks:
+        return []
+    after = Counter(row['kind'] for row in rows[marks[-1] + 1:])
+    return ['', f'## Since the last checkpoint ({rows[marks[-1]]["ts"][11:16]} UTC)',
+            ', '.join(f'{kind} {n}' for kind, n in sorted(after.items())) or 'nothing recorded']
+
+
+def learning(root):
+    """What the shipped work teaches: escapes traced to their gates, gate yield, cost, autonomy, a sample."""
+    out, attests = ['', '## Learning'], ws.rows(root, 'attest')
+    since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
+    week = (ws.now() - datetime.timedelta(days=7)).isoformat()
+    for repo in _repos(root):
+        try:
+            merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
+            unplanned = [pr for pr in gh.open_prs(repo) if evidence.item_for(root, pr) is None]
+        except gh.GhError as exc:
+            out.append(f'- {repo}: unmeasured ({exc})')
+            continue
+        titles = {pr['title']: pr for pr in merged}
+        for revert in (pr for pr in merged if pr['title'].startswith('Revert "')):
+            original = titles.get(revert['title'][8:].rstrip('"'))
+            if original:
+                ref = f'{repo}#{original["number"]}'
+                passed = [f'{r["data"]["gate"]} ({r["data"].get("confidence") or "?"})' for r in attests
+                          if r['data'].get('pr') == ref and r['data'].get('verdict') == 'PASS']
+                out.append(f'- escaped: {ref} reverted by #{revert["number"]}; it passed: {", ".join(passed) or "no gate"}')
+        spent = evidence.budget(root, repo)
+        if spent['cfr'] is not None:
+            out.append(f'- {repo}: change failure rate {spent["cfr"]:.0%} over 28 days ({spent["merged"]} merges; '
+                       + ('tiers raised one step)' if spent['raised'] else 'tiers as planned)'))
+        out += [f'- Unplanned: {repo}#{pr["number"]} {pr["title"]}' for pr in unplanned[:10]]
+        recent = sorted((pr for pr in merged if pr['mergedAt'] >= week), key=lambda pr: pr['number'])
+        if recent:
+            pick = int(hashlib.sha256(f'{ws.now().isocalendar()[:2]}{repo}'.encode()).hexdigest(), 16) % len(recent)
+            out.append(f'- Sample for you this week: {repo}#{recent[pick]["number"]} (read its evidence comment)')
+    for gate in sorted({r['data'].get('gate') for r in attests if r['data'].get('gate')}):
+        rows = [r for r in attests if r['data'].get('gate') == gate]
+        fixes = sum(1 for r in rows if r['data'].get('verdict') == 'FIX')
+        out.append(f'- gate yield {gate}: {len(rows)} verdicts, {fixes} FIX ({fixes / len(rows):.0%})')
+    spent = Counter()
+    for row in ws.rows(root, 'seat.stopped'):
+        spent[row['data'].get('role')] += row['data'].get('tokens') or 0
+    out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
+    for row in ws.rows(root, 'ruling'):
+        if row['data'].get('kind') == 'exception' and row['data'].get('approved'):
+            d = row['data']
+            out.append(f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}')
+    return out
 
 
 def close(root):

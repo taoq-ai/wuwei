@@ -10,8 +10,25 @@ def _list(root, name, read, ttl=TTL):
     return ws.cache_put(root, name, read()) if found is None else found
 
 
+def andons(root):
+    """Repositories where a seat pulled the cord: no new builds there until it is cleared."""
+    active = {}
+    for row in ws.ledger(root):
+        if row.get('kind') == 'andon.raised':
+            active[row['data']['repo']] = row['data'].get('reason', '')
+        elif row.get('kind') == 'andon.cleared':
+            active.pop(row['data']['repo'], None)
+    return active
+
+
+def andon(root, repo, reason='', clear=False):
+    ws.record(root, 'andon.cleared' if clear else 'andon.raised', {'repo': repo, 'reason': reason})
+    ws.cache_put(root, 'board', None)
+
+
 def compute(root):
     out = []
+    held = andons(root)
     open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open']
     for repo in sorted({item.get('repo') for item in open_items if item.get('repo')}):
         key = repo.replace('/', '__')
@@ -31,8 +48,9 @@ def compute(root):
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
             if not linked:
-                out.append({'item': item['id'], 'title': item['title'], 'pr': None,
-                            'gaps': [evidence.gap('no pull request yet')]})
+                first = (evidence.gap(f'andon: {held[repo]} (no new builds in {repo} until cleared)', actionable=False)
+                         if repo in held else evidence.gap('no pull request yet'))
+                out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
                             'gaps': evidence.gaps(root, repo, pr['number'])})
@@ -47,10 +65,12 @@ def rows(root):
     return ws.cache_put(root, 'board', compute(root)) if found is None else found
 
 
-def text(found):
+def text(found, root=None):
+    held = andons(root) if root is not None else {}
+    cords = [f'ANDON {repo}: {reason}' for repo, reason in held.items()]
     if not found:
-        return 'Board: nothing open in the plan.'
-    lines = ['Board (what each open item still lacks):']
+        return '\n'.join(cords + ['Board: nothing open in the plan.'])
+    lines = cords + ['Board (what each open item still lacks):']
     for row in found:
         head = f'{row["item"]} {row["title"]}' + (f' ({row["pr"]})' if row['pr'] else '')
         gaps = '; '.join(g['text'] + ('' if g['actionable'] else ' [waiting]') for g in row['gaps']) or 'ready to merge'

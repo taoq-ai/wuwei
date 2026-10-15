@@ -28,6 +28,7 @@ class FakeGh:
         self.threads = {}
         self.ancestors = set()
         self.paths = set()
+        self.files = {}
         self.default = 'main'
 
     def __call__(self, args, timeout=30):
@@ -46,7 +47,11 @@ class FakeGh:
             older, newer = args[1].split('/compare/')[1].split('...')
             return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged'}
         if args[0] == 'api' and '/contents/' in args[1]:
-            if args[1].split('/contents/')[1] in self.paths:
+            path = args[1].split('/contents/')[1]
+            if path in self.files:
+                import base64
+                return {'encoding': 'base64', 'content': base64.b64encode(self.files[path].encode()).decode()}
+            if path in self.paths:
                 return {}
             raise gh.GhError('Not Found')
         if args[:2] == ['api', 'user']:
@@ -64,19 +69,20 @@ def fake(monkeypatch):
 
 
 def make_pr(number=42, head=HEAD, files=('src/app.py', 'tests/test_app.py'), checks='SUCCESS',
-            body='WUWEI-Item: I-1', reviews=(), requests=('alice',), state='OPEN', author='wuwei-bot'):
+            body='WUWEI-Item: I-1', reviews=(), requests=('alice',), state='OPEN', author='wuwei-bot',
+            lines=20, created=None):
     return {'number': number, 'title': f'feat: change {number}', 'body': body, 'state': state, 'isDraft': False,
             'headRefName': f'i-1-change', 'headRefOid': head, 'baseRefName': 'main',
             'author': {'login': author}, 'url': f'https://github.com/acme/app/pull/{number}',
-            'mergedAt': None, 'createdAt': '2026-10-15T08:00:00Z',
-            'files': [{'path': path} for path in files],
+            'mergedAt': None, 'createdAt': created or ws.now().isoformat(timespec='seconds'),
+            'files': [{'path': path, 'additions': lines, 'deletions': 0} for path in files],
             'statusCheckRollup': [] if checks is None else [{'name': 'test', 'conclusion': checks, 'status': 'COMPLETED'}],
             'reviewRequests': [{'login': login} for login in requests],
             'reviews': [{'author': {'login': login}, 'state': state} for login, state in reviews]}
 
 
 def verdict_text(gate='quality', verdict='PASS', head=HEAD, item='I-1', pr='acme/app#42', findings='none'):
-    return (f'Verdict: {verdict}\nGate: {gate}\nItem: {item}\nPR: {pr}\nHead: {head}\n\n'
+    return (f'Verdict: {verdict}\nGate: {gate}\nItem: {item}\nPR: {pr}\nHead: {head}\nConfidence: high\n\n'
             f'## Findings\n{findings}\n')
 
 

@@ -89,3 +89,12 @@ def releases(repo):
 
 def rules(repo, branch):
     return run(['api', f'repos/{repo}/rules/branches/{branch}'])
+
+
+def file(repo, path):
+    """A file's text on the default branch, or GhError."""
+    import base64
+    data = run(['api', f'repos/{repo}/contents/{path}'])
+    if not isinstance(data, dict) or data.get('encoding') != 'base64':
+        raise GhError(f'{path} is not a file')
+    return base64.b64decode(data['content']).decode('utf-8', 'replace')

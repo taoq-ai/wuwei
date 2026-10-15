@@ -31,3 +31,9 @@ def test_findings_parse_with_their_block_flag():
 ])
 def test_lint_names_what_is_wrong(text, error):
     assert any(error in message for message in verdict.parse(text)['errors'])
+
+
+def test_confidence_is_part_of_the_verdict():
+    assert verdict.parse(verdict_text())['confidence'] == 'high'
+    text = verdict_text().replace('Confidence: high\n', '')
+    assert any('Confidence' in e for e in verdict.parse(text)['errors'])

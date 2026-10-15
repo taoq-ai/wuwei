@@ -73,3 +73,12 @@ def test_the_ziran_baseline_records_the_reviewed_grants():
     allow = json.loads((PLUGIN / 'agents' / 'allowlist.json').read_text())
     assert {name: sorted(agent['tools']) for name, agent in baseline['agents'].items()} == {
         name: sorted(tools) for name, tools in allow.items()}
+
+
+def test_the_hero_matches_its_generator():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('hero', PLUGIN / 'scripts' / 'build-hero.py')
+    hero = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hero)
+    for name, palette in hero.PAL.items():
+        assert (PLUGIN / 'docs' / 'site' / 'assets' / f'hero-{name}.svg').read_text() == hero.svg(palette), name

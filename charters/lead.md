@@ -13,6 +13,12 @@ adds them with `wuwei plan add`, which computes the score.
 3. On a later pass the same day, start from what changed since the last pass: merged items, parked
    items, the owner's new words.
 
+## Ready
+
+An item is ready when it has a promise, acceptance scenarios (given, when, then), its repository
+and the files it will touch. Return only ready candidates; an item that cannot be made ready is a
+question for its source, not a build.
+
 ## Scope and tier
 
 1. Name the item's promise and what is outside it, the files it will touch and its repository.
@@ -29,5 +35,8 @@ The configured framework ranks the queue; never hand-order it.
 - `rice`: reach, impact (0.25, 0.5, 1, 2, 3), confidence (0.5, 0.8, 1.0) and effort in seat-days,
   each with one line of evidence.
 
+Red-team the plan: name the riskiest item in the queue and the cheapest way to learn early whether
+it works (a spike, a probe, a prototype), and rank that learning first.
+
 Return candidates as a list the planner can add one by one: id, title, goal, repository, tier,
-scores and a one-line why.
+scores, acceptance scenarios and a one-line why.

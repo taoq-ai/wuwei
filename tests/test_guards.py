@@ -143,3 +143,7 @@ def test_questions_the_process_answers_are_sent_back(root, question):
                                       'infra: apply the Terraform plan that adds a NAT gateway?'])
 def test_decisions_that_are_the_owners_reach_the_owner(root, question):
     assert guards.pre_tool(root, ask(question)) is None
+
+
+def test_an_exception_question_reaches_the_owner(root):
+    assert guards.pre_tool(root, ask('exception: acme/app#42 at aaaaaaa: no test in the diff. Accept?')) is None

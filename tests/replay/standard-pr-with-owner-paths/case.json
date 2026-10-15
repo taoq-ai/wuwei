@@ -1,0 +1,132 @@
+{
+ "expected": [
+  {
+   "actionable": true,
+   "owner": false,
+   "text": "780 changed lines: split it, or add a Size: <reason> line"
+  },
+  {
+   "actionable": true,
+   "owner": false,
+   "text": "no Rollback: line (how to undo this change)"
+  },
+  {
+   "actionable": true,
+   "owner": false,
+   "text": "gates missing at head aaaaaaa: security"
+  },
+  {
+   "actionable": true,
+   "owner": false,
+   "text": "1 review thread unanswered"
+  },
+  {
+   "actionable": false,
+   "owner": true,
+   "text": "owner review needed (owner_paths: infra/redis.tf)"
+  }
+ ],
+ "gh": {
+  "[\"api\", \"graphql\", \"-f\", \"query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){\\npullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login}}}}}}}}\", \"-F\", \"owner=acme\", \"-F\", \"name=app\", \"-F\", \"number=57\"]": {
+   "out": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "alice"
+             }
+            }
+           ]
+          },
+          "isResolved": false
+         }
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "[\"api\", \"repos/acme/app/contents/.github/PULL_REQUEST_TEMPLATE.md\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"repos/acme/app/contents/.github/pull_request_template.md\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"repos/acme/app/contents/.specify\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"repos/acme/app/contents/PULL_REQUEST_TEMPLATE.md\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"repos/acme/app/contents/docs/pull_request_template.md\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"repos/acme/app/contents/openspec\"]": {
+   "error": "Not Found"
+  },
+  "[\"api\", \"user\", \"--jq\", \".login\"]": {
+   "out": "owner"
+  },
+  "[\"pr\", \"list\", \"--repo\", \"acme/app\", \"--state\", \"merged\", \"--limit\", \"200\", \"--search\", \"merged:>=2026-09-17\", \"--json\", \"number,title,createdAt,mergedAt,headRefName,body\"]": {
+   "out": []
+  },
+  "[\"pr\", \"view\", \"57\", \"--repo\", \"acme/app\", \"--json\", \"number,title,body,state,isDraft,headRefName,headRefOid,baseRefName,author,url,mergedAt,createdAt,files,statusCheckRollup,reviewRequests,reviews\"]": {
+   "out": {
+    "author": {
+     "login": "wuwei-bot"
+    },
+    "baseRefName": "main",
+    "body": "WUWEI-Item: I-7",
+    "createdAt": "2026-10-15T08:00:00+00:00",
+    "files": [
+     {
+      "additions": 260,
+      "deletions": 0,
+      "path": "src/limits.py"
+     },
+     {
+      "additions": 260,
+      "deletions": 0,
+      "path": "tests/test_limits.py"
+     },
+     {
+      "additions": 260,
+      "deletions": 0,
+      "path": "infra/redis.tf"
+     }
+    ],
+    "headRefName": "i-1-change",
+    "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "isDraft": false,
+    "mergedAt": null,
+    "number": 57,
+    "reviewRequests": [
+     {
+      "login": "alice"
+     }
+    ],
+    "reviews": [],
+    "state": "OPEN",
+    "statusCheckRollup": [
+     {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED"
+     }
+    ],
+    "title": "feat: change 57",
+    "url": "https://github.com/acme/app/pull/57"
+   }
+  }
+ },
+ "now": "2026-10-15T04:58:25.228700+00:00",
+ "number": 57,
+ "repo": "acme/app"
+}
