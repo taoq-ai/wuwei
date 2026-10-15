@@ -500,7 +500,7 @@ def test_a_merged_pr_names_what_it_lacked_as_post_merge(root, fake):
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['post-merge: gates missing at head aaaaaaa: quality']
 
 
-FOOTER = '<sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `G6-DETECTOR` · Detector context · Goal G-6 · Tier standard</sub>'
+FOOTER = '<sub>[WUWEI 1.1.0](https://taoq-ai.github.io/wuwei/) · Item `G6-DETECTOR` · Detector context · Goal G-6 · Tier standard</sub>'
 
 
 def test_the_wuwei_footer_links_a_pr_to_its_item(root, fake):

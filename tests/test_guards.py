@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from conftest import make_pr, verdict_text, write_plan
@@ -123,7 +126,8 @@ def test_ordinary_sends_pass_without_any_allow_list(root, repo):
 
 def test_pr_create_teaches_the_pr_standard_once_per_session(root, fake, repo):
     first = guards.pre_tool(root, bash('gh pr create --fill'))
-    assert first['decision'] == 'note' and '[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `<id>`' in first['reason']
+    version = json.loads((Path(guards.__file__).parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']
+    assert first['decision'] == 'note' and f'[WUWEI {version}](https://taoq-ai.github.io/wuwei/) · Item `<id>`' in first['reason']
     assert guards.pre_tool(root, bash('gh pr create --fill')) is None
 
 
@@ -276,7 +280,7 @@ def test_the_create_door_reads_the_item_from_the_footer(root, fake, repo):
     write_plan(root, [{'id': 'G6-DETECTOR', 'title': 'c', 'goal': 'G-6', 'repo': 'acme/app', 'tier': 'light'}])
     branch(fake, ('src/auth.py', 'tests/test_auth.py'))
     attest(root, 'quality', item='G6-DETECTOR')
-    body = '<sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item \\`G6-DETECTOR\\` · c · Goal G-6 · Tier light</sub>'
+    body = '<sub>[WUWEI 1.1.0](https://taoq-ai.github.io/wuwei/) · Item \\`G6-DETECTOR\\` · c · Goal G-6 · Tier light</sub>'
     assert guards.pre_tool(root, bash(f'gh pr create --title x --body "{body}"'))['decision'] == 'note'
 
 

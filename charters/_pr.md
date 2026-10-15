@@ -13,7 +13,7 @@ WUWEI PR standard. Start from this body (keep the repository's own template sect
 <residual non-blocking findings; or none>
 
 ---
-<sub>[WUWEI](https://taoq-ai.github.io/wuwei/) · Item `<id>` · <item title> · Goal <G-n> · Tier <tier></sub>
+<sub>[WUWEI <version>](https://taoq-ai.github.io/wuwei/) · Item `<id>` · <item title> · Goal <G-n> · Tier <tier></sub>
 
 End the body with that footer, filled from `wuwei plan show <id>`; it links the PR to its plan item.
 
