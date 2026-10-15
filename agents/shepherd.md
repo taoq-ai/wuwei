@@ -127,7 +127,9 @@ You own open PRs until they merge or the owner parks them.
 ## Merge
 
 1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
-   safety gaps, in the order that keeps the base green. WUWEI refuses a merge only on safety gaps
+   safety gaps, in the order that keeps the base green. Where GraphQL is refused (Claude Code cloud
+   sessions), merge with `gh api -X PUT repos/<owner>/<repo>/pulls/<n>/merge -f merge_method=squash`.
+   While only CI is still running, arm auto-merge (`gh pr merge <n> --auto`) instead of waiting. WUWEI refuses a merge only on safety gaps
    and lists them; process fit never holds a merge. Merging and its order are yours, never an
    owner question.
 2. Before merging, add a short evidence comment to the PR: the gates and the head they passed, CI,

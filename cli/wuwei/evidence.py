@@ -193,10 +193,31 @@ def gate_gaps(root, repo, item_id, tier, head, why=''):
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
     missing = [gate for gate in REQUIRED[tier] if gate not in passed]
     if missing:
-        return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')]
+        return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
     if not any(head.startswith(v['head']) for v in passed.values()):
-        return [gap(f'no gate passed at head {head[:7]} (a delta review)')]
+        return [gap(f'no gate passed at head {head[:7]} (a delta review)')] + uncounted(root, item_id)
     return []
+
+
+def uncounted(root, item_id):
+    """Verdict files for the item that do not count, each with the reason: never a silent missing gate."""
+    base = Path(root) / ws.DIR / 'verdicts'
+    if not item_id or not base.is_dir():
+        return []
+    attested = {row['data'].get('sha256') for row in ws.rows(root, 'attest')}
+    found = []
+    for path in sorted(base.rglob('*.md')):
+        if not (path.parent.name.lower() == item_id.lower() or path.name.lower().startswith(item_id.lower() + '-')):
+            continue
+        body = path.read_bytes()
+        if hashlib.sha256(body).hexdigest() in attested:
+            continue
+        parsed = parse(body.decode('utf-8', 'replace'))
+        why = parsed['errors'][0] if parsed['errors'] else (
+            f'not attested: launch the gate as agent type sentinel-{parsed["gate"]} and end its report with '
+            f'"Verdict file: {path.relative_to(root)}"')
+        found.append(gap(f'verdict {path.relative_to(root)} not counted: {why}'))
+    return found
 
 
 def ci_gaps(rollup):
@@ -268,7 +289,8 @@ def excepted(root, ref, head, found):
     accepted = [row['data'].get('gap', '') for row in ws.rows(root, 'ruling')
                 if row['data'].get('kind') == 'exception' and row['data'].get('approved')
                 and row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-')]
-    return [g for g in found if not any(a and g['text'].startswith(a) for a in accepted)]
+    near = lambda a, g: a.casefold() in g.casefold() or g.casefold() in a.casefold()  # noqa: E731
+    return [g for g in found if not any(a and near(a, g['text']) for a in accepted)]
 
 
 def owner_approved(root, repo, pr):

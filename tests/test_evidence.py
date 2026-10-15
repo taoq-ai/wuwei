@@ -44,7 +44,9 @@ def test_a_verdict_counts_only_when_attested(root, fake):
         attest(root, gate)
     path = root / ws.DIR / 'verdicts' / 'I-1' / f'quality-{HEAD[:7]}.md'
     path.write_text(path.read_text() + '\nedited\n')
-    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['gates missing at head aaaaaaa: quality']
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert found[0] == 'gates missing at head aaaaaaa: quality'
+    assert found[1].startswith(f'verdict .wuwei/verdicts/I-1/quality-{HEAD[:7]}.md not counted: ')
 
 
 def test_earlier_passes_hold_when_one_gate_passed_at_the_head(root, fake):
@@ -122,7 +124,7 @@ def test_docs_only_change_needs_no_test(root, fake):
 
 def test_an_unreadable_pr_is_a_gap_never_clean(root, fake):
     gaps = evidence.gaps(root, 'acme/app', 7)
-    assert texts(gaps) == ['evidence unreadable: no pull requests found']
+    assert texts(gaps) == ['evidence unreadable: HTTP 404: Not Found']
 
 
 def light(root, tier='light'):
@@ -311,3 +313,60 @@ def test_gaps_are_classed_as_process_or_safety(root, fake):
     assert kinds == {'not linked to a plan item (add WUWEI-Item: <id> to the PR body)': 'process',
                      'no test in the diff': 'safety', '500 changed lines: split it, or add a Size: <reason> line': 'process',
                      'gates missing at head aaaaaaa: arch, quality, security': 'safety', 'no reviewer requested': 'process'}
+
+
+def test_in_a_cloud_session_threads_come_from_the_ccr_route(root, fake):
+    light(root)
+    fake.graphql = False
+    fake.prs['42'] = make_pr()
+    fake.ccr['42'] = [{'is_resolved': False, 'comments': [{'user': {'login': 'alice'}}]},
+                      {'is_resolved': True, 'comments': [{'user': {'login': 'alice'}}]}]
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['1 review thread unanswered']
+
+
+def test_without_graphql_or_ccr_threads_fall_back_to_review_comments(root, fake, monkeypatch):
+    light(root)
+    fake.graphql = False
+    fake.prs['42'] = make_pr()
+    original = fake.__call__
+
+    def no_ccr(args, timeout=30):
+        if len(args) > 1 and args[1].endswith('/ccr/review_threads'):
+            raise evidence.gh.GhError('HTTP 404: Not Found')
+        return original(args, timeout)
+    monkeypatch.setattr(evidence.gh, 'run', no_ccr)
+    fake.comments['42'] = [{'id': 1, 'user': {'login': 'alice'}}, {'id': 2, 'in_reply_to_id': 1, 'user': {'login': 'wuwei-bot'}},
+                           {'id': 3, 'user': {'login': 'bob'}}]
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['1 review thread unanswered']
+
+
+def test_a_verdict_that_does_not_count_says_why_on_the_board(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    flat = root / ws.DIR / 'verdicts' / 'I-1-quality-aaaaaaa.md'
+    flat.parent.mkdir(parents=True, exist_ok=True)
+    flat.write_text(verdict_text().replace('Confidence: high', 'Confidence: sure'))
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert found[0].startswith('gates missing at head aaaaaaa: quality')
+    assert any(t.startswith('verdict .wuwei/verdicts/I-1-quality-aaaaaaa.md not counted: Confidence') for t in found)
+
+
+def test_a_wellformed_verdict_nobody_attested_says_how_to_fix_it(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr()
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    found = texts(evidence.gaps(root, 'acme/app', 42))
+    assert any('not counted: not attested' in t and 'sentinel-quality' in t for t in found)
+
+
+def test_one_exception_can_cover_several_prs_with_loose_gap_text(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    attest(root, 'quality')
+    ws.record(root, 'ruling', {'kind': 'exception', 'pr': 'acme/app#42', 'head': 'aaaaaaa', 'gap': 'No test in the diff',
+                               'approved': True})
+    assert evidence.gaps(root, 'acme/app', 42) == []

@@ -227,3 +227,30 @@ def test_process_gaps_never_hold_the_turn(root, fake):
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
     assert stop(root) is None
     assert 'changed lines' not in board.text(board.compute(root), root)
+
+
+def test_an_exception_over_two_prs_records_both(root):
+    plan_one(root)
+    answer(root, 'exception: acme/app#43 at e750645 and #44 at 237e183: gates missing at head e750645: security. '
+                 'Accept for the hotfix?', 'Accept')
+    rulings = [r['data'] for r in ws.rows(root, 'ruling')]
+    assert [(r['pr'], r['head']) for r in rulings] == [('acme/app#43', 'e750645'), ('acme/app#44', '237e183')]
+    assert all(r['gap'] == 'gates missing at head e750645: security' for r in rulings)
+
+
+def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
+    plan_one(root)
+    hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),
+                                     'tool_input': {'subagent_type': 'wuwei:builder', 'prompt': 'Build I-1'}})
+    assert stop(root) is None
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                       'last_assistant_message': 'done', 'cwd': str(root)})
+    assert stop(root, session='s2')['decision'] == 'block'
+
+
+def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
+    from conftest import write_plan as plan_rows
+    plan_rows(root, [{'id': f'I-{n}', 'title': 't', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light',
+                      'status': 'open', 'score': 1} for n in range(14)])
+    reason = stop(root)['reason']
+    assert reason.count('\n- ') == 10 and 'and 4 more' in reason

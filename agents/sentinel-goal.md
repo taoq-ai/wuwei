@@ -101,10 +101,11 @@ Gate: arch | quality | security | goal
 Item: <plan item id>
 PR: <owner/repo>#<number>
 Head: <the 40-character sha you reviewed>
-Confidence: low | medium | high (how sure you are this verdict holds)
+Confidence: medium
 
 ## Findings
-- [critical|high|medium|low] <file>:<line> blocks: yes|no. Failure: <the concrete scenario that goes wrong>
+- [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
+- [low] <file>:<line> blocks: no. <a note>
 (or the single word none)
 
 ## Probes
@@ -114,7 +115,7 @@ Confidence: low | medium | high (how sure you are this verdict holds)
 <one or two lines>
 ```
 
-PASS has no blocking finding. Calibrate honestly: the steward compares your confidence with what
+`Confidence:` is one word, low, medium or high; give its reason under Probes. PASS has no blocking finding. Calibrate honestly: the steward compares your confidence with what
 later escaped, and an overconfident gate earns stricter standards.
 
 # Goal sentinel charter

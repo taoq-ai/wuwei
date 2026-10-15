@@ -33,8 +33,10 @@ stays in the charters and the session start.
 ## The Stop reminder
 
 When the session tries to end its turn while there is work it can close now (a PR without a test,
-an item without a PR), the Stop hook blocks once with the list. It never loops: the same set of
-gaps does not block twice, waits (CI, reviewers, an andon) let the turn end, a closed day is quiet,
-and a turn already continued by a Stop hook always passes.
+an item without a PR), the Stop hook blocks once with the list, at most ten lines, and says how many
+waiting items it left out. It never loops and never nags: while any seat is still running it stays
+silent (the seat's completion wakes the planner anyway), the same set of gaps does not block twice,
+waits (CI, the owner, plan approval, an andon) never count, a closed day is quiet, and a turn already
+continued by a Stop hook always passes.
 
 **Why:** it turns "honour the promise" into a habit without turning it into a trap.

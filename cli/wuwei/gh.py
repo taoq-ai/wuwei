@@ -24,35 +24,93 @@ def run(args, timeout=30):
         return text
 
 
-PR_FIELDS = ('number,title,body,state,isDraft,headRefName,headRefOid,baseRefName,author,url,'
-             'mergedAt,createdAt,files,statusCheckRollup,reviewRequests,reviews')
-
 THREADS = '''query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){
 pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(last:1){nodes{author{login}}}}}}}}'''
 
 
+# REST only: GraphQL is refused in Claude Code cloud sessions.
+def pages(path, limit=30):
+    """Every item of a list endpoint, 100 per page (GitHub lists at most 3,000 PR files)."""
+    found, sep = [], '&' if '?' in path else '?'
+    for number in range(1, limit + 1):
+        batch = run(['api', f'{path}{sep}per_page=100&page={number}'])
+        found += batch
+        if len(batch) < 100:
+            break
+    return found
+
+def _upper(value):
+    return (value or '').upper()
+
+
+def _summary(pr):
+    return {'number': pr['number'], 'title': pr.get('title') or '', 'body': pr.get('body') or '',
+            'state': 'MERGED' if pr.get('merged_at') else _upper(pr.get('state')), 'isDraft': bool(pr.get('draft')),
+            'headRefName': pr['head']['ref'], 'headRefOid': pr['head']['sha'], 'baseRefName': pr['base']['ref'],
+            'author': {'login': (pr.get('user') or {}).get('login', '')}, 'url': pr.get('html_url', ''),
+            'mergedAt': pr.get('merged_at'), 'createdAt': pr.get('created_at')}
+
+
 def pr(repo, number):
-    return run(['pr', 'view', str(number), '--repo', repo, '--json', PR_FIELDS])
+    """One PR in the shape evidence reads: files, checks, review requests and reviews included."""
+    base = f'repos/{repo}/pulls/{number}'
+    data = run(['api', base])
+    head = data['head']['sha']
+    checks = run(['api', f'repos/{repo}/commits/{head}/check-runs?per_page=100']).get('check_runs', [])
+    statuses = run(['api', f'repos/{repo}/commits/{head}/status']).get('statuses', [])
+    return {**_summary(data),
+            'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0)}
+                      for f in pages(f'{base}/files')],
+            'statusCheckRollup': [{'name': c['name'], 'status': _upper(c.get('status')),
+                                   'conclusion': _upper(c.get('conclusion'))} for c in checks]
+            + [{'context': s['context'], 'state': _upper(s.get('state'))} for s in statuses],
+            'reviewRequests': [{'login': u['login']} for u in data.get('requested_reviewers') or ()]
+            + [{'login': t['slug']} for t in data.get('requested_teams') or ()],
+            'reviews': [{'author': {'login': (r.get('user') or {}).get('login', '')}, 'state': r.get('state')}
+                        for r in run(['api', f'{base}/reviews?per_page=100'])]}
 
 
 def open_prs(repo):
-    return run(['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '100', '--json',
-                'number,title,body,headRefName,author,url,isDraft'])
+    return [_summary(p) for p in run(['api', f'repos/{repo}/pulls?state=open&per_page=100'])]
 
 
 def merged_prs(repo, since):
-    return run(['pr', 'list', '--repo', repo, '--state', 'merged', '--limit', '200', '--search',
-                f'merged:>={since}', '--json', 'number,title,createdAt,mergedAt,headRefName,body'])
+    found = run(['api', f'repos/{repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100'])
+    return [_summary(p) for p in found if p.get('merged_at') and p['merged_at'] >= since]
+
+
+def _author(comment):
+    return ((comment or {}).get('user') or (comment or {}).get('author') or {}).get('login')
 
 
 def unanswered_threads(repo, number, author):
-    """Unresolved review threads whose last comment is not the PR author's."""
+    """Unresolved review threads whose last comment is not the PR author's: GraphQL locally, the
+    CCR route in a cloud session, else review comments grouped by reply (no resolved flag there)."""
     owner, name = repo.split('/', 1)
-    data = run(['api', 'graphql', '-f', f'query={THREADS}', '-F', f'owner={owner}', '-F', f'name={name}',
-                '-F', f'number={number}'])
-    nodes = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
-    return sum(1 for node in nodes if not node['isResolved']
-               and (node['comments']['nodes'] or [{}])[-1].get('author', {}).get('login') != author)
+    try:
+        data = run(['api', 'graphql', '-f', f'query={THREADS}', '-F', f'owner={owner}', '-F', f'name={name}',
+                    '-F', f'number={number}'])
+        nodes = data['data']['repository']['pullRequest']['reviewThreads']['nodes']
+        return sum(1 for node in nodes if not node['isResolved']
+                   and (node['comments']['nodes'] or [{}])[-1].get('author', {}).get('login') != author)
+    except GhError:
+        pass
+    try:
+        data = run(['api', f'repos/{repo}/pulls/{number}/ccr/review_threads'])
+        threads = data.get('threads', data.get('review_threads', [])) if isinstance(data, dict) else data
+        count = 0
+        for thread in threads:
+            resolved = thread.get('is_resolved', thread.get('isResolved', thread.get('resolved', False)))
+            comments = thread.get('comments') or []
+            comments = comments.get('nodes', []) if isinstance(comments, dict) else comments
+            count += bool(not resolved and comments and _author(comments[-1]) != author)
+        return count
+    except GhError:
+        pass
+    last = {}
+    for comment in run(['api', f'repos/{repo}/pulls/{number}/comments?per_page=100']):
+        last[comment.get('in_reply_to_id') or comment['id']] = _author(comment)
+    return sum(1 for login in last.values() if login != author)
 
 
 def ancestor(repo, older, newer):

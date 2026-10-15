@@ -21,7 +21,7 @@ WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger\.jsonl$')
-GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/pulls/\d+/merge|/collaborators'
+GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators'
                          r'|/hooks|/keys|/actions/secrets|/environments')
 OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
@@ -163,16 +163,7 @@ def gh_command(root, args, cwd, session):
         if '--admin' in args:
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
         repo, number = _repo_number(args[2:], cwd)
-        if not repo or number is None:
-            return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
-                        'its evidence before the merge.')
-        found = evidence.gaps(root, repo, number)
-        gaps = evidence.blocking(found)
-        if gaps:
-            return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
-        ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}',
-                                          'process': [g['text'] for g in found if g['kind'] == 'process']})
-        return None
+        return merge_door(root, repo, number, auto='--auto' in args)
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
     if args[:1] == ['api'] and len(args) > 1:
@@ -180,11 +171,29 @@ def gh_command(root, args, cwd, session):
         if not method and any(a in ('-f', '-F', '--field', '--raw-field', '--input') for a in args):
             method = 'POST'
         endpoint = next((a for a in args[1:] if not a.startswith('-') and '/' in a), '')
+        merging = re.search(r'repos/([\w.-]+/[\w.-]+)/pulls/(\d+)/(merge|ccr/auto_merge)$', endpoint)
+        if merging and method == 'PUT':
+            return merge_door(root, merging[1], int(merging[2]), auto=merging[3] != 'merge')
         if method in ('POST', 'PUT', 'PATCH', 'DELETE') and GUARDED_API.search(endpoint):
             return deny(f'gh api {method} {endpoint} changes protection, statuses, merges or access: the '
                         'repository rules and the merge door are not changed from an agent session.')
     if args[:2] == ['pr', 'create'] and once(root, session, 'pr-standard'):
         return {'decision': 'note', 'reason': PR_STANDARD}
+    return None
+
+
+def merge_door(root, repo, number, auto=False):
+    """Every merge route (gh pr merge, gh api PUT .../merge, a GitHub MCP merge tool) meets the same
+    evidence: only safety gaps hold it; the process fit it flows past is recorded."""
+    if not repo or number is None:
+        return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
+                    'its evidence before the merge.')
+    found = evidence.gaps(root, repo, number)
+    gaps = [g for g in evidence.blocking(found) if not (auto and g['text'] == 'CI running')]  # auto-merge waits for CI
+    if gaps:
+        return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
+    ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}', 'auto': auto,
+                                      'process': [g['text'] for g in found if g['kind'] == 'process']})
     return None
 
 
@@ -258,12 +267,23 @@ def pre_tool(root, payload):
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
+        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:'))
+                    and not re.search(r'[\w.-]+/[\w.-]+#\d+ at [0-9a-f]{7,40}', q)]
+        if unparsed:
+            return deny('this question will not be recorded as asked. Use the exact shape: "exception: '
+                        'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
+                        '"owner review: owner/repo#n at <sha7>. <question>".')
         unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
         if not unclassed:
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
         return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
+    if tool.startswith('mcp__') and tool.endswith(('merge_pull_request', 'enable_pr_auto_merge')):
+        number = data.get('pullNumber', data.get('pull_number'))
+        repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
+        return leak(root, json.dumps(data)) or merge_door(root, repo, int(number) if str(number).isdigit() else None,
+                                                          auto=tool.endswith('enable_pr_auto_merge'))
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':

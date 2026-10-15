@@ -73,7 +73,18 @@ def context(event, text):
     return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': text}}
 
 
+def running(root):
+    """Seats launched today that have not stopped."""
+    today = ws.today()
+    return len(ws.rows(root, 'seat.started', today)) - len(ws.rows(root, 'seat.stopped', today))
+
+
 def pre_tool(root, payload):
+    if payload.get('tool_name') in ('Agent', 'Task'):
+        data = payload.get('tool_input') or {}
+        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
+                                         'description': str(data.get('description', ''))[:120],
+                                         'session': payload.get('session_id')})
     found = guards.pre_tool(root, payload)
     if found is None:
         return None
@@ -94,10 +105,12 @@ def closed(root):
 
 
 def stop(root, payload):
-    if payload.get('stop_hook_active') or closed(root):
-        return None
+    if payload.get('stop_hook_active') or closed(root) or running(root) > 0:
+        return None  # a running seat's completion wakes the planner anyway
+    rows = board.rows(root)
     open_work = [f'{row["item"]}{" (" + row["pr"] + ")" if row["pr"] else ""}: {gap["text"]}'
-                 for row in board.rows(root) for gap in row['gaps'] if gap['actionable']]
+                 for row in rows for gap in row['gaps'] if gap['actionable']]
+    waiting = sum(1 for row in rows for gap in row['gaps'] if not gap['actionable'])
     if not open_work:
         return None
     name = f'stop-{payload.get("session_id", "")}'
@@ -106,8 +119,11 @@ def stop(root, payload):
         return None
     ws.cache_put(root, name, key)
     ws.record(root, 'stop.reminded', {'open': len(open_work), 'session': payload.get('session_id')})
-    return {'decision': 'block', 'reason': 'WUWEI: open work you can close now:\n' + '\n'.join(
-        '- ' + line for line in open_work) + '\nThe plan is your mandate: do not ask the owner whether to continue. Close these, or say in '
+    shown = '\n'.join('- ' + line for line in open_work[:10])
+    more = f'\nand {len(open_work) - 10} more (wuwei status lists all)' if len(open_work) > 10 else ''
+    held = f'\nLeft out: {waiting} waiting on CI, the owner, plan approval or an andon.' if waiting else ''
+    return {'decision': 'block', 'reason': 'WUWEI: open work you can close now:\n' + shown + more + held +
+            '\nThe plan is your mandate: do not ask the owner whether to continue. Close these, or say in '
         'one line why each waits, then stop.'}
 
 
@@ -188,15 +204,16 @@ def _answers(root, data, response):
         if match and answer:
             ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3], 'approved': yes,
                                        'question': question, 'answer': answer})
-        match = re.search(r'^exception: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40}): (.+?)(?:\.\s|\.?$)', question)
-        if match and answer:
-            ref = f'{match[1]}#{match[2]}'
-            ws.record(root, 'ruling', {'kind': 'exception', 'pr': ref, 'head': match[3], 'gap': match[4],
-                                       'approved': yes, 'question': question, 'answer': answer})
-            if yes:
-                item = plan.followup(root, f'Close the exception on {ref}: {match[4]}', match[1],
-                                     _goal(root, ref, match[1]), f'owner accepted it at {match[3]}')
-                notes.append(f'WUWEI: exception recorded; {item["id"]} in the plan closes it later.')
+        refs, gap_text = exception_refs(question)
+        if refs and gap_text and answer:
+            for repo, number, head in refs:
+                ref = f'{repo}#{number}'
+                ws.record(root, 'ruling', {'kind': 'exception', 'pr': ref, 'head': head, 'gap': gap_text,
+                                           'approved': yes, 'question': question, 'answer': answer})
+                if yes:
+                    item = plan.followup(root, f'Close the exception on {ref}: {gap_text}', repo,
+                                         _goal(root, ref, repo), f'owner accepted it at {head}')
+                    notes.append(f'WUWEI: exception recorded on {ref}; {item["id"]} in the plan closes it later.')
         if question.lower().startswith('plan:') and answer:
             if yes:
                 plan.approve(root, answer)
@@ -209,6 +226,23 @@ def _answers(root, data, response):
             notes.append('WUWEI: record this one-way decision as an ADR (context, decision, consequences) in the '
                          "repository's docs/adr/ through the item's PR, quoting the owner's answer.")
     return context('PostToolUse', '\n'.join(notes)) if notes else None
+
+
+REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#(\d+) at ([0-9a-f]{7,40})\b')
+
+
+def exception_refs(question):
+    """([(repo, number, head)], gap) from "exception: owner/repo#n at <sha> [and #m at <sha>]: <gap>. ..."."""
+    if not question.lower().startswith('exception:'):
+        return [], ''
+    refs, repo = [], ''
+    matches = list(REF.finditer(question))
+    for match in matches:
+        repo = match[1] or repo
+        if repo:
+            refs.append((repo, match[2], match[3]))
+    tail = question[matches[-1].end():].lstrip(' :') if matches else ''
+    return refs, re.split(r'\.\s|\?', tail, maxsplit=1)[0].strip().rstrip('.')
 
 
 def _goal(root, ref, repo):

@@ -185,3 +185,50 @@ def test_a_merge_with_a_safety_gap_names_only_what_blocks(root, fake, repo):
     fake.prs['42'] = make_pr(files=('src/app.py',), lines=500)
     reason = guards.pre_tool(root, bash('gh pr merge 42 --squash'))['reason']
     assert 'no test in the diff' in reason and 'changed lines' not in reason
+
+
+def test_a_rest_merge_goes_through_the_evidence_door(root, fake, repo):
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    decision = guards.pre_tool(root, bash('gh api -X PUT repos/acme/app/pulls/42/merge -f merge_method=squash'))
+    assert decision['decision'] == 'deny' and 'no test in the diff' in decision['reason']
+
+
+def test_an_mcp_merge_goes_through_the_evidence_door(root, fake, repo):
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    payload = {'tool_name': 'mcp__github__merge_pull_request', 'cwd': '/w', 'session_id': 's1',
+               'tool_input': {'owner': 'acme', 'repo': 'app', 'pullNumber': 42, 'merge_method': 'squash'}}
+    decision = guards.pre_tool(root, payload)
+    assert decision['decision'] == 'deny' and 'no test in the diff' in decision['reason']
+
+
+@pytest.mark.parametrize('payload', [
+    bash('gh pr merge 42 --squash --auto'),
+    bash('gh api -X PUT repos/acme/app/pulls/42/ccr/auto_merge'),
+    {'tool_name': 'mcp__github__enable_pr_auto_merge', 'cwd': '/w', 'session_id': 's1',
+     'tool_input': {'owner': 'acme', 'repo': 'app', 'pullNumber': 42}},
+])
+def test_arming_auto_merge_while_ci_runs_is_allowed(root, fake, repo, payload):
+    import hashlib
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    pr = make_pr()
+    pr['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    fake.prs['42'] = pr
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1', 'gate': 'quality',
+                               'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    assert guards.pre_tool(root, payload) is None
+    assert guards.pre_tool(root, bash('gh pr merge 42 --squash'))['decision'] == 'deny'
+
+
+def test_auto_merge_with_a_real_gap_is_still_refused(root, fake, repo):
+    fake.prs['42'] = make_pr(files=('src/app.py',))
+    assert guards.pre_tool(root, bash('gh pr merge 42 --auto'))['decision'] == 'deny'
+
+
+@pytest.mark.parametrize('question', ['exception: the hotfix PR has no security gate. Accept?',
+                                      'owner review: the infra change. Merge?'])
+def test_a_classed_question_that_will_not_parse_is_refused_with_the_template(root, question):
+    decision = guards.pre_tool(root, ask(question))
+    assert decision['decision'] == 'deny' and 'owner/repo#n at <sha7>' in decision['reason']

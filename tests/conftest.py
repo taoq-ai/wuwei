@@ -20,34 +20,71 @@ def root(tmp_path):
 
 
 class FakeGh:
-    """Answers gh calls from a table of PR data; records every call."""
+    """Answers gh calls the way GitHub's REST API would, from a table of PR data; records every call.
+    graphql = False plays a cloud session, where GraphQL is refused and the CCR thread route answers."""
 
     def __init__(self):
         self.calls = []
         self.prs = {}
         self.threads = {}
+        self.ccr = {}
+        self.comments = {}
+        self.graphql = True
         self.ancestors = set()
         self.paths = set()
         self.files = {}
         self.default = 'main'
 
+    @staticmethod
+    def rest(pr):
+        return {'number': pr['number'], 'title': pr['title'], 'body': pr['body'],
+                'state': 'open' if pr['state'] == 'OPEN' else 'closed', 'draft': pr['isDraft'],
+                'head': {'ref': pr['headRefName'], 'sha': pr['headRefOid']}, 'base': {'ref': pr['baseRefName']},
+                'user': {'login': pr['author']['login']}, 'html_url': pr['url'], 'merged_at': pr['mergedAt'],
+                'created_at': pr['createdAt'], 'requested_reviewers': pr['reviewRequests'], 'requested_teams': []}
+
+    def pr(self, number):
+        if number not in self.prs:
+            raise gh.GhError('HTTP 404: Not Found')
+        return self.prs[number]
+
     def __call__(self, args, timeout=30):
+        import re
         self.calls.append(args)
-        if args[:2] == ['pr', 'view']:
-            if args[2] not in self.prs:
-                raise gh.GhError('no pull requests found')
-            return self.prs[args[2]]
-        if args[:2] == ['pr', 'list']:
-            state = args[args.index('--state') + 1]
-            return [pr for pr in self.prs.values() if pr['state'].lower() == state]
         if args[:2] == ['api', 'graphql']:
+            if not self.graphql:
+                raise gh.GhError('HTTP 403: GitHub GraphQL is not available from Claude Code sessions')
             number = next(a.split('=', 1)[1] for a in args if a.startswith('number='))
             return {'data': {'repository': {'pullRequest': {'reviewThreads': {'nodes': self.threads.get(number, [])}}}}}
-        if args[0] == 'api' and '/compare/' in args[1]:
-            older, newer = args[1].split('/compare/')[1].split('...')
+        path, _, query = (args[1].partition('?') if len(args) > 1 else ('', '', ''))
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)', path)):
+            return self.rest(self.pr(m[1]))
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/files', path)):
+            return [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions']}
+                    for f in self.pr(m[1])['files']]
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/reviews', path)):
+            return [{'user': {'login': r['author']['login']}, 'state': r['state']} for r in self.pr(m[1])['reviews']]
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/ccr/review_threads', path)):
+            if self.graphql:
+                raise gh.GhError('HTTP 404: Not Found')
+            return self.ccr.get(m[1], [])
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/comments', path)):
+            return self.comments.get(m[1], [])
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/commits/(\w+)/(check-runs|status)', path)):
+            rollup = next((pr['statusCheckRollup'] for pr in self.prs.values() if pr['headRefOid'] == m[1]), [])
+            if m[2] == 'check-runs':
+                return {'check_runs': [{'name': c['name'], 'status': c['status'].lower(),
+                                        'conclusion': (c.get('conclusion') or '').lower() or None}
+                                       for c in rollup if 'name' in c]}
+            return {'statuses': [{'context': c['context'], 'state': c['state'].lower()} for c in rollup if 'context' in c]}
+        if args[0] == 'api' and re.fullmatch(r'repos/[^/]+/[^/]+/pulls', path):
+            wanted = 'open' if 'state=open' in query else 'closed'
+            return [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted]
+        if args[0] == 'api' and '/compare/' in path:
+            older, newer = path.split('/compare/')[1].split('...')
             return {'status': 'ahead' if (older, newer) in self.ancestors else 'diverged'}
-        if args[0] == 'api' and '/contents/' in args[1]:
-            path = args[1].split('/contents/')[1].split('?ref=')[0]
+        if args[0] == 'api' and '/contents/' in path:
+            path = path.split('/contents/')[1]
             children = sorted({key[len(path) + 1:].split('/')[0] for key in self.files if key.startswith(path + '/')})
             if children:
                 return [{'name': name, 'path': f'{path}/{name}',
@@ -60,7 +97,7 @@ class FakeGh:
             raise gh.GhError('Not Found')
         if args[:2] == ['auth', 'status']:
             return 'Logged in'
-        if args[0] == 'api' and '/rules/branches/' in args[1]:
+        if args[0] == 'api' and '/rules/branches/' in path:
             return []
         if args[:2] == ['api', 'user']:
             return 'owner'

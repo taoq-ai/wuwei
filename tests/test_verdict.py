@@ -37,3 +37,16 @@ def test_confidence_is_part_of_the_verdict():
     assert verdict.parse(verdict_text())['confidence'] == 'high'
     text = verdict_text().replace('Confidence: high\n', '')
     assert any('Confidence' in e for e in verdict.parse(text)['errors'])
+
+
+def test_the_charter_template_wording_parses():
+    text = verdict_text(findings='- [medium] src/app.py:12-14 blocks: no. Note: the poll interval above 60 stops backfill.')
+    text = text.replace('Confidence: high', 'Confidence: medium (both guards killed by mutants)')
+    parsed = verdict.parse(text)
+    assert parsed['errors'] == [] and parsed['confidence'] == 'medium'
+    assert parsed['findings'][0]['blocks'] is False
+
+
+def test_a_blocking_finding_still_needs_its_failure_scenario():
+    text = verdict_text(verdict='FIX', findings='- [HIGH] src/app.py:3 blocks: yes. Note: looks off')
+    assert any('Failure:' in e for e in verdict.parse(text)['errors'])
