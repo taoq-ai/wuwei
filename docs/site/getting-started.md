@@ -32,6 +32,9 @@ are. `doctor` checks the install and prints, per repository, how strongly each d
 
 Add more repositories by saying so, or with `bin/wuwei config repos owner/a,owner/b`.
 
+On Codex, install with `codex plugin marketplace add taoq-ai/wuwei` and `codex plugin add
+wuwei@wuwei`, then run `bin/wuwei init --codex`; see [running on Codex](concepts/codex.md).
+
 To run WUWEI in Claude Code on the web too, add `--cloud` and commit `.claude/`; see
 [cloud sessions](concepts/cloud.md).
 

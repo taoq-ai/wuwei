@@ -57,8 +57,8 @@ on the record.
 
 ## Install
 
-You need Claude Code, Python 3.11 or newer, Git and `gh`. Add the plugin, then from the project
-directory that owns the workspace:
+You need Claude Code or Codex, Python 3.11 or newer, Git and `gh`. Add the plugin, then from the
+project directory that owns the workspace:
 
 ```text
 /plugin marketplace add taoq-ai/wuwei
@@ -71,6 +71,10 @@ bin/wuwei doctor    # install, workspace, and how strongly each door holds per r
 ```
 
 Open Claude Code there and run `/wuwei-plan`.
+
+On Codex: `codex plugin marketplace add taoq-ai/wuwei`, `codex plugin add wuwei@wuwei`, then
+`bin/wuwei init --codex` (role agents and door rules in `.codex/`). See
+[running on Codex](https://taoq-ai.github.io/wuwei/concepts/codex/).
 
 ## Commands
 

@@ -149,13 +149,17 @@ host alone. Replay cases (`wuwei evidence --record`) hold every future version t
 Five keys: `repos`, `owner_paths`, `prioritisation`, `tracker`, `telemetry`. Runtime at most 3,000
 lines of stdlib Python (a test holds it). A change that breaks a budget deletes something first.
 
+Codex: the same plugin loads in Codex (it reads `.claude-plugin/`, `skills/` and
+`hooks/hooks.json`, with the same hook events and outputs). The hook entry maps Codex's tool shapes
+(`apply_patch`, `spawn_agent`, `request_user_input`) onto the ones the guards read; `wuwei init
+--codex` writes the role agents to `.codex/agents/` and the doors to `.codex/rules/wuwei.rules`.
+
 ## 12. Deferred
 
 - Walls: an agent identity on the code host, rulesets, CODEOWNERS, a required `wuwei/evidence`
   status posted by CI (#918).
 - Attestations cross-checked against the harness transcript (#962).
 - A shared standards repository for teams; auditing human PRs as first-class items.
-- The Codex runtime.
 
 ## 13. From 0.x
 

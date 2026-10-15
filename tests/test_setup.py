@@ -57,7 +57,7 @@ def test_hooks_json_routes_every_event_to_the_cli():
     hooks = json.loads((PLUGIN / 'hooks' / 'hooks.json').read_text())['hooks']
     assert set(hooks) == {'SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop'}
     for event, entries in hooks.items():
-        assert entries[0]['hooks'][0]['args'] == ['hook', event]
+        assert entries[0]['hooks'][0]['command'] == f'"${{CLAUDE_PLUGIN_ROOT}}"/bin/wuwei hook {event}'
 
 
 def test_agent_front_matter_has_no_bare_colon_in_a_value():

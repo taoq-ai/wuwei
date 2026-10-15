@@ -4,7 +4,7 @@
 
 | Command | What it does |
 | --- | --- |
-| `wuwei init [dir] [--cloud]` | Create `.wuwei/` and merge WUWEI's allow, deny and ask rules into `.claude/settings.json`; `--cloud` also copies the plugin into `.claude/` for cloud sessions |
+| `wuwei init [dir] [--cloud]` | Create `.wuwei/` and merge WUWEI's allow, deny and ask rules into `.claude/settings.json`; `--cloud` also copies the plugin into `.claude/` for cloud sessions; `--codex` writes the role agents and door rules into `.codex/` |
 | `wuwei sent owner/repo#n <link>` | Record a review request posted outside the session |
 | `wuwei sync` | Pull, then push `.wuwei/` on the `wuwei/state` branch |
 | `wuwei doctor` | Install, workspace, ledger, harness rules, and each door's strength per repository |

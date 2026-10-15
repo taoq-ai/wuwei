@@ -71,7 +71,22 @@ def vendor(directory):
     return claude
 
 
-def init(directory, cloud=False):
+def codex_files(directory):
+    """Codex loads agent roles and exec-policy rules from the project's .codex/, not from a plugin:
+    WUWEI's roles go there, and its doors as rules (forbidden, or prompt for infrastructure)."""
+    from wuwei import agents
+    base = Path(directory) / '.codex'
+    for role in agents.DESCRIPTIONS:
+        ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(PLUGIN, role))
+    pattern = lambda rule: json.dumps(rule[len('Bash('):-len(':*)')].split())  # noqa: E731
+    rules = [f'prefix_rule(pattern = {pattern(r)}, decision = "forbidden")' for r in DENY if r.startswith('Bash(')]
+    rules += [f'prefix_rule(pattern = {pattern(r)}, decision = "prompt")' for r in ASK]
+    ws.atomic_write(base / 'rules' / 'wuwei.rules',
+                    '# WUWEI doors for Codex, written by wuwei init --codex.\n' + '\n'.join(rules) + '\n')
+    return base
+
+
+def init(directory, cloud=False, codex=False):
     directory = Path(directory).resolve()
     base = directory / ws.DIR
     base.mkdir(exist_ok=True)
@@ -90,6 +105,8 @@ def init(directory, cloud=False):
     if not (base / 'canary').is_file():
         ws.atomic_write(base / 'canary', f'wuwei-canary-{os.urandom(12).hex()}\n')
     done.append(f'permissions: {merge_settings(directory)} (allow everyday work, deny the doors, ask for infrastructure)')
+    if codex:
+        done.append(f'codex: role agents and door rules in {codex_files(directory)} (trust the WUWEI hooks once in Codex)')
     if cloud:
         done.append(f'cloud: the plugin copied into {vendor(directory)}; commit .claude/ so cloud sessions load it')
     ws.record(directory, 'workspace.init', {'version': json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']})
@@ -118,6 +135,13 @@ def doctor(root):
              ('repos', 'ok' if config['repos'] else 'warn', ', '.join(config['repos']) or 'none configured'),
              ('ledger', 'ok' if not broken else 'fail', 'intact' if not broken else f'broken at {", ".join(broken)}'),
              ('canary', 'ok' if (Path(root) / ws.DIR / 'canary').is_file() else 'warn', '.wuwei/canary')]
+    roles = Path(root) / '.codex' / 'agents'
+    if roles.is_dir():
+        from wuwei import agents
+        stale = [r for r in agents.DESCRIPTIONS if not (roles / f'{r}.toml').is_file()
+                 or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(PLUGIN, r)]
+        rows.append(('codex roles', 'warn' if stale else 'ok',
+                     f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
     gone = ws.retired(root)
     if gone:
         rows.append(('retired config', 'warn', ', '.join(gone) + ': run wuwei init to upgrade the workspace'))

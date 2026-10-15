@@ -46,7 +46,7 @@ dozen seats and buys nothing; a defect is a bad input, not a missing test.
 
 ## Seats cannot ask you
 
-Seats have no AskUserQuestion tool. Only the planner reaches you, and only with an owner-class
+Seats have no question tool. Only the planner reaches you, and only with an owner-class
 question.
 
 **Why:** one voice, batched, with a recommendation, instead of every agent interrupting you.

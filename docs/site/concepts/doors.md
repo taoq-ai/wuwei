@@ -10,7 +10,7 @@ back. Everything else passes and is recorded. Adding a door is a design change, 
 | History | force pushes in every form; pushes to or deletion of the default branch | published history does not come back |
 | Secrets | a secret pattern or the workspace canary in an MCP call or a network command | a leaked secret cannot be unleaked |
 | The record | writes to the ledger (`.wuwei/ledger/`, `.wuwei/ledger.jsonl`); a hand-made `wuwei hook` call | an audit you can edit is not an audit |
-| Your attention | an AskUserQuestion without an owner class | a question the process answers costs you for nothing |
+| Your attention | an owner question (AskUserQuestion, or `request_user_input` in Codex) without an owner class | a question the process answers costs you for nothing |
 | Infrastructure | asked, not refused: terraform, tofu, pulumi, kubectl and helm writes go to the harness's own prompt | a one-way door you decide |
 
 A door that cannot read its evidence stays shut. Every other hook fails open: if a hook breaks,

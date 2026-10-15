@@ -69,4 +69,5 @@ nav:
     - Many repositories: concepts/many-repositories.md
     - Work in progress: concepts/watch.md
     - Cloud sessions: concepts/cloud.md
+    - Running on Codex: concepts/codex.md
   - Reference: reference.md

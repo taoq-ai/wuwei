@@ -13,7 +13,7 @@ A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, 
    start from what changed since the last one.
 3. If `goals.md` has no filled goal, propose up to three goal blocks from the repositories and the
    owner's words and ask once: `goal: approve these goals?` with Approve and Change.
-4. Launch the lead (agent type `lead`) in the background with the goals, the plan, the board and
+4. Launch the lead (agent type `lead`; `spawn_agent` with `agent_type` `lead` in Codex) in the background with the goals, the plan, the board and
    the owner's words. It returns ready candidates (promise, acceptance scenarios, repository,
    files, tier, scores with evidence) and names the riskiest item with the cheapest way to learn
    early whether it works.
@@ -27,9 +27,9 @@ A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, 
 6. Show the plan as a view: run `wuwei plan view`. With a tool that renders HTML (a visualize or
    show-widget tool), render the output of `wuwei plan view --html`; otherwise show the printed
    summary and the path of `.wuwei/plan.html`, which the owner can open in a browser.
-7. Ask once, with AskUserQuestion: `plan: approve this plan? <the line wuwei plan view prints>`, options
+7. Ask once, with the harness's question tool (AskUserQuestion; `request_user_input` in Codex): `plan: approve this plan? <the line wuwei plan view prints>`, options
    `Approve` and `Change`. On Approve, WUWEI marks the items approved. On Change, apply what the owner
-   said, show the view again and re-ask. The answer is recorded only from AskUserQuestion. Work
+   said, show the view again and re-ask. The answer is recorded only from that question tool. Work
    outside the goals sits in the view under unplanned; the same question covers it.
 8. Start the approved work as the planner charter says: builders in parallel, highest score first,
    none in a repository under andon. Items added later wait on the board as `awaiting plan approval`

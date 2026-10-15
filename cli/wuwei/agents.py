@@ -27,6 +27,15 @@ def render(plugin, role, tools):
             f'<!-- Generated from charters/ by wuwei agents build; edit the charters, not this file. -->\n\n{body}\n')
 
 
+def render_codex(plugin, role):
+    """A Codex agent role (.codex/agents/<role>.toml) with the same charter text as its instructions.
+    No model: Codex chooses its own, and a Claude model name would not resolve there."""
+    body = render(plugin, role, []).split('-->\n\n', 1)[1]
+    return ('# Generated from charters/ by wuwei init --codex; edit the charters, not this file.\n'
+            f'name = {json.dumps(role)}\ndescription = {json.dumps(DESCRIPTIONS[role])}\n'
+            f"developer_instructions = '''\n{body}'''\n")
+
+
 def _grants(plugin):
     return json.loads((Path(plugin) / 'agents' / 'allowlist.json').read_text(encoding='utf-8'))
 

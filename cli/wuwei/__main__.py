@@ -141,7 +141,7 @@ def cmd_close(args):
 
 
 def cmd_init(args):
-    for line in setup.init(args.directory, cloud=args.cloud):
+    for line in setup.init(args.directory, cloud=args.cloud, codex=args.codex):
         print(line)
     return 0
 
@@ -229,6 +229,7 @@ def main(argv=None):
     p = sub.add_parser('init', help='create the workspace and merge the harness rules')
     p.add_argument('directory', nargs='?', default='.')
     p.add_argument('--cloud', action='store_true', help='also copy the plugin into .claude/ for cloud sessions')
+    p.add_argument('--codex', action='store_true', help='also write the role agents and door rules into .codex/')
     p.set_defaults(func=cmd_init)
     sub.add_parser('sync', help='pull, then push .wuwei/ on the wuwei/state branch').set_defaults(func=cmd_sync)
     sub.add_parser('doctor', help='install, workspace and the strength of each door').set_defaults(func=cmd_doctor)

@@ -15,7 +15,7 @@ says what each one is, why it is there, and where it lives.
 | [The doors](doors.md) | Some mistakes cannot be taken back | PreToolUse, harness rules, the code host |
 | [Enforcement levels](doors.md#how-strongly-a-door-holds) | Honesty about what is prevented and what is only detected | `wuwei doctor` |
 | [Reversibility and confidence](decisions.md) | Ask only when a mistake would be costly and you are unsure | `_common.md` |
-| [Owner question classes](decisions.md#asking-the-owner) | Your attention is the scarcest resource | the AskUserQuestion door |
+| [Owner question classes](decisions.md#asking-the-owner) | Your attention is the scarcest resource | the owner-question door |
 | [Exceptions that expire](decisions.md#exceptions) | Accepting a gap is a debt, not a pardon | rulings, follow-up items |
 | [ADRs from one-way answers](decisions.md#adrs) | Why a hard decision was taken outlives the session | `docs/adr/` in each repo |
 | [Hooks as the sensei](hooks.md) | Guidance at the moment beats rules nobody reads | `hooks/hooks.json` |
@@ -29,5 +29,6 @@ says what each one is, why it is there, and where it lives.
 | [The ledger](metrics.md#the-ledger) | A tamper-evident record of what was decided | `.wuwei/ledger/` |
 | [Replay cases](metrics.md#replay-cases) | The auditor itself is held to its past answers | `tests/replay/` |
 | [Many repositories](many-repositories.md) | One process, the shape of each repository | one workspace |
+| [Running on Codex](codex.md) | One process whichever agent does the work | `wuwei init --codex`, `.codex/` |
 | [Cloud sessions](cloud.md) | A fresh clone starts where the last session stopped | `wuwei init --cloud`, `wuwei sync`, the `wuwei/state` branch |
 | [Work in progress](watch.md) | Nothing waits on your nudge: PRs and replies keep moving | `/wuwei-watch`, `wuwei owe` |

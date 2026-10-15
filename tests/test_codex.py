@@ -1,0 +1,84 @@
+"""WUWEI on Codex: the same hooks, doors and agents, from Codex's own payload shapes."""
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import tomllib
+
+from conftest import verdict_text
+from wuwei import hook, setup, ws
+
+PLUGIN = Path(__file__).resolve().parents[1]
+PATCH = '*** Begin Patch\n*** Update File: src/app.py\n@@\n-a\n+b\n*** Add File: .wuwei/ledger/0a1b2c3d.jsonl\n+{}\n*** End Patch\n'
+
+
+def pre(root, tool, data):
+    return hook.handle(root, 'PreToolUse', {'session_id': 's1', 'turn_id': 't1', 'cwd': str(root), 'model': 'gpt',
+                                            'permission_mode': 'default', 'hook_event_name': 'PreToolUse',
+                                            'tool_name': tool, 'tool_input': data, 'tool_use_id': 'u1'})
+
+
+def test_the_hook_commands_run_under_either_harness_shell(root):
+    hooks = json.loads((PLUGIN / 'hooks' / 'hooks.json').read_text())['hooks']
+    command = hooks['SessionStart'][0]['hooks'][0]['command']
+    assert 'args' not in hooks['SessionStart'][0]['hooks'][0]
+    env = {**os.environ, 'CLAUDE_PLUGIN_ROOT': str(PLUGIN)}
+    out = subprocess.run(['sh', '-lc', command], input=json.dumps({'cwd': str(root)}), capture_output=True,
+                         text=True, env=env, cwd=root).stdout
+    assert json.loads(out)['hookSpecificOutput']['hookEventName'] == 'SessionStart'
+
+
+def test_an_apply_patch_that_writes_the_ledger_is_refused(root):
+    out = pre(root, 'apply_patch', {'command': PATCH})
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert pre(root, 'apply_patch', {'command': PATCH.replace('.wuwei/ledger/0a1b2c3d.jsonl', 'src/new.py')}) is None
+
+
+def test_a_spawned_codex_agent_is_a_running_seat(root):
+    pre(root, 'spawn_agent', {'agent_type': 'sentinel-quality', 'task_name': 'quality gate', 'message': 'review I-1'})
+    assert [r['data']['role'] for r in ws.rows(root, 'seat.started')] == ['sentinel-quality']
+    assert hook.running(root) == 1
+
+
+def test_a_codex_question_without_a_class_is_sent_back_and_an_answer_is_recorded(root):
+    asked = {'questions': [{'id': 'q1', 'header': 'Go?', 'question': 'Should I continue with the next item?'}]}
+    assert pre(root, 'request_user_input', asked)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    question = 'one-way: drop the legacy table? Recommended: yes, it has had no reads for 90 days.'
+    asked = {'questions': [{'id': 'q1', 'header': 'Drop', 'question': question}], 'isBlocking': True}
+    assert pre(root, 'request_user_input', asked) is None
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'request_user_input',
+                                      'tool_input': asked, 'tool_response': {'answers': {'q1': {'answers': ['Yes']}}}})
+    assert ws.rows(root, 'prompt')[-1]['data']['answers'] == {question: 'Yes'}
+
+
+def test_a_codex_gate_verdict_is_attested(root):
+    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text())
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'turn_id': 't1', 'agent_id': 'a1', 'agent_type': 'sentinel-quality',
+                                       'cwd': str(root), 'stop_hook_active': False, 'agent_transcript_path': None,
+                                       'last_assistant_message': 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md'})
+    assert ws.rows(root, 'attest')[0]['data']['gate'] == 'quality'
+
+
+def test_init_codex_writes_the_role_agents_and_the_door_rules(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    setup.init(tmp_path, codex=True)
+    setup.init(tmp_path, codex=True)
+    role = tomllib.loads((tmp_path / '.codex' / 'agents' / 'sentinel-quality.toml').read_text())
+    assert role['name'] == 'sentinel-quality' and 'Quality sentinel charter' in role['developer_instructions']
+    assert 'model' not in role  # Codex picks its own models; a Claude model name would not resolve there
+    assert len(list((tmp_path / '.codex' / 'agents').glob('*.toml'))) == 8
+    rules = (tmp_path / '.codex' / 'rules' / 'wuwei.rules').read_text()
+    assert 'pattern = ["git", "push", "--force"], decision = "forbidden"' in rules
+    assert 'pattern = ["terraform", "apply"], decision = "prompt"' in rules
+
+
+def test_doctor_says_when_the_codex_roles_drift_from_the_charters(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: 'ok')
+    setup.init(tmp_path, codex=True)
+    assert ('codex roles', 'ok', 'match the charters') in setup.doctor(tmp_path)
+    (tmp_path / '.codex' / 'agents' / 'lead.toml').write_text('name = "lead"\n')
+    assert ('codex roles', 'warn', 'stale: lead: run wuwei init --codex') in setup.doctor(tmp_path)

@@ -259,8 +259,9 @@ def pre_tool(root, payload):
     data = payload.get('tool_input') or {}
     cwd = payload.get('cwd') or '.'
     if tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
-        path = str(data.get('file_path') or data.get('notebook_path') or '')
-        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if LEDGER.search(path) else None
+        paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
+        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
+            LEDGER.search(path) for path in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(

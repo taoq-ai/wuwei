@@ -345,7 +345,32 @@ HANDLERS = {'PreToolUse': pre_tool, 'PostToolUse': post_tool, 'Stop': stop, 'Sub
             'SessionStart': session_start}
 
 
+PATCHED = re.compile(r'^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$', re.M)
+
+
+def codex(payload):
+    """Codex's tool payloads in the shapes the guards read: apply_patch as an edit of the files it
+    names, spawn_agent as a seat launch, request_user_input as an owner question."""
+    tool, data = payload.get('tool_name'), payload.get('tool_input') or {}
+    if tool == 'apply_patch':
+        paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
+        return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
+    if tool == 'spawn_agent':
+        return {**payload, 'tool_name': 'Agent',
+                'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
+    if tool == 'request_user_input':
+        ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
+        response = payload.get('tool_response')
+        answers = response.get('answers') if isinstance(response, dict) else None
+        if isinstance(answers, dict):
+            response = {'answers': {ids.get(key, key): ', '.join(value.get('answers', [])) if isinstance(value, dict)
+                                    else str(value) for key, value in answers.items()}}
+        return {**payload, 'tool_name': 'AskUserQuestion', 'tool_response': response}
+    return payload
+
+
 def handle(root, event, payload):
+    payload = codex(payload)
     handler = HANDLERS.get(event)
     if handler is None:
         return None
