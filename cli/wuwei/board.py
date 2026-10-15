@@ -1,5 +1,7 @@
 """The board: each open plan item, its pull request and what it still lacks. Gaps, never commands."""
 
+import datetime
+
 from wuwei import evidence, gh, plan, ws
 
 TTL = 60
@@ -36,22 +38,37 @@ def replies(root):
     return out
 
 
+ADOPT_DAYS = 7
+
+
+def adopted(root, repo, prs, keep):
+    """Open PRs this session's identity raised on the repository without a plan link: shepherded all the same."""
+    since = (ws.now() - datetime.timedelta(days=ADOPT_DAYS)).isoformat()
+    login = evidence.owner_login(root)
+    return [{'item': 'unplanned', 'title': pr['title'], 'pr': f'{repo}#{pr["number"]}',
+             'gaps': keep(evidence.gaps(root, repo, pr['number']))}
+            for pr in prs if (pr.get('author') or {}).get('login') == login and not pr.get('isDraft')
+            and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
+
+
 def compute(root, everything=False):
     out = replies(root)
     held = andons(root)
-    keep = (lambda gaps: gaps) if everything else evidence.blocking
+    keep = (lambda gaps: gaps) if everything else evidence.visible
     open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open' and item.get('kind') != 'reply']
-    for repo in sorted({item.get('repo') for item in open_items if item.get('repo')}):
+    for repo in sorted({item.get('repo') for item in open_items if item.get('repo')} | set(ws.config(root)['repos'])):
         key = repo.replace('/', '__')
-        since = min(item.get('added', ws.today()) for item in open_items if item.get('repo') == repo)
+        mine = [item for item in open_items if item.get('repo') == repo]
+        since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
             prs = _list(root, f'prs-{key}', lambda: gh.open_prs(repo))
-            merged = _list(root, f'merged-{key}', lambda: gh.merged_prs(repo, since), 300)
+            merged = _list(root, f'merged-{key}', lambda: gh.merged_prs(repo, since), 300) if mine else []
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]}
                     for i in open_items if i.get('repo') == repo]
             continue
+        out += adopted(root, repo, prs, keep)
         for item in (i for i in open_items if i.get('repo') == repo):
             linked = [pr for pr in prs if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]
             done = [pr for pr in merged if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]

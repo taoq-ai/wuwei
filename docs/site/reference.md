@@ -5,6 +5,7 @@
 | Command | What it does |
 | --- | --- |
 | `wuwei init [dir] [--cloud]` | Create `.wuwei/` and merge WUWEI's allow, deny and ask rules into `.claude/settings.json`; `--cloud` also copies the plugin into `.claude/` for cloud sessions |
+| `wuwei sent owner/repo#n <link>` | Record a review request posted outside the session |
 | `wuwei sync` | Pull, then push `.wuwei/` on the `wuwei/state` branch |
 | `wuwei doctor` | Install, workspace, ledger, harness rules, and each door's strength per repository |
 | `wuwei plan [show]` | The ranked plan; `--json` for machines |
@@ -46,7 +47,7 @@
 | `.wuwei/plan.json` | the running queue |
 | `.wuwei/goals.md` | the goals, the direction |
 | `.wuwei/plan.html` | the plan view you approve |
-| `.wuwei/standards.md` | rules the retro promoted, per role |
+| `.wuwei/standards.md` | rules the retro promoted, per role; a `Review requests: <where>` line names where reviews are asked |
 | `.wuwei/verdicts/<item>/` | the sentinels' verdict files |
 | `.wuwei/ledger/<clone>.jsonl` | the hash-chained record, one file per clone |
 | `.wuwei/.gitignore` | keeps the state out of working branches; it travels on `wuwei/state` |

@@ -38,13 +38,48 @@ FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILU
 DAY = 86400
 
 
+# A duty: work the team owes that does not hold the merge, yet reaches it until done.
+DUTY = re.compile(r'^review not requested')
+REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|([\w.-]+/[\w.-]+)#(\d+)')
+
+
 def gap(text, actionable=True, owner=False):
-    return {'text': text, 'actionable': actionable, 'owner': owner, 'kind': 'process' if PROCESS.search(text) else 'safety'}
+    kind = 'process' if PROCESS.search(text) else 'duty' if DUTY.search(text) else 'safety'
+    return {'text': text, 'actionable': actionable, 'owner': owner, 'kind': kind}
 
 
 def blocking(found):
-    """The safety gaps: the only ones that hold a merge or reach the team while it works."""
+    """The safety gaps: the only ones that hold a merge."""
     return [g for g in found if g['kind'] == 'safety']
+
+
+def visible(found):
+    """What reaches the team while it works: safety gaps and duties, never process fit."""
+    return [g for g in found if g['kind'] != 'process']
+
+
+def refs(text):
+    """The PRs a text names, as lowercase owner/repo#n."""
+    return {f'{m[1] or m[3]}#{m[2] or m[4]}'.lower() for m in REF.finditer(text)}
+
+
+def review_place(root):
+    """Where the team asks for reviews: the Review requests: line in .wuwei/standards.md, or ''."""
+    path = Path(root) / ws.DIR / 'standards.md'
+    match = re.search(r'^[-*\s]*Review requests:[ \t]*(\S.*)$', path.read_text(encoding='utf-8'), re.M) if path.is_file() else None
+    return match[1].strip() if match else ''
+
+
+def review_duty(root, ref, pr):
+    """A ready PR is put in front of reviewers where the team asks, until a post names it or a review is in."""
+    place = review_place(root)
+    author = (pr.get('author') or {}).get('login', '')
+    if not place or pr.get('isDraft') or any((r.get('author') or {}).get('login') != author for r in pr.get('reviews') or ()):
+        return []
+    if any(ref.lower() in row['data'].get('refs', ()) for row in ws.rows(root, 'sent')):
+        return []
+    return [gap(f'review not requested in {place}: post the PR link there (posted outside this session? '
+                f'wuwei sent {ref} <link to the post>)')]
 
 
 def item_for(root, pr, repo=None):
@@ -323,6 +358,7 @@ def gaps(root, repo, number):
         reviewers = [r for r in pr.get('reviews') or () if (r.get('author') or {}).get('login') != author]
         if not pr.get('reviewRequests') and not reviewers:
             found.append(gap('no reviewer requested'))
+        found += review_duty(root, f'{repo}#{number}', pr)
         if owned and not owner_approved(root, repo, pr):
             found.append(gap(f'owner review needed (owner_paths: {", ".join(owned[:3])})', actionable=False, owner=True))
         age = (ws.now() - datetime.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))).days

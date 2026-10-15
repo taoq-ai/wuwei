@@ -5,8 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import tomllib
 
-from wuwei import plan, ws
+from wuwei import evidence, plan, ws
 from wuwei.verdict import GATES
 
 
@@ -21,6 +22,19 @@ def _json(path):
         return json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
+
+
+def review_channel(root):
+    """0.34's [shepherd] review_channel, from the config or an earlier upgrade's backup, as a standards line."""
+    backup = Path(root) / ws.DIR / 'config.0x.toml'
+    old = tomllib.loads(backup.read_text(encoding='utf-8')) if backup.is_file() else ws.raw_config(root)
+    channel = (old.get('shepherd') or {}).get('review_channel') if isinstance(old.get('shepherd'), dict) else None
+    if not isinstance(channel, str) or not channel.strip() or evidence.review_place(root):
+        return []
+    path = Path(root) / ws.DIR / 'standards.md'
+    text = path.read_text(encoding='utf-8') if path.is_file() else '# Standards\n'
+    ws.atomic_write(path, text.rstrip('\n') + f'\n\nReview requests: {channel.strip()}\n')
+    return [f'standards: Review requests: {channel.strip()} (from the 0.34 review_channel)']
 
 
 def config(root):
@@ -118,4 +132,4 @@ def verdicts(root):
 
 
 def run(root):
-    return config(root) + goals(root) + items(root) + verdicts(root)
+    return review_channel(root) + config(root) + goals(root) + items(root) + verdicts(root)

@@ -98,3 +98,11 @@ def test_close_report_status_and_doctor_run_on_a_workspace_not_yet_upgraded(tmp_
     assert 'acme/app' in report.day(tmp_path)
     board.text(board.compute(tmp_path), tmp_path)
     assert ('repos', 'ok', 'acme/app') in setup.doctor(tmp_path)
+
+
+def test_the_034_review_channel_becomes_a_standards_line(tmp_path):
+    (tmp_path / ws.DIR).mkdir()
+    (tmp_path / ws.DIR / 'config.toml').write_text(CONFIG_034 + '[shepherd]\nreview_channel = "#eng-reviews"\n')
+    upgrade.run(tmp_path)
+    upgrade.run(tmp_path)
+    assert (tmp_path / ws.DIR / 'standards.md').read_text().count('Review requests: #eng-reviews') == 1

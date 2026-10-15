@@ -17,8 +17,9 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
    not yet owed: `wuwei owe <thread link> "<what was asked>" --who <name> [--within 4h]`. Skip what
    is already answered.
 4. Open PRs, as the shepherd charter says: red CI, conflicts, unanswered review threads, a missing
-   reviewer, a PR open three days or more (finish, rebase or close it), process gaps that are cheap
-   to close. Merge what has no safety gaps; arm auto-merge where only CI is running.
+   reviewer, a review request not yet posted where the team asks (`review not requested in ...`), a
+   PR open three days or more (finish, rebase or close it), process gaps that are cheap to close.
+   `unplanned` rows are PRs raised by hand: follow them the same way. Merge what has no safety gaps; arm auto-merge where only CI is running.
 5. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
    `nothing changed` and end the turn without a message to the owner.
 

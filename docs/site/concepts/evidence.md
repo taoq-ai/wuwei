@@ -83,6 +83,12 @@ never silent: the board names it and why (its shape, or that no sentinel atteste
 **Why:** a review is evidence only if a reviewer wrote it and it has not changed since. The hook
 checks the file at stop, however it was written, so a shell edit cannot slip past the lint.
 
+## Duties
+
+A **duty** is work the team owes that does not hold the merge but reaches the team until it is
+done: today, asking for review where the team asks (see [review requests](watch.md#review-requests)).
+Duties show on the board and in the Stop reminder, like safety gaps.
+
 ## Safety and process
 
 Only **safety** gaps hold a merge and reach the team while it works: a test, the gates at the head,

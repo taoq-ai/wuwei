@@ -106,6 +106,14 @@ def cmd_evidence(args):
     return 1 if gaps else 0
 
 
+def cmd_sent(args):
+    root = _root()
+    ws.record(root, 'sent', {'tool': 'outside the session', 'refs': [args.pr.lower()], 'link': args.link})
+    ws.cache_put(root, 'board', None)
+    print(f'recorded: {args.pr} was posted at {args.link}')
+    return 0
+
+
 def cmd_report(args):
     root = _root()
     if args.dora:
@@ -215,6 +223,10 @@ def main(argv=None):
     p.add_argument('value', nargs='?')
     p.set_defaults(func=cmd_config)
     sub.add_parser('verify', help='check the ledger hash chain').set_defaults(func=cmd_verify)
+    p = sub.add_parser('sent', help='record a review request posted outside the session, with its link')
+    p.add_argument('pr', help='owner/repo#number')
+    p.add_argument('link')
+    p.set_defaults(func=cmd_sent)
     p = sub.add_parser('owe', help='record a reply someone is waiting for')
     p.add_argument('where', help='the thread link or id')
     p.add_argument('what')

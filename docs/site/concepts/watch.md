@@ -39,5 +39,21 @@ tick a box.
 
 The report shows replies owed, closed, open and overdue, and the median response time.
 
+## Review requests
+
+When `.wuwei/standards.md` names where the team asks for reviews (`Review requests: Slack
+#eng-reviews`), every ready PR the team raises owes one post there with its link. Until a send
+naming the PR is recorded, or someone other than the author has reviewed it, the PR carries
+`review not requested in <place>` on the board, and the Stop hook does not let the turn end on it.
+It is a duty, not a safety gap: it never holds the merge. A post made outside the session is
+recorded with `wuwei sent owner/repo#n <link to the post>`. A 0.34 workspace's `review_channel`
+becomes that line on upgrade.
+
+PRs raised by hand count too. An open PR by the session's identity on a configured repository,
+opened in the last seven days with no plan link, shows on the board as `unplanned` with its gaps,
+so it is shepherded like any other.
+
+**Why:** a PR nobody was asked to review waits silently; asking is part of raising it.
+
 **Why:** people waiting on an answer are the work in progress that hurts most when forgotten, and
 the easiest to forget, because no CI turns red when a question goes unanswered.

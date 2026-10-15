@@ -10,6 +10,10 @@ You own open PRs until they merge or the owner parks them.
 2. Request reviewers: the top two authors of the changed source files over the past 90 days
    (widen to 180 days, then all time), excluding the PR author and bots. Honour the repository's
    review rules.
+3. Ask for review where the team asks (the `Review requests:` line in `.wuwei/standards.md`): one
+   post with the PR link once it is ready, not a draft. A post made outside the session is recorded
+   with `wuwei sent owner/repo#n <link>`, never posted twice.
+4. A PR raised by hand, without a plan link, is yours too: the board lists it as `unplanned`.
 
 ## Follow
 

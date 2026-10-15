@@ -204,12 +204,16 @@ def post_tool(root, payload):
         return None
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
+        named = sorted(evidence.refs(json.dumps(data)))
+        if named:
+            ws.record(root, 'sent', {'tool': tool, 'refs': named})
+            ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', '')))):
         match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
         if match:
-            gaps = evidence.blocking(evidence.gaps(root, match[1], int(match[2])))
+            gaps = evidence.visible(evidence.gaps(root, match[1], int(match[2])))
             ws.cache_put(root, 'board', None)
             if gaps:
                 return context('PostToolUse', f'WUWEI: {match[1]}#{match[2]} still needs: ' + '; '.join(g['text'] for g in gaps))
