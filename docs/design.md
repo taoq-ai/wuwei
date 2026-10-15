@@ -91,7 +91,8 @@ actionable, waiting or the owner's; an unreadable code host is a waiting gap, ne
 
 ## 7. The doors
 
-Refused: a merge with gaps; `--admin`; `gh api` writes to protection, rulesets, statuses, merges,
+Refused: a merge with safety gaps by any route (arming auto-merge passes while only CI runs);
+`--admin`; `gh api` writes to protection, rulesets, statuses,
 collaborators, hooks, keys, secrets and environments; `gh repo delete`; force pushes in every form;
 pushes to or deletion of the default branch; a secret or the canary in an MCP call or network
 command; writes to the ledger; a hand-made `wuwei hook` call; an owner question without a class.
