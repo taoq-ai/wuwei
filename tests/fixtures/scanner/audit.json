@@ -1,1 +1,0 @@
-{"files_analyzed": 1, "findings": [{"rule": "SA003", "severity": "high", "file": "vulnerable.py", "line": 5, "message": "Untrusted input reaches eval"}]}

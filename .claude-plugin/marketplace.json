@@ -1,8 +1,6 @@
 {
   "name": "wuwei",
   "description": "The WUWEI plugin by TaoQ AI Labs.",
-  "owner": { "name": "TaoQ AI Labs" },
-  "plugins": [
-    { "name": "wuwei", "source": "./", "description": "Development source: ./ requires host integrity reconfirmation at a clean commit. Use the signed release asset for normal installs." }
-  ]
+  "owner": {"name": "TaoQ AI Labs"},
+  "plugins": [{"name": "wuwei", "source": "./", "description": "WUWEI 1.0 development source."}]
 }

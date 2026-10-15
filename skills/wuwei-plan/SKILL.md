@@ -1,20 +1,24 @@
 ---
 name: wuwei-plan
-description: Propose the day with lead discovery and run the morning gate before dispatch.
+description: Plan or re-plan the WUWEI day. Use at the start of the day, when the queue runs dry, when the owner adds, drops or changes work, or whenever the day changes. Can run any number of times a day.
 ---
 
-# /wuwei plan
+# /wuwei-plan
 
-Loop on `wuwei next`: run `wuwei next --json`, do every launch and every duty it returns, ask its one decision when there is one, and run it again when a result or a completion notification arrives. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command. Never pass it through a shell variable or a command substitution, and never invoke Python without `-P`. Read `.wuwei/charters/planner.md` when present (what the owner prefers).
+A plan pass. The plan in `.wuwei/plan.json` is a running queue; this pass adds, drops or re-ranks.
 
-Each action has a `why` and a `then`; do what `then` says.
-
-- `run`, `check`: run the `command` as one plain Bash call, through Bash in the background when `then` says so.
-- `launch`: pass `prompt` unchanged to Agent in the background, `agent_type` as `subagent_type`, with a short description.
-- `continue`: the same, as a fresh Agent with the returned `prompt`; pass `resume` too only to an Agent tool that takes it (Claude Code's has none; the fresh launch continues the seat).
-- `set`: do every entry this turn. A launch with action `run`, `check` or `polish` runs its `command`; run `wuwei next --background -- wuwei pr wait` through Bash in the background when returned, even while seats run. Run each of its `commands` (briefs and `receive`) in order. Pass every `launch` and `continue`, a gate's `seats` included, to Agent in the background in one message so they run concurrently. A `refused` or `wait` launch names its reason. For each duty, write what it asks, send it through the configured tool and run its `record` command with the link. A `decision` command prints an Owner step card; ask it with AskUserQuestion.
-- `card`: each widget command (`wuwei plan gate` and the rest) prints a list; ask the action's `widget` list with AskUserQuestion, at most four per call, passing `question`, `header`, `options` and `multiSelect` unchanged. Record each answer with its `record` command, `<label>` replaced by the chosen label (labels joined by commas for a multi-select, or the Other text); `Skip` records nothing. A card without a widget is one line to show the owner. An owner question comes from `wuwei next`: a command that refuses with an Owner step card prints it; ask it with AskUserQuestion as printed, then run the same command again on Yes; on No leave it. An outward refusal names `wuwei config set outward.allow ... --add`; run it, it asks its card. Without AskUserQuestion (a headless run), leave the item for `wuwei next`. Seats never ask the owner. A config value the owner changes (CAP, `host.seats` or any other key): run `wuwei config set <key> <value>`; it asks its Owner step card.
-- `wait`: end the turn with the output of `wuwei status --line`. When its command is a background wait, run it through Bash in the background or with Monitor, then run `wuwei next` when it exits.
-- `done`: the day is closed.
-
-Never resume or interrupt a seat to answer the owner; answer from `wuwei status --line`. An item the owner names during the day joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`. Rewrite any text for a person with the `humanizer` skill in embedded mode when it is installed, outward text included (tracker comments, docs pages, DMs, PR comments, review pings). Without it, apply the checklist in `charters/_common-authoring.md` under Writing for a person.
+1. Run `wuwei plan pass --reason "<why this pass: morning, queue dry, owner asked, ...>"`. It reopens a
+   closed day.
+2. Read `.wuwei/goals.md`, `wuwei plan` and `wuwei status`. On a later pass, start from what changed
+   since the last one.
+3. If `goals.md` has no filled goal, propose up to three goal blocks from the repositories and the
+   owner's words and ask once: `goal: approve these goals?` with Approve and Change. This is the only
+   question a plan pass asks inside its own work.
+4. Launch the lead (agent type `lead`) in the background with the goals, the current plan, the
+   board and the owner's words. It returns candidates with scores and a one-line evidence per score.
+5. Add each candidate: `wuwei plan add <id> "<title>" --goal G-n --repo owner/name --tier light|standard|full`
+   with `--value --time --risk --size` (WSJF) or `--reach --impact --confidence --effort` (RICE), and
+   `--why "<evidence>"`. Drop what no longer serves a goal: `wuwei plan drop <id> --reason "..."`.
+6. Show the ranked plan in one short table. Work outside the goals is asked once
+   (`scope: add <title> outside the goals?`); everything inside them starts now.
+7. Start the work as the planner charter says: builders in parallel, highest score first.

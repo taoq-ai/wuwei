@@ -13,26 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install test dependencies
-        run: python -m pip install pytest pytest-xdist
-      - name: Tests in parallel
-        run: python -m pytest -q -n auto
-      # #849: the suite holds under 3000 test functions.
-      - name: Count test functions
-        run: |
-          python - <<'EOF'
-          import pathlib, re, sys
-          count = sum(len(re.findall(r'^\s*(?:async )?def test_', path.read_text(), re.M))
-                      for path in pathlib.Path('tests').rglob('*.py'))
-          print(f'{count} test functions')
-          sys.exit(f'{count} test functions: hold the suite under 3000' if count >= 3000 else 0)
-          EOF
+      - run: python -m pip install pytest
+      - run: python -m pytest -q
+      - run: bin/wuwei agents check
 
   ziran-audit:
     runs-on: ubuntu-latest
@@ -40,7 +29,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Audit role grants
         uses: taoq-ai/ziran@v0.41.0
         with:
@@ -49,97 +38,4 @@ jobs:
           baseline: agents/ziran-baseline.json
           severity-threshold: high
           ziran-version: "ziran==0.41.0"
-          # The repository is public with code scanning enabled (2026-10-04), so the SARIF upload
-          # reaches the Security tab again (#230).
           sarif-output: ziran.sarif
-      - name: Verify baseline and widening detection
-        run: |
-          python -m pip install pytest
-          python -m pytest -q tests/test_ziran_ci_audit.py
-
-  latency:
-    # Measures the hook figures on the quiet runner every push with scripts/hook_latency.py; no test
-    # asserts a duration (#849). Informational: findings are warning annotations and the check stays
-    # green (#805).
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    env:
-      WUWEI_LATENCY_OUT: latency.jsonl
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Install test dependencies
-        run: python -m pip install pytest
-      - run: python scripts/hook_latency.py
-        continue-on-error: true
-      # Every probe's figures, red runs included, and the last green main run's to compare (#562).
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: latency
-          path: latency.jsonl
-          if-no-files-found: ignore
-      - name: Fetch the last green figures
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          id=$(gh run list -R "$GITHUB_REPOSITORY" -w tests.yml -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
-          if [ -n "$id" ]; then gh run download "$id" -R "$GITHUB_REPOSITORY" -n latency -D previous || echo "no last green figures"; fi
-      - name: Compare with the last green run
-        if: always()
-        continue-on-error: true
-        run: python scripts/latency_report.py latency.jsonl previous/latency.jsonl
-
-  skill-evals:
-    runs-on: ubuntu-latest
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Skip without credentials
-        if: env.ANTHROPIC_API_KEY == ''
-        run: echo 'ANTHROPIC_API_KEY is not set; skipping skill evals'
-      - name: Skip on pull requests
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name != 'push'
-        run: echo 'Skill evals run only on pushes to main; skipping pull request'
-      - name: Install Claude Code
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
-        run: |
-          set -o pipefail
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Run skill evals
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
-        run: claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json skill-evals.json
-
-  headless-e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Skip without credentials
-        if: env.ANTHROPIC_API_KEY == ''
-        run: echo 'ANTHROPIC_API_KEY is not set; skipping headless e2e'
-      - name: Skip on pull requests
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name != 'push'
-        run: echo 'Headless e2e runs only on pushes to main; skipping pull request'
-      - uses: actions/setup-python@v7
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
-        with:
-          python-version: '3.11'
-      - name: Install Claude Code
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
-        run: |
-          set -o pipefail
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Run real headless day
-        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
-        run: python scripts/headless_e2e.py

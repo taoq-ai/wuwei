@@ -1,14 +1,14 @@
 [project]
 name = "wuwei"
-description = "Autonomous delivery where the safe path is the default one."
+description = "A process auditor for agent teams: it teaches the way, reads the evidence, and holds the few doors that do not reopen."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{name = "TaoQ AI Labs"}]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-xdist"]
+dev = ["pytest"]
 
 [tool.pytest.ini_options]
-pythonpath = ["cli", "."]
+pythonpath = ["cli", "tests"]
 testpaths = ["tests"]

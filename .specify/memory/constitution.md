@@ -1,119 +1,68 @@
 # WUWEI Constitution
 
-Source of truth for what gets built: `docs/specs/2026-09-24-wuwei-design.md`. This
-constitution governs how it gets built. Where they conflict, the design spec wins and the
-conflict is raised, not resolved silently.
+What to build: `docs/design.md`. This file governs how it is built. Where they conflict, the design
+wins and the conflict is raised.
 
-## Core Principles
+## Principles
 
 ### I. Stdlib only at runtime
 
-Everything under `cli/` and `adapters/` imports only the Python standard library (3.11+).
-pytest is a development dependency only. External tools (`git`, `gh`, `ziran`, `claude`,
-`codex`, `signal-cli`) are reached as subprocesses behind an adapter, never imported.
+Everything under `cli/` imports only the Python standard library (3.11+). pytest is dev-only.
+External tools (git, gh, ssh-keygen) are reached as subprocesses for reading and signing, never
+wrapped as WUWEI commands the model must use.
 
-### II. Three-state exits, fail closed
+### II. Evidence over steps
 
-Every guard, sweep and adapter call returns `0` clean, `1` findings, `2` could not run.
-Exit 2 blocks exactly like exit 1 and prints why. An error inside a guard is exit 2. An
-absent adapter or scanner reports "unmeasured" and is never counted as clean. A read that
-returns an error body is never parsed as data. A Bash call a guard cannot read is the one exit 2 that is
-logged, not blocked (#839).
+WUWEI reads artifacts and says what is missing. No command tells the model which command to run
+next. State that git or the code host already holds is never copied into WUWEI's records.
 
-### III. One behaviour, one function, one test
+### III. An auditor, not a gate
 
-The CLI is the only writer of workspace state and the only home of guards, sweeps, index
-and metrics. A behaviour lives in exactly one CLI function with one test. Hooks, skills and
-seats call it; none reimplement it. State writes are atomic (temp file then rename);
-`events.jsonl` is append-only.
+The doors in design section 6 are the closed list of refusals; adding one is a design change.
+Everything else passes and is recorded. A door that cannot read its evidence stays shut; every
+other hook fails open and records why.
 
-### IV. Test first (NON-NEGOTIABLE)
+### IV. The owner decides only what matters
 
-Red, green, refactor. Write the failing test, watch it fail for the right reason, then write
-the minimum code that makes it pass. Guards get table tests for exits 0, 1 and 2. Hooks are
-tested by piping recorded Claude Code payloads through the shim. Tests assert on exit codes,
-events and files, never on model prose.
+Only the decision classes in design section 8 reach the owner. A mechanical failure is never an
+owner question. An instruction the owner gave is the approval.
 
-### V. Simplicity (ponytail)
+### V. Test first (non-negotiable)
 
-The laziest solution that actually works. YAGNI: build only what the issue and spec ask
-for. Reuse what already exists in the repository before writing anything new; stdlib before
-custom code; one line before fifty. No interface with one implementation, no factory for one
-product, no config for a value that never changes. Deliberate shortcuts with a known ceiling
-carry a `ponytail:` comment naming the ceiling and the upgrade path. Never simplify away
-validation at trust boundaries, error handling that prevents data loss, or security.
+Write the failing test, watch it fail for the right reason, then the minimum code. Hooks are
+tested through `hook.handle` with recorded payload shapes; the code host through a fake `gh.run`.
+Tests assert on decisions, records and files, never on model prose.
 
-### VI. SOLID where it is convenient
+### VI. Simplicity, with budgets
 
-Apply SOLID where it keeps the code smaller or the tests simpler: single responsibility per
-module, adapters as the one place where substitution (Liskov) and interface segregation
-matter, dependencies passed in so tests can replace them. Do not add an abstraction only to
-satisfy a principle; Principle V wins a tie.
+The laziest solution that works. Reuse before writing; stdlib before custom code; no interface
+with one implementation. Budgets: runtime at most 2,500 lines (a test holds it), five config keys.
+A change that breaks a budget deletes something first. Never simplify away validation at a trust
+boundary, data-loss safeguards or security.
 
 ### VII. Security first
 
-Least privilege for agent tools. Secrets, phone numbers and message bodies never land in
-traces, logs or memory unredacted. The owner delegates work with green evidence (owner,
-2026-10-14, #997). `guards.enforce` defaults to false: every let-through PreToolUse refusal
-is recorded unchanged and shown to the model as a nudge describing the call and its target.
-An explicit true still enforces ordinary guard refusals. Config, admin and infrastructure
-changes remain owner-only on their Owner step cards. State writes, answer records, verdict
-lint, canary and honeytoken egress remain protected regardless of the switch. The Stop
-hook remains unchanged pending #989.
-
-Ordinary merge, PR approval, app deploys and outward sends need no additional owner card.
-Merges touching owner_paths or never_auto_paths retain the owner's head-bound card.
-Raw merges of raised or claimed PRs must use bin/wuwei merge. Unrun send checks remain
-blocking, and canary scanning precedes input shape validation. The merge
-command still requires fresh gates, green required checks and branch protection without
-admin override. A complete reasoned no-change handback may send an unchanged fix head to
-delta review; only the reviewer can resolve its findings. Existing repeat and park limits
-remain.
+Least privilege for agent tools (`agents/allowlist.json`, reviewed). Secrets never land in traces
+or the ledger. The harness's permission rules decide tool access; WUWEI adds deny and ask rules,
+never a parallel allow list.
 
 ## Constraints
 
-- Writing style for everything the plugin authors (code comments, docs, charters, CLI
-  output): no emojis, no em-dashes.
-- No hosted service or database in the plugin. The plugin runs no long-running process
-  (the M5 listener and the watch, the last one, were retired by #789, owner, 2026-10-10 and
-  2026-10-12, part 23). The project's optional telemetry collector (design
-  5.13) runs outside the plugin, and the plugin works without it.
-- Telemetry adds no record and no step to a hook: its signals are fields on records the
-  CLI already appends, and aggregation runs only in CLI commands.
-- The owner's session is never blocked by work (design 5.2, #477): seats run in the
-  background, any command that can run longer than a few seconds runs in the background,
-  the planner ends each turn with the board in one line, and only an owner question waits.
-  Skills and charters never tell the planner to wait for a seat or a long command; a test
-  reads them.
+- Writing style for everything the plugin authors: no emojis, no em dashes.
+- No hosted service, database or long-running process.
 - Conventional commits; release-please drives versions.
 
 ## Workflow
 
-- One GitHub issue is one spec-kit feature: `specs/<issue number, 3 digits>-<slug>/` with
-  `spec.md`, `plan.md` and `tasks.md`, created with `--number <issue>`.
-- Specification mode (design 5.10; amended 2026-10-03, #411): WUWEI itself runs under
-  `engine = "speckit"` and `mode = "strict"`. Every feature runs `specify`, `clarify`,
-  `plan`, `tasks`, `analyze`, `checklist` and `implement`, in that order, then the full
-  suite and the review; none is optional. The `analyze` report is saved as `analysis.md` in
-  the feature directory, and a CRITICAL or HIGH finding is resolved before `implement`. A
-  trivial change skips the spec only as 5.10 allows (a light lead tier, or the owner's skip
-  with a recorded reason), and its pull request says why.
-- One feature is one branch in its own git worktree, merged to `main` after the tests pass
-  and an adversarial review (correctness, security, and a ponytail over-engineering pass)
-  has no open blocking findings.
-- Cycle budget per feature: one fix round plus one delta review. A feature that exceeds it
-  gets no further fix rounds; the next step is a design reconsideration recorded in its
-  spec (why the approach keeps leaking, what replaces it), agreed with the owner before
-  more code (example: #222, six rounds on shell parsing for owner actions).
-- Tracker hygiene (design 5.11) applies to WUWEI's own work: every feature has its GitHub
-  issue as its ticket; a bug or follow-up found mid-feature becomes its own issue linked to
-  the parent (recorded under Deferred in the feature's spec until it is filed), never
-  silent scope; decisions, verdicts and the pull request link are recorded on the issue or
-  its pull request.
+- One GitHub issue is one change. A feature runs the spec-kit steps in `.agents/skills/` and keeps
+  its spec in `specs/<issue>-<slug>/`. A bug fix is a failing test and the fix.
+- WUWEI audits itself: every PR names `WUWEI-Item: <issue>` and passes the gates its tier needs.
+- Cycle budget: one fix round and one delta review. A change that needs more is a design
+  reconsideration agreed with the owner before more code.
 
 ## Governance
 
-Amendments are commits to this file with a dated line in the commit message. The design spec
-is amended only by its owner.
+Amendments are commits to this file with a dated line in the commit message. The design is
+amended by its owner.
 
-**Version**: 2.5.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-14
+**Version**: 3.0.0 | **Ratified**: 2026-10-15

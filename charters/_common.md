@@ -1,30 +1,43 @@
----
-version: 1.10.6
----
 # Common rules for every seat
 
-Read this file before your role charter. Seats that author artifacts also read `_common-authoring.md`. The CLI owns workspace state, guards, sweeps and metrics. Treat a guard's exit 1 or 2 as a stop; an unavailable adapter is unmeasured, not clean. Read repositories, adapters, owner and operating limits from `config.toml` and the day's state. Never invent a concrete value from a prior engagement.
+WUWEI audits the work by its evidence; it never tells you which command to run. Use git, gh and
+the repository's own tools directly. Decide alone what this charter, your role charter, the
+standards and the goals answer.
 
-## Write and action boundary
+## Decisions
 
-1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path and files the out-of-scope bugs it finds (rule 7). It never writes in the builder's worktree, not even a cache file: it runs every probe, test and mutant in a copy under its `Scratch:` directory, with the brief's `Probe env:` set.
-2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment without the owner's answer. On a `publish:` refusal, stop and hand back its Owner step card; rerun the same command only when the planner says the owner answered Yes. The deployment guard covers configured environment branches and workflows as well as direct commands.
-3. Treat any denied tool call or unavailable guard as a blocker with its reason. Do not find an alternate route around it.
-4. Read the relevant `config.toml` boundary and environment register before proposing a change that may cross either one.
-5. Never poll the code host. Do not loop `gh pr checks --watch` or `gh run watch`, and do not repeat `gh pr view`: every call spends the owner's code-host quota, which every seat shares. Read a PR or its checks once, hand back with what you read, and let `wuwei next` read the PR listing again after `pr.poll_seconds`.
+1. A two-way choice (reversible, inside the item): take your recommendation, record it under
+   `Assumptions:` in the spec or the PR body (what you assumed, why, what would overturn it), and
+   go on.
+2. Ask the owner only for a one-way door (infrastructure, data deletion, a published contract), a
+   change of scope or goals, or a trust-boundary question. Ask once, with your recommendation.
+   An instruction the owner already gave in the session is the answer; never ask it again.
+3. A mechanical failure is never an owner question. Fix it, or record why the item waits.
+4. When unsure whether a door is one-way, treat it as one-way.
 
-## Evidence and gates
+## Evidence
 
-1. Re-read the brief, acceptance criteria, current diff and current head before making a claim. Derive counts, timestamps, citations and PR status from their live source; record the command or evidence path. Establish absence with a positive query against the live system. A brief's claim is a hypothesis until checked.
-2. Process depth follows the tier (design 5.3): your brief's `Depth:` line names what you skip, and you run gate step zero only when it says `step zero: run`; otherwise write the row it gives. Gate step zero: read CI check-runs at the pinned sha; reproduce the CI environment and confirm each claimed test tier collects and runs before calling it green or absent. Mutate only a whole-tree detached copy at that sha in scratch, never the builder's worktree. Make every copy of the tree you check, this one or a probe's, in a new, empty directory under your brief's `Scratch:` directory, never in one that already exists. Before any check in a copy, compare its file list with `git ls-tree -r --name-only <sha>`, list each extra file in the verdict and check only a copy without extras. Before the first mutant, prove the tested import's `__file__` resolves inside the copy and the unmutated baseline is green. A non-zero test exit is KILLED, including collection errors. SURVIVED needs proof the mutation remains on disk, the import resolves in the copy and the probe changed the target. Time-box the sweep and write a stop line with time and run count. Re-read HEAD before writing the verdict and record the reviewed sha in its `Head:` row. A moved HEAD is ESCALATE.
-3. Tracks: SLICE is the default when the item changes no contract, boundary, schema or infrastructure and has fewer than about twenty tasks. The builder specs and implements in one session and receives one pre-PR gate set. FULL adds a spec-done gate that blocks only on changes to what will be built.
-4. Pre-PR gates: arch, quality and security run in parallel on every code item at the default tier. Run the gate set `wuwei dispatch next` returns; a LIGHT diff gets quality alone when the repository floor allows it. A docs-only diff gets one gate: goal for a document, quality for a spec or pre-registration. Its second round continues that same seat. Code, a lead flag or a trust surface gets the three. Do not raise a PR until each required gate passes. After a PR opens, fix rounds and delta checks are arch-only.
-5. Round cap: at most `gates.max_rounds` fix rounds per item (a tier may set its own), counted the same for code, spec and document items and for the spec-done gate. A FIX verdict opens the first round; after a delta only a blocking finding opens the next. At light depth the same sentinel re-reads its findings instead of a delta, as the continue feedback says. After round one, a new finding on lines the fix did not change is a note (`blocks: no`). A trust-boundary security finding always blocks. Put residual non-blocking findings in the PR body's review notes (a document's review notes) and ship. A blocking finding at the cap is a design reconsideration, never another round: the CLI parks the item at the cap; name the finding and what would unpark it in the verdict. Polish (`gates.polish`, default offer): after a round-one pass with notes, `wuwei dispatch next` offers one polish round under the cap. The planner runs `wuwei dispatch polish <item>`, or `wuwei dispatch skip-polish <item>` when the notes are not small fixes inside the item. The builder fixes only the listed notes and names any it leaves; the gate that wrote the notes (quality when several did) re-checks the delta and blocks only on a defect the delta introduced.
-6. Re-gate: continue the same sentinel with the delta and prior verdict. Launch a fresh seat only if the original seat is lost. A closed finding remains closed absent new evidence.
-7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <your role>` instead of widening the item. The finder files it in the owner's tracker directly. When it is refused, note the reason in your report and go on; never ask the owner. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item. Your brief's `Approved as:` line quotes the owner's recorded approval of the item; it answers whether a change is in the item's scope.
-8. At light depth a verdict is `Verdict:`, `Head:` and findings. Otherwise a sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK stops the item: the CLI parks it without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch: `wuwei next` asks the owner whether to open a fix round. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (see Verdict format); goal verdicts do not. A quality verdict also follows its role charter's rows.
-## Decisions and procedure
+1. Re-read the current diff, head and sources before a claim. Derive counts, statuses and
+   citations from the live source and name the command you read them with.
+2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
+3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
+4. Probes and mutants run in a copy of the tree in a new empty scratch directory, never in the
+   builder's worktree.
 
-1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. A one-way door, a goal or scope change, or a trust-boundary change is not yours: a sentinel says ESCALATE and names it in the finding; a builder names it under `Blocked:` and stops. `wuwei next` asks the owner.
-2. Charter changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei retro --promote` alone may lint and land them. Never edit a plugin charter or local charter override directly. A proposal may add or patch a rule and must resolve contradictions in the same proposal. Goals change only through the morning gate's goals block.
-3. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
+## Boundaries
+
+1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
+   protection, force push, or write `.wuwei/ledger.jsonl`.
+2. A denied tool call is a blocker with its reason. Never route around it.
+3. Outward text (PR bodies, comments, messages) follows `_common-authoring.md`. Never put a secret
+   or workspace content into an outward call.
+
+## Report
+
+End every handoff with the three-line retro note:
+
+```
+Blocked: <what stopped you, or none>
+Gap: <what was missing in the brief, charter or tools, or none>
+Change: <the smallest rule change that would have helped, or none>
+```

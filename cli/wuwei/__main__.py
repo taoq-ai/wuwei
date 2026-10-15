@@ -1,130 +1,170 @@
-"""Discover commands and enforce the three-state exit contract."""
+"""wuwei: the process auditor's command line. It reads and records; it never stands in for git or gh."""
 
+import argparse
+import json
+from pathlib import Path
 import sys
 
-# #346: Claude Code starts a hook process on every tool call and a status line on every
-# refresh. Those processes live tens of milliseconds and free their objects by reference
-# counting, so they run without the cyclic collector and skip the interpreter teardown.
-# A leading --workspace <path> (#354) is consumed first, as _main does.
-_ARGV = sys.argv[3:] if sys.argv[1:2] == ["--workspace"] and len(sys.argv) > 2 else sys.argv[1:]
-_FAST = __name__ == "__main__" and (_ARGV[:1] == ["hook"] or _ARGV == ["status", "--line"])
-if _FAST:
-    import gc
-    gc.disable()
+from wuwei import agents, board, evidence, hook, plan, report, setup, ws
 
-from contextlib import redirect_stdout, redirect_stderr
-import os
+PLUGIN = Path(__file__).resolve().parents[2]
 
-from wuwei import env, redact
-from wuwei.exits import CLEAN, FINDINGS, UNRUN, PAYLOAD
 
-if _FAST:
-    from wuwei import workspace
-    workspace.CONFIG_CACHE_WRITES = True  # #346: the parsed config copy, rewritten on a miss
+def _root():
+    root = ws.find()
+    if root is None:
+        raise SystemExit('wuwei: no .wuwei/ here or above; run wuwei init')
+    return root
+
+
+def _ref(text):
+    repo, _, number = text.rpartition('#')
+    if not repo or not number.isdigit():
+        raise SystemExit('wuwei: name the PR as owner/repo#number')
+    return repo, int(number)
+
+
+def cmd_plan(args):
+    root = _root()
+    if args.action == 'add':
+        fields = ('value', 'time', 'risk', 'size') if ws.config(root)['prioritisation'] == 'wsjf' else (
+            'reach', 'impact', 'confidence', 'effort')
+        scores = {name: getattr(args, name) for name in fields}
+        scores = {k: int(v) if float(v).is_integer() and k not in ('impact', 'confidence') else float(v)
+                  for k, v in scores.items() if v is not None}
+        item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '')
+        print(f'{item["id"]} added with score {item["score"]}')
+    elif args.action in ('park', 'drop', 'done'):
+        status = {'park': 'parked', 'drop': 'dropped', 'done': 'done'}[args.action]
+        plan.mark(root, args.id, status, args.reason or '')
+        print(f'{args.id} {status}')
+    elif args.action == 'pass':
+        ws.record(root, 'plan.pass', {'note': args.reason or ''})
+        print('plan pass recorded; the day is open')
+    else:
+        rows = plan.items(root)
+        if args.json:
+            print(json.dumps(rows, indent=1))
+            return 0
+        for item in rows:
+            print(f'{item["score"]:>7}  {item["id"]:<10} {item.get("status", "open"):<8} {item.get("tier", ""):<9} '
+                  f'{item.get("goal", ""):<5} {item.get("repo", "")}  {item["title"]}')
+        if not rows:
+            print('the plan is empty: run /wuwei-plan')
+    return 0
+
+
+def cmd_status(args):
+    rows = board.compute(_root())
+    print(json.dumps(rows, indent=1) if args.json else board.text(rows))
+    return 0
+
+
+def cmd_evidence(args):
+    gaps = evidence.gaps(_root(), *_ref(args.pr))
+    print(json.dumps(gaps, indent=1) if args.json else '\n'.join(
+        f'- {g["text"]}' + ('' if g['actionable'] else ' [waiting]') for g in gaps) or 'no gaps: ready to merge')
+    return 1 if gaps else 0
+
+
+def cmd_report(args):
+    root = _root()
+    if args.dora:
+        print(json.dumps(report.dora(root, args.window), indent=1))
+    else:
+        print(report.day(root, args.day))
+    return 0
+
+
+def cmd_close(args):
+    path = report.close(_root())
+    print(f'checkpoint written: {path}\nlaunch the steward for the retro; plan again any time to reopen the day')
+    return 0
+
+
+def cmd_init(args):
+    for line in setup.init(args.directory):
+        print(line)
+    return 0
+
+
+def cmd_doctor(args):
+    rows = setup.doctor(ws.find())
+    for name, status, detail in rows:
+        print(f'{status:<5} {name}: {detail}')
+    return 2 if any(s == 'fail' for _, s, _ in rows) else 1 if any(s == 'warn' for _, s, _ in rows) else 0
+
+
+def cmd_config(args):
+    root = _root()
+    data = ws.set_config(root, args.key, args.value) if args.key else ws.config(root)
+    print('\n'.join(f'{k} = {json.dumps(v)}' for k, v in data.items()))
+    return 0
+
+
+def cmd_verify(args):
+    broken = ws.verify(_root())
+    print('ledger intact' if not broken else f'ledger broken at lines {broken}')
+    return 1 if broken else 0
+
+
+def cmd_agents(args):
+    if args.action == 'build':
+        agents.build(PLUGIN)
+    stale = agents.stale(PLUGIN)
+    print('agents match the charters' if not stale else 'stale: ' + ', '.join(stale))
+    return 1 if stale else 0
+
 
 def main(argv=None):
-    output, errors = redact.Output(sys.stdout), redact.Output(sys.stderr)
-    with env.session(), redirect_stdout(output), redirect_stderr(errors):
-        try:
-            return _main(argv)
-        finally:
-            output.flush()
-            errors.flush()
-
-
-def _main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ['--workspace'] and len(argv) > 1:
-        # ponytail: leading form only; it selects the workspace for this process (#354).
-        os.environ['WUWEI_WORKSPACE'], argv = argv[1], argv[2:]
-    if len(argv) == 2 and argv[0] == 'hook':
-        # Hook fast path: no parser, manifest or command listing on every tool call.
-        try:
-            from types import SimpleNamespace
-            from wuwei.commands import hook
-        except Exception as exc:
-            print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
-            return UNRUN
-        if argv[1] in hook.EVENTS:
-            return _call(hook.run, SimpleNamespace(command='hook', event=argv[1]))
+    parser = argparse.ArgumentParser(prog='wuwei')
+    sub = parser.add_subparsers(dest='command', required=True)
+    p = sub.add_parser('plan', help='show, add, park, drop, done or pass')
+    p.add_argument('action', nargs='?', default='show', choices=('show', 'add', 'park', 'drop', 'done', 'pass'))
+    p.add_argument('id', nargs='?')
+    p.add_argument('title', nargs='?')
+    for name in ('goal', 'repo', 'why', 'reason'):
+        p.add_argument(f'--{name}')
+    p.add_argument('--tier', default='standard')
+    for name in ('value', 'time', 'risk', 'size', 'reach', 'impact', 'confidence', 'effort'):
+        p.add_argument(f'--{name}', type=float)
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_plan)
+    p = sub.add_parser('status', help='the board: what each open item still lacks')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_status)
+    p = sub.add_parser('evidence', help='the gaps of one PR, owner/repo#number')
+    p.add_argument('pr')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_evidence)
+    p = sub.add_parser('report', help='the day report, or --dora')
+    p.add_argument('--day')
+    p.add_argument('--dora', action='store_true')
+    p.add_argument('--window', type=int, default=28)
+    p.set_defaults(func=cmd_report)
+    sub.add_parser('close', help='checkpoint the day: write the report').set_defaults(func=cmd_close)
+    p = sub.add_parser('init', help='create the workspace and merge the harness rules')
+    p.add_argument('directory', nargs='?', default='.')
+    p.set_defaults(func=cmd_init)
+    sub.add_parser('doctor', help='install, workspace and the strength of each door').set_defaults(func=cmd_doctor)
+    p = sub.add_parser('config', help='show, or set one of the five keys')
+    p.add_argument('key', nargs='?')
+    p.add_argument('value', nargs='?')
+    p.set_defaults(func=cmd_config)
+    sub.add_parser('verify', help='check the ledger hash chain').set_defaults(func=cmd_verify)
+    p = sub.add_parser('agents', help='check or build the role agents from the charters')
+    p.add_argument('action', nargs='?', default='check', choices=('check', 'build'))
+    p.set_defaults(func=cmd_agents)
+    p = sub.add_parser('hook', help='called by the harness only')
+    p.add_argument('event')
+    p.set_defaults(func=lambda args: hook.main(args.event))
+    args = parser.parse_args(argv)
     try:
-        if argv and argv[0] not in ('hook', 'init'):
-            from wuwei import workspace
-            try:
-                root = workspace.find_workspace()
-            except FileNotFoundError:
-                root = None
-            if root is not None:
-                env.load(root)
-        if argv == ['status', '--line']:
-            # Status-line fast path: Claude Code runs it on every refresh, so it skips the
-            # parser (argparse, gettext, shutil), the manifest and the command listing.
-            from types import SimpleNamespace
-            from wuwei.commands import status
-    except Exception as exc:
-        print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
-        return UNRUN
-    if argv == ['status', '--line']:
-        return _call(status.run, SimpleNamespace(command='status', line=True,
-                                                  width=status.WIDTH))
-    import argparse
-    from importlib import import_module
-    import json
-    from pathlib import Path
-    from wuwei import commands
-    parser = argparse.ArgumentParser(prog="wuwei")
-    subparsers = parser.add_subparsers(dest="command", required=True, metavar="<command>")
-    try:
-        manifest = Path(__file__).resolve().parents[2] / ".claude-plugin/plugin.json"
-        version = json.loads(manifest.read_text())["version"]
-        if not isinstance(version, str) or not version.strip():
-            raise ValueError("plugin version must be a non-empty string; reinstall the plugin, then run bin/wuwei doctor")
-        parser.add_argument("--version", action="version", version=version)
-        name = argv[0].replace("-", "_") if argv else ""
-        if (name.isidentifier() and not name.startswith("_")
-                and (Path(commands.__file__).parent / f"{name}.py").is_file()):
-            import_module(f"{commands.__name__}.{name}").register(subparsers)
-        if not argv or (argv[0] != "--version" and argv[0] not in subparsers.choices):
-            import pkgutil
-            for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + "."):
-                short = module.name.rsplit(".", 1)[-1]
-                if not short.startswith("_") and short != name:
-                    import_module(module.name).register(subparsers)
-    except Exception as exc:
-        print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
-        return UNRUN
-
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit:
-        raise
-    except BaseException as exc:
-        print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
-        return UNRUN
-    return _call(args.func, args)
+        return args.func(args)
+    except ValueError as exc:
+        print(f'wuwei: {exc}', file=sys.stderr)
+        return 2
 
 
-def _call(func, args):
-    try:
-        status = func(args)
-        if isinstance(status, bool) or not isinstance(status, int) or status not in (CLEAN, FINDINGS, UNRUN):
-            raise ValueError(f"invalid exit status {status!r}; expected 0, 1, or 2; {PAYLOAD}")
-        return status
-    except BaseException as exc:
-        print(f"wuwei {args.command}: {str(exc) or type(exc).__name__}", file=sys.stderr)
-        return UNRUN
-
-
-if __name__ == "__main__":
-    status = main()
-    if _FAST:
-        import atexit
-        import os
-        atexit._run_exitfuncs()
-        try:
-            sys.stdout.flush()
-            sys.stderr.flush()
-        except BaseException:
-            sys.exit(status)  # A closed stream keeps the interpreter's own exit handling.
-        os._exit(status)
-    sys.exit(status)
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,74 +1,9 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-            "args": [
-              "hook",
-              "PreToolUse"
-            ]
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-            "args": [
-              "hook",
-              "PostToolUse"
-            ]
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-            "args": [
-              "hook",
-              "SubagentStop"
-            ]
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-            "args": [
-              "hook",
-              "SessionStart"
-            ]
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
-            "args": [
-              "hook",
-              "Stop"
-            ]
-          }
-        ]
-      }
-    ]
+    "SessionStart": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei", "args": ["hook", "SessionStart"]}]}],
+    "PreToolUse": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei", "args": ["hook", "PreToolUse"]}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei", "args": ["hook", "PostToolUse"]}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei", "args": ["hook", "SubagentStop"]}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei", "args": ["hook", "Stop"]}]}]
   }
 }

@@ -1,19 +1,32 @@
----
-version: 1.2.0
----
 # Shepherd charter
 
-Read `_common.md` and `_common-authoring.md` before PR work. Own PR raise, reviewer requests, thread replies and the obligation ledger. Use the configured repository, owner, review bot and chat adapters.
+You own open PRs until they merge or the owner parks them.
 
-## PR raise
+## Raise
 
-1. Verify required pre-PR verdicts pass at the current head, required tests ran, and every PR body claim has current evidence. Put residual non-blocking findings in review notes. Refresh the open-PR collision survey.
-2. Raise the PR with `bin/wuwei pr raise <owner/repo> --base <branch> --title <title> --body-file <file> --item <item>`. It links the PR to its item and requests the ranked reviewers. Never open it with `gh pr create`: that PR is not linked. Link a PR that already exists with `bin/wuwei pr claim <ref> --item <item>`. Select reviewers from changed source files, excluding lockfiles, specs and generated files, then rank authors over the past 90 days and choose the top two, excluding the PR author and bots. If fewer than two remain, widen to 180 days, then to all time. Verify each reviewer's login before first use. Honor repository review policy and request the same people named in any review request message. Pass outward-text lint before posting.
-3. Record each sent request and reply id. Recheck live PR obligations immediately. A failed or refused post remains owed.
+1. Open the PR with `gh pr create` from the item's branch. The body names `WUWEI-Item: <id>`,
+   what changed and why, the assumptions, the tests, and review notes for residual non-blocking
+   findings.
+2. Request reviewers: the top two authors of the changed source files over the past 90 days
+   (widen to 180 days, then all time), excluding the PR author and bots. Honour the repository's
+   review rules.
 
-## Review and merge
+## Follow
 
-1. Follow gate step zero in `_common.md` for CI checks and test tiers, then read review summaries, PR comments, inline threads and configured chat replies. Rebuild obligations from the full current PR state; a watcher delta only wakes the check. Read each thread's last word before replying.
-2. Classify each finding against the item promise using `_common.md`. `bin/wuwei pr act <pr>` prints the next owed reply with its id and every owed id; it never reads intent from the words. Answer each id with `--thread <id>` and one flag. `--reply "<answer>"` answers with evidence. `--fix "<what the item promised and what is wrong>"` opens a fix round for a blocking regression within the cycle budget. `--scope "<why it is outside the promise>"` prints the Owner step card to hand back for a change outside the item. Do not claim an unpushed fix is present. When `pr act` finds no reply owed, it records the shepherd duty.
-3. Before merge, read every review body and PR comment for pre-merge conditions; "before X" blocks until X is met. Count each reviewer's latest review separately. An approval covers its `commit_id` only; compare it with the current head. Never run `wuwei merge` while a fix round is in flight or a reply promises one. Merge only through `wuwei merge <pr>` when `wuwei merge check <pr>` clears the fresh head under the configured repository policy. If it does not clear, `wuwei merge <pr>` names the failed precondition and the owner decides on its Owner step card. Follow `_common.md` for approval, deployment and overrides.
-4. After merge, track base-branch checks and report a red check for the configured revert and breaker path. Close only after thread, review and outward obligations are answered and the merge evidence is recorded.
+1. Read the PR once per event: CI, conflicts, reviews, threads. Rebuild what is owed from the
+   current PR state, not from memory.
+2. For each unanswered thread: a fix request inside the item's promise becomes a fix for the
+   builder; a question gets an answer with evidence; a request outside the promise is a scope
+   change for the owner. Never claim an unpushed fix is present.
+3. A red check that also fails on the base branch is the base's: say so on the PR once and wait.
+   Any other red check is this PR's to fix.
+4. A conflict: merge the base into the branch and resolve; never rewrite published history.
+
+## Merge
+
+1. Merge with `gh pr merge <number> --squash` (or the repository's method) when the board shows no
+   gaps. WUWEI refuses a merge with gaps and lists them; close them instead of arguing.
+2. Before merging, add a short evidence comment to the PR: the gates and the head they passed, CI,
+   threads, and any exception the owner accepted. The audit then lives next to the code.
+3. After the merge, watch the base branch's checks once; a red base after your merge is a revert
+   PR and a note to the owner.

@@ -1,8 +1,0 @@
-[project]
-name = "sample"
-
-[project.optional-dependencies]
-dev = ["pytest"]
-
-[tool.ruff]
-line-length = 100

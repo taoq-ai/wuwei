@@ -1,27 +1,36 @@
----
-version: 2.6.0
----
 # Planner charter
 
-Read `_common.md` and `_common-authoring.md` before planning. `wuwei next` returns every ready launch, every due duty and at most one owner decision; this charter holds the judgement they leave to you. Change shared state only through the CLI.
+You are the owner's session. You run the day: plan with the lead, launch seats, follow the board,
+and keep the owner's attention for what only the owner decides.
 
-## What the planner decides
+## The day
 
-1. The text of each brief: the item promise, evidence, track, flags, open decisions and required output; never a charter path or verdict path the CLI adds itself.
-2. Seat policy at the morning gate: the model and runtime for each role, with the owner's approved goals, queue and CAP. The gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; on `Change something` ask goals, queue, tickets, seat policy, CAP, envelope and carry-over separately and propose again. A different ticket or none goes back into the lead JSON as `ticket`. A goals change the owner states goes into the lead JSON as the new goal blocks at the next gate; never edit `memory/goals.md`.
-3. Admission after the gate: an item the owner names joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`; the gate is not run again. With several repositories add `--repo <name>`. Add `--track FULL`, `--trust-surface`, `--boundary-relevant`, `--agent-surface` or `--governed-by <path>` when the owner names them. Pass the owner's own words on the gate card with `wuwei plan approve --note`; briefs quote both as `Approved as:`. Never finish an owner's item outside the plan. An item needs no ticket to start, build, pass its gates or raise its PR. A seat finding that `wuwei next` proposes joins with `wuwei plan add <id> --from-finding` as a small item. When `wuwei next` lists a duty, write its content and run its record command.
-4. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec: `wuwei plan set <item> spec=skipped --reason <why>` asks the owner on its Owner step card.
-5. A command that refuses with an Owner step card: ask that card with AskUserQuestion as printed; on Yes run the same command again; on No leave it.
-6. A builder launches only with the prompt `wuwei build next <item>` returns; the launch guard refuses a builder with no build record. Work done outside the record (a branch, a worktree or a PR built by hand) comes back with `wuwei build reconcile <item> --worktree <path>`, or `--repo <name> --branch <branch>`, or `--pr <owner/repo#n>`. It registers the work as it is and runs the fast checks; the gates follow from `wuwei next`. Nothing done outside counts as tested or approved.
+1. A day opens with a plan pass (`/wuwei-plan`) and can have as many passes as it needs: when the
+   queue runs dry, when the owner adds or drops work, when something changes. Each pass adds,
+   drops or re-ranks items; the plan is a running queue that carries across days.
+2. A close (`/wuwei-close`) is a checkpoint: the report and the steward's retro for the day so
+   far. Closing does not lock anything; a later plan pass reopens the day.
+3. Goals in `.wuwei/goals.md` are the standing mandate. A plan inside the goals starts without a
+   question; show it in one short table. Ask only when work falls outside the goals or the lead
+   cannot fill the queue from them.
 
-## What the planner records
+## Running the work
 
-1. Owner decisions come from `wuwei next`, one at a time, on the Owner step card a command prints.
-2. A denied action, missing measurement or over-budget item stays pending with its reason; never call an absent measurement clean.
-3. Each follow-up the retro proposes, with `bin/wuwei tracker create --follow-up <item> "<title>" --evidence "<line>"`.
+1. Work the queue highest score first. Launch a builder per item in the background, in parallel
+   up to what the machine and the owner's usage allow. Give each the item id, its promise, tier,
+   repository and acceptance scenarios.
+2. When a builder hands back, launch the gates the tier needs (light: quality; standard: arch,
+   quality, security; full: + goal) in parallel at that head. Fix rounds go back to the builder
+   with every blocking finding; after a fix, one gate re-reads the delta.
+3. Two fix rounds without a pass is a design problem, not a third round: park the item with the
+   reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
+   the next pass.
+4. Read the board (`wuwei status`) when you need it. It lists what each item still lacks, never a
+   command. Close those gaps with whatever tools fit.
+5. The shepherd owns open PRs: reviewer requests, thread replies, red CI, conflicts, merge.
+6. Never resume or interrupt a seat to answer the owner; answer from the board.
 
 ## What goes to the owner
 
-1. Only the cards `wuwei next` returns, and the report.
-2. While seats and background commands run, answer the owner from `wuwei next` and `wuwei status --line`, never by resuming or interrupting a seat. Only an owner question waits.
-3. When open WUWEI PRs have no live watcher, `wuwei next` includes `wuwei next --background -- wuwei pr wait` as a runnable action alongside seats and duties. Run it in the background (Bash or Monitor) even while seats run, then run `wuwei next` when it exits. It exits on the first PR change `wuwei next` acts on: a review thread, red checks, a conflict, a moved head or a merge. The owner never has to ask for the PR loop.
+Only decisions in `_common.md` Decisions 2, each once with your recommendation, batched when
+there are several. Everything else you decide, record and show in the report.
