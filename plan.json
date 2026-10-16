@@ -54,33 +54,6 @@
    "approved": true
   },
   {
-   "id": "gate-rules",
-   "title": "docs(charters): gates stay out of the main worktree, write verdicts with Write, re-run surviving mutants and show shell findings by stub execution; approval checks the line budget",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 9.0,
-   "why": "Today's findings: two gates checked out commits in /home/user/wuwei; heredoc verdicts naming door programs were refused by the Bash door; a wrong env-wrapper claim became an acceptance line without real execution; draft-raise was approved at +25 lines and landed at +37; the verdict template and verdict.py still say 'before the PR opens' though PRs now open as drafts first (#1102); the Stop hook says nothing will wake the session even with a cloud check-in armed.",
-   "promise": "Charter rules, built into agents/ with bin/wuwei agents build: (1) _common.md Evidence 4 and _gate.md rule 3: never check out, reset or build in the main worktree; copy the tree with git archive or git worktree add into your scratch folder. (2) _gate.md: write the verdict file with the Write tool, never a shell heredoc (the Bash door refuses a heredoc that names a door program). (3) _gate.md rule 3: re-run every mutant you list as surviving, in a fresh copy, before you list it. (4) _gate.md: a finding about how a shell, wrapper or gh parses a command names a run with a stub program on PATH (or gh with http_unix_socket pointed at a logging server) that shows what really executes; without one it is a note. (5) sentinel-security.md: a normalisation round probes one input per path class (//, %xx, /./, /../) and per working-directory wrapper (cd, env -C, sudo -D). (6) builder.md AUTH sweep: for a guard change, run the route corpus on main and on the branch, record the sha256 of tests/fixtures/routes.json, and list a refusal that names a different PR or repository as its own row. (7) planner.md approval and lead.md Scope: an item that adds runtime lines states its estimate and a budget about one and a half times it; the planner checks the budget against the headroom (3,000 minus the measured lines) before it asks for approval, and orders a free-lines item first when it does not fit. Wording: the verdict template (_gate.md line 46, verdict.py lines 12 and 49, docs/site/reference.md line 79) says '<owner/repo> alone before its draft PR exists'; the Stop hook line (hook.py lines 90-91) says nothing will wake the session unless a check-in or PR subscription is armed, which WUWEI cannot see. Rollback: revert the commit. Outside: any guard or evidence rule; #1078's attestation path.",
-   "acceptance": [
-    "given the change, when bin/wuwei agents build runs, then agents/ matches the charters and the drift test passes, and agents/sentinel-*.md hold the main-worktree, Write-tool, mutant re-run and stub-execution rules",
-    "given a verdict whose PR line is 'taoq-ai/wuwei' alone, when verdict.parse reads it, then it parses as before, and given a malformed PR line, then the error names '<owner/repo> before its draft PR exists'",
-    "given only waiting work and no watch pass in the last hour, when the Stop hook fires, then its line says nothing will wake the session unless a check-in or PR subscription is armed",
-    "given the change, when the suite runs, then the runtime line count is no higher than before the item",
-    "given charters/planner.md, when it is read, then the approval step names the line-budget check against headroom and the free-lines-first order"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "gh-doors",
    "title": "fix(guards): gh api graphql queries WUWEI cannot read, repositories/<id> writes, and merge flags read the way gh reads them meet the doors",
    "goal": "G-2",
@@ -690,6 +663,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1096"
+  },
+  {
+   "id": "gate-rules",
+   "title": "docs(charters): gates stay out of the main worktree, write verdicts with Write, re-run surviving mutants and show shell findings by stub execution; approval checks the line budget",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 9.0,
+   "why": "Today's findings: two gates checked out commits in /home/user/wuwei; heredoc verdicts naming door programs were refused by the Bash door; a wrong env-wrapper claim became an acceptance line without real execution; draft-raise was approved at +25 lines and landed at +37; the verdict template and verdict.py still say 'before the PR opens' though PRs now open as drafts first (#1102); the Stop hook says nothing will wake the session even with a cloud check-in armed.",
+   "promise": "Charter rules, built into agents/ with bin/wuwei agents build: (1) _common.md Evidence 4 and _gate.md rule 3: never check out, reset or build in the main worktree; copy the tree with git archive or git worktree add into your scratch folder. (2) _gate.md: write the verdict file with the Write tool, never a shell heredoc (the Bash door refuses a heredoc that names a door program). (3) _gate.md rule 3: re-run every mutant you list as surviving, in a fresh copy, before you list it. (4) _gate.md: a finding about how a shell, wrapper or gh parses a command names a run with a stub program on PATH (or gh with http_unix_socket pointed at a logging server) that shows what really executes; without one it is a note. (5) sentinel-security.md: a normalisation round probes one input per path class (//, %xx, /./, /../) and per working-directory wrapper (cd, env -C, sudo -D). (6) builder.md AUTH sweep: for a guard change, run the route corpus on main and on the branch, record the sha256 of tests/fixtures/routes.json, and list a refusal that names a different PR or repository as its own row. (7) planner.md approval and lead.md Scope: an item that adds runtime lines states its estimate and a budget about one and a half times it; the planner checks the budget against the headroom (3,000 minus the measured lines) before it asks for approval, and orders a free-lines item first when it does not fit. Wording: the verdict template (_gate.md line 46, verdict.py lines 12 and 49, docs/site/reference.md line 79) says '<owner/repo> alone before its draft PR exists'; the Stop hook line (hook.py lines 90-91) says nothing will wake the session unless a check-in or PR subscription is armed, which WUWEI cannot see. Rollback: revert the commit. Outside: any guard or evidence rule; #1078's attestation path.",
+   "acceptance": [
+    "given the change, when bin/wuwei agents build runs, then agents/ matches the charters and the drift test passes, and agents/sentinel-*.md hold the main-worktree, Write-tool, mutant re-run and stub-execution rules",
+    "given a verdict whose PR line is 'taoq-ai/wuwei' alone, when verdict.parse reads it, then it parses as before, and given a malformed PR line, then the error names '<owner/repo> before its draft PR exists'",
+    "given only waiting work and no watch pass in the last hour, when the Stop hook fires, then its line says nothing will wake the session unless a check-in or PR subscription is armed",
+    "given the change, when the suite runs, then the runtime line count is no higher than before the item",
+    "given charters/planner.md, when it is read, then the approval step names the line-budget check against headroom and the free-lines-first order"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1105"
   },
   {
    "id": "close-1074",
