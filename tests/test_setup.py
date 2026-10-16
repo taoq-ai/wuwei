@@ -236,3 +236,18 @@ def test_init_cloud_twice_keeps_other_hooks_and_writes_the_same_settings(tmp_pat
     first = settings.read_text()
     setup.init(tmp_path, cloud=True)
     assert settings.read_text() == first and json.loads(first)['hooks']['PreToolUse'][0] == other
+
+
+def test_the_plan_skill_has_the_planner_read_tracker_measures_into_the_leads_brief():
+    skill = (PLUGIN / 'skills' / 'wuwei-plan' / 'SKILL.md').read_text()
+    launch = skill.index('Launch the lead')
+    read = skill.index('tracker')
+    assert read < launch, 'the planner reads tracker measures before it launches the lead'
+    step = skill[read:launch]
+    assert 'own MCP tools' in step and 'unmeasured' in step and "lead's brief" in step
+
+
+def test_the_contributor_docs_run_the_suite_where_python3_lacks_pytest():
+    for doc in ('AGENTS.md', 'CONTRIBUTING.md'):
+        text = (PLUGIN / doc).read_text()
+        assert '`python3 -m pytest -q`' in text and '`pytest -q` where' in text, doc
