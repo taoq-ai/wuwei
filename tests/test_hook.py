@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -500,3 +501,24 @@ def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
     assert hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Write', 'cwd': str(root),
                                              'tool_input': {'file_path': 'a.py'}}) is None
     assert ws.rows(root, 'hook.error')
+
+
+PAYLOADS = Path(__file__).resolve().parent / 'fixtures' / 'payloads'
+STARTED = {'claude-agent-post-accepted.json': ['a3c1962f47bd20e43'], 'codex-spawn-agent-post.json': ['019a7c3e-5b1d']}
+STOPPED = {'claude-subagent-stop.json': ['a0c989a635b251810']}
+QUIET = {'claude-agent-pre-accepted.json', 'claude-agent-pre-rejected.json', 'claude-agent-post-rejected.json',
+         'claude-subagent-pre-tool.json'}
+
+
+def test_the_payload_corpus_holds_every_recorded_shape():
+    assert {p.name for p in PAYLOADS.glob('*.json')} == set(STARTED) | set(STOPPED) | QUIET
+
+
+@pytest.mark.parametrize('name', sorted(set(STARTED) | set(STOPPED) | QUIET))
+def test_every_recorded_payload_replays_without_an_error(root, name):
+    """A hook change that moves what a payload records edits this table or the payload, so its diff shows it."""
+    payload = json.loads((PAYLOADS / name).read_text(encoding='utf-8'))
+    assert hook.handle(root, payload['hook_event_name'], payload) is None
+    assert ws.rows(root, 'hook.error') == []
+    assert [row['data']['agent'] for row in ws.rows(root, 'seat.started')] == STARTED.get(name, [])
+    assert [row['data']['agent'] for row in ws.rows(root, 'seat.stopped')] == STOPPED.get(name, [])

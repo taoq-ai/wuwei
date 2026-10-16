@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Security gate X-1 at 201859c",
+    "prompt": "Security gate for WUWEI item X-1 in o/r. (scrubbed)",
+    "subagent_type": "sentinel-security"
+  },
+  "tool_use_id": "toolu_01AAAAAAAAAAAAAAAAAAAAAA"
+}

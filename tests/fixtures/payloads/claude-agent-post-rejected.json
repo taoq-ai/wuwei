@@ -1,0 +1,15 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Build I-1",
+    "prompt": "Build WUWEI item I-1 in o/r. (scrubbed)",
+    "subagent_type": "wuwei:nobody"
+  },
+  "tool_response": "Error: Agent type 'wuwei:nobody' not found. Available agents: builder, shepherd, sentinel-quality, sentinel-security, sentinel-arch, sentinel-goal",
+  "tool_use_id": "toolu_01BBBBBBBBBBBBBBBBBBBBBB"
+}

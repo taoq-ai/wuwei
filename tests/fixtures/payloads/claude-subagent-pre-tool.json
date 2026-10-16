@@ -1,0 +1,15 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "agent_id": "a8c1d12e15eabf469",
+  "agent_type": "sentinel-arch",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git fetch -q origin; git rev-parse origin/claude/release-pr-generated; git diff --stat origin/main...origin/claude/release-pr-generated",
+    "description": "Fetch and diff the branch under review"
+  },
+  "tool_use_id": "toolu_01CCCCCCCCCCCCCCCCCCCCCC"
+}
