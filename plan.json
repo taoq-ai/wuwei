@@ -1,0 +1,28 @@
+{
+ "items": [
+  {
+   "id": "1064",
+   "title": "the wuwei repository runs on its own plugin in cloud sessions",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 12.0,
+   "why": "no hook fires on this repository today (doctor: warn hooks); the door refused this PR, showing the copy works",
+   "promise": "cloud sessions holding only taoq-ai/wuwei run the plan, the gates and the doors on WUWEI itself",
+   "acceptance": [
+    "given a cloud session holding only taoq-ai/wuwei, when it starts, then SessionStart prints the WUWEI CLI path and doctor reports ok hooks",
+    "given a machine with the plugin installed, when a session starts, then the hooks run once"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+repos = ["taoq-ai/wuwei"]
+owner_paths = []
+prioritisation = "wsjf"
+tracker = "github"
+telemetry = true
