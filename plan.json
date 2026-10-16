@@ -1,33 +1,6 @@
 {
  "items": [
   {
-   "id": "free-lines-2",
-   "title": "refactor: the test-only replay helper leaves the runtime and two copies of the cache helper fold into evidence._cached",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 13.0,
-   "why": "cli/wuwei is at 2,996 of 3,000 lines on main 8ea4192, so draft-raise (the fix for bug #1074) cannot land; a probe of these four edits frees 34 lines with the suite green.",
-   "promise": "Free 34 runtime lines with no change in behaviour, so draft-raise fits under the 3,000-line budget (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Where the lines come from, measured on main 8ea4192 (2,996 lines): (1) replay.replay(directory, scratch, monkeypatch), cli/wuwei/replay.py lines 42-59, has no runtime caller: only tests/test_replay.py calls it, and it takes pytest's monkeypatch. It moves into tests/test_replay.py as a module helper, and the now unused import datetime (replay.py line 4) goes: 19 lines. replay.record and wuwei evidence --record stay as they are. (2) board._list (board.py lines 10-12) repeats evidence._cached (evidence.py lines 128-130) with max_age=TTL. Its one caller (board.py line 69) calls evidence._cached(root, f'prs-{key}', lambda: gh.open_prs(repo), TTL): 5 lines. (3) evidence.items_named (evidence.py lines 93-94) has one caller (board.py line 55), which reads evidence.ITEM.findall(pr.get('body') or '') in place: 4 lines. (4) guards._default (guards.py lines 106-116) repeats the get-or-put cache read. It becomes a 5-line function through evidence._cached with the same cache name, the same 86400 s age, {'main', 'master'} with no repository and on gh.GhError, and nothing cached on an error: 6 lines. The runtime drops to 2,962 lines. Touches cli/wuwei/replay.py, cli/wuwei/board.py, cli/wuwei/evidence.py, cli/wuwei/guards.py (only _default), tests/test_replay.py, and the vendored copy under .claude/wuwei/cli/wuwei/ by re-vendoring. Starts before draft-raise, which edits other parts of guards.py. Rollback: revert the commit; no data, config or CLI changes. Outside: any CLI flag or output, the replay case format, the guards' routes. Assumption: tier full because guards.py is the door code, as for free-lines; the diff should pick fewer gates. Overturned if the owner rates a behaviour-neutral change in guards.py as standard. Alternative recorded, not chosen: moving all of replay.py and the --record flag into scripts/ frees 65 lines, but it removes a documented CLI flag (docs/site/reference.md line 20, README.md line 96), which is a breaking: question for the owner.",
-   "acceptance": [
-    "given the change, when the suite runs, then the runtime under cli/wuwei is 2,962 lines or fewer and every test passes, the vendored-drift test included after re-vendoring",
-    "given the recorded case under tests/replay/standard-pr-with-owner-paths, when tests/test_replay.py runs with the helper in the test module, then the case gives the gaps it recorded and record-then-replay round trips",
-    "given the change, when cli/wuwei is searched, then no module defines replay(, _list( or items_named(, and wuwei evidence --record DIR still writes DIR/case.json",
-    "given a repository whose default-branch lookup raises GhError, when git push origin main is read, then it is refused as on main, and given a cached default branch trunk, when git push origin trunk is read, then it is refused with no gh call",
-    "given a PR body naming WUWEI-Item: X-1 and WUWEI-Item: X-2, when the board computes, then both items link the PR as on main"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "draft-raise",
    "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
    "goal": "G-2",
@@ -224,6 +197,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "free-lines-2",
+   "title": "refactor: the test-only replay helper leaves the runtime and two copies of the cache helper fold into evidence._cached",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "cli/wuwei is at 2,996 of 3,000 lines on main 8ea4192, so draft-raise (the fix for bug #1074) cannot land; a probe of these four edits frees 34 lines with the suite green.",
+   "promise": "Free 34 runtime lines with no change in behaviour, so draft-raise fits under the 3,000-line budget (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Where the lines come from, measured on main 8ea4192 (2,996 lines): (1) replay.replay(directory, scratch, monkeypatch), cli/wuwei/replay.py lines 42-59, has no runtime caller: only tests/test_replay.py calls it, and it takes pytest's monkeypatch. It moves into tests/test_replay.py as a module helper, and the now unused import datetime (replay.py line 4) goes: 19 lines. replay.record and wuwei evidence --record stay as they are. (2) board._list (board.py lines 10-12) repeats evidence._cached (evidence.py lines 128-130) with max_age=TTL. Its one caller (board.py line 69) calls evidence._cached(root, f'prs-{key}', lambda: gh.open_prs(repo), TTL): 5 lines. (3) evidence.items_named (evidence.py lines 93-94) has one caller (board.py line 55), which reads evidence.ITEM.findall(pr.get('body') or '') in place: 4 lines. (4) guards._default (guards.py lines 106-116) repeats the get-or-put cache read. It becomes a 5-line function through evidence._cached with the same cache name, the same 86400 s age, {'main', 'master'} with no repository and on gh.GhError, and nothing cached on an error: 6 lines. The runtime drops to 2,962 lines. Touches cli/wuwei/replay.py, cli/wuwei/board.py, cli/wuwei/evidence.py, cli/wuwei/guards.py (only _default), tests/test_replay.py, and the vendored copy under .claude/wuwei/cli/wuwei/ by re-vendoring. Starts before draft-raise, which edits other parts of guards.py. Rollback: revert the commit; no data, config or CLI changes. Outside: any CLI flag or output, the replay case format, the guards' routes. Assumption: tier full because guards.py is the door code, as for free-lines; the diff should pick fewer gates. Overturned if the owner rates a behaviour-neutral change in guards.py as standard. Alternative recorded, not chosen: moving all of replay.py and the --record flag into scripts/ frees 65 lines, but it removes a documented CLI flag (docs/site/reference.md line 20, README.md line 96), which is a breaking: question for the owner.",
+   "acceptance": [
+    "given the change, when the suite runs, then the runtime under cli/wuwei is 2,962 lines or fewer and every test passes, the vendored-drift test included after re-vendoring",
+    "given the recorded case under tests/replay/standard-pr-with-owner-paths, when tests/test_replay.py runs with the helper in the test module, then the case gives the gaps it recorded and record-then-replay round trips",
+    "given the change, when cli/wuwei is searched, then no module defines replay(, _list( or items_named(, and wuwei evidence --record DIR still writes DIR/case.json",
+    "given a repository whose default-branch lookup raises GhError, when git push origin main is read, then it is refused as on main, and given a cached default branch trunk, when git push origin trunk is read, then it is refused with no gh call",
+    "given a PR body naming WUWEI-Item: X-1 and WUWEI-Item: X-2, when the board computes, then both items link the PR as on main"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": ""
   },
   {
    "id": "free-lines",
