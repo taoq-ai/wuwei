@@ -418,6 +418,17 @@ FORCE = 'force push refused'
     ('stdbuf -oL git push --force origin x', FORCE),
     ('sudo -u ci env A=1 timeout 5 git push --force origin x', FORCE),
     ("xargs -n 1 sh -c 'git push --force origin x'", FORCE),
+    ('while git push --force origin x; do :; done', FORCE),
+    ('if false; then :; elif false; then :; elif git push --force origin x; then :; fi', FORCE),
+    ('git -c a=b push --force origin x', FORCE),
+    ('env GIT_SSH=/usr/bin/ssh git push --force origin x', FORCE),
+    ('env SHELL=/bin/bash gh pr merge 5', 'acme/app#5 is not ready'),
+    ('env HOME=/root/git git push origin main', 'default branch'),
+    ('env X=/bin/tee wuwei hook pre', 'wuwei hook is called by the harness'),
+    ('env X=/bin/sh FOO=1 tee .wuwei/ledger/a.jsonl', 'the ledger is written only'),
+    ('env --chdir=/src/git git push --force origin x', FORCE),
+    ('env -C/src/git git push --force origin x', FORCE),
+    ('sudo EDITOR=/usr/bin/sed gh pr merge 5 --admin', '--admin'),
 ])
 def test_a_door_inside_a_body_after_shell_flags_or_after_a_wrapper_meets_its_door(root, fake, repo, command, reason):
     fake.prs['5'] = make_pr(number=5, files=('src/app.py',))
@@ -438,6 +449,10 @@ def test_a_door_inside_a_body_after_shell_flags_or_after_a_wrapper_meets_its_doo
 ])
 def test_ordinary_loops_ifs_and_wrapped_commands_pass(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command
+
+
+def test_a_wrapper_assignment_naming_a_tool_does_not_hide_the_infra_ask(root, repo):
+    assert guards.pre_tool(root, bash('env TOOL=/usr/bin/rm terraform apply'))['decision'] == 'ask'
 
 
 def test_a_redirect_anywhere_in_a_command_gives_its_target_and_keeps_the_other_words():

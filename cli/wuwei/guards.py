@@ -86,11 +86,11 @@ def _unwrap(tokens):
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
     if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
-        argv = next((argv[i:] for i, a in enumerate(argv) if Path(a).name in READ or Path(a).name.startswith('python')), argv)
+        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
+                     and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
-        nested = segments(argv[body])
-        return (nested if nested is not None else [UNREAD]) + ([([], targets)] if targets else [])
+        return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
     return [(argv, targets)]
 
 

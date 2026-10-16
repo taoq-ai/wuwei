@@ -62,6 +62,16 @@ The acceptance scenarios, restated:
   naming no door program still passes.
 - Q: Are `fi`, `done`, `}` and `esac` dropped too? A: Not needed. They close a body and stand alone
   after a separator, so they read as a program no door reads.
+- Q: Which words does the first-program search after a wrapper skip? A: Every word that starts
+  with `-` or holds `=` (fix round 1, arch and security gates). Without this, `env
+  GIT_SSH=/usr/bin/ssh git push --force` stopped at the assignment, whose base name is `ssh`, and
+  lost the push door that main applied. The gates' main-vs-head script now reports 0 regressions
+  in 130 commands.
+- Q: Is this a breaking change? A: Yes, to the Bash door's outward behavior. Newly refused: a door
+  command inside a loop, an if, a brace group, after `!`, in a `bash -lc` body, or after a
+  wrapper's options; an over-read such as `nohup echo git push origin main`; and an unreadable
+  `sh -c` body inside a command whose text names a door program. The migration is the one the
+  refusal already gives: run the door command in its own one-line Bash call, without a wrapper.
 
 ## User Scenarios & Testing
 
@@ -100,7 +110,8 @@ pass.
 - **FR-001**: `_unwrap` drops leading `VAR=value` words and the reserved words `do`, `then`,
   `else`, `elif`, `if`, `while`, `until`, `!`, `{`.
 - **FR-002**: after a leading wrapper, `_unwrap` starts the command at the first word whose base
-  name is in `READ` or starts with `python`; with none, the command is unchanged.
+  name is in `READ` or starts with `python`, skipping words that start with `-` or hold `=`; with
+  none, the command is unchanged.
 - **FR-003**: a shell whose dash options before the first plain word include a single-dash cluster
   with `c` has that word read as its body.
 - **FR-004**: an unreadable `sh -c` body leaves the `UNREAD` marker segment; `bash` applies the
@@ -126,8 +137,12 @@ pass.
 Not read on one line: `eval`, input piped or fed to a shell (`| sh`, here-strings), a variable as
 the program name, `$(...)` inside double quotes, process substitution, ANSI-C quoting, a separator
 glued to a redirect or pipe (`>;`, `|&`), quote splicing inside a word, a function body
-(`f() { ...; }`), a shell option with an argument before `-c` (`bash -o pipefail -c`), and wrappers
-outside the list (`setsid`, `flock`, `ionice`).
+(`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, unquoted backticks, a shell
+option before `-c` that takes an argument or is not a single-dash cluster (`bash -o pipefail -c`,
+`+e -c`, `-O extglob -c`, `--rcfile f -c`), wrappers outside the list (`setsid`, `flock`,
+`ionice`), and a wrapper option whose value names a read program (`sudo -u gh gh pr merge 5`,
+`env -C /x/git git push`). The text of an unreadable `sh -c` body inside a readable command meets
+only the door-word rule, not the leak scan.
 
 ## How this fails
 
@@ -142,3 +157,7 @@ outside the list (`setsid`, `flock`, `ionice`).
    mistake the placeholder for a file; the marker's text names what it is. An earlier head of this
    branch raised instead and hid the outer segments from the leak door; tests now pin a canary and
    `terraform apply` beside an unreadable body.
+4. Breaking: sessions that wrote door commands inside loops, ifs or `bash -lc`, or through a
+   wrapper with options, are now refused where main let them pass, including over-reads such as
+   `nohup echo git push origin main`. A session that relied on those shapes must split the door
+   command into its own call.

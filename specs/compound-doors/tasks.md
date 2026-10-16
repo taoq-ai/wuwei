@@ -30,3 +30,11 @@
 
 - [x] T018 A canary and `terraform apply` beside an unreadable `bash -c` body still meet the leak and infra doors; run red (tests/test_guards.py)
 - [x] T019 Marker segment instead of a raise; SECURITY.md runtime budget reads 3,000 (cli/wuwei/guards.py, SECURITY.md)
+
+## Phase 5: Fix round 1 (quality, arch, security FIX at 6c9b74c)
+
+- [x] T020 Pin the 8 wrapper shapes with an assignment or `--opt=value` naming a read program; run red (tests/test_guards.py)
+- [x] T021 Pin `git -c a=b push --force`, a `while` condition and a second `elif` (tests/test_guards.py)
+- [x] T022 The first-program search skips words that start with `-` or hold `=`; net zero kept with a walrus (cli/wuwei/guards.py)
+- [x] T023 The gates' main-vs-head comparison reports 0 regressions in 130 commands
+- [x] T024 SECURITY.md residuals and the spec's breaking-change note
