@@ -1,0 +1,28 @@
+Verdict: PASS
+Gate: quality
+Item: X-1
+PR: taoq-ai/wuwei
+Head: 13fc17300141d3238d21749b6f425444be19d871
+Confidence: medium
+Breaking: no
+
+## Findings
+- [low] cli/wuwei/evidence.py:117 blocks: no. Mutant: drop KeyError from the except in release() survives. A config such as `{}` or an extra-files entry `{"type": "json"}` (no path) would then raise out of release() into gaps(), whose outer handler returns one non-actionable "evidence unreadable" gap instead of the normal gaps. It still fails closed (no gap is dropped), so the harm is a wrong message only. Missing test: config `{}` and an extra-files entry without `path`.
+- [low] cli/wuwei/evidence.py:116 blocks: no. Mutant: `for e in [] + package.get('extra-files', [])` to `for e in package.get('extra-files', [])` survives. A string value for extra-files would iterate its characters as paths; the only bad input is a one-character file name in a bot release PR, so no real harm. The `[] +` idiom is a deliberate type check that nothing explains; a one-line comment or a test with `"extra-files": "x"` would fix it.
+- [low] cli/wuwei/evidence.py:112 blocks: no. Mutant: `bool(files) and files <= allowed` to `files <= allowed` survives. Equivalent: an empty PR has no code, so no test gap or gate was due anyway.
+- [low] cli/wuwei/evidence.py:173 blocks: no. Existing gap, not this item: in _rule, removing the `rule == 'checked'`, `.md` or `type == 'file'` conditions survives on base 2a306da and on the head, so the reshape neither added nor fixed the gap. DEFERRED/REASON regex mutants (drop "Out of this PR", drop `reason:`) also survive on both. Missing tests are noted for a later item.
+- [low] docs/design.md:73 blocks: no. The table rows "A test in the diff (docs-only exempt)" and the gates row do not say a release-please PR is read as generated. The spec records it; the design is untouched.
+
+## Probes
+- Fetched 13fc173 (commit confirmed, origin/main 2a306da) and ran the suite in a clean `git archive` copy: 296 passed, runtime 2,999 lines (cli/wuwei/*.py, wc -l), under 3,000.
+- Test first: the new tests run against the base evidence.py in a copy fail (6 failed: generated read, four unreadable-config cases, package-path case). The person/branch/code case passes on base by design, since it asserts today's gaps.
+- Mutants on release(), all killed: author check removed (test_a_release_pr_from_a_person_another_branch_or_with_code_keeps_every_gap), branch check removed (same), subset check removed (same), config read at head instead of base (test_a_release_please_pr_is_read_as_generated), lstrip('/') and normpath removed (test_release_extra_files_resolve_under_their_package_path and test_a_release_please_pr_is_read_as_generated), release-please[bot] removed from RELEASE_BOTS, manifest and CHANGELOG each dropped from the allow set, GhError/ValueError/TypeError/AttributeError each dropped from the except (the unreadable-config parametrised cases). Survivors are the three above.
+- Mutants on gaps(): `generated` removed from the gates_for files and from the `code` test (both killed by test_a_release_please_pr_is_read_as_generated).
+- Reshapes, checked by reading the diff and by mutants. DEFERRED and REASON are textually identical, moved above their first use (module level, order irrelevant). _unchecked: `boxes.count(" ")` and `' ' in boxes` equal the old open_boxes logic; plural and none mutants killed (test_full_tier_needs_clarify..., test_missing_steps_and_unfinished_tasks_are_named). spec_gaps: dict.fromkeys over problem strings equals the old `gap(problem) not in found` dedupe (same order); dedupe mutant survives on base and head, and the no-spec and specs/-only branch is killed (test_a_pr_that_only_amends_a_spec_still_counts_as_touching_the_spec). _rule: the next(...) with a walrus is the old loop (first problem wins, only for 'checked' files). ci_gaps: the nested conditional parses as failed, else running, else none; mutants on the failing, running and found-first parts are killed by test_ci_threads_and_reviews, test_waiting_states_are_not_actionable and test_a_pending_status_from_a_review_triggered_workflow_waits_on_review, so the 1067 review-status behaviour holds.
+- Open question, budget overrun: design.md section 6 (Error budget, line 100) says an overrun repository takes "its full gate set, untrimmed by the diff". gates_for returns REQUIRED[tier] when the budget is raised, before needed() runs, so a release PR then needs every gate, exactly as a docs PR does. That is consistent with the design; the spec records it as an assumption. No test pins it, which is a note only.
+- Checked the repo's own release-please-config.json: package ".", extra-files `.claude-plugin/plugin.json` (object with path), so the 1.2.1 shape resolves; the manifest file is `{".": "1.2.1"}`.
+- Scratch note: the shared scratchpad was being written by another seat, so my first mutation run read a foreign script; I discarded that run and redid everything in a new directory (scratchpad/qual-19597). The results above are from that run.
+- Simplicity: none to delete that the item needs. Possible: the `[] +` idiom could be a plain `list(...)` check only if a type test is added; the reshapes of _rule, spec_gaps and ci_gaps exist only to free lines under the 3,000 cap (2,999 now) and are behaviour-equal. The fail-closed excepts and the base-branch read are trust-boundary guards and are not deletable.
+
+## Residual risk
+The file test checks paths, not the patch, so a bot PR can change more inside plugin.json than the version (the spec states this). The CI, thread and owner-review gaps still apply to release PRs.
