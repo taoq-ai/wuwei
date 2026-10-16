@@ -451,7 +451,7 @@ def test_waiting_work_with_no_watch_armed_asks_once_to_arm_it(root, fake):
 def test_an_empty_queue_with_goals_asks_once_for_a_plan_pass(root, fake):
     assert stop(root) is None
     (root / ws.DIR / 'goals.md').write_text('G-1: ship the grant flow\n')
-    assert 'run a plan pass from the goals' in stop(root, session='s2')['reason']
+    assert 'run a plan pass from the goals (/wuwei-run)' in stop(root, session='s2')['reason']
     assert stop(root, session='s2') is None
 
 

@@ -6,7 +6,7 @@ says what each one is, why it is there, and where it lives.
 | Concept | Why it is there | Where it lives |
 | --- | --- | --- |
 | [Auditor, not a gate](philosophy.md) | Process the model cannot see the point of gets routed around; evidence cannot be | the whole design |
-| [Plan passes and checkpoints](the-day.md) | Days change; a plan you can redo any time stays true | `/wuwei-plan`, `/wuwei-close`, `.wuwei/plan.json` |
+| [Plan passes and checkpoints](the-day.md) | Days change; a plan you can redo any time stays true | `/wuwei-run`, `/wuwei-close`, `.wuwei/plan.json` |
 | [WSJF and RICE ranking](the-day.md#ranking) | The most valuable work first, with evidence for every score | `wuwei plan add` |
 | [The team and its charters](team.md) | Independent roles catch what one agent misses | `charters/`, `agents/` |
 | [The evidence contract](evidence.md) | "Done" means something checkable, the same for every PR | `wuwei status`, `wuwei evidence` |

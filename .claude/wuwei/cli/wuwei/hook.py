@@ -90,7 +90,7 @@ def stop(root, payload):
         open_work = ['nothing will wake this session for the waiting work: arm /wuwei-watch on a schedule '
                      '(/loop 20m /wuwei-watch locally; in the cloud a PR subscription and a check-in)']
     elif not rows and (Path(root) / ws.DIR / 'goals.md').is_file():  # the flow never waits on the owner's nudge
-        open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-plan)']
+        open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-run)']
     if not open_work:
         return None
     name, last = f'stop-{payload.get("session_id", "")}', ws.cache_get(root, f'stop-{payload.get("session_id", "")}', 7 * 86400)

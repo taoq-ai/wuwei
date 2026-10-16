@@ -70,7 +70,7 @@ def cmd_plan(args):
             print(f'{item["score"]:>7}  {item["id"]:<10} {item.get("status", "open"):<8} {item.get("tier", ""):<9} '
                   f'{item.get("goal", ""):<5} {item.get("repo", "")}  {item["title"]}')
         if not rows:
-            print('the plan is empty: run /wuwei-plan')
+            print('the plan is empty: run /wuwei-run')
     return 0
 
 
