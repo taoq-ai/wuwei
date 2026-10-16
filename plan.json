@@ -1,34 +1,6 @@
 {
  "items": [
   {
-   "id": "compound-doors",
-   "title": "fix(guards): the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 9.5,
-   "why": "Main's guards pass a door inside a for/while/if body, after 'bash -lc', and after wrapper options. Those are the deny-list gaps a cooperating agent plausibly writes (97 loops and 35 ifs in today's 506 commands).",
-   "promise": "guards._unwrap reads past the shell reserved words that open a body (do, then, else, elif, if, while, until, '!', '{'), so a door inside a loop, an if or a brace group meets its door. A shell called with combined flags before -c ('bash -lc', 'sh -ec', 'bash -e -c') is unwrapped like 'bash -c'. After a wrapper (env, nice, timeout, stdbuf, sudo, xargs, nohup, command, exec, time), the command starts at the first word naming a program the guards read (git, gh, wuwei, a shell, an infrastructure tool), so a wrapper's option arguments ('-n 10', '-u VAR', '60') no longer hide it. Touches cli/wuwei/guards.py (WRAPPERS, _unwrap) and tests/test_guards.py. Lines: the flag-skip loop in _unwrap is replaced by the first-program rule (net 0 or less). Outside: eval, input piped or fed to a shell ('| sh', here-strings), a variable as the program name, $(...) inside double quotes; the PR records these as residual under SECURITY.md.",
-   "acceptance": [
-    "given 'for pr in 1 2; do gh pr merge $pr; done', when the Bash door reads it, then the merge door reads 'gh pr merge' and refuses without evidence",
-    "given 'if true; then git push --force origin x; fi', 'while true; do git push --force origin x; done', '{ git push --force origin x; }' and '! git push --force origin x', when the Bash door reads each, then the force-push door refuses each",
-    "given \"bash -lc 'git push --force origin x'\" and \"sh -ec 'gh pr merge 5'\", when the Bash door reads each, then the matching door refuses",
-    "given 'timeout 60 gh pr merge 5', 'nice -n 10 git push --force origin x' and 'env -u GH_TOKEN gh pr merge 5', when the Bash door reads each, then the matching door reads the wrapped command",
-    "given 'for f in *.md; do wc -l $f; done' and 'if [ -f x ]; then echo ok; fi', when the Bash door reads them, then nothing is refused",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "doors-by-rest",
    "title": "fix(guards): every code-host route to a door meets that door",
    "goal": "G-2",
@@ -57,33 +29,6 @@
    "status": "open",
    "added": "2026-10-16",
    "approved": false
-  },
-  {
-   "id": "verdict-handback",
-   "title": "fix(hook): a gate's verdict is linted before its hand-back, and a stop that cannot block records verdict.missing",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 6.0,
-   "why": "A malformed gate verdict is blocked only after the hand-back has ended the seat's run, so it is neither fixed nor recorded (1067's quality verdict at 3fb3f40). Linting at the hand-back fixes the timing, and seats stop padding ':1' anchors.",
-   "promise": "The SubagentStop lint and evidence's lint are already one check (both call verdict.parse; hook.py:179, evidence.py:10). The gap is timing: SubagentHandback ends the seat's run, so a block from SubagentStop lands after the seat can act, and nothing is recorded because no second stop comes. Fix: (1) PreToolUse on SubagentHandback lints the verdict file named by the message's 'Verdict file:' line with the same _verdict_problem. It denies the hand-back with the shape errors and the format, so the seat rewrites before its run ends. When the verdict is well formed it records the attest there. (2) SubagentStop records verdict.missing for a problem whenever it cannot block to effect: on stop_hook_active as today, or when the hand-back has already ended the run. (3) verdict.parse accepts a non-blocking finding without a file:line ('- [low] blocks: no. <note>'); a blocking finding still needs file:line and 'Failure:'. The sentinel charters and FORMAT say so, so no seat pads ':1' anchors. Touches cli/wuwei/hook.py (pre_tool, subagent_stop, post_tool), cli/wuwei/verdict.py (FINDING, FORMAT), the sentinel charters with a rebuilt agents/, and tests. Lines: post_tool's Agent hand-back re-read (hook.py:205-212, 7 lines) goes, because the hand-back check reads the same message earlier. Outside: evidence's verdict counting, the verdict file location.",
-   "acceptance": [
-    "given a sentinel seat calls SubagentHandback with a message ending 'Verdict file: .wuwei/verdicts/1067/quality-3fb3f40.md' and that file holds a finding line with no file:line and no blocks:, when PreToolUse runs, then the hand-back is denied with the shape errors and the format",
-    "given the same hand-back with a well-formed verdict, when PreToolUse and then SubagentStop run, then exactly one attest row is recorded for that file",
-    "given a seat whose run already ended by hand-back and a verdict problem found at SubagentStop, when the hook runs, then a verdict.missing row is recorded with the problem",
-    "given '- [low] blocks: no. a note on the design', when verdict.parse reads the findings, then it is accepted as a non-blocking finding; given '- [high] blocks: yes. Failure: x', then it is rejected for its missing file:line",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
   },
   {
    "id": "seat-count",
@@ -334,6 +279,63 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1076"
+  },
+  {
+   "id": "compound-doors",
+   "title": "fix(guards): the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "Main's guards pass a door inside a for/while/if body, after 'bash -lc', and after wrapper options. Those are the deny-list gaps a cooperating agent plausibly writes (97 loops and 35 ifs in today's 506 commands).",
+   "promise": "guards._unwrap reads past the shell reserved words that open a body (do, then, else, elif, if, while, until, '!', '{'), so a door inside a loop, an if or a brace group meets its door. A shell called with combined flags before -c ('bash -lc', 'sh -ec', 'bash -e -c') is unwrapped like 'bash -c'. After a wrapper (env, nice, timeout, stdbuf, sudo, xargs, nohup, command, exec, time), the command starts at the first word naming a program the guards read (git, gh, wuwei, a shell, an infrastructure tool), so a wrapper's option arguments ('-n 10', '-u VAR', '60') no longer hide it. Touches cli/wuwei/guards.py (WRAPPERS, _unwrap) and tests/test_guards.py. Lines: the flag-skip loop in _unwrap is replaced by the first-program rule (net 0 or less). Outside: eval, input piped or fed to a shell ('| sh', here-strings), a variable as the program name, $(...) inside double quotes; the PR records these as residual under SECURITY.md.",
+   "acceptance": [
+    "given 'for pr in 1 2; do gh pr merge $pr; done', when the Bash door reads it, then the merge door reads 'gh pr merge' and refuses without evidence",
+    "given 'if true; then git push --force origin x; fi', 'while true; do git push --force origin x; done', '{ git push --force origin x; }' and '! git push --force origin x', when the Bash door reads each, then the force-push door refuses each",
+    "given \"bash -lc 'git push --force origin x'\" and \"sh -ec 'gh pr merge 5'\", when the Bash door reads each, then the matching door refuses",
+    "given 'timeout 60 gh pr merge 5', 'nice -n 10 git push --force origin x' and 'env -u GH_TOKEN gh pr merge 5', when the Bash door reads each, then the matching door reads the wrapped command",
+    "given 'for f in *.md; do wc -l $f; done' and 'if [ -f x ]; then echo ok; fi', when the Bash door reads them, then nothing is refused",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1083"
+  },
+  {
+   "id": "verdict-handback",
+   "title": "fix(hook): a gate's verdict is linted before its hand-back, and a stop that cannot block records verdict.missing",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "A malformed gate verdict is blocked only after the hand-back has ended the seat's run, so it is neither fixed nor recorded (1067's quality verdict at 3fb3f40). Linting at the hand-back fixes the timing, and seats stop padding ':1' anchors.",
+   "promise": "The SubagentStop lint and evidence's lint are already one check (both call verdict.parse; hook.py:179, evidence.py:10). The gap is timing: SubagentHandback ends the seat's run, so a block from SubagentStop lands after the seat can act, and nothing is recorded because no second stop comes. Fix: (1) PreToolUse on SubagentHandback lints the verdict file named by the message's 'Verdict file:' line with the same _verdict_problem. It denies the hand-back with the shape errors and the format, so the seat rewrites before its run ends. When the verdict is well formed it records the attest there. (2) SubagentStop records verdict.missing for a problem whenever it cannot block to effect: on stop_hook_active as today, or when the hand-back has already ended the run. (3) verdict.parse accepts a non-blocking finding without a file:line ('- [low] blocks: no. <note>'); a blocking finding still needs file:line and 'Failure:'. The sentinel charters and FORMAT say so, so no seat pads ':1' anchors. Touches cli/wuwei/hook.py (pre_tool, subagent_stop, post_tool), cli/wuwei/verdict.py (FINDING, FORMAT), the sentinel charters with a rebuilt agents/, and tests. Lines: post_tool's Agent hand-back re-read (hook.py:205-212, 7 lines) goes, because the hand-back check reads the same message earlier. Outside: evidence's verdict counting, the verdict file location.",
+   "acceptance": [
+    "given a sentinel seat calls SubagentHandback with a message ending 'Verdict file: .wuwei/verdicts/1067/quality-3fb3f40.md' and that file holds a finding line with no file:line and no blocks:, when PreToolUse runs, then the hand-back is denied with the shape errors and the format",
+    "given the same hand-back with a well-formed verdict, when PreToolUse and then SubagentStop run, then exactly one attest row is recorded for that file",
+    "given a seat whose run already ended by hand-back and a verdict problem found at SubagentStop, when the hook runs, then a verdict.missing row is recorded with the problem",
+    "given '- [low] blocks: no. a note on the design', when verdict.parse reads the findings, then it is accepted as a non-blocking finding; given '- [high] blocks: yes. Failure: x', then it is rejected for its missing file:line",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1082"
   },
   {
    "id": "1065",
