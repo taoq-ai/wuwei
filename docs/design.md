@@ -86,6 +86,12 @@ board. Process fit (plan link, PR template, size,
 while the work flows; the merge records it, the report lists it, the steward learns from it. Only a
 safety gap can be an owner `exception:`.
 
+Release PRs: a PR opened by `github-actions[bot]` or `release-please[bot]` on a `release-please--` branch
+is read as generated, like docs: it needs no test and no gate. Every changed file must be `CHANGELOG.md`,
+`.release-please-manifest.json` or an `extra-files` path from `release-please-config.json` on the base
+branch, and every added or removed line in the manifest and extra-files patches must be a version line.
+A missing patch, a rename or an unreadable config keeps every gap. CI, threads and owner review still apply.
+
 Review statuses: a commit status whose `target_url` names a run of a workflow the repository runs on
 `pull_request_review` is review evidence, not CI. Pending reads `waiting on review: <context>`, failure
 reads `change request outstanding: <context>`; both are actionable safety gaps. The review-triggered

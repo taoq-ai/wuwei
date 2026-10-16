@@ -63,8 +63,8 @@ class FakeGh:
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)', path)):
             return self.rest(self.pr(m[1]))
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/files', path)):
-            return [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions']}
-                    for f in self.pr(m[1])['files']]
+            return [{'filename': f['path'], 'additions': f['additions'], 'deletions': f['deletions'],
+                     **{k: f[k] for k in ('patch', 'previous_filename') if k in f}} for f in self.pr(m[1])['files']]
         if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/pulls/(\d+)/reviews', path)):
             return [{'user': {'login': r['author']['login']}, 'state': r['state'], 'commit_id': r.get('commit')}
                     for r in self.pr(m[1])['reviews']]
