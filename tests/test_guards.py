@@ -254,7 +254,9 @@ def test_auto_merge_with_a_real_gap_is_still_refused(root, fake, repo):
 
 
 @pytest.mark.parametrize('question', ['exception: the hotfix PR has no security gate. Accept?',
-                                      'owner review: the infra change. Merge?'])
+                                      'owner review: the infra change. Merge?',
+                                      'owner review: with acme/lib#3 at 1234567 merged, acme/app#9 at abcdef0 is ready. Approve?',
+                                      'breaking: see x/y#2 at def5678. Proceed?', 'owner review: o/r#\uff17 at abc1234. Approve?'])
 def test_a_classed_question_that_will_not_parse_is_refused_with_the_template(root, question):
     decision = guards.pre_tool(root, ask(question))
     assert decision['decision'] == 'deny' and 'owner/repo#n at <sha7>' in decision['reason']

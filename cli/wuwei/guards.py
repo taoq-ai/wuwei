@@ -342,8 +342,8 @@ def pre_tool(root, payload):
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
-        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:'))
-                    and not re.search(r'[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}', q)]
+        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:')) and not
+                    re.match(r'\s*(?i:exception:[\s\S]*?|owner review:\s*|breaking:\s*)[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}\b', q)]
         if unparsed:
             return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
                         'and plan: take any wording). Use the exact shape: "exception: '

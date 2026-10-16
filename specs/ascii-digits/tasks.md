@@ -18,3 +18,9 @@
 - [x] T008 Full suite green after the merge of origin/main 23625f3
 - [x] T009 Main versus head probe of each acceptance input in a scratch copy of 0104d00
 - [x] T010 No emojis and no em dashes in the diff
+
+## Phase 4: Security fix round at cda89f4
+
+- [x] T011 Two-REF and capitalised cases in the hook test, two-REF and fullwidth cases in the guard shape test; red: 4 failed, 708 passed
+- [x] T012 Anchor the REF after the class prefix in `hook._answers` (FR-003) and in the guard's shape rule (FR-006)
+- [x] T013 Security probes `rulings.py` and `e2e.py` re-run on head: lib#3 and app#9 both not owner approved

@@ -12,7 +12,7 @@ search. A setup test scans the runtime for both patterns.
 
 Python 3.11 stdlib, pytest. Runtime 2,986 lines at 0104d00; the item commit brings it to 2,982
 (minus 4: the two ruling readers, eight lines, become four). After merging #1106 (2,992 on main
-23625f3) the head is 2,988.
+23625f3) the head is 2,988; anchoring the REF after the security gate costs no line.
 
 ## Constitution Check
 
@@ -26,9 +26,11 @@ Python 3.11 stdlib, pytest. Runtime 2,986 lines at 0104d00; the item commit brin
 - `cli/wuwei/evidence.py`, `guards.py`, `upgrade.py`, `verdict.py`, `hook.py`: `\d` to `[0-9]`.
   No `re.ASCII`, so `\w` in repository names reads as before.
 - `cli/wuwei/__main__.py` `_ref`: `number.isascii() and number.isdigit()`.
-- `cli/wuwei/hook.py` `_answers`: `kind` is the question's class prefix (stripped, lower case);
-  for `owner review` and `breaking`, one `REF.search` with a repository records the ruling, with
-  `kind: breaking` only for breaking.
+- `cli/wuwei/hook.py` `_answers`: one `re.match` of `\s*(?i:owner review|(breaking)):\s*` and
+  `REF.pattern`; with a repository it records the ruling, with `kind: breaking` only for breaking.
+- `cli/wuwei/guards.py` `pre_tool`: the shape rule matches the REF right after `owner review:` or
+  `breaking:` (and anywhere after `exception:`, as before), with the same `\b` after the sha as
+  `hook.REF`. Same line count.
 - `tests/test_setup.py`: a scan of every runtime line for `\d` and for `\b\w+\.isdigit\(` not
   preceded by `.isascii() and `.
 - Re-vendor `.claude/` with `setup.vendor('.')`.

@@ -39,14 +39,21 @@ The acceptance scenarios, restated:
 
 1. The merged ruling reader changes which questions record a ruling. The old owner review pattern
    matched `owner review:` anywhere in the question, case-sensitive; the new one reads the class
-   prefix, as the guard in `guards.pre_tool` already does (it refuses a classed question that does
-   not start with the class). A question that put text before `owner review:` would no longer be
-   recorded. Held: the guard's shape refusal names the prefix form, and the existing ruling tests
-   pass unchanged.
-2. A `[0-9]` replacement inside a character class or a quantifier changes a pattern's meaning
+   prefix. The guard in `guards.pre_tool` checks the shape only of questions that start with a
+   class, so a question with text before the class passes the guard and records nothing. Held:
+   that fails closed (no ruling, so no merge gap clears), and the existing ruling tests pass.
+2. The merged reader takes the wrong REF. A first version (cda89f4, security gate) took the first
+   REF anywhere in the question, so "owner review: with acme/lib#3 at 1234567 merged, acme/app#9
+   at abcdef0 is ready. Approve?" answered yes approved lib#3 and cleared its owner review gap.
+   Held: the REF must follow the class prefix directly (`\s*(?i:owner review|(breaking)):\s*`
+   then `REF`), for both classes; the guard refuses an owner review or breaking question whose REF
+   does not follow the class, so the owner is never asked a question the recorder would ignore.
+   The two-REF cases are in `test_a_ruling_names_a_pr_in_ascii_digits_only` and the guard's
+   shape test.
+3. A `[0-9]` replacement inside a character class or a quantifier changes a pattern's meaning
    (for example `[^/\d]`). Held: no `\d` sat inside a character class at 0104d00 (guards.py
    already used `[^/0-9]`), checked by grep, and the full suite passes.
-3. A later reader adds `\d` or a bare `isdigit()` and reopens the gap. Held: the scan test fails
+4. A later reader adds `\d` or a bare `isdigit()` and reopens the gap. Held: the scan test fails
    on it, naming file and line.
 
 ## Clarifications
@@ -95,20 +102,22 @@ Test: `tests/test_setup.py::test_the_runtime_reads_numbers_in_ascii_digits_only`
 
 - FR-001: every `\d` under `cli/wuwei` becomes `[0-9]`.
 - FR-002: `__main__._ref` checks `number.isascii() and number.isdigit()`.
-- FR-003: `hook._answers` reads owner review and breaking rulings from one `REF` search on the
-  question's class prefix; the owner review ruling keeps no `kind` key.
+- FR-003: `hook._answers` reads owner review and breaking rulings from one match: the class
+  prefix, then `REF` right after it; the owner review ruling keeps no `kind` key.
+- FR-006: `guards.pre_tool` refuses an owner review or breaking question whose `owner/repo#n at
+  <sha>` does not follow the class prefix directly.
 - FR-004: a scan test holds FR-001 and FR-002 for every runtime module.
 - FR-005: the runtime line count is no higher than on main.
 
 ## Assumptions
 
-- Reading the class prefix instead of a substring for owner review is safe, because the guard
-  already refuses an owner review question that does not start with the class or does not carry
-  the `owner/repo#n at <sha>` shape. Overturned if a seat's charter asks owner review questions
-  with leading text; none does (`grep -rn "owner review:" charters`).
-- The class prefix is read case-insensitively after strip, as the guard reads it. Main read
-  `owner review:` case-sensitively; a capitalised question now records. Overturned if the owner
-  wants only the lower-case form.
+- Reading the class prefix instead of a substring for owner review is safe. A question with text
+  before the class is not checked by the guard's shape rule and records nothing, which fails
+  closed. Overturned if a seat's charter asks owner review questions with leading text; none does
+  (`grep -rn "owner review:" charters`).
+- The class prefix is read case-insensitively after leading whitespace, as the guard reads it.
+  Main read `owner review:` case-sensitively; `  Owner Review:` and `BREAKING:` now record, pinned
+  in the hook test. Overturned if the owner wants only the lower-case form.
 
 ## Breaking
 

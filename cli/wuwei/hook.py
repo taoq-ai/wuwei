@@ -242,10 +242,10 @@ def _answers(root, data, response):
     for question in questions:
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
         yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
-        kind = question.strip().lower().partition(':')[0]
-        if answer and kind in ('owner review', 'breaking') and (found := REF.search(question)) and found[1]:
-            ws.record(root, 'ruling', {**({'kind': kind} if kind == 'breaking' else {}), 'pr': f'{found[1]}#{found[2]}',
-                                       'head': found[3], 'approved': yes, 'question': question, 'answer': answer})
+        found = re.match(r'\s*(?i:owner review|(breaking)):\s*' + REF.pattern, question)
+        if answer and found and found[2]:
+            ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), 'pr': f'{found[2]}#{found[3]}',
+                                       'head': found[4], 'approved': yes, 'question': question, 'answer': answer})
         refs, gap_text = exception_refs(question)
         if refs and gap_text and answer:
             for repo, number, head in refs:
