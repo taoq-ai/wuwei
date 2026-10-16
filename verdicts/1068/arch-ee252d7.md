@@ -1,0 +1,27 @@
+Verdict: PASS
+Gate: arch
+Item: 1068
+PR: taoq-ai/wuwei
+Head: ee252d7f974a2b80b927f5497e651ba85a3a3c4b
+Confidence: high
+Breaking: no
+
+## Findings
+- [low] cli/wuwei/guards.py:244 blocks: no. Valid bash gets refused: `git commit -m "$(cat <<'EOF'\nsay "hi, it's done\nEOF\n)" && git push origin feature` and `gh pr comment 5 --body "$(cat <<'EOF'\nLGTM, "ship it\nEOF\n)"` both get the unreadable-command refusal. Bash reads a heredoc body inside a double-quoted `$(...)` as literal text, but the scanner closes the outer quote at the body's first `"`. This fails closed, which matches design.md section 7, but the remedy text is off for these cases. "close the quote" is wrong because the quote is closed, and "--body-file" does not apply to `git commit` (that needs `-F`). Note for the PR review notes: name `-F`/`--body-file` for a message written through a heredoc.
+- [low] cli/wuwei/guards.py:40 blocks: no. DOORS matches the raw text, so deliberate obfuscation still gets past it: `echo $'\''\ng\it pu\sh --force origin x` cannot be tokenized and has no `git...push` in its raw text, so it passes. This fits SECURITY.md ("cooperative mistake prevention, never an isolation boundary") and the same kind of gap already on main (`G=git; $G push`). Not a regression.
+- [low] cli/wuwei/guards.py:24 blocks: no. HEREDOC also matches `<<` inside arithmetic (`$((1<<2))`). If a later line is exactly `2`, the lines before it are taken as heredoc data. Probed: main also misses this case, because there `))` is not a CONTROL token. Existing gap, contrived input.
+- [low] specs/1068-guards-multiline/spec.md:63 blocks: no. Spec out-of-scope adds `cat <<EOF | sh`, which the plan's Outside list does not name. A command substitution inside double quotes (`echo "$(git push --force origin x)"`) is unread both before and after this change and is not recorded either way. Neither is a regression (both probed on main 7f8a0d7). Worth a follow-up item rather than this PR.
+- [low] cli/wuwei/hook.py:216 blocks: no. The PostToolUse PR note now matches `gh pr create` in the raw text, so the text alone triggers it (inside an echo or a body) whenever the output also has a PR URL. The note is advice only, and the spec records this under Assumptions. Also behavior-neutral: the budget refactors (`_git`, folded ledger check, `_default`, `once`, `leak`). `_default` now treats a cached empty string as a cache miss. With several protected targets, `git_push` names the first in sorted order, not in argv order.
+
+## Probes
+- Ran the full suite in a scratch copy at ee252d7 (`git archive | tar`): 285 passed. Runtime `cat cli/wuwei/*.py | wc -l` = 3000, at the budget limit.
+- Callers (`git grep segments` at ee252d7, cli and tests): guards.segments has exactly two callers, guards.bash (catches ValueError) and its own recursive calls from `_unwrap` (`sh -c` bodies and heredoc bodies). Any ValueError they raise reaches bash(). The only other caller was hook.post_tool, and this diff replaces it with a regex. tests/test_hook.py:341 shows an unreadable command after it ran records no hook.error. setup.py uses guards.origin; its signature is unchanged.
+- Outward contracts: deny() shape `{'decision','reason'}` and the hook's `permissionDecision` JSON are unchanged. Ledger kinds are unchanged: a refusal is still recorded as `refused` (hook.py:76). All existing refusal texts are byte-identical. The only new text is the unreadable-command reason. Newly refused commands fall under existing doors (design.md section 7: "force pushes in every form", "a door that cannot read its evidence stays shut"). No new door, flag, config key or file format.
+- Docs: no doc in docs/, SECURITY.md or charters says an unreadable command passes (`git grep -i unreadable/lets it through`). The module docstring was the only place, and the diff updates it.
+- Design fit: acceptance 2 (`it's` in a heredoc, then `gh pr create`) forces heredoc-aware reading. Without it, the raw-text fallback alone would refuse that case, not read it. A single-pass quote/heredoc/continuation scanner that normalizes text before shlex runs is the smallest honest shape: shlex already does word quoting, and the stdlib has no shell parser. About 25 lines, inside the budget.
+- Probed 19 extra inputs through segments/bash (scratch script probe.py). Refused: `sudo bash <<EOF`, two heredocs on one line, an unterminated `<<-'EOF'`, a command after a heredoc on its start line, a comment line before a push, `#` inside a word, a here-string line before a push, and an unreadable command writing the ledger path. Passed: python -c multi-line, a backticked force push inside a double-quoted commit message, and an unreadable command with no door.
+- Mutants in scratch copies. Reversing DOORS in bash() fails 3 tests. Reading heredoc bodies for every program, not just shells, fails 2 (test_a_create_after_a_heredoc_meets_the_gates and an ordinary-work case). Inverting the unquoted `$(`/backtick body check fails 2. Breaking the hook.py `gh pr create` regex fails 1 (test_hook). All mutants killed.
+- Confidence high: callers, contracts and docs all read from the live tree, and every mutant was killed. It would drop if some caller outside cli/ imports guards.segments (none found).
+
+## Residual risk
+The scanner models sh quoting heuristically. Where it gets a command wrong, it refuses a valid command (one that names a door) instead of letting it through, and the refusal says why. Deliberate obfuscation is out of the threat model, as SECURITY.md states.
