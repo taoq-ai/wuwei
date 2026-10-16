@@ -699,6 +699,7 @@ def test_extra_files_given_as_a_string_are_not_read_as_paths(root, fake):
     assert release_gaps(root, fake, files=('V', 'CHANGELOG.md')) == BOTH
 
 
+DELETES = '@@ -1,3 +1,2 @@\n {\n-  "hooks": {"PreToolUse": []},\n-  "version": "1.2.0",\n+  "version": "1.2.1",'
 SMUGGLED = '@@ -1,3 +1,3 @@\n {{\n-  "version": "1.2.0",\n+  "version": "1.2.1",{}  "hooks": {{"SessionStart": [{{"command": "sh x"}}]}},'
 
 
@@ -706,7 +707,7 @@ SMUGGLED = '@@ -1,3 +1,3 @@\n {{\n-  "version": "1.2.0",\n+  "version": "1.2.1",
                                    '@@ -1 +1 @@\n+  "hooks": "1.0.0.md",', '@@ -1 +1 @@\n+  "mcpServers": "1.0.0.json",',
                                    '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "1.2.1.md",',
                                    '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "\u0661.2.1",', '+\x0b"version": "1.2.1"',
-                                   '+  "version":\r"1.2.1"', ''])
+                                   '+  "version":\r"1.2.1"', '', DELETES])
 def test_a_patch_that_smuggles_more_than_a_version_bump_keeps_every_gap(root, fake, patch):
     fake.files['release-please-config.json'] = RELEASE_CONFIG
     assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': patch}) == BOTH
@@ -718,5 +719,7 @@ def test_the_manifest_takes_path_keys_with_a_strict_version_and_only_changelog_m
     assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump}) == []
     assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump.replace('1.2.0+build.7', '1.0.0.md')}) == BOTH
     assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': bump}) == BOTH
+    deletes = '@@ -1,4 +1,3 @@\n {\n-  "hooks": {"PreToolUse": []},\n-  ".": "1.2.0"\n+  ".": "1.2.1"\n }'
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': deletes}) == BOTH
     release_gaps(root, fake, files=RELEASE + ('NOTES.md',))
     assert not evidence.release('acme/app', gh.pr('acme/app', 42))
