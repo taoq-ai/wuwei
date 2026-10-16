@@ -19,6 +19,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
 READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
+UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
@@ -72,7 +73,7 @@ def segments(command):
             else:
                 current.append(token)
         return out
-    except ValueError:  # shlex cannot read the text, or a sh -c body inside it
+    except ValueError:
         return None
 
 
@@ -88,9 +89,8 @@ def _unwrap(tokens):
         argv = next((argv[i:] for i, a in enumerate(argv) if Path(a).name in READ or Path(a).name.startswith('python')), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
-        if (nested := segments(argv[body])) is None:
-            raise ValueError('an unreadable sh -c body')
-        return nested + ([([], targets)] if targets else [])
+        nested = segments(argv[body])
+        return (nested if nested is not None else [UNREAD]) + ([([], targets)] if targets else [])
     return [(argv, targets)]
 
 
@@ -226,7 +226,7 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')

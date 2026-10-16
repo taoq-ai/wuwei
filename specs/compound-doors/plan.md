@@ -27,14 +27,15 @@ main has 3,000 since #1081, so this change is net zero lines in `cli/wuwei/`.
   word is then a wrapper, the command starts at the first word in `READ` or starting with `python`.
 - The shell check finds the first plain word after the program; when a dash option before it is a
   single-dash cluster holding `c`, that word is the body.
-- A nested `segments` returning `None` raises `ValueError`; `segments` now runs its split loop
-  inside the `try`, so the outer call returns `None`.
+- A nested `segments` returning `None` gives the marker segment `UNREAD` in its place; `bash`
+  applies the raw-text rule when `UNREAD` is in the segments and reads the rest as before.
+  `segments` runs its split loop inside the `try` (one line freed).
 
 ## Lines
 
-Added: `READ` (1), the body-index line (1), the nested `None` check (2). Freed: the flag-skip loop
-(2, replaced by the first-program line), `tokens = list(lexer)` (1), the redirect loop as three
-lines instead of six (3). Net 0.
+Added: `READ` (1), `UNREAD` (1), the body-index line (1), the nested body as two lines instead of
+one (1). Freed: `tokens = list(lexer)` (1), the redirect loop as three lines instead of six (3).
+The flag-skip loop and the first-program rule are four lines each. Net 0.
 
 ## Rollback
 

