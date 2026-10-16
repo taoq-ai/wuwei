@@ -187,7 +187,7 @@ def gh_command(root, args, cwd, session, command=''):
         '--base', '-B'), _read(cwd, flag('--body-file', '-F')))
     if args[:1] == ['api'] and len(args) > 1:
         method, endpoint, fields = _api(args[1:], cwd)
-        if endpoint == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
+        if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} merges, opens or moves a branch around the doors: use gh pr merge or '
                         'gh pr create (in a cloud session gh api -X POST repos/<owner>/<repo>/pulls), which meet them.')
         door, m = next(((d, m) for pattern, methods, d in API if method in methods and (m := re.fullmatch(pattern, endpoint, re.I))),

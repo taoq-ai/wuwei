@@ -38,3 +38,4 @@
 - [x] T025 Reader: a flag takes the next argument only with nothing attached; any scheme and host stripped in any case; routes match in any case
 - [x] T026 Corpus: 11 fix-round spellings; docs/design.md section 7 and docs/site/concepts/doors.md list the new routes; spec records the change as Breaking
 - [x] T027 Re-vendor, full suite, runtime at 2,996, main-versus-head comparison
+- [x] T028 Quality round at 89bce3a: an `--input`-only write with no PR field in its JSON still posts (four routes, the GET-default mutant killed); `GRAPHQL` and `GraphQL` endpoints read as graphql; an uppercase route path pinned
