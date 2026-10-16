@@ -20,9 +20,10 @@
     "given a cloud session holding only taoq-ai/wuwei, when it starts, then SessionStart prints the WUWEI CLI path and doctor reports ok hooks",
     "given a machine with the plugin installed, when a session starts, then the hooks run once"
    ],
-   "status": "open",
+   "status": "done",
    "added": "2026-10-16",
-   "approved": true
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1066"
   }
  ]
 }
