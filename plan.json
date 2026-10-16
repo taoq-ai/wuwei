@@ -1,36 +1,6 @@
 {
  "items": [
   {
-   "id": "draft-raise",
-   "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 8,
-    "size": 5
-   },
-   "score": 6.8,
-   "why": "Bug #1074, which the owner opened on 2026-10-16: the create door refuses gh pr create --draft, which departs from the owner's #1050 ruling and blocks every repository whose CI runs only on PRs.",
-   "promise": "The raise follows the owner's #1050 ruling, which the owner restated in #1074: open as draft, gate at the draft head after CI, then flip to ready. Create door: a draft passes before its gates. That covers gh pr create or gh pr new with --draft or -d, gh api POST repos/<r>/pulls with draft=true (from -f, -F or a --input JSON \"draft\": true), and MCP create_pull_request with draft true. A non-draft create stays held as today, and its refusal tells the seat to open a draft. Ready door: the flip to ready is held until the gates the diff needs pass at the PR head. That covers gh pr ready (not --undo), gh api POST repos/<r>/pulls/<n>/ccr/ready_for_review and MCP update_pull_request with draft false. A reviewer request on a draft PR is held the same way: gh pr edit --add-reviewer, gh api POST .../pulls/<n>/requested_reviewers, and MCP update_pull_request with reviewers. The ready door reads the PR once (gh.pr) and reuses create_door on its head, base and body, so it adds no new gate logic. markPullRequestReadyForReview joins the refused gh api graphql mutations, with a pointer to gh pr ready or the CCR route. update_pull_request joins guards.DOORS, so the fail-closed check (#1095) covers it. Review pings need no code: evidence.review_duty already skips drafts (evidence.py line 86). Charters and docs state the order: charters/_way.md (the gates line and the refusals line), charters/builder.md (push, then open a draft), charters/shepherd.md (Raise 1-3: draft first, ready and reviewers after the gates), docs/design.md (the gates row) and docs/site/concepts/doors.md. Touches cli/wuwei/guards.py, its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, those charters, agents/*.md (built) and those docs. Lines: estimate +25 runtime. It starts after free-lines-2 (2,996 on main 8ea4192, 2,962 after). Smaller than the approved version: doors-by-rest has merged (#1096), so the REST create route and the route table already exist; pings are dropped because they are already true; the gate check is reused. Outside: review pings posted to a channel, a wuwei/gates commit status (#918), green CI as a condition for ready (CI already holds the merge), reviewer requests on a non-draft PR, and marking verdicts written after the merge (#1050 ask 2). Assumption: the ruling stands; the owner restated it in #1074 on 2026-10-16. Overturned if the owner prefers gates before the PR. Assumption: the GitHub MCP update_pull_request tool carries draft and reviewers. Overturned if the server names a separate reviewer tool; that tool then joins the same check.",
-   "acceptance": [
-    "given a pushed branch with no gates, when \"gh pr create --draft -t t -F body.md\" is read, then it passes (with the PR standard note once); without --draft it is refused and the reason names gh pr create --draft",
-    "given a pushed branch with no gates, when \"gh api -X POST repos/o/r/pulls -f head=b -f base=main -F draft=true\" is read, then it passes; without draft=true it is refused as today",
-    "given an MCP create_pull_request with draft true and no gates, when PreToolUse runs, then it passes; with draft false or absent it is refused as today",
-    "given draft PR 7 with gates missing at its head, when \"gh pr ready 7\", \"gh api -X POST repos/o/r/pulls/7/ccr/ready_for_review\" or MCP update_pull_request with pullNumber 7 and draft false is read, then it is refused naming the missing gates; \"gh pr ready 7 --undo\" passes",
-    "given draft PR 7 with every needed gate passed at its head, when \"gh pr ready 7\" is read, then it passes",
-    "given draft PR 7 with gates missing, when \"gh pr edit 7 --add-reviewer bob\" or \"gh api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob\" is read, then it is refused; for a non-draft PR it passes",
-    "given \"gh api graphql -f query='mutation{markPullRequestReadyForReview(input:{pullRequestId:\\\"x\\\"}){clientMutationId}}'\", when it is read, then it is refused with the pointer to gh pr ready",
-    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer, the agents match the charters and the vendored copy matches the tree"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "codex-attest-probe",
    "title": "probe: does a Codex-native sentinel seat get its verdict attested",
    "goal": "G-1",
@@ -584,6 +554,37 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1094"
+  },
+  {
+   "id": "draft-raise",
+   "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 6.8,
+   "why": "Bug #1074, which the owner opened on 2026-10-16: the create door refuses gh pr create --draft, which departs from the owner's #1050 ruling and blocks every repository whose CI runs only on PRs.",
+   "promise": "The raise follows the owner's #1050 ruling, which the owner restated in #1074: open as draft, gate at the draft head after CI, then flip to ready. Create door: a draft passes before its gates. That covers gh pr create or gh pr new with --draft or -d, gh api POST repos/<r>/pulls with draft=true (from -f, -F or a --input JSON \"draft\": true), and MCP create_pull_request with draft true. A non-draft create stays held as today, and its refusal tells the seat to open a draft. Ready door: the flip to ready is held until the gates the diff needs pass at the PR head. That covers gh pr ready (not --undo), gh api POST repos/<r>/pulls/<n>/ccr/ready_for_review and MCP update_pull_request with draft false. A reviewer request on a draft PR is held the same way: gh pr edit --add-reviewer, gh api POST .../pulls/<n>/requested_reviewers, and MCP update_pull_request with reviewers. The ready door reads the PR once (gh.pr) and reuses create_door on its head, base and body, so it adds no new gate logic. markPullRequestReadyForReview joins the refused gh api graphql mutations, with a pointer to gh pr ready or the CCR route. update_pull_request joins guards.DOORS, so the fail-closed check (#1095) covers it. Review pings need no code: evidence.review_duty already skips drafts (evidence.py line 86). Charters and docs state the order: charters/_way.md (the gates line and the refusals line), charters/builder.md (push, then open a draft), charters/shepherd.md (Raise 1-3: draft first, ready and reviewers after the gates), docs/design.md (the gates row) and docs/site/concepts/doors.md. Touches cli/wuwei/guards.py, its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, those charters, agents/*.md (built) and those docs. Lines: estimate +25 runtime. It starts after free-lines-2 (2,996 on main 8ea4192, 2,962 after). Smaller than the approved version: doors-by-rest has merged (#1096), so the REST create route and the route table already exist; pings are dropped because they are already true; the gate check is reused. Outside: review pings posted to a channel, a wuwei/gates commit status (#918), green CI as a condition for ready (CI already holds the merge), reviewer requests on a non-draft PR, and marking verdicts written after the merge (#1050 ask 2). Assumption: the ruling stands; the owner restated it in #1074 on 2026-10-16. Overturned if the owner prefers gates before the PR. Assumption: the GitHub MCP update_pull_request tool carries draft and reviewers. Overturned if the server names a separate reviewer tool; that tool then joins the same check.",
+   "acceptance": [
+    "given a pushed branch with no gates, when \"gh pr create --draft -t t -F body.md\" is read, then it passes (with the PR standard note once); without --draft it is refused and the reason names gh pr create --draft",
+    "given a pushed branch with no gates, when \"gh api -X POST repos/o/r/pulls -f head=b -f base=main -F draft=true\" is read, then it passes; without draft=true it is refused as today",
+    "given an MCP create_pull_request with draft true and no gates, when PreToolUse runs, then it passes; with draft false or absent it is refused as today",
+    "given draft PR 7 with gates missing at its head, when \"gh pr ready 7\", \"gh api -X POST repos/o/r/pulls/7/ccr/ready_for_review\" or MCP update_pull_request with pullNumber 7 and draft false is read, then it is refused naming the missing gates; \"gh pr ready 7 --undo\" passes",
+    "given draft PR 7 with every needed gate passed at its head, when \"gh pr ready 7\" is read, then it passes",
+    "given draft PR 7 with gates missing, when \"gh pr edit 7 --add-reviewer bob\" or \"gh api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob\" is read, then it is refused; for a non-draft PR it passes",
+    "given \"gh api graphql -f query='mutation{markPullRequestReadyForReview(input:{pullRequestId:\\\"x\\\"}){clientMutationId}}'\", when it is read, then it is refused with the pointer to gh pr ready",
+    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer, the agents match the charters and the vendored copy matches the tree"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1102"
   },
   {
    "id": "plan-accuracy",
