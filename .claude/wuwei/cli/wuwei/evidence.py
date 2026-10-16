@@ -41,7 +41,6 @@ RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|ter
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
-DAY = 86400
 
 
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
@@ -80,9 +79,8 @@ def review_duty(root, ref, pr):
     """A ready PR is put in front of reviewers where the team asks, until a post names it or a review is in."""
     place = review_place(root)
     author = (pr.get('author') or {}).get('login', '')
-    if not place or pr.get('isDraft') or any((r.get('author') or {}).get('login') != author for r in pr.get('reviews') or ()):
-        return []
-    if any(ref.lower() in row['data'].get('refs', ()) for row in ws.rows(root, 'sent')):
+    if not place or pr.get('isDraft') or any((r.get('author') or {}).get('login') != author for r in pr.get('reviews') or ()) \
+            or any(ref.lower() in row['data'].get('refs', ()) for row in ws.rows(root, 'sent')):
         return []
     return [gap(f'review not requested in {place}: post the PR link there (posted outside this session? '
                 f'wuwei sent {ref} <link to the post>)')]
@@ -96,22 +94,19 @@ def item_for(root, pr, repo=None):
         return plan.find(root, match[1])
     ref = f'{repo}#{pr.get("number")}' if repo else None
     linked = next((item for item in plan.items(root) if ref and ref in item.get('prs', ())), None)
-    if linked:
-        return linked
     branch = (pr.get('headRefName') or '').lower()
-    return next((item for item in plan.items(root)
-                 if branch == item['id'].lower() or branch.startswith(item['id'].lower() + '-')), None)
+    return linked or next((item for item in plan.items(root)
+                           if branch == item['id'].lower() or branch.startswith(item['id'].lower() + '-')), None)
 
 
-def _cached(root, name, read, max_age=DAY):
+def _cached(root, name, read, max_age=86400):
     value = ws.cache_get(root, name, max_age)
     return ws.cache_put(root, name, read()) if value is None else value
 
 
 def spec_engine(root, repo):
-    def read():
-        return next((path for path in ('.specify', 'openspec') if gh.has_path(repo, path)), '')
-    return _cached(root, 'spec-' + repo.replace('/', '__'), read)
+    return _cached(root, 'spec-' + repo.replace('/', '__'),
+                   lambda: next((path for path in ('.specify', 'openspec') if gh.has_path(repo, path)), ''))
 
 
 def template_sections(root, repo):
@@ -211,7 +206,6 @@ def spec_gaps(repo, engine, tier, files, head):
 def budget(root, repo):
     """The 28-day change failure rate; over BUDGET with five or more merges raises every tier one step."""
     def read():
-        import datetime
         since = (ws.now() - datetime.timedelta(days=28)).date().isoformat()
         try:
             merged = [pr for pr in gh.merged_prs(repo, since) if pr.get('mergedAt')]
@@ -239,12 +233,10 @@ def verdicts(root, item_id, ref=''):
             body = path.read_bytes()
         except OSError:
             continue
-        if hashlib.sha256(body).hexdigest() != data.get('sha256'):
-            if data.get('verdict') not in (None, 'PASS'):  # a replaced finding still holds as recorded (#1039)
+        changed = hashlib.sha256(body).hexdigest() != data.get('sha256')
+        if changed or data.get('imported'):  # a replaced finding still holds as recorded (#1039)
+            if not changed or data.get('verdict') not in (None, 'PASS'):
                 found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
-            continue
-        if data.get('imported'):
-            found.append({'gate': data['gate'], 'verdict': data['verdict'], 'head': data['head']})
             continue
         parsed = parse(body.decode('utf-8', 'replace'))
         if not parsed['errors']:
@@ -348,32 +340,41 @@ def breaking_gaps(root, ref, pr, item_id):
                 'Announced at <link>. Proceed?"', owner=True)]
 
 
-def ci_gaps(rollup):
-    failed, running = [], False
+def review_contexts(root, repo, rollup):
+    """Unsettled statuses whose target_url run is of a workflow the repo runs on pull_request_review (1067-probe)."""
+    try:
+        runs = {c['context']: m[1] for c in rollup or () if 'context' in c and c.get('state') != 'SUCCESS'
+                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/(\d+)', c.get('url') or '', re.I))}
+        paths = runs and _cached(root, 'review-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo))
+        return {context for context, run in runs.items() if paths and gh.workflow_paths(repo, f'/{run}')[0] in paths}
+    except (gh.GhError, AttributeError, KeyError, IndexError, TypeError):
+        return set()  # an unreadable Actions host leaves them CI, never a pass
+
+
+def ci_gaps(rollup, review=()):
+    failed, running, found = [], False, []
     for check in rollup or ():
         name = check.get('name') or check.get('context') or 'check'
         state = (check.get('conclusion') or check.get('state') or '').upper()
-        if state in FAILED:
+        if check.get('context') in review:
+            found.append(gap(('change request outstanding: ' if state in FAILED else 'waiting on review: ') + name))
+        elif state in FAILED:
             failed.append(name)
         elif check.get('status', 'COMPLETED').upper() != 'COMPLETED' or state in ('PENDING', 'EXPECTED'):
             running = True
     if failed:
-        return [gap('CI failing: ' + ', '.join(failed))]
-    return [gap('CI running', actionable=False)] if running else []
+        return found + [gap('CI failing: ' + ', '.join(failed))]
+    return found + ([gap('CI running', actionable=False)] if running else [])
 
 
 def gaps(root, repo, number):
     try:
         pr = gh.pr(repo, number)
-        found = []
         item, ref = item_for(root, pr, repo), f'{repo}#{number}'
+        found = [] if item else [gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
         tier = (item or {}).get('tier', 'standard')
         item_id, raised, gates, why = gates_for(root, repo, pr, pr.get('files') or (), item)
-        files = [f['path'] for f in pr.get('files') or ()]
-        body = pr.get('body') or ''
-        head = pr['headRefOid']
-        if item is None:
-            found.append(gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)'))
+        files, body, head = [f['path'] for f in pr.get('files') or ()], pr.get('body') or '', pr['headRefOid']
         missing = [s for s in template_sections(root, repo) if s.lower() not in body.lower()]
         if missing:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
@@ -391,19 +392,18 @@ def gaps(root, repo, number):
             found.append(gap('no Rollback: line (how to undo this change)'))
         found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
         found += breaking_gaps(root, ref, pr, item_id)
-        found += ci_gaps(pr.get('statusCheckRollup'))
+        found += ci_gaps(pr.get('statusCheckRollup'), review_contexts(root, repo, pr.get('statusCheckRollup')))
         author = (pr.get('author') or {}).get('login', '')
         threads = gh.unanswered_threads(repo, number, author)
         if threads:
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
-        reviewers = [r for r in pr.get('reviews') or () if (r.get('author') or {}).get('login') != author]
-        if not pr.get('reviewRequests') and not reviewers:
+        if not pr.get('reviewRequests') and all((r.get('author') or {}).get('login') == author for r in pr.get('reviews') or ()):
             found.append(gap('no reviewer requested'))
         found += review_duty(root, f'{repo}#{number}', pr)
         approvals = [r for r in pr.get('reviews') or () if r.get('state') == 'APPROVED'
                      and (r.get('author') or {}).get('login') != author]
         if approvals and not any(head.startswith(r.get('commit') or '-') for r in approvals) and \
-                any(g['text'].startswith('CI failing') for g in found):
+                any(g['text'].startswith(('CI failing', 'change request outstanding')) for g in found):
             last = approvals[-1]
             found.append(gap(f'the approval from {last["author"]["login"]} is for {str(last.get("commit"))[:7]}, not the head '
                              f'{head[:7]}: re-request review if a check wants it at the head'))
