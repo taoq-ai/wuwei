@@ -158,6 +158,29 @@ def test_an_unreadable_actions_host_leaves_the_status_ci(root, fake, state, text
     assert texts(evidence.gaps(root, 'acme/app', 42)) == [text]
 
 
+def test_a_failing_review_gate_still_names_an_approval_at_an_older_commit(root, fake):
+    review_gate(root, fake, 'FAILURE', reviews=(('alice', 'APPROVED', OLD),))
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'change request outstanding: Review Gate',
+        'the approval from alice is for bbbbbbb, not the head aaaaaaa: re-request review if a check wants it at the head']
+
+
+def test_a_repo_without_review_workflows_reads_no_run(root, fake):
+    review_gate(root, fake, 'PENDING')
+    del fake.runs['8']
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['CI running']
+    assert not any('actions/runs/7' in ' '.join(call) for call in fake.calls)
+
+
+@pytest.mark.parametrize('reply, url', [({'workflow_runs': None}, GATE + '7'), ({'workflow_runs': []}, 7),
+                                        ('not json', GATE + '7'), ({'id': 7}, GATE + '7')])
+def test_an_oddly_shaped_actions_reply_leaves_the_status_ci(root, monkeypatch, reply, url):
+    from wuwei import gh
+    monkeypatch.setattr(gh, 'run', lambda args, timeout=30: reply)
+    rollup = [{'context': 'Review Gate', 'state': 'PENDING', 'url': url}]
+    assert evidence.review_contexts(root, 'acme/app', rollup) == set()
+
+
 def test_the_review_workflows_are_read_once_a_day(root, fake):
     review_gate(root, fake, 'PENDING')
     evidence.gaps(root, 'acme/app', 42)

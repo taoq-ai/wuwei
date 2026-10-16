@@ -24,3 +24,9 @@
 
 - [x] T014 docs/design.md section 6 and docs/site/concepts/evidence.md
 - [x] T015 Live read of ai-stacks #3300, #3291, #3274 from a copy of the tree
+
+## Phase 4: Fix round 1 (arch FIX at 3fb3f40)
+
+- [x] T016 A failing review status still names an approval at an older commit (tests/test_evidence.py, cli/wuwei/evidence.py)
+- [x] T017 A repository without review workflows reads no run (tests/test_evidence.py)
+- [x] T018 An oddly shaped Actions reply or a non-string target_url leaves the status CI (tests/test_evidence.py, cli/wuwei/evidence.py)

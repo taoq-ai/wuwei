@@ -342,12 +342,12 @@ def breaking_gaps(root, ref, pr, item_id):
 
 def review_contexts(root, repo, rollup):
     """Unsettled statuses whose target_url run is of a workflow the repo runs on pull_request_review (1067-probe)."""
-    runs = {c['context']: m[1] for c in rollup or () if 'context' in c and c.get('state') != 'SUCCESS'
-            and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/(\d+)', c.get('url') or '', re.I))}
     try:
+        runs = {c['context']: m[1] for c in rollup or () if 'context' in c and c.get('state') != 'SUCCESS'
+                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/(\d+)', c.get('url') or '', re.I))}
         paths = runs and _cached(root, 'review-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo))
         return {context for context, run in runs.items() if paths and gh.workflow_paths(repo, f'/{run}')[0] in paths}
-    except (gh.GhError, AttributeError, KeyError, IndexError):
+    except (gh.GhError, AttributeError, KeyError, IndexError, TypeError):
         return set()  # an unreadable Actions host leaves them CI, never a pass
 
 
@@ -403,7 +403,7 @@ def gaps(root, repo, number):
         approvals = [r for r in pr.get('reviews') or () if r.get('state') == 'APPROVED'
                      and (r.get('author') or {}).get('login') != author]
         if approvals and not any(head.startswith(r.get('commit') or '-') for r in approvals) and \
-                any(g['text'].startswith('CI failing') for g in found):
+                any(g['text'].startswith(('CI failing', 'change request outstanding')) for g in found):
             last = approvals[-1]
             found.append(gap(f'the approval from {last["author"]["login"]} is for {str(last.get("commit"))[:7]}, not the head '
                              f'{head[:7]}: re-request review if a check wants it at the head'))
