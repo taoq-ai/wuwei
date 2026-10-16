@@ -1,0 +1,12 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "/repo",
+  "permission_mode": "auto",
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_id": "a0c989a635b251810",
+  "agent_type": "builder",
+  "agent_transcript_path": "~/.claude/projects/-repo/00000000-0000-4000-8000-000000000001/subagents/agent-a0c989a635b251810.jsonl",
+  "last_assistant_message": "Branch claude/1068-blunt-multiline pushed at 82680c3. Suite green.\n\nConfidence: high\nBlocked: none\nGap: none\nChange: none"
+}

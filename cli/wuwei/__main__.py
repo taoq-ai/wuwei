@@ -30,9 +30,7 @@ def cmd_plan(args):
         for item in plan.add_from(root, args.source):
             print(f'{item["id"]} added with score {item["score"]}')
     elif args.action == 'add':
-        fields = ('value', 'time', 'risk', 'size') if ws.config(root)['prioritisation'] == 'wsjf' else (
-            'reach', 'impact', 'confidence', 'effort')
-        scores = {name: getattr(args, name) for name in fields}
+        scores = {name: getattr(args, name) for name in plan.FIELDS[ws.config(root)['prioritisation']]}
         scores = {k: int(v) if float(v).is_integer() and k not in ('impact', 'confidence') else float(v)
                   for k, v in scores.items() if v is not None}
         item = plan.add(root, args.id, args.title, args.goal, args.repo, args.tier, scores, args.why or '',
@@ -50,7 +48,9 @@ def cmd_plan(args):
             return 0
         print(f'{summary}\n\nPage: {path}\nAsk: plan: approve this plan? {line}')
     elif args.action == 'run':  # an operations item: done by its run evidence, not a pull request (#1049)
-        print(f'{plan.mark(root, args.id, "open", args.reason or "", kind="run")["id"]} run evidence recorded')
+        if not args.reason:
+            raise ValueError('plan run needs --reason "<what ran and what it showed>"; nothing recorded')
+        print(f'{plan.mark(root, args.id, "open", args.reason, kind="run")["id"]} run evidence recorded')
     elif args.action == 'restore':
         print(f'{plan.restore(root, args.id)["id"]} open again')
     elif args.action == 'show' and args.id:
@@ -195,9 +195,12 @@ def main(argv=None):
         return 0
     parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {version()}')
     sub = parser.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('plan', help='show [id], add, park, drop, done, run, restore, pass or view')
-    p.add_argument('action', nargs='?', default='show',
-                   choices=('show', 'add', 'park', 'drop', 'done', 'run', 'restore', 'pass', 'view'))
+    actions = {'show': '[id]: the ranked plan, or one item as JSON', 'add': '<id> "<title>" | --from <file>',
+               'park': '<id> --reason', 'drop': '<id> --reason', 'done': '<id> --reason', 'restore': '<id>: reopen',
+               'run': '<id> --reason "<what ran, what it showed>"', 'pass': '--reason', 'view': '[--html]'}
+    p = sub.add_parser('plan', help=', '.join(actions), formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description='actions:\n' + '\n'.join(f'  {k:<8} {v}' for k, v in actions.items()))
+    p.add_argument('action', nargs='?', default='show', choices=tuple(actions))
     for name in ('id', 'title'):
         p.add_argument(name, nargs='?')
     for name in ('goal', 'repo', 'why', 'reason', 'promise'):

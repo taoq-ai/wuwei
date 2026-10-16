@@ -87,3 +87,51 @@ def test_an_operations_item_shows_its_run_evidence_not_a_missing_pr(root, fake, 
     assert [g['text'] for g in rows[0]['gaps']] == ['run: 63 of 65 windows terminal; 2 re-driven in run r-42']
     cli.main(['plan', 'done', 'G1-RESPLIT', '--reason', 'r-42 done: 65 of 65 terminal'])
     assert not [r for r in board.compute(root) if r['item'] == 'G1-RESPLIT']
+
+
+@pytest.mark.parametrize('data', [{'items': [{'id': 'I-1', 'title': 't'}]}, 'I-1', {'candidates': 'I-1'},
+                                  [{'id': 'I-1', 'title': 't', 'scores': scores()}, {'title': 'no id'}],
+                                  [{'id': 'I-1'}], ['I-1']])
+def test_a_wrong_shape_candidates_file_is_refused_and_adds_nothing(root, tmp_path, monkeypatch, capsys, data):
+    import json
+    from wuwei import __main__ as cli
+    lead = tmp_path / 'lead.json'
+    lead.write_text(json.dumps(data))
+    monkeypatch.chdir(root)
+    assert cli.main(['plan', 'add', '--from', str(lead)]) == 2
+    assert '{"candidates": [{"id", "title", ...}]}' in capsys.readouterr().err
+    assert plan.items(root) == []
+
+
+def test_a_changed_promise_or_acceptance_needs_approval_again(root, fake):
+    from wuwei import board
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores(), promise='one route', acceptance=['given A'])
+    plan.approve(root, 'Approve')
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores(), promise='one route', acceptance=['given A'])
+    assert plan.find(root, 'A')['approved']
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores(), promise='two routes', acceptance=['given A'])
+    assert not plan.find(root, 'A')['approved']
+    assert board.compute(root)[0]['gaps'][0]['text'] == 'awaiting plan approval'
+    plan.approve(root, 'Approve')
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores(), acceptance=['given B'])
+    assert not plan.find(root, 'A')['approved']
+
+
+def test_plan_run_refuses_without_a_reason(root, monkeypatch, capsys):
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    plan.add(root, 'A', 'a', 'G-1', 'acme/app', 'light', scores())
+    assert cli.main(['plan', 'run', 'A']) == 2
+    assert '--reason' in capsys.readouterr().err
+    assert plan.find(root, 'A').get('kind') is None and not ws.rows(root, 'item.open')
+    assert cli.main(['plan', 'run', 'A', '--reason', 'ran X, it showed Y']) == 0
+    assert plan.find(root, 'A')['reason'] == 'ran X, it showed Y'
+
+
+def test_plan_help_gives_each_action_its_own_line(capsys):
+    from wuwei import __main__ as cli
+    with pytest.raises(SystemExit):
+        cli.main(['plan', '--help'])
+    lines = capsys.readouterr().out.splitlines()
+    for action in ('show', 'add', 'park', 'drop', 'done', 'run', 'restore', 'pass', 'view'):
+        assert len([line for line in lines if line.lstrip().startswith(action + ' ')]) == 1, action
