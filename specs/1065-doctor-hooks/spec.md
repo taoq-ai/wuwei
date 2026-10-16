@@ -26,6 +26,7 @@ telemetry on.
 
 - FR-1: doctor reads only `.wuwei/ledger/<ws.clone(root)>.jsonl` for hook evidence.
 - FR-2: only rows after the last `workspace.init` in that file count; with no init row, every row counts.
+- FR-5: a JSON line that is not an object is skipped; doctor still finishes and the ledger row reports it.
 - FR-3: `.wuwei/executable` still gives `ok hooks` on its own.
 - FR-4: setup.py frees the lines it adds, so the runtime stays at 3,000 lines.
 

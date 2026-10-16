@@ -148,8 +148,8 @@ def doctor(root):
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
     since, mine = set(), Path(root) / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'  # never another clone's rows (#1065)
-    for row in ws._parse(mine.read_text(encoding='utf-8')) if mine.is_file() else []:
-        since = set() if row.get('kind') == 'workspace.init' else since | {row.get('kind')}
+    for kind in [row.get('kind') for row in ws._parse(mine.read_text(encoding='utf-8')) if isinstance(row, dict)] if mine.is_file() else []:
+        since = set() if kind == 'workspace.init' else since | {kind}
     rows.append(('hooks', 'ok', 'fired') if (Path(root) / ws.DIR / 'executable').is_file() or since & HOOK_ROWS else ('hooks', 'warn',
                  'no hook has fired here, so the doors and recorded answers are off (cloud: hold only this repository)'))
     for repo in config['repos']:

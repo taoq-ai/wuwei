@@ -160,3 +160,27 @@ def test_doctor_counts_a_hook_row_in_this_clones_ledger_since_the_latest_init(tm
     assert hooks() == 'warn'
     ws.record(tmp_path, 'prompt', {'questions': []})
     assert hooks() == 'ok'
+
+
+def test_doctor_hooks_skips_rows_that_are_not_objects_and_counts_a_clone_file_without_init(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
+    setup.init(tmp_path)
+    (tmp_path / ws.DIR / 'cache' / 'clone').write_text('fresh000\n')  # the clone id reset after init
+    ws.record(tmp_path, 'refused', {'tool': 'Bash'})
+    with open(tmp_path / ws.DIR / 'ledger' / 'fresh000.jsonl', 'a', encoding='utf-8') as handle:
+        handle.write('[1]\nnull\n5\n"x"\n')
+    rows = {name: status for name, status, _ in setup.doctor(tmp_path)}
+    assert rows['hooks'] == 'ok' and rows['ledger'] == 'fail'
+
+
+def test_init_cloud_twice_keeps_other_hooks_and_writes_the_same_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    settings = tmp_path / '.claude' / 'settings.json'
+    settings.parent.mkdir()
+    other = {'matcher': 'Bash', 'hooks': [{'type': 'command', 'command': 'echo other'}]}
+    settings.write_text(json.dumps({'hooks': {'PreToolUse': [other]}}))
+    setup.init(tmp_path, cloud=True)
+    first = settings.read_text()
+    setup.init(tmp_path, cloud=True)
+    assert settings.read_text() == first and json.loads(first)['hooks']['PreToolUse'][0] == other
