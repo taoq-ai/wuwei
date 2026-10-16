@@ -36,6 +36,7 @@ class FakeGh:
         self.paths = set()
         self.files = {}
         self.default = 'main'
+        self.runs = {}  # workflow run id -> (workflow path, event); None plays an Actions read that fails
 
     @staticmethod
     def rest(pr):
@@ -79,7 +80,15 @@ class FakeGh:
                 return {'check_runs': [{'name': c['name'], 'status': c['status'].lower(),
                                         'conclusion': (c.get('conclusion') or '').lower() or None}
                                        for c in rollup if 'name' in c]}
-            return {'statuses': [{'context': c['context'], 'state': c['state'].lower()} for c in rollup if 'context' in c]}
+            return {'statuses': [{'context': c['context'], 'state': c['state'].lower(), 'target_url': c.get('url')}
+                                 for c in rollup if 'context' in c]}
+        if args[0] == 'api' and (m := re.fullmatch(r'repos/[^/]+/[^/]+/actions/runs(?:/(\d+))?', path)):
+            if self.runs is None:
+                raise gh.GhError('HTTP 403: Resource not accessible by integration')
+            if m[1]:
+                return {'id': int(m[1]), 'path': self.runs[m[1]][0], 'event': self.runs[m[1]][1]}
+            event = re.search(r'event=(\w+)', query)[1]
+            return {'workflow_runs': [{'id': int(i), 'path': p, 'event': e} for i, (p, e) in self.runs.items() if e == event]}
         if args[0] == 'api' and re.fullmatch(r'repos/[^/]+/[^/]+/pulls', path):
             wanted = 'open' if 'state=open' in query else 'closed'
             return [self.rest(pr) for pr in self.prs.values() if self.rest(pr)['state'] == wanted]

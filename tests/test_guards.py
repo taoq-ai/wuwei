@@ -228,6 +228,15 @@ def test_arming_auto_merge_while_ci_runs_is_allowed(root, fake, repo, payload):
     assert guards.pre_tool(root, bash('gh pr merge 42 --squash'))['decision'] == 'deny'
 
 
+@pytest.mark.parametrize('state', ['PENDING', 'FAILURE'])
+@pytest.mark.parametrize('command', ['gh pr merge 42 --squash', 'gh pr merge 42 --squash --auto'])
+def test_a_review_gap_holds_the_merge_with_or_without_auto(root, fake, repo, state, command):
+    from test_evidence import review_gate
+    review_gate(root, fake, state)
+    decision = guards.pre_tool(root, bash(command))
+    assert decision['decision'] == 'deny' and 'Review Gate' in decision['reason']
+
+
 def test_auto_merge_with_a_real_gap_is_still_refused(root, fake, repo):
     fake.prs['42'] = make_pr(files=('src/app.py',))
     assert guards.pre_tool(root, bash('gh pr merge 42 --auto'))['decision'] == 'deny'

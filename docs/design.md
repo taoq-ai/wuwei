@@ -86,6 +86,12 @@ board. Process fit (plan link, PR template, size,
 while the work flows; the merge records it, the report lists it, the steward learns from it. Only a
 safety gap can be an owner `exception:`.
 
+Review statuses: a commit status whose `target_url` names a run of a workflow the repository runs on
+`pull_request_review` is review evidence, not CI. Pending reads `waiting on review: <context>`, failure
+reads `change request outstanding: <context>`; both are actionable safety gaps. The review-triggered
+workflows come from the host (its last 100 `pull_request_review` runs, cached for a day), read only
+when the head has an unsettled status. An unreadable Actions host leaves the status CI, never a pass.
+
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
 by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
 needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
