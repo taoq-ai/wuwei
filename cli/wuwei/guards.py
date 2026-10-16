@@ -262,7 +262,7 @@ def merge_door(root, repo, number, auto=False):
         return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
                     'its evidence before the merge.')
     found = evidence.gaps(root, repo, number)
-    gaps = [g for g in evidence.blocking(found) if not (auto and g['text'] == 'CI running')]  # auto-merge waits for CI
+    gaps = [g for g in evidence.blocking(found) if not (auto and g['text'] == 'CI running')]  # auto-merge waits for running CI, not for none (#1085)
     if gaps:
         return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
     ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}', 'auto': auto,

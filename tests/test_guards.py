@@ -927,3 +927,12 @@ def test_a_body_file_wuwei_cannot_read_is_named_as_the_cause_not_only_missing_ga
     reason = guards.bash(root, 'S=.; gh pr create --title x --body-file "$S/pr.md"', str(root), 's1')['reason']
     assert 'no plan item is named' in reason and 'literal path' in reason  # #1098: the gates passed; the trailer was unread
     assert guards.bash(root, 'gh pr create --title x --body-file pr.md', str(root), 's1')['decision'] == 'note'
+
+
+def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
+    from test_evidence import not_started
+    not_started(root, fake)
+    decision = guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
+    fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    assert guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1') is None
