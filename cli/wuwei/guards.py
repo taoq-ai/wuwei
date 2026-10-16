@@ -65,7 +65,7 @@ def _lines(command):
             c, i = ('' if command[i + 1:i + 2] == '\n' else command[i:i + 2]), i + 1
         elif c in '\'"':
             quote = c
-        elif c == '#' and not expansion and out[-1][-1] in ' \t;&|()':
+        elif c == '#' and not expansion and out[-1][-1] in ' \t;&|(':  # not after ), which may close $( ) inside a word
             c, i = '', (command + '\n').index('\n', i) - 1
         elif c == '\n':
             for delimiter, strip, slot, word in waiting:
@@ -240,10 +240,10 @@ def leak(root, text):
 def bash(root, command, cwd, session):
     try:
         parsed = segments(command)
-    except (ValueError, RecursionError) as exc:
-        return DOORS.search(command) and deny(f'cannot read this command ({exc}) and it names a door (git push, gh, wuwei hook, '
-                                              'the ledger): close the quote, put the text in a file (gh --body-file, git commit -F), '
-                                              'or give a heredoc that follows an expansion, an array or (( its own Bash call.')
+    except (ValueError, RecursionError) as exc:  # too deep to read is refused whatever its text names
+        return deny(f'cannot read this command ({exc}), and a door (git push, gh, wuwei hook, the ledger) it names or nests stays '
+                    'shut: close the quote, put the text in a file (gh --body-file, git commit -F), or give a heredoc that follows an '
+                    'expansion, an array or (( its own Bash call.') if DOORS.search(command) or isinstance(exc, RecursionError) else None
     for argv, targets in parsed:
         program = Path(argv[0]).name if argv else ''
         if any(LEDGER.search(t) for t in targets) or any(LEDGER.search(a) for a in argv[1:]) and (

@@ -59,11 +59,13 @@ The runtime stays at 3,000 lines: the lines come out of guards.py and hook.py.
   `${..}`, is refused. The lead's spike found 1 such command in 506 real commands.
 - A quoted heredoc keeps a trailing backslash in its body literal, so its delimiter still ends it.
 - A `#` that starts a word begins a comment to the end of the line; `owner/repo#42` stays a word (#1038).
-  After an opener no comment is skipped, since `${x:- #}` holds a `#` that is not a comment.
+  After an opener no comment is skipped, since `${x:- #}` holds a `#` that is not a comment. A `#`
+  right after `)` is not a comment either: that `)` may close `$(...)`, `<(...)` or `>(...)` inside a
+  word, as in `echo $(true)#; git push ...`, where bash runs the push.
 - A token made only of `();|&` and backticks separates commands, so `` x=`date`; git push `` and
   `true;(git push ...)` meet their doors.
-- Nested shell heredocs too deep to read raise `RecursionError`, which is refused like an unreadable
-  command when it names a door.
+- Nested shell heredocs too deep to read raise `RecursionError`, which is always refused, since a
+  quoted name (`g''it push`) hides the door from the raw-text match.
 
 ## Requirements
 
@@ -110,6 +112,10 @@ into a shell (`cat <<EOF | sh`).
   comments are skipped only before an opener; `RecursionError` is refused; a missing body sets the
   flag. Real bash 5.2.21 with logging stand-ins for git, gh, wuwei and rm ran the door line in each
   refusing input.
+- Q (redesign fix round 2, final): security showed a `#` after a `)` that closes `$( )` read as a
+  comment, and deep nesting with a quoted door name passing. A: `)` no longer starts a comment, and
+  every `RecursionError` is refused. Extglob tests put `shopt -s extglob` on its own line, since bash
+  parses a whole line before `shopt` runs.
 
 ## Assumptions
 
@@ -122,6 +128,9 @@ into a shell (`cat <<EOF | sh`).
 - `=(` sets the flag, so an ordinary array assignment (`a=(1 2)`) stops later body dropping. That is
   the accepted cost of reading `a=( [1<<EOF ]=x )`, where bash runs the next line. Overturned by
   measured refusals on real commands outweighing the bypass.
+- After an opener no comment is skipped, so an apostrophe in a later comment makes the command
+  unreadable: `echo $((1)) # don't` then `git push origin feature` on the next line is refused.
+  Accepted, fails closed.
 - The refusal cannot tell whether the flag made the command unreadable, so it always names the third
   way out: give a heredoc that follows an expansion, an array or `((` its own Bash call.
 - `gh pr create` text inside a heredoc body now triggers the PostToolUse PR note when the output

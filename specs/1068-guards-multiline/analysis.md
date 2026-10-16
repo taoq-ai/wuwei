@@ -13,6 +13,8 @@
 | A11 | Coverage | HIGH | guards.py `_lines` | An unquoted body joined by a backslash-newline (`$\` newline `(`, `EO\` newline `F`) was dropped (gate finding at 4be5260). | Resolved in redesign fix round 1: such a body is read as commands, tests added |
 | A12 | Coverage | MEDIUM | guards.py `_lines`, `bash` | A `#` inside `${...}`, `RecursionError` from deep nesting, and a quadratic rescan of unterminated heredocs (gate findings at 4be5260). | Resolved in redesign fix round 1: tests added |
 | A13 | Consistency | LOW | spec.md Assumptions | `=(` sets the flag, so `a=(1 2)` stops later body dropping; `[[` sets it too. | Accepted cost, recorded |
+| A14 | Coverage | HIGH | guards.py `_lines` | A `#` right after a `)` that closes `$( )` or `<( )` was read as a comment and hid the rest of the line (gate finding at 1647e2e). | Resolved in redesign fix round 2: `)` starts no comment, four tests added |
+| A15 | Coverage | MEDIUM | guards.py `bash` | `RecursionError` was refused only when the raw text named a door (gate finding at 1647e2e). | Resolved in redesign fix round 2: always refused, tests added |
 | A5 | Coverage | MEDIUM | tests/test_guards.py | Quote closing, the single-quote backslash rule, the join without a space, and four DOORS words had no test that a reversed guard fails. | Resolved in fix round 1: tests added, mutants killed |
 | A3 | Consistency | LOW | spec.md FR-004 | The raw-text door pattern is broad. It meets only unreadable commands, so it fails closed. | Accepted |
 

@@ -346,7 +346,7 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     'declare -A m=( [k<<EOF ]=v )\ngit push --force origin x\nEOF',
     'a=(\n[1<<EOF ]=x )\ngit push --force origin x\nEOF',
     'a=([1<<EOF ]=x)\ngit push --force origin x\nEOF',
-    'shopt -s extglob; echo @(a<<EOF )\ngit push --force origin x\nEOF',
+    'shopt -s extglob\necho @(a<<EOF )\ngit push --force origin x\nEOF',
     'echo $(\\\n(1<<EOF))\ngit push --force origin x\nEOF',
     'x=2; echo $\\\n{x:1<<EOF }\ngit push --force origin x\nEOF',
     'echo $\\\n[1<<EOF]\ngit push --force origin x\nEOF]',
@@ -363,6 +363,15 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     'x=${y:- #}; gh pr merge 5 --admin',
     'cat <<<EOF\ngit push --force origin x\nEOF',
     'x\\\n#;git push --force origin y',
+    'shopt -s extglob\necho !(a<<EOF )\ngit push --force origin x\nEOF',
+    'shopt -s extglob\necho ?(a<<EOF )\ngit push --force origin x\nEOF',
+    'shopt -s extglob\necho *(a<<EOF )\ngit push --force origin x\nEOF',
+    'shopt -s extglob\necho +(a<<EOF )\ngit push --force origin x\nEOF',
+    '(# <<EOF\ngit push --force origin x\nEOF\n)',
+    'echo $(true)#; git push --force origin x',
+    'x=$(date)#; gh pr merge 5 --admin',
+    'echo $(true)#x; wuwei hook Stop',
+    'cat <(true)#; git push --force origin x',
 ])
 def test_a_command_on_a_later_line_meets_its_door(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
@@ -415,9 +424,9 @@ def test_an_unreadable_refusal_names_the_way_out_for_a_body_and_a_commit(root, r
     assert '--body-file' in reason and 'git commit -F' in reason
 
 
-def test_nested_shell_heredocs_too_deep_to_read_are_refused(root, repo):
-    command = ''.join(f"bash <<'E{k}'\n" for k in range(600)) + 'git push --force origin x\n' + ''.join(
-        f'E{k}\n' for k in reversed(range(600)))
+@pytest.mark.parametrize('inner', ['git push --force origin x', "g''it push --force origin x", '"g"it push --force origin x'])
+def test_nested_shell_heredocs_too_deep_to_read_are_refused(root, repo, inner):
+    command = ''.join(f"bash <<'E{k}'\n" for k in range(600)) + inner + '\n' + ''.join(f'E{k}\n' for k in reversed(range(600)))
     assert guards.pre_tool(root, bash(command))['decision'] == 'deny'
 
 
