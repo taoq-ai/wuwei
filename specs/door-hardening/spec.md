@@ -20,8 +20,9 @@ refuse. It now:
 - counts a Codex `apply_patch` as an edit door, because `codex()` now runs inside `handle`'s try
   and a payload it cannot map reaches the fail-closed check in its raw shape.
 
-`_unwrap` skips a wrapper argument as an assignment only when it has the shape `NAME=value`, so
-`env /opt/a=b/git push origin main` reads `git push`. SECURITY.md says what fails closed.
+The `_unwrap` change in the item is withdrawn (see Clarifications): main's rule stays.
+SECURITY.md and docs/design.md say what fails closed. The doctor's `hook-seen` stamp (#1091) at the
+top of `hook.pre_tool` can no longer abort the guards' decision when its cache write fails.
 
 The acceptance scenarios, restated:
 
@@ -31,8 +32,9 @@ The acceptance scenarios, restated:
    `mcp__github__merge_pull_request`; a Read or Glob call still passes.
 3. With `codex()` raising on a malformed apply_patch payload, `handle` refuses the PreToolUse call,
    records `hook.error`, and does not raise.
-4. `env /opt/a=b/git push origin main`, with main the default branch, is refused like a push to
-   main; `env FOO=1 git push origin main` still is.
+4. Withdrawn by the planner: GNU env runs no program in `env /opt/a=b/git push origin main`.
+   `env FOO=1 git push origin main` is still refused, and so are wrapper assignments that name a
+   door program (`env 1=/sed git push --force` and eight more shapes).
 5. `hook.door`'s tool names come from `guards.DOORS`; hook.py holds no copy of the MCP suffixes.
 6. Route verdicts are unchanged and the runtime stays at 3,000 lines or fewer.
 
@@ -65,6 +67,17 @@ The acceptance scenarios, restated:
   The promise makes every `mcp__` tool a door while the hook is broken; that test moves to the
   door list and Read and Glob take its place on the open side.
 
+- Q: Does acceptance 4 hold? A: No. The planner withdrew it in the fix round: GNU env treats every
+  argument containing `=` as an assignment, so `env /opt/a=b/git push origin main` never runs git and
+  main's rule (skip any `=`-bearing argument after a wrapper) was already right. The narrower
+  `NAME=value` rule opened bypasses such as `env 1=/sed git push --force`; it is reverted and nine
+  such shapes are pinned as refused or asked in tests/test_guards.py.
+- Q: Can the `hook-seen` stamp that #1091 added refuse calls? A: It could: a failed cache write
+  raised before the guards ran, and the fail-closed check then refused every MCP call. The stamp now
+  runs in its own try and only prints its failure.
+- Q: How does pre_tool tell auto-merge from merge? A: By name (`auto_merge` in the tool name), not
+  by position in `DOORS['merge']`, so later entries cannot shift it.
+
 ## Assumptions
 
 - Refusing every MCP call while the hook is broken is the intended fail-closed for the leak door
@@ -78,9 +91,9 @@ The acceptance scenarios, restated:
 
 Acceptance 1, 2, 3 and 5. Tests in tests/test_hook.py and tests/test_codex.py.
 
-### US2: a wrapper path with '=' cannot hide the program (P1)
+### US2: a wrapper assignment cannot hide the program (P1)
 
-Acceptance 4. Test in tests/test_guards.py.
+Acceptance 4 as amended. Tests in tests/test_guards.py.
 
 ## Requirements
 
@@ -89,7 +102,8 @@ Acceptance 4. Test in tests/test_guards.py.
 - FR-002: `hook.door()` matches `DOOR_WORDS` on the command with quotes and backslashes removed.
 - FR-003: `hook.door()` counts a Bash command naming a `NETWORK` program, and any `mcp__` tool.
 - FR-004: `codex()` runs inside `handle`'s try; `apply_patch` is an edit door.
-- FR-005: `_unwrap` skips a wrapper argument as an assignment only when it is `NAME=value`.
+- FR-005: `_unwrap` keeps main's rule; wrapper assignments naming a door program stay refused.
+- FR-007: A failed `hook-seen` stamp never changes the guards' decision.
 - FR-006: Runtime at 3,000 lines or fewer; route verdicts unchanged.
 
 ## Success criteria

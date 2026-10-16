@@ -88,7 +88,7 @@ def _unwrap(tokens):
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
     if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
-        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and not re.match(r'[A-Za-z_]\w*=', a)  # not an option or NAME=value
+        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
                      and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
@@ -300,7 +300,7 @@ def pre_tool(root, payload):
         number = data.get('pullNumber', data.get('pull_number'))
         repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
         return leak(root, json.dumps(data)) or merge_door(root, repo, int(number) if str(number).isdigit() else None,
-                                                          auto=tool.endswith(DOORS['merge'][1]))
+                                                          auto=tool.endswith('auto_merge'))
     if tool.startswith('mcp__') and tool.endswith(DOORS['create']):
         return leak(root, json.dumps(data)) or create_door(root, f'{data.get("owner")}/{data.get("repo")}', str(
             data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))

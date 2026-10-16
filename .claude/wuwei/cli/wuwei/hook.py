@@ -57,7 +57,10 @@ def running(root):
 
 
 def pre_tool(root, payload):
-    ws.cache_put(root, 'hook-seen', ws.now().timestamp())  # the doctor's hooks row reads it
+    try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
+        ws.cache_put(root, 'hook-seen', ws.now().timestamp())
+    except Exception as exc:
+        print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)

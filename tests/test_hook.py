@@ -125,6 +125,16 @@ def test_pre_tool_marks_the_hook_seen_on_every_call(root):
     assert abs(ws.cache_get(root, 'hook-seen', 120) - ws.now().timestamp()) < 5
 
 
+@pytest.mark.parametrize('tool, data, decision', [('mcp__slack__send_message', {'text': 'hi'}, None),
+                                                   ('Write', {'file_path': '.wuwei/ledger.jsonl'}, 'deny')])
+def test_a_failed_hook_seen_stamp_lets_the_guards_decide(root, monkeypatch, tool, data, decision):
+    real = ws.cache_put
+    monkeypatch.setattr(ws, 'cache_put', lambda root, name, value: 1 / 0 if name == 'hook-seen' else real(root, name, value))
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root), 'tool_input': data})
+    assert (out and out['hookSpecificOutput']['permissionDecision']) == decision
+    assert not ws.rows(root, 'hook.error')
+
+
 def test_post_tool_tells_what_a_new_pr_still_needs(root, fake):
     plan_one(root)
     fake.prs['42'] = make_pr(files=('src/app.py',))

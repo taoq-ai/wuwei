@@ -6,8 +6,8 @@
 
 Add `guards.DOORS` and read it in `guards.pre_tool` and `hook.door()`. Make `hook.door()` read the
 command with quotes and backslashes removed, count network programs and every MCP tool, and count
-`apply_patch` as an edit. Move `codex()` inside `handle`'s try. Tighten the assignment test in
-`_unwrap` to `NAME=value`.
+`apply_patch` as an edit. Move `codex()` inside `handle`'s try. Keep main's `_unwrap` rule and
+guard the `hook-seen` stamp so its failure cannot change a decision.
 
 ## Technical Context
 
@@ -25,17 +25,18 @@ Python 3.11 stdlib, pytest. Runtime is 2,939 of 3,000 lines on main 1620583; the
 
 - `cli/wuwei/guards.py`: `DOORS = {'edit': (...), 'merge': (...), 'create': (...)}` beside
   `DOOR_WORDS`. `pre_tool` tests `tool in DOORS['edit']`, `tool.endswith(DOORS['merge'])` and
-  `tool.endswith(DOORS['create'])`; auto-merge is `DOORS['merge'][1]`. `_unwrap` skips an argument
-  only when `re.match(r'[A-Za-z_]\w*=', a)`.
+  `tool.endswith(DOORS['create'])`; auto-merge is a tool name ending in `auto_merge`. `_unwrap`
+  is unchanged from main.
+- `hook.pre_tool`: the `hook-seen` stamp runs in its own try and prints its failure to stderr.
 - `cli/wuwei/hook.py`: `handle` looks up the handler, then calls `handler(root, codex(payload))`
   inside the try; the except branch passes the raw payload to `door()`. `door()` strips
   `'`, `"` and `\` from the command, matches `DOOR_WORDS`, and matches a `NETWORK` name as a program
   word: at the start or after whitespace, `;`, `&`, `|`, `(`, a backtick or `/`, and followed by
   whitespace or the end. Every `mcp__` tool, `guards.DOORS['edit']` and `apply_patch` are doors.
-- `SECURITY.md`: one paragraph on what a failing guard refuses.
+- `SECURITY.md` and `docs/design.md`: one paragraph each on what a failing guard refuses.
 - Tests: `tests/test_hook.py` (quoted door words and network calls with `guards.bash` raising, MCP
   tools with `guards.pre_tool` raising, Read and Glob still open, the table test), `tests/test_codex.py`
-  (malformed apply_patch), `tests/test_guards.py` (`env /opt/a=b/git push origin main`).
+  (malformed apply_patch), `tests/test_guards.py` (nine wrapper assignment shapes refused or asked).
 - Re-vendor `.claude/` with `setup.vendor('.')`.
 
 ## Rollback
