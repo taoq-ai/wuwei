@@ -42,3 +42,20 @@ def test_each_clone_chains_its_own_ledger_file_and_reads_every_file(root):
     assert first['prev'] == ws.GENESIS and second['prev'] == first['hash']
     assert [r['kind'] for r in ws.ledger(root)] == ['old', 'mine', 'mine', 'theirs']
     assert ws.verify(root) == []
+
+
+def _append(root, n):
+    for i in range(n):
+        ws.record(root, 'seat.started', {'n': i})
+
+
+def test_seats_starting_at_once_keep_one_chain(root):
+    import multiprocessing
+    ws.clone(root)
+    procs = [multiprocessing.get_context('fork').Process(target=_append, args=(root, 25)) for _ in range(8)]
+    for proc in procs:
+        proc.start()
+    for proc in procs:
+        proc.join()
+    assert len(ws.ledger(root)) == 200
+    assert ws.verify(root) == []
