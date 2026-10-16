@@ -5,7 +5,7 @@ import re
 GATES = ('arch', 'quality', 'security', 'goal')
 VERDICTS = ('PASS', 'FIX', 'ESCALATE')
 CONFIDENCE = ('low', 'medium', 'high')
-FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (\S+:\d+(?:-\d+)?) blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
+FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:\d+(?:-\d+)?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
@@ -16,7 +16,7 @@ Breaking: no   (arch gate only; or "yes: <what breaks for which clients>")
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
-- [low] <file>:<line> blocks: no. <a note>
+- [low] <file>:<line> blocks: no. <a note>   (the <file>:<line> is optional on a note)
 (or the single word none)'''
 
 
@@ -56,12 +56,12 @@ def parse(text, strict=False):
             for line in lines:
                 found = FINDING.match(line)
                 if found is None:
-                    errors.append(f'finding not in the shape "- [severity] file:line blocks: yes|no. ...": {line[:80]}')
+                    errors.append(f'finding not in the shape "- [severity] <file>:<line> blocks: yes|no. ...": {line[:80]}')
                     continue
                 blocks, rest = found[3].lower() == 'yes', found[4]
                 failure = re.search(r'Failure:\s*(\S.*)', rest)
-                if blocks and not failure:
-                    errors.append(f'a blocking finding needs "Failure: <the concrete scenario>": {line[:80]}')
+                if blocks and not (found[2] and failure):
+                    errors.append(f'a blocking finding needs "<file>:<line>" and "Failure: <the scenario>": {line[:80]}')
                     continue
                 result['findings'].append({'severity': found[1].lower(), 'where': found[2], 'blocks': blocks,
                                            'failure': failure[1] if failure else rest})

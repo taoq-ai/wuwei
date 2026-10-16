@@ -47,6 +47,13 @@ def test_the_charter_template_wording_parses():
     assert parsed['findings'][0]['blocks'] is False
 
 
+def test_a_note_needs_no_file_line_but_a_blocking_finding_does():
+    parsed = verdict.parse(verdict_text(findings='- [low] blocks: no. a note on the design'))
+    assert parsed['errors'] == [] and parsed['findings'][0]['blocks'] is False
+    errors = verdict.parse(verdict_text(verdict='FIX', findings='- [high] blocks: yes. Failure: x'))['errors']
+    assert any('file>:<line>' in e for e in errors)
+
+
 def test_a_blocking_finding_still_needs_its_failure_scenario():
     text = verdict_text(verdict='FIX', findings='- [HIGH] src/app.py:3 blocks: yes. Note: looks off')
     assert any('Failure:' in e for e in verdict.parse(text)['errors'])

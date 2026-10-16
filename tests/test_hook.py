@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import HEAD, make_pr, verdict_text, write_plan
-from wuwei import board, evidence, guards, hook, plan, ws
+from wuwei import board, evidence, guards, hook, plan, verdict, ws
 
 
 def plan_one(root, tier='light'):
@@ -287,18 +287,56 @@ def test_a_seat_that_replaces_another_seats_verdict_is_sent_back(root):
     assert reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md', agent='rev0') is None
 
 
-def test_a_verdict_is_attested_from_the_handback_when_the_stop_could_not_read_it(root):
-    path = root / ws.DIR / 'verdicts' / 'I-1' / 'quality.md'
-    path.parent.mkdir(parents=True)
-    path.write_text(verdict_text())
-    reviewer_stop(root, '', active=True, transcript='/nowhere/agent.jsonl')
+VERDICT_1067 = '.wuwei/verdicts/1067/quality-3fb3f40.md'
+
+
+def write_verdict(root, text, rel=VERDICT_1067):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
+
+
+def handback(root, message, agent_type='wuwei:sentinel-quality', agent='rev1'):
+    return hook.handle(root, 'PreToolUse', {'session_id': 's1', 'agent_id': agent, 'agent_type': agent_type,
+                                           'cwd': str(root), 'tool_name': 'SubagentHandback',
+                                           'tool_input': {'message': message}})
+
+
+def test_a_malformed_verdict_denies_the_handback_with_its_shape_errors(root):
+    write_verdict(root, verdict_text(verdict='FIX', findings='- [high] the retry loop never ends'))
+    out = handback(root, f'Reviewed.\nVerdict file: {VERDICT_1067}')['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny'
+    assert 'the retry loop never ends' in out['permissionDecisionReason'] and verdict.FORMAT in out['permissionDecisionReason']
     assert not ws.rows(root, 'attest')
-    handback = {'session_id': 's1', 'cwd': str(root), 'tool_name': 'Agent',
-                'tool_input': {'subagent_type': 'wuwei:sentinel-quality'},
-                'tool_response': {'content': [{'type': 'text', 'text': 'Reviewed.\nVerdict file: .wuwei/verdicts/I-1/quality.md'}]}}
-    hook.handle(root, 'PostToolUse', handback)
-    hook.handle(root, 'PostToolUse', handback)
-    assert [(r['data']['gate'], r['data']['verdict']) for r in ws.rows(root, 'attest')] == [('quality', 'PASS')]
+
+
+def test_a_well_formed_verdict_is_attested_once_at_the_handback(root, tmp_path):
+    write_verdict(root, verdict_text())
+    message = f'Reviewed.\nVerdict file: {VERDICT_1067}'
+    assert handback(root, message) is None and len(ws.rows(root, 'attest')) == 1
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+        {'type': 'tool_use', 'name': 'SubagentHandback', 'input': {'message': message}}]}}) + '\n')
+    assert reviewer_stop(root, '', transcript=str(transcript)) is None
+    assert [(r['data']['path'], r['data']['gate']) for r in ws.rows(root, 'attest')] == [(VERDICT_1067, 'quality')]
+
+
+@pytest.mark.parametrize('agent_type', ['wuwei:builder', 'wuwei:sentinel-arch', ''])
+def test_only_the_gates_own_seat_attests_at_the_handback(root, agent_type):
+    write_verdict(root, verdict_text())
+    out = handback(root, f'Verdict file: {VERDICT_1067}', agent_type=agent_type)
+    assert not ws.rows(root, 'attest')
+    assert (out is not None) == ('sentinel' in agent_type)  # another seat's hand-back is not linted
+
+
+def test_a_problem_found_after_the_handback_ended_the_run_is_recorded(root, tmp_path):
+    write_verdict(root, verdict_text(verdict='FIX', findings='- [high] the retry loop never ends'))
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+        {'type': 'tool_use', 'name': 'SubagentHandback', 'input': {'message': f'Verdict file: {VERDICT_1067}'}}]}}) + '\n')
+    assert reviewer_stop(root, '', transcript=str(transcript)) is None
+    assert 'does not hold its shape' in ws.rows(root, 'verdict.missing')[0]['data']['problem']
 
 
 def seat_stop(root, message='', active=False, transcript='/nowhere/agent.jsonl'):
