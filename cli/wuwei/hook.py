@@ -17,8 +17,9 @@ def _hash(text):
 
 
 def transcript(payload):
-    """The seat's last report and its input plus output tokens, read from its transcript ('' and None when unreadable)."""
-    found, total = '', None
+    """The seat's last report, its input plus output tokens, and whether a hand-back ended its run, read from its
+    transcript ('', None and False when unreadable)."""
+    found, total, ended = '', None, False
     try:
         for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
             row = json.loads(line)
@@ -26,12 +27,12 @@ def transcript(payload):
                 total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
             for part in row.get('message', {}).get('content', []) if row.get('type') == 'assistant' else ():
                 if part.get('type') == 'text' and part.get('text', '').strip():
-                    found = part['text']
+                    found, ended = part['text'], False
                 elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
-                    found = part['input']['message']
+                    found, ended = part['input']['message'], part.get('name') == 'SubagentHandback'
     except (OSError, TypeError, ValueError, AttributeError):
         pass
-    return found, total
+    return found, total, ended
 
 
 def last_text(payload):
@@ -55,12 +56,15 @@ def running(root):
 
 
 def pre_tool(root, payload):
+    role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
     if payload.get('tool_name') in ('Agent', 'Task'):
         data = payload.get('tool_input') or {}
         ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
                                          'description': str(data.get('description', ''))[:120],
                                          'session': payload.get('session_id')})
-    found = guards.pre_tool(root, payload)
+    problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
+        root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
+    found = {'decision': 'deny', 'reason': problem + '\nThen hand back again.'} if problem else guards.pre_tool(root, payload)
     if found is None:
         return None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
@@ -125,7 +129,8 @@ def _settled(payload):
 def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
-    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': transcript(payload)[1],
+    _, tokens, ended = transcript(payload)
+    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
                                      'confidence': _confidence(last_text(payload)),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
@@ -139,7 +144,7 @@ def subagent_stop(root, payload):
     problem = _verdict_problem(root, payload, role)
     if problem is None:
         return None
-    if payload.get('stop_hook_active'):
+    if payload.get('stop_hook_active') or ended:  # a block after either reaches no one: record it instead
         ws.record(root, 'verdict.missing', {'role': role, 'agent': payload.get('agent_id'), 'problem': problem[:300]})
         return None
     return {'decision': 'block', 'reason': 'WUWEI: ' + problem}
@@ -190,14 +195,6 @@ def post_tool(root, payload):
                         'duration_ms': payload.get('duration_ms')})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
-    role = str(data.get('subagent_type', '')).rsplit(':', 1)[-1]
-    if tool in ('Agent', 'Task') and role.startswith('sentinel-'):
-        # The handback carries the seat's last message: attest from it when the stop could not read it (#1039).
-        response = payload.get('tool_response')
-        parts = response.get('content') if isinstance(response, dict) else None
-        text = '\n'.join(p.get('text', '') for p in parts if isinstance(p, dict)) if isinstance(parts, list) else str(response)
-        _verdict_problem(root, {'last_assistant_message': text, 'agent_id': payload.get('agent_id')}, role)
-        return None
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         named = sorted(evidence.refs(json.dumps(data)))

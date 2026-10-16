@@ -106,8 +106,8 @@ requirement and the running code, not the builder's summary.
 This is the one verdict path; a brief never names another. Write it to
 `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
 report with the line `Verdict file: <that path>`. If that file already exists, another seat reviewed
-the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you stop and sends it
-back if the shape is wrong; a verdict counts only as WUWEI recorded it.
+the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you hand back
+and refuses the hand-back if the shape is wrong, so fix it and hand back again; a verdict counts only as WUWEI recorded it.
 
 ```
 Verdict: PASS | FIX | ESCALATE
@@ -120,7 +120,7 @@ Breaking: no   (arch only; or "yes: <what breaks for which clients>")
 
 ## Findings
 - [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario that goes wrong>
-- [low] <file>:<line> blocks: no. <a note>
+- [low] <file>:<line> blocks: no. <a note>   (the <file>:<line> is optional on a note)
 (or the single word none)
 
 ## Probes
@@ -130,7 +130,9 @@ Breaking: no   (arch only; or "yes: <what breaks for which clients>")
 <one or two lines>
 ```
 
-`Confidence:` is one word, low, medium or high; give its reason under Probes. PASS has no blocking finding. Calibrate honestly: the steward compares your confidence with what
+`Confidence:` is one word, low, medium or high; give its reason under Probes. PASS has no blocking finding.
+A blocking finding names its `<file>:<line>`; a note without a place in the code leaves it out
+(`- [low] blocks: no. <a note>`), never a padded `:1` anchor. Calibrate honestly: the steward compares your confidence with what
 later escaped, and an overconfident gate earns stricter standards.
 
 # Security sentinel charter
