@@ -17,5 +17,5 @@
 ## Phase 3: Build and checks
 
 - [x] T009 [US1] `bin/wuwei agents build` and `setup.vendor('.')` (FR-009)
-- [x] T010 [US4] Full suite green; `wc -l cli/wuwei/*.py` still 3,000
+- [x] T010 [US4] Full suite green; `wc -l cli/wuwei/*.py` unchanged by this item: 3,000 at e34586d, 2,986 after merging #1104 (247d72e)
 - [x] T011 No emojis and no em dashes in the diff
