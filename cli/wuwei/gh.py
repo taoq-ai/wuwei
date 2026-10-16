@@ -39,13 +39,9 @@ def pages(path, limit=30):
             break
     return found
 
-def _upper(value):
-    return (value or '').upper()
-
-
 def _summary(pr):
     return {'number': pr['number'], 'title': pr.get('title') or '', 'body': pr.get('body') or '',
-            'state': 'MERGED' if pr.get('merged_at') else _upper(pr.get('state')), 'isDraft': bool(pr.get('draft')),
+            'state': 'MERGED' if pr.get('merged_at') else (pr.get('state') or '').upper(), 'isDraft': bool(pr.get('draft')),
             'headRefName': pr['head']['ref'], 'headRefOid': pr['head']['sha'], 'baseRefName': pr['base']['ref'],
             'author': {'login': (pr.get('user') or {}).get('login', '')}, 'url': pr.get('html_url', ''),
             'mergedAt': pr.get('merged_at'), 'createdAt': pr.get('created_at')}
@@ -61,14 +57,20 @@ def pr(repo, number):
     return {**_summary(data),
             'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0)}
                       for f in pages(f'{base}/files')],
-            'statusCheckRollup': [{'name': c['name'], 'status': _upper(c.get('status')),
-                                   'conclusion': _upper(c.get('conclusion'))} for c in checks]
-            + [{'context': s['context'], 'state': _upper(s.get('state'))} for s in statuses],
+            'statusCheckRollup': [{'name': c['name'], 'status': (c.get('status') or '').upper(),
+                                   'conclusion': (c.get('conclusion') or '').upper()} for c in checks]
+            + [{'context': s['context'], 'state': (s.get('state') or '').upper(), 'url': s.get('target_url')} for s in statuses],
             'reviewRequests': [{'login': u['login']} for u in data.get('requested_reviewers') or ()]
             + [{'login': t['slug']} for t in data.get('requested_teams') or ()],
             'reviews': [{'author': {'login': (r.get('user') or {}).get('login', '')}, 'state': r.get('state'),
                          'commit': r.get('commit_id')}
                         for r in run(['api', f'{base}/reviews?per_page=100'])]}
+
+
+def workflow_paths(repo, query='?event=pull_request_review&per_page=100'):
+    """The workflow paths of one run ('/<id>'), or of the last 100 the repository ran on pull_request_review."""
+    found = run(['api', f'repos/{repo}/actions/runs{query}'])
+    return sorted({r['path'] for r in found.get('workflow_runs', [found])})
 
 
 def open_prs(repo):
@@ -108,9 +110,7 @@ def unanswered_threads(repo, number, author):
         return count
     except GhError:
         pass
-    last = {}
-    for comment in run(['api', f'repos/{repo}/pulls/{number}/comments?per_page=100']):
-        last[comment.get('in_reply_to_id') or comment['id']] = _author(comment)
+    last = {c.get('in_reply_to_id') or c['id']: _author(c) for c in run(['api', f'repos/{repo}/pulls/{number}/comments?per_page=100'])}
     return sum(1 for login in last.values() if login != author)
 
 
