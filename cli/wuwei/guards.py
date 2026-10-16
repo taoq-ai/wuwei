@@ -31,7 +31,7 @@ API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/(\d+)/(merge|ccr
        (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'),
        (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
         WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
-API_FLAG = re.compile(r'(--(?:method|raw-field|field|input|header|jq|template|preview|hostname|cache))(?:=(.*))?|-i*([XfFHqtp])=?(.*)', re.S)
+API_FLAG = re.compile(r'(--(?:method|raw-field|field|input|header|jq|template|preview|hostname|cache))(?:=(.*))?|-i*([XfFHqtp])(?:=(?=.))?(.*)', re.S)
 MUTATIONS = re.compile(r'\w*(mergePullRequest|enablePullRequestAutoMerge|createPullRequest|updateRef|deleteRef|createCommitOnBranch'
                        r'|mergeBranch|enqueuePullRequest|BranchProtectionRule|RepositoryRuleset)\w*')
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
@@ -159,8 +159,8 @@ def _api(args, cwd):
     opts, rest, i = [], [], 0
     while i < len(args):
         if m := API_FLAG.fullmatch(args[i]):
-            opts.append((m[1] or '-' + m[3], m[2] or m[4] or (args[i + 1] if i + 1 < len(args) else '')))
-            i += not (m[2] or m[4])
+            opts.append((m[1] or '-' + m[3], v if (v := m[2] if m[1] else m[4] or None) is not None else ''.join(args[i + 1:i + 2])))
+            i += v is None  # a flag with nothing attached (not even an empty --method=) takes the next argument
         elif not args[i].startswith('-'):
             rest.append(args[i])
         i += 1
@@ -169,7 +169,7 @@ def _api(args, cwd):
     fields |= dict(re.findall(r'"(head|base|body)"\s*:\s*"((?:\\.|[^"\\])*)"', ''.join(  # the --input file's JSON
         _read(cwd, v) for f, v in opts if f == '--input')))
     method = ([v.upper() for f, v in opts if f in ('-X', '--method')] or ['POST' if fields or '--input' in dict(opts) else 'GET'])[-1]
-    endpoint = re.sub(r'^(https://api\.github\.com)?/+|/*([?#].*)?$', '', rest[0] if rest else '')
+    endpoint = re.sub(r'(?i)^([a-z][\w+.-]*://[^/]*)?/+|/*([?#].*)?$', '', rest[0] if rest else '')
     owner, name = ((origin(cwd) if '{' in endpoint else '') or '{owner}/{repo}').split('/')
     return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields
 
@@ -190,10 +190,10 @@ def gh_command(root, args, cwd, session, command=''):
         if endpoint == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} merges, opens or moves a branch around the doors: use gh pr merge or '
                         'gh pr create (in a cloud session gh api -X POST repos/<owner>/<repo>/pulls), which meet them.')
-        door, m = next(((d, m) for pattern, methods, d in API if method in methods and (m := re.fullmatch(pattern, endpoint))),
+        door, m = next(((d, m) for pattern, methods, d in API if method in methods and (m := re.fullmatch(pattern, endpoint, re.I))),
                        ('', None))
         if door == 'merge':
-            return merge_door(root, m[1], int(m[2]), auto=m[3] != 'merge')
+            return merge_door(root, m[1], int(m[2]), auto=m[3].lower() != 'merge')
         if door in ('push', 'delete', 'rules'):
             return deny({'push': f'gh api {method} {endpoint} writes a branch outside a pull request: like pushing to the '
                                  'default branch it is ' + PUSHED, 'delete': 'deleting a repository is the owner\'s act, never '

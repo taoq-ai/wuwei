@@ -28,3 +28,13 @@
 - [x] T018 Re-vendor `.claude/` with `setup.vendor('.')`
 - [x] T019 Full suite green; runtime at 2,996 lines
 - [x] T020 Main-versus-head over 153 commands: 13 deliberate moves, no other change
+
+## Phase 3: Fix round (quality, arch and security FIX at bf5ae3a)
+
+- [x] T021 Tests: empty attached values (`-X=`, `--method=`, `-t=`, `-q=`, `--jq=`, `-iX=`) before the real flag reach the merge, push, delete, create and GraphQL refusals
+- [x] T022 Tests: `HTTPS://API.GITHUB.COM`, `http://` and `:443` hosts reach the merge door
+- [x] T023 Tests: a secret in an MCP push_files call on a feature branch is refused; short flag values before the endpoint; an `--input`-only create reads head, base and body
+- [x] T024 Run red: 12 failed, 652 passed
+- [x] T025 Reader: a flag takes the next argument only with nothing attached; any scheme and host stripped in any case; routes match in any case
+- [x] T026 Corpus: 11 fix-round spellings; docs/design.md section 7 and docs/site/concepts/doors.md list the new routes; spec records the change as Breaking
+- [x] T027 Re-vendor, full suite, runtime at 2,996, main-versus-head comparison

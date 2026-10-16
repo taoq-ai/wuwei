@@ -90,6 +90,34 @@ The acceptance scenarios, restated:
 - Q: Does a full URL (`https://api.github.com/repos/...`) count? A: Yes, gh accepts it and the
   reader strips that prefix.
 
+### Fix round at bf5ae3a
+
+- Q: Is an empty attached value a value? A: Yes. gh 2.89.0 reads `-X=` as the method "=",
+  `--method=` as "", and `-t=`, `-q=`, `--jq=` as empty values; none takes the next argument.
+  The reader consumed the next argument for them, so `-X= -X PUT .../merge` passed. Only a flag
+  with nothing attached takes the next argument now.
+- Q: Which hosts are stripped? A: Any `scheme://host[:port]/` prefix in any case. gh sent the
+  request for `HTTPS://API.GITHUB.COM/...` and `http://api.github.com/...`, and the routes now
+  match with `fullmatch`, so the lowercase-only strip let those through. Routes also match the
+  path in any case.
+
+## Breaking
+
+This is a breaking change to the Bash and MCP doors, an outward contract: commands that passed on
+main now meet a door or a refusal. The PR title takes a `!` and a `BREAKING CHANGE:` line.
+
+- Newly refused: a REST write on `merges`, `git/refs/` or `contents/` on any branch; a REST DELETE
+  on the repository; a `gh api graphql` mutation that merges, arms auto-merge, opens a PR, moves a
+  ref, commits to a branch or changes protection or rulesets, including `mergeBranch` and
+  `enqueuePullRequest`; the GitHub MCP `push_files`, `create_or_update_file` and `delete_file`
+  tools on the default branch or with no branch.
+- Newly checked: a REST PR create and `gh pr new` meet the create door; the REST merge and
+  auto-merge spellings main missed (`-XPUT`, `--method=PUT`, a leading `/`, a query, a full URL,
+  `{owner}/{repo}`) meet the merge door.
+- Migration: open PRs with `gh pr create` or the REST create route once the gates pass; merge with
+  `gh pr merge` or the REST merge route; push branches with git and open a PR instead of writing
+  `contents/` or `git/refs/`. No config or data changes.
+
 ## Assumptions
 
 - Refusing every REST write on `contents/`, `git/refs/` and `merges` costs no seat a route (no

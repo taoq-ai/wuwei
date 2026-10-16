@@ -13,8 +13,13 @@ constitution.
 | U2 | Underspecification | LOW | acceptance 1 | A REST create with no head field | Resolved: the current branch, as gh pr create does |
 | C1 | Coverage | LOW | --input - and -F body=@- | A stdin body is not read | Recorded under Assumptions: the door then refuses rather than passes when gates are missing |
 | I1 | Inconsistency | LOW | plan, budget | The estimate was +18; the change is +36 | Within the cap (2,996 of 3,000); the reader that follows gh's parser is the difference |
+| S1 | Inconsistency | HIGH | _api, empty attached value | `-X=`, `--method=`, `-t=`, `-q=`, `--jq=` took the next argument, so `-X= -X PUT .../merge` passed (security gate, real gh) | Resolved in the fix round: only a flag with nothing attached takes the next argument; nine spellings pinned in tests and the corpus |
+| S2 | Inconsistency | HIGH | _api, host strip | Only lowercase `https://api.github.com` was stripped, so an uppercase or http host passed the fullmatch routes | Resolved: any `scheme://host[:port]/` in any case is stripped and routes match in any case; three spellings pinned |
+| S3 | Coverage | MEDIUM | pre_tool MCP push branch | No test held the leak check on an MCP file write | Resolved: a secret in push_files content on a feature branch is refused |
+| Q1 | Coverage | LOW | _api | No test for a short flag value before the endpoint or for `--input` without `-X` | Resolved: five header, jq, template and preview spellings and an `--input`-only create pinned |
+| D1 | Inconsistency | HIGH | docs/design.md section 7, docs/site/concepts/doors.md | The closed door lists missed the new routes while saying everything else passes | Resolved: both list the REST, GraphQL and MCP routes; the spec records the change as Breaking |
 
-No open finding above LOW: A1 is resolved.
+No open finding above LOW: A1, S1, S2, S3 and D1 are resolved.
 
 ## Coverage
 
