@@ -17,6 +17,7 @@ start. What to build is in the [design](docs/design.md).
 
 ## Before you open a pull request
 
-- `python3 -m pytest -q` passes from the repository root.
+- `python3 -m pytest -q` passes from the repository root (`pytest -q` where python3 lacks the
+  module).
 - The body names `WUWEI-Item: <issue number>`; WUWEI audits its own changes.
 - Conventional commit messages (`feat:`, `fix:`, `docs:` and so on).
