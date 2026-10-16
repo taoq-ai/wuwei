@@ -5,3 +5,4 @@
 - [x] T003 Filter malformed rows in `_parse`; chain `record` to the last row with a hash
 - [x] T004 `traces` reuses `_parse`; doctor drops its own isinstance filter
 - [x] T005 Run the full suite green, runtime at 2,996 lines
+- [x] T006 Fix round 1: cover the string-hash guard in record with `{"hash": null}` and `{"hash": 5}` last lines (red with the guard reversed to `'hash' in r`), and a deny over `[1]` for an unclassed AskUserQuestion

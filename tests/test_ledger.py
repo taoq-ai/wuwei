@@ -68,11 +68,13 @@ def _mine(root):
 
 
 def test_record_chains_past_a_last_line_that_is_not_a_row(root):
-    for bad in ('[1]', '5', 'null', '{"a": 1}'):
+    bads = ('[1]', '5', 'null', '{"a": 1}', '{"hash": null}', '{"hash": 5}')
+    for bad in bads:
         first = ws.record(root, 'note', {})
         with open(_mine(root), 'a', encoding='utf-8') as handle:
             handle.write(bad + '\n')
         assert ws.record(root, 'note', {})['prev'] == first['hash'], bad
+    assert ws.verify(root) == [f'ledger/{_mine(root).name}:{3 * n + 2}' for n in range(len(bads))]
 
 
 def test_readers_skip_rows_with_malformed_fields_and_verify_names_them(root):
