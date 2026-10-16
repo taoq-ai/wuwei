@@ -104,16 +104,10 @@ def _unwrap(tokens):
 
 
 def _default(root, repo):
-    if not repo:
+    try:
+        return {evidence._cached(root, 'default-' + repo.replace('/', '__'), lambda: gh.default_branch(repo))} if repo else {'main', 'master'}
+    except gh.GhError:
         return {'main', 'master'}
-    name = 'default-' + repo.replace('/', '__')
-    branch = ws.cache_get(root, name, 86400)
-    if branch is None:
-        try:
-            branch = ws.cache_put(root, name, gh.default_branch(repo))
-        except gh.GhError:
-            return {'main', 'master'}
-    return {branch}
 
 
 def git_push(root, args, cwd):

@@ -7,11 +7,6 @@ from wuwei import evidence, gh, plan, ws
 TTL = 60
 
 
-def _list(root, name, read):
-    found = ws.cache_get(root, name, TTL)
-    return ws.cache_put(root, name, read()) if found is None else found
-
-
 def andons(root):
     """Repositories where a seat pulled the cord: no new builds there until it is cleared."""
     active = {}
@@ -52,7 +47,7 @@ def adopted(root, repo, prs, keep):
 
 
 def names(root, pr, repo, item_id):
-    named = {i.lower() for i in evidence.items_named(pr.get('body'))} or {(evidence.item_for(root, pr, repo) or {}).get('id', '').lower()}
+    named = {i.lower() for i in evidence.ITEM.findall(pr.get('body') or '')} or {(evidence.item_for(root, pr, repo) or {}).get('id', '').lower()}
     return item_id.lower() in named
 
 
@@ -66,7 +61,7 @@ def compute(root, everything=False):
         mine = [item for item in open_items if item.get('repo') == repo]
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
-            prs = _list(root, f'prs-{key}', lambda: gh.open_prs(repo))
+            prs = evidence._cached(root, f'prs-{key}', lambda: gh.open_prs(repo), TTL)
             merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
