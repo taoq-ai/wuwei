@@ -55,32 +55,6 @@
    "approved": true
   },
   {
-   "id": "hooks-live",
-   "title": "fix(doctor): the hooks check says ok only when a hook fired in the last two minutes",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 10.5,
-   "why": "The #1065 check counts any hook since init, so it said ok while this session's hooks were down.",
-   "promise": "hook.pre_tool writes the time to the cache key hook-seen on every call, and the doctor's hooks row reads it: \"ok hooks (fired Ns ago)\" when it is under 120 seconds old (the doctor's own Bash call fires PreToolUse), else warn \"no hook fired in the last 2 minutes: inside a session, the doors and attestations are off\". PostToolUse trace rows carry the seat's agent_type as role. Touches cli/wuwei/hook.py, cli/wuwei/setup.py, their vendored copies, tests/test_setup.py, tests/test_hook.py. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +2. Starts after free-lines merges. Outside: detecting an outage without a doctor run; the Stop hook.",
-   "acceptance": [
-    "given PreToolUse ran 5 seconds ago, when the doctor runs, then the hooks row is ok and names the age",
-    "given hook rows in the ledger from earlier today and no PreToolUse in the last 2 minutes, when the doctor runs, then the hooks row warns",
-    "given a PostToolUse payload with agent_type \"wuwei:sentinel-quality\" and telemetry on, when the trace row is written, then it has role \"sentinel-quality\"",
-    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "doors-by-rest",
    "title": "fix(guards): every code-host route to a door meets that door",
    "goal": "G-2",
@@ -519,6 +493,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1076"
+  },
+  {
+   "id": "hooks-live",
+   "title": "fix(doctor): the hooks check says ok only when a hook fired in the last two minutes",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 10.5,
+   "why": "The #1065 check counts any hook since init, so it said ok while this session's hooks were down.",
+   "promise": "hook.pre_tool writes the time to the cache key hook-seen on every call, and the doctor's hooks row reads it: \"ok hooks (fired Ns ago)\" when it is under 120 seconds old (the doctor's own Bash call fires PreToolUse), else warn \"no hook fired in the last 2 minutes: inside a session, the doors and attestations are off\". PostToolUse trace rows carry the seat's agent_type as role. Touches cli/wuwei/hook.py, cli/wuwei/setup.py, their vendored copies, tests/test_setup.py, tests/test_hook.py. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +2. Starts after free-lines merges. Outside: detecting an outage without a doctor run; the Stop hook.",
+   "acceptance": [
+    "given PreToolUse ran 5 seconds ago, when the doctor runs, then the hooks row is ok and names the age",
+    "given hook rows in the ledger from earlier today and no PreToolUse in the last 2 minutes, when the doctor runs, then the hooks row warns",
+    "given a PostToolUse payload with agent_type \"wuwei:sentinel-quality\" and telemetry on, when the trace row is written, then it has role \"sentinel-quality\"",
+    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1091"
   },
   {
    "id": "compound-doors",
