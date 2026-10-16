@@ -122,9 +122,10 @@ def _levels(rule_types):
 
 def doctor(root):
     rows = [('python', 'ok' if sys.version_info >= (3, 11) else 'fail', sys.version.split()[0])]
-    try:
-        gh.run(['auth', 'status'])
-        rows.append(('gh', 'ok', 'authenticated'))
+    repos = ws.config(root)['repos'] if root else []
+    try:  # a REST read, as WUWEI reads: in a cloud session the proxy's token fails auth status (#1062)
+        gh.default_branch(repos[0]) if repos else gh.run(['auth', 'status'])
+        rows.append(('gh', 'ok', f'reads {repos[0]}' if repos else 'authenticated'))
     except gh.GhError as exc:
         rows.append(('gh', 'fail', str(exc)))
     if root is None:
@@ -149,6 +150,8 @@ def doctor(root):
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
+    rows.append(('hooks', 'ok', 'fired') if (Path(root) / ws.DIR / 'executable').is_file() else ('hooks', 'warn',
+                 'no hook has fired here, so the doors and recorded answers are off (cloud: hold only this repository)'))
     for repo in config['repos']:
         try:
             branch = gh.default_branch(repo)

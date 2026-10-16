@@ -19,7 +19,7 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   goals. Arm /wuwei-watch on a schedule at the start of the session.
 - Done means safety evidence: a test, the gates the diff needs at the head, green CI, threads
   answered, owner review on owner_paths, the spec at full. Only these hold a merge or show on the board. Follow the
-  process standards too (WUWEI-Item: <id>, the PR template, small batches, Rollback: at full, the spec
+  process standards too (the WUWEI footer naming the item, the PR template, small batches, Rollback: at full, the spec
   engine's steps, a reviewer); misfits never block and are recorded for the retro.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
   secrets in outward calls, ledger edits, forged hook calls, questions the process answers,

@@ -27,14 +27,16 @@ SPEC_RULES = {
                                                                           ('tasks.md', 'checked')),
                                                               'full': ()}),
 }
+# The plan item a PR names: the WUWEI footer ([WUWEI <version>](<site>) · Item <id> · ...), or a WUWEI-Item: line.
+ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
                      r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
-# Paths that call the security gate at standard: trust boundaries, data, infrastructure, dependencies.
-RISKY = re.compile(r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|crypt|secur|sql|migrat|polic'
-                   r'|iam|acl|rbac)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
+# Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
+TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
+RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
                    r'|requirements[^/]*\.txt$|package\.json$|pyproject\.toml$|go\.mod$|Cargo\.toml$', re.I)
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
@@ -87,9 +89,9 @@ def review_duty(root, ref, pr):
 
 
 def item_for(root, pr, repo=None):
-    """The plan item a PR names with a WUWEI-Item: trailer, records among its PRs, or whose id starts
+    """The plan item a PR names in its WUWEI footer, records among its PRs, or whose id starts
     its branch name."""
-    match = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
+    match = ITEM.search(pr.get('body') or '')
     if match:
         return plan.find(root, match[1])
     ref = f'{repo}#{pr.get("number")}' if repo else None
@@ -273,10 +275,12 @@ def owned(root, files):
 
 def gates_for(root, repo, pr, files, item):
     """(item id, tier, the gates the change needs, why) for a PR, or for a branch about to open one."""
-    trailer = re.search(r'^WUWEI-Item:[ \t]*(\S+)', pr.get('body') or '', re.M)
+    trailer = ITEM.search(pr.get('body') or '')
     tier, why, spent = (item or {}).get('tier', 'standard'), '', budget(root, repo)
     if spent['raised'] and tier != 'full':
         tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
+    elif tier == 'light' and any(re.search(TRUST, f['path'], re.I) and not DOCS.search(f['path']) for f in files):
+        tier, why = 'standard', ' (tier raised to standard: the diff touches a trust path)'
     gates = REQUIRED[tier] if why else needed(root, tier, files)  # an overrun budget trims nothing
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
@@ -369,7 +373,7 @@ def gaps(root, repo, number):
         body = pr.get('body') or ''
         head = pr['headRefOid']
         if item is None:
-            found.append(gap('not linked to a plan item (add WUWEI-Item: <id> to the PR body)'))
+            found.append(gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)'))
         missing = [s for s in template_sections(root, repo) if s.lower() not in body.lower()]
         if missing:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
@@ -425,9 +429,8 @@ def excepted(root, ref, head, found):
 
 
 def owner_approved(root, repo, pr):
-    login = owner_login(root)
-    if any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED' for r in pr.get('reviews') or ()):
-        return True
-    ref = f'{repo}#{pr["number"]}'
-    return any(row['data'].get('pr') == ref and pr['headRefOid'].startswith(row['data'].get('head', '-'))
-               and row['data'].get('approved') for row in ws.rows(root, 'ruling'))
+    login, head, ref = owner_login(root), pr['headRefOid'], f'{repo}#{pr["number"]}'  # a review or ruling at the head only (#886)
+    return any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED'
+               and head.startswith(r.get('commit') or '-') for r in pr.get('reviews') or ()) or \
+        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head', '-')) and row['data'].get('approved')
+            for row in ws.rows(root, 'ruling'))

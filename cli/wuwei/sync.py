@@ -73,9 +73,10 @@ def pull(root):
     if not commit:
         return f'no {BRANCH} branch yet'
     synced = ws.cache_get(root, 'sync', float('inf')) or {}
-    here, kept = files(root), []
+    here, kept, branch = files(root), [], {}
     for name in _text(top, 'ls-tree', '-r', '--name-only', commit).splitlines():
         data = _git(top, 'cat-file', 'blob', f'{commit}:{name}')
+        branch[name] = hashlib.sha256(data).hexdigest()
         local = here.get(name)
         if local == data or name == f'ledger/{ws.clone(root)}.jsonl':
             continue
@@ -83,7 +84,7 @@ def pull(root):
             ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'))
         else:
             kept.append(name)
-    ws.cache_put(root, 'sync', _digests(files(root)))
+    ws.cache_put(root, 'sync', branch)  # what the branch holds, so push still sends what was kept or is new here (#1060)
     note = f'; kept local {", ".join(kept)} (changed here and on the branch; the next push wins)' if kept else ''
     return f'pulled {BRANCH} at {commit[:7]}{note}'
 

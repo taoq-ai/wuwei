@@ -21,60 +21,72 @@ doors that do not reopen, and asks you only what is yours.</p>
 <p align="center"><a href="https://taoq-ai.github.io/wuwei/">Documentation</a> · <a href="https://taoq-ai.github.io/wuwei/concepts/">Concepts</a> · <a href="docs/design.md">Design</a></p>
 
 无为 (wuwei, said woo-way) means "effortless action": work gets done without forcing it.
+## What it is
 
-## Why WUWEI
+A plugin for Claude Code (and Codex) that turns your session into a team: a lead plans, builders
+write code test first, reviewers check each change, a shepherd takes pull requests to merge. You
+set goals and approve the plan. WUWEI checks each PR's evidence (test, reviews, green CI), refuses
+what cannot be undone (merging with gaps, force pushes, leaking secrets), and only asks you what is
+yours.
 
-Agents are fast and tireless, and they take the shortest path. Left alone they skip the test,
-merge the unreviewed change and ask you a dozen questions you should never have to answer.
-Bolted-on process makes it worse: agents route around rules they cannot see the point of.
+## Quickstart
 
-WUWEI takes the other road. It never tells the model which command to run. It reads what the
-work produced and says what is missing, it teaches the standard at the moment it matters, and it
-holds a short, closed list of doors that do not reopen. Everything else flows, and everything is
-on the record.
+Needs Python 3.11+, Git, and the [GitHub CLI](https://cli.github.com/) signed in (`gh auth login`),
+in a project hosted on GitHub.
 
-- **Evidence, not ceremony.** A pull request is done when its evidence is: a linked plan item, a
-  test, independent reviews at the head it merges, green CI, answered threads, a way to undo it.
-- **An auditor with narrow police powers.** It refuses only what cannot be taken back: a merge
-  with gaps, a force push, a protection bypass, a secret leaving the machine.
-- **You decide what is yours.** One-way doors, scope and goals, trust boundaries. Every other
-  question goes back to the model, which records its assumption and carries on.
-- **It learns.** Each checkpoint's retro turns escaped defects into standards, retires rules that
-  never catch anything, and proposes memory and skills for your repositories.
-
-## A day with WUWEI
-
-1. `/wuwei-plan` ranks work against your goals (WSJF or RICE) and shows you the plan as one
-   picture: goals, items by score, estimated hours. You approve or change it. Plan again whenever
-   the day changes: the queue runs dry, you add something, priorities shift.
-2. Builders work items test first, in parallel lanes. Sentinels (architecture, quality, security,
-   goal) review each one independently at its head. The shepherd takes PRs to merge.
-3. WUWEI watches through the harness's hooks: it teaches before a PR opens, says what a new PR
-   still lacks, refuses a merge with gaps, and reminds the team once when it tries to stop with
-   work it can still close.
-4. `/wuwei-close` checkpoints the day: the report, the steward's retro, a short summary sent where
-   you read it. Planning again reopens the day.
-
-## Install
-
-You need Claude Code or Codex, Python 3.11 or newer, Git and `gh`. Add the plugin, then from the
-project directory that owns the workspace:
+**1. Install** in Claude Code, then restart it:
 
 ```text
 /plugin marketplace add taoq-ai/wuwei
 /plugin install wuwei@wuwei
 ```
 
+**2. Set up your project.** The CLI lives inside the plugin, not on your PATH:
+
 ```sh
-bin/wuwei init      # .wuwei/ and the harness permission rules
-bin/wuwei doctor    # install, workspace, and how strongly each door holds per repository
+cd your-project
+WUWEI=$(find ~/.claude/plugins -type f -path '*/bin/wuwei' | sort | tail -n 1)
+"$WUWEI" init     # creates .wuwei/ and adds permission rules to .claude/settings.json
+"$WUWEI" doctor   # fix any "fail"; "warn" on doors just means no branch protection on GitHub
 ```
 
-Open Claude Code there and run `/wuwei-plan`.
+**3. Work.** Open Claude Code in the project:
 
-On Codex: `codex plugin marketplace add taoq-ai/wuwei`, `codex plugin add wuwei@wuwei`, then
-`bin/wuwei init --codex` (role agents and door rules in `.codex/`). See
-[running on Codex](https://taoq-ai.github.io/wuwei/concepts/codex/).
+```text
+/wuwei-plan     # proposes goals and ranked work; you answer Approve or Change
+/wuwei-close    # end of day: report and retro in .wuwei/
+```
+
+Between the two, the team builds, reviews and merges. Optional: `/loop 20m /wuwei-watch` keeps work
+moving while you are away.
+
+## What changes for you
+
+- **Fewer questions.** Only hard-to-undo, scope, goal, trust and infrastructure decisions reach you,
+  each tagged with its kind (`one-way:`, `scope:` ...).
+- **No direct pushes to `main`.** Everything goes through a PR; force pushes are refused.
+- **A refusal is not an error.** It lists what is missing, and the team closes the gap.
+
+## For agents installing WUWEI
+
+1. Check `python3 --version` (3.11+), `gh auth status`, and a GitHub `origin`.
+2. The plugin install is a slash command; if you cannot run it, ask the user to.
+3. Locate the CLI with `find ~/.claude/plugins -type f -path '*/bin/wuwei'`. Never assume it is on
+   PATH. Once set up, each session prints it as `WUWEI CLI: <path>`.
+4. Run `<path> init` then `<path> doctor` from the repository root (exit 0 ok, 1 warnings, 2 fail).
+5. Never edit `.wuwei/plan.json` or `.wuwei/ledger/` by hand. The `wuwei` skill explains the rules.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `wuwei: command not found` | Use the full path from step 2. |
+| `no .wuwei/ here or above` | Run `init` from the project root. |
+| `fail gh` in `doctor` | `gh auth login` |
+| `warn hooks` in `doctor` | No hook has fired, so nothing is enforced or recorded. Locally, check `/plugin` and restart; in the cloud, open a session that holds only this repository. |
+| `/wuwei-plan` not recognised | Check `/plugin`, then restart Claude Code. |
+
+Codex, cloud sessions and several repositories: see [getting started](https://taoq-ai.github.io/wuwei/getting-started/).
 
 ## Commands
 
@@ -90,9 +102,8 @@ On Codex: `codex plugin marketplace add taoq-ai/wuwei`, `codex plugin add wuwei@
 
 ## Learn more
 
-- [Concepts](https://taoq-ai.github.io/wuwei/concepts/): every idea in WUWEI and why it is there.
-- [Design](docs/design.md) and [constitution](.specify/memory/constitution.md).
-- [Security](SECURITY.md).
+[Concepts](https://taoq-ai.github.io/wuwei/concepts/) (every idea and why it is there),
+[design](docs/design.md), [constitution](.specify/memory/constitution.md), [security](SECURITY.md).
 
 ## Development
 

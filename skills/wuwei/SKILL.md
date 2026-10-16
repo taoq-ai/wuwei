@@ -14,7 +14,9 @@ gh and the repository's tools directly. `wuwei status` shows every open item's g
 Only safety gaps (tests, gates, CI, review threads, owner review) hold a merge or show on the board.
 The rest is process fit: follow it, and the merge records any misfit for the retro.
 
-- The body names its item (`WUWEI-Item: <id>`) and keeps the repository's PR template sections.
+- The body keeps the repository's PR template sections and ends with the WUWEI footer, filled from
+  `wuwei --version` and `wuwei plan show <id>`:
+  `` <sub>[WUWEI <version>](https://taoq-ai.github.io/wuwei/) · Item `<id>` · <title> · Goal <G-n> · Tier <tier></sub> ``.
 - A test is in the diff, or a `No test: <reason>` line explains why none can hold the change.
 - The diff stays under about 400 changed lines (generated files aside), or a `Size: <reason>` line
   says why it cannot be split.

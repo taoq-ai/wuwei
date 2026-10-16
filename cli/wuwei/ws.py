@@ -1,6 +1,7 @@
 """The workspace: config, the hash-chained ledger, traces and small caches under .wuwei/."""
 
 import datetime
+import fcntl
 import hashlib
 import json
 import os
@@ -117,9 +118,9 @@ def _ledgers(root):
     return [path for path in (base / 'ledger.jsonl', *sorted((base / 'ledger').glob('*.jsonl'))) if path.is_file()]
 
 
-def _parse(path):
+def _parse(text):
     rows = []
-    for line in path.read_text(encoding='utf-8').splitlines():
+    for line in text.splitlines():
         try:
             rows.append(json.loads(line))
         except ValueError:
@@ -129,18 +130,20 @@ def _parse(path):
 
 def ledger(root):
     """Every ledger row from every file, oldest first. A row that does not parse is skipped; verify() reports it."""
-    return sorted((row for path in _ledgers(root) for row in _parse(path)), key=lambda row: row.get('ts', ''))
+    return sorted((row for path in _ledgers(root) for row in _parse(path.read_text(encoding='utf-8'))), key=lambda row: row.get('ts', ''))
 
 
 def record(root, kind, data):
     """Append one row to this clone's file; each row carries the hash of the one before it there."""
     path = Path(root) / DIR / 'ledger' / f'{clone(root)}.jsonl'
-    mine = _parse(path) if path.is_file() else []
-    row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
-           'prev': mine[-1]['hash'] if mine else GENESIS}
-    row['hash'] = _digest(row)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a', encoding='utf-8') as handle:
+    with open(path, 'a+', encoding='utf-8') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)  # seats starting at once append in turn, each after the last (#1057)
+        handle.seek(0)
+        mine = _parse(handle.read())
+        row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
+               'prev': mine[-1]['hash'] if mine else GENESIS}
+        row['hash'] = _digest(row)
         handle.write(json.dumps(row, sort_keys=True) + '\n')
     return row
 
