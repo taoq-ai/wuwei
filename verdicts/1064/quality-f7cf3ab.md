@@ -7,9 +7,9 @@ Confidence: medium
 Breaking: no
 
 ## Findings
-- [low] .claude/wuwei/ blocks: no. The vendored copy (cli, charters) is a second 5k-line copy of cli/ and charters/. Nothing tests that it matches the source, so it goes stale on the next cli change until `wuwei init --cloud` is rerun. Missing test: a drift check like the one for agents/.
-- [low] .claude/settings.json blocks: no. Cloud sessions run the vendored cli, not the repo's working cli/, so a change to cli/ is not exercised by the repo's own hooks until re-vendored. If the plugin is also installed locally, hooks fire twice.
-- [low] AGENTS.md blocks: no. The 3-line rule is already present at df6ea05 in the branch history; the diff against origin/main is only that rule. Fine.
+- [low] .claude/wuwei/cli/wuwei/__main__.py:1 blocks: no. The vendored copy (cli, charters) is a second 5k-line copy of cli/ and charters/. Nothing tests that it matches the source, so it goes stale on the next cli change until `wuwei init --cloud` is rerun. Missing test: a drift check like the one for agents/.
+- [low] .claude/settings.json:1 blocks: no. Cloud sessions run the vendored cli, not the repo's working cli/, so a change to cli/ is not exercised by the repo's own hooks until re-vendored. If the plugin is also installed locally, hooks fire twice.
+- [low] AGENTS.md:14 blocks: no. The 3-line rule is already present at df6ea05 in the branch history; the diff against origin/main is only that rule. Fine.
 
 ## Probes
 - diff -rq cli/wuwei .claude/wuwei/cli/wuwei (excluding __pycache__), charters vs .claude/wuwei/charters, agents/ vs .claude/agents, skills/ vs .claude/skills: no differences, so the output is a faithful copy at this head.
