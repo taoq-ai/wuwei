@@ -165,12 +165,14 @@ def test_an_owner_answer_becomes_a_ruling(root):
     ('owner review: with acme/lib#3 at 1234567 merged, acme/app#9 at abcdef0 is ready. Approve?', []),
     ('breaking: see x/y#2 at def5678, o/r#7 at abc1234. Proceed?', []),
     ('  Owner Review: o/r#7 at abc1234. Approve?', [{'pr': 'o/r#7', 'head': 'abc1234'}]),
-    ('BREAKING:o/r#7 at abc1234: the flag goes. Proceed?', [{'kind': 'breaking', 'pr': 'o/r#7', 'head': 'abc1234'}])])
+    ('BREAKING:o/r#7 at abc1234: the flag goes. Proceed?', [{'kind': 'breaking', 'pr': 'o/r#7', 'head': 'abc1234'}]),
+    ('exception: o/r#7 at abc1234: CI failing. owner review: x/y#2 at def5678. Accept?', []),
+    ('scope: see owner review: o/r#7 at abc1234', [])])
 def test_a_ruling_names_a_pr_in_ascii_digits_only(root, question, recorded):
     hook.handle(root, 'PostToolUse', {
         'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
         'tool_input': {'questions': [{'question': question}]}, 'tool_response': {'answers': {question: 'yes'}}})
-    rows = [row['data'] for row in ws.rows(root, 'ruling')]
+    rows = [row['data'] for row in ws.rows(root, 'ruling') if row['data'].get('kind') != 'exception']
     assert rows == [{**r, 'approved': True, 'question': question, 'answer': 'yes'} for r in recorded]
 
 
