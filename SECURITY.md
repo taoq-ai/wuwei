@@ -43,6 +43,17 @@ in `guards.DOORS`, or a Codex `apply_patch`), any MCP tool, or a Bash command na
 or a network program (`gh`, `curl`, `wget`, `nc`, `ssh`, `scp`, `http`, `https`, the names in
 `guards.NETWORK` read as a program, not inside a URL), with its quotes and backslashes removed. Any other call fails open and the error is recorded.
 
+The Bash guards read a `gh api` call the way gh's flag parser does: the method in every spelling
+(`-X PUT`, `-XPUT`, `--method=put`, and POST when a field or `--input` is given), the endpoint
+without a leading `/` or a query and with gh's `{owner}/{repo}` filled from the origin remote, and
+the fields, reading `-F key=@file` and the `--input` file. A REST pull request create meets the
+create door and a REST merge or auto-merge meets the merge door. A REST write to `merges`,
+`git/refs/` or `contents/`, a repository delete, and a `gh api graphql` mutation that merges, opens
+a pull request, moves a ref, commits to a branch or changes protection are refused. The GitHub MCP
+tools `push_files`, `create_or_update_file` and `delete_file` are refused on the default branch or
+with no branch. Not read: a `GH_REPO` that fills gh's placeholders with another repository than the
+origin remote, `--hostname`, and a gh alias.
+
 The doors and what they leave to the code host are in section 6 of the
 [design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 
