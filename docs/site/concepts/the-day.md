@@ -72,4 +72,4 @@ Each item has a tier that sets how much evidence it needs:
 | full | contracts, schemas, boundaries, auth, secrets, agent tooling, infrastructure | arch, quality, security, goal |
 
 When unsure, the lead goes up. A repository over its [error budget](learning.md#error-budget) raises
-every tier one step.
+every tier one step, and a light item whose code touches a trust path is raised to standard.

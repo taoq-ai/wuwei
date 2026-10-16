@@ -509,3 +509,21 @@ def test_the_wuwei_footer_links_a_pr_to_its_item(root, fake):
     for gate in ('arch', 'quality', 'security'):
         attest(root, gate, item='G6-DETECTOR')
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+def test_an_owner_approval_counts_only_at_the_head(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), reviews=(('owner', 'APPROVED', OLD),),
+                             body='WUWEI-Item: I-1\nRollback: revert the PR')
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['owner review needed (owner_paths: infra/main.tf)']
+
+
+def test_a_light_item_touching_a_trust_path_is_raised_to_standard(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('src/grants.py', 'tests/test_grants.py'))
+    attest(root, 'quality')
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == [
+        'gates missing at head aaaaaaa: arch, security (tier raised to standard: the diff touches a trust path)']
+    fake.prs['42'] = make_pr(files=('docs/auth.md',))
+    assert evidence.gaps(root, 'acme/app', 42) == []

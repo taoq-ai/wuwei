@@ -278,7 +278,7 @@ def test_the_mcp_create_route_meets_the_same_door(root, fake, repo):
 def test_the_create_door_reads_the_item_from_the_footer(root, fake, repo):
     from test_evidence import attest
     write_plan(root, [{'id': 'G6-DETECTOR', 'title': 'c', 'goal': 'G-6', 'repo': 'acme/app', 'tier': 'light'}])
-    branch(fake, ('src/auth.py', 'tests/test_auth.py'))
+    branch(fake, ('src/detector.py', 'tests/test_detector.py'))
     attest(root, 'quality', item='G6-DETECTOR')
     body = '<sub>[WUWEI 1.1.0](https://taoq-ai.github.io/wuwei/) · Item \\`G6-DETECTOR\\` · c · Goal G-6 · Tier light</sub>'
     assert guards.pre_tool(root, bash(f'gh pr create --title x --body "{body}"'))['decision'] == 'note'

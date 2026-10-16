@@ -79,8 +79,9 @@ The tier is a ceiling and the diff decides what runs under it:
 A one-line config flag costs one gate. After a fix round only the gate that found the problem
 re-reads. After review comments, a delta of docs, or of at most 20 lines off risky paths, carries
 the earlier passes; a larger one is re-read by the one gate it needs (security for risky paths,
-arch for a contract, quality otherwise). When the error budget is overrun the raised tier takes its
-full gate set.
+arch for a contract, quality otherwise). When the error budget is overrun, or a light item touches a
+trust path (auth, sessions, tokens, secrets, permissions, grants, policies) outside docs, the raised
+tier takes its full gate set.
 
 **Why:** gates that run after the PR opens race the merge, and four gates on a one-line change
 cost more than they find. Review cost follows risk.

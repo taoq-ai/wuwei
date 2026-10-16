@@ -34,9 +34,9 @@ BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
                      r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
-# Paths that call the security gate at standard: trust boundaries, data, infrastructure, dependencies.
-RISKY = re.compile(r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|crypt|secur|sql|migrat|polic'
-                   r'|iam|acl|rbac)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
+# Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
+TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
+RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|terraform|deploy|\.github/workflows)/|Dockerfile'
                    r'|requirements[^/]*\.txt$|package\.json$|pyproject\.toml$|go\.mod$|Cargo\.toml$', re.I)
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
@@ -279,6 +279,8 @@ def gates_for(root, repo, pr, files, item):
     tier, why, spent = (item or {}).get('tier', 'standard'), '', budget(root, repo)
     if spent['raised'] and tier != 'full':
         tier, why = RAISE[tier], f' (tier raised to {RAISE[tier]}: change failure rate {spent["cfr"]:.0%} over 28 days)'
+    elif tier == 'light' and any(re.search(TRUST, f['path'], re.I) and not DOCS.search(f['path']) for f in files):
+        tier, why = 'standard', ' (tier raised to standard: the diff touches a trust path)'
     gates = REQUIRED[tier] if why else needed(root, tier, files)  # an overrun budget trims nothing
     return (item or {}).get('id') or (trailer[1] if trailer else ''), tier, gates, why
 
@@ -427,9 +429,8 @@ def excepted(root, ref, head, found):
 
 
 def owner_approved(root, repo, pr):
-    login = owner_login(root)
-    if any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED' for r in pr.get('reviews') or ()):
-        return True
-    ref = f'{repo}#{pr["number"]}'
-    return any(row['data'].get('pr') == ref and pr['headRefOid'].startswith(row['data'].get('head', '-'))
-               and row['data'].get('approved') for row in ws.rows(root, 'ruling'))
+    login, head, ref = owner_login(root), pr['headRefOid'], f'{repo}#{pr["number"]}'  # a review or ruling at the head only (#886)
+    return any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED'
+               and head.startswith(r.get('commit') or '-') for r in pr.get('reviews') or ()) or \
+        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head', '-')) and row['data'].get('approved')
+            for row in ws.rows(root, 'ruling'))
