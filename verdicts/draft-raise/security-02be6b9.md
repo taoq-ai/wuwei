@@ -1,0 +1,24 @@
+Verdict: FIX
+Gate: security
+Item: draft-raise
+PR: taoq-ai/wuwei
+Head: 02be6b9d05864d882c0e21f0c7a5b5fbef2e0bed
+Confidence: high
+
+## Findings
+- [medium] cli/wuwei/guards.py:33 blocks: yes. Failure: the lenient PR segment is matched with Python's Unicode `\d`, so the door reads a different PR number from GitHub. For the segment `7٣` (Arabic-Indic three), the door reads PR 73. In `7%D9%A3`, the escape decodes to that same `٣`, and the door again reads 73. In `7%EF%BC%97` (fullwidth seven), the door reads 77. GitHub reads all three as PR 7: read-only GETs through gh returned 1097 for `pulls/1097%D9%A3` and `pulls/1097%EF%BC%97`, and 109 for `pulls/109%D9%A3`. gh sends the raw `7٣` as `7%D9%A3` (logging server, probe/real5.sh). So `gh api -X POST repos/o/r/pulls/7%D9%A3/requested_reviewers -f reviewers[]=bob` and `gh api -X POST repos/o/r/pulls/7%EF%BC%97/ccr/ready_for_review` pass when PR 73 or 77 exists and is not a draft (in the probe, older PRs 73 and 77 that are not drafts), and draft 7 gets a reviewer or leaves draft before its gates. Line 32 (merge) has the same flaw: `pulls/5%D9%A3/merge` checks PR 53's evidence. It is reachable when a draft's number n satisfies 10n+d <= the repository's highest PR, so an older draft. Fix: `[0-9]` in place of `\d` on lines 32 and 33 (or re.ASCII).
+- [medium] cli/wuwei/guards.py:163 blocks: no. Under the round-four rule this does not block, because `_repo_number` was not changed by the last fix; fold it into the same one-character fix. `word.isdigit()` and `int()` accept Unicode digits, while gh only takes ASCII digits as a PR number and reads anything else as a branch name. `gh pr ready ５` and `gh pr edit ５ --add-reviewer bob` (fullwidth five) pass by checking ready PR 5. Real gh queried `headRefName: "５"` (logging server), so it flips, or asks reviewers on, the draft whose head branch is named `５`, and an agent can name its branch that. `gh pr ready 7٣` reads PR 73 the same way. Main 7f31a51 has the twin on the merge door (`gh pr merge ７` checks PR 7). Fix: `word.isascii() and word.isdigit()`, and the same at line 363 for an MCP pullNumber string.
+- [low] blocks: no. My f1ca82b blocking finding is closed. The allowlist runs on shlex's unquoted words, so `{,sub/}d.json` (bare or quoted), the backtick form, `~`, `$`, globs and `:d.json` all lose the draft and meet the create door. Plain spellings (`--input=d.json`, `'--input' 'd.json'`, `d\.json`, `./d.json`, `sub/../d.json`) still pass, and bash hands gh the same file. Within `[\w./=@:-]` I found no bash expansion: tilde after `=` or `:` needs `~`, extglob `@(` needs a parenthesis, and history needs `!`. That leaves the hook-cwd assumption and a concurrent rewrite of the file between the hook and gh (a race, not measured).
+- [low] blocks: no. The ASCII lenient-number note is closed: `7abc`, `7x5`, `%207`, `7%20`, `7.0`, `+7`, `%2B7` and `5x/merge` reach their doors with the number GitHub reads. `a7b5` reads 7 while GitHub answers 404 for a leading letter (`pulls/a1097` gave 404), so it fails safe. `07` reads 7, and GitHub reads `01097` as 1097.
+- [low] blocks: no. Carried unchanged: `repositories/<id>/...` paths (refused by this session's proxy, served by github.com directly); `gh api graphql --input` carrying markPullRequestReadyForReview; a `?draft=false` query beside a draft body is unmeasured; `--auto` and `--admin` are read from raw argv; the fork head is compared by branch name.
+
+## Probes
+Corpus (probe/test_sec_draft.py with cmds1.txt to cmds4.txt, 230 commands and 19 MCP payloads, with older PRs 53, 73 and 77 that are not drafts added) run through archive copies of main 7f31a51, f1ca82b and 02be6b9. Every move from f1ca82b to 02be6b9 is a closure: the brace and backtick `--input` forms, and the ASCII lenient numbers. Nothing moved from a door to pass. The Unicode-digit routes pass on all three trees.
+Real gh 2.89.0 against the local logging server: probe/real4.sh shows gh still reads sub/d.json for the brace and backtick forms (now held by the guard) and sends the lenient paths verbatim. probe/real5.sh shows gh treats `５` and `7٣` as branch names and sends `7٣` as `7%D9%A3`.
+Read-only GETs to github.com: `1097%D9%A3` gave 1097, `1097%EF%BC%97` gave 1097, `109%D9%A3` gave 109 and `1097x5` gave 1097; `a1097` and `%2B1097` gave 404.
+Mutants (probe/mutate4.py, 7): all killed. They covered the allowlist widened to any character, to backtick and to braces, and the PR prefix and suffix on both routes.
+Suite at 02be6b9 in an archive copy: 918 passed, 2 skipped. Runtime is 3,000 lines, and the vendored guards.py is identical (cmp).
+Confidence is high because the blocking misread was reproduced in the head guard, and GitHub's reading was measured by GET. POST is inferred.
+
+## Residual risk
+POST routing of Unicode-digit segments is inferred from GET. The `--input` draft still trusts the hook's cwd and the file staying put between the hook and gh.
