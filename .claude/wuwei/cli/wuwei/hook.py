@@ -240,7 +240,7 @@ def _answers(root, data, response):
     notes = []
     for question in questions:
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
-        yes = answer.strip().lower().startswith(('yes', 'approve', 'accept'))
+        yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
         match = re.search(r'owner review: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40})', question)
         if match and answer:
             ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3], 'approved': yes,
