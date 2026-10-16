@@ -113,6 +113,17 @@ def test_post_tool_traces_without_secrets(root):
     assert row['tool'] == 'Bash' and 'ghp_' not in json.dumps(row)
 
 
+def test_post_tool_trace_carries_the_seats_role(root):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Read', 'cwd': str(root),
+                                      'agent_type': 'wuwei:sentinel-quality', 'tool_input': {'file_path': 'a.py'}})
+    assert ws.traces(root)[0]['role'] == 'sentinel-quality'
+
+
+def test_pre_tool_marks_the_hook_seen_on_every_call(root):
+    hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Read', 'cwd': str(root), 'tool_input': {}})
+    assert abs(ws.cache_get(root, 'hook-seen', 120) - ws.now().timestamp()) < 5
+
+
 def test_post_tool_tells_what_a_new_pr_still_needs(root, fake):
     plan_one(root)
     fake.prs['42'] = make_pr(files=('src/app.py',))

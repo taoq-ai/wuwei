@@ -57,6 +57,7 @@ def running(root):
 
 
 def pre_tool(root, payload):
+    ws.cache_put(root, 'hook-seen', ws.now().timestamp())  # the doctor's hooks row reads it
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
@@ -187,6 +188,7 @@ def post_tool(root, payload):
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
+                        'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
     response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
