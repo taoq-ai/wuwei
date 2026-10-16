@@ -616,3 +616,49 @@ def test_a_light_item_touching_a_trust_path_is_raised_to_standard(root, fake):
         'gates missing at head aaaaaaa: arch, security (tier raised to standard: the diff touches a trust path)']
     fake.prs['42'] = make_pr(files=('docs/auth.md',))
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+RELEASE = ('.claude-plugin/plugin.json', '.release-please-manifest.json', 'CHANGELOG.md')
+RELEASE_CONFIG = '{"packages": {".": {"extra-files": [{"type": "json", "path": ".claude-plugin/plugin.json"}]}}}'
+
+
+def release_gaps(root, fake, files=RELEASE, author='github-actions[bot]', branch='release-please--branches--main', checks='SUCCESS'):
+    """The 1.2.1 release PR shape (taoq-ai/wuwei#1072): the gaps it names for a test or a gate, and CI."""
+    fake.prs['42'] = make_pr(files=files, author=author, body=':robot: I have created a release *beep* *boop*',
+                             lines=1, checks=checks)
+    fake.prs['42']['headRefName'] = branch
+    return [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t == 'no test in the diff' or 'gate' in t or 'CI' in t]
+
+
+BOTH = ['no test in the diff', 'gates missing at head aaaaaaa: quality']
+
+
+def test_a_release_please_pr_is_read_as_generated(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake) == []
+    assert any(c[1].endswith('contents/release-please-config.json?ref=main') for c in fake.calls)
+    assert release_gaps(root, fake, author='release-please[bot]') == []
+    assert release_gaps(root, fake, checks='FAILURE') == ['CI failing: test']
+
+
+def test_a_release_pr_from_a_person_another_branch_or_with_code_keeps_every_gap(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, author='alice') == BOTH
+    assert release_gaps(root, fake, branch='release-1.2.1') == BOTH
+    assert release_gaps(root, fake, branch='x-release-please--main') == BOTH
+    assert release_gaps(root, fake, files=RELEASE + ('cli/wuwei/guards.py',)) == BOTH
+
+
+@pytest.mark.parametrize('config', [None, 'not json', '{"packages": []}', '{"packages": {".": {"extra-files": [7]}}}'])
+def test_an_unreadable_release_config_counts_only_the_manifest_and_changelog(root, fake, config):
+    if config is not None:
+        fake.files['release-please-config.json'] = config
+    assert release_gaps(root, fake) == BOTH
+    assert release_gaps(root, fake, files=RELEASE[1:]) == []
+
+
+def test_release_extra_files_resolve_under_their_package_path(root, fake):
+    fake.files['release-please-config.json'] = ('{"packages": {"pkg/a": {"extra-files": ["version.json", '
+                                                '{"path": "/VERSION"}]}}}')
+    assert release_gaps(root, fake, files=('pkg/a/version.json', 'VERSION', 'CHANGELOG.md')) == []
+    assert release_gaps(root, fake, files=('version.json', 'CHANGELOG.md')) == BOTH
