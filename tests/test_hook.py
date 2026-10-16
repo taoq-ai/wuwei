@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import HEAD, make_pr, verdict_text, write_plan
-from wuwei import board, evidence, hook, plan, ws
+from wuwei import board, evidence, guards, hook, plan, ws
 
 
 def plan_one(root, tier='light'):
@@ -356,3 +356,67 @@ def test_an_unreadable_command_after_it_ran_is_no_hook_error(root):
     hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Bash', 'cwd': str(root),
                                       'tool_input': {'command': "echo it's\nls"}, 'tool_response': {'stdout': 'x'}})
     assert not ws.rows(root, 'hook.error')
+
+
+def pre(root, tool, data):
+    return hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root), 'tool_input': data})
+
+
+def test_a_merge_door_that_cannot_write_its_cache_refuses_and_names_the_error(root, fake, monkeypatch):
+    monkeypatch.setattr(guards, 'origin', lambda cwd: 'acme/app')
+    fake.prs['5'] = make_pr(5)
+    (root / ws.DIR / 'cache' / 'template-acme__app.json').mkdir(parents=True)
+    out = pre(root, 'Bash', {'command': 'gh pr merge 5'})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny'
+    assert 'IsADirectoryError' in out['permissionDecisionReason']
+    assert ws.rows(root, 'hook.error')
+
+
+@pytest.mark.parametrize('tool, data, decision', [
+    ('AskUserQuestion', {'questions': [{'question': 'Want me to continue with I-2?', 'header': 'h', 'options': []}]}, 'deny'),
+    ('Write', {'file_path': '.wuwei/ledger.jsonl'}, 'deny'),
+    ('Bash', {'command': 'terraform apply'}, 'ask')])
+@pytest.mark.parametrize('error', [OSError(30, 'Read-only file system'), ValueError('malformed ledger line')])
+def test_a_refusal_reaches_the_harness_when_its_record_fails(root, monkeypatch, tool, data, decision, error):
+    def broken(*args):
+        raise error
+    monkeypatch.setattr(ws, 'record', broken)
+    assert pre(root, tool, data)['hookSpecificOutput']['permissionDecision'] == decision
+
+
+@pytest.mark.parametrize('tool, data', [
+    ('Bash', {'command': 'gh pr merge 5'}), ('Bash', {'command': 'git push origin feature'}),
+    ('Bash', {'command': 'cat .wuwei/ledger/x.jsonl'}), ('Write', {'file_path': 'a.py'}), ('Edit', {'file_path': 'a.py'}),
+    ('mcp__github__merge_pull_request', {}), ('mcp__github__enable_pr_auto_merge', {}),
+    ('mcp__github__create_pull_request', {})])
+def test_an_error_inside_a_door_refuses_the_call(root, monkeypatch, tool, data):
+    monkeypatch.setattr(guards, 'pre_tool', lambda root, payload: 1 / 0)
+    out = pre(root, tool, data)['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'ZeroDivisionError' in out['permissionDecisionReason']
+    assert ws.rows(root, 'hook.error')
+
+
+def test_a_door_stays_shut_when_the_error_cannot_be_recorded(root, monkeypatch):
+    monkeypatch.setattr(guards, 'pre_tool', lambda root, payload: 1 / 0)
+    monkeypatch.setattr(ws, 'record', lambda *args: 1 / 0)
+    assert pre(root, 'Bash', {'command': 'gh pr merge 5'})['hookSpecificOutput']['permissionDecision'] == 'deny'
+
+
+@pytest.mark.parametrize('tool, data', [('Bash', {'command': 'ls'}), ('Read', {'file_path': 'a.py'}),
+                                        ('mcp__github__get_issue', {}), ('Agent', {'subagent_type': 'wuwei:builder'})])
+def test_an_error_outside_the_doors_fails_open(root, monkeypatch, tool, data):
+    monkeypatch.setattr(guards, 'pre_tool', lambda root, payload: 1 / 0)
+    assert pre(root, tool, data) is None
+    assert ws.rows(root, 'hook.error')
+
+
+def test_an_unreadable_tool_input_fails_open_without_crashing_the_hook(root):
+    assert pre(root, 'Bash', 'gh pr merge 5') is None
+    assert ws.rows(root, 'hook.error')
+
+
+def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
+    monkeypatch.setattr(ws, 'config', lambda root: 1 / 0)
+    assert hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Write', 'cwd': str(root),
+                                             'tool_input': {'file_path': 'a.py'}}) is None
+    assert ws.rows(root, 'hook.error')
