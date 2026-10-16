@@ -55,33 +55,6 @@
    "approved": true
   },
   {
-   "id": "ascii-digits",
-   "title": "fix(hook): PR numbers in owner answers, verdicts, refs and CLI arguments are ASCII digits only",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 2,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 5.0,
-   "why": "Python's \\d and str.isdigit() accept Unicode digits and int() converts them, so an owner question naming #\uff17 records a ruling for PR 7: hook.py lines 249 and 281, evidence.py line 52, verdict.py lines 8 and 45, guards.py lines 344 and 349, and __main__._ref line 22 (grep -n '\\\\d' and isdigit on main fe5bc0b). draft-raise made the guards ASCII-only; these readers were left.",
-   "promise": "Every pattern under cli/wuwei that reads a number uses [0-9] (or re.ASCII), and every isdigit() check is preceded by isascii(), so a PR number written in non-ASCII digits is never read as a PR. The owner review: and breaking: rulings in hook._answers read the same REF match (owner/repo#n at <sha>) instead of two patterns, which frees about 2 lines. A test scans cli/wuwei for \\d and for isdigit() without isascii(). Rollback: revert the commit. Outside: \\w in repository names; the wording of any message.",
-   "acceptance": [
-    "given an AskUserQuestion answer 'yes' to 'owner review: o/r#\uff17 at abc1234. Approve?', when PostToolUse records it, then no ruling for o/r#7 is written, and with 'o/r#7' it is written as on main",
-    "given a verdict whose PR line is 'o/r#\uff17', when verdict.parse reads it, then it reports the PR line error",
-    "given wuwei evidence 'o/r#\uff17', when it runs, then it exits naming the owner/repo#number shape and makes no gh call",
-    "given a text naming o/r#\uff17, when evidence.refs reads it, then it returns no ref",
-    "given the change, when tests/test_setup.py scans cli/wuwei, then no pattern holds \\d and every isdigit() call is guarded by isascii(), and the runtime line count is no higher than before"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "codex-attest-probe",
    "title": "probe: does a Codex-native sentinel seat get its verdict attested",
    "goal": "G-1",
@@ -883,6 +856,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1082"
+  },
+  {
+   "id": "ascii-digits",
+   "title": "fix(hook): PR numbers in owner answers, verdicts, refs and CLI arguments are ASCII digits only",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 2,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 5.0,
+   "why": "Python's \\d and str.isdigit() accept Unicode digits and int() converts them, so an owner question naming #\uff17 records a ruling for PR 7: hook.py lines 249 and 281, evidence.py line 52, verdict.py lines 8 and 45, guards.py lines 344 and 349, and __main__._ref line 22 (grep -n '\\\\d' and isdigit on main fe5bc0b). draft-raise made the guards ASCII-only; these readers were left.",
+   "promise": "Every pattern under cli/wuwei that reads a number uses [0-9] (or re.ASCII), and every isdigit() check is preceded by isascii(), so a PR number written in non-ASCII digits is never read as a PR. The owner review: and breaking: rulings in hook._answers read the same REF match (owner/repo#n at <sha>) instead of two patterns, which frees about 2 lines. A test scans cli/wuwei for \\d and for isdigit() without isascii(). Rollback: revert the commit. Outside: \\w in repository names; the wording of any message.",
+   "acceptance": [
+    "given an AskUserQuestion answer 'yes' to 'owner review: o/r#\uff17 at abc1234. Approve?', when PostToolUse records it, then no ruling for o/r#7 is written, and with 'o/r#7' it is written as on main",
+    "given a verdict whose PR line is 'o/r#\uff17', when verdict.parse reads it, then it reports the PR line error",
+    "given wuwei evidence 'o/r#\uff17', when it runs, then it exits naming the owner/repo#number shape and makes no gh call",
+    "given a text naming o/r#\uff17, when evidence.refs reads it, then it returns no ref",
+    "given the change, when tests/test_setup.py scans cli/wuwei, then no pattern holds \\d and every isdigit() call is guarded by isascii(), and the runtime line count is no higher than before"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1107"
   },
   {
    "id": "1065",
