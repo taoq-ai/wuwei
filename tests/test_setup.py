@@ -174,6 +174,16 @@ def test_doctor_hooks_skips_rows_that_are_not_objects_and_counts_a_clone_file_wi
     assert rows['hooks'] == 'ok' and rows['ledger'] == 'fail'
 
 
+def test_doctor_finishes_on_ledger_rows_with_malformed_fields(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
+    setup.init(tmp_path)
+    with open(tmp_path / ws.DIR / 'ledger' / f'{ws.clone(tmp_path)}.jsonl', 'a', encoding='utf-8') as handle:
+        handle.write('{"kind": [1]}\n{"ts": 5, "kind": "refused"}\n{"kind": "refused", "data": [1]}\n')
+    rows = {name: status for name, status, _ in setup.doctor(tmp_path)}
+    assert rows['hooks'] == 'warn' and rows['ledger'] == 'fail'
+
+
 def test_init_cloud_twice_keeps_other_hooks_and_writes_the_same_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
     settings = tmp_path / '.claude' / 'settings.json'

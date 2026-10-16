@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from conftest import HEAD, make_pr, verdict_text, write_plan
 from wuwei import board, evidence, hook, plan, ws
 
@@ -137,6 +139,18 @@ def test_pre_tool_deny_uses_the_harness_shape_and_is_recorded(root):
                                            'tool_input': {'file_path': '.wuwei/ledger.jsonl'}})
     assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert ws.rows(root, 'refused')
+
+
+@pytest.mark.parametrize('tool, data', [
+    ('Write', {'file_path': '.wuwei/ledger.jsonl'}),
+    ('AskUserQuestion', {'questions': [{'question': 'Want me to continue with I-2?', 'header': 'h', 'options': []}]})])
+def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root, tool, data):
+    path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[1]\n')
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root), 'tool_input': data})
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert ws.rows(root, 'refused') and not ws.rows(root, 'hook.error')
 
 
 def test_session_start_orients_with_the_board(root, fake):
