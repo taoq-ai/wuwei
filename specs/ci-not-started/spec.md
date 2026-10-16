@@ -75,7 +75,9 @@ Acceptance 1, 3 and 4. Tests in `tests/test_evidence.py`:
 `test_a_head_with_no_checks_in_a_repo_with_pull_request_ci_reads_ci_not_started`,
 `test_a_repo_that_never_ran_a_pull_request_workflow_gets_no_ci_gap`,
 `test_an_unreadable_actions_host_counts_as_having_ci`,
-`test_the_actions_read_is_cached_a_day_per_repository`.
+`test_the_actions_read_is_cached_a_day_per_repository`,
+`test_each_repository_keeps_its_own_cached_actions_answer`,
+`test_a_failed_actions_read_is_not_cached`.
 
 ### US2: auto-merge waits for CI that has not started (P1)
 

@@ -958,5 +958,7 @@ def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
     not_started(root, fake)
     decision = guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1')
     assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
+    decision = guards.bash(root, 'gh pr merge 5 -R o/r --squash', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
     fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
     assert guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1') is None

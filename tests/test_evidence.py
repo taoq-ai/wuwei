@@ -770,6 +770,36 @@ def test_the_actions_read_is_cached_a_day_per_repository(root, fake):
     assert sum('actions/runs' in call[1] for call in fake.calls) == 1
 
 
+def actions_by_repo(monkeypatch, fake, replies):
+    """Answer each repository's Actions runs read from its own queue of replies; an exception is raised."""
+    def answer(args, timeout=30):
+        if 'actions/runs' not in args[1]:
+            return fake(args, timeout)
+        fake.calls.append(args)
+        reply = replies[args[1].split('/')[2]].pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(gh, 'run', answer)
+
+
+def test_each_repository_keeps_its_own_cached_actions_answer(root, fake, monkeypatch):
+    not_started(root, fake)
+    actions_by_repo(monkeypatch, fake, {'quiet': [{'workflow_runs': []}],
+                                        'busy': [{'workflow_runs': [{'path': '.github/workflows/ci.yml'}]}]})
+    assert 'CI not started at aaaaaaa' not in texts(evidence.gaps(root, 'a/quiet', 5))
+    assert 'CI not started at aaaaaaa' in texts(evidence.gaps(root, 'b/busy', 5))
+    assert 'CI not started at aaaaaaa' not in texts(evidence.gaps(root, 'a/quiet', 5))  # read from its own cache
+
+
+def test_a_failed_actions_read_is_not_cached(root, fake, monkeypatch):
+    not_started(root, fake)
+    actions_by_repo(monkeypatch, fake, {'r': [gh.GhError('HTTP 502: Bad Gateway'), {'workflow_runs': []}]})
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+    assert evidence.gaps(root, 'o/r', 5) == []
+    assert sum('actions/runs' in call[1] for call in fake.calls) == 2
+
+
 def test_a_moved_head_names_the_gate_owed_and_ci_not_started(root, fake):
     not_started(root, fake, verdict='FIX', head=OLD)
     fake.ancestors.add((OLD, HEAD))
