@@ -2,7 +2,7 @@ import pytest
 import hashlib
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
-from wuwei import evidence, ws
+from wuwei import evidence, gh, ws
 
 
 def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None):
@@ -616,3 +616,110 @@ def test_a_light_item_touching_a_trust_path_is_raised_to_standard(root, fake):
         'gates missing at head aaaaaaa: arch, security (tier raised to standard: the diff touches a trust path)']
     fake.prs['42'] = make_pr(files=('docs/auth.md',))
     assert evidence.gaps(root, 'acme/app', 42) == []
+
+
+RELEASE = ('.claude-plugin/plugin.json', '.release-please-manifest.json', 'CHANGELOG.md')
+RELEASE_CONFIG = '{"packages": {".": {"extra-files": [{"type": "json", "path": ".claude-plugin/plugin.json"}]}}}'
+
+
+# The patches GitHub sent for taoq-ai/wuwei#1072; any other path bumps one version line.
+BUMP = '@@ -1,3 +1,3 @@\n {\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n   "name": "x"'
+PATCHES = {'.release-please-manifest.json': '@@ -1,3 +1,3 @@\n {\n-  ".": "1.2.0"\n+  ".": "1.2.1"\n }',
+           '.claude-plugin/plugin.json': '@@ -1,6 +1,6 @@\n {\n   "name": "wuwei",\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n'
+                                         '   "description": "Responsible autonomy for agent teams.",\n   "author": {',
+           'CHANGELOG.md': '@@ -1,5 +1,13 @@\n # Changelog\n \n+## [1.2.1](https://github.com/taoq-ai/wuwei/compare/v1.2.0...v1.2.1)'
+                           '\n+\n+### Bug Fixes\n+\n+* **doctor:** the hooks check counts any hook ([#1070](x))\n+\n ## [1.2.0]'}
+
+
+def release_gaps(root, fake, files=RELEASE, author='github-actions[bot]', branch='release-please--branches--main', checks='SUCCESS',
+                 patches=None, renamed=None):
+    """The 1.2.1 release PR shape (taoq-ai/wuwei#1072): the gaps it names for a test or a gate, and CI."""
+    fake.prs['42'] = make_pr(files=files, author=author, body=':robot: I have created a release *beep* *boop*',
+                             lines=1, checks=checks)
+    fake.prs['42']['headRefName'] = branch
+    for f in fake.prs['42']['files']:
+        f['patch'] = {**PATCHES, **(patches or {})}.get(f['path'], BUMP)
+        f.update({'previous_filename': renamed} if renamed and f['path'] == 'CHANGELOG.md' else {})
+    return [t for t in texts(evidence.gaps(root, 'acme/app', 42)) if t == 'no test in the diff' or 'gate' in t or 'CI' in t]
+
+
+BOTH = ['no test in the diff', 'gates missing at head aaaaaaa: quality']
+
+
+def test_a_release_please_pr_is_read_as_generated(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake) == []
+    assert any(c[1].endswith('contents/release-please-config.json?ref=main') for c in fake.calls)
+    assert release_gaps(root, fake, author='release-please[bot]') == []
+    assert release_gaps(root, fake, checks='FAILURE') == ['CI failing: test']
+
+
+def test_a_release_pr_from_a_person_another_branch_or_with_code_keeps_every_gap(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, author='alice') == BOTH
+    assert release_gaps(root, fake, branch='release-1.2.1') == BOTH
+    assert release_gaps(root, fake, branch='x-release-please--main') == BOTH
+    assert release_gaps(root, fake, files=RELEASE + ('cli/wuwei/guards.py',)) == BOTH
+
+
+@pytest.mark.parametrize('config', [None, 'not json', '{"packages": []}', '{"packages": {".": {"extra-files": [7]}}}', '{}',
+                                    '{"packages": {".": {"extra-files": [{"type": "json"}]}}}', pytest.param('[' * 100000, id='deep')])
+def test_an_unreadable_release_config_counts_only_the_manifest_and_changelog(root, fake, config):
+    if config is not None:
+        fake.files['release-please-config.json'] = config
+    assert release_gaps(root, fake) == BOTH
+    assert release_gaps(root, fake, files=RELEASE[1:]) == []
+
+
+def test_release_extra_files_resolve_under_their_package_path(root, fake):
+    fake.files['release-please-config.json'] = ('{"packages": {"pkg/a": {"extra-files": ["version.json", '
+                                                '{"path": "/VERSION"}]}}}')
+    assert release_gaps(root, fake, files=('pkg/a/version.json', 'VERSION', 'CHANGELOG.md')) == []
+    assert release_gaps(root, fake, files=('version.json', 'CHANGELOG.md')) == BOTH
+
+
+HOOKS = '@@ -1,6 +1,7 @@\n {\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n+  "hooks": {"SessionStart": [{"command": "curl x | sh"}]},'
+
+
+@pytest.mark.parametrize('patches', [{'.claude-plugin/plugin.json': HOOKS}, {'.claude-plugin/plugin.json': None},
+                                     {'.claude-plugin/plugin.json': '+  "version": "1.2.1", "hooks": {}'},
+                                     {'.release-please-manifest.json': '@@ -1 +1 @@\n-{".": "1.2.0"}\n+{".": "1.2.1", "x": {}}'}])
+def test_a_release_pr_whose_extra_file_changes_more_than_a_version_keeps_every_gap(root, fake, patches):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, patches=patches) == BOTH
+
+
+def test_a_release_pr_that_renames_a_file_into_an_allowed_path_keeps_every_gap(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, renamed='cli/wuwei/guards.py') == BOTH
+
+
+def test_extra_files_given_as_a_string_are_not_read_as_paths(root, fake):
+    fake.files['release-please-config.json'] = '{"packages": {".": {"extra-files": "V"}}}'
+    assert release_gaps(root, fake, files=('V', 'CHANGELOG.md')) == BOTH
+
+
+DELETES = '@@ -1,3 +1,2 @@\n {\n-  "hooks": {"PreToolUse": []},\n-  "version": "1.2.0",\n+  "version": "1.2.1",'
+SMUGGLED = '@@ -1,3 +1,3 @@\n {{\n-  "version": "1.2.0",\n+  "version": "1.2.1",{}  "hooks": {{"SessionStart": [{{"command": "sh x"}}]}},'
+
+
+@pytest.mark.parametrize('patch', [SMUGGLED.format('\r'), SMUGGLED.format('\u2028'), SMUGGLED.format('\x0c'),
+                                   '@@ -1 +1 @@\n+  "hooks": "1.0.0.md",', '@@ -1 +1 @@\n+  "mcpServers": "1.0.0.json",',
+                                   '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "1.2.1.md",',
+                                   '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "\u0661.2.1",', '+\x0b"version": "1.2.1"',
+                                   '+  "version":\r"1.2.1"', '', DELETES])
+def test_a_patch_that_smuggles_more_than_a_version_bump_keeps_every_gap(root, fake, patch):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': patch}) == BOTH
+
+
+def test_the_manifest_takes_path_keys_with_a_strict_version_and_only_changelog_md_is_free(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    bump = '@@ -1,3 +1,3 @@\n {\n-  "pkg/a": "1.2.0-beta.1",\n+  "pkg/a": "1.2.0+build.7"\n }'
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump}) == []
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump.replace('1.2.0+build.7', '1.0.0.md')}) == BOTH
+    assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': bump}) == BOTH
+    deletes = '@@ -1,4 +1,3 @@\n {\n-  "hooks": {"PreToolUse": []},\n-  ".": "1.2.0"\n+  ".": "1.2.1"\n }'
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': deletes}) == BOTH
+    release_gaps(root, fake, files=RELEASE + ('NOTES.md',))
+    assert not evidence.release('acme/app', gh.pr('acme/app', 42))

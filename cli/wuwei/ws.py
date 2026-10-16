@@ -119,17 +119,20 @@ def _ledgers(root):
 
 
 def _parse(text):
+    """The well-formed rows: JSON objects whose ts and kind, where present, are strings and data an object."""
     rows = []
     for line in text.splitlines():
         try:
-            rows.append(json.loads(line))
+            row = json.loads(line)
         except ValueError:
             continue
+        if isinstance(row, dict) and all(isinstance(row.get(k, t()), t) for k, t in (('ts', str), ('kind', str), ('data', dict))):
+            rows.append(row)
     return rows
 
 
 def ledger(root):
-    """Every ledger row from every file, oldest first. A row that does not parse is skipped; verify() reports it."""
+    """Every ledger row from every file, oldest first. A malformed row is skipped; verify() reports it."""
     return sorted((row for path in _ledgers(root) for row in _parse(path.read_text(encoding='utf-8'))), key=lambda row: row.get('ts', ''))
 
 
@@ -142,7 +145,7 @@ def record(root, kind, data):
         handle.seek(0)
         mine = _parse(handle.read())
         row = {'v': FORMAT, 'ts': now().isoformat(timespec='seconds'), 'kind': kind, 'data': data,
-               'prev': mine[-1]['hash'] if mine else GENESIS}
+               'prev': next((r['hash'] for r in reversed(mine) if isinstance(r.get('hash'), str)), GENESIS)}
         row['hash'] = _digest(row)
         handle.write(json.dumps(row, sort_keys=True) + '\n')
     return row
@@ -179,15 +182,8 @@ def trace(root, row):
 
 def traces(root, day=None):
     path = Path(root) / DIR / 'traces.jsonl'
-    out = []
-    for line in path.read_text(encoding='utf-8').splitlines() if path.is_file() else ():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if day is None or row.get('ts', '').startswith(day):
-            out.append(row)
-    return out
+    return [row for row in _parse(path.read_text(encoding='utf-8') if path.is_file() else '')
+            if day is None or row.get('ts', '').startswith(day)]
 
 
 def cache_get(root, name, max_age):
