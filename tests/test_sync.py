@@ -91,3 +91,27 @@ def test_nothing_new_pushes_nothing(remote, tmp_path):
 def test_outside_git_the_state_stays_local(root):
     assert 'state stays local' in sync.push(root)
     assert sync.restore(root) == root
+
+
+def test_a_change_after_the_first_push_reaches_the_branch(remote, tmp_path):
+    a = workspace(clone(remote, tmp_path / 'a'))
+    (a / ws.DIR / 'plan.json').write_text('v1')
+    sync.push(a)
+    (a / ws.DIR / 'plan.json').write_text('v2')
+    sync.pull(a)
+    assert sync.push(a).startswith('pushed')
+    assert git(a, 'show', 'origin/wuwei/state:plan.json') == 'v2'
+
+
+def test_a_kept_local_copy_is_pushed(remote, tmp_path):
+    a = workspace(clone(remote, tmp_path / 'a'))
+    (a / ws.DIR / 'plan.json').write_text('v1')
+    sync.push(a)
+    b = clone(remote, tmp_path / 'b')
+    sync.restore(b)
+    (a / ws.DIR / 'plan.json').write_text('theirs')
+    sync.push(a)
+    (b / ws.DIR / 'plan.json').write_text('mine')
+    assert 'kept local plan.json' in sync.pull(b)
+    assert sync.push(b).startswith('pushed')
+    assert git(b, 'show', 'origin/wuwei/state:plan.json') == 'mine'
