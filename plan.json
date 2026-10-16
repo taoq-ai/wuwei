@@ -1,37 +1,6 @@
 {
  "items": [
   {
-   "id": "doors-by-rest",
-   "title": "fix(guards): every code-host route to a door meets that door",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 13,
-    "size": 5
-   },
-   "score": 9.2,
-   "why": "Re-checked against #1077, #1081 and #1083: none touched gh_command's api branch, so every REST spelling still passes; reshaped to add the shepherd's cloud route.",
-   "promise": "guards.gh_command's api branch reads the method from -X, -XPUT, --method and --method=PUT (POST when a field flag is given), strips a leading / and a query, and fills {owner}/{repo} from origin(cwd). POST repos/<r>/pulls goes to create_door with head and base from its fields and the body from -f body=, -F body=@<file> or the file given to --input; PUT pulls/<n>/merge and ccr/auto_merge go to merge_door in every spelling; a write method on repos/<r>/merges, git/refs/ or contents/, and DELETE repos/<r>, are refused like a push to the default branch or a repo delete; gh api graphql whose query names mergePullRequest, enablePullRequestAutoMerge, createPullRequest, updateRef, deleteRef, createCommitOnBranch or a branch protection or ruleset mutation is refused with a pointer to gh pr merge or create. gh pr new reads as gh pr create. MCP push_files, create_or_update_file and delete_file on the default branch (or with no branch) are refused like a push to it, and their names join guards.DOORS (door-hardening), so they fail closed. charters/shepherd.md Raise names the cloud route: gh api -X POST repos/<o>/<r>/pulls -f head= -f base= -f title= -F body=@<file>, since gh pr create needs GraphQL. Touches cli/wuwei/guards.py, its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, charters/shepherd.md, agents/shepherd.md (built), SECURITY.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +18 (one route table replaces the merge regex and GUARDED_API). Starts after door-hardening (same file and the DOORS table). Outside: graphql queries read from a file (-F query=@f), approvals, any new door.",
-   "acceptance": [
-    "given \"gh api -X POST repos/o/r/pulls -f head=x -f base=main\", the same without -X, and \"gh api repos/{owner}/{repo}/pulls -f head=x -f base=main\", with the gates missing at x's head, when the Bash door reads each, then the create door refuses as for gh pr create",
-    "given \"gh api -X POST repos/o/r/pulls -f head=x -f base=main -F body=@pr.md\" where pr.md says \"WUWEI-Item: doors-by-rest\", when the create door reads it, then it reads the item from pr.md",
-    "given \"gh pr new -t t -b b\", when the Bash door reads it, then the create door reads it",
-    "given \"gh api -XPUT repos/o/r/pulls/5/merge\", \"--method=PUT\", \"repos/o/r/pulls/5/merge?x=1\" and \"repos/{owner}/{repo}/pulls/5/merge\", when the Bash door reads each, then the merge door reads PR 5",
-    "given gh api graphql with a mergePullRequest, enablePullRequestAutoMerge or createPullRequest mutation, when the Bash door reads it, then it is refused and names gh pr merge or create",
-    "given \"gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true\", \"gh api -X PUT repos/o/r/contents/a.md -f branch=main\", \"gh api -X POST repos/o/r/merges\" and \"gh api -X DELETE repos/o/r\", when the Bash door reads each, then it is refused",
-    "given an MCP push_files call with branch main, when PreToolUse runs, then it is refused like a push to the default branch, and when the guard raises on it, then it is refused as a door",
-    "given \"gh api repos/o/r/pulls\", \"gh api repos/o/r/pulls/5/ccr/review_threads\" and \"gh api -X POST repos/o/r/pulls/5/ccr/comments/1/resolve\", when the Bash door reads each, then nothing is refused, and every other route-fixtures route reads as recorded",
-    "given the change, when the suite runs, then the runtime size test passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "draft-raise",
    "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
    "goal": "G-2",
@@ -499,6 +468,38 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1083"
+  },
+  {
+   "id": "doors-by-rest",
+   "title": "fix(guards): every code-host route to a door meets that door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 13,
+    "size": 5
+   },
+   "score": 9.2,
+   "why": "Re-checked against #1077, #1081 and #1083: none touched gh_command's api branch, so every REST spelling still passes; reshaped to add the shepherd's cloud route.",
+   "promise": "guards.gh_command's api branch reads the method from -X, -XPUT, --method and --method=PUT (POST when a field flag is given), strips a leading / and a query, and fills {owner}/{repo} from origin(cwd). POST repos/<r>/pulls goes to create_door with head and base from its fields and the body from -f body=, -F body=@<file> or the file given to --input; PUT pulls/<n>/merge and ccr/auto_merge go to merge_door in every spelling; a write method on repos/<r>/merges, git/refs/ or contents/, and DELETE repos/<r>, are refused like a push to the default branch or a repo delete; gh api graphql whose query names mergePullRequest, enablePullRequestAutoMerge, createPullRequest, updateRef, deleteRef, createCommitOnBranch or a branch protection or ruleset mutation is refused with a pointer to gh pr merge or create. gh pr new reads as gh pr create. MCP push_files, create_or_update_file and delete_file on the default branch (or with no branch) are refused like a push to it, and their names join guards.DOORS (door-hardening), so they fail closed. charters/shepherd.md Raise names the cloud route: gh api -X POST repos/<o>/<r>/pulls -f head= -f base= -f title= -F body=@<file>, since gh pr create needs GraphQL. Touches cli/wuwei/guards.py, its vendored copy, tests/test_guards.py, tests/fixtures/routes.json, charters/shepherd.md, agents/shepherd.md (built), SECURITY.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +18 (one route table replaces the merge regex and GUARDED_API). Starts after door-hardening (same file and the DOORS table). Outside: graphql queries read from a file (-F query=@f), approvals, any new door.",
+   "acceptance": [
+    "given \"gh api -X POST repos/o/r/pulls -f head=x -f base=main\", the same without -X, and \"gh api repos/{owner}/{repo}/pulls -f head=x -f base=main\", with the gates missing at x's head, when the Bash door reads each, then the create door refuses as for gh pr create",
+    "given \"gh api -X POST repos/o/r/pulls -f head=x -f base=main -F body=@pr.md\" where pr.md says \"WUWEI-Item: doors-by-rest\", when the create door reads it, then it reads the item from pr.md",
+    "given \"gh pr new -t t -b b\", when the Bash door reads it, then the create door reads it",
+    "given \"gh api -XPUT repos/o/r/pulls/5/merge\", \"--method=PUT\", \"repos/o/r/pulls/5/merge?x=1\" and \"repos/{owner}/{repo}/pulls/5/merge\", when the Bash door reads each, then the merge door reads PR 5",
+    "given gh api graphql with a mergePullRequest, enablePullRequestAutoMerge or createPullRequest mutation, when the Bash door reads it, then it is refused and names gh pr merge or create",
+    "given \"gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true\", \"gh api -X PUT repos/o/r/contents/a.md -f branch=main\", \"gh api -X POST repos/o/r/merges\" and \"gh api -X DELETE repos/o/r\", when the Bash door reads each, then it is refused",
+    "given an MCP push_files call with branch main, when PreToolUse runs, then it is refused like a push to the default branch, and when the guard raises on it, then it is refused as a door",
+    "given \"gh api repos/o/r/pulls\", \"gh api repos/o/r/pulls/5/ccr/review_threads\" and \"gh api -X POST repos/o/r/pulls/5/ccr/comments/1/resolve\", when the Bash door reads each, then nothing is refused, and every other route-fixtures route reads as recorded",
+    "given the change, when the suite runs, then the runtime size test passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1096"
   },
   {
    "id": "gate-charters",
