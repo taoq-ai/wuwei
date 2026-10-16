@@ -83,6 +83,7 @@ moving while you are away.
 | `wuwei: command not found` | Use the full path from step 2. |
 | `no .wuwei/ here or above` | Run `init` from the project root. |
 | `fail gh` in `doctor` | `gh auth login` |
+| `warn hooks` in `doctor` | No hook has fired, so nothing is enforced or recorded. Locally, check `/plugin` and restart; in the cloud, open a session that holds only this repository. |
 | `/wuwei-plan` not recognised | Check `/plugin`, then restart Claude Code. |
 
 Codex, cloud sessions and several repositories: see [getting started](https://taoq-ai.github.io/wuwei/getting-started/).
