@@ -41,6 +41,9 @@ and keep the owner's attention for what only the owner decides.
    rounds without a pass is a design problem, not a third round: park the item with the
    reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
    the next pass.
+   An item that waits on a date, a predecessor or an owner step is parked with that reason
+   (`--reason "until 2026-10-20"`) and restored when it holds, so the board and the Stop reminder list
+   only work that can move now.
 4. Every seat brief carries the lines of `.wuwei/standards.md` for that role (the defects this
    workspace has seen escape, the rules the retro promoted): seats do not see the session context.
 5. A repository under andon (`wuwei status` shows `ANDON`) gets no new builders until the cause is

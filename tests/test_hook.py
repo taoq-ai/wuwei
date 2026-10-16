@@ -575,3 +575,34 @@ def test_every_fixture_payload_replays_without_an_error(root, name):
     assert ws.rows(root, 'hook.error') == []
     assert [row['data']['agent'] for row in ws.rows(root, 'seat.started')] == STARTED.get(name, [])
     assert [row['data']['agent'] for row in ws.rows(root, 'seat.stopped')] == STOPPED.get(name, [])
+
+
+def test_a_changed_open_work_list_names_only_what_changed(root, fake):
+    from conftest import write_plan as plan_rows
+    items = [{'id': f'I-{n}', 'title': 't', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open',
+              'score': 1} for n in range(3)]
+    plan_rows(root, items)
+    assert stop(root)['reason'].count('\n- ') == 3
+    plan_rows(root, items + [dict(items[0], id='I-9')])
+    ws.cache_put(root, 'board', None)
+    reason = stop(root)['reason']
+    assert reason.count('\n- ') == 1 and 'I-9: no pull request yet' in reason
+    assert '3 more unchanged since' in reason
+    plan_rows(root, items[:2])
+    ws.cache_put(root, 'board', None)
+    assert stop(root) is None  # only closed work: nothing new to act on
+
+
+def test_a_verdict_written_in_a_worktree_is_copied_into_the_workspace_and_attested(root, tmp_path_factory):
+    written = tmp_path_factory.mktemp('wt') / '.wuwei' / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    written.parent.mkdir(parents=True)
+    written.write_text(verdict_text())
+    assert reviewer_stop(root, f'Verdict file: {written}') is None
+    copy = root / ws.DIR / 'verdicts' / 'I-1' / 'quality-aaaaaaa.md'
+    assert copy.read_bytes() == written.read_bytes()
+    assert ws.rows(root, 'attest')[0]['data']['path'] == '.wuwei/verdicts/I-1/quality-aaaaaaa.md'
+
+
+def test_a_missing_verdict_names_the_absolute_folder_it_belongs_in(root):
+    reason = reviewer_stop(root, 'Verdict file: .wuwei/verdicts/I-1/quality-aaaaaaa.md')['reason']
+    assert str((root / ws.DIR / 'verdicts').resolve()) in reason

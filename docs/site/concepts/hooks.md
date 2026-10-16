@@ -19,7 +19,7 @@ on the spot, and is strict where it matters. WUWEI's hooks play that role.
 | PreToolUse | the doors; the PR standard once per session before `gh pr create`; owner questions without a class sent back |
 | PostToolUse | a trace per call; what a new PR lacks; owner answers recorded as prompts, rulings, exceptions |
 | SubagentStop | every seat's stop recorded with its tokens and confidence; a sentinel's verdict linted and attested |
-| Stop | one reminder per distinct set of actionable gaps; once to arm the watch or to plan when the flow would stall; never a loop |
+| Stop | a reminder only when actionable work is new since the last one, naming only what changed; once to arm the watch or to plan when the flow would stall; never a loop |
 
 In a cloud session, SessionStart also pulls the `wuwei/state` branch and Stop pushes what changed;
 see [cloud sessions](cloud.md).

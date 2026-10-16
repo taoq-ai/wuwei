@@ -160,7 +160,7 @@ flow.
 | PreToolUse | the doors; the PR standard with a ready body once per session; a gate's verdict lint and attestation at its hand-back |
 | PostToolUse | traces; what a new PR lacks; prompts, rulings, exceptions, ADR notes |
 | SubagentStop | seat stops with tokens and confidence; verdict lint and attestation, or `verdict.missing` when a block can no longer reach the seat |
-| Stop | one reminder per distinct set of actionable gaps; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
+| Stop | a reminder only when actionable work is new since the last one, naming only what changed; once, to arm the watch when only waiting work is left and no watch pass ran in the last hour, or to plan from the goals when the queue is empty; never a loop |
 
 ## 9. Learning
 

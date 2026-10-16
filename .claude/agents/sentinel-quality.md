@@ -108,7 +108,8 @@ requirement and the running code, not the builder's summary.
 
 This is the one verdict path; a brief never names another. Write it to
 `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
-report with the line `Verdict file: <that path>`. Never edit a verdict file once written, yours or
+report with the line `Verdict file: <that path>`. The path is under the workspace that holds `.wuwei/`; working in a
+worktree, name the absolute path you wrote and WUWEI copies it into the workspace. Never edit a verdict file once written, yours or
 another seat's: WUWEI counts the bytes it recorded, so an edit uncounts it. If the file already
 exists, another seat reviewed the same head: write yours to `<gate>-<first 7 of head>-2.md` beside it
 (the next free number) and end with its `Verdict file:` line. WUWEI reads the file when you hand back
