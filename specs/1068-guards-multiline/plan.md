@@ -20,7 +20,8 @@ Python 3.11+ stdlib, `cli/wuwei/guards.py` and one line of `cli/wuwei/hook.py`. 
    `<< '<body>'` once its delimiter line is found. An unterminated heredoc, or an unquoted one whose
    body holds `$(` or a backtick, is left to be read as commands.
    Bodies on one line are read in order; the first that cannot be dropped stops the dropping for
-   that line. A `<<` inside an open `((` (depth tracked in the scan, outside quotes and comments) is not a heredoc.
+   that line. From the first unquoted `((`, `${` or joined `[`, a one-way flag stops any later heredoc
+   body from being dropped.
 2. `segments()` lexes `_lines(command)` and lets `ValueError` propagate. `_unwrap()` collects `<<`
    bodies and reads them as commands when the program is a shell.
 3. `bash()` catches `ValueError` and refuses when `DOORS` matches the raw text.

@@ -56,8 +56,8 @@ def current_branch(cwd):
 
 def _lines(command):
     """The command as sh reads its lines: a newline outside quotes ends a command, a backslash-newline joins
-    two lines, a comment ends; a heredoc body outside (( )) is one quoted word after its <<, or commands if it never ends."""
-    out, quote, waiting, i, depth = [], '', [], 0, 0
+    two lines, a comment ends; a heredoc body is one quoted word after its <<, or commands once ((, ${ or a joined [ came."""
+    out, quote, waiting, i, expansion = [], '', [], 0, False
     while i < len(command):
         c = command[i]
         if quote and (quote == "'" or c != '\\'):
@@ -75,9 +75,9 @@ def _lines(command):
                     break  # in order: this body and the ones after it are read as commands
                 out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
             waiting, c = [], ' ; '
-        elif command.startswith(('((', '))'), i):  # arithmetic, where << is a shift
-            depth, c, i = max(0, depth + (1 if c == '(' else -1)), command[i:i + 2], i + 1
-        elif c == '<' and not depth and (here := HEREDOC.match(command, i)):
+        elif not expansion and re.compile(r'\(\(|\$\{|(?<=\S)\[').match(command, i):  # one way: no pairing to get wrong
+            expansion = True  # a << after ((, ${ or a joined [ may be a shift, so no later body is dropped
+        elif c == '<' and not expansion and (here := HEREDOC.match(command, i)):
             waiting.append((re.sub(r'[\'"\\]', '', here[2]), here[1], len(out) + 1, here[2]))
             c, i = ['<< ', "''"], here.end() - 1
         out += c

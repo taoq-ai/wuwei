@@ -45,8 +45,12 @@ The runtime stays at 3,000 lines: the lines come out of guards.py and hook.py.
 - An unquoted heredoc whose body runs `$(...)` or backticks is read as commands: sh runs them.
 - Several heredocs on one line are read in order, each body starting where the last ended. Once one
   body cannot be dropped, it and every later body on that line are read as commands.
-- No heredoc starts inside an arithmetic `((` or `$((`: `echo $((1<<EOF))` is a shift, and the next
-  line is a command.
+- From the first unquoted `((` (which covers `$((`), `${` or `[` joined to the character before it
+  (`$[`, `a[`, `([`), no heredoc body is dropped for the rest of the command. bash 5.2 reads the `<<`
+  in `$((1<<EOF))`, `$[1<<EOF]`, `${x:1<<EOF }` and `a[1<<EOF ]=x` as a shift and runs the next
+  line. The flag is one-way, so no paren shape can turn body dropping back on.
+- Accepted cost, pinned by a test: a heredoc whose body names a door, after a closed `$((..))` or a
+  `${..}`, is refused. The lead's spike found 1 such command in 506 real commands.
 - A quoted heredoc keeps a trailing backslash in its body literal, so its delimiter still ends it.
 - A `#` that starts a word begins a comment to the end of the line; `owner/repo#42` stays a word (#1038).
 
@@ -83,14 +87,18 @@ into a shell (`cat <<EOF | sh`).
 - Q (fix round 2): the gates showed the round 1 check counted `((` and `))` in raw text, so a `))`
   in quotes or a comment cancelled a real `((`. A: the depth lives in the `_lines` loop, which knows
   the quote state and skips comments; the four gate inputs are tests.
+- Q (redesign after fix round 2, approved by the owner): the depth counter mis-paired `))` that
+  closed single parens or nested `$( )` (`$(((1)) <<EOF )`, `$(( $(echo $(echo 1))<<EOF ))`), and
+  `$[`, `${` and `a[` were not tracked at all. A: a one-way flag replaces the counter; a paren stack
+  was rejected because a mis-pop reopens body dropping, the failure class of both fix rounds.
 
 ## Assumptions
 
 - A heredoc body line is read literally when matching its delimiter, even for an unquoted delimiter
   where sh would join a trailing backslash. Overturned by a case where that ends a body early and
   hides a command; ending early only reads more lines as commands, so it fails closed.
-- Arithmetic depth is tracked in the scan itself, outside quotes and comments: `((` opens and `))`
-  closes, never below zero. A `))` that closes a nested `$(...)` (`$(a $(b))`) does not count against
-  a later heredoc. A mispaired `)))` still nets to zero.
+- The expansion flag is set only outside quotes and comments. A `[` after whitespace (`[ -f x ]`,
+  `[[ ... ]]`) does not set it. A joined `[` in a glob or a format string (`foo[1]`, `--format=[%h]`)
+  does, which can only add refusals.
 - `gh pr create` text inside a heredoc body now triggers the PostToolUse PR note when the output
   also holds a PR URL. That note is advice only.

@@ -8,4 +8,5 @@
 - [x] T006 Free lines in guards.py and hook.py until the runtime is at 3,000 lines.
 - [x] T008 Fix round 1: read heredoc bodies in order, no heredoc inside `((`, tests for the four guards the gates reversed, refusal names `git commit -F`.
 - [x] T009 Fix round 2: track the `((` depth in the `_lines` loop; tests for quoted and commented `))`, a `<<-` body kept as data, and a nested `$(...)`.
+- [x] T010 Redesign: merge origin/main 5d7157b; replace the depth counter with a one-way flag at `((`, `${` or a joined `[`; refusing tests for the seven gate inputs and the pinned cost; passing tests for quoted `((`, a `case` pattern, `[ -f x ]` and the python edit script that quotes the hook command.
 - [x] T007 Run `python3 -m pytest -q` and `bin/wuwei agents check` from the worktree root.
