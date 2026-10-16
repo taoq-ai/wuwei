@@ -10,15 +10,7 @@ Confidence: medium
 - [medium] cli/wuwei/guards.py:244 blocks: yes. Failure: my previous finding 5 is only partly closed. On RecursionError, the scanner refuses only when DOORS matches the raw text. With 600 nested "bash <<'Ek'" levels (11 KB) and an innermost line of `g''it push --force origin x` or `"g"it push --force origin x`, bash() returns None, and bash runs the force push. At 50 levels the same line is refused, because shlex reads `g''it` as git. No real command nests hundreds of shells. Fix: refuse every RecursionError, with or without a DOORS match.
 - [low] cli/wuwei/guards.py:95 blocks: no. Gap that main shares: shlex still groups a separator with a redirect or process substitution into one token that is neither a separator nor a known redirect. So `true;>/dev/null git push --force origin x`, `true|>/dev/null ...`, `true&&>/dev/null ...`, `(>/dev/null ...)`, `echo $(>/dev/null ...)`, `` echo `>/dev/null ...` `` and `cat <(git push --force origin x)` all pass on main and at head. Recommended in this item or in compound-doors: split a punctuation token into its leading separator run and the rest, and treat `<(`/`>(` as separators.
 - [low] cli/wuwei/guards.py:57 blocks: no. Gap that main shares, carried from the last verdict: ANSI-C `$'\''` throws off the quote tracking (`echo $'\'' ; git push --force origin x #'`).
-- [low] cli/wuwei/guards.py:57 blocks: no. Closed from my previous verdict, each probed at this head (refused here; main result in brackets):
-  - backtick token grouping, `` x=`date`; ... `` [main refuses]
-  - `$\<newline>(` in an unquoted body [main refuses]
-  - a joined `EO\<newline>F` delimiter [main passes]
-  - `a=( [1<<EOF ]=x )` and its `+=(`, `declare -a`, newline and continuation forms [main refuses]
-  - `${x:- #}` [main refuses]
-  - the `<<<` lookbehind test [main passes]
-  - quadratic scan: 256 KB now in 0.71 s; 30000 distinct heredocs (638 KB) in 2.6 s
-  - RecursionError with a plain door name
+- [low] cli/wuwei/guards.py:57 blocks: no. Closed from my previous verdict, each probed and refused at this head: backtick token grouping (main refuses); `$\<newline>(` in an unquoted body (main refuses); a joined `EO\<newline>F` delimiter (main passes); `a=( [1<<EOF ]=x )` with its `+=(`, `declare -a`, newline and continuation forms (main refuses); `${x:- #}` (main refuses); the `<<<` lookbehind test (main passes); the quadratic scan (256 KB now in 0.71 s, 30000 distinct heredocs of 638 KB in 2.6 s); RecursionError with a plain door name.
 
 ## Probes
 Suite: 366 passed at 1647e2e in a scratch copy (git archive). Runtime: 2999 lines (cat cli/wuwei/*.py | wc -l).
