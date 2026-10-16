@@ -16,3 +16,5 @@
 - [x] .claude/ re-vendored at the head
 - [x] Runtime at 3,000 lines or fewer
 - [x] No config key, no new door, no emojis, no em dashes
+- [x] An empty attached flag value is a value; a scheme and host in any case are stripped (fix round)
+- [x] docs/design.md and docs/site/concepts/doors.md list every refused route; the spec records the change as Breaking

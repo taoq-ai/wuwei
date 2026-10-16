@@ -44,8 +44,9 @@ or a network program (`gh`, `curl`, `wget`, `nc`, `ssh`, `scp`, `http`, `https`,
 `guards.NETWORK` read as a program, not inside a URL), with its quotes and backslashes removed. Any other call fails open and the error is recorded.
 
 The Bash guards read a `gh api` call the way gh's flag parser does: the method in every spelling
-(`-X PUT`, `-XPUT`, `--method=put`, and POST when a field or `--input` is given), the endpoint
-without a leading `/` or a query and with gh's `{owner}/{repo}` filled from the origin remote, and
+(`-X PUT`, `-XPUT`, `--method=put`, and POST when a field or `--input` is given; an empty attached
+value such as `-X=` or `--jq=` is a value, as in gh), the endpoint without a scheme and host in any
+case, a leading `/` or a query and with gh's `{owner}/{repo}` filled from the origin remote, and
 the fields, reading `-F key=@file` and the `--input` file. A REST pull request create meets the
 create door and a REST merge or auto-merge meets the merge door. A REST write to `merges`,
 `git/refs/` or `contents/`, a repository delete, and a `gh api graphql` mutation that merges, opens

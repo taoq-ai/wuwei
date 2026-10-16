@@ -117,13 +117,20 @@ missing PR, and `wuwei plan done` closes it with the final evidence.
 
 ## 7. The doors
 
-Refused: a merge with safety gaps by any route (arming auto-merge passes while only CI runs); a PR
-opened (`gh pr create`, a GitHub MCP create tool) before the gates its diff needs pass at the
-branch head, so review starts at a gated head (#1050);
+Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or
+`ccr/auto_merge` in any spelling of method, path, host or `{owner}/{repo}`, a GitHub MCP merge
+tool; arming auto-merge passes while only CI runs); a PR opened (`gh pr create`, `gh pr new`, a
+REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff needs pass at
+the branch head, so review starts at a gated head (#1050);
 `--admin`; `gh api` writes to protection, rulesets, statuses,
-collaborators, hooks, keys, secrets and environments; `gh repo delete`; force pushes in every form;
-pushes to or deletion of the default branch; a secret or the canary in an MCP call or network
-command; writes to the ledger; a hand-made `wuwei hook` call; an owner question without a class.
+collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges`, `git/refs/` or
+`contents/` on any branch; `gh repo delete` and a REST DELETE on the repository; a `gh api graphql`
+mutation that merges, arms auto-merge, opens a PR, moves a ref, commits to a branch or changes
+branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
+every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
+`create_or_update_file` and `delete_file` tools on the default branch or with no branch; a secret
+or the canary in an MCP call or network command; writes to the ledger; a hand-made `wuwei hook`
+call; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger`), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. The doors read a command

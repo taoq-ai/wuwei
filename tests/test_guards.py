@@ -596,7 +596,17 @@ def test_gh_pr_new_is_gh_pr_create(root, cloud):
                                      "gh api -X PUT 'repos/o/r/pulls/5/merge?x=1'", 'gh api -X PUT repos/o/r/pulls/5/merge/',
                                      "gh api -X PUT 'repos/{owner}/{repo}/pulls/5/merge'", 'gh api -X PUT /repos/o/r/pulls/5/merge',
                                      'gh api -X GET -X PUT https://api.github.com/repos/o/r/pulls/5/merge',
-                                     'gh api --method=PUT repos/o/r/pulls/5/ccr/auto_merge'])
+                                     'gh api --method=PUT repos/o/r/pulls/5/ccr/auto_merge',
+                                     'gh api -X= -X PUT repos/o/r/pulls/5/merge', 'gh api --method= -X PUT repos/o/r/pulls/5/merge',
+                                     'gh api -t= -X PUT repos/o/r/pulls/5/merge', 'gh api --jq= -X PUT repos/o/r/pulls/5/merge',
+                                     'gh api -iX= -X PUT repos/o/r/pulls/5/merge',
+                                     "gh api -H 'Accept: x' -X PUT repos/o/r/pulls/5/merge",
+                                     "gh api --header 'Accept: x' -X PUT repos/o/r/pulls/5/merge",
+                                     'gh api -q .sha -X PUT repos/o/r/pulls/5/merge', 'gh api -t x -X PUT repos/o/r/pulls/5/merge',
+                                     'gh api -p corsair -X PUT repos/o/r/pulls/5/merge',
+                                     'gh api -X PUT HTTPS://API.GITHUB.COM/repos/o/r/pulls/5/merge',
+                                     'gh api -X PUT http://api.github.com/repos/o/r/pulls/5/merge',
+                                     'gh api -X PUT https://api.github.com:443/repos/o/r/pulls/5/merge'])
 def test_every_rest_merge_spelling_meets_the_merge_door(root, cloud, command):
     decision = guards.bash(root, command, '/repo', 's1')
     assert decision['decision'] == 'deny' and 'o/r#5 is not ready to merge' in decision['reason'], command
@@ -634,7 +644,10 @@ def test_the_follow_up_and_read_routes_pass(root, cloud, command):
     ('gh api -X PUT repos/o/r/contents/a.md -f branch=main', 'push'),
     ('gh api repos/o/r/contents/a.md -f message=m -f content=YQ==', 'push'),
     ('gh api -X POST repos/o/r/merges', 'push'),
-    ('gh api -X DELETE repos/o/r', 'refusal'), ('gh api -X DELETE /repos/{owner}/{repo}', 'refusal')])
+    ('gh api -X DELETE repos/o/r', 'refusal'), ('gh api -X DELETE /repos/{owner}/{repo}', 'refusal'),
+    ('gh api -X= -X DELETE repos/o/r', 'refusal'), ('gh api -q= -X PATCH repos/o/r/git/refs/heads/main', 'push'),
+    ('gh api -q= repos/o/r/pulls -f head=x -f base=main', 'create'),
+    ("gh api -X= -X POST graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'", 'refusal')])
 def test_a_rest_branch_write_or_repository_delete_is_refused(root, cloud, command, verdict):
     assert door_reached(guards.bash(root, command, '/repo', 's1')) == verdict, command
 
@@ -651,3 +664,17 @@ def test_an_mcp_file_write_on_the_default_branch_is_refused_like_a_push(root, fa
     assert door_reached(guards.pre_tool(root, mcp(tool))) == 'push'
     assert guards.pre_tool(root, mcp(tool, branch='i-1-change')) is None
     assert tool in guards.DOORS['push']
+
+
+def test_a_rest_pr_create_by_input_alone_posts_and_reads_head_base_and_body(root, cloud, tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(guards, 'create_door', lambda root, repo, branch, base, text: seen.append((repo, branch, base, text)))
+    monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'not-this')
+    (tmp_path / 'in.json').write_text(json.dumps({'head': 'y', 'base': 'dev', 'body': 'WUWEI-Item: doors-by-rest'}))
+    guards.bash(root, 'gh api repos/o/r/pulls --input in.json', str(tmp_path), 's1')
+    assert seen and seen[0][:3] == ('o/r', 'y', 'dev') and 'WUWEI-Item: doors-by-rest' in seen[0][3]
+
+
+def test_a_secret_in_an_mcp_file_write_on_a_feature_branch_is_refused(root, fake):
+    decision = guards.pre_tool(root, mcp('push_files', branch='i-1-change', files=[{'path': 'a', 'content': 'ghp_' + 'a' * 36}]))
+    assert decision['decision'] == 'deny' and 'secret' in decision['reason']
