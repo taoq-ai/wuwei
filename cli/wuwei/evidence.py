@@ -44,6 +44,7 @@ RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
+VERSION_LINE = re.compile(r'^[+-]\s*"[\w./-]+":\s*"\d+\.\d+\.\d+[\w.+-]*",?$')  # an added or removed "key": "1.2.3" line
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
 DEFERRED = re.compile(r'^(#+)\s+(?:\d+(?:\.\d+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
@@ -92,8 +93,7 @@ def review_duty(root, ref, pr):
 def item_for(root, pr, repo=None):
     """The plan item a PR names in its WUWEI footer, records among its PRs, or whose id starts
     its branch name."""
-    match = ITEM.search(pr.get('body') or '')
-    if match:
+    if match := ITEM.search(pr.get('body') or ''):
         return plan.find(root, match[1])
     ref = f'{repo}#{pr.get("number")}' if repo else None
     linked = next((item for item in plan.items(root) if ref and ref in item.get('prs', ())), None)
@@ -103,18 +103,21 @@ def item_for(root, pr, repo=None):
 
 
 def release(repo, pr):
-    """A release-please PR, read as generated (X-1): a bot author, a release-please-- branch, and only the manifest,
-    CHANGELOG.md and the extra-files that release-please-config.json names on the base branch. Unreadable keeps every gap."""
-    files, allowed = {f['path'] for f in pr.get('files') or ()}, {'.release-please-manifest.json', 'CHANGELOG.md'}
+    """A release-please PR, read as generated (X-1): a bot author, a release-please-- branch, and only CHANGELOG.md, the
+    manifest and the extra-files that release-please-config.json names on the base branch, these changing version lines
+    only (a missing patch or a rename does not count). Unreadable keeps every gap."""
+    files, allowed = pr.get('files') or (), {'.release-please-manifest.json'}
     if (pr.get('author') or {}).get('login') not in RELEASE_BOTS or not (pr.get('headRefName') or '').startswith('release-please--'):
         return False
     try:
         packages = json.loads(gh.file(repo, 'release-please-config.json', pr['baseRefName']))['packages'].items()
         allowed |= {posixpath.normpath(posixpath.join(where, e if isinstance(e, str) else e['path'])).lstrip('/')
-                    for where, package in packages for e in [] + package.get('extra-files', [])}
-    except (gh.GhError, ValueError, KeyError, TypeError, AttributeError):
-        pass  # only the manifest and the changelog count
-    return bool(files) and files <= allowed
+                    for where, package in packages for e in [] + package.get('extra-files', [])}  # [] + refuses a string
+    except Exception:  # anything unreadable, malformed or nested too deep counts only the manifest
+        pass
+    def bumped(f):  # every added or removed line of its patch is a version line
+        return isinstance(f.get('patch'), str) and all(VERSION_LINE.match(x) for x in f['patch'].splitlines() if x[:1] in ('+', '-'))
+    return bool(files) and all(not f.get('renamed') and (f['path'] == 'CHANGELOG.md' or f['path'] in allowed and bumped(f)) for f in files)
 
 
 def _cached(root, name, read, max_age=86400):
@@ -198,7 +201,8 @@ def spec_gaps(repo, engine, tier, files, head):
     pattern, rules = SPEC_RULES[engine]
     features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
     if not features:
-        return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [gap(f'no spec in the diff (the repository uses {engine})')]
+        return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
+            gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
     problems = (_rule(repo, feature + name, rule, head) for feature in features for name, rule in wanted)
     return [gap(problem) for problem in dict.fromkeys(problems) if problem]
@@ -290,8 +294,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
-    missing = [gate for gate in gates if gate not in passed]
-    if missing:
+    if missing := [gate for gate in gates if gate not in passed]:
         return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
@@ -374,8 +377,7 @@ def gaps(root, repo, number):
         tier = (item or {}).get('tier', 'standard')
         item_id, raised, gates, why = gates_for(root, repo, pr, () if generated else pr.get('files') or (), item)
         files, body, head = [f['path'] for f in pr.get('files') or ()], pr.get('body') or '', pr['headRefOid']
-        missing = [s for s in template_sections(root, repo) if s.lower() not in body.lower()]
-        if missing:
+        if missing := [s for s in template_sections(root, repo) if s.lower() not in body.lower()]:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
@@ -383,8 +385,7 @@ def gaps(root, repo, number):
         code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
-        size = lines(pr.get('files') or ())
-        if size > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
+        if (size := lines(pr.get('files') or ())) > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
             found.append(gap(f'{size} changed lines: split it, or add a Size: <reason> line'))
         owners = owned(root, files)
         if (tier == 'full' or owners) and not re.search(r'^Rollback:\s*\S', body, re.M):
@@ -393,8 +394,7 @@ def gaps(root, repo, number):
         found += breaking_gaps(root, ref, pr, item_id)
         found += ci_gaps(pr.get('statusCheckRollup'), review_contexts(root, repo, pr.get('statusCheckRollup')))
         author = (pr.get('author') or {}).get('login', '')
-        threads = gh.unanswered_threads(repo, number, author)
-        if threads:
+        if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
         if not pr.get('reviewRequests') and all((r.get('author') or {}).get('login') == author for r in pr.get('reviews') or ()):
             found.append(gap('no reviewer requested'))
