@@ -179,41 +179,30 @@ def test_doctor_reads_the_code_host_as_wuwei_does_and_says_when_no_hook_fired(tm
     ws.set_config(tmp_path, 'repos', 'acme/app')
     rows = {name: (status, detail) for name, status, detail in setup.doctor(tmp_path)}
     assert rows['gh'] == ('ok', 'reads acme/app')
-    assert rows['hooks'][0] == 'warn' and 'no hook has fired' in rows['hooks'][1]
-    hook.session_start(tmp_path, {})
+    assert rows['hooks'][0] == 'warn' and 'no hook fired in the last 2 minutes' in rows['hooks'][1]
+    hook.pre_tool(tmp_path, {'tool_name': 'Read', 'tool_input': {}})
     assert {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks'] == 'ok'
 
 
-def test_doctor_counts_a_hook_row_in_this_clones_ledger_since_the_latest_init(tmp_path, monkeypatch):
+def test_doctor_hooks_is_ok_only_when_pre_tool_fired_in_the_last_two_minutes(tmp_path, monkeypatch):
+    import datetime
+    from wuwei import hook
     monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
     monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
-    hooks = lambda: {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks']  # noqa: E731
+    hooks = lambda: {name: (status, detail) for name, status, detail in setup.doctor(tmp_path)}['hooks']  # noqa: E731
     setup.init(tmp_path)
-    mine = (tmp_path / ws.DIR / 'cache' / 'clone').read_text()
-    (tmp_path / ws.DIR / 'cache' / 'clone').write_text('0ther000\n')
-    ws.record(tmp_path, 'refused', {'tool': 'Bash'})  # another machine's hook, synced on wuwei/state
-    (tmp_path / ws.DIR / 'cache' / 'clone').write_text(mine)
-    for kind in ('attest', 'sent'):  # the CLI writes these too
+    for kind in ('refused', 'prompt', 'seat.started'):  # hook rows from earlier today say nothing about now
         ws.record(tmp_path, kind, {})
-    assert hooks() == 'warn'
-    ws.record(tmp_path, 'refused', {'tool': 'Bash'})
-    assert hooks() == 'ok'
-    setup.init(tmp_path)  # a hook row older than the latest init says nothing about the hooks now
-    assert hooks() == 'warn'
-    ws.record(tmp_path, 'prompt', {'questions': []})
-    assert hooks() == 'ok'
-
-
-def test_doctor_hooks_skips_rows_that_are_not_objects_and_counts_a_clone_file_without_init(tmp_path, monkeypatch):
-    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
-    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
-    setup.init(tmp_path)
-    (tmp_path / ws.DIR / 'cache' / 'clone').write_text('fresh000\n')  # the clone id reset after init
-    ws.record(tmp_path, 'refused', {'tool': 'Bash'})
-    with open(tmp_path / ws.DIR / 'ledger' / 'fresh000.jsonl', 'a', encoding='utf-8') as handle:
-        handle.write('[1]\nnull\n5\n"x"\n')
-    rows = {name: status for name, status, _ in setup.doctor(tmp_path)}
-    assert rows['hooks'] == 'ok' and rows['ledger'] == 'fail'
+    status, detail = hooks()
+    assert status == 'warn' and detail == ('no hook fired in the last 2 minutes: inside a session, '
+                                           'the doors and attestations are off')
+    real = ws.now()
+    monkeypatch.setattr(ws, 'now', lambda: real - datetime.timedelta(seconds=5))
+    hook.pre_tool(tmp_path, {'tool_name': 'Read', 'tool_input': {}})
+    monkeypatch.setattr(ws, 'now', lambda: real)
+    assert hooks() == ('ok', 'fired 5s ago')
+    monkeypatch.setattr(ws, 'now', lambda: real + datetime.timedelta(seconds=121))
+    assert hooks()[0] == 'warn'
 
 
 def test_doctor_finishes_on_ledger_rows_with_malformed_fields(tmp_path, monkeypatch):
