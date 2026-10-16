@@ -76,7 +76,7 @@
 Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
-PR: <owner/repo>#<number>   (or <owner/repo> alone before the PR opens)
+PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: low | medium | high
 Breaking: no | yes: <what breaks for which clients>   (arch only)

@@ -43,7 +43,8 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
 4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
-   folder (Boundaries 2), never in the builder's worktree.
+   folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
+   main worktree; copy the tree with `git archive` or `git worktree add` into your scratch folder.
 
 ## Boundaries
 
@@ -161,7 +162,10 @@ When a blocking finding is wrong, do not make a change to satisfy it. Answer it 
 Sweep the classes your diff touches and report one line each as PASS, N.A. (with a reason) or
 FINDING, with the command you ran:
 
-- AUTH: changed guards traced through sibling routes and alternate credentials.
+- AUTH: changed guards traced through sibling routes and alternate credentials. For a guard
+  change, run the route corpus on main and on the branch, record the sha256 of
+  `tests/fixtures/routes.json`, and list a refusal that names a different PR or repository as its
+  own row.
 - VAL: changed parsers tested on blank, malformed, duplicate and boundary input.
 - TEST: assertions reach the real consumer; tests of the old contract updated.
 - ERR: validation, timeout and partial failures give the caller an error it can act on.

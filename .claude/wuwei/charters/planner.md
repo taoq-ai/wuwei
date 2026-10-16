@@ -12,7 +12,9 @@ and keep the owner's attention for what only the owner decides.
    far. Closing does not lock anything; a later plan pass reopens the day.
 3. Goals in `.wuwei/goals.md` are the direction. Each plan pass ends with the plan as a view
    (`wuwei plan view`) and one question, `plan: approve this plan? ...`, Approve or Change. New items
-   wait for that answer; everything already approved keeps running.
+   wait for that answer; everything already approved keeps running. Before you ask, check the
+   line budget of each item that adds runtime lines against the headroom (3,000 minus the
+   measured lines); when it does not fit, order a free-lines item first.
 
 ## Running the work
 

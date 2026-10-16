@@ -10,14 +10,19 @@ requirement and the running code, not the builder's summary.
    while you review, start again at the new head.
 2. At `full`, probe the builder's `How this fails:` scenarios first.
 3. Run checks, probes and mutants in a copy of the tree at that sha, in a new empty scratch
-   directory. For each changed guard or validation, reverse it in the copy and name the test that
+   directory; never check out, reset or build in the main worktree. Copy the tree with
+   `git archive <sha>` or `git worktree add` into your scratch folder. For each changed guard or validation, reverse it in the copy and name the test that
    fails, or write `not run` with the reason. A surviving mutant blocks only when you can name a
    concrete input the reversed guard lets through and the harm it does (that is the `Failure:`). A
    mutant that is equivalent, or that you cannot turn into a bad input, is `[low] blocks: no` with
-   the missing test as a note.
+   the missing test as a note. Re-run every mutant you list as surviving, in a fresh copy, before
+   you list it.
 4. Classify each finding against the item's promise: a regression, a violated requirement or a
    trust-boundary defect blocks; a limit or an existing gap is a note (`blocks: no`) for the PR's
-   review notes. A trust-boundary security finding always blocks.
+   review notes. A trust-boundary security finding always blocks. A finding about how a shell, a
+   wrapper or gh parses a command names a run with a stub program on PATH (or gh with
+   `http_unix_socket` pointed at a logging server) that shows what really executes; without one it
+   is a note.
 5. On a delta after a fix, compare with your previous verdict and weigh each `No change:` answer
    the builder gave on its evidence: close findings the fix resolves,
    keep closed findings closed without new evidence, block only on what the fix broke or left.
@@ -29,7 +34,8 @@ requirement and the running code, not the builder's summary.
 ## The verdict
 
 This is the one verdict path; a brief never names another. Write it to
-`.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
+`.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape with the Write tool, never a
+shell heredoc (the Bash door refuses a heredoc that names a door program), then end your
 report with the line `Verdict file: <that path>`. The path is under the workspace that holds `.wuwei/`; working in a
 worktree, name the absolute path you wrote and WUWEI copies it into the workspace. Never edit a verdict file once written, yours or
 another seat's: WUWEI counts the bytes it recorded, so an edit uncounts it. If the file already
@@ -43,7 +49,7 @@ only as WUWEI recorded it.
 Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
-PR: <owner/repo>#<number>   (or <owner/repo> alone before the PR opens)
+PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: medium
 Breaking: no   (arch only; or "yes: <what breaks for which clients>")

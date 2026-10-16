@@ -87,8 +87,8 @@ def stop(root, payload):
     waiting = sum(1 for row in rows for gap in row['gaps'] if not gap['actionable'])
     recent = (ws.now() - datetime.timedelta(hours=1)).isoformat(timespec='seconds')
     if not open_work and waiting and not any(r['ts'] >= recent for r in ws.rows(root, 'watch.pass')):
-        open_work = ['nothing will wake this session for the waiting work: arm /wuwei-watch on a schedule '
-                     '(/loop 20m /wuwei-watch locally; in the cloud a PR subscription and a check-in)']
+        open_work = ['nothing will wake this session for the waiting work unless a check-in or PR subscription is armed, which WUWEI '
+                     'cannot see: arm /wuwei-watch on a schedule (/loop 20m /wuwei-watch locally; in the cloud both)']
     elif not rows and (Path(root) / ws.DIR / 'goals.md').is_file():  # the flow never waits on the owner's nudge
         open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-run)']
     if not open_work:

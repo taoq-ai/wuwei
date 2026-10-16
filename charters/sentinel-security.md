@@ -13,3 +13,5 @@ Gate: security. An unavailable scanner is unmeasured, never clean.
 5. Defects the gates caught on real days: a token that reaches an unintended host, follows a
    redirect or is echoed into a log; untrusted text or files that crash the tool, exhaust memory,
    write through a planted link or steer a model prompt.
+6. A normalisation round probes one input per path class (`//`, `%xx`, `/./`, `/../`) and per
+   working-directory wrapper (`cd`, `env -C`, `sudo -D`).
