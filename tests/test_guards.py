@@ -92,6 +92,8 @@ def test_merge_with_complete_evidence_passes(root, fake, repo):
     {'tool_name': 'Write', 'tool_input': {'file_path': '/w/.wuwei/ledger/0a1b2c3d.jsonl', 'content': 'x'}},
     bash('echo "{}" >> .wuwei/ledger/0a1b2c3d.jsonl'),
     bash('/opt/wuwei/bin/wuwei hook SubagentStop < forged.json'),
+    bash('nice -n 5 python3 fix.py .wuwei/ledger.jsonl'),
+    bash('env -u HOME rm .wuwei/ledger/0a1b2c3d.jsonl'),
 ])
 def test_the_records_are_protected(root, repo, payload):
     payload.setdefault('cwd', '/w')
@@ -390,3 +392,61 @@ def test_a_newline_outside_quotes_ends_a_command_and_a_quoted_one_stays_in_its_w
     assert guards.segments('git commit -m "a\nb"') == [(['git', 'commit', '-m', 'a\nb'], [])]
     assert guards.segments('curl -o "\n" x') == [(['curl', '-o', '\n', 'x'], [])]
     assert guards.segments("echo 'x") is None
+
+
+FORCE = 'force push refused'
+
+
+@pytest.mark.parametrize('command, reason', [
+    ('for pr in 1 2; do gh pr merge $pr; done', 'name the PR'),
+    ('for pr in 5; do gh pr merge 5; done', 'acme/app#5 is not ready'),
+    ('if true; then git push --force origin x; fi', FORCE),
+    ('if git push --force origin x; then echo ok; fi', FORCE),
+    ('if false; then true; elif true; then git push --force origin x; fi', FORCE),
+    ('if false; then true; else git push --force origin x; fi', FORCE),
+    ('while true; do git push --force origin x; done', FORCE),
+    ('until git push --force origin x; do sleep 1; done', FORCE),
+    ('{ git push --force origin x; }', FORCE),
+    ('! git push --force origin x', FORCE),
+    ("bash -lc 'git push --force origin x'", FORCE),
+    ("sh -ec 'gh pr merge 5'", 'acme/app#5 is not ready'),
+    ('bash -e -c "git push --force origin x"', FORCE),
+    ("bash -c 'for b in x; do git push --force origin $b; done'", FORCE),
+    ('timeout 60 gh pr merge 5', 'acme/app#5 is not ready'),
+    ('nice -n 10 git push --force origin x', FORCE),
+    ('env -u GH_TOKEN gh pr merge 5', 'acme/app#5 is not ready'),
+    ('stdbuf -oL git push --force origin x', FORCE),
+    ('sudo -u ci env A=1 timeout 5 git push --force origin x', FORCE),
+    ("xargs -n 1 sh -c 'git push --force origin x'", FORCE),
+])
+def test_a_door_inside_a_body_after_shell_flags_or_after_a_wrapper_meets_its_door(root, fake, repo, command, reason):
+    fake.prs['5'] = make_pr(number=5, files=('src/app.py',))
+    decision = guards.pre_tool(root, bash(command))
+    assert decision['decision'] == 'deny' and reason in decision['reason'], (command, decision)
+
+
+@pytest.mark.parametrize('command', [
+    'for f in *.md; do wc -l $f; done',
+    'if [ -f x ]; then echo ok; fi',
+    'while read l; do echo "$l"; done < notes.txt',
+    'for x in a; do echo "git push --force"; done',
+    '{ echo a; echo b; } > out.txt',
+    '! grep -q x notes.md',
+    "bash -lc 'make test'",
+    'timeout 60 git push origin feature',
+    'env -u GH_TOKEN gh pr view 5',
+])
+def test_ordinary_loops_ifs_and_wrapped_commands_pass(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+def test_a_redirect_anywhere_in_a_command_gives_its_target_and_keeps_the_other_words():
+    assert guards.segments('echo a > out.txt b >> log.txt') == [(['echo', 'a', 'b'], ['out.txt', 'log.txt'])]
+    assert guards.segments('then echo a >') == [(['echo', 'a', '>'], [])]
+
+
+def test_an_unreadable_sh_c_body_naming_a_door_is_refused(root, fake, repo):
+    assert guards.segments('bash -c "echo it\'s"') is None
+    decision = guards.pre_tool(root, bash('bash -c "echo it\'s; gh pr merge 5 --admin"'))
+    assert decision['decision'] == 'deny' and HINT in decision['reason']
+    assert guards.pre_tool(root, bash('bash -c "echo it\'s"')) is None

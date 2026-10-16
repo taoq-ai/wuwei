@@ -20,6 +20,19 @@ any local file. The hard boundaries sit outside the owner's user account: the co
 host's protected refs, required checks and required reviews, and publication credentials
 kept out of seat environments.
 
+The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
+brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
+wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
+
+- `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
+- `$(...)` inside double quotes, process substitution (`<(...)`), and ANSI-C quoting (`$'...'`).
+- A separator glued to a redirect or a pipe (`>;`, `|&`), and quote splicing inside a word.
+- A function body (`f() { ...; }`), a shell option that takes an argument before `-c`
+  (`bash -o pipefail -c ...`), and a wrapper not in the guards' list (`setsid`, `flock`, `ionice`).
+
+A multi-line command, or one the reader cannot parse, that names a door program is refused
+whatever its shape.
+
 The doors and what they leave to the code host are in section 6 of the
 [design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 

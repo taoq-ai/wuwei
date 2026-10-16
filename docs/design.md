@@ -126,7 +126,9 @@ pushes to or deletion of the default branch; a secret or the canary in an MCP ca
 command; writes to the ledger; a hand-made `wuwei hook` call; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger`), with a hint to run the door command in its own
-one-line call (#1068); other multi-line commands are read line by line.
+one-line call (#1068); other multi-line commands are read line by line. The doors read a command
+inside a loop, an if or a brace group, a shell's `-c` body after combined flags (`bash -lc`), and,
+after a wrapper (env, timeout, nice, sudo, xargs), the first program a door reads.
 Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 
 A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (a Bash
