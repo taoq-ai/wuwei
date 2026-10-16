@@ -60,32 +60,6 @@
    "approved": true
   },
   {
-   "id": "board-links",
-   "title": "fix(board): a PR naming two items links both, a just-merged item closes, and uncounted verdicts show before a PR",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 5,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 7.5,
-   "why": "Three board accuracy findings in board.compute with one small change each.",
-   "promise": "evidence gains items_named(body), every WUWEI-Item a PR body names, and board.compute links and closes each named item, not only the first. When an open item has no open PR, the board reads the merged list fresh instead of from its 300-second cache, so an item whose PR just merged closes on the next status read. An item with no PR also lists its verdict files that do not count (evidence.uncounted), so a verdict written while the hooks were down shows on the board before the create door refuses. Touches cli/wuwei/board.py, cli/wuwei/evidence.py, their vendored copies, tests/test_watch.py. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +3. Starts after free-lines merges. Outside: naming missing gates for a pushed branch with no PR (needs the branch recorded at hand-back), which item's gates a two-item PR reads.",
-   "acceptance": [
-    "given open PR #9 whose body names \"WUWEI-Item: A\" and \"WUWEI-Item: B\", when the board computes, then the rows for A and B both show #9, and once #9 merges both are marked done",
-    "given item C whose PR merged 30 seconds ago and a merged-list cache from 2 minutes ago, when the board computes, then C is marked done, not \"no pull request yet\"",
-    "given approved item D with no PR and a well-formed verdict .wuwei/verdicts/D/quality-abc1234.md with no attest row, when the board computes, then D's row names that file as not counted",
-    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "draft-raise",
    "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
    "goal": "G-2",
@@ -551,6 +525,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "board-links",
+   "title": "fix(board): a PR naming two items links both, a just-merged item closes, and uncounted verdicts show before a PR",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 5,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 7.5,
+   "why": "Three board accuracy findings in board.compute with one small change each.",
+   "promise": "evidence gains items_named(body), every WUWEI-Item a PR body names, and board.compute links and closes each named item, not only the first. When an open item has no open PR, the board reads the merged list fresh instead of from its 300-second cache, so an item whose PR just merged closes on the next status read. An item with no PR also lists its verdict files that do not count (evidence.uncounted), so a verdict written while the hooks were down shows on the board before the create door refuses. Touches cli/wuwei/board.py, cli/wuwei/evidence.py, their vendored copies, tests/test_watch.py. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +3. Starts after free-lines merges. Outside: naming missing gates for a pushed branch with no PR (needs the branch recorded at hand-back), which item's gates a two-item PR reads.",
+   "acceptance": [
+    "given open PR #9 whose body names \"WUWEI-Item: A\" and \"WUWEI-Item: B\", when the board computes, then the rows for A and B both show #9, and once #9 merges both are marked done",
+    "given item C whose PR merged 30 seconds ago and a merged-list cache from 2 minutes ago, when the board computes, then C is marked done, not \"no pull request yet\"",
+    "given approved item D with no PR and a well-formed verdict .wuwei/verdicts/D/quality-abc1234.md with no attest row, when the board computes, then D's row names that file as not counted",
+    "given the change, when the suite runs, then the runtime is 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1094"
   },
   {
    "id": "plan-accuracy",
