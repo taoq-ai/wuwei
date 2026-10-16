@@ -1,6 +1,6 @@
 """The few doors WUWEI holds. Everything else passes; the harness's own permission rules decide
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
-read a command lets it through (the audit still sees it)."""
+read a command lets it through unless it names a door program (the audit still sees it)."""
 
 import json
 from pathlib import Path
@@ -18,7 +18,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
-DOOR_WORDS = (('git', 'push'), ('gh', 'pr|api|repo'), ('wuwei', 'hook'))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei(\s|\\\n)+hook\b',), (r'\.wuwei/ledger',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
@@ -58,15 +58,16 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(command.replace('\\\n', ' '), posix=True, punctuation_chars='();<>|&\n')
-        lexer.whitespace, lexer.whitespace_split = ' \t\r', True
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n", lambda m: {'\n': ' ; ', '\\\n': ''}.get(
+            m[0], m[0]), command), posix=True, punctuation_chars=True)  # sh's lines: an unquoted newline ends a command
+        lexer.whitespace_split = True
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens = list(lexer)
     except ValueError:
         return None
     out, current = [], []
     for token in tokens + [';']:
-        if token in CONTROL or '\n' in token and not token.strip('();<>|&\n'):
+        if token in CONTROL:
             if current:
                 out.extend(_unwrap(current))
             current = []
@@ -225,8 +226,7 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or re.search('[\r\n]', command)) and ('.wuwei/ledger' in command or any(
-            all(re.search(rf'\b({word})\b', command) for word in pair) for pair in DOOR_WORDS)):
+    if (parts is None or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')

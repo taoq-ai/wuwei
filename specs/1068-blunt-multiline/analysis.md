@@ -7,7 +7,8 @@ and acceptance and the constitution.
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 |----|----------|----------|-------------|---------|----------------|
-| A1 | Ambiguity | LOW | spec.md Clarifications | The promise says no continuation parsing for the door rule; `segments` joins a backslash-newline | Accepted: the join feeds only the other doors, so a continued curl still reaches the leak door; the door rule reads raw text |
+| A1 | Ambiguity | LOW | spec.md Clarifications | The promise says no quote or continuation parsing for the door rule; `segments` reads quotes and continuations to split lines | Accepted: the split feeds only the leak and infra doors (security gate, fix round 1); the door rule reads raw text |
+| A3 | Inconsistency | LOW | spec.md Clarifications | The wuwei pair is narrower than "wuwei with hook" in the promise | Planner calibration within the approved rule, recorded in Clarifications; the pinned cost still holds |
 | A2 | Ambiguity | LOW | spec.md How this fails 3 | Newline splitting lets a heredoc body line meet the infra door | Accepted: an ask, not a refusal; noted as a pre-mortem item |
 | C1 | Coverage | LOW | tasks.md | Acceptance 11 (3,000 lines) has no new task test | Held by tests/test_setup.py::test_the_runtime_holds_its_size_budget |
 

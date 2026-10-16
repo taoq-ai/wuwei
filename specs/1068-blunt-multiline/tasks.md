@@ -23,3 +23,12 @@
 
 - [x] T014 docs/design.md section 7 names the rule
 - [x] T015 Mutants of each new condition, run in a scratch copy, each fail a test
+
+## Phase 4: Fix round 1 (security FIX at 82680c3)
+
+- [x] T016 A quoted word holding only newlines stays one word for curl, wget and kubectl (tests/test_guards.py)
+- [x] T017 An even backslash run before a newline ends the command; an odd run continues it (tests/test_guards.py)
+- [x] T018 `wuwei` must be followed by `hook`; a multi-line command naming cli/wuwei/hook.py passes (tests/test_guards.py)
+- [x] T019 Word boundaries pinned for git, push and gh pr (tests/test_guards.py)
+- [x] T020 Run the new tests red, then split newlines with one quote-aware regex and tighten the wuwei pair (cli/wuwei/guards.py)
+- [x] T021 Module docstring names the door rule for unreadable commands (cli/wuwei/guards.py)
