@@ -27,82 +27,6 @@
    "approved": true
   },
   {
-   "id": "breaking-proceed",
-   "title": "fix(hook): a \"Proceed\" answer to the breaking: question records the owner's approval",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 16.0,
-   "why": "The hook's yes test (yes, approve, accept) does not match the answer its own breaking: template invites.",
-   "promise": "hook._answers reads an answer starting with \"proceed\" as yes, beside yes, approve and accept, so the breaking: question's template (\"... Announced at <link>. Proceed?\") answered \"Proceed\" records approved: true. The rule is shared by every class, as today. Touches cli/wuwei/hook.py (the yes line), its vendored copy under .claude/wuwei/, tests/test_breaking.py. Lines: net 0, so it needs no room from free-lines. Outside: other words (\"ok\", \"go\"), rewording the template in the nine places it appears.",
-   "acceptance": [
-    "given \"breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed?\" answered \"Proceed\", when PostToolUse records it, then the breaking ruling has approved: true",
-    "given the same question answered \"Do not proceed\" or \"No\", when PostToolUse records it, then approved is false",
-    "given the change, when the suite runs, then the runtime size test still passes"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "free-lines",
-   "title": "refactor(release): the manifest signing code moves out of the runtime into the release script",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 13.0,
-   "why": "cli/wuwei/integrity.py (60 lines) has no runtime caller since 1.0; only scripts/build-release.py imports it.",
-   "promise": "cli/wuwei/integrity.py has no runtime caller: since #1024 (1.0) only scripts/build-release.py imports it, and the doctor no longer measures the manifest. Its inventory, write_manifest, sign and measure move into scripts/build-release.py; the module is deleted from cli/wuwei/ and, by re-vendoring, from .claude/wuwei/. The release workflow runs unchanged (python3 -P scripts/build-release.py). A new tests/test_release.py builds and signs a release into a temporary directory with a throwaway ed25519 key and checks it verifies, names a changed file and refuses a symlink; it skips where ssh-keygen is absent (the cloud image) and runs in CI. Runtime drops from 2,999 to 2,939 lines, the room the next cli items draw on. Touches cli/wuwei/integrity.py (deleted), scripts/build-release.py, tests/test_release.py (new), .claude/wuwei/cli/wuwei/integrity.py (deleted). Rollback: revert the commit; the workflow reads only scripts/build-release.py. Outside: the signing key, the workflow file, the manifest format, a doctor integrity check. Assumption: merging before or after the owner cuts 2.0.0 (#1080) is safe because the new test exercises the build; overturned if CI cannot run ssh-keygen.",
-   "acceptance": [
-    "given a temporary output directory and a throwaway ed25519 key, when build() runs, then it writes wuwei.tar.gz whose MANIFEST.sha256 verifies against that key and lists every shipped file",
-    "given a staged release with one file changed after signing, when the measure runs, then it names \"changed: <file>\"",
-    "given a symlink in the staged tree, when the inventory runs, then it refuses with \"symlink in plugin\"",
-    "given the change, when the suite runs, then the runtime is 2,939 lines or fewer, no module under cli/wuwei imports integrity, and the vendored-drift test passes"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "planner-docs",
-   "title": "docs(plan): the planner reads tracker measures into the lead's brief, and the suite runs where python3 lacks pytest",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 5,
-    "risk": 3,
-    "size": 1
-   },
-   "score": 13.0,
-   "why": "Closes #1069 the way the lead itself suggested, without hard-coding a workspace's MCP tool names into the lead agent.",
-   "promise": "Docs only. skills/wuwei-plan/SKILL.md: before launching the lead, the planner reads every goal measure stated in a tracker's states (Linear, Jira) with its own MCP tools and puts the states in the lead's brief; a measure it cannot read is passed as unmeasured (#1069). AGENTS.md and CONTRIBUTING.md: run the suite with `python3 -m pytest -q`, or `pytest -q` where python3 lacks the module. Touches skills/wuwei-plan/SKILL.md, .claude/skills/wuwei-plan/SKILL.md (re-vendored), AGENTS.md, CONTRIBUTING.md. No runtime lines. Outside: giving the lead MCP tools (their names differ per workspace).",
-   "acceptance": [
-    "given goals.md with a measure stated in Linear ticket states, when the planner follows the plan skill, then the lead's brief carries those states as the planner read them, or names them unmeasured",
-    "given AGENTS.md in the cloud image, when a seat follows it, then `pytest -q` runs the suite",
-    "given the re-vendored copy, when the vendored-drift test runs, then it passes"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "door-hardening",
    "title": "fix(hook): the fail-closed check reads the doors from one table, through quotes, and covers the leak check",
    "goal": "G-2",
@@ -182,32 +106,6 @@
     "given an MCP push_files call with branch main, when PreToolUse runs, then it is refused like a push to the default branch, and when the guard raises on it, then it is refused as a door",
     "given \"gh api repos/o/r/pulls\", \"gh api repos/o/r/pulls/5/ccr/review_threads\" and \"gh api -X POST repos/o/r/pulls/5/ccr/comments/1/resolve\", when the Bash door reads each, then nothing is refused, and every other route-fixtures route reads as recorded",
     "given the change, when the suite runs, then the runtime size test passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "gate-charters",
-   "title": "docs(charters): a gate never edits a written verdict, each seat has its own scratch folder, and Codex jobs are not seats",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 2
-   },
-   "score": 9.0,
-   "why": "Process findings from today's seats, plus the docs half of #1078, in one docs-only change.",
-   "promise": "Docs only. charters/_gate.md: a gate never edits a verdict file once written; to fix its shape it writes the next free <gate>-<sha7>-2.md and names that in its \"Verdict file:\" line. charters/_common.md: each seat writes scratch files only under <scratchpad>/<role>-<item>/. charters/planner.md: a gate brief for a change to guards.py or hook.py includes the main-versus-head differential over tests/fixtures/routes.json, and a gate counts only when its seat's SubagentStop attests it, so a codex-companion task job is not a seat; the route for Codex gates follows codex-attest-probe's outcome (#1078). docs/site/reference.md shows <file>:<line> as optional on a non-blocking note, as verdict.FORMAT does. Then bin/wuwei agents build. Touches charters/_gate.md, charters/_common.md, charters/planner.md, agents/*.md (built), docs/site/reference.md, docs/site/concepts/codex.md. No runtime lines. Outside: hook changes.",
-   "acceptance": [
-    "given the edited charters, when bin/wuwei agents build runs and the suite's drift test reads agents/, then they match",
-    "given charters/_gate.md, when a sentinel reads it, then it says a written verdict is never edited and names the -2 file rule, in the words hook._verdict_problem uses",
-    "given docs/site/reference.md and verdict.FORMAT, when compared, then both mark <file>:<line> optional on a note and required on a blocking finding",
-    "given charters/planner.md, when the planner briefs a gate on a guards.py change, then the brief names the differential over tests/fixtures/routes.json and the codex-companion limit"
    ],
    "status": "open",
    "added": "2026-10-16",
@@ -381,6 +279,32 @@
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
   },
   {
+   "id": "breaking-proceed",
+   "title": "fix(hook): a \"Proceed\" answer to the breaking: question records the owner's approval",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 16.0,
+   "why": "The hook's yes test (yes, approve, accept) does not match the answer its own breaking: template invites.",
+   "promise": "hook._answers reads an answer starting with \"proceed\" as yes, beside yes, approve and accept, so the breaking: question's template (\"... Announced at <link>. Proceed?\") answered \"Proceed\" records approved: true. The rule is shared by every class, as today. Touches cli/wuwei/hook.py (the yes line), its vendored copy under .claude/wuwei/, tests/test_breaking.py. Lines: net 0, so it needs no room from free-lines. Outside: other words (\"ok\", \"go\"), rewording the template in the nine places it appears.",
+   "acceptance": [
+    "given \"breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed?\" answered \"Proceed\", when PostToolUse records it, then the breaking ruling has approved: true",
+    "given the same question answered \"Do not proceed\" or \"No\", when PostToolUse records it, then approved is false",
+    "given the change, when the suite runs, then the runtime size test still passes"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged"
+  },
+  {
    "id": "vendored-drift",
    "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
    "goal": "G-1",
@@ -407,6 +331,59 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "free-lines",
+   "title": "refactor(release): the manifest signing code moves out of the runtime into the release script",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "cli/wuwei/integrity.py (60 lines) has no runtime caller since 1.0; only scripts/build-release.py imports it.",
+   "promise": "cli/wuwei/integrity.py has no runtime caller: since #1024 (1.0) only scripts/build-release.py imports it, and the doctor no longer measures the manifest. Its inventory, write_manifest, sign and measure move into scripts/build-release.py; the module is deleted from cli/wuwei/ and, by re-vendoring, from .claude/wuwei/. The release workflow runs unchanged (python3 -P scripts/build-release.py). A new tests/test_release.py builds and signs a release into a temporary directory with a throwaway ed25519 key and checks it verifies, names a changed file and refuses a symlink; it skips where ssh-keygen is absent (the cloud image) and runs in CI. Runtime drops from 2,999 to 2,939 lines, the room the next cli items draw on. Touches cli/wuwei/integrity.py (deleted), scripts/build-release.py, tests/test_release.py (new), .claude/wuwei/cli/wuwei/integrity.py (deleted). Rollback: revert the commit; the workflow reads only scripts/build-release.py. Outside: the signing key, the workflow file, the manifest format, a doctor integrity check. Assumption: merging before or after the owner cuts 2.0.0 (#1080) is safe because the new test exercises the build; overturned if CI cannot run ssh-keygen.",
+   "acceptance": [
+    "given a temporary output directory and a throwaway ed25519 key, when build() runs, then it writes wuwei.tar.gz whose MANIFEST.sha256 verifies against that key and lists every shipped file",
+    "given a staged release with one file changed after signing, when the measure runs, then it names \"changed: <file>\"",
+    "given a symlink in the staged tree, when the inventory runs, then it refuses with \"symlink in plugin\"",
+    "given the change, when the suite runs, then the runtime is 2,939 lines or fewer, no module under cli/wuwei imports integrity, and the vendored-drift test passes"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1090"
+  },
+  {
+   "id": "planner-docs",
+   "title": "docs(plan): the planner reads tracker measures into the lead's brief, and the suite runs where python3 lacks pytest",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 5,
+    "risk": 3,
+    "size": 1
+   },
+   "score": 13.0,
+   "why": "Closes #1069 the way the lead itself suggested, without hard-coding a workspace's MCP tool names into the lead agent.",
+   "promise": "Docs only. skills/wuwei-plan/SKILL.md: before launching the lead, the planner reads every goal measure stated in a tracker's states (Linear, Jira) with its own MCP tools and puts the states in the lead's brief; a measure it cannot read is passed as unmeasured (#1069). AGENTS.md and CONTRIBUTING.md: run the suite with `python3 -m pytest -q`, or `pytest -q` where python3 lacks the module. Touches skills/wuwei-plan/SKILL.md, .claude/skills/wuwei-plan/SKILL.md (re-vendored), AGENTS.md, CONTRIBUTING.md. No runtime lines. Outside: giving the lead MCP tools (their names differ per workspace).",
+   "acceptance": [
+    "given goals.md with a measure stated in Linear ticket states, when the planner follows the plan skill, then the lead's brief carries those states as the planner read them, or names them unmeasured",
+    "given AGENTS.md in the cloud image, when a seat follows it, then `pytest -q` runs the suite",
+    "given the re-vendored copy, when the vendored-drift test runs, then it passes"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged"
   },
   {
    "id": "ledger-parse",
@@ -571,6 +548,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1083"
+  },
+  {
+   "id": "gate-charters",
+   "title": "docs(charters): a gate never edits a written verdict, each seat has its own scratch folder, and Codex jobs are not seats",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 2
+   },
+   "score": 9.0,
+   "why": "Process findings from today's seats, plus the docs half of #1078, in one docs-only change.",
+   "promise": "Docs only. charters/_gate.md: a gate never edits a verdict file once written; to fix its shape it writes the next free <gate>-<sha7>-2.md and names that in its \"Verdict file:\" line. charters/_common.md: each seat writes scratch files only under <scratchpad>/<role>-<item>/. charters/planner.md: a gate brief for a change to guards.py or hook.py includes the main-versus-head differential over tests/fixtures/routes.json, and a gate counts only when its seat's SubagentStop attests it, so a codex-companion task job is not a seat; the route for Codex gates follows codex-attest-probe's outcome (#1078). docs/site/reference.md shows <file>:<line> as optional on a non-blocking note, as verdict.FORMAT does. Then bin/wuwei agents build. Touches charters/_gate.md, charters/_common.md, charters/planner.md, agents/*.md (built), docs/site/reference.md, docs/site/concepts/codex.md. No runtime lines. Outside: hook changes.",
+   "acceptance": [
+    "given the edited charters, when bin/wuwei agents build runs and the suite's drift test reads agents/, then they match",
+    "given charters/_gate.md, when a sentinel reads it, then it says a written verdict is never edited and names the -2 file rule, in the words hook._verdict_problem uses",
+    "given docs/site/reference.md and verdict.FORMAT, when compared, then both mark <file>:<line> optional on a note and required on a blocking finding",
+    "given charters/planner.md, when the planner briefs a gate on a guards.py change, then the brief names the differential over tests/fixtures/routes.json and the codex-companion limit"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged"
   },
   {
    "id": "sync-note",
