@@ -1,0 +1,30 @@
+Verdict: FIX
+Gate: security
+Item: X-1
+PR: taoq-ai/wuwei
+Head: 13fc17300141d3238d21749b6f425444be19d871
+Confidence: high
+
+## Findings
+- [high] cli/wuwei/evidence.py:105 blocks: yes. Failure: release() trusts the PR opener and file paths. It does not check who wrote the head commits or what the extra-files patch contains. The release-please branch has no ruleset (`gh api repos/taoq-ai/wuwei/rules/branches/release-please--branches--main--components--wuwei` returns []), and guards.git_push only protects the default branch. So an agent with push access can add a commit to the open bot PR (head release-please--branches--main--components--wuwei) that puts a "hooks" or "mcpServers" entry into .claude-plugin/plugin.json. The opener stays github-actions[bot], the branch name stays the same and the file set stays {plugin.json, manifest, CHANGELOG.md}, so release() returns True. gates_for then gets () and needs no gate, the 'no test in the diff' gap is dropped, and merge_door lets `gh pr merge` through once CI is green. release.yml then signs the tree and publishes it to dist, so the hook runs on every machine that installs the plugin. Before this change the same diff needed a quality gate and a test. Probe: merge_door returned None for that PR, and denied it (no test, gates missing: quality) when only the author was changed. Recommended fix: keep each file's REST `patch` in gh.pr, and count an extra-file or the manifest only when every +/- line of its patch is a version line (for example `^[+-]\s*"[\w.-]+":\s*"\d+\.\d+\.\d+[\w.+-]*",?$`). A missing patch keeps every gap. That would have passed #1072 (plugin.json 1/1, manifest 1/1, both version lines only). A check on commit authors alone is weaker: git author email can be set to the github-actions noreply address. CHANGELOG.md matches DOCS already, so its content needs no check.
+- [low] cli/wuwei/evidence.py:112 blocks: no. json.loads raises RecursionError on a deeply nested release-please-config.json ('[' * 200000, probed). That is not in release()'s except list or in gaps()'s (GhError, KeyError, TypeError). It escapes merge_door, and hook.handle fails open on any Exception, so the merge is allowed. To reach it, someone has to change the bot PR's base to a branch they control. The merge then lands on that branch, not main, so main is not harmed. Catching RecursionError (or the base Exception) here would close it.
+- [low] cli/wuwei/gh.py:58 blocks: no. gh.pr drops the REST `previous_filename`, so a rename into an allowed path hides the deleted source. All three allowed paths exist on main (git ls-tree 13fc173), so GitHub shows a modification there, not a rename, and nothing can get through today. It could matter in a repository whose extra-files names a path that does not exist on the base.
+- [low] cli/wuwei/evidence.py:115 blocks: no. Mutant `return files <= allowed` (no bool(files)) survives the suite. It is equivalent here: an empty file list already needs no gate and no test.
+- [low] cli/wuwei/evidence.py:46 blocks: no. 'release-please[bot]' is the legacy Google app. This repository opens release PRs through GITHUB_TOKEN or RELEASE_PAT. If RELEASE_PAT is set, the opener is the PAT's owner and the exemption never fires (it fails closed). #1072 was opened by github-actions[bot].
+
+## Probes
+- Suite at the head in a scratch copy: 296 passed. Runtime lines: 2999 (wc -l cli/wuwei/*.py).
+- Read #1072 live (gh api pulls/1072, /commits, /files): opener github-actions[bot] (type Bot), head release-please--branches--main--components--wuwei, one commit authored by github-actions[bot] with committer web-flow (verified), plugin.json +1/-1 version line only.
+- Author spoofs: 'github-actions', 'app/github-actions', 'GitHub-Actions[bot]', 'dependabot[bot]', 'claude[bot]' and '' all keep both gaps. gh.pr reads the REST user.login, so the exact match is right.
+- Branch spoofs: 'Release-please--x', 'release-please-x', ' release-please--x' and 'refs/heads/release-please--x' all keep both gaps.
+- Path tricks in changed files: './CHANGELOG.md', 'changelog.md', '/CHANGELOG.md', 'docs/../cli/wuwei/guards.py', '.claude-plugin/Plugin.json', 'pkg/CHANGELOG.md' and 'plugin.json/x' all keep gaps. GitHub sends canonical paths and the match is exact and case-sensitive.
+- Path tricks in the config: '../cli/wuwei/guards.py' under '.' and a package key '..' both normalise to a '../' path that never matches, so both gaps stay. A leading '/' maps to the repository root, as release-please does.
+- Base and head: the config is fetched with ?ref=<baseRefName>. Mutant M4 (headRefName) is killed by the call-URL assertion in test_a_release_please_pr_is_read_as_generated. Changing the PR base to a branch you control only changes where the merge lands.
+- Mutants on evidence.py in a scratch copy: author check reversed (killed, 1 test), branch check removed (killed, 1), base->head ref (killed, 1), subset->intersection (killed, 6), gates_for gets the real files (killed, 6), code gap kept (killed, 6), package path dropped (killed, 1), bool(files) dropped (survives, equivalent).
+- guards.create_door does not call release(). A release-please--branches--main branch with the release file set was denied with 'gates missing at head aaaaaaa: quality' (probe), so an agent opening a PR from a release-please-- branch still needs gates.
+- Deep config: '[' * 200000 raised RecursionError out of evidence.gaps (probe).
+- Injection: merge_door returned None for a bot-opened release-please-- PR whose plugin.json gained 12 lines. With an agent author it denied the PR. This confirms that evidence reads paths only, as the builder's residual risk says.
+- Not run: no configured scanner (no agent tooling changed). Live branch-protection read for main returned no rulesets; classic protection was unmeasured.
+
+## Residual risk
+Once the patch check is in, the exemption depends on the extra-files patch carrying only version lines, and on CI. CHANGELOG.md and manifest edits stay unreviewed, but they are not executable. Line budget: 2999 of 3,000, so the fix has to free lines.
