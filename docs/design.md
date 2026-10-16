@@ -124,6 +124,9 @@ branch head, so review starts at a gated head (#1050);
 collaborators, hooks, keys, secrets and environments; `gh repo delete`; force pushes in every form;
 pushes to or deletion of the default branch; a secret or the canary in an MCP call or network
 command; writes to the ledger; a hand-made `wuwei hook` call; an owner question without a class.
+A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
+pr, api or repo; wuwei followed by hook; `.wuwei/ledger`), with a hint to run the door command in its own
+one-line call (#1068); other multi-line commands are read line by line.
 Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 
 A door that cannot read its evidence stays shut; every other hook fails open and records
