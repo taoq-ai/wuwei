@@ -678,3 +678,18 @@ def test_a_rest_pr_create_by_input_alone_posts_and_reads_head_base_and_body(root
 def test_a_secret_in_an_mcp_file_write_on_a_feature_branch_is_refused(root, fake):
     decision = guards.pre_tool(root, mcp('push_files', branch='i-1-change', files=[{'path': 'a', 'content': 'ghp_' + 'a' * 36}]))
     assert decision['decision'] == 'deny' and 'secret' in decision['reason']
+
+
+@pytest.mark.parametrize('route, verdict', [('repos/o/r/rulesets', 'refusal'), ('repos/o/r/branches/main/protection', 'refusal'),
+                                            ('repos/o/r/merges', 'push'), ('repos/o/r/git/refs/heads/main', 'push')])
+def test_input_alone_posts_even_when_its_json_names_no_pr_field(root, cloud, tmp_path, route, verdict):
+    (tmp_path / 'f.json').write_text(json.dumps({'name': 'x', 'sha': 'a' * 40}))
+    assert door_reached(guards.bash(root, f'gh api {route} --input f.json', str(tmp_path), 's1')) == verdict, route
+
+
+@pytest.mark.parametrize('command', ["gh api -X POST GRAPHQL -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+                                     "gh api GraphQL -f query='mutation { createPullRequest(input: {}) { clientMutationId } }'",
+                                     'gh api -X PUT repos/o/r/PULLS/5/MERGE'])
+def test_the_graphql_endpoint_and_the_route_paths_are_read_in_any_case(root, cloud, command):
+    assert door_reached(guards.bash(root, command, '/repo', 's1')) in ('refusal', 'merge'), command
+    assert guards.bash(root, command, '/repo', 's1')['decision'] == 'deny'
