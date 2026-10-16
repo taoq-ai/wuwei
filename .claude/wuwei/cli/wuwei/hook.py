@@ -32,13 +32,11 @@ def transcript(payload):
 
 
 def last_text(payload):
-    text = payload.get('last_assistant_message')
-    return text if isinstance(text, str) and text.strip() else transcript(payload)[0]
+    return text if isinstance(text := payload.get('last_assistant_message'), str) and text.strip() else transcript(payload)[0]
 
 
 def _confidence(text):
-    match = re.search(r'^Confidence:\s*(low|medium|high)\b', text or '', re.M | re.I)
-    return match[1].lower() if match else None
+    return m[1].lower() if (m := re.search(r'^Confidence:\s*(low|medium|high)\b', text or '', re.M | re.I)) else None
 
 
 def context(event, text):
@@ -75,9 +73,8 @@ def pre_tool(root, payload):
 
 
 def closed(root):
-    today = ws.today()
     marks = [row['kind'] for row in ws.ledger(root)
-             if row.get('kind') in ('day.closed', 'plan.pass') and row.get('ts', '').startswith(today)]
+             if row.get('kind') in ('day.closed', 'plan.pass') and row.get('ts', '').startswith(ws.today())]
     return bool(marks) and marks[-1] == 'day.closed'
 
 
@@ -114,8 +111,7 @@ def stop(root, payload):
 
 def _settled(payload):
     """The seat's last message, rereading a transcript the harness may still be writing (about 2 s)."""
-    text = last_text(payload)
-    path = payload.get('agent_transcript_path')
+    text, path = last_text(payload), payload.get('agent_transcript_path')
     for _ in range(8):
         if text.strip() or not path or not Path(path).is_file():
             break
@@ -191,8 +187,7 @@ def _verdict_problem(root, payload, role):
 
 
 def post_tool(root, payload):
-    tool = payload.get('tool_name', '')
-    data = payload.get('tool_input') or {}
+    tool, data = payload.get('tool_name', ''), payload.get('tool_input') or {}
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
