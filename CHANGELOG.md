@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0](https://github.com/taoq-ai/wuwei/compare/v1.1.0...v1.2.0) (2026-10-16)
+
+
+### Features
+
+* a readable WUWEI footer links each PR to its plan item ([e116dc7](https://github.com/taoq-ai/wuwei/commit/e116dc720e1b57fefb515da50d57ca0a92541d79))
+* the WUWEI footer names the plugin version ([50f9ecb](https://github.com/taoq-ai/wuwei/commit/50f9ecb3e9c21fdf98ae0fa0d45c9f8c16746c6f))
+
+
+### Bug Fixes
+
+* **doctor:** read the code host by REST, and warn when no hook has fired ([732e384](https://github.com/taoq-ai/wuwei/commit/732e38427ee1ae4ed4a6617ba953e4aaa9c171c5)), closes [#1062](https://github.com/taoq-ai/wuwei/issues/1062) [#1061](https://github.com/taoq-ai/wuwei/issues/1061)
+* **evidence:** an owner approval counts only at the head; a light item on a trust path is raised to standard ([feaa9ee](https://github.com/taoq-ai/wuwei/commit/feaa9ee9caebd8ba24eea6744fe6e61019638ed5)), closes [#886](https://github.com/taoq-ai/wuwei/issues/886) [#1016](https://github.com/taoq-ai/wuwei/issues/1016)
+* **ledger:** seats starting at once append in turn, so the chain never forks ([7a63a42](https://github.com/taoq-ai/wuwei/commit/7a63a42d4bcec52dcd11107495ffabd29a5afd09)), closes [#1057](https://github.com/taoq-ai/wuwei/issues/1057)
+* **sync:** a change after the first push reaches wuwei/state ([8ff8f67](https://github.com/taoq-ai/wuwei/commit/8ff8f674f1dfab16d80c3fee9e10528ec441a8f2)), closes [#1060](https://github.com/taoq-ai/wuwei/issues/1060)
+
 ## [1.1.0](https://github.com/taoq-ai/wuwei/compare/v1.0.0...v1.1.0) (2026-10-15)
 
 
