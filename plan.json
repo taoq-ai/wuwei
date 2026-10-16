@@ -1,62 +1,6 @@
 {
  "items": [
   {
-   "id": "1065",
-   "title": "fix(doctor): the hooks check counts any hook that fired on this machine since init",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 3,
-    "risk": 2,
-    "size": 2
-   },
-   "score": 5.0,
-   "why": "a false 'doors are off' while the create door refused a PR and a plan: answer was recorded (#1064 session); the check reads one file only SessionStart writes",
-   "promise": "wuwei doctor reports ok hooks when .wuwei/executable exists or when this clone's own ledger file (.wuwei/ledger/<ws.clone(root)>.jsonl) holds a row only a hook writes (refused, asked, note, prompt, seat.started, seat.stopped, stop.reminded, hook.error) after its latest workspace.init. attest and sent do not count: the CLI writes them too. Rows synced from another clone do not count: the ledger travels on wuwei/state, so another machine's hook says nothing about this one. Touches cli/wuwei/setup.py (doctor) and tests/test_setup.py. Outside: the hook events, traces.jsonl (written only with telemetry on). Lines come out of setup.py: doctor reads ws.config(root) twice (lines 125 and 133, -1) and settings.json is parsed in three places (lines 36, 64, 150).",
-   "acceptance": [
-    "given a workspace after init with a refused row in this clone's ledger file and no .wuwei/executable, when doctor runs, then it reports ok hooks",
-    "given a hook-only row only in another clone's ledger file, when doctor runs, then it reports warn hooks",
-    "given a hook-only row older than the latest workspace.init and no .wuwei/executable, when doctor runs, then it reports warn hooks",
-    "given .wuwei/executable written by SessionStart, when doctor runs, then it reports ok hooks as today",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "1067",
-   "title": "fix(evidence): a commit status posted by a review-triggered workflow reads as review, not CI",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 8
-   },
-   "score": 2.25,
-   "why": "six ai-stacks PRs needing a reviewer show 'CI running [waiting]', and #3274 reads as a red build; build after 1067-probe, since the tie between status and workflow is unmeasured",
-   "promise": "A commit status posted by a workflow the repository runs on pull_request_review is reported as 'waiting on review: <context>' (pending) or 'change request outstanding: <context>' (failure), both actionable safety gaps, instead of 'CI running' or 'CI failing'. The review-triggered workflows come from the host, not config: repos/<repo>/actions/runs?event=pull_request_review, cached for a day, read only when the head has a commit status; the tie from status to workflow is the one 1067-probe finds (target_url run id or the context equal to the workflow name). Touches cli/wuwei/gh.py (pr: status target_url, the review-workflow read), cli/wuwei/evidence.py (ci_gaps), tests/test_evidence.py, docs/design.md section 6 and docs/site/concepts/evidence.md. Outside: CODEOWNERS and required reviews (#917), a config key. Lines come out of evidence.py and gh.py (evidence.py line 214 re-imports datetime inside budget, -1), never from guards.py or setup.py.",
-   "acceptance": [
-    "given completed check runs and a pending commit status from a workflow the repository runs on pull_request_review, when evidence reads the PR, then it reports 'waiting on review: <context>' as actionable and no 'CI running'",
-    "given that status failing while a change request stands, when evidence reads the PR, then it reports 'change request outstanding: <context>' and no 'CI failing'",
-    "given a failing status from an ordinary CI workflow, when evidence reads the PR, then it reports 'CI failing: <context>' as today",
-    "given a head with no commit statuses, when evidence reads the PR, then no workflow-runs call is made",
-    "given the workflow-runs read fails, when evidence reads the PR, then the status stays CI (never a pass)",
-    "given either review gap, when the merge door runs with or without --auto, then it refuses",
-    "given the change, when the suite runs, then config still has five keys and the runtime size test passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "1067-probe",
    "title": "probe: what ties ai-stacks' Review Gate status to its review-triggered workflow",
    "goal": "G-2",
@@ -138,6 +82,64 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "two fix rounds without a pass: the heredoc scanner's arithmetic tracking keeps losing to paren shapes (stray quoted '))' in round 1; nested single parens and nested $( ) closing with '))' in round 2, one a regression vs main). Design problem: rethink as fail-closed (no heredoc dropping once any unquoted '((' or '$((' is seen, or a paren stack that drops bodies only with no open level). Branch claude/1068-guards-multiline at 7fd4019 keeps the newline, continuation, two-heredoc and hint work, which passed."
+  },
+  {
+   "id": "1065",
+   "title": "fix(doctor): the hooks check counts any hook that fired on this machine since init",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 3,
+    "risk": 2,
+    "size": 2
+   },
+   "score": 5.0,
+   "why": "a false 'doors are off' while the create door refused a PR and a plan: answer was recorded (#1064 session); the check reads one file only SessionStart writes",
+   "promise": "wuwei doctor reports ok hooks when .wuwei/executable exists or when this clone's own ledger file (.wuwei/ledger/<ws.clone(root)>.jsonl) holds a row only a hook writes (refused, asked, note, prompt, seat.started, seat.stopped, stop.reminded, hook.error) after its latest workspace.init. attest and sent do not count: the CLI writes them too. Rows synced from another clone do not count: the ledger travels on wuwei/state, so another machine's hook says nothing about this one. Touches cli/wuwei/setup.py (doctor) and tests/test_setup.py. Outside: the hook events, traces.jsonl (written only with telemetry on). Lines come out of setup.py: doctor reads ws.config(root) twice (lines 125 and 133, -1) and settings.json is parsed in three places (lines 36, 64, 150).",
+   "acceptance": [
+    "given a workspace after init with a refused row in this clone's ledger file and no .wuwei/executable, when doctor runs, then it reports ok hooks",
+    "given a hook-only row only in another clone's ledger file, when doctor runs, then it reports warn hooks",
+    "given a hook-only row older than the latest workspace.init and no .wuwei/executable, when doctor runs, then it reports warn hooks",
+    "given .wuwei/executable written by SessionStart, when doctor runs, then it reports ok hooks as today",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1070 (489d1ed)"
+  },
+  {
+   "id": "1067",
+   "title": "fix(evidence): a commit status posted by a review-triggered workflow reads as review, not CI",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 8
+   },
+   "score": 2.25,
+   "why": "six ai-stacks PRs needing a reviewer show 'CI running [waiting]', and #3274 reads as a red build; build after 1067-probe, since the tie between status and workflow is unmeasured",
+   "promise": "A commit status posted by a workflow the repository runs on pull_request_review is reported as 'waiting on review: <context>' (pending) or 'change request outstanding: <context>' (failure), both actionable safety gaps, instead of 'CI running' or 'CI failing'. The review-triggered workflows come from the host, not config: repos/<repo>/actions/runs?event=pull_request_review, cached for a day, read only when the head has a commit status; the tie from status to workflow is the one 1067-probe finds (target_url run id or the context equal to the workflow name). Touches cli/wuwei/gh.py (pr: status target_url, the review-workflow read), cli/wuwei/evidence.py (ci_gaps), tests/test_evidence.py, docs/design.md section 6 and docs/site/concepts/evidence.md. Outside: CODEOWNERS and required reviews (#917), a config key. Lines come out of evidence.py and gh.py (evidence.py line 214 re-imports datetime inside budget, -1), never from guards.py or setup.py.",
+   "acceptance": [
+    "given completed check runs and a pending commit status from a workflow the repository runs on pull_request_review, when evidence reads the PR, then it reports 'waiting on review: <context>' as actionable and no 'CI running'",
+    "given that status failing while a change request stands, when evidence reads the PR, then it reports 'change request outstanding: <context>' and no 'CI failing'",
+    "given a failing status from an ordinary CI workflow, when evidence reads the PR, then it reports 'CI failing: <context>' as today",
+    "given a head with no commit statuses, when evidence reads the PR, then no workflow-runs call is made",
+    "given the workflow-runs read fails, when evidence reads the PR, then the status stays CI (never a pass)",
+    "given either review gap, when the merge door runs with or without --auto, then it refuses",
+    "given the change, when the suite runs, then config still has five keys and the runtime size test passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1071 (5d7157b), owner confirmed breaking as a fix"
   }
  ]
 }
