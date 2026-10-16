@@ -122,3 +122,21 @@ def test_release_please_is_not_pinned_to_a_version_already_released():
     for path, package in config['packages'].items():
         assert package.get('release-as') != released.get(path), (
             f'release-as {package["release-as"]} is already released: remove it, or every release stays there')
+
+
+def test_doctor_reads_the_code_host_as_wuwei_does_and_says_when_no_hook_fired(tmp_path, monkeypatch):
+    from wuwei import gh, hook
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: 'acme/app')
+
+    def cloud_gh(args, timeout=30):  # a cloud session: the proxy token fails auth status, REST works
+        if args[:2] == ['auth', 'status']:
+            raise gh.GhError('The token in GH_TOKEN is invalid.')
+        return [] if '/rules/' in args[1] else 'main'
+    monkeypatch.setattr(setup.gh, 'run', cloud_gh)
+    setup.init(tmp_path)
+    ws.set_config(tmp_path, 'repos', 'acme/app')
+    rows = {name: (status, detail) for name, status, detail in setup.doctor(tmp_path)}
+    assert rows['gh'] == ('ok', 'reads acme/app')
+    assert rows['hooks'][0] == 'warn' and 'no hook has fired' in rows['hooks'][1]
+    hook.session_start(tmp_path, {})
+    assert {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks'] == 'ok'

@@ -18,8 +18,12 @@ hooks in `.claude/settings.json`, pointing at the copy. Run it again after upgra
 refresh the copy.
 
 The copy acts only in cloud sessions. On your machine the installed plugin serves, and the copy
-stays quiet, so the hooks never run twice. Cloud sessions run a repository's hooks only when the
-session has that one repository.
+stays quiet, so the hooks never run twice.
+
+Cloud sessions run a repository's hooks only when the session holds that one repository. In a
+session with two or more, no WUWEI hook fires: the doors are off, owner answers and gate verdicts
+are not recorded, and `wuwei doctor` warns `hooks: no hook has fired here`. Open a session that
+holds only the repository with `.claude/wuwei/`.
 
 Code-host reads are REST, because cloud sessions refuse GraphQL. Review threads come from the
 session's own review-thread route when GraphQL is refused.
