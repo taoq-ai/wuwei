@@ -124,6 +124,48 @@ def test_release_please_is_not_pinned_to_a_version_already_released():
             f'release-as {package["release-as"]} is already released: remove it, or every release stays there')
 
 
+def _files(root):
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*')
+            if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc'}
+
+
+def vendored_drift(repository):
+    """The paths under repository/.claude/ that differ from what setup.vendor() writes from the tree."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as fresh:
+        want, have = _files(setup.vendor(fresh)), _files(repository / '.claude')
+    owned = ('wuwei/',) + tuple(f'skills/{skill.name}/' for skill in (PLUGIN / 'skills').iterdir())
+    extra = {path for path in have if path.startswith(owned) and path not in want}
+    return sorted({path for path in want if have.get(path) != want[path]} | extra)
+
+
+def test_the_vendored_plugin_matches_the_tree_it_was_copied_from():
+    drift = vendored_drift(PLUGIN)
+    assert drift == [], f'.claude/ lags the tree in {drift}: run setup.vendor() (wuwei init --cloud) and commit .claude/'
+
+
+def test_the_drift_check_names_a_changed_vendored_file(tmp_path):
+    setup.vendor(tmp_path)
+    assert vendored_drift(tmp_path) == []
+    (tmp_path / '.claude' / 'wuwei' / 'cli' / 'wuwei' / 'gh.py').write_text('# stale\n')
+    (tmp_path / '.claude' / 'wuwei' / 'cli' / 'wuwei' / 'gone.py').write_text('# removed upstream\n')
+    (tmp_path / '.claude' / 'agents' / 'builder.md').unlink()
+    (tmp_path / '.claude' / 'agents' / 'mine.md').write_text('a project agent stays\n')
+    (tmp_path / '.claude' / 'skills' / 'mine').mkdir()
+    (tmp_path / '.claude' / 'skills' / 'mine' / 'SKILL.md').write_text('a project skill stays\n')
+    (tmp_path / '.claude' / 'wuwei' / 'cli' / 'wuwei' / '__pycache__').mkdir()
+    (tmp_path / '.claude' / 'wuwei' / 'cli' / 'wuwei' / '__pycache__' / 'gh.cpython-311.pyc').write_bytes(b'x')
+    assert vendored_drift(tmp_path) == ['agents/builder.md', 'wuwei/cli/wuwei/gh.py', 'wuwei/cli/wuwei/gone.py']
+
+
+def test_release_please_bumps_the_vendored_plugin_version_with_the_root():
+    files = json.loads((PLUGIN / 'release-please-config.json').read_text())['packages']['.']['extra-files']
+    bumped = {entry['path'] for entry in files if entry.get('type') == 'json' and entry.get('jsonpath') == '$.version'}
+    assert {'.claude-plugin/plugin.json', '.claude/wuwei/.claude-plugin/plugin.json'} <= bumped
+    version = lambda path: json.loads((PLUGIN / path).read_text())['version']  # noqa: E731
+    assert version('.claude/wuwei/.claude-plugin/plugin.json') == version('.claude-plugin/plugin.json')
+
+
 def test_doctor_reads_the_code_host_as_wuwei_does_and_says_when_no_hook_fired(tmp_path, monkeypatch):
     from wuwei import gh, hook
     monkeypatch.setattr(setup.guards, 'origin', lambda cwd: 'acme/app')
