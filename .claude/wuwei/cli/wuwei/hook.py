@@ -35,10 +35,6 @@ def last_text(payload):
     return text if isinstance(text := payload.get('last_assistant_message'), str) and text.strip() else transcript(payload)[0]
 
 
-def _confidence(text):
-    return m[1].lower() if (m := re.search(r'^Confidence:\s*(low|medium|high)\b', text or '', re.M | re.I)) else None
-
-
 def context(event, text):
     return {'hookSpecificOutput': {'hookEventName': event, 'additionalContext': text}}
 
@@ -125,7 +121,7 @@ def subagent_stop(root, payload):
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
     _, tokens, ended = transcript(payload)
     ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
-                                     'confidence': _confidence(last_text(payload)),
+                                     'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
@@ -301,14 +297,11 @@ def _goal(root, ref, repo):
     return found[0]['goal'] if found else 'unplanned'
 
 
-PLUGIN = Path(__file__).resolve().parents[2]
-
-
 def session_start(root, payload):
-    cli = str(PLUGIN / 'bin' / 'wuwei')
+    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
+        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
     for name in ('goals.md', 'standards.md'):
         path = Path(root) / ws.DIR / name
         if path.is_file() and path.read_text(encoding='utf-8').strip():
@@ -378,7 +371,7 @@ def door(payload):
         all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command))
 
 
-VENDORED = PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
+VENDORED = ws.PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
 
 
 def _sync(step, arg):

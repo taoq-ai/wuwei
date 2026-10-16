@@ -4,7 +4,6 @@ import re
 
 GATES = ('arch', 'quality', 'security', 'goal')
 VERDICTS = ('PASS', 'FIX', 'ESCALATE')
-CONFIDENCE = ('low', 'medium', 'high')
 FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:\d+(?:-\d+)?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal

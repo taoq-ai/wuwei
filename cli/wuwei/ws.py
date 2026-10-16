@@ -12,6 +12,7 @@ DIR = '.wuwei'
 DEFAULTS = {'repos': [], 'owner_paths': [], 'prioritisation': 'wsjf', 'tracker': 'github', 'telemetry': True}
 GENESIS = '0' * 64
 FORMAT = 1  # the ledger and verdict format; a later version still reads rows without 'v'
+PLUGIN = Path(__file__).resolve().parents[2]
 
 
 def find(start=None):
@@ -21,6 +22,10 @@ def find(start=None):
         if (candidate / DIR).is_dir():
             return candidate
     return None
+
+
+def version():
+    return json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
 
 
 def now():
