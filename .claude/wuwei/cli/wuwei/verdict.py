@@ -4,7 +4,7 @@ import re
 
 GATES = ('arch', 'quality', 'security', 'goal')
 VERDICTS = ('PASS', 'FIX', 'ESCALATE')
-FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:\d+(?:-\d+)?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
+FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:[0-9]+(?:-[0-9]+)?) )?blocks: (yes|no)\.?[ \t]*(.*)$', re.I)
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
@@ -41,7 +41,7 @@ def parse(text, strict=False):
     result['confidence'] = confident[1] if confident else result['confidence']
     if not confident:
         errors.append('Confidence: must start with low, medium or high')
-    match = re.fullmatch(r'([\w.-]+/[\w.-]+)(?:#(\d+))?', _field(text, 'PR'))
+    match = re.fullmatch(r'([\w.-]+/[\w.-]+)(?:#([0-9]+))?', _field(text, 'PR'))
     if match:
         result['repo'], result['pr'] = match[1], int(match[2]) if match[2] else None
     else:

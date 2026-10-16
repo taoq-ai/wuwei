@@ -33,8 +33,8 @@ SPEC_RULES = {
 ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
-PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
-                     r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
+PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
+                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
@@ -44,12 +44,12 @@ RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
-VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
+VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
-DEFERRED = re.compile(r'^(#+)\s+(?:\d+(?:\.\d+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
+DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
 REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
-REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|([\w.-]+/[\w.-]+)#(\d+)')
+REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
 
 
 def gap(text, actionable=True, owner=False):
@@ -182,7 +182,7 @@ def _rule(repo, path, rule, head):
         return f'{path} missing: run the spec engine step that writes it'
     if rule == 'checked':
         return _unchecked(path, text)
-    if rule == 'clarified' and not re.search(r'^##\s+(?:\d+(?:\.\d+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
+    if rule == 'clarified' and not re.search(r'^##\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
         return f'{path} has no ## Clarifications section: run clarify'
     if rule == 'clean':
         for line in text.splitlines():
@@ -349,7 +349,7 @@ def review_contexts(root, repo, rollup):
     """Unsettled statuses whose target_url run is of a workflow the repo runs on pull_request_review (1067-probe)."""
     try:
         runs = {c['context']: m[1] for c in rollup or () if 'context' in c and c.get('state') != 'SUCCESS'
-                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/(\d+)', c.get('url') or '', re.I))}
+                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/([0-9]+)', c.get('url') or '', re.I))}
         paths = runs and _cached(root, 'review-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo))
         return {context for context, run in runs.items() if paths and gh.workflow_paths(repo, f'/{run}')[0] in paths}
     except (gh.GhError, AttributeError, KeyError, IndexError, TypeError):

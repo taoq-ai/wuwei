@@ -65,6 +65,15 @@ def test_the_runtime_holds_its_size_budget():
     assert lines <= 3000, f'{lines} runtime lines: the constitution budget is 3000'
 
 
+def test_the_runtime_reads_numbers_in_ascii_digits_only():
+    found = []
+    for path in sorted((PLUGIN / 'cli' / 'wuwei').glob('*.py')):
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            if '\\d' in line or re.search(r'(?<!\.isascii\(\) and )\b\w+\.isdigit\(', line):
+                found.append(f'{path.name}:{number}')
+    assert found == []
+
+
 def test_hooks_json_routes_every_event_to_the_cli():
     hooks = json.loads((PLUGIN / 'hooks' / 'hooks.json').read_text())['hooks']
     assert set(hooks) == {'SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop'}

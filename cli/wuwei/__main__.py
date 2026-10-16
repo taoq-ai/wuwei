@@ -16,7 +16,7 @@ def _root():
 
 def _ref(text):
     repo, _, number = text.rpartition('#')
-    if not repo or not number.isdigit():
+    if not repo or not (number.isascii() and number.isdigit()):
         raise SystemExit('wuwei: name the PR as owner/repo#number')
     return repo, int(number)
 

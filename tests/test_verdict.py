@@ -25,6 +25,7 @@ def test_findings_parse_with_their_block_flag():
     (verdict_text(head='abc'), 'Head'),
     (verdict_text(gate='vibes'), 'Gate'),
     (verdict_text(pr='app#x'), 'PR'),
+    (verdict_text(pr='o/r#\uff17'), 'PR'),
     (verdict_text(findings='- src/app.py blocks: yes'), 'finding'),
     (verdict_text(findings='- [high] src/app.py:3 blocks: yes. Failure: it breaks.'), 'PASS'),
     ('Verdict: PASS\n', 'Findings'),
