@@ -17,7 +17,7 @@ Charters in `charters/` are the one source for `agents/`; sentinels are built fr
 - I. Stdlib only: no new import.
 - III. An auditor: no door or guard logic changes; strings only.
 - V. Test first: three tests ran red before the edits.
-- VI. Budgets: runtime stays at 3,000 lines.
+- VI. Budgets: runtime stays at 2,986 lines.
 
 ## Design
 

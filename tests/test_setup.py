@@ -35,7 +35,7 @@ def test_the_generated_agents_match_the_charters():
 @pytest.mark.parametrize('role', ['sentinel-arch', 'sentinel-goal', 'sentinel-quality', 'sentinel-security'])
 def test_every_gate_carries_the_worktree_write_mutant_and_stub_rules(role):
     text = ' '.join((PLUGIN / 'agents' / f'{role}.md').read_text().split())
-    for rule in ('never check out, reset or build in the main worktree', 'with the Write tool, never a shell heredoc',
+    for rule in ('check out, reset or build in the main worktree', 'with the Write tool, never a shell heredoc',
                  'Re-run every mutant you list as surviving', 'with a stub program on PATH',
                  '<owner/repo> alone before its draft PR exists'):
         assert rule in text, (role, rule)

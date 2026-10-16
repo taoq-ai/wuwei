@@ -36,7 +36,8 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
 4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
    folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
-   main worktree; copy the tree with `git archive` or `git worktree add` into your scratch folder.
+   main worktree. A gate copies the tree with `git archive <sha>` into its scratch folder (`git
+   worktree add` writes into the main clone's `.git`); a builder uses `git worktree add`.
 
 ## Boundaries
 

@@ -25,8 +25,8 @@ Charter rules, built into `agents/`, plus four wording fixes. The runtime does n
    record the sha256 of `tests/fixtures/routes.json`, and list a refusal naming a different PR or
    repository as its own row.
 7. `planner.md` approval and `lead.md` Scope: an item adding runtime lines states an estimate and
-   a budget about 1.5 times it; the planner checks the budget against the headroom (3,000 minus
-   the measured lines) before asking for approval and orders a free-lines item first when it does
+   a budget about 1.5 times it; the planner checks the budget against the headroom (the budget the
+   repository's own process states, minus the measured lines) before asking for approval and orders a free-lines item first when it does
    not fit.
 
 Wording: the verdict template PR line (`_gate.md:46`, `verdict.py:12`, `verdict.py:49`,
@@ -44,15 +44,15 @@ The acceptance scenarios, restated:
    names `<owner/repo> before its draft PR exists`.
 3. With only waiting work and no watch pass in the last hour, the Stop line says nothing will wake
    the session unless a check-in or PR subscription is armed.
-4. The runtime line count after the change is at most the count before (3,000).
+4. The runtime line count after the change is at most the count before (2,986 at 247d72e).
 5. `charters/planner.md` approval step names the budget check against headroom and the
    free-lines-first order.
 
 ## How this fails
 
-1. The new Stop line grows past its two source lines and pushes the runtime over 3,000, failing
-   `test_the_runtime_holds_its_size_budget`. Held: the edit replaces two lines with two lines; the
-   count stays 3,000.
+1. The new Stop line grows past its two source lines and pushes the runtime above 2,986 lines,
+   toward `test_the_runtime_holds_its_size_budget`. Held: the edit replaces two lines with two
+   lines; the count stays 2,986.
 2. A gate copies the tree with `git worktree add` but then runs a checkout from the main worktree's
    cwd and still moves the main HEAD. The rule names the forbidden actions (check out, reset,
    build) on the main worktree, not only the copy method, so the gate can check itself against it.
@@ -102,8 +102,8 @@ Acceptance 5, read in `charters/planner.md` The day 3.
 
 ## Requirements
 
-- FR-001: `_common.md` Evidence 4 and `_gate.md` rule 3 forbid check out, reset and build in the
-  main worktree and name `git archive` and `git worktree add`.
+- FR-001: `_common.md` Evidence 4 forbids check out, reset and build in the main worktree, gives
+  gates `git archive <sha>` and builders `git worktree add`; `_gate.md` rule 3 points to it once.
 - FR-002: `_gate.md` The verdict says Write tool, never a heredoc, with the reason.
 - FR-003: `_gate.md` rule 3 says re-run each surviving mutant in a fresh copy before listing it.
 - FR-004: `_gate.md` rule 4 holds the stub-execution rule.
@@ -121,6 +121,12 @@ Acceptance 5, read in `charters/planner.md` The day 3.
   the owner wants the advice dropped.
 - free-lines-3 (draft PR #1104) also edits `hook.py` and `verdict.py`; a merge of origin/main
   resolves any overlap. Overturned if #1104 rewrites the same two lines differently.
+
+- Arch review at dc733e0: the line-budget rule binds only a repository whose own process (its
+  constitution or AGENTS.md) states a runtime line budget, and names that source instead of 3,000;
+  the route-corpus sweep binds changes to the repository's guard code; the worktree sentence lives
+  once, in `_common.md`, so a gate does not carry it twice; gates copy with `git archive` alone.
+  Security note at dc733e0: a trust-boundary security finding blocks without a stub run.
 
 ## Rollback
 

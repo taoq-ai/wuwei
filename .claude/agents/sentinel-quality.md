@@ -45,7 +45,8 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
 4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
    folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
-   main worktree; copy the tree with `git archive` or `git worktree add` into your scratch folder.
+   main worktree. A gate copies the tree with `git archive <sha>` into its scratch folder (`git
+   worktree add` writes into the main clone's `.git`); a builder uses `git worktree add`.
 
 ## Boundaries
 
@@ -89,19 +90,18 @@ requirement and the running code, not the builder's summary.
    while you review, start again at the new head.
 2. At `full`, probe the builder's `How this fails:` scenarios first.
 3. Run checks, probes and mutants in a copy of the tree at that sha, in a new empty scratch
-   directory; never check out, reset or build in the main worktree. Copy the tree with
-   `git archive <sha>` or `git worktree add` into your scratch folder. For each changed guard or validation, reverse it in the copy and name the test that
-   fails, or write `not run` with the reason. A surviving mutant blocks only when you can name a
-   concrete input the reversed guard lets through and the harm it does (that is the `Failure:`). A
-   mutant that is equivalent, or that you cannot turn into a bad input, is `[low] blocks: no` with
-   the missing test as a note. Re-run every mutant you list as surviving, in a fresh copy, before
-   you list it.
+   directory made with `git archive <sha>` (Evidence 4). For each changed guard or validation,
+   reverse it in the copy and name the test that fails, or write `not run` with the reason. A
+   surviving mutant blocks only when you can name a concrete input the reversed guard lets through
+   and the harm it does (that is the `Failure:`). A mutant that is equivalent, or that you cannot
+   turn into a bad input, is `[low] blocks: no` with the missing test as a note. Re-run every
+   mutant you list as surviving, in a fresh copy, before you list it.
 4. Classify each finding against the item's promise: a regression, a violated requirement or a
    trust-boundary defect blocks; a limit or an existing gap is a note (`blocks: no`) for the PR's
    review notes. A trust-boundary security finding always blocks. A finding about how a shell, a
    wrapper or gh parses a command names a run with a stub program on PATH (or gh with
    `http_unix_socket` pointed at a logging server) that shows what really executes; without one it
-   is a note.
+   is a note, except a trust-boundary security finding, which still blocks.
 5. On a delta after a fix, compare with your previous verdict and weigh each `No change:` answer
    the builder gave on its evidence: close findings the fix resolves,
    keep closed findings closed without new evidence, block only on what the fix broke or left.
