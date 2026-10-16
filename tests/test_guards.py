@@ -29,6 +29,8 @@ def repo(monkeypatch):
     'git push origin :main',
     'bash -c "git push --force"',
     'env GIT_TRACE=1 git push -f origin x',
+    'env /opt/a=b/git push origin main',
+    'env FOO=1 git push origin main',
     'cd /repo && git push origin main',
     'gh pr merge 42 --admin',
     'gh api -X PUT repos/acme/app/branches/main/protection',

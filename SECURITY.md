@@ -38,6 +38,11 @@ A multi-line command, or one the reader cannot parse, that names a door program 
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
 that door-word rule; the leak scan does not read it.
 
+When a guard raises on a call, the hook refuses the call if it could pass a door: an edit (the tools
+in `guards.DOORS`, or a Codex `apply_patch`), any MCP tool, or a Bash command naming a door program
+or a network program (`curl`, `wget`, `ssh`, `scp`, `nc`), read with its quotes and backslashes
+removed. Any other call fails open and the error is recorded.
+
 The doors and what they leave to the code host are in section 6 of the
 [design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 

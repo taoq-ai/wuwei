@@ -20,6 +20,8 @@ NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
 READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
 UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
+DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
+         'create': ('create_pull_request',)}  # the tools a door holds; hook.door() reads it to fail closed
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
@@ -86,7 +88,7 @@ def _unwrap(tokens):
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
     if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
-        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
+        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and not re.match(r'[A-Za-z_]\w*=', a)  # not an option or NAME=value
                      and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
@@ -269,7 +271,7 @@ def pre_tool(root, payload):
     tool = payload.get('tool_name', '')
     data = payload.get('tool_input') or {}
     cwd = payload.get('cwd') or '.'
-    if tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
+    if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
         return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
             LEDGER.search(path) for path in paths) else None
@@ -294,12 +296,12 @@ def pre_tool(root, payload):
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
         return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
-    if tool.startswith('mcp__') and tool.endswith(('merge_pull_request', 'enable_pr_auto_merge')):
+    if tool.startswith('mcp__') and tool.endswith(DOORS['merge']):
         number = data.get('pullNumber', data.get('pull_number'))
         repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
         return leak(root, json.dumps(data)) or merge_door(root, repo, int(number) if str(number).isdigit() else None,
-                                                          auto=tool.endswith('enable_pr_auto_merge'))
-    if tool.startswith('mcp__') and tool.endswith('create_pull_request'):
+                                                          auto=tool.endswith(DOORS['merge'][1]))
+    if tool.startswith('mcp__') and tool.endswith(DOORS['create']):
         return leak(root, json.dumps(data)) or create_door(root, f'{data.get("owner")}/{data.get("repo")}', str(
             data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))
     if tool.startswith('mcp__'):
