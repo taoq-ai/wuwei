@@ -18,6 +18,7 @@ INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
+DOOR_WORDS = (('git', 'push'), ('gh', 'pr|api|repo'), ('wuwei', 'hook'))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
@@ -57,15 +58,15 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
+        lexer = shlex.shlex(command.replace('\\\n', ' '), posix=True, punctuation_chars='();<>|&\n')
+        lexer.whitespace, lexer.whitespace_split = ' \t\r', True
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens = list(lexer)
     except ValueError:
-        return []
+        return None
     out, current = [], []
     for token in tokens + [';']:
-        if token in CONTROL:
+        if token in CONTROL or '\n' in token and not token.strip('();<>|&\n'):
             if current:
                 out.extend(_unwrap(current))
             current = []
@@ -88,7 +89,7 @@ def _unwrap(tokens):
         while argv and Path(argv[0]).name not in WRAPPERS and argv[0].startswith('-'):
             argv = argv[1:]
     if len(argv) >= 3 and Path(argv[0]).name in SHELLS and argv[1] == '-c':
-        return segments(argv[2]) + ([([], targets)] if targets else [])
+        return (segments(argv[2]) or []) + ([([], targets)] if targets else [])
     return [(argv, targets)]
 
 
@@ -118,13 +119,11 @@ def git_push(root, args, cwd):
         if destination in ('', 'HEAD'):
             destination = current_branch(cwd)
         targets.append(destination.removeprefix('refs/heads/'))
-        if ref.startswith(':'):
-            deleting = True
+        deleting = deleting or ref.startswith(':')
     protected = _default(root, origin(cwd))
     hit = [t for t in targets if t in protected]
     if hit:
-        verb = 'deleting' if deleting else 'pushing to'
-        return deny(f'{verb} the default branch {hit[0]} refused: every change reaches it through a pull '
+        return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} refused: every change reaches it through a pull '
                     'request with its evidence. Push a branch and open a PR.')
     return None
 
@@ -206,11 +205,10 @@ def merge_door(root, repo, number, auto=False):
 
 
 def once(root, session, topic):
-    name = f'notes-{session}'
-    seen = ws.cache_get(root, name, 7 * 86400) or []
+    seen = ws.cache_get(root, f'notes-{session}', 7 * 86400) or []
     if topic in seen:
         return False
-    ws.cache_put(root, name, seen + [topic])
+    ws.cache_put(root, f'notes-{session}', seen + [topic])
     return True
 
 
@@ -226,7 +224,13 @@ def leak(root, text):
 
 
 def bash(root, command, cwd, session):
-    for argv, targets in segments(command):
+    parts = segments(command)
+    if (parts is None or re.search('[\r\n]', command)) and ('.wuwei/ledger' in command or any(
+            all(re.search(rf'\b({word})\b', command) for word in pair) for pair in DOOR_WORDS)):
+        return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
+                    '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
+                    'by --body-file, -F or a file written with Write.')
+    for argv, targets in parts or ():
         if any(LEDGER.search(t) for t in targets):
             return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
         if not argv:
