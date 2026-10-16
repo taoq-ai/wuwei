@@ -1,7 +1,7 @@
 {
   "about": "Every gh and git command the charters, skills and docs tell a seat to run, and the gh api commands seats ran in this workspace on 2026-10-16, each with the verdict main gives it: pass, or the door it reaches (merge, create, push, refusal). tests/test_guards.py reads each route through guards.bash with the code host stubbed: repository o/r, branch i-1-change, PR 5 with a safety gap. A guard change that moves a verdict edits this file. Placeholders in the sources are filled with o/r, 5, i-1-change and alice; workspace commands keep their repository and numbers, with local paths and pipes into local tools dropped. A route an item's acceptance names cites that item; gh's own {owner}/{repo} placeholders stay as typed, and gh fills them from the origin remote.",
   "routes": [
-    {"command": "gh pr create", "source": "charters/shepherd.md:7, charters/builder.md:69, charters/planner.md:27, charters/_way.md:13, skills/wuwei/SKILL.md:28, docs/site/concepts/doors.md:9", "verdict": "create"},
+    {"command": "gh pr create", "source": "charters/shepherd.md:7, charters/builder.md:69, charters/planner.md:27, charters/_way.md:13, skills/wuwei-rules/SKILL.md:28, docs/site/concepts/doors.md:9", "verdict": "create"},
     {"command": "gh pr create --title \"feat: x\" --body-file body.md", "source": "charters/shepherd.md:7-9, charters/_pr.md:1 (the body from the PR standard)", "verdict": "create"},
     {"command": "gh api -X POST repos/o/r/pulls -f head=i-1-change -f base=main -f title=x -F body=@body.md", "source": "charters/shepherd.md:8-10 (the cloud create route)", "verdict": "create"},
     {"command": "gh api repos/o/r/pulls -f head=i-1-change -f base=main", "source": "item doors-by-rest acceptance 1 (POST implied by a field)", "verdict": "create"},
@@ -25,7 +25,7 @@
     {"command": "gh api -X PUT http://api.github.com/repos/o/r/pulls/5/merge", "source": "security gate doors-by-rest at bf5ae3a (gh 2.89.0 accepts any case and scheme for the API host)", "verdict": "merge"},
     {"command": "gh pr merge --squash", "source": "docs/site/concepts/doors.md:8, docs/site/concepts/philosophy.md:51 (gh pr merge with no number)", "verdict": "merge"},
     {"command": "gh pr merge 5 --admin", "source": "docs/site/concepts/doors.md:10", "verdict": "refusal"},
-    {"command": "gh api -X PUT repos/o/r/branches/main/protection", "source": "docs/site/concepts/doors.md:10, skills/wuwei/SKILL.md:41", "verdict": "refusal"},
+    {"command": "gh api -X PUT repos/o/r/branches/main/protection", "source": "docs/site/concepts/doors.md:10, skills/wuwei-rules/SKILL.md:41", "verdict": "refusal"},
     {"command": "gh api -X POST repos/o/r/rulesets -F name=x", "source": "docs/site/concepts/doors.md:10", "verdict": "refusal"},
     {"command": "gh api repos/o/r/statuses/abc1234 -f state=success", "source": "docs/site/concepts/doors.md:10", "verdict": "refusal"},
     {"command": "gh api -X PUT repos/o/r/collaborators/alice", "source": "docs/site/concepts/doors.md:10", "verdict": "refusal"},
@@ -40,7 +40,7 @@
     {"command": "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'", "source": "item doors-by-rest acceptance 5", "verdict": "refusal"},
     {"command": "git push --force origin i-1-change", "source": "docs/site/concepts/doors.md:11, charters/_common.md:43", "verdict": "push"},
     {"command": "git push --force-with-lease origin i-1-change", "source": "docs/site/concepts/doors.md:11 (force pushes in every form)", "verdict": "push"},
-    {"command": "git push origin main", "source": "docs/site/concepts/doors.md:11, skills/wuwei/SKILL.md:41", "verdict": "push"},
+    {"command": "git push origin main", "source": "docs/site/concepts/doors.md:11, skills/wuwei-rules/SKILL.md:41", "verdict": "push"},
     {"command": "git push origin --delete main", "source": "docs/site/concepts/doors.md:11", "verdict": "push"},
     {"command": "gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true", "source": "item doors-by-rest acceptance 6", "verdict": "push"},
     {"command": "gh api -X PUT repos/o/r/contents/a.md -f branch=main", "source": "item doors-by-rest acceptance 6", "verdict": "push"},

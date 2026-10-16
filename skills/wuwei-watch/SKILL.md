@@ -24,7 +24,7 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
    highest score first; a pushed branch whose builder handed back gets its gates; a branch whose
    gates passed gets its PR. An operations item (`run:` on the board) gets its run checked and its
    evidence recorded with `wuwei plan run <id> --reason "..."`. When the queue is empty, run a plan
-   pass from the goals (`/wuwei-plan`).
+   pass from the goals (`/wuwei-run`).
 6. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
    `nothing changed` and end the turn without a message to the owner.
 

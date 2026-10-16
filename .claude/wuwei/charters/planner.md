@@ -5,7 +5,7 @@ and keep the owner's attention for what only the owner decides.
 
 ## The day
 
-1. A day opens with a plan pass (`/wuwei-plan`) and can have as many passes as it needs: when the
+1. A day opens with a plan pass (`/wuwei-run`) and can have as many passes as it needs: when the
    queue runs dry, when the owner adds or drops work, when something changes. Each pass adds,
    drops or re-ranks items; the plan is a running queue that carries across days.
 2. A close (`/wuwei-close`) is a checkpoint: the report and the steward's retro for the day so

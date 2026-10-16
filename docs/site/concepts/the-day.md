@@ -29,7 +29,7 @@ two-kilobyte paragraph. One picture, one answer.
 
 ## Plan passes
 
-A plan pass (`/wuwei-plan`) adds, drops or re-ranks items in `.wuwei/plan.json`. Run it as often as
+A plan pass (`/wuwei-run`) adds, drops or re-ranks items in `.wuwei/plan.json`. Run it as often as
 the day needs: in the morning, when the queue runs dry, when you add something, when priorities
 shift. The plan is a running queue that carries across days, not a daily document.
 

@@ -99,7 +99,7 @@ def test_init_cloud_vendors_the_plugin_into_the_repository(tmp_path, monkeypatch
     claude = tmp_path / '.claude'
     cli = claude / 'wuwei' / 'bin' / 'wuwei'
     assert os.access(cli, os.X_OK) and (claude / 'wuwei' / 'charters' / '_common.md').is_file()
-    assert (claude / 'skills' / 'wuwei-plan' / 'SKILL.md').is_file() and (claude / 'agents' / 'builder.md').is_file()
+    assert (claude / 'skills' / 'wuwei-run' / 'SKILL.md').is_file() and (claude / 'agents' / 'builder.md').is_file()
     assert not list((claude / 'wuwei').rglob('__pycache__'))
     assert (claude / 'wuwei' / '.gitignore').read_text() == '__pycache__/\n'  # running the copy leaves none to commit
     hooks = json.loads((claude / 'settings.json').read_text())['hooks']
@@ -228,7 +228,7 @@ def test_init_cloud_twice_keeps_other_hooks_and_writes_the_same_settings(tmp_pat
 
 
 def test_the_plan_skill_has_the_planner_read_tracker_measures_into_the_leads_brief():
-    skill = (PLUGIN / 'skills' / 'wuwei-plan' / 'SKILL.md').read_text()
+    skill = (PLUGIN / 'skills' / 'wuwei-run' / 'SKILL.md').read_text()
     launch = skill.index('Launch the lead')
     read = skill.index('tracker')
     assert read < launch, 'the planner reads tracker measures before it launches the lead'
@@ -240,3 +240,26 @@ def test_the_contributor_docs_run_the_suite_where_python3_lacks_pytest():
     for doc in ('AGENTS.md', 'CONTRIBUTING.md'):
         text = (PLUGIN / doc).read_text()
         assert '`python3 -m pytest -q`' in text and '`pytest -q` where' in text, doc
+
+
+def test_the_day_starts_with_wuwei_run_and_the_reference_is_wuwei_rules():
+    names = {path.parent.name for path in (PLUGIN / 'skills').glob('*/SKILL.md')}
+    assert {'wuwei-run', 'wuwei-rules', 'wuwei-watch', 'wuwei-close'} <= names and 'wuwei' not in names
+    stub = (PLUGIN / 'skills' / 'wuwei-plan' / 'SKILL.md').read_text()  # kept for one release so old routines still work
+    assert '/wuwei-run' in stub and 'renamed' in stub
+    for path in [*(PLUGIN / 'charters').glob('*.md'), *(PLUGIN / 'docs').rglob('*.md'), PLUGIN / 'README.md',
+                 *(PLUGIN / 'cli' / 'wuwei').glob('*.py'), *(PLUGIN / 'skills').glob('wuwei-[!p]*/SKILL.md')]:
+        assert '/wuwei-plan' not in path.read_text(), path
+
+
+def test_init_cloud_removes_the_retired_wuwei_skill_and_keeps_a_users_own(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    old = tmp_path / '.claude' / 'skills' / 'wuwei'
+    old.mkdir(parents=True)
+    (old / 'SKILL.md').write_text('---\nname: wuwei\ndescription: How work runs under WUWEI, the process auditor.\n---\n')
+    mine = tmp_path / '.claude' / 'skills' / 'deploy'
+    mine.mkdir()
+    (mine / 'SKILL.md').write_text('---\nname: deploy\n---\n')
+    setup.init(tmp_path, cloud=True)
+    assert not old.exists() and (mine / 'SKILL.md').is_file()
+    assert (tmp_path / '.claude' / 'skills' / 'wuwei-rules' / 'SKILL.md').is_file()

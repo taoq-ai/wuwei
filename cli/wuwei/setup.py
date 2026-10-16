@@ -60,6 +60,8 @@ def vendor(directory):
     for name in ('bin', 'cli', 'charters', '.claude-plugin'):
         shutil.copytree(PLUGIN / name, claude / 'wuwei' / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     ws.atomic_write(claude / 'wuwei' / '.gitignore', '__pycache__/\n')
+    if (old := claude / 'skills' / 'wuwei' / 'SKILL.md').is_file() and 'name: wuwei\n' in old.read_text(encoding='utf-8'):
+        shutil.rmtree(old.parent)  # 2.0 renamed WUWEI's reference skill to wuwei-rules; a repository's own skills stay
     for skill in (PLUGIN / 'skills').iterdir():
         shutil.copytree(skill, claude / 'skills' / skill.name, dirs_exist_ok=True)
     (claude / 'agents').mkdir(exist_ok=True)
@@ -85,11 +87,9 @@ def codex_files(directory):
 
 def init(directory, cloud=False, codex=False):
     directory = Path(directory).resolve()
-    base = directory / ws.DIR
-    base.mkdir(exist_ok=True)
-    done = []
+    (base := directory / ws.DIR).mkdir(exist_ok=True)
     from wuwei import upgrade
-    done += upgrade.run(directory)
+    done = list(upgrade.run(directory))
     if not (base / 'config.toml').is_file():
         repo = guards.origin(str(directory))
         ws.write_config(directory, {**ws.DEFAULTS, 'repos': [repo] if repo else []})

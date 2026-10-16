@@ -1,5 +1,5 @@
 ---
-name: wuwei
+name: wuwei-rules
 description: How work runs under WUWEI, the process auditor. Use when unsure what done means, why a call was refused, whether to ask the owner, or how to pull the andon cord.
 ---
 
