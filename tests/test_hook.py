@@ -246,10 +246,17 @@ def test_seat_tokens_are_counted_from_the_transcript(root, tmp_path):
     assert ws.rows(root, 'seat.stopped')[0]['data']['tokens'] == 320
 
 
+@pytest.mark.parametrize('text, confidence', [('done\n\nConfidence: High (reason)', 'high'), ('done', None)])
+def test_a_seat_records_its_confidence_or_null(root, text, confidence):
+    hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
+                                       'last_assistant_message': text, 'cwd': str(root)})
+    assert ws.rows(root, 'seat.stopped')[0]['data']['confidence'] == confidence
+
+
 def test_session_start_names_the_cli_and_refreshes_the_pointer(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']
-    cli = str(hook.PLUGIN / 'bin' / 'wuwei')
+    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
     assert f'WUWEI CLI: {cli}' in context
     assert (root / ws.DIR / 'executable').read_text().strip() == cli
 

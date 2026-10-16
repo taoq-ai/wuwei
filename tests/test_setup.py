@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 
 from wuwei import agents, setup, ws
 
@@ -82,6 +83,14 @@ def test_the_hero_matches_its_generator():
     spec.loader.exec_module(hero)
     for name, palette in hero.PAL.items():
         assert (PLUGIN / 'docs' / 'site' / 'assets' / f'hero-{name}.svg').read_text() == hero.svg(palette), name
+
+
+def test_one_module_holds_the_plugin_path_and_its_version_and_dead_definitions_are_gone():
+    texts = {path.name: path.read_text() for path in (PLUGIN / 'cli' / 'wuwei').glob('*.py')}
+    assert [name for name, text in texts.items() if 'Path(__file__).resolve().parents[2]' in text] == ['ws.py']
+    assert sum(text.count("'plugin.json'") for text in texts.values()) == 1
+    assert not [name for name, text in texts.items() if re.search(r'^CONFIDENCE =|def _confidence\(', text, re.M)]
+    assert ws.version() == json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']
 
 
 def test_version_is_the_plugin_version(capsys):

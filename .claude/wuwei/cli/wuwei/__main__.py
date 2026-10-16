@@ -2,12 +2,9 @@
 
 import argparse
 import json
-from pathlib import Path
 import sys
 
 from wuwei import agents, board, evidence, hook, plan, report, setup, ws
-
-PLUGIN = Path(__file__).resolve().parents[2]
 
 
 def _root():
@@ -179,21 +176,17 @@ def cmd_verify(args):
 
 def cmd_agents(args):
     if args.action == 'build':
-        agents.build(PLUGIN)
-    stale = agents.stale(PLUGIN)
+        agents.build(ws.PLUGIN)
+    stale = agents.stale(ws.PLUGIN)
     print('agents match the charters' if not stale else 'stale: ' + ', '.join(stale))
     return 1 if stale else 0
 
 
-def version():
-    return json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
-
-
 def main(argv=None):
     if (sys.argv[1:] if argv is None else argv)[:1] == ['--version']:
-        print(version())
+        print(ws.version())
         return 0
-    parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {version()}')
+    parser = argparse.ArgumentParser(prog='wuwei', description=f'WUWEI {ws.version()}')
     sub = parser.add_subparsers(dest='command', required=True)
     actions = {'show': '[id]: the ranked plan, or one item as JSON', 'add': '<id> "<title>" | --from <file>',
                'park': '<id> --reason', 'drop': '<id> --reason', 'done': '<id> --reason', 'restore': '<id>: reopen',

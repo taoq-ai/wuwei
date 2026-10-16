@@ -927,3 +927,27 @@ def test_a_body_file_wuwei_cannot_read_is_named_as_the_cause_not_only_missing_ga
     reason = guards.bash(root, 'S=.; gh pr create --title x --body-file "$S/pr.md"', str(root), 's1')['reason']
     assert 'no plan item is named' in reason and 'literal path' in reason  # #1098: the gates passed; the trailer was unread
     assert guards.bash(root, 'gh pr create --title x --body-file pr.md', str(root), 's1')['decision'] == 'note'
+
+
+def test_origin_and_branch_read_a_real_repository_and_answer_blank_on_a_bad_cwd(tmp_path):
+    import subprocess
+    subprocess.run(['git', 'init', '-q', '-b', 'i-1-x', str(tmp_path)], check=True)
+    subprocess.run(['git', '-C', str(tmp_path), 'remote', 'add', 'origin', 'https://github.com/o/r.git'], check=True)
+    subprocess.run(['git', '-C', str(tmp_path), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q',
+                    '--allow-empty', '-m', 'x'], check=True)
+    assert (guards.origin(str(tmp_path)), guards.current_branch(str(tmp_path))) == ('o/r', 'i-1-x')
+    (tmp_path / 'file').write_text('')
+    assert (guards.origin(str(tmp_path / 'file')), guards.current_branch(str(tmp_path / 'file'))) == ('', '')
+
+
+def test_origin_and_branch_answer_blank_when_git_cannot_run(monkeypatch):
+    import subprocess
+    for error in (OSError('no git'), subprocess.TimeoutExpired('git', 5)):
+        monkeypatch.setattr(subprocess, 'run', lambda *a, error=error, **k: (_ for _ in ()).throw(error))
+        assert (guards.origin('/w'), guards.current_branch('/w')) == ('', '')
+
+
+def test_the_pr_standard_note_is_the_charter_with_the_plugin_version(root, fake, repo):
+    version = json.loads((Path(guards.__file__).parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']
+    text = (Path(guards.__file__).parents[2] / 'charters' / '_pr.md').read_text(encoding='utf-8').strip()
+    assert guards.pre_tool(root, bash('gh pr create --fill'))['reason'] == text.replace('<version>', version)
