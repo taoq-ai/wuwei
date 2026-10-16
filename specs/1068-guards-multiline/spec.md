@@ -42,17 +42,28 @@ The runtime stays at 3,000 lines: the lines come out of guards.py and hook.py.
 
 - A heredoc that never ends is read as commands, not dropped (an arithmetic `$((1<<2))` or a `<<` in
   text must not hide the lines after it).
-- An unquoted heredoc whose body runs `$(...)` or backticks is read as commands: sh runs them.
+- An unquoted heredoc whose body runs `$(...)` or backticks, or holds a backslash-newline, is read as
+  commands: sh expands it, and joins the continuation before it compares a line with the delimiter.
+- Once a body cannot be dropped (its terminator is missing, or it is unquoted and expands), no later
+  heredoc starts, so each command is scanned in linear time.
 - Several heredocs on one line are read in order, each body starting where the last ended. Once one
   body cannot be dropped, it and every later body on that line are read as commands.
-- From the first unquoted `((` (which covers `$((`), `${` or `[` joined to the character before it
-  (`$[`, `a[`, `([`), no heredoc body is dropped for the rest of the command. bash 5.2 reads the `<<`
+- From the first unquoted opener, no heredoc body is dropped for the rest of the command. The
+  openers are `((` (which covers `$((`), `${`, `[` joined to the character before it (`$[`, `a[`,
+  `([`), `=(` and `+=(` (a compound array, where `[k<<EOF ]` is a subscript) and the extglob groups
+  `?(`, `*(`, `+(`, `@(`, `!(`. They are read from the text sh reads, so a backslash-newline
+  between their two characters does not hide them. bash 5.2 reads the `<<`
   in `$((1<<EOF))`, `$[1<<EOF]`, `${x:1<<EOF }` and `a[1<<EOF ]=x` as a shift and runs the next
   line. The flag is one-way, so no paren shape can turn body dropping back on.
 - Accepted cost, pinned by a test: a heredoc whose body names a door, after a closed `$((..))` or a
   `${..}`, is refused. The lead's spike found 1 such command in 506 real commands.
 - A quoted heredoc keeps a trailing backslash in its body literal, so its delimiter still ends it.
 - A `#` that starts a word begins a comment to the end of the line; `owner/repo#42` stays a word (#1038).
+  After an opener no comment is skipped, since `${x:- #}` holds a `#` that is not a comment.
+- A token made only of `();|&` and backticks separates commands, so `` x=`date`; git push `` and
+  `true;(git push ...)` meet their doors.
+- Nested shell heredocs too deep to read raise `RecursionError`, which is refused like an unreadable
+  command when it names a door.
 
 ## Requirements
 
@@ -91,14 +102,27 @@ into a shell (`cat <<EOF | sh`).
   closed single parens or nested `$( )` (`$(((1)) <<EOF )`, `$(( $(echo $(echo 1))<<EOF ))`), and
   `$[`, `${` and `a[` were not tracked at all. A: a one-way flag replaces the counter; a paren stack
   was rejected because a mis-pop reopens body dropping, the failure class of both fix rounds.
+- Q (redesign fix round 1): the gates showed a compound-array subscript, an extglob group, an opener
+  split by a backslash-newline, a backtick merged with `;` by shlex, an unquoted body joined by a
+  backslash-newline, a `#` inside `${...}`, deep nesting and a quadratic rescan. A: openers are read
+  as two characters from the text sh reads, with `=(` and the extglob groups added; a separator is
+  any token of `();|&` and backticks; an unquoted body with a backslash-newline is not dropped;
+  comments are skipped only before an opener; `RecursionError` is refused; a missing body sets the
+  flag. Real bash 5.2.21 with logging stand-ins for git, gh, wuwei and rm ran the door line in each
+  refusing input.
 
 ## Assumptions
 
-- A heredoc body line is read literally when matching its delimiter, even for an unquoted delimiter
-  where sh would join a trailing backslash. Overturned by a case where that ends a body early and
-  hides a command; ending early only reads more lines as commands, so it fails closed.
-- The expansion flag is set only outside quotes and comments. A `[` after whitespace (`[ -f x ]`,
-  `[[ ... ]]`) does not set it. A joined `[` in a glob or a format string (`foo[1]`, `--format=[%h]`)
-  does, which can only add refusals.
+- A quoted heredoc body line is read literally when matching its delimiter. An unquoted body that
+  holds a backslash-newline is not dropped at all, so the join sh makes there cannot end it early.
+- The expansion flag is set only outside quotes and comments. A `[` after whitespace (`[ -f x ]`)
+  does not set it. `[[` does: its second `[` is joined to the first, so a heredoc after `[[ ... ]]`
+  is read as commands. A joined `[` in a glob or a format string (`foo[1]`, `--format=[%h]`) sets it
+  too. Each of these can only add refusals.
+- `=(` sets the flag, so an ordinary array assignment (`a=(1 2)`) stops later body dropping. That is
+  the accepted cost of reading `a=( [1<<EOF ]=x )`, where bash runs the next line. Overturned by
+  measured refusals on real commands outweighing the bypass.
+- The refusal cannot tell whether the flag made the command unreadable, so it always names the third
+  way out: give a heredoc that follows an expansion, an array or `((` its own Bash call.
 - `gh pr create` text inside a heredoc body now triggers the PostToolUse PR note when the output
   also holds a PR URL. That note is advice only.

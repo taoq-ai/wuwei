@@ -20,11 +20,13 @@ Python 3.11+ stdlib, `cli/wuwei/guards.py` and one line of `cli/wuwei/hook.py`. 
    `<< '<body>'` once its delimiter line is found. An unterminated heredoc, or an unquoted one whose
    body holds `$(` or a backtick, is left to be read as commands.
    Bodies on one line are read in order; the first that cannot be dropped stops the dropping for
-   that line. From the first unquoted `((`, `${` or joined `[`, a one-way flag stops any later heredoc
-   body from being dropped.
+   that line, and so does a one-way flag set at the first opener: `((`, `${`, a joined `[`, `=(` or an
+   extglob group, matched on the last character emitted and the current one, so a continuation
+   between them does not hide it. A missing or expanding body sets the same flag.
+   A token made only of `();|&` and backticks separates commands.
 2. `segments()` lexes `_lines(command)` and lets `ValueError` propagate. `_unwrap()` collects `<<`
    bodies and reads them as commands when the program is a shell.
-3. `bash()` catches `ValueError` and refuses when `DOORS` matches the raw text.
+3. `bash()` catches `ValueError` and `RecursionError` and refuses when `DOORS` matches the raw text.
 
 ## Rollback
 

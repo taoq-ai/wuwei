@@ -341,6 +341,28 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     'echo "hi"\ngit push --force origin x',
     "echo 'a\\'\ngit push --force origin x",
     'git push origin ma\\\nin',
+    'a=( [1<<EOF ]=x )\ngit push --force origin x\nEOF',
+    'a+=( [1<<EOF ]=x )\ngit push --force origin x\nEOF',
+    'declare -A m=( [k<<EOF ]=v )\ngit push --force origin x\nEOF',
+    'a=(\n[1<<EOF ]=x )\ngit push --force origin x\nEOF',
+    'a=([1<<EOF ]=x)\ngit push --force origin x\nEOF',
+    'shopt -s extglob; echo @(a<<EOF )\ngit push --force origin x\nEOF',
+    'echo $(\\\n(1<<EOF))\ngit push --force origin x\nEOF',
+    'x=2; echo $\\\n{x:1<<EOF }\ngit push --force origin x\nEOF',
+    'echo $\\\n[1<<EOF]\ngit push --force origin x\nEOF]',
+    'a\\\n[1<<EOF ]=x\ngit push --force origin x\nEOF',
+    '(\\\n(1<<EOF))\ngit push --force origin x\nEOF',
+    'x=`date`; git push --force origin x',
+    'x=`date`; gh pr merge 5 --admin',
+    'x=`date`; wuwei hook Stop',
+    'x=`date`; rm .wuwei/ledger/x',
+    'true;(git push --force origin x)',
+    'cat <<EOF\n$\\\n(git push --force origin x)\nEOF',
+    'cat <<EOF\nEO\\\nF\ngit push --force origin x\nEOF',
+    'echo ${x:- #}; git push --force origin x',
+    'x=${y:- #}; gh pr merge 5 --admin',
+    'cat <<<EOF\ngit push --force origin x\nEOF',
+    'x\\\n#;git push --force origin y',
 ])
 def test_a_command_on_a_later_line_meets_its_door(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
@@ -379,6 +401,7 @@ def test_a_quoted_newline_stays_in_its_word(root, fake, repo):
     "echo '(('; cat <<'EOF'\ngit push --force origin x\nEOF",
     "case y in x) :;; esac; cat <<'EOF'\ngit push --force origin x\nEOF",
     "[ -f x ] && cat <<'EOF'\ngit push --force origin x\nEOF",
+    "cat <<'EOF' # it's a note\nhello\nEOF\ngit push origin feature",
     "python3 - <<'EOF'\nfrom pathlib import Path\np = Path('.claude/settings.json')\n"
     "s = p.read_text().replace('old', '\"$CLAUDE_PROJECT_DIR\"/.claude/wuwei/bin/wuwei hook SubagentStop')\n"
     "p.write_text(s)\nEOF",
@@ -390,3 +413,21 @@ def test_ordinary_multi_line_work_passes(root, fake, repo, command):
 def test_an_unreadable_refusal_names_the_way_out_for_a_body_and_a_commit(root, repo):
     reason = guards.pre_tool(root, bash('git commit -m "$(cat <<\'EOF\'\nthe 3" pipe\nEOF\n)" && git push origin x'))['reason']
     assert '--body-file' in reason and 'git commit -F' in reason
+
+
+def test_nested_shell_heredocs_too_deep_to_read_are_refused(root, repo):
+    command = ''.join(f"bash <<'E{k}'\n" for k in range(600)) + 'git push --force origin x\n' + ''.join(
+        f'E{k}\n' for k in reversed(range(600)))
+    assert guards.pre_tool(root, bash(command))['decision'] == 'deny'
+
+
+def test_many_unterminated_heredocs_are_read_in_linear_time(root, repo):
+    import time
+    start = time.monotonic()
+    assert guards.pre_tool(root, bash('cat <<A\n' * 32000 + 'git push --force origin x'))['decision'] == 'deny'
+    assert time.monotonic() - start < 5
+
+
+def test_an_unreadable_refusal_after_an_expansion_names_its_own_bash_call(root, repo):
+    reason = guards.pre_tool(root, bash("BR=${BR:-x}; git commit -F - <<'EOF'\nfix: don't drop\nEOF\ngit push origin $BR"))['reason']
+    assert 'its own Bash call' in reason

@@ -12,7 +12,6 @@ from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice'}
-CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')', '`'}
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
@@ -21,6 +20,7 @@ WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 DOORS = re.compile(r'\bgit\b.*\bpush\b|\bgh\b.*\b(pr|api|repo)\b|\bwuwei\b.*\bhook\b|\.wuwei/ledger', re.S)
+OPENER = re.compile(r'[(=?*+@!]\(|\$\{|\S\[')  # arithmetic, expansions, subscripts, arrays, extglob: there << may be a shift
 HEREDOC = re.compile(r'(?<!<)<<(-?)[ \t]*((?:[^\s;&|()<>\'"\\]|\'[^\']*\'|"[^"]*"|\\.)+)')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
 GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators'
@@ -56,27 +56,27 @@ def current_branch(cwd):
 
 def _lines(command):
     """The command as sh reads its lines: a newline outside quotes ends a command, a backslash-newline joins
-    two lines, a comment ends; a heredoc body is one quoted word after its <<, or commands once ((, ${ or a joined [ came."""
-    out, quote, waiting, i, expansion = [], '', [], 0, False
-    while i < len(command):
-        c = command[i]
+    two lines, a comment ends; a heredoc body is one quoted word after its <<, until an OPENER or a missing body."""
+    out, quote, waiting, i, expansion = [' '], '', [], 0, False  # out[-1][-1] is the last character sh reads
+    while c := command[i:i + 1]:
         if quote and (quote == "'" or c != '\\'):
             quote = '' if c == quote else quote
         elif c == '\\':
             c, i = ('' if command[i + 1:i + 2] == '\n' else command[i:i + 2]), i + 1
         elif c in '\'"':
             quote = c
-        elif c == '#' and command[i - 1:i] in ('', ' ', '\t', '\n', ';', '&', '|', '(', ')'):
+        elif c == '#' and not expansion and out[-1][-1] in ' \t;&|()':
             c, i = '', (command + '\n').index('\n', i) - 1
         elif c == '\n':
             for delimiter, strip, slot, word in waiting:
-                body = re.match(r'(.*?)^' + ('\t*' if strip else '') + re.escape(delimiter) + r'$\n?', command[i + 1:], re.S | re.M)
-                if not body or word == delimiter and re.search(r'\$\(|`', body[1]):  # unquoted: sh runs $(...)
-                    break  # in order: this body and the ones after it are read as commands
-                out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
+                body = re.compile(r'(?sm)(.*?)^' + ('\t*' if strip else '') + re.escape(delimiter) + r'$\n?').match(command, i + 1)
+                if not body or word == delimiter and re.search(r'\$\(|`|\\\n', body[1]):  # unquoted: sh expands it
+                    expansion = True  # this body and every later one are read as commands, and nothing rescans
+                    break
+                out[slot], i = shlex.quote(body[1].removesuffix('\n')), body.end() - 1
             waiting, c = [], ' ; '
-        elif not expansion and re.compile(r'\(\(|\$\{|(?<=\S)\[').match(command, i):  # one way: no pairing to get wrong
-            expansion = True  # a << after ((, ${ or a joined [ may be a shift, so no later body is dropped
+        elif OPENER.fullmatch(out[-1][-1] + c):  # read across a continuation, which out leaves out
+            expansion = True  # one way, no pairing to get wrong: no later heredoc body is dropped
         elif c == '<' and not expansion and (here := HEREDOC.match(command, i)):
             waiting.append((re.sub(r'[\'"\\]', '', here[2]), here[1], len(out) + 1, here[2]))
             c, i = ['<< ', "''"], here.end() - 1
@@ -92,7 +92,7 @@ def segments(command):
     lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
     out, current = [], []
     for token in list(lexer) + [';']:
-        if token not in CONTROL:
+        if not re.fullmatch(r'[();|&`]+', token):
             current.append(token)
         elif current:
             out.extend(_unwrap(current))
@@ -117,11 +117,9 @@ def _unwrap(tokens):
 
 
 def _default(root, repo):
-    if not repo:
-        return {'main', 'master'}
     name = 'default-' + repo.replace('/', '__')
     try:
-        return {ws.cache_get(root, name, 86400) or ws.cache_put(root, name, gh.default_branch(repo))}
+        return {ws.cache_get(root, name, 86400) or ws.cache_put(root, name, gh.default_branch(repo))} if repo else {'main', 'master'}
     except gh.GhError:
         return {'main', 'master'}
 
@@ -242,9 +240,10 @@ def leak(root, text):
 def bash(root, command, cwd, session):
     try:
         parsed = segments(command)
-    except ValueError as exc:
+    except (ValueError, RecursionError) as exc:
         return DOORS.search(command) and deny(f'cannot read this command ({exc}) and it names a door (git push, gh, wuwei hook, '
-                                              'the ledger): close the quote, or put the text in a file (gh --body-file, git commit -F).')
+                                              'the ledger): close the quote, put the text in a file (gh --body-file, git commit -F), '
+                                              'or give a heredoc that follows an expansion, an array or (( its own Bash call.')
     for argv, targets in parsed:
         program = Path(argv[0]).name if argv else ''
         if any(LEDGER.search(t) for t in targets) or any(LEDGER.search(a) for a in argv[1:]) and (
