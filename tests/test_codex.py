@@ -37,6 +37,12 @@ def test_an_apply_patch_that_writes_the_ledger_is_refused(root):
     assert pre(root, 'apply_patch', {'command': PATCH.replace('.wuwei/ledger/0a1b2c3d.jsonl', 'src/new.py')}) is None
 
 
+def test_a_malformed_apply_patch_is_refused_and_recorded_without_crashing_the_hook(root):
+    out = pre(root, 'apply_patch', 'not a patch object')['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'the hook failed' in out['permissionDecisionReason']
+    assert ws.rows(root, 'hook.error')
+
+
 def test_a_spawned_codex_agent_is_a_running_seat(root):
     data = {'agent_type': 'sentinel-quality', 'task_name': 'quality gate', 'message': 'review I-1'}
     pre(root, 'spawn_agent', data)

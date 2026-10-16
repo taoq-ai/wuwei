@@ -57,7 +57,10 @@ def running(root):
 
 
 def pre_tool(root, payload):
-    ws.cache_put(root, 'hook-seen', ws.now().timestamp())  # the doctor's hooks row reads it
+    try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
+        ws.cache_put(root, 'hook-seen', ws.now().timestamp())
+    except Exception as exc:
+        print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
@@ -347,12 +350,11 @@ def codex(payload):
 
 
 def handle(root, event, payload):
-    payload = codex(payload)
     handler = HANDLERS.get(event)
     if handler is None:
         return None
     try:
-        return handler(root, payload)
+        return handler(root, codex(payload))
     except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
         message = f'{type(exc).__name__}: {exc}'[:300]
         print(f'wuwei hook {event}: {message}', file=sys.stderr)
@@ -367,12 +369,13 @@ def handle(root, event, payload):
 
 
 def door(payload):
-    """A Bash command naming a door program (guards.DOOR_WORDS), an MCP merge, auto-merge or create-PR tool, or an edit."""
+    """An edit (guards.DOORS, or a Codex apply_patch), any MCP tool (the leak check), or a Bash command naming a door
+    program (guards.DOOR_WORDS) or a network program, read with its quotes and backslashes removed."""
     tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
-    command = str(data.get('command', '')) if isinstance(data, dict) else ''
-    return tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit') or tool.startswith('mcp__') and tool.endswith(
-        ('merge_pull_request', 'enable_pr_auto_merge', 'create_pull_request')) or tool == 'Bash' and any(
-        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS)
+    command = re.sub(r'[\'"\\]', '', str(data.get('command', ''))) if isinstance(data, dict) else ''
+    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\s|$)'
+    return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(
+        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command))
 
 
 VENDORED = PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud

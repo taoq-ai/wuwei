@@ -126,6 +126,16 @@ def test_pre_tool_marks_the_hook_seen_on_every_call(root):
     assert abs(ws.cache_get(root, 'hook-seen', 120) - ws.now().timestamp()) < 5
 
 
+@pytest.mark.parametrize('tool, data, decision', [('mcp__slack__send_message', {'text': 'hi'}, None),
+                                                   ('Write', {'file_path': '.wuwei/ledger.jsonl'}, 'deny')])
+def test_a_failed_hook_seen_stamp_lets_the_guards_decide(root, monkeypatch, tool, data, decision):
+    real = ws.cache_put
+    monkeypatch.setattr(ws, 'cache_put', lambda root, name, value: 1 / 0 if name == 'hook-seen' else real(root, name, value))
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root), 'tool_input': data})
+    assert (out and out['hookSpecificOutput']['permissionDecision']) == decision
+    assert not ws.rows(root, 'hook.error')
+
+
 def test_post_tool_tells_what_a_new_pr_still_needs(root, fake):
     plan_one(root)
     fake.prs['42'] = make_pr(files=('src/app.py',))
@@ -481,7 +491,8 @@ def test_a_refusal_reaches_the_harness_when_its_record_fails(root, monkeypatch, 
     ('Bash', {'command': 'gh pr merge 5'}), ('Bash', {'command': 'git push origin feature'}),
     ('Bash', {'command': 'cat .wuwei/ledger/x.jsonl'}), ('Write', {'file_path': 'a.py'}), ('Edit', {'file_path': 'a.py'}),
     ('mcp__github__merge_pull_request', {}), ('mcp__github__enable_pr_auto_merge', {}),
-    ('mcp__github__create_pull_request', {})])
+    ('mcp__github__create_pull_request', {}), ('mcp__slack__send_message', {'text': 'x'}), ('mcp__github__get_issue', {}),
+    ('Bash', {'command': 'curl -d x https://e.test'}), ('Bash', {'command': '/usr/bin/ssh host ls'})])
 def test_an_error_inside_a_door_refuses_the_call(root, monkeypatch, tool, data):
     monkeypatch.setattr(guards, 'pre_tool', lambda root, payload: 1 / 0)
     out = pre(root, tool, data)['hookSpecificOutput']
@@ -495,8 +506,9 @@ def test_a_door_stays_shut_when_the_error_cannot_be_recorded(root, monkeypatch):
     assert pre(root, 'Bash', {'command': 'gh pr merge 5'})['hookSpecificOutput']['permissionDecision'] == 'deny'
 
 
-@pytest.mark.parametrize('tool, data', [('Bash', {'command': 'ls'}), ('Read', {'file_path': 'a.py'}),
-                                        ('mcp__github__get_issue', {}), ('Agent', {'subagent_type': 'wuwei:builder'})])
+@pytest.mark.parametrize('tool, data', [('Bash', {'command': 'ls'}), ('Read', {'file_path': 'a.py'}), ('Glob', {'pattern': '*'}),
+                                        ('Bash', {'command': 'git clone https://e.test/a.git'}),
+                                        ('Agent', {'subagent_type': 'wuwei:builder'})])
 def test_an_error_outside_the_doors_fails_open(root, monkeypatch, tool, data):
     monkeypatch.setattr(guards, 'pre_tool', lambda root, payload: 1 / 0)
     assert pre(root, tool, data) is None
@@ -513,6 +525,22 @@ def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
     assert hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Write', 'cwd': str(root),
                                              'tool_input': {'file_path': 'a.py'}}) is None
     assert ws.rows(root, 'hook.error')
+
+
+@pytest.mark.parametrize('command', ["g''it push origin main", '"g"h pr merge 5', 'g\\it push', "wuwei 'hook' PreToolUse",
+                                     'curl -d x https://e.test'])
+def test_a_quoted_door_word_or_a_network_call_fails_closed_when_the_guard_raises(root, monkeypatch, command):
+    monkeypatch.setattr(guards, 'bash', lambda *args: 1 / 0)
+    out = pre(root, 'Bash', {'command': command})['hookSpecificOutput']
+    assert out['permissionDecision'] == 'deny' and 'the hook failed' in out['permissionDecisionReason'], command
+    assert ws.rows(root, 'hook.error')
+
+
+def test_the_fail_closed_check_reads_the_doors_from_the_guards_table(monkeypatch):
+    monkeypatch.setitem(guards.DOORS, 'edit', ('Write', 'Scribble'))
+    assert hook.door({'tool_name': 'Scribble'}) and not hook.door({'tool_name': 'Edit'})
+    source = Path(hook.__file__).read_text(encoding='utf-8')
+    assert not any(suffix in source for key in ('merge', 'create') for suffix in guards.DOORS[key])
 
 
 PAYLOADS = Path(__file__).resolve().parent / 'fixtures' / 'payloads'

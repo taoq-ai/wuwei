@@ -131,8 +131,9 @@ inside a loop, an if or a brace group, a shell's `-c` body after combined flags 
 after a wrapper (env, timeout, nice, sudo, xargs), the first program a door reads.
 Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 
-A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (a Bash
-command naming a door program, an MCP merge, auto-merge or create-PR tool, a Write or Edit) refuses
+A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (an edit
+tool in `guards.DOORS` or a Codex apply_patch, any MCP tool, or a Bash command that names a door program
+or a network program in `guards.NETWORK`, read with its quotes and backslashes removed) refuses
 it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`. `wuwei doctor` reports each door's strength per repository: wall (code host or
 credentials), refused (hook), detected (audit).
 
