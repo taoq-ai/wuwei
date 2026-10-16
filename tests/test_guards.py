@@ -951,3 +951,14 @@ def test_the_pr_standard_note_is_the_charter_with_the_plugin_version(root, fake,
     version = json.loads((Path(guards.__file__).parents[2] / '.claude-plugin' / 'plugin.json').read_text())['version']
     text = (Path(guards.__file__).parents[2] / 'charters' / '_pr.md').read_text(encoding='utf-8').strip()
     assert guards.pre_tool(root, bash('gh pr create --fill'))['reason'] == text.replace('<version>', version)
+
+
+def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
+    from test_evidence import not_started
+    not_started(root, fake)
+    decision = guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
+    decision = guards.bash(root, 'gh pr merge 5 -R o/r --squash', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
+    fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+    assert guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1') is None

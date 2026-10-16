@@ -2,7 +2,8 @@
 
 A pull request is done when its safety evidence is complete. `wuwei evidence owner/repo#n` lists one
 PR's safety gaps; `wuwei status` lists every open item's. Each gap is **actionable** (the team can close it
-now), **waiting** (CI running, the code host unreadable, an andon) or **yours** (an owner review).
+now), **waiting** (CI running, CI not started at a head with no checks yet, the code host unreadable, an
+andon) or **yours** (an owner review).
 
 WUWEI never asks how the work was done. A test is in the diff or it is not; a reviewer passed this
 head or did not.

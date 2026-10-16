@@ -723,3 +723,84 @@ def test_the_manifest_takes_path_keys_with_a_strict_version_and_only_changelog_m
     assert release_gaps(root, fake, patches={'.release-please-manifest.json': deletes}) == BOTH
     release_gaps(root, fake, files=RELEASE + ('NOTES.md',))
     assert not evidence.release('acme/app', gh.pr('acme/app', 42))
+
+
+def not_started(root, fake, runs=(('1', '.github/workflows/ci.yml', 'pull_request'),), verdict='PASS', head=HEAD):
+    """o/r#5 as #1085 met it: a pushed head GitHub has not yet given a check run or a status."""
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    fake.runs = {i: (p, e) for i, p, e in runs}
+    fake.prs['5'] = make_pr(number=5, checks=None)
+    attest(root, 'quality', head, verdict)
+
+
+def test_a_head_with_no_checks_in_a_repo_with_pull_request_ci_reads_ci_not_started(root, fake, monkeypatch, capsys):
+    from wuwei import __main__ as cli
+    not_started(root, fake)
+    monkeypatch.chdir(root)
+    assert cli.main(['evidence', 'o/r#5']) == 1
+    out = capsys.readouterr().out
+    assert out.strip() == '- CI not started at aaaaaaa [waiting]' and 'no gaps' not in out
+    assert ['api', 'repos/o/r/actions/runs?event=pull_request&per_page=1'] in fake.calls
+
+
+def test_a_repo_that_never_ran_a_pull_request_workflow_gets_no_ci_gap(root, fake):
+    not_started(root, fake, runs=(('1', '.github/workflows/release.yml', 'push'),))
+    assert evidence.gaps(root, 'o/r', 5) == []
+
+
+@pytest.mark.parametrize('reply', [gh.GhError('HTTP 403: Resource not accessible by integration'), {'workflow_runs': None},
+                                   'not json'])
+def test_an_unreadable_actions_host_counts_as_having_ci(root, fake, monkeypatch, reply):
+    not_started(root, fake)
+
+    def answer(args, timeout=30):
+        if 'actions/runs' not in args[1]:
+            return fake(args, timeout)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(gh, 'run', answer)
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+
+
+def test_the_actions_read_is_cached_a_day_per_repository(root, fake):
+    not_started(root, fake)
+    evidence.gaps(root, 'o/r', 5)
+    evidence.gaps(root, 'o/r', 5)
+    assert sum('actions/runs' in call[1] for call in fake.calls) == 1
+
+
+def actions_by_repo(monkeypatch, fake, replies):
+    """Answer each repository's Actions runs read from its own queue of replies; an exception is raised."""
+    def answer(args, timeout=30):
+        if 'actions/runs' not in args[1]:
+            return fake(args, timeout)
+        fake.calls.append(args)
+        reply = replies[args[1].split('/')[2]].pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setattr(gh, 'run', answer)
+
+
+def test_each_repository_keeps_its_own_cached_actions_answer(root, fake, monkeypatch):
+    not_started(root, fake)
+    actions_by_repo(monkeypatch, fake, {'quiet': [{'workflow_runs': []}],
+                                        'busy': [{'workflow_runs': [{'path': '.github/workflows/ci.yml'}]}]})
+    assert 'CI not started at aaaaaaa' not in texts(evidence.gaps(root, 'a/quiet', 5))
+    assert 'CI not started at aaaaaaa' in texts(evidence.gaps(root, 'b/busy', 5))
+    assert 'CI not started at aaaaaaa' not in texts(evidence.gaps(root, 'a/quiet', 5))  # read from its own cache
+
+
+def test_a_failed_actions_read_is_not_cached(root, fake, monkeypatch):
+    not_started(root, fake)
+    actions_by_repo(monkeypatch, fake, {'r': [gh.GhError('HTTP 502: Bad Gateway'), {'workflow_runs': []}]})
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+    assert evidence.gaps(root, 'o/r', 5) == []
+    assert sum('actions/runs' in call[1] for call in fake.calls) == 2
+
+
+def test_a_moved_head_names_the_gate_owed_and_ci_not_started(root, fake):
+    not_started(root, fake, verdict='FIX', head=OLD)
+    fake.ancestors.add((OLD, HEAD))
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['gates missing at head aaaaaaa: quality', 'CI not started at aaaaaaa']
