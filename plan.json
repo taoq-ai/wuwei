@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "door-fails-closed",
-   "title": "fix(hook): an error inside a door refuses the call instead of letting it pass",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 12.0,
-   "why": "Any exception on a door path makes the PreToolUse hook fail open (seen with a cache-write OSError on the merge door). A door that cannot read its evidence should stay shut.",
-   "promise": "PreToolUse never turns a door into a pass because of an error. (1) hook.pre_tool returns the guards' decision even when recording it fails. (2) When an exception escapes while PreToolUse handles a call that names a door, hook.handle returns a deny that names the error, and records hook.error when it can. A call names a door when it is a Bash command matching guards.DOORS (added by 1068), an MCP merge, auto-merge or create-PR tool, or a Write or Edit. Any other hook error fails open as today. Touches cli/wuwei/hook.py (pre_tool, handle) and tests/test_hook.py. Lines: last_text and tokens (hook.py:20-50) both read the seat transcript line by line; one reader frees about four lines against about three added. Outside: making ws.cache_put tolerate OSError (the deny names the cause, and the operator fixes the workspace), other hook events.",
-   "acceptance": [
-    "given 'gh pr merge 5' and .wuwei/cache/template-<repo>.json is a directory, so the cache write raises OSError, when PreToolUse runs, then it denies, the reason names the error, and a hook.error row is recorded",
-    "given a call the guards refuse and ws.record raising (the ledger directory read-only, or a malformed last ledger line), when PreToolUse runs, then the deny still reaches the harness",
-    "given 'ls' and an exception inside the hook, when PreToolUse runs, then it fails open as today and records hook.error",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "compound-doors",
    "title": "fix(guards): the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options",
    "goal": "G-2",
@@ -252,6 +226,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1075"
+  },
+  {
+   "id": "door-fails-closed",
+   "title": "fix(hook): an error inside a door refuses the call instead of letting it pass",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 12.0,
+   "why": "Any exception on a door path makes the PreToolUse hook fail open (seen with a cache-write OSError on the merge door). A door that cannot read its evidence should stay shut.",
+   "promise": "PreToolUse never turns a door into a pass because of an error. (1) hook.pre_tool returns the guards' decision even when recording it fails. (2) When an exception escapes while PreToolUse handles a call that names a door, hook.handle returns a deny that names the error, and records hook.error when it can. A call names a door when it is a Bash command matching guards.DOORS (added by 1068), an MCP merge, auto-merge or create-PR tool, or a Write or Edit. Any other hook error fails open as today. Touches cli/wuwei/hook.py (pre_tool, handle) and tests/test_hook.py. Lines: last_text and tokens (hook.py:20-50) both read the seat transcript line by line; one reader frees about four lines against about three added. Outside: making ws.cache_put tolerate OSError (the deny names the cause, and the operator fixes the workspace), other hook events.",
+   "acceptance": [
+    "given 'gh pr merge 5' and .wuwei/cache/template-<repo>.json is a directory, so the cache write raises OSError, when PreToolUse runs, then it denies, the reason names the error, and a hook.error row is recorded",
+    "given a call the guards refuse and ws.record raising (the ledger directory read-only, or a malformed last ledger line), when PreToolUse runs, then the deny still reaches the harness",
+    "given 'ls' and an exception inside the hook, when PreToolUse runs, then it fails open as today and records hook.error",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1081"
   },
   {
    "id": "1064",
