@@ -1,33 +1,6 @@
 {
  "items": [
   {
-   "id": "ci-not-started",
-   "title": "fix(evidence): a head with no CI checks registered yet reads as CI not started, never as ready to merge",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 13.0,
-   "why": "Open bug #1085 (labelled bug, opened 2026-10-16 13:25 UTC; G-2 allows three days, so due 2026-10-19): evidence.ci_gaps returns no gap for an empty statusCheckRollup (evidence.py lines 359-370), so a seat can arm auto-merge on an unverified head.",
-   "promise": "Fixes #1085. When a PR head has no check runs and no commit statuses and the repository has run a workflow on pull_request (gh api repos/<o>/<r>/actions/runs?event=pull_request&per_page=1, cached a day per repository), wuwei evidence reports the safety gap 'CI not started at <sha7>' as waiting (not actionable), never 'no gaps'. An unreadable Actions host counts as having CI, so the gap shows rather than a pass. The merge door holds on it for gh pr merge and for --auto alike: only 'CI running' stays exempt for auto-merge, because GitHub's auto-merge with no required checks merges at once. A repository that never ran a pull_request workflow gets no CI gap, as on main. A gate verdict owed at a moved head is reported whatever the CI state (this holds on main; a test pins it). Touches the files listed. Starts after free-lines-3 (needs runtime room). Rollback: revert the commit; no data or config changes. Outside: CI that runs only on push (its checks already appear in the rollup), required-check settings, the board's wording beyond the new gap text. Assumption: one Actions read per repository per day is cheap enough; overturned if the gh call rate shows in the report.",
-   "acceptance": [
-    "given PR o/r#5 whose head has an empty statusCheckRollup and a repository whose Actions runs list one pull_request run, when wuwei evidence o/r#5 runs with the code host stubbed, then it prints 'CI not started at <sha7>' and not 'no gaps: ready to merge'",
-    "given the same PR, when gh pr merge 5 -R o/r --auto --squash is read by guards.bash, then it is refused naming 'CI not started', while a head whose only gap is 'CI running' still passes with --auto",
-    "given a repository whose Actions runs list no pull_request run, when the same empty-rollup PR is read, then no CI gap appears, as on main",
-    "given the Actions runs read raises GhError, when the empty-rollup PR is read, then 'CI not started at <sha7>' appears",
-    "given a PR whose previous head has a quality FIX verdict and whose new head has no verdict and no checks, when wuwei evidence runs, then it names both the quality gate missing at the new head and 'CI not started'"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "shell-doors",
    "title": "fix(guards): process substitution, glued separators, $'...' quoting and ledger paths without a trailing slash meet the doors",
    "goal": "G-2",
@@ -302,6 +275,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "ci-not-started",
+   "title": "fix(evidence): a head with no CI checks registered yet reads as CI not started, never as ready to merge",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 13.0,
+   "why": "Open bug #1085 (labelled bug, opened 2026-10-16 13:25 UTC; G-2 allows three days, so due 2026-10-19): evidence.ci_gaps returns no gap for an empty statusCheckRollup (evidence.py lines 359-370), so a seat can arm auto-merge on an unverified head.",
+   "promise": "Fixes #1085. When a PR head has no check runs and no commit statuses and the repository has run a workflow on pull_request (gh api repos/<o>/<r>/actions/runs?event=pull_request&per_page=1, cached a day per repository), wuwei evidence reports the safety gap 'CI not started at <sha7>' as waiting (not actionable), never 'no gaps'. An unreadable Actions host counts as having CI, so the gap shows rather than a pass. The merge door holds on it for gh pr merge and for --auto alike: only 'CI running' stays exempt for auto-merge, because GitHub's auto-merge with no required checks merges at once. A repository that never ran a pull_request workflow gets no CI gap, as on main. A gate verdict owed at a moved head is reported whatever the CI state (this holds on main; a test pins it). Touches the files listed. Starts after free-lines-3 (needs runtime room). Rollback: revert the commit; no data or config changes. Outside: CI that runs only on push (its checks already appear in the rollup), required-check settings, the board's wording beyond the new gap text. Assumption: one Actions read per repository per day is cheap enough; overturned if the gh call rate shows in the report.",
+   "acceptance": [
+    "given PR o/r#5 whose head has an empty statusCheckRollup and a repository whose Actions runs list one pull_request run, when wuwei evidence o/r#5 runs with the code host stubbed, then it prints 'CI not started at <sha7>' and not 'no gaps: ready to merge'",
+    "given the same PR, when gh pr merge 5 -R o/r --auto --squash is read by guards.bash, then it is refused naming 'CI not started', while a head whose only gap is 'CI running' still passes with --auto",
+    "given a repository whose Actions runs list no pull_request run, when the same empty-rollup PR is read, then no CI gap appears, as on main",
+    "given the Actions runs read raises GhError, when the empty-rollup PR is read, then 'CI not started at <sha7>' appears",
+    "given a PR whose previous head has a quality FIX verdict and whose new head has no verdict and no checks, when wuwei evidence runs, then it names both the quality gate missing at the new head and 'CI not started'"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1106"
   },
   {
    "id": "free-lines-3",
