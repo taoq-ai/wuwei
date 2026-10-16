@@ -512,6 +512,17 @@ def test_every_route_reads_as_recorded(root, fake, monkeypatch, route):
     assert door_reached(guards.bash(root, route['command'], '/repo', 's1')) == route['verdict'], route['command']
 
 
+@pytest.mark.parametrize('command', [r['command'] for r in ROUTES if r['verdict'] == 'merge' and re.search(r'\b5\b', r['command'])])
+def test_every_merge_route_passes_on_a_pr_without_gaps(root, fake, monkeypatch, command):
+    """The merge door holds on gaps only: a door change that refuses a clean PR fails here, naming the route."""
+    from test_evidence import attest
+    monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    fake.prs['5'] = make_pr(number=5)
+    attest(root, 'quality')
+    assert guards.bash(root, command, '/repo', 's1') is None, command
+
+
 def test_no_fixture_holds_a_secret_the_workspace_canary_or_a_local_path():
     canary_file = Path(__file__).resolve().parents[1] / ws.DIR / 'canary'
     canary = canary_file.read_text(encoding='utf-8').strip() if canary_file.is_file() else 'wuwei-canary-'

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -510,13 +511,23 @@ QUIET = {'claude-agent-pre-accepted.json', 'claude-agent-pre-rejected.json', 'cl
          'claude-subagent-pre-tool.json'}
 
 
-def test_the_payload_corpus_holds_every_recorded_shape():
+def test_the_payload_corpus_holds_every_listed_shape():
     assert {p.name for p in PAYLOADS.glob('*.json')} == set(STARTED) | set(STOPPED) | QUIET
 
 
+def test_every_fixture_payload_names_its_provenance():
+    """None is captured hook stdin: the README says which come from a transcript and which are reconstructed."""
+    found = dict(re.findall(r'^- ([\w.-]+\.json): (transcript|reconstructed): \S', (PAYLOADS / 'README.md').read_text(
+        encoding='utf-8'), re.M))
+    assert set(found) == {p.name for p in PAYLOADS.glob('*.json')}
+    assert sorted(name for name, kind in found.items() if kind == 'transcript') == [
+        'claude-agent-post-accepted.json', 'claude-agent-pre-accepted.json']
+
+
 @pytest.mark.parametrize('name', sorted(set(STARTED) | set(STOPPED) | QUIET))
-def test_every_recorded_payload_replays_without_an_error(root, name):
-    """A hook change that moves what a payload records edits this table or the payload, so its diff shows it."""
+def test_every_fixture_payload_replays_without_an_error(root, name):
+    """The hook handles each fixture file; a real harness shape that differs is not covered (see the README).
+    A hook change that moves what a payload records edits this table or the payload, so its diff shows it."""
     payload = json.loads((PAYLOADS / name).read_text(encoding='utf-8'))
     assert hook.handle(root, payload['hook_event_name'], payload) is None
     assert ws.rows(root, 'hook.error') == []

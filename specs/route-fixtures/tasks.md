@@ -21,3 +21,11 @@
 
 - [x] T012 [US2] In a scratch copy, a guard that refuses the review_threads route fails the test naming it
 - [x] T013 In a scratch copy, a canary in a fixture file fails the scan
+
+## Phase 4: Fix round (arch)
+
+- [x] T014 Merge origin/main (1620583) into the branch
+- [x] T015 tests/fixtures/payloads/README.md gives each payload its provenance, transcript or reconstructed with its source
+- [x] T016 Rename the payload tests to claim only what they show (fixture payloads, listed shapes)
+- [x] T017 A test that every payload file has a provenance line, and only the two accepted Agent payloads say transcript
+- [x] T018 Every merge route naming PR 5 passes on a gap-free PR; in a scratch copy a door that refuses every merge fails it

@@ -27,7 +27,7 @@ Outside: changing any verdict, and the SECURITY.md deny-list gaps.
 
 The acceptance scenarios, restated:
 
-1. On main, every route reads as recorded and every payload replays without a `hook.error`.
+1. On main, every route reads as recorded and every fixture payload replays without a `hook.error`.
 2. A guard that refuses `gh api repos/o/r/pulls/5/ccr/review_threads` fails a test whose id names
    that route.
 3. The shepherd's review ping `gh api -X POST repos/o/r/issues/5/comments -F body=@ping.md` passes,
@@ -66,5 +66,12 @@ The acceptance scenarios, restated:
   uses), the subagent PreToolUse and the SubagentStop follow the documented hook fields and the
   ledger rows (`seat.stopped` with agent ids, traces with an `agent` field). Overturned by a captured
   payload with a different shape; replace the file and the test shows what moves.
+- No payload is captured hook stdin, so a green replay shows only that the hook handles these
+  files. tests/fixtures/payloads/README.md gives each file its provenance (`transcript` for the two
+  accepted Agent payloads, `reconstructed` with its source for the other five), and a test keeps
+  every file listed there. The Codex payload copies the shape hook.codex parses, so its replay says
+  nothing about a real Codex harness; later items must not read it as proof.
+- Each merge route that names PR 5 also runs against a gap-free PR, so a door change that refuses a
+  clean PR fails a test naming the route.
 - The canary check uses `.wuwei/canary` at the repository root when present, and otherwise the
   prefix `wuwei-canary-` every canary starts with (setup.py).
