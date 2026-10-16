@@ -1,0 +1,34 @@
+Verdict: FIX
+Gate: quality
+Item: 1068
+PR: taoq-ai/wuwei
+Head: ee252d7f974a2b80b927f5497e651ba85a3a3c4b
+Confidence: medium
+Breaking: no
+
+## Findings
+- [high] cli/wuwei/guards.py:_lines (the `waiting` loop, `command[i + 1:]`) blocks: yes. Failure: builder's How-fails #3 is a real bypass, not only the stated limit. `cat <<A <<'B'` + newline + `$(git push --force origin x)` + newline + `A` + newline + `body` + newline + `B`: the unquoted first body is skipped without advancing `i`, so the quoted second delimiter matches from the same start and swallows the first body as data. Head returns segments [['cat']], so no door fires. Real bash ran `touch` from that `$(...)` (side effect seen: the file was created) while printing only `body`. Main refused it. Fix direction: once any heredoc on the line cannot be dropped, leave every later body on that line as commands (stop the loop), or advance past each body in order.
+- [high] cli/wuwei/guards.py:HEREDOC / _lines `<<` branch blocks: yes. Failure: builder's How-fails #2 is a real bypass. `echo $((1<<EOF))` + newline + `git push --force origin x` + newline + `EOF` is read as a heredoc on `EOF`, so the push line becomes data and segments is [['echo']]. bash and dash both ran the next line (seen: `RAN1` printed for an echo in that position; also `(( x = 1 << EOF ))`). Main refused the push. Cheap fix: do not start a heredoc while inside `((`/`$((` (track arithmetic depth), or refuse when a dropped body names a door program and the `<<` sat inside parens.
+- [medium] tests/test_guards.py blocks: yes (test-only, but each has a concrete input). Reversed guards that the suite does not catch, each with the input it then lets through (mutants run in scratch copies, full suite, all SURVIVED):
+  - `quote = '' if c == quote else quote` made inert: `echo "hi"` + newline + `git push --force origin x` becomes one argv, not refused. No test has a closed quote followed by a newline-separated door.
+  - double-quote-only backslash rule (`quote == "'"` clause dropped): `echo 'a\'` + newline + `git push --force origin x` stays one argv, not refused.
+  - backslash-newline join dropped: `git push origin ma\` + newline + `in` gives word `ma\nin`, so a push to main is not refused. The continuation test has a space before the backslash and so cannot tell.
+  - DOORS alternatives `repo`, `api`, `wuwei hook`, `.wuwei/ledger` each dropped: `gh repo delete "acme/app --yes` (unclosed quote) passes. Only `git push` and `gh pr` are tested.
+- [low] cli/wuwei/hook.py:216 blocks: no. PostToolUse now matches `\bgh\s+pr\s+create\b` in the raw text, so a command that only mentions it (an echo, a grep, a commit message) whose output holds a PR URL gets a "still needs" note and a board cache reset. Main needed a real create. It also now catches a create after a heredoc, which main missed (segments returned []). Noise only.
+- [low] cli/wuwei/guards.py:_lines `<<-` blocks: no. Mutant dropping the tab strip survives: it errs toward reading a body as commands (a false refusal of `cat <<-'EOF'` + tab-indented `git push` data), no bypass. Missing test: a `<<-` body with a door program in it that must pass.
+- [low] cli/wuwei/guards.py:git_push blocks: no. `deleting = deleting or ...` reversed survives; it only changes the verb in the refusal text.
+- [low] cli/wuwei/guards.py:_unwrap blocks: no. `bash script.sh <<EOF` feeds the body to script.sh as stdin but it is read as commands, so a body naming `git push` is refused. Rare, fails closed.
+- [low] Process note, blocks: no. The runtime is exactly 3000 lines, so the fixes above need lines freed again. Unreadable commands still pass for leak (curl with a secret), INFRA and ledger-less programs, as before; the DOORS list is as the promise names it.
+
+## Probes
+- Suite at head in a git-archive copy: 285 passed; main: 264 passed. Runtime lines: 3000 on both (`find cli/wuwei -name '*.py' | xargs cat | wc -l`).
+- Friction, measured: I replayed every Bash command in this session's transcripts (366 commands, 104 multi-line, including heredoc PR bodies, spec writes and multi-line python) through head. Unreadable by shlex: 0; refused by the new unreadable rule: 0. On main 13 of them silently returned [] (unread). Door programs seen by main and not by head: 2 commands, both text inside heredoc bodies or a for-list, correctly dropped.
+- Friction, constructed: `gh pr create --body "$(cat <<'EOF' ... it's ... don't ... EOF )"` reads fine. A lone `"` in the body (`5" screen`) with `gh pr create`, or with `git commit ... && git push`, is refused (How-fails #1 confirmed). It is the designed fail-closed result; the hint ("close the quote, --body-file") does not name `git commit -F`. Multi-line `python3 -c` and `python3 - <<'PY'` pass. A heredoc body with a lone `"` inside `$(...)` is the only realistic false refusal found.
+- Behaviour-preserving refactors, checked by reading and mutants: `_git`, `origin`, `current_branch` (identical outputs, errors to ''), `once` (returns True first time, False after; killed by test_pr_create_teaches_the_pr_standard_once_per_session), `leak`, AskUserQuestion return (killed by test_codex), ledger check merge and walrus returns in `bash()` (killed by test_the_records_are_protected, test_secrets_never_leave), `hit = sorted(set(targets) & _default(...))` (killed by test_irreversible_edges_are_denied). `_default` caching: mutant replacing the cache path with a direct fetch survives, but cache_put returns its value and cache_get None falls through, so behaviour matches main (a cached empty string would refetch, never occurs). `_git` and `current_branch` mutants survive because every test stubs them, as on main.
+- Mutants killed: comment skip (2 mutants), newline split, unquoted `$(` and backtick body scan, backtick as CONTROL and punctuation, DOORS refusal itself, `<<` body routing, shell-only body unwrap, PostToolUse create regex (test_post_tool_tells_what_a_new_pr_still_needs).
+- Fuzz: 60,000 random shell-token strings through segments raised nothing but ValueError; worst call 2 ms. A 260 KB heredoc body took 1.3 s.
+- Real shell checks: bash 5.2 and dash both ran the line after `$((1<<EOF))` and `$(...)` in a first unquoted heredoc beside a quoted second one. `cat <<A <<B` with both unquoted does not run the first body, and head already refuses that form.
+- Simplicity: the `_lines` scanner is the minimum for the promise; the blank-line and attest-call reflow in hook.py and the `last_text` inline are line-count churn unrelated to the behaviour but allowed by the promise. Nothing else is deletable; trust-boundary refusals stay.
+
+## Residual risk
+The parser is a deny-list over shell syntax; after the two heredoc bypasses are closed, similar ordering edge cases may remain (eval, `| bash`, `source /dev/stdin` are outside the promise and unchanged from main). A delta review should rerun the two bypass inputs and the four mutants above.
