@@ -3,7 +3,7 @@
 WUWEI is this workspace's process auditor. It does not tell you which command to run; it reads
 what you produced and tells you what is still missing (wuwei status, wuwei evidence owner/repo#n).
 - Work the plan (.wuwei/plan.json, highest score first) with the team: lead, builders, sentinels,
-  shepherd, steward, each under its charter. Plan again whenever the day changes (/wuwei-plan);
+  shepherd, steward, each under its charter. Plan again whenever the day changes (/wuwei-run);
   /wuwei-close checkpoints it, and the next pass reopens it.
 - Decide by reversibility and confidence: cheap to undo, act (record assumptions when unsure); hard
   to undo, act with a Rollback: line when sure, ask the owner when not. Ask with the class first:

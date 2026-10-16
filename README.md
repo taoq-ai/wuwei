@@ -53,7 +53,7 @@ WUWEI=$(find ~/.claude/plugins -type f -path '*/bin/wuwei' | sort | tail -n 1)
 **3. Work.** Open Claude Code in the project:
 
 ```text
-/wuwei-plan     # proposes goals and ranked work; you answer Approve or Change
+/wuwei-run      # proposes goals and ranked work; you answer Approve or Change
 /wuwei-close    # end of day: report and retro in .wuwei/
 ```
 
@@ -74,7 +74,7 @@ moving while you are away.
 3. Locate the CLI with `find ~/.claude/plugins -type f -path '*/bin/wuwei'`. Never assume it is on
    PATH. Once set up, each session prints it as `WUWEI CLI: <path>`.
 4. Run `<path> init` then `<path> doctor` from the repository root (exit 0 ok, 1 warnings, 2 fail).
-5. Never edit `.wuwei/plan.json` or `.wuwei/ledger/` by hand. The `wuwei` skill explains the rules.
+5. Never edit `.wuwei/plan.json` or `.wuwei/ledger/` by hand. The `wuwei-rules` skill explains the rules.
 
 ## Troubleshooting
 
@@ -84,7 +84,7 @@ moving while you are away.
 | `no .wuwei/ here or above` | Run `init` from the project root. |
 | `fail gh` in `doctor` | `gh auth login` |
 | `warn hooks` in `doctor` | No hook has fired, so nothing is enforced or recorded. Locally, check `/plugin` and restart; in the cloud, open a session that holds only this repository. |
-| `/wuwei-plan` not recognised | Check `/plugin`, then restart Claude Code. |
+| `/wuwei-run` not recognised | Check `/plugin`, then restart Claude Code. |
 
 Codex, cloud sessions and several repositories: see [getting started](https://taoq-ai.github.io/wuwei/getting-started/).
 
