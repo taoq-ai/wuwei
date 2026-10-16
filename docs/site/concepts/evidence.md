@@ -18,10 +18,31 @@ head or did not.
 | A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
 | The gates the diff needs, passed before the PR opened | the diff, under the tier's ceiling | safety | independent review before anyone else reads the code, and only the reviews the change calls for |
 | CI green | every PR | safety | the repository's own checks |
+| A review status settled (see [review statuses](#review-statuses)) | a commit status from a workflow the repo runs on `pull_request_review` | safety | a gate waiting on a reviewer needs someone to act; it is not a build |
 | Every review thread answered | every PR | safety | people's questions are obligations |
 | A reviewer requested | every PR | process | a PR nobody is asked to read is not reviewed |
 | Owner review | `owner_paths` touched | safety | what you chose to review yourself |
 | Not stale (under three days open) | every PR | process | inventory rots; flow over stock |
+
+## Review statuses
+
+Some repositories publish their approval rule as a commit status, from a workflow that runs on
+`pull_request_review` (ai-stacks' `Review Gate`). WUWEI follows the status's `target_url` to its
+workflow run and compares the run's workflow with the workflows the repository has run on
+`pull_request_review` (its last 100 such runs, read once a day, and only when a head has an
+unsettled status). A match is review evidence, not CI:
+
+| Status | Gap |
+| --- | --- |
+| pending | `waiting on review: <context>` |
+| failure | `change request outstanding: <context>` |
+
+Both are actionable safety gaps: someone has to ask for a review or answer the change request, and
+the merge stays refused until then, with or without auto-merge. When the Actions host cannot be
+read, the status stays CI (`CI running` or `CI failing`), never a pass.
+
+**Why:** a review gate read as CI tells the team to wait for a build that already finished, or to
+fix a build that is not red.
 
 ## The spec engine
 
