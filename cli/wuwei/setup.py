@@ -30,20 +30,26 @@ Priority: 1
 '''
 
 
-def merge_settings(directory):
-    """Add WUWEI's rules to .claude/settings.json without touching anything else in it."""
+def merge_settings(directory, cloud=False):
+    """Add WUWEI's rules, and in the cloud its hooks, to .claude/settings.json without touching anything else in it."""
     path = Path(directory) / '.claude' / 'settings.json'
     data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
     permissions = data.setdefault('permissions', {})
     for key, rules in (('allow', ALLOW), ('deny', DENY), ('ask', ASK)):
         current = permissions.setdefault(key, [])
         current.extend(rule for rule in rules if rule not in current)
+    for event in EVENTS if cloud else ():
+        command = f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}'
+        entries = data.setdefault('hooks', {}).setdefault(event, [])
+        if not any(h.get('command') == command for entry in entries for h in entry.get('hooks', [])):
+            entries.append({'hooks': [{'type': 'command', 'command': command}]})
     ws.atomic_write(path, json.dumps(data, indent=2) + '\n')
     return path
 
 
 PLUGIN = Path(__file__).resolve().parents[2]
 EVENTS = ('SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop')
+HOOK_ROWS = {'refused', 'asked', 'note', 'prompt', 'seat.started', 'seat.stopped', 'stop.reminded', 'hook.error'}
 IGNORE = '# The state travels on the wuwei/state branch (wuwei sync), never in a working branch.\n*\n'
 
 
@@ -60,14 +66,6 @@ def vendor(directory):
     (claude / 'agents').mkdir(exist_ok=True)
     for agent in (PLUGIN / 'agents').glob('*.md'):
         shutil.copy2(agent, claude / 'agents' / agent.name)
-    path = claude / 'settings.json'
-    data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
-    for event in EVENTS:
-        command = f'"$CLAUDE_PROJECT_DIR"/.claude/wuwei/bin/wuwei hook {event}'
-        entries = data.setdefault('hooks', {}).setdefault(event, [])
-        if not any(h.get('command') == command for entry in entries for h in entry.get('hooks', [])):
-            entries.append({'hooks': [{'type': 'command', 'command': command}]})
-    ws.atomic_write(path, json.dumps(data, indent=2) + '\n')
     return claude
 
 
@@ -104,7 +102,7 @@ def init(directory, cloud=False, codex=False):
         ws.atomic_write(base / '.gitignore', IGNORE)
     if not (base / 'canary').is_file():
         ws.atomic_write(base / 'canary', f'wuwei-canary-{os.urandom(12).hex()}\n')
-    done.append(f'permissions: {merge_settings(directory)} (allow everyday work, deny the doors, ask for infrastructure)')
+    done.append(f'permissions: {merge_settings(directory, cloud)} (allow everyday work, deny the doors, ask for infrastructure)')
     if codex:
         done.append(f'codex: role agents and door rules in {codex_files(directory)} (trust the WUWEI hooks once in Codex)')
     if cloud:
@@ -122,7 +120,7 @@ def _levels(rule_types):
 
 def doctor(root):
     rows = [('python', 'ok' if sys.version_info >= (3, 11) else 'fail', sys.version.split()[0])]
-    repos = ws.config(root)['repos'] if root else []
+    repos = (config := ws.config(root) if root else ws.DEFAULTS)['repos']
     try:  # a REST read, as WUWEI reads: in a cloud session the proxy's token fails auth status (#1062)
         gh.default_branch(repos[0]) if repos else gh.run(['auth', 'status'])
         rows.append(('gh', 'ok', f'reads {repos[0]}' if repos else 'authenticated'))
@@ -130,7 +128,6 @@ def doctor(root):
         rows.append(('gh', 'fail', str(exc)))
     if root is None:
         return rows + [('workspace', 'fail', 'no .wuwei/ here or above: run wuwei init')]
-    config = ws.config(root)
     broken = ws.verify(root)
     rows += [('workspace', 'ok', str(root)),
              ('repos', 'ok' if config['repos'] else 'warn', ', '.join(config['repos']) or 'none configured'),
@@ -150,7 +147,10 @@ def doctor(root):
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
-    rows.append(('hooks', 'ok', 'fired') if (Path(root) / ws.DIR / 'executable').is_file() else ('hooks', 'warn',
+    since, mine = set(), Path(root) / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'  # never another clone's rows (#1065)
+    for row in ws._parse(mine.read_text(encoding='utf-8')) if mine.is_file() else []:
+        since = set() if row.get('kind') == 'workspace.init' else since | {row.get('kind')}
+    rows.append(('hooks', 'ok', 'fired') if (Path(root) / ws.DIR / 'executable').is_file() or since & HOOK_ROWS else ('hooks', 'warn',
                  'no hook has fired here, so the doors and recorded answers are off (cloud: hold only this repository)'))
     for repo in config['repos']:
         try:

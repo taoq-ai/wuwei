@@ -140,3 +140,23 @@ def test_doctor_reads_the_code_host_as_wuwei_does_and_says_when_no_hook_fired(tm
     assert rows['hooks'][0] == 'warn' and 'no hook has fired' in rows['hooks'][1]
     hook.session_start(tmp_path, {})
     assert {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks'] == 'ok'
+
+
+def test_doctor_counts_a_hook_row_in_this_clones_ledger_since_the_latest_init(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.guards, 'origin', lambda cwd: None)
+    monkeypatch.setattr(setup.gh, 'run', lambda args, timeout=30: '')
+    hooks = lambda: {name: status for name, status, _ in setup.doctor(tmp_path)}['hooks']  # noqa: E731
+    setup.init(tmp_path)
+    mine = (tmp_path / ws.DIR / 'cache' / 'clone').read_text()
+    (tmp_path / ws.DIR / 'cache' / 'clone').write_text('0ther000\n')
+    ws.record(tmp_path, 'refused', {'tool': 'Bash'})  # another machine's hook, synced on wuwei/state
+    (tmp_path / ws.DIR / 'cache' / 'clone').write_text(mine)
+    for kind in ('attest', 'sent'):  # the CLI writes these too
+        ws.record(tmp_path, kind, {})
+    assert hooks() == 'warn'
+    ws.record(tmp_path, 'refused', {'tool': 'Bash'})
+    assert hooks() == 'ok'
+    setup.init(tmp_path)  # a hook row older than the latest init says nothing about the hooks now
+    assert hooks() == 'warn'
+    ws.record(tmp_path, 'prompt', {'questions': []})
+    assert hooks() == 'ok'
