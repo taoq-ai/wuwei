@@ -1,0 +1,73 @@
+[
+ {
+  "id": "1068",
+  "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {"value": 20, "time": 13, "risk": 13, "size": 5},
+  "promise": "guards.segments() ends a command at a newline outside quotes, drops a heredoc body as data (reads it as commands when the heredoc feeds sh, bash, zsh or dash), joins a backslash-newline line continuation before splitting, and a command shlex cannot tokenize is refused when its raw text names a door program (git push, gh pr, gh api, gh repo, wuwei hook, the ledger path). Touches cli/wuwei/guards.py (segments, bash, the module docstring that says an unreadable command passes) and tests/test_guards.py. Outside: python -c and other interpreter bodies, here-strings, any new door. The runtime stays at most 3,000 lines: the added lines come out of guards.py itself (one _git helper for origin and current_branch, about -2; the two ledger refusals in bash() folded into one check, about -2; the rest from guards.py or hook.py, never from evidence.py, gh.py or setup.py, which 1067 and 1065 net against).",
+  "acceptance": [
+   "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
+   "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
+   "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
+   "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses (the newline split must not cut a continued line: probed, a naive split loses --force)",
+   "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
+   "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
+   "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
+   "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+  ],
+  "why": "reproduced on main 7f8a0d7 in a scratch copy: segments('true\\ngit push --force origin x') is one argv and the heredoc case returns []; six doors pass a second-line command; a security finding, fixed in public"
+ },
+ {
+  "id": "1067-probe",
+  "title": "probe: what ties ai-stacks' Review Gate status to its review-triggered workflow",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "light",
+  "scores": {"value": 5, "time": 5, "risk": 13, "size": 1},
+  "promise": "A run, not a change: from a session with read access to A-Teams-Network/ai-stacks (this one has none: HTTP 403, add_repo needed), read three REST endpoints at the head of ai-stacks#3300 and #3274 and record the answer with wuwei plan run 1067-probe --reason. Endpoints: repos/A-Teams-Network/ai-stacks/commits/<head>/status (the Review Gate status: context, state, target_url, creator), repos/A-Teams-Network/ai-stacks/actions/runs?head_sha=<head> (event, path, name and id of each run), repos/A-Teams-Network/ai-stacks/actions/runs?event=pull_request_review&per_page=100 (the review-triggered workflow names and paths), and .github/workflows/review-gate.yml's on: block. Outside: any code change.",
+  "acceptance": [
+   "given read access to ai-stacks, when the probe reads the Review Gate status at #3300's head, then it records whether its target_url names a workflow run and which run",
+   "given the runs at that head, when the probe reads them, then it records the event of the run that set the pending state (pull_request_review, pull_request or another) and whether the workflow name equals the status context",
+   "given neither the target_url nor the context ties the status to a review-triggered workflow, when the probe ends, then 1067 is reshaped before any build (a scope: question to the owner, since a sixth config key is out)"
+  ],
+  "why": "1067 is the riskiest item: its whole design rests on a host shape nobody here can read (ai-stacks returns 403 to this session); a pending state set before any review cannot come from a pull_request_review run, so the run event alone may not classify it"
+ },
+ {
+  "id": "1065",
+  "title": "fix(doctor): the hooks check counts any hook that fired on this machine since init",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "standard",
+  "scores": {"value": 5, "time": 3, "risk": 2, "size": 2},
+  "promise": "wuwei doctor reports ok hooks when .wuwei/executable exists or when this clone's own ledger file (.wuwei/ledger/<ws.clone(root)>.jsonl) holds a row only a hook writes (refused, asked, note, prompt, seat.started, seat.stopped, stop.reminded, hook.error) after its latest workspace.init. attest and sent do not count: the CLI writes them too. Rows synced from another clone do not count: the ledger travels on wuwei/state, so another machine's hook says nothing about this one. Touches cli/wuwei/setup.py (doctor) and tests/test_setup.py. Outside: the hook events, traces.jsonl (written only with telemetry on). Lines come out of setup.py: doctor reads ws.config(root) twice (lines 125 and 133, -1) and settings.json is parsed in three places (lines 36, 64, 150).",
+  "acceptance": [
+   "given a workspace after init with a refused row in this clone's ledger file and no .wuwei/executable, when doctor runs, then it reports ok hooks",
+   "given a hook-only row only in another clone's ledger file, when doctor runs, then it reports warn hooks",
+   "given a hook-only row older than the latest workspace.init and no .wuwei/executable, when doctor runs, then it reports warn hooks",
+   "given .wuwei/executable written by SessionStart, when doctor runs, then it reports ok hooks as today",
+   "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+  ],
+  "why": "a false 'doors are off' while the create door refused a PR and a plan: answer was recorded (#1064 session); the check reads one file only SessionStart writes"
+ },
+ {
+  "id": "1067",
+  "title": "fix(evidence): a commit status posted by a review-triggered workflow reads as review, not CI",
+  "goal": "G-2",
+  "repo": "taoq-ai/wuwei",
+  "tier": "full",
+  "scores": {"value": 8, "time": 5, "risk": 5, "size": 8},
+  "promise": "A commit status posted by a workflow the repository runs on pull_request_review is reported as 'waiting on review: <context>' (pending) or 'change request outstanding: <context>' (failure), both actionable safety gaps, instead of 'CI running' or 'CI failing'. The review-triggered workflows come from the host, not config: repos/<repo>/actions/runs?event=pull_request_review, cached for a day, read only when the head has a commit status; the tie from status to workflow is the one 1067-probe finds (target_url run id or the context equal to the workflow name). Touches cli/wuwei/gh.py (pr: status target_url, the review-workflow read), cli/wuwei/evidence.py (ci_gaps), tests/test_evidence.py, docs/design.md section 6 and docs/site/concepts/evidence.md. Outside: CODEOWNERS and required reviews (#917), a config key. Lines come out of evidence.py and gh.py (evidence.py line 214 re-imports datetime inside budget, -1), never from guards.py or setup.py.",
+  "acceptance": [
+   "given completed check runs and a pending commit status from a workflow the repository runs on pull_request_review, when evidence reads the PR, then it reports 'waiting on review: <context>' as actionable and no 'CI running'",
+   "given that status failing while a change request stands, when evidence reads the PR, then it reports 'change request outstanding: <context>' and no 'CI failing'",
+   "given a failing status from an ordinary CI workflow, when evidence reads the PR, then it reports 'CI failing: <context>' as today",
+   "given a head with no commit statuses, when evidence reads the PR, then no workflow-runs call is made",
+   "given the workflow-runs read fails, when evidence reads the PR, then the status stays CI (never a pass)",
+   "given either review gap, when the merge door runs with or without --auto, then it refuses",
+   "given the change, when the suite runs, then config still has five keys and the runtime size test passes at 3,000 lines or fewer"
+  ],
+  "why": "six ai-stacks PRs needing a reviewer show 'CI running [waiting]', and #3274 reads as a red build; build after 1067-probe, since the tie between status and workflow is unmeasured"
+ }
+]
