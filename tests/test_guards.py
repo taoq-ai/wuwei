@@ -962,3 +962,84 @@ def test_auto_merge_is_refused_while_ci_has_not_started(root, fake):
     assert decision['decision'] == 'deny' and '- CI not started at aaaaaaa' in decision['reason']
     fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
     assert guards.bash(root, 'gh pr merge 5 -R o/r --auto --squash', '/repo', 's1') is None
+
+
+def ci_running(root, fake):
+    """o/r#5 whose only safety gap is CI running: the gap --auto alone passes."""
+    from test_evidence import not_started
+    not_started(root, fake)
+    fake.prs['5']['statusCheckRollup'] = [{'name': 'test', 'conclusion': '', 'status': 'IN_PROGRESS'}]
+
+
+@pytest.mark.parametrize('command, auto', [
+    ('gh pr merge 5 -R o/r --auto', True), ('gh pr merge 5 -R o/r --auto=false --auto', True),
+    ('gh pr merge 5 -R o/r -st x --auto=T', True), ('gh pr merge 5 -R o/r -t --auto', False),
+    ('gh pr merge 5 -R o/r --auto=false', False), ('gh pr merge 5 -R o/r --auto --auto=0', False),
+    ('gh pr merge 5 -R o/r -b --auto --squash', False), ('gh pr merge 5 -R o/r --auto=yes', False)])
+def test_merge_reads_auto_the_way_pflag_does(root, fake, command, auto):
+    ci_running(root, fake)
+    decision = guards.bash(root, command, '/repo', 's1')
+    assert (decision is None) if auto else ('- CI running' in decision['reason']), command
+
+
+@pytest.mark.parametrize('flag', ['--admin', '--admin=true', '--admin=1', '--admin=T', '--admin=false --admin', '-s --admin'])
+def test_merge_refuses_admin_in_every_spelling_gh_reads_as_true(root, fake, flag):
+    ci_running(root, fake)
+    decision = guards.bash(root, f'gh pr merge 5 -R o/r --auto {flag}', '/repo', 's1')
+    assert decision['decision'] == 'deny' and '--admin' in decision['reason'], flag
+
+
+def test_merge_reads_a_false_or_swallowed_admin_as_off(root, fake):
+    ci_running(root, fake)
+    assert guards.bash(root, 'gh pr merge 5 -R o/r --auto --admin=false', '/repo', 's1') is None
+    assert guards.bash(root, 'gh pr merge 5 -R o/r --auto -t --admin', '/repo', 's1') is None  # -t's subject
+
+
+MARK = {'query': 'mutation{markPullRequestReadyForReview(input:{pullRequestId:"X"}){clientMutationId}}'}
+
+
+@pytest.mark.parametrize('text', [json.dumps(MARK), json.dumps(MARK).replace('mark', '\\u006dark'),
+                                  json.dumps([{'query': 'query { viewer { login } }'}, MARK])])
+def test_a_graphql_input_file_has_its_query_read_for_door_mutations(root, cloud, tmp_path, text):
+    (tmp_path / 'q.json').write_text(text)
+    decision = guards.bash(root, 'gh api graphql --input q.json', str(tmp_path), 's1')
+    assert decision['decision'] == 'deny' and 'markPullRequestReadyForReview' in decision['reason']
+
+
+@pytest.mark.parametrize('command', [
+    'gh api graphql --input -', 'gh api graphql -F query=@-', 'gh api graphql --field=query=@-', 'gh api graphql -Fquery=@-',
+    'gh api graphql --input missing.json', 'gh api graphql -F query=@missing.graphql', 'gh api graphql --input q.json | cat',
+    'cd sub && gh api graphql --input q.json', 'cd sub && gh api graphql -F query=@q.graphql', 'gh api graphql --input empty.json',
+    'gh api graphql --input=-', 'gh api graphql --input "q.json" "--input" -'])
+def test_a_graphql_query_wuwei_cannot_read_is_refused(root, cloud, tmp_path, command):
+    for name in ('q.json', 'sub/q.json'):
+        (tmp_path / name).parent.mkdir(exist_ok=True)
+        (tmp_path / name).write_text(json.dumps({'query': 'query { viewer { login } }'}))
+    (tmp_path / 'q.graphql').write_text('query { viewer { login } }')
+    (tmp_path / 'empty.json').write_text('')
+    decision = guards.bash(root, command, str(tmp_path), 's1')
+    assert decision['decision'] == 'deny' and 'cannot read' in decision['reason'], command
+
+
+@pytest.mark.parametrize('command', ['gh api graphql --input q.json', 'gh api graphql -F query=@q.graphql -F number=5',
+                                     'gh api graphql -f query=@threads.graphql -F number=5', 'gh api graphql -f query=@-',
+                                     'gh api -X POST repos/o/r/issues/5/comments --input - | cat'])
+def test_a_graphql_query_wuwei_reads_with_no_door_mutation_passes(root, cloud, tmp_path, command):
+    (tmp_path / 'q.json').write_text(json.dumps({'query': 'query { viewer { login } }'}))
+    (tmp_path / 'q.graphql').write_text('query { viewer { login } }')
+    assert guards.bash(root, command, str(tmp_path), 's1') is None, command
+
+
+@pytest.mark.parametrize('command', ['gh api -X POST repositories/123/pulls/5/requested_reviewers -f reviewers[]=a',
+                                     'gh api -X PUT repositories/123/pulls/5/merge', 'gh api -X PUT repositories/123/contents/x',
+                                     'gh api repositories/123/pulls -f head=x', 'gh api -X DELETE /Repositories/123',
+                                     'gh api --method=patch https://api.github.com/repositories/123/git/refs/heads/main'])
+def test_a_write_to_a_repositories_id_endpoint_is_refused_naming_the_repos_spelling(root, cloud, command):
+    decision = guards.bash(root, command, '/repo', 's1')
+    assert decision['decision'] == 'deny' and 'repos/<owner>/<repo>' in decision['reason'], command
+
+
+@pytest.mark.parametrize('command', ['gh api repositories/123', 'gh api repositories/123/pulls/5 --jq .title',
+                                     'gh api -X GET repositories/123/pulls -f state=open'])
+def test_a_read_of_a_repositories_id_endpoint_passes(root, cloud, command):
+    assert guards.bash(root, command, '/repo', 's1') is None, command

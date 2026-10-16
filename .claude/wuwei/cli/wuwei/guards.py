@@ -169,7 +169,7 @@ def _draft(args):
 
 
 def _read(cwd, path):
-    return Path(cwd, path).read_text(encoding='utf-8') if Path(cwd, path).is_file() else ''
+    return Path(cwd, path).read_text(encoding='utf-8') if path != '-' and Path(cwd, path).is_file() else ''  # gh reads - as stdin
 
 
 def _api(args, cwd, alone=True):
@@ -180,20 +180,24 @@ def _api(args, cwd, alone=True):
     fields = {k: _read(cwd, v[1:]) if f in ('-F', '--field') and v.startswith('@') else v for f, k, v in pairs}
     data = ''.join(_read(cwd, v) for f, v in opts if f == '--input')
     fields |= dict(re.findall(r'"(head|base|body)"\s*:\s*"((?:\\.|[^"\\])*)"', data))  # the --input file's JSON
+    fields |= {'query': fields.get('query', '') + data.encode().decode('unicode_escape', 'replace')} if alone and data else {}  # all of it, \u read
+    unread = any(not (alone and _read(cwd, p)) for f, v in opts if (p := v if f == '--input' else v[7:] if f in ('-F', '--field')
+                                                                     and v[:7] == 'query=@' else None) is not None)  # stdin, missing, cd
     draft = (alone and (json.loads(data) if data.lstrip()[:1] == '{' else {}).get('draft') is True if '--input' in dict(opts)  # gh reads
              else ([f in ('-F', '--field') and v == 'true' for f, k, v in pairs if k == 'draft'] or [False])[-1])  # the file in its own cwd
     method = ([v.upper() for f, v in opts if f in ('-X', '--method')] or ['POST' if fields or '--input' in dict(opts) else 'GET'])[-1]
     endpoint = '/'.join(p for p in unquote(re.sub(r'(?i)^[a-z][\w+.-]*://[^/]*|[?#].*$', '', rest[0] if rest else '')).split('/') if p not in ('', '.'))
     owner, name = ((origin(cwd) if '{' in endpoint else '') or '{owner}/{repo}').split('/')
-    return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields, draft
+    return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields, draft, unread
 
 
 def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'merge']:
-        if '--admin' in args:
+        valued = (VALUED | PR_VALUED) - {'m', 'r'}  # merge's -m and -r are bools; the last --admin or --auto pflag reads wins
+        on = lambda name: ([v in (None, *TRUE) for n, v in _flags(args[2:], valued) if n == name] or [False])[-1]  # noqa: E731
+        if on('admin'):
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
-        repo, number = _repo_number(args[2:], cwd, (VALUED | PR_VALUED) - {'m', 'r'})  # merge's -m and -r are bools
-        return merge_door(root, repo, number, auto='--auto' in args)
+        return merge_door(root, *_repo_number(args[2:], cwd, valued), auto=on('auto'))
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
     flag = lambda *names: next((args[i + 1] for i, a in enumerate(args[:-1]) if a in names), '')  # noqa: E731
@@ -203,8 +207,12 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'ready'] and not undo or args[:2] == ['pr', 'edit'] and any(a.startswith('--add-reviewer') for a in args):
         return ready_door(root, *_repo_number(args[2:], cwd))
     if args[:1] == ['api'] and len(args) > 1:
-        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1 and (  # an --input file is the one gh
-            words := shlex.split(command))[:1] == ['gh'] and all(re.fullmatch(r'[\w./=@:-]+', w) for w in words))  # reads: alone, unwrapped, plain words
+        method, endpoint, fields, draft, unread = _api(args[1:], cwd, (words := shlex.split(command))[:1] == ['gh'] and all(
+            re.fullmatch(r'[\w./=@:-]+', w) for w in words))  # an --input or -F query=@ file is the one gh reads: alone, unwrapped, plain words
+        if endpoint.lower() == 'graphql' and unread:
+            return deny('a gh api graphql query WUWEI cannot read (stdin, a missing file, a file outside one plain gh call): pass -f query=...')
+        if method in WRITE and re.match('(?i)repositories/', endpoint):
+            return deny(f'gh api {method} {endpoint}: spell the endpoint repos/<owner>/<repo>/... so WUWEI can read which door it is.')
         if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} goes around the doors: use gh pr merge, gh pr create --draft, gh pr ready or gh pr '
                         'edit --add-reviewer (in a cloud session gh api -X POST repos/<o>/<r>/pulls[/<n>/ccr/ready_for_review]).')
