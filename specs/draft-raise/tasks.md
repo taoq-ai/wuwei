@@ -36,7 +36,7 @@
 - [x] T024 Tests first: PR and repository read past flag values and from `--repo=`, `-R<value>` (ready and merge doors); `--input` behind `cd` or `cp` held; `//` and `%5F` endpoints; `-dr=bob`, `-drbob`, `-dx`; `--input` draft `"false"` and `1` (the final tests against 8774129's guards.py: 34 failed, 586 passed)
 - [x] T025 One pflag reader `_flags` for `_repo_number`, `_draft` and `gh api`; `--input` draft only when gh runs alone; endpoint decoded and slashes collapsed (cli/wuwei/guards.py)
 - [x] T026 evidence.md row, shepherd cloud reviewer route, SECURITY.md line; agents rebuilt; re-vendored; 12 corpus routes with sources
-- [x] T023 Main (7f31a51) versus head over 259 commands and payloads, at the fix round at f1ca82b: 26 drafts now pass; 40 ready or reviewer routes on draft PR 7 now held; 4 merge spellings (`//`, `%6D`, `.`, `5x`) now meet the merge door; 4 newly refused (2 GraphQL mutations, a `.` spelling of a `contents/` write, a write through `..`); 2 GraphQL merge refusals reworded; of the refusals that keep their door, 51 change wording only and 4 merge refusals now name the PR or repository gh reads (`--repo=x/y 5`, `-Rx/y 5`, `-t 3 5`, a URL with `-R`); no other verdict moved
+- [x] T023 Main (034d067) versus head over 274 commands and payloads, at the fix round at 02be6b9: 26 drafts now pass; 44 ready or reviewer routes now held (draft PR 7, and a fullwidth-digit PR that names no number); 5 merge spellings (`//`, `%6D`, `.`, `5x`, `5%D9%A3`) now meet the merge door; 4 newly refused (2 GraphQL mutations, a `.` spelling of a `contents/` write, a write through `..`); `gh pr merge ７` now gets the merge door's no-number refusal instead of a check of PR 7; 2 GraphQL merge refusals reworded; of the refusals that keep their door, 51 change wording only and 4 merge refusals now name the PR or repository gh reads (`--repo=x/y 5`, `-Rx/y 5`, `-t 3 5`, a URL with `-R`); no other verdict moved
 
 ## Phase 4: Fix round at 76a738a (arch, quality and security FIX)
 
@@ -49,3 +49,9 @@
 - [x] T030 Tests first: `--input={,sub/}d.json`, ``--input `printf sub/d.json` ``, `--input "$(echo d.json)"`, a substitution elsewhere and a redirect held, `--input=d.json` and `--input sub/d.json` pass; `pulls/7abc`, `%207`, `7%20`, `7.0` on the ready and reviewer routes and `5x`, `%205`, `5.0` on the merge routes meet their doors (the final tests against f1ca82b's guards.py: 13 failed, 671 passed)
 - [x] T031 An allowlist of plain words (`[\w./=@:-]+`) replaces the `~ $ * ? [` denylist; the PR segment of the ready, reviewer and merge routes is read from its leading digits; in place, runtime 3,000 (cli/wuwei/guards.py)
 - [x] T032 SECURITY.md, spec Breaking and Clarifications, 4 corpus routes, re-vendored; mutants: allowlist, gh-first and the four PR-segment mutants killed; the one-segment check survives as equivalent (the allowlist already rejects `&&`, `;` and `|` words) and stays as instructed
+
+## Phase 6: Fix round at 02be6b9 (security FIX)
+
+- [x] T033 Tests first: `pulls/7%D9%A3/requested_reviewers`, `pulls/7%EF%BC%97/...` and `pulls/5%D9%A3/merge` read PR 7 or 5 (with ready PRs 73, 77 and 53 in the fixture); `gh pr ready ５`, `gh pr edit ５ --add-reviewer bob`, `gh pr merge ７`, a URL ending in `７` and an MCP pullNumber `"５"` give no PR number (the final tests against 02be6b9's guards.py: 10 failed, 684 passed)
+- [x] T034 `[0-9]` in the ready, reviewer and merge routes and the PR URL; `isascii() and isdigit()` for gh pr and MCP numbers; in place, runtime 3,000 (cli/wuwei/guards.py)
+- [x] T035 Merged origin/main 034d067 (#1101): the skill lines follow the rename to skills/wuwei-rules/SKILL.md; agents rebuilt, re-vendored; 2 corpus routes

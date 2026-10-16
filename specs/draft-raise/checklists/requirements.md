@@ -21,4 +21,5 @@
 - [x] Endpoints are percent-decoded with empty and `.` segments dropped before the route match; a write through `..` is refused
 - [x] An `--input` draft counts only for an unwrapped gh call whose every word is plain (an allowlist)
 - [x] A PR segment with characters around its number meets the ready, reviewer and merge doors as GitHub reads it
+- [x] PR numbers are ASCII digits only
 - [x] No config key, no emojis, no em dashes

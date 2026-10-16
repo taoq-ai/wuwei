@@ -119,6 +119,8 @@
     {"command": "gh api -X POST repos/o/r/pulls/7abc/requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at f1ca82b (GitHub reads the leading digits)", "verdict": "ready"},
     {"command": "gh api -X POST repos/o/r/pulls/7.0/ccr/ready_for_review", "source": "security gate draft-raise at f1ca82b", "verdict": "ready"},
     {"command": "gh api -X PUT repos/o/r/pulls/5x/merge", "source": "security gate draft-raise at f1ca82b (passed on main too)", "verdict": "merge"},
-    {"command": "gh api -X POST repos/o/r/pulls --input={,sub/}d.json", "source": "security gate draft-raise at f1ca82b (brace expansion: the create door)", "verdict": "create"}
+    {"command": "gh api -X POST repos/o/r/pulls --input={,sub/}d.json", "source": "security gate draft-raise at f1ca82b (brace expansion: the create door)", "verdict": "create"},
+    {"command": "gh api -X POST repos/o/r/pulls/7%D9%A3/requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at 02be6b9 (PR numbers are ASCII digits only)", "verdict": "ready"},
+    {"command": "gh pr merge ７", "source": "security gate draft-raise at 02be6b9 (gh reads a fullwidth digit as a branch name)", "verdict": "merge"}
   ]
 }

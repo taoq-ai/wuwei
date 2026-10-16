@@ -778,6 +778,7 @@ def drafts(root, cloud):
         (root / planted).parent.mkdir(exist_ok=True)
         (root / planted).write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     cloud.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True, 'headRefName': 'x'}
+    cloud.prs.update({n: make_pr(number=int(n)) for n in ('73', '77', '53')})  # ready PRs a Unicode-digit misread would check
     return cloud
 
 
@@ -824,7 +825,9 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
          'gh api -X POST repos/o/r/pulls/7abc/requested_reviewers -f reviewers[]=bob',  # GitHub reads the leading digits
          'gh api -X POST repos/o/r/pulls/%207/requested_reviewers -f reviewers[]=bob',
          'gh api -X POST repos/o/r/pulls/7%20/requested_reviewers -f reviewers[]=bob',
-         'gh api -X POST repos/o/r/pulls/7.0/ccr/ready_for_review']
+         'gh api -X POST repos/o/r/pulls/7.0/ccr/ready_for_review',
+         'gh api -X POST repos/o/r/pulls/7%D9%A3/requested_reviewers -f reviewers[]=bob',  # GitHub reads 7, not 73
+         'gh api -X POST repos/o/r/pulls/7%EF%BC%97/ccr/ready_for_review']
 
 
 @pytest.mark.parametrize('command, door, expected', [
@@ -840,7 +843,12 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
     ('gh pr ready -R o/r https://github.com/other/x/pull/7', 'ready_door', ('other/x', 7)),
     ('gh pr ready https://github.com/other/x/pull/7 -R o/r', 'ready_door', ('other/x', 7)),
     ('gh pr merge -R a/b -R o/r 5', 'merge_door', ('o/r', 5)),
-    ('gh pr merge https://github.com/other/x/pull/5 -R o/r', 'merge_door', ('other/x', 5))])
+    ('gh pr merge https://github.com/other/x/pull/5 -R o/r', 'merge_door', ('other/x', 5)),
+    ('gh api -X PUT repos/o/r/pulls/5%D9%A3/merge', 'merge_door', ('o/r', 5)),  # PR numbers are ASCII digits only
+    ('gh api -X POST repos/o/r/pulls/7%EF%BC%97/requested_reviewers', 'ready_door', ('o/r', 7)),
+    ('gh pr ready \uff15', 'ready_door', ('o/r', None)), ('gh pr edit \uff15 --add-reviewer bob', 'ready_door', ('o/r', None)),
+    ('gh pr merge \uff17', 'merge_door', ('o/r', None)),
+    ('gh pr ready https://github.com/o/r/pull/\uff17', 'ready_door', ('o/r', None))])  # gh reads a fullwidth digit as a branch name
 def test_a_pr_door_reads_the_repository_and_the_pr_that_gh_reads(root, cloud, monkeypatch, command, door, expected):
     seen = []
     monkeypatch.setattr(guards, door, lambda root, repo, number, **kw: seen.append((repo, number)))
@@ -879,6 +887,8 @@ def test_the_mcp_update_and_copilot_review_meet_the_ready_door(root, drafts):
         assert door_reached(guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **data))) == 'ready', data
     assert door_reached(guards.pre_tool(root, mcp('request_copilot_review', pullNumber=7))) == 'ready'
     assert door_reached(guards.pre_tool(root, mcp('update_pull_request', draft=False))) == 'ready'
+    decision = guards.pre_tool(root, mcp('update_pull_request', pullNumber='\uff15', draft=False))
+    assert 'name the PR by number' in decision['reason']  # a fullwidth digit is no PR number
     for data in ({'draft': True}, {'reviewers': []}, {'title': 'x'}):
         assert guards.pre_tool(root, mcp('update_pull_request', pullNumber=7, **data)) is None, data
     assert guards.pre_tool(root, mcp('update_pull_request', pullNumber=5, draft=False, reviewers=['bob'])) is None

@@ -118,6 +118,9 @@ The acceptance scenarios, restated:
   `./=@:-` only. An allowlist, because a denylist missed brace expansion and backticks
   (`--input={,sub/}d.json`, ``--input `printf sub/d.json` ``); a substitution anywhere in the
   command (`-f x="$(cp f.json d.json)"`) is caught too. A redirect is held as well (a false hold).
+- Q (fix round at 02be6b9): Which digits make a PR number? A: PR numbers are ASCII digits only.
+  GitHub reads `7%D9%A3` and `7%EF%BC%97` as PR 7, and gh reads `５` as a branch name, so the
+  routes match `[0-9]` and `gh pr` and MCP numbers must be ASCII digits; anything else is no number.
 - Q (fix round at f1ca82b): How is the PR number in a write route read? A: As GitHub reads it,
   from the segment's leading digits after decoding: `7abc`, `%207`, `7%20` and `7.0` are PR 7
   (the security gate measured this with read-only GETs), so they meet the ready, reviewer and merge
@@ -149,6 +152,8 @@ doors-by-rest was): commands that passed on main now meet a door. The commit and
   `pulls/<n>/requested_reviewers`, MCP `reviewers`, `request_copilot_review`).
 - Newly held: a `gh api` PR segment with characters around its number (`pulls/5x/merge`,
   `pulls/%205/...`, `pulls/5.0/...`) now meets the merge, ready and reviewer doors as PR 5 does.
+  PR numbers are ASCII digits only: `pulls/5%D9%A3/merge` is PR 5, and `gh pr merge` with a
+  fullwidth digit names no PR, so the merge door asks for a number.
 - Newly held: a `gh api` endpoint spelled with `//`, `%xx` or `.` segments now meets the merge,
   push, rules and delete doors as its plain spelling does, and `gh pr merge` reads the PR and
   repository the way gh does (the first positional after flag values, the last `-R` or

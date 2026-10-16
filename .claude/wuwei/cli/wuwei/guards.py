@@ -29,8 +29,8 @@ SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
-API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/\d]*(\d+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
-       (REPO + r'/pulls/[^/\d]*(\d+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
+API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
+       (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
        (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'), (r'(.*/)?\.\.(/.*)?', WRITE, 'dots'),
        (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
         WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
@@ -158,9 +158,9 @@ def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value f
 
 def _repo_number(args, cwd, valued=VALUED | PR_VALUED):  # the last -R (or the URL's repository) and the first positional
     flags = _flags(args, valued)
-    url = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)/?', word := next((v for n, v in flags if not n), ''))
+    url = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)/?', word := next((v for n, v in flags if not n), ''))
     repo = url[1] if url else ([v for n, v in flags if n in ('R', 'repo') and v] or [''])[-1]
-    return repo or origin(cwd), int(url[2]) if url else int(word) if word.isdigit() else None
+    return repo or origin(cwd), int(url[2]) if url else int(word) if word.isascii() and word.isdigit() else None
 
 
 def _draft(args):
@@ -360,7 +360,7 @@ def pre_tool(root, payload):
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
         return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
     repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
-    number = int(n) if str(n := data.get('pullNumber', data.get('pull_number'))).isdigit() else None
+    number = int(n) if (n := str(data.get('pullNumber', data.get('pull_number')))).isascii() and n.isdigit() else None
     if tool.startswith('mcp__') and tool.endswith(DOORS['push']):
         branch = str(data.get('branch') or '').removeprefix('refs/heads/')
         return leak(root, json.dumps(data)) or (deny(f'pushing to the default branch {branch or "(no branch named)"} '

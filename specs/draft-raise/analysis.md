@@ -30,7 +30,9 @@ constitution.
 | S6 | Inconsistency | HIGH | `--input` draft | The `~ $ * ? [` denylist missed brace expansion and backticks (security at f1ca82b) | Resolved: every word of the command must be plain (`[\w./=@:-]+`) |
 | S7 | Inconsistency | MEDIUM | route table | GitHub reads `pulls/7abc`, `%207`, `7%20`, `7.0` as PR 7; the routes needed `\d+` | Resolved: the PR segment is read from its leading digits on the ready, reviewer and merge routes |
 
-No open finding above LOW: A1, A2, I1, I2, B1, S1 to S7, Q1 and Q2 are resolved.
+| S8 | Inconsistency | MEDIUM | route table, `_repo_number`, MCP | `\d` and `isdigit()` accept Unicode digits, so `7%D9%A3` read as PR 73 and `５` as PR 5 (security at 02be6b9) | Resolved: ASCII digits only |
+
+No open finding above LOW: A1, A2, I1, I2, B1, S1 to S8, Q1 and Q2 are resolved.
 
 ## Coverage
 
