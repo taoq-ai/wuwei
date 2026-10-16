@@ -53,10 +53,11 @@ create door and a REST merge or auto-merge meets the merge door. A REST write to
 a pull request, moves a ref, commits to a branch or changes protection are refused. The GitHub MCP
 tools `push_files`, `create_or_update_file` and `delete_file` are refused on the default branch or
 with no branch. A draft pull request create passes before its gates (`--draft`, a JSON `draft: true`
-from `-F` or from an `--input` file read only when the gh call runs alone); the ready door holds the
-flip to ready and reviewer requests on a draft until the gates pass at its head, reading the PR and
-`--repo` as gh's flag parser does and the endpoint with repeated slashes collapsed and
-percent-escapes decoded. Not read: a `GH_REPO` that fills gh's placeholders with another repository than the
+from `-F`, or from an `--input` file read only when gh is the whole command, with no wrapper and no
+`~`, `$` or glob character); the ready door holds the flip to ready and reviewer requests on a
+draft until the gates pass at its head, reading the PR and `--repo` as gh's flag parser does. An
+endpoint is read with percent-escapes decoded and empty and `.` segments dropped; a write through a
+`..` segment is refused. Not read: a `GH_REPO` that fills gh's placeholders with another repository than the
 origin remote, `--hostname`, and a gh alias.
 
 The doors and what they leave to the code host are in section 6 of the

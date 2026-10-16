@@ -15,8 +15,9 @@
 - [x] Every recorded corpus route reads as recorded; 15 routes added with sources
 - [x] Main-versus-head comparison shows only the promised moves
 - [x] .claude/ re-vendored at the head
-- [x] Runtime at 3,000 lines or fewer (2,999)
+- [x] Runtime at 3,000 lines or fewer (3,000)
 - [x] The PR and repository a gh pr door reads match gh's (flag values skipped, `--repo=`, `-R<value>`)
 - [x] An `--input` draft counts only when the gh call runs alone
-- [x] Endpoints are percent-decoded with repeated slashes collapsed before the route match
+- [x] Endpoints are percent-decoded with empty and `.` segments dropped before the route match; a write through `..` is refused
+- [x] An `--input` draft counts only for an unwrapped gh call with a plain path
 - [x] No config key, no emojis, no em dashes

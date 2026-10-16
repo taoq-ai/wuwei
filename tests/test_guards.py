@@ -611,7 +611,8 @@ def test_gh_pr_new_is_gh_pr_create(root, cloud):
                                      'gh api -X PUT http://api.github.com/repos/o/r/pulls/5/merge',
                                      'gh api -X PUT https://api.github.com:443/repos/o/r/pulls/5/merge',
                                      'gh api -X PUT repos/o/r/pulls/5//merge', 'gh api -X PUT repos//o/r/pulls/5/merge',
-                                     'gh api -X PUT repos/o/r/pulls/5/%6Derge'])
+                                     'gh api -X PUT repos/o/r/pulls/5/%6Derge', 'gh api -X PUT repos/o/r/pulls/5/./merge',
+                                     'gh api -X PUT repos/o/r/./pulls/5/merge/.'])
 def test_every_rest_merge_spelling_meets_the_merge_door(root, cloud, command):
     decision = guards.bash(root, command, '/repo', 's1')
     assert decision['decision'] == 'deny' and 'o/r#5 is not ready to merge' in decision['reason'], command
@@ -745,7 +746,12 @@ NOT_DRAFTS = ['gh pr create', 'gh pr create -t t -F body.md', 'gh pr create --dr
               'gh pr create -dr=bob', 'gh pr create -drbob', 'gh pr create -dx', 'gh pr create -d -- -r bob',
               'cd sub && gh api -X POST repos/o/r/pulls --input d.json',  # gh reads its own d.json, not the hook's
               'cp f.json d.json && gh api -X POST repos/o/r/pulls --input d.json',
-              'bash -c "cd sub; gh api repos/o/r/pulls --input d.json"']
+              'bash -c "cd sub; gh api repos/o/r/pulls --input d.json"', 'env -C sub gh api repos/o/r/pulls --input d.json',
+              'env --chdir=sub gh api repos/o/r/pulls --input d.json', 'sudo -D sub gh api repos/o/r/pulls --input d.json',
+              'gh api repos/o/r/pulls --input ~/d.json', 'gh api repos/o/r/pulls --input $HOME/d.json',
+              'gh api repos/o/r/pulls --input d*.json',  # the shell or a wrapper hands gh another file than the hook reads
+              'gh pr view 5 && cp f.json d.json && gh api repos/o/r/pulls --input d.json',  # an earlier segment rewrites it
+              'gh pr create --draft=yes -d']  # pflag refuses --draft=yes and gh exits
 
 
 @pytest.mark.parametrize('body', ['["bug"]', 'not json', ''])
@@ -762,6 +768,9 @@ def drafts(root, cloud):
     (root / 'n.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'x': {'draft': True}}))
     (root / 's.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 'false'}))
     (root / 'i.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 1}))
+    for planted in ('~/d.json', '$HOME/d.json', 'd*.json'):  # the literal paths the hook would read
+        (root / planted).parent.mkdir(exist_ok=True)
+        (root / planted).write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     cloud.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True, 'headRefName': 'x'}
     return cloud
 
@@ -800,7 +809,12 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
          'gh api -X POST repos/o/r/pulls/7//requested_reviewers -f reviewers[]=bob',
          'gh api -X POST repos/o//r/pulls/7/requested_reviewers -f reviewers[]=bob',
          'gh api -X POST repos/o/r/pulls/7/requested%5Freviewers -f reviewers[]=bob',
-         'gh api -X POST repos/o/r/pulls/7/ccr//ready_for_review']
+         'gh api -X POST repos/o/r/pulls/7/ccr//ready_for_review',
+         'gh api -X POST repos/o/r/pulls/7/./requested_reviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/./pulls/7/ccr/ready_for_review',
+         'gh api -X POST repos/o/r/pulls/7/requested_reviewers/. -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/pulls/7/requested_reviewers%2F -f reviewers[]=bob',
+         'gh pr edit --add-reviewer a --remove-reviewer b 7']
 
 
 @pytest.mark.parametrize('command, door, expected', [
@@ -810,7 +824,13 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
     ('gh pr merge --repo=x/y 5', 'merge_door', ('x/y', 5)), ('gh pr merge -Rx/y 5', 'merge_door', ('x/y', 5)),
     ('gh pr merge -dR x/y 5', 'merge_door', ('x/y', 5)), ('gh pr merge -t 3 5 --squash', 'merge_door', ('o/r', 5)),
     ('gh pr merge -m 5', 'merge_door', ('o/r', 5)), ('gh pr merge -r 5', 'merge_door', ('o/r', 5)),
-    ('gh pr merge --subject=3 -A 4 5', 'merge_door', ('o/r', 5)), ('gh pr merge -- 5', 'merge_door', ('o/r', 5))])
+    ('gh pr merge --subject=3 -A 4 5', 'merge_door', ('o/r', 5)), ('gh pr merge -- 5', 'merge_door', ('o/r', 5)),
+    ('gh pr ready -R a/b -R o/r 7', 'ready_door', ('o/r', 7)), ('gh pr ready https://github.com/other/x/pull/7', 'ready_door',
+                                                               ('other/x', 7)),
+    ('gh pr ready -R o/r https://github.com/other/x/pull/7', 'ready_door', ('other/x', 7)),
+    ('gh pr ready https://github.com/other/x/pull/7 -R o/r', 'ready_door', ('other/x', 7)),
+    ('gh pr merge -R a/b -R o/r 5', 'merge_door', ('o/r', 5)),
+    ('gh pr merge https://github.com/other/x/pull/5 -R o/r', 'merge_door', ('other/x', 5))])
 def test_a_pr_door_reads_the_repository_and_the_pr_that_gh_reads(root, cloud, monkeypatch, command, door, expected):
     seen = []
     monkeypatch.setattr(guards, door, lambda root, repo, number, **kw: seen.append((repo, number)))
@@ -862,3 +882,17 @@ def test_a_graphql_ready_or_reviewer_mutation_is_refused_with_the_route_to_use(r
     decision = guards.bash(root, f"gh api graphql -f query='{query}'", '/repo', 's1')
     assert decision['decision'] == 'deny' and mutation in decision['reason']
     assert 'gh pr ready' in decision['reason'] and 'gh pr edit --add-reviewer' in decision['reason']
+
+
+@pytest.mark.parametrize('value, verdict', [(True, 'pass'), ('true', 'create'), ('false', 'create'), (1, 'create'), (None, 'create')])
+def test_only_a_json_true_in_the_input_body_opens_a_draft(root, drafts, value, verdict):
+    (root / 'v.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': value}))
+    assert door_reached(guards.bash(root, 'gh api -X POST repos/o/r/pulls --input v.json', str(root), 's1')) == verdict, value
+
+
+@pytest.mark.parametrize('command', ['gh api -X POST repos/o/r/pulls/7/x/../requested_reviewers -f reviewers[]=bob',
+                                     'gh api -X PUT repos/o/r/pulls/5/../5/merge', 'gh api -X PUT repos/o/r/%2E%2E/r/pulls/5/merge'])
+def test_a_write_through_a_dot_dot_segment_is_refused(root, drafts, command):
+    decision = guards.bash(root, command, str(root), 's1')
+    assert decision['decision'] == 'deny' and '..' in decision['reason'] and 'spell the endpoint plainly' in decision['reason']
+    assert guards.bash(root, 'gh api repos/o/r/pulls/../pulls/5', str(root), 's1') is None  # a read changes nothing

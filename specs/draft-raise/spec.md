@@ -109,6 +109,12 @@ The acceptance scenarios, restated:
   are decoded and repeated slashes collapse, so `pulls/7//requested_reviewers`, `repos/o//r/...`,
   `requested%5Freviewers` and `pulls/5//merge` meet their doors. The security gate measured that
   GitHub routes those spellings (read-only GETs).
+- Q (fix round at 76a738a): Which dot segments count? A: `.` segments drop, as GitHub reads them
+  (measured with read-only GETs). GitHub refuses `..` with 403 "path contains traversal sequence",
+  so a write through `..` is refused outright and names the plain spelling; a read passes.
+- Q (fix round at 76a738a): When is an `--input` file the one gh reads? A: Only when gh is the
+  command's first word (no wrapper such as `env -C`, `env --chdir=` or `sudo -D`), the command is
+  one segment, and no word holds `~`, `$`, `*`, `?` or `[` that the shell would expand.
 - Q: Which draft values in the `--input` JSON count? A: Only the JSON `true`: `"false"` and `1`
   stay held, and a test pins it.
 
@@ -134,12 +140,17 @@ doors-by-rest was): commands that passed on main now meet a door. The commit and
   `--undo`), a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP `update_pull_request` with
   `draft` other than true, and a reviewer request (`gh pr edit --add-reviewer`, a REST POST on
   `pulls/<n>/requested_reviewers`, MCP `reviewers`, `request_copilot_review`).
+- Newly held: a `gh api` endpoint spelled with `//`, `%xx` or `.` segments now meets the merge,
+  push, rules and delete doors as its plain spelling does, and `gh pr merge` reads the PR and
+  repository the way gh does (the first positional after flag values, the last `-R` or
+  `--repo=`, or the URL's).
 - Newly refused on any PR: the GraphQL mutations `markPullRequestReadyForReview` and
-  `requestReviews`.
+  `requestReviews`, and a `gh api` write through a `..` segment.
 - Newly passing: a draft create before its gates.
 - Migration: open the PR as a draft right after the push, run the gates at the draft head once CI
   has run, then `gh pr ready <n>` and request reviewers. Use `gh pr edit --add-reviewer` or the
-  REST route instead of GraphQL `requestReviews`. No config or data changes.
+  REST route instead of GraphQL `requestReviews`. Spell `gh api` endpoints plainly. No config or
+  data changes.
 
 ## Rollback
 

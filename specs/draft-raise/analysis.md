@@ -23,7 +23,11 @@ constitution.
 | S3 | Inconsistency | HIGH | `_api`, endpoint | `//` and percent-escapes missed the ready and merge routes | Resolved: escapes decoded and slashes collapsed before matching |
 | Q1 | Coverage | MEDIUM | `_draft` | No test held a cluster that names a reviewer (`-dr=bob`, `-drbob`) or an unknown flag in a cluster (`-dx`) | Resolved: in NOT_DRAFTS; an `--input` draft of `"false"` or `1` pinned |
 
-No open finding above LOW: A1, A2, I1, I2, B1, S1 to S3 and Q1 are resolved.
+| S4 | Inconsistency | HIGH | `_api`, endpoint | `.` segments still missed the ready and merge routes (arch and security at 76a738a) | Resolved: empty and `.` segments drop after decoding; a write through `..` is refused |
+| S5 | Inconsistency | HIGH | `--input` draft | A wrapper (`env -C`, `sudo -D`) or a shell expansion (`~`, `$`, globs) hands gh another file than the hook reads | Resolved: an `--input` draft needs gh as the first word of a one-segment command with no such character |
+| Q2 | Coverage | MEDIUM | `_repo_number` | The URL's repository and the last `-R` were untested | Resolved: unit tests and corpus routes for ready and merge |
+
+No open finding above LOW: A1, A2, I1, I2, B1, S1 to S5, Q1 and Q2 are resolved.
 
 ## Coverage
 

@@ -31,7 +31,7 @@ LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/(\d+)/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/(\d+)/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),
-       (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'),
+       (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'), (r'(.*/)?\.\.(/.*)?', WRITE, 'dots'),
        (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
         WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
 API_VALUED = set('XfFHqtp') | {'method', 'raw-field', 'field', 'input', 'header', 'jq', 'template', 'preview', 'hostname', 'cache'}
@@ -175,7 +175,7 @@ def _read(cwd, path):
 
 
 def _api(args, cwd, alone=True):
-    """gh api's method, endpoint and fields as gh's flag parser reads them (-XPUT, --method=put, -fk=v, -F k=@file)."""
+    """gh api's method, fields (-XPUT, --method=put, -fk=v, -F k=@file) and endpoint (//, %xx and . read as GitHub does)."""
     flags = _flags(args, API_VALUED)  # an empty attached value (-X=, --method=) is a value; a flag with none takes the next word
     opts, rest = [('-' * min(len(n), 2) + n, v or '') for n, v in flags if n], [v for n, v in flags if not n]
     pairs = [(f, *kv.split('=', 1)) for f, kv in opts if f in ('-f', '--raw-field', '-F', '--field') and '=' in kv]
@@ -185,7 +185,7 @@ def _api(args, cwd, alone=True):
     draft = (alone and (json.loads(data) if data.lstrip()[:1] == '{' else {}).get('draft') is True if '--input' in dict(opts)  # gh reads
              else ([f in ('-F', '--field') and v == 'true' for f, k, v in pairs if k == 'draft'] or [False])[-1])  # the file in its own cwd
     method = ([v.upper() for f, v in opts if f in ('-X', '--method')] or ['POST' if fields or '--input' in dict(opts) else 'GET'])[-1]
-    endpoint = re.sub(r'/+', '/', unquote(re.sub(r'(?i)^([a-z][\w+.-]*://[^/]*)?/+|/*([?#].*)?$', '', rest[0] if rest else ''))).strip('/')
+    endpoint = '/'.join(p for p in unquote(re.sub(r'(?i)^[a-z][\w+.-]*://[^/]*|[?#].*$', '', rest[0] if rest else '')).split('/') if p not in ('', '.'))
     owner, name = ((origin(cwd) if '{' in endpoint else '') or '{owner}/{repo}').split('/')
     return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields, draft
 
@@ -205,7 +205,8 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'ready'] and not undo or args[:2] == ['pr', 'edit'] and any(a.startswith('--add-reviewer') for a in args):
         return ready_door(root, *_repo_number(args[2:], cwd))
     if args[:1] == ['api'] and len(args) > 1:
-        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1)  # alone: in the hook's cwd
+        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1 and (  # gh alone, unwrapped, plain:
+            words := shlex.split(command))[:1] == ['gh'] and not re.search(r'[~$*?[]', ' '.join(words)))  # it reads the hook's file
         if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} goes around the doors: use gh pr merge, gh pr create --draft, gh pr ready or gh pr '
                         'edit --add-reviewer (in a cloud session gh api -X POST repos/<o>/<r>/pulls[/<n>/ccr/ready_for_review]).')
@@ -213,9 +214,10 @@ def gh_command(root, args, cwd, session, command=''):
                        ('', None))
         if door in ('merge', 'ready'):
             return merge_door(root, m[1], int(m[2]), auto=m[3].lower() != 'merge') if door == 'merge' else ready_door(root, m[1], int(m[2]))
-        if door in ('push', 'delete', 'rules'):
+        if door in ('push', 'delete', 'rules', 'dots'):
             return deny({'push': f'gh api {method} {endpoint} writes a branch outside a pull request: like pushing to the '
-                                 'default branch it is ' + PUSHED, 'delete': 'deleting a repository is the owner\'s act, never '
+                                 'default branch it is ' + PUSHED, 'dots': f'gh api {endpoint} has a .. segment: spell the '
+                                 'endpoint plainly.', 'delete': 'deleting a repository is the owner\'s act, never '
                          'an agent\'s.'}.get(door, f'gh api {method} {endpoint} changes protection, statuses, merges or access: '
                                                     'the repository rules and the merge door are not changed from an agent session.'))
         opening = door == 'create' and (m[1], fields.get('head', ''), fields.get('base', ''), fields.get('body', ''), draft)
@@ -368,8 +370,7 @@ def pre_tool(root, payload):
     if tool.startswith('mcp__') and tool.endswith(DOORS['create']) and not (data.get('draft') is True and not data.get('reviewers')):
         return leak(root, json.dumps(data)) or create_door(root, f'{data.get("owner")}/{data.get("repo")}', str(
             data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))  # a draft opens before its gates
-    if tool.startswith('mcp__') and tool.endswith(DOORS['ready']) and (data.get('draft', True) is not True or data.get('reviewers')
-                                                                       or tool.endswith('copilot_review')):
+    if tool.startswith('mcp__') and tool.endswith(DOORS['ready']) and (data.get('draft', True) is not True or data.get('reviewers') or 'copilot' in tool):
         return leak(root, json.dumps(data)) or ready_door(root, repo, number)
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))

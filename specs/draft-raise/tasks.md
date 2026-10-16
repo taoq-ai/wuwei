@@ -36,4 +36,10 @@
 - [x] T024 Tests first: PR and repository read past flag values and from `--repo=`, `-R<value>` (ready and merge doors); `--input` behind `cd` or `cp` held; `//` and `%5F` endpoints; `-dr=bob`, `-drbob`, `-dx`; `--input` draft `"false"` and `1` (the final tests against 8774129's guards.py: 34 failed, 586 passed)
 - [x] T025 One pflag reader `_flags` for `_repo_number`, `_draft` and `gh api`; `--input` draft only when gh runs alone; endpoint decoded and slashes collapsed (cli/wuwei/guards.py)
 - [x] T026 evidence.md row, shepherd cloud reviewer route, SECURITY.md line; agents rebuilt; re-vendored; 12 corpus routes with sources
-- [x] T023 Main-versus-head over 204 commands and payloads: 21 drafts now pass, 23 ready or reviewer routes on draft PR 7 now held, 2 new mutations refused, 42 refusals with new text only; no other verdict moved
+- [x] T023 Main-versus-head over 248 commands and payloads (at the fix round at 76a738a): 25 drafts now pass, 36 ready or reviewer routes on draft PR 7 now held, 3 merge spellings (`//`, `%6D`, `.`) now meet the merge door, 4 newly refused (2 GraphQL mutations, a `.` spelling of a `contents/` write, a write through `..`), 52 refusals with new text only; no other verdict moved
+
+## Phase 4: Fix round at 76a738a (arch, quality and security FIX)
+
+- [x] T027 Tests first: `.` segments on the ready, reviewer and merge routes; a write through `..` refused; `--input` behind `env -C`, `env --chdir=`, `sudo -D`, an earlier segment, `~`, `$HOME` or a glob held; the last `-R` and the URL's repository for ready and merge; an `--input` draft of `"true"`, `"false"`, `1` or null held; `--draft=yes -d` held (the final tests against 76a738a's guards.py: 19 failed, 645 passed)
+- [x] T028 Endpoint segments: empty and `.` dropped after decoding, a `dots` route refuses writes through `..`; an `--input` draft needs gh as the first word of a one-segment command with no `~`, `$` or glob (cli/wuwei/guards.py)
+- [x] T029 SECURITY.md, spec Breaking and Clarifications; 12 corpus routes; agents rebuilt; re-vendored; 12 mutants on the new and contested clauses all killed; runtime 3,000

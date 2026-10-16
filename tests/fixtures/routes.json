@@ -103,6 +103,18 @@
     {"command": "gh api -X POST repos/o//r/pulls/7/requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at 8774129", "verdict": "ready"},
     {"command": "gh api -X POST repos/o/r/pulls/7/requested%5Freviewers -f reviewers[]=bob", "source": "security gate draft-raise at 8774129 (percent-escapes decode)", "verdict": "ready"},
     {"command": "gh api -X PUT repos/o/r/pulls/5//merge", "source": "security gate draft-raise at 8774129 (passed on main too)", "verdict": "merge"},
-    {"command": "cd sub && gh api -X POST repos/o/r/pulls --input d.json", "source": "security gate draft-raise at 8774129 (gh reads its own d.json: the create door)", "verdict": "create"}
+    {"command": "cd sub && gh api -X POST repos/o/r/pulls --input d.json", "source": "security gate draft-raise at 8774129 (gh reads its own d.json: the create door)", "verdict": "create"},
+    {"command": "gh pr ready -R a/b -R o/r 7", "source": "security gate draft-raise at 76a738a (the last -R wins, as in gh)", "verdict": "ready"},
+    {"command": "gh pr ready https://github.com/other/x/pull/7", "source": "quality gate draft-raise at 76a738a (the URL names the repository)", "verdict": "ready"},
+    {"command": "gh pr ready -R o/r https://github.com/other/x/pull/7", "source": "security gate draft-raise at 76a738a (the URL wins over -R, in either order)", "verdict": "ready"},
+    {"command": "gh pr merge -R a/b -R o/r 5", "source": "security gate draft-raise at 76a738a (the last -R wins)", "verdict": "merge"},
+    {"command": "gh pr merge https://github.com/other/x/pull/5 -R o/r", "source": "security gate draft-raise at 76a738a (the URL wins over -R)", "verdict": "merge"},
+    {"command": "gh api -X POST repos/o/r/pulls/7/./requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at 76a738a (. segments drop)", "verdict": "ready"},
+    {"command": "gh api -X POST repos/o/r/./pulls/7/ccr/ready_for_review", "source": "security gate draft-raise at 76a738a", "verdict": "ready"},
+    {"command": "gh api -X POST repos/o/r/pulls/7/requested_reviewers/. -f reviewers[]=bob", "source": "security gate draft-raise at 76a738a", "verdict": "ready"},
+    {"command": "gh api -X PUT repos/o/r/pulls/5/./merge", "source": "arch gate draft-raise at 76a738a (passed on main too)", "verdict": "merge"},
+    {"command": "gh api -X PUT repos/o/r/pulls/5/../5/merge", "source": "item draft-raise fix round at 76a738a (a write through .. is refused)", "verdict": "refusal"},
+    {"command": "env -C sub gh api -X POST repos/o/r/pulls --input d.json", "source": "security gate draft-raise at 76a738a (a wrapper changes the directory: the create door)", "verdict": "create"},
+    {"command": "gh api -X POST repos/o/r/pulls --input ~/d.json", "source": "security gate draft-raise at 76a738a (the shell expands ~: the create door)", "verdict": "create"}
   ]
 }
