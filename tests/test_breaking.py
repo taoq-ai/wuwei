@@ -86,6 +86,16 @@ def test_the_breaking_question_reaches_the_owner_and_is_recorded(root):
                                                    'approved': True, 'question': question, 'answer': 'Yes, proceed'}
 
 
+
+@pytest.mark.parametrize('answer, approved', [('Proceed', True), ('proceed.', True), ('Do not proceed', False),
+                                              ('No', False)])
+def test_a_proceed_answer_to_the_breaking_question_approves(root, answer, approved):
+    question = 'breaking: acme/app#42 at aaaaaaa: drops v1 export. Announced at https://x.test/a. Proceed?'
+    payload = {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
+               'tool_input': {'questions': [{'question': question}]}}
+    hook.handle(root, 'PostToolUse', {**payload, 'tool_response': {'answers': {question: answer}}})
+    assert ws.rows(root, 'ruling')[-1]['data']['approved'] is approved
+
 def test_a_breaking_question_without_its_pr_is_refused(root):
     payload = {'tool_name': 'AskUserQuestion', 'cwd': str(root), 'session_id': 's1',
                'tool_input': {'questions': [{'question': 'breaking: we drop v1. Proceed?'}]}}
