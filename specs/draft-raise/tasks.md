@@ -36,10 +36,16 @@
 - [x] T024 Tests first: PR and repository read past flag values and from `--repo=`, `-R<value>` (ready and merge doors); `--input` behind `cd` or `cp` held; `//` and `%5F` endpoints; `-dr=bob`, `-drbob`, `-dx`; `--input` draft `"false"` and `1` (the final tests against 8774129's guards.py: 34 failed, 586 passed)
 - [x] T025 One pflag reader `_flags` for `_repo_number`, `_draft` and `gh api`; `--input` draft only when gh runs alone; endpoint decoded and slashes collapsed (cli/wuwei/guards.py)
 - [x] T026 evidence.md row, shepherd cloud reviewer route, SECURITY.md line; agents rebuilt; re-vendored; 12 corpus routes with sources
-- [x] T023 Main-versus-head over 248 commands and payloads (at the fix round at 76a738a): 25 drafts now pass, 36 ready or reviewer routes on draft PR 7 now held, 3 merge spellings (`//`, `%6D`, `.`) now meet the merge door, 4 newly refused (2 GraphQL mutations, a `.` spelling of a `contents/` write, a write through `..`), 52 refusals with new text only; no other verdict moved
+- [x] T023 Main (7f31a51) versus head over 259 commands and payloads, at the fix round at f1ca82b: 26 drafts now pass; 40 ready or reviewer routes on draft PR 7 now held; 4 merge spellings (`//`, `%6D`, `.`, `5x`) now meet the merge door; 4 newly refused (2 GraphQL mutations, a `.` spelling of a `contents/` write, a write through `..`); 2 GraphQL merge refusals reworded; of the refusals that keep their door, 51 change wording only and 4 merge refusals now name the PR or repository gh reads (`--repo=x/y 5`, `-Rx/y 5`, `-t 3 5`, a URL with `-R`); no other verdict moved
 
 ## Phase 4: Fix round at 76a738a (arch, quality and security FIX)
 
 - [x] T027 Tests first: `.` segments on the ready, reviewer and merge routes; a write through `..` refused; `--input` behind `env -C`, `env --chdir=`, `sudo -D`, an earlier segment, `~`, `$HOME` or a glob held; the last `-R` and the URL's repository for ready and merge; an `--input` draft of `"true"`, `"false"`, `1` or null held; `--draft=yes -d` held (the final tests against 76a738a's guards.py: 19 failed, 645 passed)
 - [x] T028 Endpoint segments: empty and `.` dropped after decoding, a `dots` route refuses writes through `..`; an `--input` draft needs gh as the first word of a one-segment command with no `~`, `$` or glob (cli/wuwei/guards.py)
 - [x] T029 SECURITY.md, spec Breaking and Clarifications; 12 corpus routes; agents rebuilt; re-vendored; 12 mutants on the new and contested clauses all killed; runtime 3,000
+
+## Phase 5: Fix round at f1ca82b (security FIX)
+
+- [x] T030 Tests first: `--input={,sub/}d.json`, ``--input `printf sub/d.json` ``, `--input "$(echo d.json)"`, a substitution elsewhere and a redirect held, `--input=d.json` and `--input sub/d.json` pass; `pulls/7abc`, `%207`, `7%20`, `7.0` on the ready and reviewer routes and `5x`, `%205`, `5.0` on the merge routes meet their doors (the final tests against f1ca82b's guards.py: 13 failed, 671 passed)
+- [x] T031 An allowlist of plain words (`[\w./=@:-]+`) replaces the `~ $ * ? [` denylist; the PR segment of the ready, reviewer and merge routes is read from its leading digits; in place, runtime 3,000 (cli/wuwei/guards.py)
+- [x] T032 SECURITY.md, spec Breaking and Clarifications, 4 corpus routes, re-vendored; mutants: allowlist, gh-first and the four PR-segment mutants killed; the one-segment check survives as equivalent (the allowlist already rejects `&&`, `;` and `|` words) and stays as instructed

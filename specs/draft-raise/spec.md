@@ -114,7 +114,14 @@ The acceptance scenarios, restated:
   so a write through `..` is refused outright and names the plain spelling; a read passes.
 - Q (fix round at 76a738a): When is an `--input` file the one gh reads? A: Only when gh is the
   command's first word (no wrapper such as `env -C`, `env --chdir=` or `sudo -D`), the command is
-  one segment, and no word holds `~`, `$`, `*`, `?` or `[` that the shell would expand.
+  one segment, and (since the fix round at f1ca82b) every word is plain: letters, digits and
+  `./=@:-` only. An allowlist, because a denylist missed brace expansion and backticks
+  (`--input={,sub/}d.json`, ``--input `printf sub/d.json` ``); a substitution anywhere in the
+  command (`-f x="$(cp f.json d.json)"`) is caught too. A redirect is held as well (a false hold).
+- Q (fix round at f1ca82b): How is the PR number in a write route read? A: As GitHub reads it,
+  from the segment's leading digits after decoding: `7abc`, `%207`, `7%20` and `7.0` are PR 7
+  (the security gate measured this with read-only GETs), so they meet the ready, reviewer and merge
+  doors.
 - Q: Which draft values in the `--input` JSON count? A: Only the JSON `true`: `"false"` and `1`
   stay held, and a test pins it.
 
@@ -140,6 +147,8 @@ doors-by-rest was): commands that passed on main now meet a door. The commit and
   `--undo`), a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP `update_pull_request` with
   `draft` other than true, and a reviewer request (`gh pr edit --add-reviewer`, a REST POST on
   `pulls/<n>/requested_reviewers`, MCP `reviewers`, `request_copilot_review`).
+- Newly held: a `gh api` PR segment with characters around its number (`pulls/5x/merge`,
+  `pulls/%205/...`, `pulls/5.0/...`) now meets the merge, ready and reviewer doors as PR 5 does.
 - Newly held: a `gh api` endpoint spelled with `//`, `%xx` or `.` segments now meets the merge,
   push, rules and delete doors as its plain spelling does, and `gh pr merge` reads the PR and
   repository the way gh does (the first positional after flag values, the last `-R` or

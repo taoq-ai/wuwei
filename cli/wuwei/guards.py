@@ -29,8 +29,8 @@ SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
-API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/(\d+)/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
-       (REPO + r'/pulls/(\d+)/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),
+API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/\d]*(\d+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
+       (REPO + r'/pulls/[^/\d]*(\d+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
        (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'), (r'(.*/)?\.\.(/.*)?', WRITE, 'dots'),
        (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
         WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
@@ -205,8 +205,8 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'ready'] and not undo or args[:2] == ['pr', 'edit'] and any(a.startswith('--add-reviewer') for a in args):
         return ready_door(root, *_repo_number(args[2:], cwd))
     if args[:1] == ['api'] and len(args) > 1:
-        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1 and (  # gh alone, unwrapped, plain:
-            words := shlex.split(command))[:1] == ['gh'] and not re.search(r'[~$*?[]', ' '.join(words)))  # it reads the hook's file
+        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1 and (  # an --input file is the one gh
+            words := shlex.split(command))[:1] == ['gh'] and all(re.fullmatch(r'[\w./=@:-]+', w) for w in words))  # reads: alone, unwrapped, plain words
         if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} goes around the doors: use gh pr merge, gh pr create --draft, gh pr ready or gh pr '
                         'edit --add-reviewer (in a cloud session gh api -X POST repos/<o>/<r>/pulls[/<n>/ccr/ready_for_review]).')

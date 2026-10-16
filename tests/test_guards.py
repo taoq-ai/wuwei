@@ -612,7 +612,8 @@ def test_gh_pr_new_is_gh_pr_create(root, cloud):
                                      'gh api -X PUT https://api.github.com:443/repos/o/r/pulls/5/merge',
                                      'gh api -X PUT repos/o/r/pulls/5//merge', 'gh api -X PUT repos//o/r/pulls/5/merge',
                                      'gh api -X PUT repos/o/r/pulls/5/%6Derge', 'gh api -X PUT repos/o/r/pulls/5/./merge',
-                                     'gh api -X PUT repos/o/r/./pulls/5/merge/.'])
+                                     'gh api -X PUT repos/o/r/./pulls/5/merge/.', 'gh api -X PUT repos/o/r/pulls/5x/merge',
+                                     'gh api -X PUT repos/o/r/pulls/%205/merge', 'gh api -X PUT repos/o/r/pulls/5.0/ccr/auto_merge'])
 def test_every_rest_merge_spelling_meets_the_merge_door(root, cloud, command):
     decision = guards.bash(root, command, '/repo', 's1')
     assert decision['decision'] == 'deny' and 'o/r#5 is not ready to merge' in decision['reason'], command
@@ -726,7 +727,7 @@ DRAFTS = ['gh pr create --draft -t t -F body.md', 'gh pr create -d', 'gh pr new 
           'gh api repos/o/r/pulls -f head=x -F=draft=true', "gh api 'repos/{owner}/{repo}/pulls' -f head=x -F draft=true",
           'gh api -X post HTTPS://API.GITHUB.COM/repos/o/r/PULLS -f head=x -F draft=true',
           'gh api repos/o/r/pulls --input d.json', 'gh api repos/o/r/pulls --input d.json -F draft=false',
-          'gh api repos/o/r/pulls --input d.json > out.json', 'gh pr create -fd', 'gh pr create -df', 'gh pr create -wd',
+          'gh api repos/o/r/pulls --input=d.json', 'gh api repos/o/r/pulls --input sub/d.json', 'gh pr create -fd', 'gh pr create -df', 'gh pr create -wd',
           'gh pr create -dt x', 'gh pr create -d --']
 # Each reads as not a draft: gh 2.89.0 (pflag v1.0.6 for gh pr create, a logging server for gh api) either opens a PR
 # that is not a draft, sends draft as a string, a number or in the query string, or exits before it creates anything.
@@ -751,7 +752,10 @@ NOT_DRAFTS = ['gh pr create', 'gh pr create -t t -F body.md', 'gh pr create --dr
               'gh api repos/o/r/pulls --input ~/d.json', 'gh api repos/o/r/pulls --input $HOME/d.json',
               'gh api repos/o/r/pulls --input d*.json',  # the shell or a wrapper hands gh another file than the hook reads
               'gh pr view 5 && cp f.json d.json && gh api repos/o/r/pulls --input d.json',  # an earlier segment rewrites it
-              'gh pr create --draft=yes -d']  # pflag refuses --draft=yes and gh exits
+              'gh pr create --draft=yes -d',  # pflag refuses --draft=yes and gh exits
+              'gh api repos/o/r/pulls --input={,sub/}d.json', 'gh api repos/o/r/pulls --input `printf sub/d.json`',
+              'gh api repos/o/r/pulls --input "$(echo d.json)"', 'gh api repos/o/r/pulls --input d.json -f x="$(cp f.json d.json)"',
+              'gh api repos/o/r/pulls --input d.json > out.json']  # only plain words: no expansion, substitution or redirect
 
 
 @pytest.mark.parametrize('body', ['["bug"]', 'not json', ''])
@@ -768,7 +772,9 @@ def drafts(root, cloud):
     (root / 'n.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'x': {'draft': True}}))
     (root / 's.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 'false'}))
     (root / 'i.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 1}))
-    for planted in ('~/d.json', '$HOME/d.json', 'd*.json'):  # the literal paths the hook would read
+    (root / 'sub').mkdir()
+    (root / 'sub' / 'd.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
+    for planted in ('~/d.json', '$HOME/d.json', 'd*.json', '{,sub/}d.json', '`printf', '$(echo d.json)'):  # literal paths
         (root / planted).parent.mkdir(exist_ok=True)
         (root / planted).write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     cloud.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True, 'headRefName': 'x'}
@@ -814,7 +820,11 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
          'gh api -X POST repos/o/r/./pulls/7/ccr/ready_for_review',
          'gh api -X POST repos/o/r/pulls/7/requested_reviewers/. -f reviewers[]=bob',
          'gh api -X POST repos/o/r/pulls/7/requested_reviewers%2F -f reviewers[]=bob',
-         'gh pr edit --add-reviewer a --remove-reviewer b 7']
+         'gh pr edit --add-reviewer a --remove-reviewer b 7',
+         'gh api -X POST repos/o/r/pulls/7abc/requested_reviewers -f reviewers[]=bob',  # GitHub reads the leading digits
+         'gh api -X POST repos/o/r/pulls/%207/requested_reviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/pulls/7%20/requested_reviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/pulls/7.0/ccr/ready_for_review']
 
 
 @pytest.mark.parametrize('command, door, expected', [

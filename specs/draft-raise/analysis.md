@@ -27,7 +27,10 @@ constitution.
 | S5 | Inconsistency | HIGH | `--input` draft | A wrapper (`env -C`, `sudo -D`) or a shell expansion (`~`, `$`, globs) hands gh another file than the hook reads | Resolved: an `--input` draft needs gh as the first word of a one-segment command with no such character |
 | Q2 | Coverage | MEDIUM | `_repo_number` | The URL's repository and the last `-R` were untested | Resolved: unit tests and corpus routes for ready and merge |
 
-No open finding above LOW: A1, A2, I1, I2, B1, S1 to S5, Q1 and Q2 are resolved.
+| S6 | Inconsistency | HIGH | `--input` draft | The `~ $ * ? [` denylist missed brace expansion and backticks (security at f1ca82b) | Resolved: every word of the command must be plain (`[\w./=@:-]+`) |
+| S7 | Inconsistency | MEDIUM | route table | GitHub reads `pulls/7abc`, `%207`, `7%20`, `7.0` as PR 7; the routes needed `\d+` | Resolved: the PR segment is read from its leading digits on the ready, reviewer and merge routes |
+
+No open finding above LOW: A1, A2, I1, I2, B1, S1 to S7, Q1 and Q2 are resolved.
 
 ## Coverage
 
