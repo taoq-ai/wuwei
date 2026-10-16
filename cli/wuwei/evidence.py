@@ -90,6 +90,10 @@ def review_duty(root, ref, pr):
                 f'wuwei sent {ref} <link to the post>)')]
 
 
+def items_named(body):
+    return ITEM.findall(body or '')  # every plan item a PR body names: one PR may close several
+
+
 def item_for(root, pr, repo=None):
     """The plan item a PR names in its WUWEI footer, records among its PRs, or whose id starts
     its branch name."""

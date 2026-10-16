@@ -70,3 +70,41 @@ def test_a_watch_pass_is_recorded_and_says_when_the_last_was(root, fake, capsys)
     assert ws.rows(root, 'watch.pass')[0]['data']['summary'] == 'acted on 2 PRs, 1 reply owed'
     assert cli.main(['watch']) == 0
     assert 'last pass' in capsys.readouterr().out
+
+
+def _item(id_, **extra):
+    return {'id': id_, 'title': id_, 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light', 'status': 'open', **extra}
+
+
+def test_a_pr_naming_two_items_links_both_and_closes_both_once_merged(root, fake):
+    write_plan(root, [_item('A'), _item('B')])
+    fake.prs['9'] = make_pr(9, body='Fixes both.\n\nWUWEI-Item: A\nWUWEI-Item: B')
+    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#9', 'B': 'acme/app#9'}
+    fake.prs['9'].update(state='MERGED', mergedAt=ws.now().isoformat(timespec='seconds'))
+    ws.cache_put(root, 'prs-acme__app', None)
+    board.compute(root)
+    assert plan.find(root, 'A')['status'] == 'done' and plan.find(root, 'B')['status'] == 'done'
+
+
+def test_an_item_whose_pr_just_merged_closes_despite_a_stale_merged_cache(root, fake):
+    import os
+    write_plan(root, [_item('C')])
+    ws.cache_put(root, 'merged-acme__app', [])
+    path = root / ws.DIR / 'cache' / 'merged-acme__app.json'
+    old = ws.now().timestamp() - 120
+    os.utime(path, (old, old))
+    fake.prs['7'] = make_pr(7, body='WUWEI-Item: C', state='MERGED')
+    fake.prs['7']['mergedAt'] = ws.now().isoformat(timespec='seconds')
+    board.compute(root)
+    assert plan.find(root, 'C')['status'] == 'done'
+
+
+def test_an_item_with_no_pr_names_its_uncounted_verdicts(root, fake):
+    from conftest import verdict_text
+    write_plan(root, [_item('D', approved=True)])
+    path = root / ws.DIR / 'verdicts' / 'D' / 'quality-abc1234.md'
+    path.parent.mkdir(parents=True)
+    path.write_text(verdict_text(item='D', head='abc1234' + '0' * 33, pr='acme/app#1'))
+    texts = [g['text'] for g in board.compute(root)[0]['gaps']]
+    assert texts[0] == 'no pull request yet'
+    assert texts[1].startswith('verdict .wuwei/verdicts/D/quality-abc1234.md not counted: ')
