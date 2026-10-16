@@ -1,0 +1,26 @@
+Verdict: FIX
+Gate: security
+Item: draft-raise
+PR: taoq-ai/wuwei
+Head: f1ca82b2a9570af2f02f8f4a2a38d6f161a3a73d
+Confidence: high
+
+## Findings
+- [medium] cli/wuwei/guards.py:209 blocks: yes. Failure: the new metacharacter list on the `--input` draft check leaves out brace expansion and backticks, so the shell can still hand gh a different file from the one the guard reads. `gh api -X POST repos/o/r/pulls --input={,sub/}d.json` and ``gh api -X POST repos/o/r/pulls --input `printf sub/d.json` `` are one segment, start with gh and contain none of `~ $ * ? [`. The guard reads the literal path (a planted `{,sub/}d.json` or `` `printf `` file holding `"draft": true`) and passes. Under bash, real gh 2.89.0 read sub/d.json and sent `{"head":"b","base":"main","draft":false}` for both (logging server), which opens a ready PR before its gates. This is the line the last fix changed. Fix: count an `--input` draft only when the path matches a plain allowlist such as `[\w./-]+` (and the command has no backtick or brace), instead of extending a denylist.
+- [medium] cli/wuwei/guards.py:33 blocks: no. Under the round-three rule this does not block, because the number pattern was not changed by the last fix; it is the most practical bypass left and is worth folding into the same fix. GitHub reads the PR number in a path leniently, but the route table needs `\d+` exactly. Read-only GETs through gh answered `pulls/1097abc`, `pulls/%201097`, `pulls/1097%20` and `pulls/1097.9` as PR 1097 (`--jq .number` printed 1097), while `pulls/99999999` and `pulls/abc` gave 404. So `gh api -X POST repos/o/r/pulls/7abc/requested_reviewers -f reviewers[]=bob`, `pulls/%207/...`, `pulls/7%20/...` and `pulls/7.0/ccr/ready_for_review` pass on draft 7 with no gates, and gh sends each path as typed (logging server). POST routing is inferred from GET. The merge route has the same gap (`gh api -X PUT repos/o/r/pulls/5x/merge` passes on main 7f31a51 too). Matching `(\d+)[^/]*` (or refusing a write whose PR segment is not all digits) closes both.
+- [low] blocks: no. 76a738a findings, re-read at this head. Dot segments are closed: `/./`, `./pulls`, a trailing `/.`, `%2E` and `requested_reviewers%2F%2E` reach the ready or merge door, and `..` or `%2E%2E` on a write is refused. The wrapped or expanded `--input` is closed: `env -C sub`, `env --chdir=sub`, `~/`, `$HOME/` and `d*.json` are held, and `/usr/bin/gh` is also held (a false hold, safe). The repository-reading tests are in place: mutants repo-last and repo-url are now killed.
+- [low] blocks: no. Correction to my 76a738a verdict: I carried the api-input-is-true survivor from 8774129 without re-running it at 76a738a. Re-run at f1ca82b it is killed (test_a_create_that_is_not_a_draft_waits_for_its_gates_and_names_the_draft_route[... --input s.json]), and draft-bad-bool is now killed as well.
+- [low] blocks: no. GitHub's `repositories/<id>/...` REST paths bypass every repository-keyed door (create, merge and ready), as on main. In this session the proxy refuses them ("Numeric-ID repository paths ... are not supported"); github.com reached directly serves them.
+- [low] blocks: no. The `--input` draft trusts that the hook payload's cwd is the shell's cwd. A cwd persisted from an earlier `cd` in another Bash call was not measured.
+- [low] blocks: no. Still carried: `gh api graphql --input q.json` carrying markPullRequestReadyForReview passes; a `?draft=false` query beside a draft body is unmeasured on GitHub; `--auto` and `--admin` are read from raw argv, as on main; the fork head is compared by branch name.
+
+## Probes
+Guard probe (probe/test_sec_draft.py with cmds1.txt, cmds2.txt and cmds3.txt, 206 commands and 19 MCP payloads) run through archive copies of main 7f31a51, 76a738a and f1ca82b, with draft PR 7 that has no gates and ready PR 5. Every move from 76a738a to f1ca82b is a closure (dot segments, wrappers, expansions) or a safe false hold (`/usr/bin/gh`, `--input` together with a `reviewers[]` field). Nothing moved from a door to pass.
+Real gh 2.89.0 against the local logging server (probe/real4.sh) confirmed the brace and backtick file swap, and that gh sends `7abc`, `%207`, `7.0` and `5x` verbatim.
+Read-only GETs to github.com through gh measured the routing: `%2E` and `%2F%2E` answered 200; backslash and `%5C` got 403 "backslash or null byte"; `%252F` got 403 "encoded separator"; `%20` after the name and `/...` gave 404; `1097abc`, `%201097`, `1097%20` and `1097.9` resolved to 1097.
+Mutants (probe/mutate3.py, 12 on f1ca82b): all killed. They cover repo-last, repo-url, api-input-is-true, draft-bad-bool, the three alone conditions, dropping `.`, dropping empty segments, the dots door, unquote and the copilot match.
+Suite at f1ca82b in an archive copy: 901 passed, 2 skipped. Runtime is 3,000 lines (at the cap), and the vendored guards.py is identical (cmp).
+Confidence is high because the blocking finding was reproduced with the head guard, real bash and real gh. The number leniency rests on measured GETs, and POST is inferred.
+
+## Residual risk
+GitHub's POST routing of lenient PR numbers is inferred from GET. Shell expansion is open-ended, so a denylist of metacharacters will keep missing forms; an allowlist on the `--input` path is the durable fix.
