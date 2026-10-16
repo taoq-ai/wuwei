@@ -2,7 +2,7 @@ import pytest
 import hashlib
 
 from conftest import HEAD, OLD, make_pr, verdict_text, write_plan
-from wuwei import evidence, ws
+from wuwei import evidence, gh, ws
 
 
 def attest(root, gate, head=HEAD, verdict='PASS', item='I-1', name=None):
@@ -623,8 +623,9 @@ RELEASE_CONFIG = '{"packages": {".": {"extra-files": [{"type": "json", "path": "
 
 
 # The patches GitHub sent for taoq-ai/wuwei#1072; any other path bumps one version line.
-BUMP = '@@ -1,3 +1,3 @@\n {\n-  ".": "1.2.0"\n+  ".": "1.2.1"\n }'
-PATCHES = {'.claude-plugin/plugin.json': '@@ -1,6 +1,6 @@\n {\n   "name": "wuwei",\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n'
+BUMP = '@@ -1,3 +1,3 @@\n {\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n   "name": "x"'
+PATCHES = {'.release-please-manifest.json': '@@ -1,3 +1,3 @@\n {\n-  ".": "1.2.0"\n+  ".": "1.2.1"\n }',
+           '.claude-plugin/plugin.json': '@@ -1,6 +1,6 @@\n {\n   "name": "wuwei",\n-  "version": "1.2.0",\n+  "version": "1.2.1",\n'
                                          '   "description": "Responsible autonomy for agent teams.",\n   "author": {',
            'CHANGELOG.md': '@@ -1,5 +1,13 @@\n # Changelog\n \n+## [1.2.1](https://github.com/taoq-ai/wuwei/compare/v1.2.0...v1.2.1)'
                            '\n+\n+### Bug Fixes\n+\n+* **doctor:** the hooks check counts any hook ([#1070](x))\n+\n ## [1.2.0]'}
@@ -696,3 +697,26 @@ def test_a_release_pr_that_renames_a_file_into_an_allowed_path_keeps_every_gap(r
 def test_extra_files_given_as_a_string_are_not_read_as_paths(root, fake):
     fake.files['release-please-config.json'] = '{"packages": {".": {"extra-files": "V"}}}'
     assert release_gaps(root, fake, files=('V', 'CHANGELOG.md')) == BOTH
+
+
+SMUGGLED = '@@ -1,3 +1,3 @@\n {{\n-  "version": "1.2.0",\n+  "version": "1.2.1",{}  "hooks": {{"SessionStart": [{{"command": "sh x"}}]}},'
+
+
+@pytest.mark.parametrize('patch', [SMUGGLED.format('\r'), SMUGGLED.format('\u2028'), SMUGGLED.format('\x0c'),
+                                   '@@ -1 +1 @@\n+  "hooks": "1.0.0.md",', '@@ -1 +1 @@\n+  "mcpServers": "1.0.0.json",',
+                                   '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "1.2.1.md",',
+                                   '@@ -1 +1 @@\n-  "version": "1.2.0",\n+  "version": "\u0661.2.1",', '+\x0b"version": "1.2.1"',
+                                   '+  "version":\r"1.2.1"', ''])
+def test_a_patch_that_smuggles_more_than_a_version_bump_keeps_every_gap(root, fake, patch):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': patch}) == BOTH
+
+
+def test_the_manifest_takes_path_keys_with_a_strict_version_and_only_changelog_md_is_free(root, fake):
+    fake.files['release-please-config.json'] = RELEASE_CONFIG
+    bump = '@@ -1,3 +1,3 @@\n {\n-  "pkg/a": "1.2.0-beta.1",\n+  "pkg/a": "1.2.0+build.7"\n }'
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump}) == []
+    assert release_gaps(root, fake, patches={'.release-please-manifest.json': bump.replace('1.2.0+build.7', '1.0.0.md')}) == BOTH
+    assert release_gaps(root, fake, patches={'.claude-plugin/plugin.json': bump}) == BOTH
+    release_gaps(root, fake, files=RELEASE + ('NOTES.md',))
+    assert not evidence.release('acme/app', gh.pr('acme/app', 42))

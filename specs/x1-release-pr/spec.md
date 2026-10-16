@@ -14,8 +14,10 @@ A PR is a release PR only when all three hold:
 2. Its head branch starts with `release-please--`.
 3. Every changed file is `.release-please-manifest.json`, `CHANGELOG.md`, or an `extra-files` path
    that `release-please-config.json` names, read from the base branch. In the manifest and each
-   extra-file, every added or removed line of the patch is a version line (`"key": "1.2.3"`).
-   CHANGELOG.md may change freely. A missing patch or a renamed file does not count.
+   extra-file, every added or removed line of the patch, split on `\n` only as git does, is a whole
+   version line: `"version": "<semver>"` in an extra-file, `"<path>": "<semver>"` in the manifest, with
+   a strict ASCII semver value. CHANGELOG.md may change freely. A missing or empty patch or a renamed
+   file does not count.
 
 Anything else keeps every gap. When the config cannot be read or parsed, only the manifest and
 CHANGELOG.md count, so `plugin.json` keeps the gaps.
@@ -31,7 +33,9 @@ CHANGELOG.md count, so `plugin.json` keeps the gaps.
 5. The runtime size test still passes at 3,000 lines or fewer.
 6. (Fix round 1) A bot `release-please--` PR whose plugin.json patch adds a `hooks` entry, or whose patch
    GitHub omitted, or that renames a file into CHANGELOG.md: both gaps.
-7. (Fix round 1) A config of `{}`, an extra-files entry with no `path`, a string `extra-files`, or a config
+7. (Fix round 2) A plugin.json line that hides a hooks key behind a bare CR, U+2028 or form feed, or
+   a line such as `"hooks": "1.0.0.md"` or `"mcpServers": "1.0.0.json"`: both gaps. #1072's patches still pass.
+8. (Fix round 1) A config of `{}`, an extra-files entry with no `path`, a string `extra-files`, or a config
    nested too deep to parse: only the manifest and CHANGELOG count.
 
 ## Requirements
@@ -54,6 +58,5 @@ CHANGELOG.md count, so `plugin.json` keeps the gaps.
   required again, as for docs. Overturned if the owner wants release PRs exempt even then.
 - Only the root `CHANGELOG.md` counts, as the item says; a monorepo package's own changelog keeps the gaps.
   Top-level `extra-files` defaults in the config are not read. Both fail closed.
-- A version line is any `"key": "x.y.z..."` line, not only `"version"`, because an extra-file's
-  jsonpath can name another key. Changing another key's value to a version string passes; adding a key
-  holding an object or a list does not. A generic (non-JSON) extra-file never matches and keeps the gaps.
+- An extra-file counts only when its version key is `"version"`. An extra-file whose jsonpath names
+  another key, a generic (non-JSON) extra-file, and a CRLF file all keep the gaps (fail closed).

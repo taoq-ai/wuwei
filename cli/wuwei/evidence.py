@@ -44,7 +44,7 @@ RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
 RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
-VERSION_LINE = re.compile(r'^[+-]\s*"[\w./-]+":\s*"\d+\.\d+\.\d+[\w.+-]*",?$')  # an added or removed "key": "1.2.3" line
+VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
 DEFERRED = re.compile(r'^(#+)\s+(?:\d+(?:\.\d+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
@@ -115,8 +115,9 @@ def release(repo, pr):
                     for where, package in packages for e in [] + package.get('extra-files', [])}  # [] + refuses a string
     except Exception:  # anything unreadable, malformed or nested too deep counts only the manifest
         pass
-    def bumped(f):  # every added or removed line of its patch is a version line
-        return isinstance(f.get('patch'), str) and all(VERSION_LINE.match(x) for x in f['patch'].splitlines() if x[:1] in ('+', '-'))
+    def bumped(f):  # every +/- line, split on \n only as git does, is a whole "key": "<semver>" line; key "version" bar the manifest
+        return isinstance(f.get('patch'), str) and f['patch'] != '' and all((m := VERSION_LINE.fullmatch(x)) and (
+            m[1] == 'version' or f['path'] == '.release-please-manifest.json') for x in f['patch'].split('\n') if x[:1] in ('+', '-'))
     return bool(files) and all(not f.get('renamed') and (f['path'] == 'CHANGELOG.md' or f['path'] in allowed and bumped(f)) for f in files)
 
 

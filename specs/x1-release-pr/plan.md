@@ -6,8 +6,9 @@
   author and the branch first, so other PRs make no extra API call. It then reads
   `release-please-config.json` at `pr['baseRefName']`, collects each package's `extra-files` paths,
   and requires every changed path to be in that set plus the manifest and CHANGELOG.md. Outside
-  CHANGELOG.md every `+`/`-` line of the file's patch must match `VERSION_LINE`, and no file may be a
-  rename. Any exception while reading the config counts only the manifest.
+  CHANGELOG.md every `+`/`-` line of the file's patch, split on `\n`, must fullmatch `VERSION_LINE`
+  (ASCII, strict semver, key `version` outside the manifest), the patch must be non-empty, and no
+  file may be a rename. Any exception while reading the config counts only the manifest.
 - `cli/wuwei/gh.py`: `pr()` keeps each file's `patch` and a `renamed` flag from `previous_filename`.
 - `gaps`: when `release` is true, `gates_for` gets no files (so `needed` asks for no gate) and the
   code list for the test gap is empty. This is the docs path, reached without touching `needed`.
