@@ -56,7 +56,7 @@ def current_branch(cwd):
 
 def _lines(command):
     """The command as sh reads its lines: a newline outside quotes ends a command, a backslash-newline joins
-    two lines, a comment ends; a heredoc body is one quoted word after its << (read as commands if it never ends)."""
+    two lines, a comment ends; a heredoc body outside (( )) is one quoted word after its <<, or commands if it never ends."""
     out, quote, waiting, i = [], '', [], 0
     while i < len(command):
         c = command[i]
@@ -71,10 +71,11 @@ def _lines(command):
         elif c == '\n':
             for delimiter, strip, slot, word in waiting:
                 body = re.match(r'(.*?)^' + ('\t*' if strip else '') + re.escape(delimiter) + r'$\n?', command[i + 1:], re.S | re.M)
-                if body and (word != delimiter or not re.search(r'\$\(|`', body[1])):  # unquoted: sh runs $(...)
-                    out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
+                if not body or word == delimiter and re.search(r'\$\(|`', body[1]):  # unquoted: sh runs $(...)
+                    break  # in order: this body and the ones after it are read as commands
+                out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
             waiting, c = [], ' ; '
-        elif c == '<' and (here := HEREDOC.match(command, i)):
+        elif c == '<' and command.count('((', 0, i) <= command.count('))', 0, i) and (here := HEREDOC.match(command, i)):
             waiting.append((re.sub(r'[\'"\\]', '', here[2]), here[1], len(out) + 1, here[2]))
             c, i = ['<< ', "''"], here.end() - 1
         out += c
@@ -241,8 +242,8 @@ def bash(root, command, cwd, session):
     try:
         parsed = segments(command)
     except ValueError as exc:
-        return deny(f'cannot read this command ({exc}) and it names a door program (git push, gh pr, gh api, gh repo, '
-                    'wuwei hook or the ledger): close the quote, or pass a PR body by --body-file.') if DOORS.search(command) else None
+        return DOORS.search(command) and deny(f'cannot read this command ({exc}) and it names a door (git push, gh, wuwei hook, '
+                                              'the ledger): close the quote, or put the text in a file (gh --body-file, git commit -F).')
     for argv, targets in parsed:
         program = Path(argv[0]).name if argv else ''
         if any(LEDGER.search(t) for t in targets) or any(LEDGER.search(a) for a in argv[1:]) and (
@@ -274,8 +275,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
-            LEDGER.search(path) for path in paths) else None
+        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(map(LEDGER.search, paths)) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(

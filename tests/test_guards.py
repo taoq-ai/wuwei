@@ -314,6 +314,12 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     'cd /repo &&\ngit push origin main',
     'cat <<EOF\n$(git push --force origin x)\nEOF',
     'cat <<EOF\n`git push --force origin x`\nEOF',
+    "cat <<A <<'B'\n$(git push --force origin x)\nA\nbody\nB",
+    'echo $((1<<EOF))\ngit push --force origin x\nEOF',
+    '(( x = 1 << EOF ))\ngit push --force origin x\nEOF',
+    'echo "hi"\ngit push --force origin x',
+    "echo 'a\\'\ngit push --force origin x",
+    'git push origin ma\\\nin',
 ])
 def test_a_command_on_a_later_line_meets_its_door(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
@@ -326,7 +332,9 @@ def test_a_create_after_a_heredoc_meets_the_gates(root, fake, repo):
     assert decision['decision'] == 'deny' and 'gates missing at head aaaaaaa' in decision['reason']
 
 
-@pytest.mark.parametrize('command', ["echo it's && gh pr merge 5", 'gh pr merge 5 --body "unclosed'])
+@pytest.mark.parametrize('command', ["echo it's && gh pr merge 5", 'gh pr merge 5 --body "unclosed',
+                                     'gh repo delete "acme/app --yes', 'gh api -X DELETE "repos/acme/app/rulesets/1',
+                                     'wuwei hook "PreToolUse', 'echo "x" > .wuwei/ledger.jsonl "'])
 def test_an_unreadable_command_naming_a_door_is_refused(root, fake, repo, command):
     decision = guards.pre_tool(root, bash(command))
     assert decision['decision'] == 'deny' and 'cannot read this command' in decision['reason'], command
@@ -347,3 +355,8 @@ def test_a_quoted_newline_stays_in_its_word(root, fake, repo):
 ])
 def test_ordinary_multi_line_work_passes(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command
+
+
+def test_an_unreadable_refusal_names_the_way_out_for_a_body_and_a_commit(root, repo):
+    reason = guards.pre_tool(root, bash('git commit -m "$(cat <<\'EOF\'\nthe 3" pipe\nEOF\n)" && git push origin x'))['reason']
+    assert '--body-file' in reason and 'git commit -F' in reason

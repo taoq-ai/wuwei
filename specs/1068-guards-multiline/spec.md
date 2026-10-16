@@ -43,6 +43,10 @@ The runtime stays at 3,000 lines: the lines come out of guards.py and hook.py.
 - A heredoc that never ends is read as commands, not dropped (an arithmetic `$((1<<2))` or a `<<` in
   text must not hide the lines after it).
 - An unquoted heredoc whose body runs `$(...)` or backticks is read as commands: sh runs them.
+- Several heredocs on one line are read in order, each body starting where the last ended. Once one
+  body cannot be dropped, it and every later body on that line are read as commands.
+- No heredoc starts inside an arithmetic `((` or `$((`: `echo $((1<<EOF))` is a shift, and the next
+  line is a command.
 - A quoted heredoc keeps a trailing backslash in its body literal, so its delimiter still ends it.
 - A `#` that starts a word begins a comment to the end of the line; `owner/repo#42` stays a word (#1038).
 
@@ -51,7 +55,7 @@ The runtime stays at 3,000 lines: the lines come out of guards.py and hook.py.
 - **FR-001**: `segments()` ends a command at a newline outside quotes and heredoc bodies.
 - **FR-002**: a backslash-newline outside single quotes is removed before tokenizing.
 - **FR-003**: a heredoc body is one data word; it is read as commands when the heredoc feeds sh, bash, zsh or dash.
-- **FR-004**: `segments()` raises `ValueError` on a command shlex cannot tokenize; `bash()` refuses it when the raw text names a door program and passes it otherwise.
+- **FR-004**: `segments()` raises `ValueError` on a command shlex cannot tokenize; `bash()` refuses it when the raw text names a door program and passes it otherwise. The refusal names the way out for a PR body (`gh --body-file`) and a commit message (`git commit -F`).
 - **FR-005**: the module docstring no longer says an unreadable command passes.
 - **FR-006**: the runtime stays at most 3,000 lines.
 
@@ -71,10 +75,18 @@ into a shell (`cat <<EOF | sh`).
 - Q: Backticks? A: Outside quotes a backtick now separates commands, so a backtick substitution in a
   command or an unquoted heredoc body meets its door. Zero added lines; fail closed.
 
+- Q (fix round 1): the quality and security gates showed two bypasses at ee252d7. A quoted second
+  heredoc on a line covered an unquoted first one, and an arithmetic `<<` started a heredoc. How are
+  they closed? A: bodies are read in order and the scan stops dropping at the first body it cannot
+  drop. A `<<` counts as a heredoc only when the `((` before it are all closed.
+
 ## Assumptions
 
 - A heredoc body line is read literally when matching its delimiter, even for an unquoted delimiter
   where sh would join a trailing backslash. Overturned by a case where that ends a body early and
   hides a command; ending early only reads more lines as commands, so it fails closed.
+- Arithmetic depth is counted from the raw text before the `<<`, quotes included. A `((` inside an
+  earlier quoted string then keeps a later heredoc from being dropped, so its body is read as
+  commands. That can only add refusals.
 - `gh pr create` text inside a heredoc body now triggers the PostToolUse PR note when the output
   also holds a PR URL. That note is advice only.
