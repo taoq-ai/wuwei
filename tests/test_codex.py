@@ -36,8 +36,12 @@ def test_an_apply_patch_that_writes_the_ledger_is_refused(root):
 
 
 def test_a_spawned_codex_agent_is_a_running_seat(root):
-    pre(root, 'spawn_agent', {'agent_type': 'sentinel-quality', 'task_name': 'quality gate', 'message': 'review I-1'})
-    assert [r['data']['role'] for r in ws.rows(root, 'seat.started')] == ['sentinel-quality']
+    data = {'agent_type': 'sentinel-quality', 'task_name': 'quality gate', 'message': 'review I-1'}
+    pre(root, 'spawn_agent', data)
+    assert ws.rows(root, 'seat.started') == []
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                      'tool_input': data, 'tool_response': '{"agent_id": "c1"}'})
+    assert [(r['data']['role'], r['data']['agent']) for r in ws.rows(root, 'seat.started')] == [('sentinel-quality', 'c1')]
     assert hook.running(root) == 1
 
 
