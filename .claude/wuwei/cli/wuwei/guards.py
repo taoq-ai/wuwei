@@ -11,13 +11,15 @@ import subprocess
 from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
-WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice'}
+WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')'}
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
+READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
+UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
 DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
@@ -62,35 +64,33 @@ def segments(command):
             m[0], m[0]), command), posix=True, punctuation_chars=True)  # sh's lines: an unquoted newline ends a command
         lexer.whitespace_split = True
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        tokens = list(lexer)
+        out, current = [], []
+        for token in list(lexer) + [';']:
+            if token in CONTROL:
+                if current:
+                    out.extend(_unwrap(current))
+                current = []
+            else:
+                current.append(token)
+        return out
     except ValueError:
         return None
-    out, current = [], []
-    for token in tokens + [';']:
-        if token in CONTROL:
-            if current:
-                out.extend(_unwrap(current))
-            current = []
-        else:
-            current.append(token)
-    return out
 
 
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        if tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens):
-            targets.append(tokens[i + 1])
-            i += 2
-            continue
-        argv.append(tokens[i])
-        i += 1
-    while argv and (re.fullmatch(r'[A-Za-z_]\w*=.*', argv[0]) or Path(argv[0]).name in WRAPPERS):
+        redirect = tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens)
+        (targets if redirect else argv).append(tokens[i + redirect])
+        i += 1 + redirect
+    while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
-        while argv and Path(argv[0]).name not in WRAPPERS and argv[0].startswith('-'):
-            argv = argv[1:]
-    if len(argv) >= 3 and Path(argv[0]).name in SHELLS and argv[1] == '-c':
-        return (segments(argv[2]) or []) + ([([], targets)] if targets else [])
+    if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
+        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
+                     and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
+    body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
+    if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
+        return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
     return [(argv, targets)]
 
 
@@ -226,7 +226,7 @@ def leak(root, text):
 
 def bash(root, command, cwd, session):
     parts = segments(command)
-    if (parts is None or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')

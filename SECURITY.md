@@ -20,6 +20,24 @@ any local file. The hard boundaries sit outside the owner's user account: the co
 host's protected refs, required checks and required reviews, and publication credentials
 kept out of seat environments.
 
+The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
+brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
+wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
+
+- `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
+- `$(...)` inside double quotes, process substitution (`<(...)`), and ANSI-C quoting (`$'...'`).
+- A separator glued to a redirect or a pipe (`>;`, `|&`), and quote splicing inside a word.
+- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
+  unquoted backticks.
+- A shell option before `-c` that takes an argument or is not a single-dash cluster
+  (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
+- A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
+  names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
+
+A multi-line command, or one the reader cannot parse, that names a door program is refused
+whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
+that door-word rule; the leak scan does not read it.
+
 The doors and what they leave to the code host are in section 6 of the
 [design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 
@@ -29,7 +47,7 @@ The doors and what they leave to the code host are in section 6 of the
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
   `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
   shut; every other hook fails open and records why.
-- Runtime: Python 3.11+ standard library only, at most 2,500 lines.
+- Runtime: Python 3.11+ standard library only, at most 3,000 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
 - Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
   other network call. Telemetry is local traces only.
