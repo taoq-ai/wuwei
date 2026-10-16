@@ -693,3 +693,19 @@ def test_input_alone_posts_even_when_its_json_names_no_pr_field(root, cloud, tmp
 def test_the_graphql_endpoint_and_the_route_paths_are_read_in_any_case(root, cloud, command):
     assert door_reached(guards.bash(root, command, '/repo', 's1')) in ('refusal', 'merge'), command
     assert guards.bash(root, command, '/repo', 's1')['decision'] == 'deny'
+
+
+def test_a_push_to_main_is_refused_when_the_default_branch_lookup_fails_and_nothing_is_cached(root, fake, repo, monkeypatch):
+    from wuwei import gh
+
+    def broken(repo):
+        raise gh.GhError('HTTP 502')
+    monkeypatch.setattr(gh, 'default_branch', broken)
+    assert guards.pre_tool(root, bash('git push origin main'))['decision'] == 'deny'
+    assert ws.cache_get(root, 'default-acme__app', 86400) is None
+
+
+def test_a_cached_default_branch_refuses_its_push_with_no_gh_call(root, fake, repo):
+    ws.cache_put(root, 'default-acme__app', 'trunk')
+    assert guards.pre_tool(root, bash('git push origin trunk'))['decision'] == 'deny'
+    assert fake.calls == []
