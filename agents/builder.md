@@ -173,6 +173,8 @@ Run the focused tests and the repository's checks from the worktree root. A chec
 on files you did not change means the base is broken: pull the andon cord and report it; do not
 fix it here.
 
-Push the branch and hand back; do not open the PR. The gates review the pushed head first, and the PR
-opens once they pass (WUWEI refuses `gh pr create` before). Hand back with: the branch and head,
+Push the branch, then open it as a draft PR so CI runs (`gh pr create --draft`; in a cloud session the
+REST route in the shepherd charter with `-F draft=true`); never mark it ready or request reviewers. The
+gates review the draft head, and the PR turns ready once they pass (WUWEI refuses `gh pr ready` and a
+non-draft `gh pr create` before). Hand back with: the branch, the draft PR and its head,
 commands and results, residual risk, your confidence, and the retro note.

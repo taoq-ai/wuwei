@@ -16,7 +16,7 @@ head or did not.
 | `Rollback: <how to undo>` | full tier, or `owner_paths` touched | process | a change you cannot undo deserves a plan for undoing it |
 | The spec engine's steps, judged by their artifacts at the head | standard and full, when the repo has `.specify/` or `openspec/` | process at standard, safety at full | the agreement about what to build is part of the change |
 | A breaking change: an `Announcement:` link, then the owner's confirmation at the head | a declared break, or one the arch gate finds | safety | clients you break should hear it from you first, and you decide whether it ships |
-| The gates the diff needs, passed before the PR opened | the diff, under the tier's ceiling | safety | independent review before anyone else reads the code, and only the reviews the change calls for |
+| The gates the diff needs, passed before the PR turned ready | the diff, under the tier's ceiling | safety | independent review before anyone else reads the code, and only the reviews the change calls for |
 | CI green | every PR | safety | the repository's own checks |
 | A review status settled (see [review statuses](#review-statuses)) | a commit status from a workflow the repo runs on `pull_request_review` | safety | a gate waiting on a reviewer needs someone to act; it is not a build |
 | Every review thread answered | every PR | safety | people's questions are obligations |
@@ -84,8 +84,8 @@ and announcing it; you decide whether it ships.
 
 ## Gates before the PR, chosen by the diff
 
-The gates run on the pushed branch, before its PR opens: `gh pr create` is refused until they pass
-at the branch head, so reviewers and the merge only ever see gated code.
+The gates run before review: the PR opens as a draft so CI runs, and `gh pr ready` and reviewer
+requests are refused until the gates pass at its head, so reviewers and the merge only ever see gated code.
 
 The tier is a ceiling and the diff decides what runs under it:
 

@@ -5,8 +5,8 @@ requirement and the running code, not the builder's summary.
 
 1. Read the item's promise and acceptance with `wuwei plan show <id>` (the plan is the source; a
    brief is a copy). Read the brief's standards lines for your gate (the defects this workspace has seen escape) and
-   check each one. Review exactly the head sha the brief names: the pushed branch before its PR opens
-   (diff it against the default branch), or the PR head on a delta after review. If the head moves
+   check each one. Review exactly the head sha the brief names: the pushed branch or its draft PR
+   before it turns ready (diff it against the default branch), or the PR head on a delta after review. If the head moves
    while you review, start again at the new head.
 2. At `full`, probe the builder's `How this fails:` scenarios first.
 3. Run checks, probes and mutants in a copy of the tree at that sha, in a new empty scratch

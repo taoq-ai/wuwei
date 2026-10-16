@@ -74,7 +74,7 @@ accepted exception drops that gap at that head and adds a follow-up item that cl
 | At most 400 changed lines (generated files aside), or `Size: <reason>` | every PR |
 | `Rollback: <how>` | full tier, or `owner_paths` touched |
 | The spec engine's steps by their artifacts at the head (spec-kit: spec, plan, tasks all checked; full adds clarifications, a clean analysis, checked checklists; OpenSpec: proposal, a capability spec, tasks all checked) | standard and full, when the repo has `.specify/` or `openspec/` |
-| The gates the diff needs passed on the branch before its PR opened, each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change; a contract file takes arch at any tier; full takes all four |
+| The gates the diff needs passed at the head before the PR turned ready (it opens as a draft so CI runs), each at an ancestor of the head; a later delta re-read by the one gate it needs, unless it is docs or at most 20 lines off risky paths | the tier is the ceiling: docs none; code quality; standard adds security for risky or owner paths and arch for a wide change; a contract file takes arch at any tier; full takes all four |
 | CI green, threads answered, a reviewer requested | every PR |
 | Owner review or an owner ruling at that head | `owner_paths` touched |
 | Open under three days | every PR |
@@ -119,13 +119,18 @@ missing PR, and `wuwei plan done` closes it with the final evidence.
 
 Refused: a merge with safety gaps by any route (`gh pr merge`, a REST PUT on `pulls/<n>/merge` or
 `ccr/auto_merge` in any spelling of method, path, host or `{owner}/{repo}`, a GitHub MCP merge
-tool; arming auto-merge passes while only CI runs); a PR opened (`gh pr create`, `gh pr new`, a
-REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff needs pass at
-the branch head, so review starts at a gated head (#1050);
+tool; arming auto-merge passes while only CI runs); a PR opened ready for review (`gh pr create`,
+`gh pr new`, a REST POST on `repos/<r>/pulls`, a GitHub MCP create tool) before the gates its diff
+needs pass at the branch head, while a draft (`--draft`, `-F draft=true`, MCP `draft` true) opens so
+CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_for_review`, MCP
+`update_pull_request` with `draft` false) and a reviewer request on a draft (`gh pr edit
+--add-reviewer`, a REST POST on `pulls/<n>/requested_reviewers`, MCP `reviewers` or
+`request_copilot_review`) before the gates pass at the PR head, so review starts at a gated head
+(#1050, #1074);
 `--admin`; `gh api` writes to protection, rulesets, statuses,
 collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges`, `git/refs/` or
 `contents/` on any branch; `gh repo delete` and a REST DELETE on the repository; a `gh api graphql`
-mutation that merges, arms auto-merge, opens a PR, moves a ref, commits to a branch or changes
+mutation that merges, arms auto-merge, opens a PR, marks one ready, requests reviewers, moves a ref, commits to a branch or changes
 branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`); force pushes in
 every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
 `create_or_update_file` and `delete_file` tools on the default branch or with no branch; a secret
