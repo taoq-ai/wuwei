@@ -1010,13 +1010,21 @@ def test_a_graphql_input_file_has_its_query_read_for_door_mutations(root, cloud,
     'gh api graphql --input -', 'gh api graphql -F query=@-', 'gh api graphql --field=query=@-', 'gh api graphql -Fquery=@-',
     'gh api graphql --input missing.json', 'gh api graphql -F query=@missing.graphql', 'gh api graphql --input q.json | cat',
     'cd sub && gh api graphql --input q.json', 'cd sub && gh api graphql -F query=@q.graphql', 'gh api graphql --input empty.json',
-    'gh api graphql --input=-', 'gh api graphql --input "q.json" "--input" -'])
+    'gh api graphql --input=-', 'gh api graphql --input "q.json" "--input" -', 'gh api GraphQL --input -',
+    "echo 'mutation { mergePullRequest(input: {}) { clientMutationId } }' | gh api GraphQL --input -"])
 def test_a_graphql_query_wuwei_cannot_read_is_refused(root, cloud, tmp_path, command):
     for name in ('q.json', 'sub/q.json'):
         (tmp_path / name).parent.mkdir(exist_ok=True)
         (tmp_path / name).write_text(json.dumps({'query': 'query { viewer { login } }'}))
     (tmp_path / 'q.graphql').write_text('query { viewer { login } }')
     (tmp_path / 'empty.json').write_text('')
+    decision = guards.bash(root, command, str(tmp_path), 's1')
+    assert decision['decision'] == 'deny' and 'cannot read' in decision['reason'], command
+
+
+@pytest.mark.parametrize('command', ['gh api graphql --input -', 'gh api graphql -F query=@-'])
+def test_a_file_named_dash_is_never_read_for_the_stdin_gh_reads(root, cloud, tmp_path, command):
+    (tmp_path / '-').write_text(json.dumps({'query': 'query { viewer { login } }'}))
     decision = guards.bash(root, command, str(tmp_path), 's1')
     assert decision['decision'] == 'deny' and 'cannot read' in decision['reason'], command
 

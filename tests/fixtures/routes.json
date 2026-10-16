@@ -132,6 +132,7 @@
     {"command": "gh pr merge 5 -t --auto", "source": "item gh-doors acceptance 4 (pflag reads --auto as -t's value)", "verdict": "merge"},
     {"command": "gh pr merge 5 --auto=false", "source": "item gh-doors acceptance 4", "verdict": "merge"},
     {"command": "gh pr merge 5 --admin=true", "source": "item gh-doors acceptance 5", "verdict": "refusal"},
-    {"command": "gh pr merge 5 --admin=1", "source": "item gh-doors acceptance 5", "verdict": "refusal"}
+    {"command": "gh pr merge 5 --admin=1", "source": "item gh-doors acceptance 5", "verdict": "refusal"},
+    {"command": "gh api GraphQL --input -", "source": "security gate gh-doors at fd32bc2 note M10 (the unread check reads the endpoint in any case)", "verdict": "refusal"}
   ]
 }

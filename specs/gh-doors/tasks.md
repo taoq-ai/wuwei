@@ -26,3 +26,10 @@
 - [x] T016 Route corpus probe on main and head with the corpus sha256
 - [x] T017 Full suite green; runtime at 3,000 lines
 - [x] T018 Merge origin/main before the push
+
+## Phase 4: Gate findings at fd32bc2
+
+- [x] T019 SECURITY.md names the three new refusals and the plain-call rule for graphql files (arch, blocking)
+- [x] T020 A file named `-` is never read for stdin, shown failing with the `path != '-'` check removed (quality, blocking)
+- [x] T021 `gh api GraphQL --input -` row and tests, shown failing with a case-sensitive unread check (security M10)
+- [x] T022 The Breaking list names an empty `--input` file, `--auto=false` last, and the `-t --admin` loosening (arch note)

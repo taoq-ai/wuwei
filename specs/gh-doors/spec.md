@@ -116,14 +116,17 @@ Acceptance 6. `test_every_route_reads_as_recorded` with 11 new rows.
 
 Commands that passed on main and are now refused:
 
-- `gh api graphql --input -`, `-F query=@-`, `--input <missing file>`.
+- `gh api graphql --input -`, `-F query=@-`, `--input <missing file>`, `--input <empty file>`.
 - `gh api graphql --input <file>` or `-F query=@<file>` inside a pipeline, a compound command, a
   wrapper or with quoted or non-plain words.
 - Any POST, PUT, PATCH or DELETE on `repositories/<id>/...`.
 - `gh pr merge --admin=true` (and `1`, `t`, `T`, `TRUE`, `True`) reached the merge door on main and
   is now refused outright.
 - `gh pr merge <n> -t --auto` (and other spellings where `--auto` is a value) lose the CI-running
-  exemption.
+  exemption, and so does `gh pr merge <n> --auto ... --auto=false`, where the last `--auto` is off.
+
+One loosening: `gh pr merge 5 -t --admin` was refused as `--admin` on main and now reaches the
+merge door, because pflag reads `--admin` as `-t`'s value and gh merges without admin.
 
 Migration: pass a GraphQL query by `-f query='...'`, or by `--input <file>` or `-F
 query=@<file>` in its own one-line `gh api graphql` call with plain words. Spell REST endpoints
