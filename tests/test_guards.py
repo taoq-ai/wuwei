@@ -916,3 +916,14 @@ def test_a_write_through_a_dot_dot_segment_is_refused(root, drafts, command):
     decision = guards.bash(root, command, str(root), 's1')
     assert decision['decision'] == 'deny' and '..' in decision['reason'] and 'spell the endpoint plainly' in decision['reason']
     assert guards.bash(root, 'gh api repos/o/r/pulls/../pulls/5', str(root), 's1') is None  # a read changes nothing
+
+
+def test_a_body_file_wuwei_cannot_read_is_named_as_the_cause_not_only_missing_gates(root, fake, repo):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'TIN-985', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'light'}])
+    branch(fake)  # the branch name does not name the item, so only the body's trailer links them
+    attest(root, 'quality', item='TIN-985')
+    (root / 'pr.md').write_text('WUWEI-Item: TIN-985\n')
+    reason = guards.bash(root, 'S=.; gh pr create --title x --body-file "$S/pr.md"', str(root), 's1')['reason']
+    assert 'no plan item is named' in reason and 'literal path' in reason  # #1098: the gates passed; the trailer was unread
+    assert guards.bash(root, 'gh pr create --title x --body-file pr.md', str(root), 's1')['decision'] == 'note'
