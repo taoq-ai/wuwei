@@ -139,6 +139,16 @@ def test_pre_tool_deny_uses_the_harness_shape_and_is_recorded(root):
     assert ws.rows(root, 'refused')
 
 
+def test_pre_tool_deny_holds_when_the_last_ledger_line_is_not_a_row(root):
+    path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[1]\n')
+    out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Write', 'cwd': str(root),
+                                           'tool_input': {'file_path': '.wuwei/ledger.jsonl'}})
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert ws.rows(root, 'refused') and not ws.rows(root, 'hook.error')
+
+
 def test_session_start_orients_with_the_board(root, fake):
     plan_one(root)
     context = hook.handle(root, 'SessionStart', {'session_id': 's1', 'cwd': str(root)})['hookSpecificOutput']['additionalContext']

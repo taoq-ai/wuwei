@@ -59,3 +59,34 @@ def test_seats_starting_at_once_keep_one_chain(root):
         proc.join()
     assert len(ws.ledger(root)) == 200
     assert ws.verify(root) == []
+
+
+def _mine(root):
+    path = root / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def test_record_chains_past_a_last_line_that_is_not_a_row(root):
+    for bad in ('[1]', '5', 'null', '{"a": 1}'):
+        first = ws.record(root, 'note', {})
+        with open(_mine(root), 'a', encoding='utf-8') as handle:
+            handle.write(bad + '\n')
+        assert ws.record(root, 'note', {})['prev'] == first['hash'], bad
+
+
+def test_readers_skip_rows_with_malformed_fields_and_verify_names_them(root):
+    path = _mine(root)
+    good = ws.record(root, 'note', {})
+    bad = ['{"kind": [1]}', '{"ts": 5, "kind": "x"}', '{"ts": "2020-01-01", "kind": "note", "data": [1]}']
+    with open(path, 'a', encoding='utf-8') as handle:
+        handle.write('\n'.join(bad) + '\n')
+    assert ws.ledger(root) == [good] and ws.rows(root, 'note') == [good] and ws.rows(root, 'x') == []
+    assert ws.verify(root) == [f'ledger/{path.name}:{n}' for n in (2, 3, 4)]
+
+
+def test_traces_skip_lines_that_are_not_rows(root):
+    path = root / ws.DIR / 'traces.jsonl'
+    path.write_text('[1]\n{"ts": 5}\nnot json\n{"ts": "2020-01-01T00:00:00+00:00", "tool": "Bash"}\n')
+    assert ws.traces(root) == ws.traces(root, '2020-01-01') == [{'ts': '2020-01-01T00:00:00+00:00', 'tool': 'Bash'}]
+    assert ws.traces(root, '2021-01-01') == []
