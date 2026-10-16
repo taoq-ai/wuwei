@@ -122,7 +122,9 @@ You own open PRs until they merge or the owner parks them.
    `gh pr ready <n>` (in a cloud session `gh api -X POST repos/<owner>/<repo>/pulls/<n>/ccr/ready_for_review`);
    WUWEI refuses the flip and reviewer requests on a draft before. Then request reviewers: the top two
    authors of the changed source files over the past 90 days (widen to 180 days, then all time),
-   excluding the PR author and bots. Honour the repository's review rules.
+   excluding the PR author and bots (in a cloud session
+   `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=<login>'`).
+   Honour the repository's review rules.
 3. Ask for review where the team asks (the `Review requests:` line in `.wuwei/standards.md`): one
    post with the PR link once it is ready, not a draft. A post made outside the session is recorded
    with `wuwei sent owner/repo#n <link>`, never posted twice.

@@ -12,13 +12,18 @@ constitution.
 | A3 | Ambiguity | LOW | promise, REST draft | Which draft spellings count | Resolved: a JSON true only, from `-F draft=true` or the top level of the `--input` object; checked against gh 2.89.0 |
 | U1 | Underspecification | LOW | item assumption, MCP | A separate reviewer tool would join the check | Resolved: `request_copilot_review` exists in MCP v1.14.0 and joins the ready door |
 | U2 | Underspecification | LOW | GraphQL | `requestReviews` would request reviewers on a draft around the door | Resolved: refused beside `markPullRequestReadyForReview`, recorded under Assumptions and Breaking |
-| C1 | Coverage | LOW | `_draft` | Short clusters (`-fd`) are drafts to gh but held by the reader | Recorded in Clarifications: held, never passed; the refusal names `--draft` |
+| C1 | Coverage | LOW | `_draft` | Short clusters (`-fd`) were drafts to gh but held by the reader | Resolved in the fix round: one pflag reader unpacks clusters; 96 argument lists agree with pflag |
 | C2 | Coverage | LOW | `_api` | A malformed `--input` body that starts with `{` raises | Recorded: the hook fails closed on that call; GitHub refuses such a body anyway; a list, text or stdin body is tested to pass a route with no door |
 | I1 | Inconsistency | MEDIUM | plan, budget | The estimate was +25; the change is +37 | Within the cap (2,999 of 3,000); recorded in plan.md |
 | I2 | Inconsistency | MEDIUM | charters/planner.md, charters/_gate.md, skills, evidence.md | Lines outside the promise's list still said the PR opens after the gates | Resolved: updated to the draft order, so no doc contradicts the doors |
 | B1 | Inconsistency | HIGH | spec, Breaking | Routes that passed on main (`gh pr ready`, reviewer requests on drafts, two mutations) now meet a door | Resolved: declared breaking with migration notes, as doors-by-rest was |
 
-No open finding above LOW: A1, A2, I1, I2 and B1 are resolved.
+| S1 | Inconsistency | HIGH | `_repo_number` | The PR door read the first bare number and missed `--repo=` and `-R<value>`, so `gh pr edit -t 5 7 --add-reviewer bob` checked PR 5 (security gate, real gh) | Resolved: the PR is the first positional and the repository the last `-R` as pflag reads them; the merge door shares it |
+| S2 | Inconsistency | HIGH | `_api`, `--input` | A draft was read from the hook's copy of the `--input` file, which `cd` or `cp` before gh can change | Resolved: an `--input` draft counts only when gh is the command's only segment |
+| S3 | Inconsistency | HIGH | `_api`, endpoint | `//` and percent-escapes missed the ready and merge routes | Resolved: escapes decoded and slashes collapsed before matching |
+| Q1 | Coverage | MEDIUM | `_draft` | No test held a cluster that names a reviewer (`-dr=bob`, `-drbob`) or an unknown flag in a cluster (`-dx`) | Resolved: in NOT_DRAFTS; an `--input` draft of `"false"` or `1` pinned |
+
+No open finding above LOW: A1, A2, I1, I2, B1, S1 to S3 and Q1 are resolved.
 
 ## Coverage
 

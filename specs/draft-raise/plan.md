@@ -12,8 +12,8 @@ Copilot review tools to it.
 ## Technical Context
 
 Python 3.11 stdlib, pytest. Runtime is 2,962 of 3,000 lines on main 15c74df; the estimate was
-+25 and the change is +37 (2,999), after folding the merge and ready REST branches and dropping
-short-cluster unpacking.
++25 and the change is +37 (2,999). The fix round at 8774129 adds one pflag reader (`_flags`) that
+`_repo_number`, `_draft` and `_api` share, which pays for itself and keeps the runtime at 2,999.
 
 ## Constitution Check
 
@@ -29,7 +29,7 @@ short-cluster unpacking.
 - `cli/wuwei/guards.py`
   - `_draft(args)`: reads gh pr create's flags as pflag does (value flags take the next word,
     `=value` with ParseBool's values, last wins) and returns true only for a draft without
-    reviewers, `--recover`, an unknown flag, a positional or a short cluster.
+    reviewers, `--recover`, an unknown flag or a positional; `_flags` unpacks short clusters.
   - `_api` also returns whether the body carries a JSON `draft: true`: from the top level of the
     `--input` JSON object when given, else from the last `-F`/`--field` `draft=true`.
   - `API` gains `pulls/<n>/ccr/ready_for_review` and `pulls/<n>/requested_reviewers` (POST) to

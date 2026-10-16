@@ -1,7 +1,7 @@
 # Requirements checklist: draft-raise
 
 - [x] Every acceptance scenario of item draft-raise maps to a test that ran red before the change
-- [x] gh pr create's draft reading checked against gh 2.89.0 source and pflag v1.0.6: no non-draft read as a draft over 82 argument lists
+- [x] gh pr create's draft reading checked against gh 2.89.0 source and pflag v1.0.6: the reader agrees with pflag on all 96 argument lists
 - [x] gh api's draft field checked against gh 2.89.0 through a local logging server: only `-F draft=true` sends a JSON true; `--input` moves the fields to the query string
 - [x] GitHub MCP v1.14.0 schema checked for `update_pull_request`, `create_pull_request` and `request_copilot_review`
 - [x] A draft create passes by gh, REST and MCP; one that names reviewers does not
@@ -16,4 +16,7 @@
 - [x] Main-versus-head comparison shows only the promised moves
 - [x] .claude/ re-vendored at the head
 - [x] Runtime at 3,000 lines or fewer (2,999)
+- [x] The PR and repository a gh pr door reads match gh's (flag values skipped, `--repo=`, `-R<value>`)
+- [x] An `--input` draft counts only when the gh call runs alone
+- [x] Endpoints are percent-decoded with repeated slashes collapsed before the route match
 - [x] No config key, no emojis, no em dashes

@@ -71,10 +71,9 @@ The acceptance scenarios, restated:
   the gates must precede (#1050), so such a create meets the create door as a non-draft does.
 - Q: Which values make `--draft` true? A: pflag's: `--draft`, `-d`, and `=1`, `=t`, `=T`, `=true`,
   `=TRUE`, `=True`; the last occurrence wins. Any value pflag refuses makes gh exit before it
-  creates anything, so it is read as not a draft. A short cluster (`-fd`, `-dt x`) is a draft to gh
-  but is held: the reader does not unpack clusters (it costs lines under the runtime cap), and the
-  refusal names `gh pr create --draft`. Against pflag v1.0.6 over 82 argument lists the reader
-  never calls a non-draft a draft; it holds 7 drafts (clusters and a trailing `--`).
+  creates anything, so it is read as not a draft. Short clusters are unpacked as pflag does (`-fd`
+  and `-dt x` are drafts; `-drbob` and `-dr=bob` name a reviewer and are held). Against pflag
+  v1.0.6 over 96 argument lists the reader agrees on every one (fix round below).
 - Q: What does the reader do with an `--input` body that is not a JSON object? A: Only a body that
   starts with `{` is parsed; a list, plain text or stdin (`--input -`) counts as no draft, and a
   route with no door still passes. A malformed body that starts with `{` raises, so the hook fails
@@ -94,6 +93,24 @@ The acceptance scenarios, restated:
 - Q: Is the GraphQL `requestReviews` mutation refused? A: Yes, beside
   `markPullRequestReadyForReview`: otherwise it requests reviewers on a draft around the door. It
   points to `gh pr edit --add-reviewer`. GraphQL is already refused in cloud sessions.
+
+### Fix round at 8774129
+
+- Q: Which PR and repository does a `gh pr` door read? A: The ones gh reads: one pflag reader
+  (`_flags`) skips every value flag's value, so the PR is the first positional word
+  (`gh pr edit -t 5 7 --add-reviewer bob` changes PR 7), and the repository is the last `-R`,
+  `-Rx/y`, `--repo x/y` or `--repo=x/y`, or the URL's. `gh pr merge` reads `-m` and `-r` as bools.
+  The security gate saw real gh 2.89.0 change PR 7 and repository x/y where the old helper read PR
+  5 and the origin. `_draft` and `gh api` now use the same reader.
+- Q: When does an `--input` file make a draft? A: Only when the gh call is the command's only
+  segment. gh reads the file in its own working directory when it runs; after `cd sub &&` or
+  `cp f d.json &&` the hook's copy may differ, so such a create meets the create door.
+- Q: How is an endpoint matched? A: After the scheme, host and query are removed, percent-escapes
+  are decoded and repeated slashes collapse, so `pulls/7//requested_reviewers`, `repos/o//r/...`,
+  `requested%5Freviewers` and `pulls/5//merge` meet their doors. The security gate measured that
+  GitHub routes those spellings (read-only GETs).
+- Q: Which draft values in the `--input` JSON count? A: Only the JSON `true`: `"false"` and `1`
+  stay held, and a test pins it.
 
 ## Assumptions
 

@@ -609,7 +609,9 @@ def test_gh_pr_new_is_gh_pr_create(root, cloud):
                                      'gh api -p corsair -X PUT repos/o/r/pulls/5/merge',
                                      'gh api -X PUT HTTPS://API.GITHUB.COM/repos/o/r/pulls/5/merge',
                                      'gh api -X PUT http://api.github.com/repos/o/r/pulls/5/merge',
-                                     'gh api -X PUT https://api.github.com:443/repos/o/r/pulls/5/merge'])
+                                     'gh api -X PUT https://api.github.com:443/repos/o/r/pulls/5/merge',
+                                     'gh api -X PUT repos/o/r/pulls/5//merge', 'gh api -X PUT repos//o/r/pulls/5/merge',
+                                     'gh api -X PUT repos/o/r/pulls/5/%6Derge'])
 def test_every_rest_merge_spelling_meets_the_merge_door(root, cloud, command):
     decision = guards.bash(root, command, '/repo', 's1')
     assert decision['decision'] == 'deny' and 'o/r#5 is not ready to merge' in decision['reason'], command
@@ -722,7 +724,9 @@ DRAFTS = ['gh pr create --draft -t t -F body.md', 'gh pr create -d', 'gh pr new 
           'gh api repos/o/r/pulls -f head=x -Fdraft=true', 'gh api repos/o/r/pulls -f head=x --field=draft=true',
           'gh api repos/o/r/pulls -f head=x -F=draft=true', "gh api 'repos/{owner}/{repo}/pulls' -f head=x -F draft=true",
           'gh api -X post HTTPS://API.GITHUB.COM/repos/o/r/PULLS -f head=x -F draft=true',
-          'gh api repos/o/r/pulls --input d.json', 'gh api repos/o/r/pulls --input d.json -F draft=false']
+          'gh api repos/o/r/pulls --input d.json', 'gh api repos/o/r/pulls --input d.json -F draft=false',
+          'gh api repos/o/r/pulls --input d.json > out.json', 'gh pr create -fd', 'gh pr create -df', 'gh pr create -wd',
+          'gh pr create -dt x', 'gh pr create -d --']
 # Each reads as not a draft: gh 2.89.0 (pflag v1.0.6 for gh pr create, a logging server for gh api) either opens a PR
 # that is not a draft, sends draft as a string, a number or in the query string, or exits before it creates anything.
 NOT_DRAFTS = ['gh pr create', 'gh pr create -t t -F body.md', 'gh pr create --draft=', 'gh pr create --draft=false',
@@ -737,7 +741,11 @@ NOT_DRAFTS = ['gh pr create', 'gh pr create -t t -F body.md', 'gh pr create --dr
               'gh api repos/o/r/pulls -f head=x -F draft[]=true', 'gh api repos/o/r/pulls -f head=x -F draft=@t.txt',
               'gh api repos/o/r/pulls -f head=x -F draft=false', 'gh api repos/o/r/pulls -F draft=true -F draft=false',
               'gh api repos/o/r/pulls --input n.json', 'gh api repos/o/r/pulls --input n.json -F draft=true',
-              'gh pr create -fd', 'gh pr create -dt x']  # gh reads a draft in a short cluster; the reader asks for -d alone
+              'gh api repos/o/r/pulls --input s.json', 'gh api repos/o/r/pulls --input i.json',
+              'gh pr create -dr=bob', 'gh pr create -drbob', 'gh pr create -dx', 'gh pr create -d -- -r bob',
+              'cd sub && gh api -X POST repos/o/r/pulls --input d.json',  # gh reads its own d.json, not the hook's
+              'cp f.json d.json && gh api -X POST repos/o/r/pulls --input d.json',
+              'bash -c "cd sub; gh api repos/o/r/pulls --input d.json"']
 
 
 @pytest.mark.parametrize('body', ['["bug"]', 'not json', ''])
@@ -752,6 +760,8 @@ def drafts(root, cloud):
     (root / 't.txt').write_text('true')
     (root / 'd.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': True}))
     (root / 'n.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'x': {'draft': True}}))
+    (root / 's.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 'false'}))
+    (root / 'i.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'draft': 1}))
     cloud.prs['7'] = {**make_pr(number=7, files=('src/app.py',)), 'isDraft': True, 'headRefName': 'x'}
     return cloud
 
@@ -784,7 +794,28 @@ READY = ['gh pr ready 7', 'gh pr ready https://github.com/o/r/pull/7', 'gh pr re
          'gh api -X POST HTTPS://API.GITHUB.COM/repos/o/r/PULLS/7/CCR/READY_FOR_REVIEW',
          "gh api -X POST 'repos/{owner}/{repo}/pulls/7/ccr/ready_for_review'", 'gh pr edit 7 --add-reviewer bob',
          'gh pr edit 7 --add-reviewer=bob', 'gh api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob',
-         'gh api repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob']
+         'gh api repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob',
+         'gh pr edit -t 5 7 --add-reviewer bob', 'gh pr edit --add-reviewer 5 7', 'gh pr edit --milestone 5 7 --add-reviewer bob',
+         'gh pr edit -m5 7 --add-reviewer bob',  # PR 5 is ready: a flag's value is never the PR gh changes
+         'gh api -X POST repos/o/r/pulls/7//requested_reviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o//r/pulls/7/requested_reviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/pulls/7/requested%5Freviewers -f reviewers[]=bob',
+         'gh api -X POST repos/o/r/pulls/7/ccr//ready_for_review']
+
+
+@pytest.mark.parametrize('command, door, expected', [
+    ('gh pr ready --repo=x/y 7', 'ready_door', ('x/y', 7)), ('gh pr ready -Rx/y 7', 'ready_door', ('x/y', 7)),
+    ('gh pr ready -R x/y 7', 'ready_door', ('x/y', 7)), ('gh pr ready 7 --repo x/y', 'ready_door', ('x/y', 7)),
+    ('gh pr edit -t 5 7 --add-reviewer bob', 'ready_door', ('o/r', 7)), ('gh pr edit --add-reviewer 5 7', 'ready_door', ('o/r', 7)),
+    ('gh pr merge --repo=x/y 5', 'merge_door', ('x/y', 5)), ('gh pr merge -Rx/y 5', 'merge_door', ('x/y', 5)),
+    ('gh pr merge -dR x/y 5', 'merge_door', ('x/y', 5)), ('gh pr merge -t 3 5 --squash', 'merge_door', ('o/r', 5)),
+    ('gh pr merge -m 5', 'merge_door', ('o/r', 5)), ('gh pr merge -r 5', 'merge_door', ('o/r', 5)),
+    ('gh pr merge --subject=3 -A 4 5', 'merge_door', ('o/r', 5)), ('gh pr merge -- 5', 'merge_door', ('o/r', 5))])
+def test_a_pr_door_reads_the_repository_and_the_pr_that_gh_reads(root, cloud, monkeypatch, command, door, expected):
+    seen = []
+    monkeypatch.setattr(guards, door, lambda root, repo, number, **kw: seen.append((repo, number)))
+    guards.bash(root, command, '/repo', 's1')
+    assert seen == [expected], command
 
 
 @pytest.mark.parametrize('command', READY)

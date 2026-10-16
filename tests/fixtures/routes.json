@@ -91,6 +91,18 @@
     {"command": "gh pr edit 7 --add-reviewer bob", "source": "item draft-raise acceptance 6", "verdict": "ready"},
     {"command": "gh api -X POST repos/o/r/pulls/7/requested_reviewers -f reviewers[]=bob", "source": "item draft-raise acceptance 6", "verdict": "ready"},
     {"command": "gh api -X POST repos/o/r/pulls/5/requested_reviewers -f reviewers[]=bob", "source": "item draft-raise acceptance 6 (not a draft)", "verdict": "pass"},
-    {"command": "gh api graphql -f query='mutation{markPullRequestReadyForReview(input:{pullRequestId:\"x\"}){clientMutationId}}'", "source": "item draft-raise acceptance 7", "verdict": "refusal"}
+    {"command": "gh api graphql -f query='mutation{markPullRequestReadyForReview(input:{pullRequestId:\"x\"}){clientMutationId}}'", "source": "item draft-raise acceptance 7", "verdict": "refusal"},
+    {"command": "gh api -X POST repos/o/r/pulls/5/requested_reviewers -f 'reviewers[]=alice'", "source": "charters/shepherd.md:18 (the cloud reviewer route, PR 5 is not a draft)", "verdict": "pass"},
+    {"command": "gh pr edit -t 5 7 --add-reviewer bob", "source": "security gate draft-raise at 8774129 (a flag value is not the PR gh changes)", "verdict": "ready"},
+    {"command": "gh pr edit --add-reviewer 5 7", "source": "security gate draft-raise at 8774129", "verdict": "ready"},
+    {"command": "gh pr edit --milestone 5 7 --add-reviewer bob", "source": "security gate draft-raise at 8774129", "verdict": "ready"},
+    {"command": "gh pr ready --repo=o/r 7", "source": "security gate draft-raise at 8774129 (--repo= is read)", "verdict": "ready"},
+    {"command": "gh pr ready -Ro/r 7", "source": "security gate draft-raise at 8774129 (-R<value> is read)", "verdict": "ready"},
+    {"command": "gh pr merge --repo=o/r 5", "source": "security gate draft-raise at 8774129 (the merge door shares the reader)", "verdict": "merge"},
+    {"command": "gh api -X POST repos/o/r/pulls/7//requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at 8774129 (repeated slashes collapse)", "verdict": "ready"},
+    {"command": "gh api -X POST repos/o//r/pulls/7/requested_reviewers -f reviewers[]=bob", "source": "security gate draft-raise at 8774129", "verdict": "ready"},
+    {"command": "gh api -X POST repos/o/r/pulls/7/requested%5Freviewers -f reviewers[]=bob", "source": "security gate draft-raise at 8774129 (percent-escapes decode)", "verdict": "ready"},
+    {"command": "gh api -X PUT repos/o/r/pulls/5//merge", "source": "security gate draft-raise at 8774129 (passed on main too)", "verdict": "merge"},
+    {"command": "cd sub && gh api -X POST repos/o/r/pulls --input d.json", "source": "security gate draft-raise at 8774129 (gh reads its own d.json: the create door)", "verdict": "create"}
   ]
 }

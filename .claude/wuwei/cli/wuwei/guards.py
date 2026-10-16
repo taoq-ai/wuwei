@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+from urllib.parse import unquote
 
 from wuwei import evidence, gh, ws
 
@@ -33,11 +34,13 @@ API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/(\d+)/(merge|ccr
        (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'),
        (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
         WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
-API_FLAG = re.compile(r'(--(?:method|raw-field|field|input|header|jq|template|preview|hostname|cache))(?:=(.*))?|-i*([XfFHqtp])(?:=(?=.))?(.*)', re.S)
+API_VALUED = set('XfFHqtp') | {'method', 'raw-field', 'field', 'input', 'header', 'jq', 'template', 'preview', 'hostname', 'cache'}
 MUTATIONS = re.compile(r'\w*(mergePullRequest|enablePullRequestAutoMerge|createPullRequest|updateRef|deleteRef|createCommitOnBranch'
                        r'|mergeBranch|enqueuePullRequest|BranchProtectionRule|RepositoryRuleset|markPullRequestReadyForReview|requestReviews)\w*')
 TRUE, FALSE = ('1', 't', 'T', 'true', 'TRUE', 'True'), ('0', 'f', 'F', 'false', 'FALSE', 'False')  # pflag's; any other makes gh exit
 VALUED = set('aBbFHlmpTtR') | {'assignee', 'base', 'body', 'body-file', 'head', 'label', 'milestone', 'project', 'template', 'title', 'repo'}
+PR_VALUED = {'A', 'r', 'reviewer', 'recover', 'subject', 'match-head-commit', 'author-email', *(f'{verb}-{what}' for verb in (
+    'add', 'remove') for what in ('reviewer', 'assignee', 'label', 'project'))}  # gh pr create, edit and merge add these
 UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-first', 'fill-verbose', 'no-maintainer-edit'}  # gh pr create's
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
@@ -138,54 +141,51 @@ def git_push(root, args, cwd):
     return None
 
 
-def _repo_number(args, cwd):
-    repo, number = '', None
-    for i, arg in enumerate(args):
-        if arg in ('--repo', '-R') and i + 1 < len(args):
-            repo = args[i + 1]
-        match = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)/?', arg)
-        if match:
-            repo, number = match[1], int(match[2])
-        elif arg.isdigit() and number is None and (i == 0 or args[i - 1] not in ('--repo', '-R')):
-            number = int(arg)
-    return repo or origin(cwd), number
+def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
+    out, words = [], iter(args)
+    for word in words:
+        if word == '--' or word[:1] != '-' or word == '-':
+            out += [('', w) for w in (words if word == '--' else [word])]
+        elif long := re.fullmatch(r'--([^=]+)(?:=(.*))?', word, re.S):
+            out.append((long[1], long[2] if long[2] is not None or long[1] not in valued else next(words, None)))
+        elif rest := word[1:]:
+            while rest:  # a short cluster: -fd, -dt x, -d=t, -Rx/y
+                name, rest = rest[0], rest[1:]
+                out.append((name, rest[1:] if rest[:1] == '=' else (rest or next(words, None)) if name in valued else None))
+                rest = '' if rest[:1] == '=' or name in valued else rest
+    return out
+
+
+def _repo_number(args, cwd, valued=VALUED | PR_VALUED):  # the last -R (or the URL's repository) and the first positional
+    flags = _flags(args, valued)
+    url = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)/?', word := next((v for n, v in flags if not n), ''))
+    repo = url[1] if url else ([v for n, v in flags if n in ('R', 'repo') and v] or [''])[-1]
+    return repo or origin(cwd), int(url[2]) if url else int(word) if word.isdigit() else None
 
 
 def _draft(args):
-    """gh pr create's --draft as pflag reads it; a reviewer, --recover, a bad flag or value, a positional or -fd: no draft."""
-    draft, words = False, iter(args)
-    for word in words:
-        m = re.fullmatch(r'-(-[^=]+|[^-])(=?)(.*)', word, re.S)  # --name[=value], -n[=value], -n<value>
-        name, value = (m[1].lstrip('-'), m[3] if m[2] or m[3] and m[1] in VALUED else None) if m else ('', None)
-        if name not in VALUED | UNVALUED or m[3] and value is None or name in ('d', 'draft') and value not in (None, *TRUE, *FALSE) or (
-                name in VALUED and value is None and next(words, None) is None):  # a value flag takes the next word
-            return False
-        draft = value in (None, *TRUE) if name in ('d', 'draft') else draft
-    return draft
+    """gh pr create's --draft as pflag reads it (the last wins); a reviewer, --recover, a bad flag or value or a positional: no."""
+    flags = _flags(args, VALUED)
+    return not any(n not in VALUED | UNVALUED or n in VALUED and v is None or n in ('d', 'draft') and v not in (None, *TRUE, *FALSE)
+                   for n, v in flags) and ([v in (None, *TRUE) for n, v in flags if n in ('d', 'draft')] or [False])[-1]
 
 
 def _read(cwd, path):
     return Path(cwd, path).read_text(encoding='utf-8') if Path(cwd, path).is_file() else ''
 
 
-def _api(args, cwd):
+def _api(args, cwd, alone=True):
     """gh api's method, endpoint and fields as gh's flag parser reads them (-XPUT, --method=put, -fk=v, -F k=@file)."""
-    opts, rest, i = [], [], 0
-    while i < len(args):
-        if m := API_FLAG.fullmatch(args[i]):
-            opts.append((m[1] or '-' + m[3], v if (v := m[2] if m[1] else m[4] or None) is not None else ''.join(args[i + 1:i + 2])))
-            i += v is None  # a flag with nothing attached (not even an empty --method=) takes the next argument
-        elif not args[i].startswith('-'):
-            rest.append(args[i])
-        i += 1
+    flags = _flags(args, API_VALUED)  # an empty attached value (-X=, --method=) is a value; a flag with none takes the next word
+    opts, rest = [('-' * min(len(n), 2) + n, v or '') for n, v in flags if n], [v for n, v in flags if not n]
     pairs = [(f, *kv.split('=', 1)) for f, kv in opts if f in ('-f', '--raw-field', '-F', '--field') and '=' in kv]
     fields = {k: _read(cwd, v[1:]) if f in ('-F', '--field') and v.startswith('@') else v for f, k, v in pairs}
     data = ''.join(_read(cwd, v) for f, v in opts if f == '--input')
     fields |= dict(re.findall(r'"(head|base|body)"\s*:\s*"((?:\\.|[^"\\])*)"', data))  # the --input file's JSON
-    draft = ((json.loads(data) if data.lstrip()[:1] == '{' else {}).get('draft') is True if '--input' in dict(opts)  # fields go
-             else ([f in ('-F', '--field') and v == 'true' for f, k, v in pairs if k == 'draft'] or [False])[-1])  # to the query then
+    draft = (alone and (json.loads(data) if data.lstrip()[:1] == '{' else {}).get('draft') is True if '--input' in dict(opts)  # gh reads
+             else ([f in ('-F', '--field') and v == 'true' for f, k, v in pairs if k == 'draft'] or [False])[-1])  # the file in its own cwd
     method = ([v.upper() for f, v in opts if f in ('-X', '--method')] or ['POST' if fields or '--input' in dict(opts) else 'GET'])[-1]
-    endpoint = re.sub(r'(?i)^([a-z][\w+.-]*://[^/]*)?/+|/*([?#].*)?$', '', rest[0] if rest else '')
+    endpoint = re.sub(r'/+', '/', unquote(re.sub(r'(?i)^([a-z][\w+.-]*://[^/]*)?/+|/*([?#].*)?$', '', rest[0] if rest else ''))).strip('/')
     owner, name = ((origin(cwd) if '{' in endpoint else '') or '{owner}/{repo}').split('/')
     return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields, draft
 
@@ -194,7 +194,7 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'merge']:
         if '--admin' in args:
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
-        repo, number = _repo_number(args[2:], cwd)
+        repo, number = _repo_number(args[2:], cwd, (VALUED | PR_VALUED) - {'m', 'r'})  # merge's -m and -r are bools
         return merge_door(root, repo, number, auto='--auto' in args)
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
@@ -205,7 +205,7 @@ def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'ready'] and not undo or args[:2] == ['pr', 'edit'] and any(a.startswith('--add-reviewer') for a in args):
         return ready_door(root, *_repo_number(args[2:], cwd))
     if args[:1] == ['api'] and len(args) > 1:
-        method, endpoint, fields, draft = _api(args[1:], cwd)
+        method, endpoint, fields, draft = _api(args[1:], cwd, len(segments(command) or ()) == 1)  # alone: in the hook's cwd
         if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
             return deny(f'gh api graphql {named[0]} goes around the doors: use gh pr merge, gh pr create --draft, gh pr ready or gh pr '
                         'edit --add-reviewer (in a cloud session gh api -X POST repos/<o>/<r>/pulls[/<n>/ccr/ready_for_review]).')

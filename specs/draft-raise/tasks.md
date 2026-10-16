@@ -3,7 +3,7 @@
 ## Phase 0: Evidence
 
 - [x] T001 Read #1050 and #1074; restate the promise and acceptance (spec.md)
-- [x] T002 Check gh pr create's flags against gh 2.89.0 source and pflag v1.0.6 (82 argument lists)
+- [x] T002 Check gh pr create's flags against gh 2.89.0 source and pflag v1.0.6 (96 argument lists after the fix round)
 - [x] T003 Check what gh 2.89.0 sends for `-F draft=...`, `-f draft=...`, duplicates and `--input` plus fields, through a local logging server on a non-door endpoint
 - [x] T004 Check the GitHub MCP server v1.14.0 schema: `update_pull_request` (pullNumber, draft, reviewers), `create_pull_request` (draft, reviewers), `request_copilot_review`
 - [x] T005 Record main's verdict for 204 commands and MCP payloads (corpus plus draft, ready and reviewer spellings)
@@ -30,4 +30,10 @@
 - [x] T020 Corpus: 15 routes with sources; six sources re-cited where the charter lines changed (tests/fixtures/routes.json)
 - [x] T021 Re-vendor `.claude/` with `setup.vendor('.')`
 - [x] T022 Full suite green; runtime at 2,999 lines
+
+## Phase 3: Fix round at 8774129 (quality and security FIX)
+
+- [x] T024 Tests first: PR and repository read past flag values and from `--repo=`, `-R<value>` (ready and merge doors); `--input` behind `cd` or `cp` held; `//` and `%5F` endpoints; `-dr=bob`, `-drbob`, `-dx`; `--input` draft `"false"` and `1` (the final tests against 8774129's guards.py: 34 failed, 586 passed)
+- [x] T025 One pflag reader `_flags` for `_repo_number`, `_draft` and `gh api`; `--input` draft only when gh runs alone; endpoint decoded and slashes collapsed (cli/wuwei/guards.py)
+- [x] T026 evidence.md row, shepherd cloud reviewer route, SECURITY.md line; agents rebuilt; re-vendored; 12 corpus routes with sources
 - [x] T023 Main-versus-head over 204 commands and payloads: 21 drafts now pass, 23 ready or reviewer routes on draft PR 7 now held, 2 new mutations refused, 42 refusals with new text only; no other verdict moved
