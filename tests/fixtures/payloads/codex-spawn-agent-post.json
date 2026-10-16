@@ -1,0 +1,16 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000002",
+  "turn_id": "t1",
+  "cwd": "/repo",
+  "model": "gpt-5-codex",
+  "permission_mode": "default",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "spawn_agent",
+  "tool_input": {
+    "agent_type": "sentinel-quality",
+    "task_name": "quality gate I-1",
+    "message": "Quality gate for WUWEI item I-1 in o/r. (scrubbed)"
+  },
+  "tool_response": "{\"agent_id\": \"019a7c3e-5b1d\", \"status\": \"running\"}",
+  "tool_use_id": "call_01"
+}
