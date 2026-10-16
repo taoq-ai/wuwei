@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/taoq-ai/wuwei/compare/v1.2.0...v1.2.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **doctor:** the hooks check counts any hook that fired in this clone since init ([#1070](https://github.com/taoq-ai/wuwei/issues/1070)) ([489d1ed](https://github.com/taoq-ai/wuwei/commit/489d1edbbb78d722f5f2dbd16314d2738184aaab))
+* **evidence:** a commit status posted by a review-triggered workflow reads as review, not CI ([#1071](https://github.com/taoq-ai/wuwei/issues/1071)) ([5d7157b](https://github.com/taoq-ai/wuwei/commit/5d7157bbe950835be921af2d9f13669208a31a43))
+
 ## [1.2.0](https://github.com/taoq-ai/wuwei/compare/v1.1.0...v1.2.0) (2026-10-16)
 
 
