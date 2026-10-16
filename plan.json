@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "route-fixtures",
-   "title": "test(guards): the commands seats are told to run and recorded harness payloads are fixtures the suite reads",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 13,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 17.0,
-   "why": "Red-team learning first: a corpus of real routes lets every guard change show, in its diff, which verdicts it moves.",
-   "promise": "tests/fixtures/routes.json lists every gh and git command that charters/, skills/, charters/_pr.md and docs/site/ tell a seat to run, plus the gh api commands seats ran in this workspace on 2026-10-16 (scrubbed of local paths), each with the verdict main gives it today: pass, or the door it reaches (merge, create, push, refusal). tests/fixtures/payloads/ keeps recorded harness payloads, scrubbed of secrets and workspace content: an Agent PreToolUse and PostToolUse for an accepted and a rejected launch, a Codex spawn_agent, a PreToolUse fired inside a subagent (with agent_id and agent_type) and a SubagentStop. tests/test_guards.py reads every route through guards.bash with the code host stubbed and asserts the recorded verdict; tests/test_hook.py replays every payload through hook.handle. A guard change that moves a verdict must edit the fixture, so its diff shows the move to the gates. Touches tests/fixtures/ (new), tests/test_guards.py, tests/test_hook.py. No runtime lines. Outside: changing any verdict; the SECURITY.md deny-list gaps.",
-   "acceptance": [
-    "given the fixtures, when the suite runs on main, then every route reads as recorded and every payload replays without an error",
-    "given a guard change that refuses \"gh api repos/o/r/pulls/5/ccr/review_threads\", when the suite runs, then a test fails naming that route",
-    "given \"gh api -X POST repos/o/r/issues/5/comments -F body=@ping.md\" (the shepherd's review ping), when the guards read it, then it passes as recorded",
-    "given tests/fixtures/, when guards.SECRETS and the workspace canary are matched against every file, then nothing matches"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "door-hardening",
    "title": "fix(hook): the fail-closed check reads the doors from one table, through quotes, and covers the leak check",
    "goal": "G-2",
@@ -106,32 +80,6 @@
     "given item C whose PR merged 30 seconds ago and a merged-list cache from 2 minutes ago, when the board computes, then C is marked done, not \"no pull request yet\"",
     "given approved item D with no PR and a well-formed verdict .wuwei/verdicts/D/quality-abc1234.md with no attest row, when the board computes, then D's row names that file as not counted",
     "given the change, when the suite runs, then the runtime is 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "plan-accuracy",
-   "title": "fix(plan): a wrong-shape candidates file and a bare plan run are refused, and a changed promise needs approval again",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 5,
-    "risk": 5,
-    "size": 3
-   },
-   "score": 6.0,
-   "why": "Three plan-record bugs in plan.py and __main__.py, one fix each.",
-   "promise": "plan add --from refuses a file that is neither a list nor {\"candidates\": [...]}, and a candidate without id or title, naming the expected shape, instead of adding nothing silently. Re-adding an item whose promise or acceptance changed clears its approval, so the board shows \"awaiting plan approval\". plan run <id> refuses without --reason and records the reason as its evidence (#1073), and wuwei plan --help gives one line per action. Touches cli/wuwei/plan.py, cli/wuwei/__main__.py, their vendored copies, tests/test_plan.py, docs/site/reference.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +6. Starts after free-lines merges. Outside: retracting a run record (plan restore reopens the item).",
-   "acceptance": [
-    "given a candidates file {\"items\": [...]}, when plan add --from reads it, then it exits non-zero naming the expected shape and adds nothing",
-    "given approved item A re-added with a different promise, when the add completes, then A is not approved and the board shows \"awaiting plan approval\"; re-added with the same promise and acceptance, it stays approved",
-    "given \"wuwei plan run A\" without --reason, when it runs, then it refuses and records nothing; with --reason \"ran X, it showed Y\", then the item carries that reason",
-    "given \"wuwei plan --help\", when it prints, then each action has its own line"
    ],
    "status": "open",
    "added": "2026-10-16",
@@ -251,6 +199,33 @@
    "approved": true,
    "kind": "run",
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
+  },
+  {
+   "id": "route-fixtures",
+   "title": "test(guards): the commands seats are told to run and recorded harness payloads are fixtures the suite reads",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 13,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 17.0,
+   "why": "Red-team learning first: a corpus of real routes lets every guard change show, in its diff, which verdicts it moves.",
+   "promise": "tests/fixtures/routes.json lists every gh and git command that charters/, skills/, charters/_pr.md and docs/site/ tell a seat to run, plus the gh api commands seats ran in this workspace on 2026-10-16 (scrubbed of local paths), each with the verdict main gives it today: pass, or the door it reaches (merge, create, push, refusal). tests/fixtures/payloads/ keeps recorded harness payloads, scrubbed of secrets and workspace content: an Agent PreToolUse and PostToolUse for an accepted and a rejected launch, a Codex spawn_agent, a PreToolUse fired inside a subagent (with agent_id and agent_type) and a SubagentStop. tests/test_guards.py reads every route through guards.bash with the code host stubbed and asserts the recorded verdict; tests/test_hook.py replays every payload through hook.handle. A guard change that moves a verdict must edit the fixture, so its diff shows the move to the gates. Touches tests/fixtures/ (new), tests/test_guards.py, tests/test_hook.py. No runtime lines. Outside: changing any verdict; the SECURITY.md deny-list gaps.",
+   "acceptance": [
+    "given the fixtures, when the suite runs on main, then every route reads as recorded and every payload replays without an error",
+    "given a guard change that refuses \"gh api repos/o/r/pulls/5/ccr/review_threads\", when the suite runs, then a test fails naming that route",
+    "given \"gh api -X POST repos/o/r/issues/5/comments -F body=@ping.md\" (the shepherd's review ping), when the guards read it, then it passes as recorded",
+    "given tests/fixtures/, when guards.SECRETS and the workspace canary are matched against every file, then nothing matches"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged"
   },
   {
    "id": "breaking-proceed",
@@ -571,6 +546,33 @@
     "given charters/_gate.md, when a sentinel reads it, then it says a written verdict is never edited and names the -2 file rule, in the words hook._verdict_problem uses",
     "given docs/site/reference.md and verdict.FORMAT, when compared, then both mark <file>:<line> optional on a note and required on a blocking finding",
     "given charters/planner.md, when the planner briefs a gate on a guards.py change, then the brief names the differential over tests/fixtures/routes.json and the codex-companion limit"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged"
+  },
+  {
+   "id": "plan-accuracy",
+   "title": "fix(plan): a wrong-shape candidates file and a bare plan run are refused, and a changed promise needs approval again",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "Three plan-record bugs in plan.py and __main__.py, one fix each.",
+   "promise": "plan add --from refuses a file that is neither a list nor {\"candidates\": [...]}, and a candidate without id or title, naming the expected shape, instead of adding nothing silently. Re-adding an item whose promise or acceptance changed clears its approval, so the board shows \"awaiting plan approval\". plan run <id> refuses without --reason and records the reason as its evidence (#1073), and wuwei plan --help gives one line per action. Touches cli/wuwei/plan.py, cli/wuwei/__main__.py, their vendored copies, tests/test_plan.py, docs/site/reference.md. Lines: draws on the 60 that free-lines frees (runtime 2,999 on main 51875c0, cap 3,000); estimate +6. Starts after free-lines merges. Outside: retracting a run record (plan restore reopens the item).",
+   "acceptance": [
+    "given a candidates file {\"items\": [...]}, when plan add --from reads it, then it exits non-zero naming the expected shape and adds nothing",
+    "given approved item A re-added with a different promise, when the add completes, then A is not approved and the board shows \"awaiting plan approval\"; re-added with the same promise and acceptance, it stays approved",
+    "given \"wuwei plan run A\" without --reason, when it runs, then it refuses and records nothing; with --reason \"ran X, it showed Y\", then the item carries that reason",
+    "given \"wuwei plan --help\", when it prints, then each action has its own line"
    ],
    "status": "done",
    "added": "2026-10-16",
