@@ -98,7 +98,7 @@ def test_a_change_after_the_first_push_reaches_the_branch(remote, tmp_path):
     (a / ws.DIR / 'plan.json').write_text('v1')
     sync.push(a)
     (a / ws.DIR / 'plan.json').write_text('v2')
-    sync.pull(a)
+    assert 'plan.json' not in sync.pull(a) and (a / ws.DIR / 'plan.json').read_text() == 'v2'
     assert sync.push(a).startswith('pushed')
     assert git(a, 'show', 'origin/wuwei/state:plan.json') == 'v2'
 
