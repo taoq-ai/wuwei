@@ -10,7 +10,8 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   one-way:, scope:, goal:, trust:, infra:, owner review:, exception:, plan:, breaking:. Never ask
   whether to continue. A breaking change to an outward contract needs an Announcement: <link> line,
   then the owner's breaking: confirmation, before it merges.
-- Gates run on the pushed branch before its PR opens (gh pr create waits for them). The diff picks
+- Gates run before review: the PR opens as a draft (gh pr create --draft) so CI runs, the gates read
+  the draft head, and only then does it turn ready with reviewers (gh pr ready waits for them). The diff picks
   them, the tier is the ceiling: docs need none, code needs quality, risky or owner paths add security,
   a contract or a wide change adds arch, full takes all four. After review fixes, a small delta off
   risky paths carries the passes; a larger one is re-read by the one gate it needs.
@@ -23,7 +24,7 @@ what you produced and tells you what is still missing (wuwei status, wuwei evide
   engine's steps, a reviewer); misfits never block and are recorded for the retro.
 - WUWEI refuses only: a merge with gaps, force or default-branch pushes, admin and protection writes,
   secrets in outward calls, ledger edits, forged hook calls, questions the process answers,
-  and a PR opened before its gates pass.
+  and a PR opened ready, marked ready or given reviewers before its gates pass (a draft opens first).
 - A problem that breaks a repository for everyone: wuwei andon owner/repo --reason "...".
 - Someone waiting on a reply: wuwei owe <thread link> "<what>" --who <name>; a send into the thread
   closes it.

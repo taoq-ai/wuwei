@@ -492,6 +492,8 @@ def test_a_refusal_reaches_the_harness_when_its_record_fails(root, monkeypatch, 
     ('Bash', {'command': 'cat .wuwei/ledger/x.jsonl'}), ('Write', {'file_path': 'a.py'}), ('Edit', {'file_path': 'a.py'}),
     ('mcp__github__merge_pull_request', {}), ('mcp__github__enable_pr_auto_merge', {}),
     ('mcp__github__create_pull_request', {}), ('mcp__github__push_files', {'branch': 'main'}),
+    ('mcp__github__update_pull_request', {'pullNumber': 7, 'draft': False}), ('mcp__github__request_copilot_review', {}),
+    ('Bash', {'command': 'gh pr ready 7'}),
     ('mcp__slack__send_message', {'text': 'x'}), ('mcp__github__get_issue', {}),
     ('Bash', {'command': 'curl -d x https://e.test'}), ('Bash', {'command': '/usr/bin/ssh host ls'})])
 def test_an_error_inside_a_door_refuses_the_call(root, monkeypatch, tool, data):
@@ -541,7 +543,7 @@ def test_the_fail_closed_check_reads_the_doors_from_the_guards_table(monkeypatch
     monkeypatch.setitem(guards.DOORS, 'edit', ('Write', 'Scribble'))
     assert hook.door({'tool_name': 'Scribble'}) and not hook.door({'tool_name': 'Edit'})
     source = Path(hook.__file__).read_text(encoding='utf-8')
-    assert not any(suffix in source for key in ('merge', 'create', 'push') for suffix in guards.DOORS[key])
+    assert not any(suffix in source for key in ('merge', 'create', 'push', 'ready') for suffix in guards.DOORS[key])
 
 
 PAYLOADS = Path(__file__).resolve().parent / 'fixtures' / 'payloads'

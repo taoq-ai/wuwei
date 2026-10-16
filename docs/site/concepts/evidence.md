@@ -84,8 +84,8 @@ and announcing it; you decide whether it ships.
 
 ## Gates before the PR, chosen by the diff
 
-The gates run on the pushed branch, before its PR opens: `gh pr create` is refused until they pass
-at the branch head, so reviewers and the merge only ever see gated code.
+The gates run before review: the PR opens as a draft so CI runs, and `gh pr ready` and reviewer
+requests are refused until the gates pass at its head, so reviewers and the merge only ever see gated code.
 
 The tier is a ceiling and the diff decides what runs under it:
 

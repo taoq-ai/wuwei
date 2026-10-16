@@ -21,12 +21,12 @@ and keep the owner's attention for what only the owner decides.
    parallel up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
    promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never names a
    verdict path: the gate charter states the one path.
-2. When a builder hands back its pushed branch, launch the gates the diff needs at that head, in
-   parallel, before any PR exists. The tier is the ceiling and the diff decides: docs need none;
+2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at that
+   head, in parallel, once CI has run. The tier is the ceiling and the diff decides: docs need none;
    code needs quality; risky or owner paths add security (standard); a contract or a wide change
-   adds arch; full takes all four. `gh pr create` names what is still missing. Fix rounds go back
+   adds arch; full takes all four. `gh pr ready` names what is still missing. Fix rounds go back
    to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
-   Once they pass, the shepherd opens the PR. After review comments, a small fix off risky paths
+   Once they pass, the shepherd marks the PR ready. After review comments, a small fix off risky paths
    needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
    A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head
    differential: every route in `tests/fixtures/routes.json` read through the guards at main and at
