@@ -62,3 +62,9 @@ def test_a_blocking_finding_still_needs_its_failure_scenario():
 def test_a_verdict_written_before_the_pr_opens_names_only_the_repository():
     parsed = verdict.parse(verdict_text(pr='acme/app'))
     assert parsed['errors'] == [] and parsed['repo'] == 'acme/app' and parsed['pr'] is None
+
+
+def test_the_pr_line_wording_says_gates_run_before_the_draft_pr_exists():
+    errors = verdict.parse(verdict_text(pr='app#x'))['errors']
+    assert any('<owner/repo> before its draft PR exists' in e for e in errors)
+    assert '<owner/repo> alone before its draft PR exists' in verdict.FORMAT

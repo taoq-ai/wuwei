@@ -53,7 +53,10 @@ When a blocking finding is wrong, do not make a change to satisfy it. Answer it 
 Sweep the classes your diff touches and report one line each as PASS, N.A. (with a reason) or
 FINDING, with the command you ran:
 
-- AUTH: changed guards traced through sibling routes and alternate credentials.
+- AUTH: changed guards traced through sibling routes and alternate credentials. For a change
+  to the repository's guard code, run its route corpus (`tests/fixtures/routes.json` where it
+  exists) on main and on the branch, record the corpus sha256, and list a refusal that names a
+  different PR or repository as its own row.
 - VAL: changed parsers tested on blank, malformed, duplicate and boundary input.
 - TEST: assertions reach the real consumer; tests of the old contract updated.
 - ERR: validation, timeout and partial failures give the caller an error it can act on.

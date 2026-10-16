@@ -1,6 +1,8 @@
 import json
-from pathlib import Path
 import re
+from pathlib import Path
+
+import pytest
 
 from wuwei import agents, setup, ws
 
@@ -28,6 +30,15 @@ def test_init_creates_the_workspace_and_merges_harness_rules(tmp_path, monkeypat
 
 def test_the_generated_agents_match_the_charters():
     assert agents.stale(PLUGIN) == []
+
+
+@pytest.mark.parametrize('role', ['sentinel-arch', 'sentinel-goal', 'sentinel-quality', 'sentinel-security'])
+def test_every_gate_carries_the_worktree_write_mutant_and_stub_rules(role):
+    text = ' '.join((PLUGIN / 'agents' / f'{role}.md').read_text().split())
+    for rule in ('check out, reset or build in the main worktree', 'with the Write tool, never a shell heredoc',
+                 'Re-run every mutant you list as surviving', 'with a stub program on PATH',
+                 '<owner/repo> alone before its draft PR exists'):
+        assert rule in text, (role, rule)
 
 
 def test_every_agent_has_its_reviewed_tool_grant():

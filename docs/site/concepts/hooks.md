@@ -43,8 +43,9 @@ waits (CI, the owner, plan approval, an andon) never count, a closed day is quie
 continued by a Stop hook always passes.
 
 Two more reminders keep the flow from stalling on the owner's nudge, each once per session: when
-only waiting work is left and no watch pass ran in the last hour, it asks the session to arm
-`/wuwei-watch` (nothing else would wake it when CI finishes); when the queue is empty and goals are
+only waiting work is left and no watch pass ran in the last hour, it says nothing will wake
+the session for the waiting work unless a check-in or PR subscription is armed, which WUWEI cannot
+see, and asks it to arm `/wuwei-watch` on a schedule; when the queue is empty and goals are
 set, it asks for a plan pass from the goals.
 
 **Why:** it turns "honour the promise" into a habit without turning it into a trap.

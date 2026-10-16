@@ -8,7 +8,7 @@ FINDING = re.compile(r'^- \[(critical|high|medium|low)\] (?:(\S+:\d+(?:-\d+)?) )
 FORMAT = '''Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
-PR: <owner/repo>#<number>   (or <owner/repo> alone: gates run on the branch before its PR opens)
+PR: <owner/repo>#<number>   (or <owner/repo> alone before its draft PR exists)
 Head: <the 40-character sha you reviewed>
 Confidence: medium   (exactly one word: low, medium or high; give the reason under Probes)
 Breaking: no   (arch gate only; or "yes: <what breaks for which clients>")
@@ -45,7 +45,7 @@ def parse(text, strict=False):
     if match:
         result['repo'], result['pr'] = match[1], int(match[2]) if match[2] else None
     else:
-        errors.append('PR: must be <owner/repo>#<number>, or <owner/repo> before the PR opens')
+        errors.append('PR: must be <owner/repo>#<number>, or <owner/repo> before its draft PR exists')
     section = re.search(r'^## Findings[ \t]*$(.*?)(?=^## |\Z)', text, re.M | re.S)
     if section is None:
         errors.append('Findings: the verdict needs a "## Findings" section (a finding per line, or none)')

@@ -451,7 +451,9 @@ def test_waiting_work_with_no_watch_armed_asks_once_to_arm_it(root, fake):
     import hashlib
     ws.record(root, 'attest', {'path': str(path.relative_to(root)), 'item': 'I-1',
                                'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
-    assert 'arm /wuwei-watch' in stop(root)['reason']
+    reason = stop(root)['reason']
+    assert 'arm /wuwei-watch' in reason
+    assert 'nothing will wake this session for the waiting work unless a check-in or PR subscription is armed' in reason
     assert stop(root) is None
 
 

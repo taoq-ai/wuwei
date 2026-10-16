@@ -28,6 +28,9 @@ question for its source, not a build.
    the tier is a ceiling, and the diff picks the gates under it, so a small standard change costs
    one gate. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
    so in its promise; the planner records its evidence with `wuwei plan run`.
+3. In a repository whose own process states a runtime line budget (its constitution or
+   AGENTS.md), an item that adds runtime lines states its estimate and a budget about one and a
+   half times it.
 
 ## Ranking
 

@@ -43,7 +43,9 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
 4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
-   folder (Boundaries 2), never in the builder's worktree.
+   folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
+   main worktree. A gate copies the tree with `git archive <sha>` into its scratch folder (`git
+   worktree add` writes into the main clone's `.git`); a builder uses `git worktree add`.
 
 ## Boundaries
 
@@ -136,6 +138,9 @@ question for its source, not a build.
    the tier is a ceiling, and the diff picks the gates under it, so a small standard change costs
    one gate. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
    so in its promise; the planner records its evidence with `wuwei plan run`.
+3. In a repository whose own process states a runtime line budget (its constitution or
+   AGENTS.md), an item that adds runtime lines states its estimate and a budget about one and a
+   half times it.
 
 ## Ranking
 
