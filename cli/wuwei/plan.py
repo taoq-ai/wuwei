@@ -82,7 +82,7 @@ def add_from(root, path):
         scores = c.get('scores') or {k: c[k] for k in (*FIELDS['wsjf'], *FIELDS['rice'], *ALIASES) if k in c}
         found.append(add(root, c['id'], c['title'], c.get('goal', ''), c.get('repo') or c.get('repository', ''),
                          c.get('tier', 'standard'), scores, c.get('why', ''), c.get('promise', ''),
-                         c.get('acceptance') or c.get('scenarios') or ()))
+                         c.get('acceptance') or c.get('scenarios') or c.get('accept') or ()))
     return found
 
 

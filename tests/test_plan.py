@@ -135,3 +135,12 @@ def test_plan_help_gives_each_action_its_own_line(capsys):
     lines = capsys.readouterr().out.splitlines()
     for action in ('show', 'add', 'park', 'drop', 'done', 'run', 'restore', 'pass', 'view'):
         assert len([line for line in lines if line.lstrip().startswith(action + ' ')]) == 1, action
+
+
+def test_candidates_keep_acceptance_written_under_the_cli_flag_name(root, tmp_path):
+    import json
+    lead = tmp_path / 'lead.json'
+    lead.write_text(json.dumps([{'id': 'A-1', 'title': 't', 'scores': {'value': 3, 'time': 3, 'risk': 3, 'size': 1},
+                                 'accept': ['given x, when y, then z']}]))
+    [item] = plan.add_from(root, lead)
+    assert item['acceptance'] == ['given x, when y, then z']
