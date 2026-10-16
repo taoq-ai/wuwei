@@ -1,33 +1,6 @@
 {
  "items": [
   {
-   "id": "free-lines-3",
-   "title": "refactor: one plugin path and version read in ws, one git helper in guards, and two dead or one-caller definitions go",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 13,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 13.0,
-   "why": "cli/wuwei is at 3,000 of 3,000 lines on main fe5bc0b (wc -l), so #1085's fix and the door fixes cannot land; a scratch prototype of these edits measured 2,985 lines with 929 tests passing (the only failure was vendored drift, fixed by re-vendoring).",
-   "promise": "Free at least 13 runtime lines with no change in behaviour, so the next items fit under the 3,000-line budget (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Where the lines come from, measured on main fe5bc0b: (1) verdict.CONFIDENCE (verdict.py line 7) has no reader in cli/ or tests/: 1 line. (2) The plugin path Path(__file__).resolve().parents[2] is defined four times (__main__.py line 10, hook.py line 304, setup.py line 50, guards.PR_STANDARD line 53) and plugin.json's version is read three times (__main__.version, guards.py line 228, setup.py line 109). ws gains PLUGIN and version(); the others use them, and __main__ drops its unused pathlib import: about 10 lines. tests/test_hook.py line 252 reads ws.PLUGIN. (3) guards.origin and guards.current_branch share one _git(cwd, *args) helper with the same 5 s timeout and '' on OSError or SubprocessError: 1 line. (4) hook._confidence has one caller (hook.py line 128) and is read in place: 3 lines. The prototype reached 2,985 lines; the item passes at 2,987 or fewer. Touches the files listed and the vendored copy under .claude/wuwei/ by re-vendoring. Starts after the parent session lands claude/1098-no-item-message, which edits guards.create_door. Rollback: revert the commit; no data, config or CLI output changes. Outside: any CLI flag, output or guard route; moving replay.py and wuwei evidence --record into scripts/ (about 45 lines, but it removes a documented flag: a breaking: question, kept as the fallback if room runs short). The guards.py line 208 clause len(segments(command) or ()) == 1 is redundant (the plain-word allowlist refuses ;, &&, | and parentheses, and a newline is refused earlier) but frees no line; gh-doors rewrites that check. Assumption: tier full because guards.py and hook.py hold the doors, as for free-lines-2; the diff picks fewer gates if the owner rates a behaviour-neutral change lower.",
-   "acceptance": [
-    "given the change, when the suite runs, then the runtime under cli/wuwei is 2,987 lines or fewer and every test passes, the vendored-drift test included after re-vendoring",
-    "given the change, when cli/wuwei is searched, then Path(__file__).resolve().parents[2] appears once (in ws.py), plugin.json is read once, and no module defines CONFIDENCE or _confidence",
-    "given a scratch git repository whose origin is https://github.com/o/r.git on branch i-1-x, when guards.origin and guards.current_branch read it, then they answer o/r and i-1-x, and given a cwd that is not a directory, then both answer ''",
-    "given a seat transcript ending with 'Confidence: High (reason)', when SubagentStop records seat.stopped, then its confidence is high, and with no Confidence line it is null, as on main",
-    "given wuwei --version, wuwei agents build and a first gh pr create note, when each runs, then the version and the PR standard text match main's output"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "ci-not-started",
    "title": "fix(evidence): a head with no CI checks registered yet reads as CI not started, never as ready to merge",
    "goal": "G-2",
@@ -356,6 +329,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1079"
+  },
+  {
+   "id": "free-lines-3",
+   "title": "refactor: one plugin path and version read in ws, one git helper in guards, and two dead or one-caller definitions go",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 13,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 13.0,
+   "why": "cli/wuwei is at 3,000 of 3,000 lines on main fe5bc0b (wc -l), so #1085's fix and the door fixes cannot land; a scratch prototype of these edits measured 2,985 lines with 929 tests passing (the only failure was vendored drift, fixed by re-vendoring).",
+   "promise": "Free at least 13 runtime lines with no change in behaviour, so the next items fit under the 3,000-line budget (tests/test_setup.py::test_the_runtime_holds_its_size_budget). Where the lines come from, measured on main fe5bc0b: (1) verdict.CONFIDENCE (verdict.py line 7) has no reader in cli/ or tests/: 1 line. (2) The plugin path Path(__file__).resolve().parents[2] is defined four times (__main__.py line 10, hook.py line 304, setup.py line 50, guards.PR_STANDARD line 53) and plugin.json's version is read three times (__main__.version, guards.py line 228, setup.py line 109). ws gains PLUGIN and version(); the others use them, and __main__ drops its unused pathlib import: about 10 lines. tests/test_hook.py line 252 reads ws.PLUGIN. (3) guards.origin and guards.current_branch share one _git(cwd, *args) helper with the same 5 s timeout and '' on OSError or SubprocessError: 1 line. (4) hook._confidence has one caller (hook.py line 128) and is read in place: 3 lines. The prototype reached 2,985 lines; the item passes at 2,987 or fewer. Touches the files listed and the vendored copy under .claude/wuwei/ by re-vendoring. Starts after the parent session lands claude/1098-no-item-message, which edits guards.create_door. Rollback: revert the commit; no data, config or CLI output changes. Outside: any CLI flag, output or guard route; moving replay.py and wuwei evidence --record into scripts/ (about 45 lines, but it removes a documented flag: a breaking: question, kept as the fallback if room runs short). The guards.py line 208 clause len(segments(command) or ()) == 1 is redundant (the plain-word allowlist refuses ;, &&, | and parentheses, and a newline is refused earlier) but frees no line; gh-doors rewrites that check. Assumption: tier full because guards.py and hook.py hold the doors, as for free-lines-2; the diff picks fewer gates if the owner rates a behaviour-neutral change lower.",
+   "acceptance": [
+    "given the change, when the suite runs, then the runtime under cli/wuwei is 2,987 lines or fewer and every test passes, the vendored-drift test included after re-vendoring",
+    "given the change, when cli/wuwei is searched, then Path(__file__).resolve().parents[2] appears once (in ws.py), plugin.json is read once, and no module defines CONFIDENCE or _confidence",
+    "given a scratch git repository whose origin is https://github.com/o/r.git on branch i-1-x, when guards.origin and guards.current_branch read it, then they answer o/r and i-1-x, and given a cwd that is not a directory, then both answer ''",
+    "given a seat transcript ending with 'Confidence: High (reason)', when SubagentStop records seat.stopped, then its confidence is high, and with no Confidence line it is null, as on main",
+    "given wuwei --version, wuwei agents build and a first gh pr create note, when each runs, then the version and the PR standard text match main's output"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1104"
   },
   {
    "id": "free-lines-2",
