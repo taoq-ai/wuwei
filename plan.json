@@ -266,31 +266,6 @@
    "approved": true
   },
   {
-   "id": "sync-note",
-   "title": "fix(sync): a file changed only here is not reported as changed on the branch too",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "light",
-   "framework": "wsjf",
-   "scores": {
-    "value": 2,
-    "time": 2,
-    "risk": 2,
-    "size": 1
-   },
-   "score": 6.0,
-   "why": "sync.pull lists every kept local file as a two-sided change without comparing the branch copy with the last sync.",
-   "promise": "sync.pull names a kept local file as \"changed here and on the branch\" only when the branch copy also changed since the last sync; a file changed only here stays and is pushed next as today, without the note. Touches cli/wuwei/sync.py, its vendored copy, tests/test_sync.py. Lines: net 0. Outside: merging both sides.",
-   "acceptance": [
-    "given plan.json changed here and unchanged on the branch since the last sync, when sync pulls, then the note does not list plan.json and the local file stays",
-    "given plan.json changed here and on the branch, when sync pulls, then the note lists it and the local file stays",
-    "given the next push, when it runs, then the local plan.json reaches the branch"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "draft-raise",
    "title": "fix(guards): a draft PR opens before its gates, and the flip to ready waits for them",
    "goal": "G-2",
@@ -596,6 +571,32 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1083"
+  },
+  {
+   "id": "sync-note",
+   "title": "fix(sync): a file changed only here is not reported as changed on the branch too",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 2,
+    "time": 2,
+    "risk": 2,
+    "size": 1
+   },
+   "score": 6.0,
+   "why": "sync.pull lists every kept local file as a two-sided change without comparing the branch copy with the last sync.",
+   "promise": "sync.pull names a kept local file as \"changed here and on the branch\" only when the branch copy also changed since the last sync; a file changed only here stays and is pushed next as today, without the note. Touches cli/wuwei/sync.py, its vendored copy, tests/test_sync.py. Lines: net 0. Outside: merging both sides.",
+   "acceptance": [
+    "given plan.json changed here and unchanged on the branch since the last sync, when sync pulls, then the note does not list plan.json and the local file stays",
+    "given plan.json changed here and on the branch, when sync pulls, then the note lists it and the local file stays",
+    "given the next push, when it runs, then the local plan.json reaches the branch"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1086"
   },
   {
    "id": "verdict-handback",
