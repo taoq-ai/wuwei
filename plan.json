@@ -1,6 +1,275 @@
 {
  "items": [
   {
+   "id": "1068",
+   "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 20,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 17.67,
+   "why": "Rethink after two fix rounds: a one-way flag at the first unquoted ((, ${ or joined [ stops heredoc dropping for the rest of the command. A spike on the branch, checked against real bash, closed all 7 known bypass inputs and added no refusal across 506 real commands from today.",
+   "promise": "Resume the parked branch claude/1068-guards-multiline at 7fd4019 (rebase or merge onto main; it merges cleanly onto 5d7157b). Keep everything that passed there: a newline outside quotes ends a command, backslash-newline continuations join, heredoc bodies are read in order, an unreadable command naming a door program is refused, and the refusal names --body-file and -F. Replace the arithmetic depth counter in guards._lines with a one-way flag. The flag is set at the first unquoted '((' (which also covers '$(('), at '${', or at a '[' joined to the character before it ('$[', 'a[', '(['). Once it is set, no later heredoc body is dropped; the rest of the command is read as commands, which fails closed. '))' is no longer tracked, so no paren shape can reopen body dropping. The pattern goes inline, so the flag takes the two lines the depth branch held (net 0 against the branch; a spike with a separate constant came to 3001). Accepted cost: a heredoc whose body names a door program after an arithmetic or parameter expansion is refused (1 of 506 real commands today, a sentinel's probe script). Option (b), the paren stack, is not taken: a case pattern's unmatched ')' and the bracket forms ${...}, $[...] and a[...] each need their own modelling, and a stack that mis-pops reopens body dropping, which is the failure class of both fix rounds. Touches cli/wuwei/guards.py (_lines, the docstring) and tests/test_guards.py, with the branch's existing hook.py and spec files. Outside: python -c and other interpreter bodies, here-strings, eval, input piped to a shell, compound bodies, shell flags before -c and wrapper options (item compound-doors), any new door.",
+   "acceptance": [
+    "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
+    "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
+    "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
+    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses",
+    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
+    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
+    "given 'echo $(((1)) <<EOF )\\ngit push --force origin x\\nEOF' (passes at 7fd4019, refused on main), when the Bash door reads it, then the force-push door refuses",
+    "given 'echo $(( (1+(2)) <<EOF ))', '(( (1+(2)) << EOF ))' and 'echo $(( $(echo $(echo 1))<<EOF ))', each followed by '\\ngit push --force origin x\\nEOF', when the Bash door reads each, then the force-push door refuses each",
+    "given 'echo $[1<<EOF]\\ngit push --force origin x\\nEOF]', 'x=2; echo ${x:1<<EOF }\\ngit push --force origin x\\nEOF' and 'a[1<<EOF ]=x\\ngit push --force origin x\\nEOF' (bash 5.2 runs the push line in each), when the Bash door reads each, then the force-push door refuses each",
+    "given \"echo $((1+2)); cat <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then it is refused (the documented fail-closed cost, pinned by a test)",
+    "given \"echo '(('; cat <<'EOF'\\ngit push --force origin x\\nEOF\" (the opener only inside quotes) and \"case y in x) :;; esac; cat <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads each, then nothing is refused",
+    "given a 'python3 - <<'EOF'' edit script whose body quotes the hook command string '\"$CLAUDE_PROJECT_DIR\"/.claude/wuwei/bin/wuwei hook SubagentStop' (refused on main at 08:29:20 today), when the Bash door reads it, then nothing is refused",
+    "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "restored"
+  },
+  {
+   "id": "vendored-drift",
+   "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 14.5,
+   "why": "The vendored copy that runs this repository's cloud sessions is behind main (1.1.0 against 1.2.0; evidence.py, gh.py and setup.py differ), so merged fixes, 1068 included, do not reach the doors here.",
+   "promise": "A test in tests/test_setup.py fails when .claude/wuwei/ (bin, cli, charters, .claude-plugin), .claude/agents/ or WUWEI's skill folders in .claude/skills/ differ from what setup.vendor() writes from the tree, ignoring __pycache__. release-please-config.json bumps .claude/wuwei/.claude-plugin/plugin.json with the root plugin.json, so a release PR keeps the test green. The PR re-vendors the copy at its head. From then on every PR that changes cli/, charters/, agents/ or skills/ carries its re-vendored copy, and the test enforces it. No runtime lines (the size test counts cli/wuwei/ only). Outside: changing vendor() itself, symlinking the copy, any doctor check.",
+   "acceptance": [
+    "given a file under .claude/wuwei/cli/wuwei/ that differs from cli/wuwei/, when the suite runs, then the drift test fails and names the file",
+    "given .claude/wuwei/ freshly written by setup.vendor() from the tree, when the suite runs, then the drift test passes",
+    "given a release-please release PR that bumps .claude-plugin/plugin.json, when it is built, then .claude/wuwei/.claude-plugin/plugin.json carries the same version and the drift test passes",
+    "given the PR head, when .claude/wuwei/.claude-plugin/plugin.json is read, then it says the main version (1.2.0 today), not 1.1.0",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "ledger-parse",
+   "title": "fix(ws): a ledger line that is not a well-formed row is skipped by every reader",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 2,
+    "risk": 8,
+    "size": 1
+   },
+   "score": 13.0,
+   "why": "A non-object or hashless last ledger line makes ws.record raise. By reading the code, a refusal is then lost to the hook's fail-open, so every door passes. One change to _parse fixes record, ledger(), rows() and doctor.",
+   "promise": "ws._parse keeps only well-formed rows: a JSON object whose ts and kind, where present, are strings and whose data, where present, is an object. ws.record chains to the hash of the last row that has one, so a malformed last line never raises. ws.ledger(), ws.rows() and doctor's hooks check read only kept rows, and ws.verify() still reports every malformed line by file:line. Touches cli/wuwei/ws.py (_parse, record), cli/wuwei/setup.py (line 151 drops its own isinstance filter) and tests. Lines: ws.traces (ws.py:178-189) re-implements the parse loop and can call _parse, which frees about five lines against the two added. Outside: the ledger format, sync, the ledger door.",
+   "acceptance": [
+    "given this clone's ledger file ending in a line '[1]', '5', 'null' or '{\"a\": 1}', when ws.record appends a row, then it raises nothing and the new row's prev is the hash of the last row that has one",
+    "given a ledger file holding '{\"kind\": [1]}', '{\"ts\": 5, \"kind\": \"x\"}' and a row whose data is a list, when ws.ledger(), ws.rows() and doctor run, then each finishes and skips those lines",
+    "given the same file, when ws.verify() runs, then it still names each malformed line by file:line",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "door-fails-closed",
+   "title": "fix(hook): an error inside a door refuses the call instead of letting it pass",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 12.0,
+   "why": "Any exception on a door path makes the PreToolUse hook fail open (seen with a cache-write OSError on the merge door). A door that cannot read its evidence should stay shut.",
+   "promise": "PreToolUse never turns a door into a pass because of an error. (1) hook.pre_tool returns the guards' decision even when recording it fails. (2) When an exception escapes while PreToolUse handles a call that names a door, hook.handle returns a deny that names the error, and records hook.error when it can. A call names a door when it is a Bash command matching guards.DOORS (added by 1068), an MCP merge, auto-merge or create-PR tool, or a Write or Edit. Any other hook error fails open as today. Touches cli/wuwei/hook.py (pre_tool, handle) and tests/test_hook.py. Lines: last_text and tokens (hook.py:20-50) both read the seat transcript line by line; one reader frees about four lines against about three added. Outside: making ws.cache_put tolerate OSError (the deny names the cause, and the operator fixes the workspace), other hook events.",
+   "acceptance": [
+    "given 'gh pr merge 5' and .wuwei/cache/template-<repo>.json is a directory, so the cache write raises OSError, when PreToolUse runs, then it denies, the reason names the error, and a hook.error row is recorded",
+    "given a call the guards refuse and ws.record raising (the ledger directory read-only, or a malformed last ledger line), when PreToolUse runs, then the deny still reaches the harness",
+    "given 'ls' and an exception inside the hook, when PreToolUse runs, then it fails open as today and records hook.error",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "X-1",
+   "title": "Close the exception on taoq-ai/wuwei#1072: no test in the diff",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 3,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "owner accepted it at 2fbffd8",
+   "promise": "",
+   "acceptance": [],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "X-2",
+   "title": "Close the exception on taoq-ai/wuwei#1072: gates missing at head 2fbffd8: quality",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 3,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 11.0,
+   "why": "owner accepted it at 2fbffd8",
+   "promise": "",
+   "acceptance": [],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "compound-doors",
+   "title": "fix(guards): the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "Main's guards pass a door inside a for/while/if body, after 'bash -lc', and after wrapper options. Those are the deny-list gaps a cooperating agent plausibly writes (97 loops and 35 ifs in today's 506 commands).",
+   "promise": "guards._unwrap reads past the shell reserved words that open a body (do, then, else, elif, if, while, until, '!', '{'), so a door inside a loop, an if or a brace group meets its door. A shell called with combined flags before -c ('bash -lc', 'sh -ec', 'bash -e -c') is unwrapped like 'bash -c'. After a wrapper (env, nice, timeout, stdbuf, sudo, xargs, nohup, command, exec, time), the command starts at the first word naming a program the guards read (git, gh, wuwei, a shell, an infrastructure tool), so a wrapper's option arguments ('-n 10', '-u VAR', '60') no longer hide it. Touches cli/wuwei/guards.py (WRAPPERS, _unwrap) and tests/test_guards.py. Lines: the flag-skip loop in _unwrap is replaced by the first-program rule (net 0 or less). Outside: eval, input piped or fed to a shell ('| sh', here-strings), a variable as the program name, $(...) inside double quotes; the PR records these as residual under SECURITY.md.",
+   "acceptance": [
+    "given 'for pr in 1 2; do gh pr merge $pr; done', when the Bash door reads it, then the merge door reads 'gh pr merge' and refuses without evidence",
+    "given 'if true; then git push --force origin x; fi', 'while true; do git push --force origin x; done', '{ git push --force origin x; }' and '! git push --force origin x', when the Bash door reads each, then the force-push door refuses each",
+    "given \"bash -lc 'git push --force origin x'\" and \"sh -ec 'gh pr merge 5'\", when the Bash door reads each, then the matching door refuses",
+    "given 'timeout 60 gh pr merge 5', 'nice -n 10 git push --force origin x' and 'env -u GH_TOKEN gh pr merge 5', when the Bash door reads each, then the matching door reads the wrapped command",
+    "given 'for f in *.md; do wc -l $f; done' and 'if [ -f x ]; then echo ok; fi', when the Bash door reads them, then nothing is refused",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "doors-by-rest",
+   "title": "fix(guards): every code-host route to a door meets that door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 13,
+    "size": 5
+   },
+   "score": 9.2,
+   "why": "A REST POST to pulls opened #1071 on 2026-10-16 without the create door; probing found the same gap on the merge, push and repo-delete doors through other REST spellings, GraphQL mutations and MCP file writes. The owner chose a public fix.",
+   "promise": "guards.gh_command's api branch reads the method from -X, -XPUT, --method and --method=PUT (POST when a field flag is given), strips a leading / and a query, and fills {owner}/{repo} from origin(cwd). POST repos/<r>/pulls goes to create_door with head and base from its fields; PUT pulls/<n>/merge and ccr/auto_merge go to merge_door in every spelling; a write method on repos/<r>/merges, git/refs/ or contents/, and DELETE repos/<r>, are refused like a push to the default branch or a repo delete; gh api graphql whose query names mergePullRequest, enablePullRequestAutoMerge, createPullRequest, updateRef, deleteRef, createCommitOnBranch or a branch protection or ruleset mutation is refused with a pointer to gh pr merge or create. gh pr new reads as gh pr create. In pre_tool, MCP push_files, create_or_update_file and delete_file on the default branch (or with no branch) are refused like a push to it. Touches cli/wuwei/guards.py and tests/test_guards.py. Lines: one route table replaces the merge regex and the GUARDED_API test and carries the new routes; if guards.py cannot net it, that is a scope: question. Outside: queries read from a file (-F query=@f, --input), approvals, any new door.",
+   "acceptance": [
+    "given 'gh api -X POST repos/o/r/pulls -f head=x -f base=main', the same without -X, and 'gh api repos/{owner}/{repo}/pulls -f head=x -f base=main', with the gates missing at x's head, when the Bash door reads each, then the create door refuses as for gh pr create",
+    "given 'gh pr new -t t -b b', when the Bash door reads it, then the create door reads it",
+    "given 'gh api -XPUT repos/o/r/pulls/5/merge', '--method=PUT', 'repos/o/r/pulls/5/merge?x=1' and 'repos/{owner}/{repo}/pulls/5/merge', when the Bash door reads each, then the merge door reads PR 5",
+    "given gh api graphql with a mergePullRequest, enablePullRequestAutoMerge or createPullRequest mutation, when the Bash door reads it, then it is refused and names gh pr merge or create",
+    "given 'gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true', 'gh api -X PUT repos/o/r/contents/a.md -f branch=main', 'gh api -X POST repos/o/r/merges' and 'gh api -X DELETE repos/o/r', when the Bash door reads each, then it is refused",
+    "given an MCP push_files call with branch main, when PreToolUse runs, then it is refused like a push to the default branch",
+    "given 'gh api repos/o/r/pulls', 'gh api repos/o/r/pulls/5/ccr/review_threads' and 'gh api -X POST repos/o/r/pulls/5/ccr/comments/1/resolve', when the Bash door reads each, then nothing is refused",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": false
+  },
+  {
+   "id": "verdict-handback",
+   "title": "fix(hook): a gate's verdict is linted before its hand-back, and a stop that cannot block records verdict.missing",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 5,
+    "size": 3
+   },
+   "score": 6.0,
+   "why": "A malformed gate verdict is blocked only after the hand-back has ended the seat's run, so it is neither fixed nor recorded (1067's quality verdict at 3fb3f40). Linting at the hand-back fixes the timing, and seats stop padding ':1' anchors.",
+   "promise": "The SubagentStop lint and evidence's lint are already one check (both call verdict.parse; hook.py:179, evidence.py:10). The gap is timing: SubagentHandback ends the seat's run, so a block from SubagentStop lands after the seat can act, and nothing is recorded because no second stop comes. Fix: (1) PreToolUse on SubagentHandback lints the verdict file named by the message's 'Verdict file:' line with the same _verdict_problem. It denies the hand-back with the shape errors and the format, so the seat rewrites before its run ends. When the verdict is well formed it records the attest there. (2) SubagentStop records verdict.missing for a problem whenever it cannot block to effect: on stop_hook_active as today, or when the hand-back has already ended the run. (3) verdict.parse accepts a non-blocking finding without a file:line ('- [low] blocks: no. <note>'); a blocking finding still needs file:line and 'Failure:'. The sentinel charters and FORMAT say so, so no seat pads ':1' anchors. Touches cli/wuwei/hook.py (pre_tool, subagent_stop, post_tool), cli/wuwei/verdict.py (FINDING, FORMAT), the sentinel charters with a rebuilt agents/, and tests. Lines: post_tool's Agent hand-back re-read (hook.py:205-212, 7 lines) goes, because the hand-back check reads the same message earlier. Outside: evidence's verdict counting, the verdict file location.",
+   "acceptance": [
+    "given a sentinel seat calls SubagentHandback with a message ending 'Verdict file: .wuwei/verdicts/1067/quality-3fb3f40.md' and that file holds a finding line with no file:line and no blocks:, when PreToolUse runs, then the hand-back is denied with the shape errors and the format",
+    "given the same hand-back with a well-formed verdict, when PreToolUse and then SubagentStop run, then exactly one attest row is recorded for that file",
+    "given a seat whose run already ended by hand-back and a verdict problem found at SubagentStop, when the hook runs, then a verdict.missing row is recorded with the problem",
+    "given '- [low] blocks: no. a note on the design', when verdict.parse reads the findings, then it is accepted as a non-blocking finding; given '- [high] blocks: yes. Failure: x', then it is rejected for its missing file:line",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
+   "id": "seat-count",
+   "title": "fix(hook): a seat counts as started only when the harness launched it, and once",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "standard",
+   "framework": "wsjf",
+   "scores": {
+    "value": 3,
+    "time": 2,
+    "risk": 2,
+    "size": 2
+   },
+   "score": 3.5,
+   "why": "PreToolUse records seat.started for Agent launches the harness then rejects (two today), and running() counts rows, not seats.",
+   "promise": "seat.started is recorded at PostToolUse for Agent and Task, which runs only when the launch succeeded, with the agentId from the tool response. running() counts today's started agent ids that have no seat.stopped row with the same agent id, so a rejected launch, a repeated stop or a resumed seat no longer skews it. Touches cli/wuwei/hook.py (pre_tool, post_tool, running) and tests/test_hook.py. Lines: the five-line record moves, and running() is rewritten in place (net 0). Outside: the Codex spawn_agent mapping beyond carrying its id, report.py.",
+   "acceptance": [
+    "given an Agent call the harness rejects (unknown agent type, so no PostToolUse), when the hooks run, then no seat.started row is written",
+    "given an accepted background launch whose tool response holds agentId 'a1', when PostToolUse runs, then seat.started is recorded with agent 'a1'",
+    "given seat 'a1' started and stopped three times (blocked stops and a resume), and seat 'a2' started and not stopped, when running() counts, then it returns 1",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "open",
+   "added": "2026-10-16",
+   "approved": true
+  },
+  {
    "id": "1067-probe",
    "title": "probe: what ties ai-stacks' Review Gate status to its review-triggered workflow",
    "goal": "G-2",
@@ -51,37 +320,6 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1066"
-  },
-  {
-   "id": "1068",
-   "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 13,
-    "size": 5
-   },
-   "score": 9.2,
-   "why": "reproduced on main 7f8a0d7 in a scratch copy: segments('true\\ngit push --force origin x') is one argv and the heredoc case returns []; six doors pass a second-line command; a security finding, fixed in public",
-   "promise": "guards.segments() ends a command at a newline outside quotes, drops a heredoc body as data (reads it as commands when the heredoc feeds sh, bash, zsh or dash), joins a backslash-newline line continuation before splitting, and a command shlex cannot tokenize is refused when its raw text names a door program (git push, gh pr, gh api, gh repo, wuwei hook, the ledger path). Touches cli/wuwei/guards.py (segments, bash, the module docstring that says an unreadable command passes) and tests/test_guards.py. Outside: python -c and other interpreter bodies, here-strings, any new door. The runtime stays at most 3,000 lines: the added lines come out of guards.py itself (one _git helper for origin and current_branch, about -2; the two ledger refusals in bash() folded into one check, about -2; the rest from guards.py or hook.py, never from evidence.py, gh.py or setup.py, which 1067 and 1065 net against).",
-   "acceptance": [
-    "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
-    "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
-    "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
-    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses (the newline split must not cut a continued line: probed, a naive split loses --force)",
-    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
-    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
-    "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "parked",
-   "added": "2026-10-16",
-   "approved": true,
-   "reason": "two fix rounds without a pass: the heredoc scanner's arithmetic tracking keeps losing to paren shapes (stray quoted '))' in round 1; nested single parens and nested $( ) closing with '))' in round 2, one a regression vs main). Design problem: rethink as fail-closed (no heredoc dropping once any unquoted '((' or '$((' is seen, or a paren stack that drops bodies only with no open level). Branch claude/1068-guards-multiline at 7fd4019 keeps the newline, continuation, two-heredoc and hint work, which passed."
   },
   {
    "id": "1065",
