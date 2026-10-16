@@ -1,36 +1,6 @@
 {
  "items": [
   {
-   "id": "1068",
-   "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 20,
-    "time": 13,
-    "risk": 13,
-    "size": 5
-   },
-   "score": 9.2,
-   "why": "reproduced on main 7f8a0d7 in a scratch copy: segments('true\\ngit push --force origin x') is one argv and the heredoc case returns []; six doors pass a second-line command; a security finding, fixed in public",
-   "promise": "guards.segments() ends a command at a newline outside quotes, drops a heredoc body as data (reads it as commands when the heredoc feeds sh, bash, zsh or dash), joins a backslash-newline line continuation before splitting, and a command shlex cannot tokenize is refused when its raw text names a door program (git push, gh pr, gh api, gh repo, wuwei hook, the ledger path). Touches cli/wuwei/guards.py (segments, bash, the module docstring that says an unreadable command passes) and tests/test_guards.py. Outside: python -c and other interpreter bodies, here-strings, any new door. The runtime stays at most 3,000 lines: the added lines come out of guards.py itself (one _git helper for origin and current_branch, about -2; the two ledger refusals in bash() folded into one check, about -2; the rest from guards.py or hook.py, never from evidence.py, gh.py or setup.py, which 1067 and 1065 net against).",
-   "acceptance": [
-    "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
-    "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
-    "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
-    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses (the newline split must not cut a continued line: probed, a naive split loses --force)",
-    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
-    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
-    "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "1065",
    "title": "fix(doctor): the hooks check counts any hook that fired on this machine since init",
    "goal": "G-2",
@@ -137,6 +107,37 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1066"
+  },
+  {
+   "id": "1068",
+   "title": "fix(guards): the Bash doors read a multi-line command, a heredoc and an unbalanced quote",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 20,
+    "time": 13,
+    "risk": 13,
+    "size": 5
+   },
+   "score": 9.2,
+   "why": "reproduced on main 7f8a0d7 in a scratch copy: segments('true\\ngit push --force origin x') is one argv and the heredoc case returns []; six doors pass a second-line command; a security finding, fixed in public",
+   "promise": "guards.segments() ends a command at a newline outside quotes, drops a heredoc body as data (reads it as commands when the heredoc feeds sh, bash, zsh or dash), joins a backslash-newline line continuation before splitting, and a command shlex cannot tokenize is refused when its raw text names a door program (git push, gh pr, gh api, gh repo, wuwei hook, the ledger path). Touches cli/wuwei/guards.py (segments, bash, the module docstring that says an unreadable command passes) and tests/test_guards.py. Outside: python -c and other interpreter bodies, here-strings, any new door. The runtime stays at most 3,000 lines: the added lines come out of guards.py itself (one _git helper for origin and current_branch, about -2; the two ledger refusals in bash() folded into one check, about -2; the rest from guards.py or hook.py, never from evidence.py, gh.py or setup.py, which 1067 and 1065 net against).",
+   "acceptance": [
+    "given 'true\\ngit push --force origin x', when the Bash door reads it, then the force-push door refuses",
+    "given \"cat > b.md <<'EOF'\\nit's done\\nEOF\\ngh pr create -F b.md\" and the gates missing at the branch head, when the Bash door reads it, then the create door reads the create and refuses",
+    "given an unclosed quote in a command that also runs 'gh pr merge 5', when the Bash door reads it, then it refuses and names the unreadable command as the reason",
+    "given 'git push \\\\\\n  --force origin x' (a line continuation), when the Bash door reads it, then the force-push door refuses (the newline split must not cut a continued line: probed, a naive split loses --force)",
+    "given \"bash <<'EOF'\\ngit push --force origin x\\nEOF\", when the Bash door reads it, then the force-push door refuses",
+    "given 'git commit -m \"a\\nb\" && git push origin feature', when the Bash door reads it, then the quoted newline stays in the message and nothing is refused",
+    "given an ordinary multi-line command with no door program, including one with an unbalanced apostrophe, when the Bash door reads it, then nothing is refused",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "parked",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "two fix rounds without a pass: the heredoc scanner's arithmetic tracking keeps losing to paren shapes (stray quoted '))' in round 1; nested single parens and nested $( ) closing with '))' in round 2, one a regression vs main). Design problem: rethink as fail-closed (no heredoc dropping once any unquoted '((' or '$((' is seen, or a paren stack that drops bodies only with no open level). Branch claude/1068-guards-multiline at 7fd4019 keeps the newline, continuation, two-heredoc and hint work, which passed."
   }
  ]
 }
