@@ -8,6 +8,8 @@
 - [x] T004 The Stop-while-running test launches through PostToolUse (tests/test_hook.py)
 - [x] T005 A Codex spawn_agent records its seat at PostToolUse with its agent id (tests/test_codex.py)
 - [x] T006 Run the new tests red
+- [x] T006a Launches with no, empty or list agentId, or a string response, write no seat; a Bash PostToolUse writes none; old rows without a string id leave running() at 0 (tests/test_hook.py)
+- [x] T006b A Codex spawn without a string agent_id writes no seat (tests/test_codex.py)
 
 ## Phase 2: Implementation
 

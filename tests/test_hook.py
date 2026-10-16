@@ -279,6 +279,24 @@ def test_an_accepted_launch_records_its_seat_with_the_agent_id(root):
     assert (row['data']['agent'], row['data']['role'], row['data']['description']) == ('a1', 'builder', 'build I-1')
 
 
+@pytest.mark.parametrize('tool, response', [('Agent', {'status': 'completed'}), ('Agent', {'agentId': ['a1']}),
+                                            ('Task', {'agentId': ''}), ('Agent', 'launched a1'),
+                                            ('Bash', {'agentId': 'a1'})])
+def test_only_an_agent_launch_with_a_string_id_records_a_seat(root, tool, response):
+    assert hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root),
+                                             'tool_input': {'subagent_type': 'wuwei:builder'},
+                                             'tool_response': response}) is None
+    assert ws.rows(root, 'seat.started') == [] and ws.rows(root, 'hook.error') == []
+    assert hook.running(root) == 0
+
+
+def test_running_skips_rows_without_a_string_agent_id(root):
+    ws.record(root, 'seat.started', {'role': 'builder'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': ['a1']})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': ['a1']})
+    assert hook.running(root) == 0
+
+
 def test_running_counts_seats_by_agent_id_not_rows(root):
     for _ in range(3):
         ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'a1'})

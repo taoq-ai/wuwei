@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import tomllib
 
+import pytest
+
 from conftest import verdict_text
 from wuwei import hook, setup, ws
 
@@ -43,6 +45,13 @@ def test_a_spawned_codex_agent_is_a_running_seat(root):
                                       'tool_input': data, 'tool_response': '{"agent_id": "c1"}'})
     assert [(r['data']['role'], r['data']['agent']) for r in ws.rows(root, 'seat.started')] == [('sentinel-quality', 'c1')]
     assert hook.running(root) == 1
+
+
+@pytest.mark.parametrize('response', [{'agent_id': 7}, {'agent_id': ''}, '{"status": "ok"}', None])
+def test_a_codex_spawn_without_a_string_id_records_no_seat(root, response):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'cwd': str(root), 'tool_name': 'spawn_agent',
+                                      'tool_input': {'agent_type': 'sentinel-quality'}, 'tool_response': response})
+    assert ws.rows(root, 'seat.started') == [] and hook.running(root) == 0
 
 
 def test_a_codex_question_without_a_class_is_sent_back_and_an_answer_is_recorded(root):

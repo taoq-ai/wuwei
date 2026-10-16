@@ -51,8 +51,9 @@ def context(event, text):
 
 def running(root):
     """Seats launched today, by agent id, with no stop under the same id."""
-    stopped = {row['data'].get('agent') for row in ws.rows(root, 'seat.stopped', ws.today())}
-    return len({row['data'].get('agent') for row in ws.rows(root, 'seat.started', ws.today())} - stopped)
+    ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
+           for kind in ('seat.started', 'seat.stopped')}
+    return len(ids['seat.started'] - ids['seat.stopped'])
 
 
 def pre_tool(root, payload):
@@ -188,11 +189,11 @@ def post_tool(root, payload):
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
-    if tool in ('Agent', 'Task'):  # PostToolUse runs only for a launch the harness accepted
-        response = payload.get('tool_response')
+    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
         ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
                                          'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
-                                         'agent': response.get('agentId') if isinstance(response, dict) else None})
+                                         'agent': response['agentId']})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \

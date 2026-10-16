@@ -32,9 +32,10 @@ The acceptance scenarios, restated:
 
 - FR-001: PreToolUse writes no `seat.started` row.
 - FR-002: PostToolUse for Agent or Task writes `seat.started` with role, description, session and
-  agent (the response's `agentId`).
-- FR-003: `running()` counts today's started agent ids with no `seat.stopped` row under that id.
-- FR-004: A Codex `spawn_agent` PostToolUse carries the `agent_id` from its response as `agentId`.
+  agent, only when the response's `agentId` is a non-empty string.
+- FR-003: `running()` counts today's started string agent ids with no `seat.stopped` row under that id.
+- FR-004: A Codex `spawn_agent` PostToolUse carries a string `agent_id` from its response as
+  `agentId`; any other response carries none, so no seat is recorded.
 - FR-005: The runtime stays at 3,000 lines or fewer.
 
 ## Clarifications
@@ -50,6 +51,10 @@ The acceptance scenarios, restated:
   then count as running all day.
 - A Codex `spawn_agent` response is a dict or a JSON string holding `"agent_id"`. Overturned by a
   real Codex payload without that key; the seat then records with no agent, as an unknown id would.
-- A launch whose response has no `agentId` records `agent: null`; all such rows count as one seat
-  until a stop without an agent id. This is a narrow edge kept simple rather than guessed at.
+- A launch whose response has no non-empty string `agentId` (missing, empty, a list, or a response
+  that is not a dict) records no `seat.started`. No stop row could clear it, so recording it would
+  keep `running()` at 1 or more all day and silence the Stop hook. Overturned by a harness that
+  launches seats without returning an id; such seats would then not hold the Stop hook back.
+- `running()` counts only string agent ids, so rows written before this change (no `agent`) and a
+  stop row with a non-string id neither raise nor keep the count up.
 - Line numbers in the promise predate #1081 and #1082; the code was located by name.
