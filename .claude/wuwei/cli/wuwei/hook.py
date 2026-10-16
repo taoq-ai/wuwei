@@ -12,10 +12,6 @@ import time
 from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
 
-def _hash(text):
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
 def transcript(payload):
     """The seat's last report, its input plus output tokens, and whether a hand-back ended its run, read from its
     transcript ('', None and False when unreadable)."""
@@ -100,14 +96,16 @@ def stop(root, payload):
         open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-plan)']
     if not open_work:
         return None
-    name = f'stop-{payload.get("session_id", "")}'
-    key = _hash('\n'.join(sorted(open_work)))
-    if ws.cache_get(root, name, 7 * 86400) == key:
+    name, last = f'stop-{payload.get("session_id", "")}', ws.cache_get(root, f'stop-{payload.get("session_id", "")}', 7 * 86400)
+    seen, since = (last.get('lines', []), last.get('ts', '')) if isinstance(last, dict) else ([], '')
+    new = [line for line in open_work if line not in seen]  # only what changed since the last reminder (#1099)
+    ws.cache_put(root, name, {'lines': open_work, 'ts': ws.now().isoformat(timespec='minutes') if new else since})
+    if not new:
         return None
-    ws.cache_put(root, name, key)
     ws.record(root, 'stop.reminded', {'open': len(open_work), 'session': payload.get('session_id')})
-    shown = '\n'.join('- ' + line for line in open_work[:10])
-    more = f'\nand {len(open_work) - 10} more (wuwei status lists all)' if len(open_work) > 10 else ''
+    shown = '\n'.join('- ' + line for line in new[:10])
+    more = f'\nand {len(new) - 10} more (wuwei status lists all)' if len(new) > 10 else ''
+    more += f'\n{len(open_work) - len(new)} more unchanged since {since} (wuwei status lists all)' if len(new) < len(open_work) else ''
     held = f'\nLeft out: {waiting} waiting on CI, the owner, plan approval or an andon.' if waiting else ''
     return {'decision': 'block', 'reason': 'WUWEI: open work you can close now:\n' + shown + more + held +
             '\nThe plan is your mandate: do not ask the owner whether to continue. Close these, or say in '
@@ -158,10 +156,17 @@ def _verdict_problem(root, payload, role):
     verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
     try:
         path = path.resolve()
+        if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
+            copy, body = verdicts / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
+            if copy.exists() and copy.read_bytes() != body:
+                return f'{copy} already holds another verdict: write yours beside it as {copy.stem}-2.md.'
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.write_bytes(body)
+            path = copy
         path.relative_to(verdicts)
         body = path.read_bytes()
     except (OSError, ValueError):
-        return f'the verdict must be a readable file under .wuwei/verdicts/ (got {match[1]}).'
+        return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
     rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
