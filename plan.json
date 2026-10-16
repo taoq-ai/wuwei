@@ -1,33 +1,6 @@
 {
  "items": [
   {
-   "id": "vendored-drift",
-   "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 14.5,
-   "why": "The vendored copy that runs this repository's cloud sessions is behind main (1.1.0 against 1.2.0; evidence.py, gh.py and setup.py differ), so merged fixes, 1068 included, do not reach the doors here.",
-   "promise": "A test in tests/test_setup.py fails when .claude/wuwei/ (bin, cli, charters, .claude-plugin), .claude/agents/ or WUWEI's skill folders in .claude/skills/ differ from what setup.vendor() writes from the tree, ignoring __pycache__. release-please-config.json bumps .claude/wuwei/.claude-plugin/plugin.json with the root plugin.json, so a release PR keeps the test green. The PR re-vendors the copy at its head. From then on every PR that changes cli/, charters/, agents/ or skills/ carries its re-vendored copy, and the test enforces it. No runtime lines (the size test counts cli/wuwei/ only). Outside: changing vendor() itself, symlinking the copy, any doctor check.",
-   "acceptance": [
-    "given a file under .claude/wuwei/cli/wuwei/ that differs from cli/wuwei/, when the suite runs, then the drift test fails and names the file",
-    "given .claude/wuwei/ freshly written by setup.vendor() from the tree, when the suite runs, then the drift test passes",
-    "given a release-please release PR that bumps .claude-plugin/plugin.json, when it is built, then .claude/wuwei/.claude-plugin/plugin.json carries the same version and the drift test passes",
-    "given the PR head, when .claude/wuwei/.claude-plugin/plugin.json is read, then it says the main version (1.2.0 today), not 1.1.0",
-    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "door-fails-closed",
    "title": "fix(hook): an error inside a door refuses the call instead of letting it pass",
    "goal": "G-2",
@@ -224,6 +197,34 @@
    "approved": true,
    "kind": "run",
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
+  },
+  {
+   "id": "vendored-drift",
+   "title": "test(setup): the vendored plugin in .claude/ matches the tree it was copied from",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 14.5,
+   "why": "The vendored copy that runs this repository's cloud sessions is behind main (1.1.0 against 1.2.0; evidence.py, gh.py and setup.py differ), so merged fixes, 1068 included, do not reach the doors here.",
+   "promise": "A test in tests/test_setup.py fails when .claude/wuwei/ (bin, cli, charters, .claude-plugin), .claude/agents/ or WUWEI's skill folders in .claude/skills/ differ from what setup.vendor() writes from the tree, ignoring __pycache__. release-please-config.json bumps .claude/wuwei/.claude-plugin/plugin.json with the root plugin.json, so a release PR keeps the test green. The PR re-vendors the copy at its head. From then on every PR that changes cli/, charters/, agents/ or skills/ carries its re-vendored copy, and the test enforces it. No runtime lines (the size test counts cli/wuwei/ only). Outside: changing vendor() itself, symlinking the copy, any doctor check.",
+   "acceptance": [
+    "given a file under .claude/wuwei/cli/wuwei/ that differs from cli/wuwei/, when the suite runs, then the drift test fails and names the file",
+    "given .claude/wuwei/ freshly written by setup.vendor() from the tree, when the suite runs, then the drift test passes",
+    "given a release-please release PR that bumps .claude-plugin/plugin.json, when it is built, then .claude/wuwei/.claude-plugin/plugin.json carries the same version and the drift test passes",
+    "given the PR head, when .claude/wuwei/.claude-plugin/plugin.json is read, then it says the main version (1.2.0 today), not 1.1.0",
+    "given the change, when the suite runs, then the runtime size test still passes at 3,000 lines or fewer"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1079"
   },
   {
    "id": "ledger-parse",
