@@ -329,6 +329,9 @@ HINT = 'its own one-line Bash call'
     "cat > s.sh <<'EOF'\n\"$CLAUDE_PROJECT_DIR\"/.claude/wuwei/bin/wuwei hook SubagentStop\nEOF",
     'x\nwuwei hook Stop',
     'wuwei \\\n hook Stop',
+    "cat > n.md <<'EOF'\nit's done\nEOF\n\"${CLAUDE_PROJECT_DIR}/.claude/wuwei/bin/wuwei\" hook SubagentStop",
+    "# it's\n\"$D/.claude/wuwei/bin/wuwei\" hook Stop",
+    "# it's\nbin/wuwei 'hook' Stop",
 ])
 def test_a_multi_line_command_naming_a_door_is_refused_with_the_hint(root, fake, repo, command):
     decision = guards.pre_tool(root, bash(command))

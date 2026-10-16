@@ -22,7 +22,7 @@ budget 3,000 lines, already full: seven lines freed by equivalent refactors.
 ## Design
 
 - `DOOR_WORDS`: tuples of regexes, `(\bgit\b, \bpush\b)`, `(\bgh\b, \b(pr|api|repo)\b)`,
-  `(\bwuwei(\s|\\\n)+hook\b,)` and `(\.wuwei/ledger,)`; a tuple matches when every regex is found
+  `(\bwuwei["']?(\s|\\\n)+["']?hook\b,)` and `(\.wuwei/ledger,)`; a tuple matches when every regex is found
   anywhere in the raw text.
 - `bash`: `parts = segments(command)`; when `parts is None` or the text holds `\r` or `\n`, and the
   text names a door program, return the deny with the hint. Otherwise loop over `parts or ()`.

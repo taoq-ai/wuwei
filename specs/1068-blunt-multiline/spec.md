@@ -63,7 +63,10 @@ The acceptance scenarios, restated:
   1): every local path holds `wuwei` (`/home/user/wuwei`, `cli/wuwei/`, `.claude/wuwei/`), so the
   loose pair refused 9 of 14 real multi-line commands in the goal gate's replay, any that mentioned
   `hook.py` or `hooks.json`. The pair now matches only `wuwei` followed by `hook` with whitespace
-  (newlines included) or a backslash-newline between them. `x<newline>wuwei hook Stop`, a heredoc
+  (newlines included) or a backslash-newline between them, each word optionally closed or opened by
+  a quote, so whole-word quoting as the repository's own hook config writes it
+  (`"${CLAUDE_PROJECT_DIR}/.claude/wuwei/bin/wuwei" hook`, `bin/wuwei 'hook'`) still matches (fix
+  round 2). `x<newline>wuwei hook Stop`, a heredoc
   body quoting `.../wuwei/bin/wuwei hook SubagentStop` and `wuwei \<newline> hook` stay refused. The
   git, gh and ledger pairs are unchanged.
 - Q: What does an unreadable command naming no door program do? A: It passes unread, as on main: a

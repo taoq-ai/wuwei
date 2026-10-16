@@ -32,3 +32,7 @@
 - [x] T019 Word boundaries pinned for git, push and gh pr (tests/test_guards.py)
 - [x] T020 Run the new tests red, then split newlines with one quote-aware regex and tighten the wuwei pair (cli/wuwei/guards.py)
 - [x] T021 Module docstring names the door rule for unreadable commands (cli/wuwei/guards.py)
+
+## Phase 5: Fix round 2 (security FIX at 802ced3)
+
+- [x] T022 A whole-word quoted `".../wuwei" hook` or `wuwei 'hook'` is refused when multi-line (tests/test_guards.py, cli/wuwei/guards.py)
