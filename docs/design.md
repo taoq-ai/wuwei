@@ -129,8 +129,9 @@ pr, api or repo; wuwei followed by hook; `.wuwei/ledger`), with a hint to run th
 one-line call (#1068); other multi-line commands are read line by line.
 Asked through the harness: terraform, tofu, pulumi, kubectl and helm writes.
 
-A door that cannot read its evidence stays shut; every other hook fails open and records
-`hook.error`. `wuwei doctor` reports each door's strength per repository: wall (code host or
+A door that cannot read its evidence stays shut: an error while PreToolUse judges a door call (a Bash
+command naming a door program, an MCP merge, auto-merge or create-PR tool, a Write or Edit) refuses
+it, names the error and records `hook.error`. Every other hook fails open and records `hook.error`. `wuwei doctor` reports each door's strength per repository: wall (code host or
 credentials), refused (hook), detected (audit).
 
 Andon: `wuwei andon owner/repo --reason` holds new builds in one repository until cleared; others

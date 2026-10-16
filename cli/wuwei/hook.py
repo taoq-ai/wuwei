@@ -1,5 +1,5 @@
 """The hooks: teach at the moment, hold the few doors, remind once, and record. A hook that fails
-lets the work go on and records why."""
+lets the work go on and records why; a door call it fails on is refused."""
 
 import datetime
 import hashlib
@@ -16,37 +16,27 @@ def _hash(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def last_text(payload):
-    text = payload.get('last_assistant_message')
-    if isinstance(text, str) and text.strip():
-        return text
-    found = ''
+def transcript(payload):
+    """The seat's last report and its input plus output tokens, read from its transcript ('' and None when unreadable)."""
+    found, total = '', None
     try:
         for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
             row = json.loads(line)
-            if row.get('type') != 'assistant':
-                continue
-            for part in row.get('message', {}).get('content', []):
+            if usage := row.get('message', {}).get('usage') or {}:
+                total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
+            for part in row.get('message', {}).get('content', []) if row.get('type') == 'assistant' else ():
                 if part.get('type') == 'text' and part.get('text', '').strip():
                     found = part['text']
                 elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
                     found = part['input']['message']
     except (OSError, TypeError, ValueError, AttributeError):
         pass
-    return found
+    return found, total
 
 
-def tokens(payload):
-    """Input plus output tokens the seat spent, summed from its transcript; None when unreadable."""
-    total = None
-    try:
-        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
-            usage = json.loads(line).get('message', {}).get('usage') or {}
-            if usage:
-                total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-    except (OSError, TypeError, ValueError, AttributeError):
-        pass
-    return total
+def last_text(payload):
+    text = payload.get('last_assistant_message')
+    return text if isinstance(text, str) and text.strip() else transcript(payload)[0]
 
 
 def _confidence(text):
@@ -74,8 +64,10 @@ def pre_tool(root, payload):
     if found is None:
         return None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
-    ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500],
-                           'session': payload.get('session_id')})
+    try:  # the decision stands even when its record fails
+        ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500], 'session': payload.get('session_id')})
+    except Exception as exc:
+        print(f'wuwei hook PreToolUse: the {kind} record failed: {exc}'[:300], file=sys.stderr)
     if found['decision'] == 'note':
         return context('PreToolUse', found['reason'])
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': found['decision'],
@@ -133,7 +125,7 @@ def _settled(payload):
 def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
-    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens(payload),
+    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': transcript(payload)[1],
                                      'confidence': _confidence(last_text(payload)),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
@@ -360,14 +352,26 @@ def handle(root, event, payload):
         return None
     try:
         return handler(root, payload)
-    except Exception as exc:  # fail open: work goes on, the audit records why
+    except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
         message = f'{type(exc).__name__}: {exc}'[:300]
         print(f'wuwei hook {event}: {message}', file=sys.stderr)
         try:
             ws.record(root, 'hook.error', {'event': event, 'error': message})
         except Exception:
             pass
+        if event == 'PreToolUse' and door(payload):
+            return {'hookSpecificOutput': {'hookEventName': event, 'permissionDecision': 'deny', 'permissionDecisionReason':
+                    f'WUWEI: this call names a door and the hook failed while checking it ({message}); fix the cause and retry.'}}
         return None
+
+
+def door(payload):
+    """A Bash command naming a door program (guards.DOOR_WORDS), an MCP merge, auto-merge or create-PR tool, or an edit."""
+    tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
+    command = str(data.get('command', '')) if isinstance(data, dict) else ''
+    return tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit') or tool.startswith('mcp__') and tool.endswith(
+        ('merge_pull_request', 'enable_pr_auto_merge', 'create_pull_request')) or tool == 'Bash' and any(
+        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS)
 
 
 VENDORED = PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
