@@ -546,3 +546,108 @@ def test_no_fixture_holds_a_secret_the_workspace_canary_or_a_local_path():
         text = path.read_text(encoding='utf-8')
         assert not guards.SECRETS.search(text) and canary not in text, path
         assert not re.search(r'/home/|/tmp/|/root/|/Users/', text), path
+
+
+@pytest.fixture
+def cloud(fake, monkeypatch):
+    """Repository o/r, branch x with a source change and no gate: the shape the shepherd's cloud route meets."""
+    from conftest import HEAD
+    monkeypatch.setattr(guards, 'origin', lambda cwd: 'o/r')
+    monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'x')
+    fake.branches['x'] = HEAD
+    fake.deltas[('main', 'x')] = [{'path': p, 'additions': 5, 'deletions': 0} for p in ('src/app.py', 'tests/test_app.py')]
+    fake.prs['5'] = make_pr(number=5, files=('src/app.py',))
+    return fake
+
+
+@pytest.mark.parametrize('command', ['gh api -X POST repos/o/r/pulls -f head=x -f base=main',
+                                     'gh api repos/o/r/pulls -f head=x -f base=main',
+                                     "gh api 'repos/{owner}/{repo}/pulls' -f head=x -f base=main",
+                                     'gh api /repos/o/r/pulls -fhead=x --raw-field=base=main',
+                                     'gh api --method=post repos/o/r/pulls -F head=x -F base=main'])
+def test_a_rest_pr_create_meets_the_create_door_as_gh_pr_create_does(root, cloud, command):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'o/r', 'tier': 'light'}])
+    expected = guards.bash(root, 'gh pr create --head x --base main', '/repo', 's1')
+    assert expected['decision'] == 'deny' and 'gates missing' in expected['reason']
+    assert guards.bash(root, command, '/repo', 's1') == expected, command
+
+
+@pytest.mark.parametrize('flags', ['-F body=@pr.md', '--field=body=@pr.md', '--input in.json'])
+def test_a_rest_pr_create_reads_the_item_from_the_body_file(root, cloud, tmp_path, flags):
+    from test_evidence import attest
+    write_plan(root, [{'id': 'doors-by-rest', 'title': 'c', 'goal': 'G-2', 'repo': 'o/r', 'tier': 'light'}])
+    attest(root, 'quality', item='doors-by-rest')
+    (tmp_path / 'pr.md').write_text('What and why\n\nWUWEI-Item: doors-by-rest\n')
+    (tmp_path / 'in.json').write_text(json.dumps({'head': 'x', 'base': 'main', 'body': 'WUWEI-Item: doors-by-rest'}))
+    fields = '' if 'input' in flags else '-f head=x -f base=main '
+    decision = guards.bash(root, f'gh api -X POST repos/o/r/pulls {fields}{flags}', str(tmp_path), 's1')
+    assert decision['decision'] == 'note', decision
+    literal = guards.bash(root, 'gh api -X POST repos/o/r/pulls -f head=x -f base=main -f body=@pr.md', str(tmp_path), 's1')
+    assert literal['decision'] == 'deny'  # -f sends "@pr.md" as the body: gh reads a file only for -F
+
+
+def test_gh_pr_new_is_gh_pr_create(root, cloud):
+    assert door_reached(guards.bash(root, 'gh pr new -t t -b b', '/repo', 's1')) == 'create'
+
+
+@pytest.mark.parametrize('command', ['gh api -XPUT repos/o/r/pulls/5/merge', 'gh api --method=PUT repos/o/r/pulls/5/merge',
+                                     'gh api -X=PUT repos/o/r/pulls/5/merge', 'gh api -iXput repos/o/r/pulls/5/merge',
+                                     'gh api -iX PUT repos/o/r/pulls/5/merge --silent',
+                                     "gh api -X PUT 'repos/o/r/pulls/5/merge?x=1'", 'gh api -X PUT repos/o/r/pulls/5/merge/',
+                                     "gh api -X PUT 'repos/{owner}/{repo}/pulls/5/merge'", 'gh api -X PUT /repos/o/r/pulls/5/merge',
+                                     'gh api -X GET -X PUT https://api.github.com/repos/o/r/pulls/5/merge',
+                                     'gh api --method=PUT repos/o/r/pulls/5/ccr/auto_merge'])
+def test_every_rest_merge_spelling_meets_the_merge_door(root, cloud, command):
+    decision = guards.bash(root, command, '/repo', 's1')
+    assert decision['decision'] == 'deny' and 'o/r#5 is not ready to merge' in decision['reason'], command
+
+
+@pytest.mark.parametrize('mutation', ['mergePullRequest', 'enablePullRequestAutoMerge', 'createPullRequest', 'updateRef',
+                                      'updateRefs', 'deleteRef', 'createCommitOnBranch', 'updateBranchProtectionRule',
+                                      'deleteRepositoryRuleset', 'mergeBranch', 'enqueuePullRequest'])
+def test_a_graphql_mutation_on_a_door_is_refused_with_the_door_to_use(root, cloud, mutation):
+    decision = guards.bash(root, f"gh api graphql -f query='mutation {{ {mutation}(input: {{}}) {{ clientMutationId }} }}'",
+                           '/repo', 's1')
+    assert decision['decision'] == 'deny' and mutation in decision['reason'], mutation
+    assert 'gh pr merge' in decision['reason'] and 'gh pr create' in decision['reason']
+
+
+def test_a_graphql_mutation_read_from_a_file_is_refused(root, cloud, tmp_path):
+    (tmp_path / 'm.graphql').write_text('mutation { mergePullRequest(input: {}) { clientMutationId } }')
+    assert guards.bash(root, 'gh api graphql -F query=@m.graphql', str(tmp_path), 's1')['decision'] == 'deny'
+
+
+@pytest.mark.parametrize('command', [
+    "gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: \"t\"}) { thread { id } } }'",
+    "gh api graphql -f query='query { repository(owner: \"o\", name: \"r\") { pullRequest(number: 5) { id } } }'",
+    'gh api -X POST repos/o/r/pulls/5/comments/7/replies -f body="use mergePullRequest or updateRef"',
+    'gh api repos/o/r/pulls', 'gh api repos/o/r/pulls/5/ccr/review_threads',
+    'gh api -X POST repos/o/r/pulls/5/ccr/comments/1/resolve', 'gh api repos/o/r/contents/a.md?ref=main',
+    'gh api repos/o/r/git/refs/heads/main', 'gh api -X GET repos/o/r/pulls -f head=x', 'gh api repos/o/r'])
+def test_the_follow_up_and_read_routes_pass(root, cloud, command):
+    assert guards.bash(root, command, '/repo', 's1') is None, command
+
+
+@pytest.mark.parametrize('command, verdict', [
+    ('gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true', 'push'),
+    ('gh api -X DELETE repos/o/r/git/refs/heads/main', 'push'),
+    ('gh api -X PUT repos/o/r/contents/a.md -f branch=main', 'push'),
+    ('gh api repos/o/r/contents/a.md -f message=m -f content=YQ==', 'push'),
+    ('gh api -X POST repos/o/r/merges', 'push'),
+    ('gh api -X DELETE repos/o/r', 'refusal'), ('gh api -X DELETE /repos/{owner}/{repo}', 'refusal')])
+def test_a_rest_branch_write_or_repository_delete_is_refused(root, cloud, command, verdict):
+    assert door_reached(guards.bash(root, command, '/repo', 's1')) == verdict, command
+
+
+def mcp(tool, **data):
+    return {'tool_name': f'mcp__github__{tool}', 'cwd': '/w', 'session_id': 's1',
+            'tool_input': {'owner': 'o', 'repo': 'r', 'message': 'm', **data}}
+
+
+@pytest.mark.parametrize('tool', ['push_files', 'create_or_update_file', 'delete_file'])
+def test_an_mcp_file_write_on_the_default_branch_is_refused_like_a_push(root, fake, tool):
+    assert door_reached(guards.pre_tool(root, mcp(tool, branch='main'))) == 'push'
+    assert door_reached(guards.pre_tool(root, mcp(tool, branch='refs/heads/main'))) == 'push'
+    assert door_reached(guards.pre_tool(root, mcp(tool))) == 'push'
+    assert guards.pre_tool(root, mcp(tool, branch='i-1-change')) is None
+    assert tool in guards.DOORS['push']

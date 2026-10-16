@@ -113,9 +113,11 @@ You own open PRs until they merge or the owner parks them.
 ## Raise
 
 1. Open the PR with `gh pr create` from the item's branch once the gates the diff needs passed at its
-   head (WUWEI refuses it before and names what is missing). The body says what changed and why, the
-   assumptions, the tests, and review notes for residual non-blocking findings, and ends with the
-   WUWEI footer naming its item.
+   head (WUWEI refuses it before and names what is missing). In a cloud session `gh pr create` fails
+   because it needs GraphQL; open the PR by REST, which meets the same door:
+   `gh api -X POST repos/<owner>/<repo>/pulls -f head=<branch> -f base=<base> -f title=<title> -F body=@<file>`.
+   The body says what changed and why, the assumptions, the tests, and review notes for residual
+   non-blocking findings, and ends with the WUWEI footer naming its item.
 2. Request reviewers: the top two authors of the changed source files over the past 90 days
    (widen to 180 days, then all time), excluding the PR author and bots. Honour the repository's
    review rules.
