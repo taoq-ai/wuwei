@@ -43,17 +43,19 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    citations from the live source and name the command you read them with.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
-4. Probes and mutants run in a copy of the tree in a new empty scratch directory, never in the
-   builder's worktree.
+4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
+   folder (Boundaries 2), never in the builder's worktree.
 
 ## Boundaries
 
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
    protection, force push, or write the ledger (`.wuwei/ledger/`).
-2. A denied tool call is a blocker with its reason. Never route around it.
-3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
+2. Write scratch files only under `<scratchpad>/<role>-<item>/` (for example
+   `<scratchpad>/sentinel-quality-<item>/`), so seats running at once never share a scratch folder.
+3. A denied tool call is a blocker with its reason. Never route around it.
+4. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
    outward call.
-4. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
+5. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
    red, a leaked secret, a broken shared dependency), pull the cord with
    `wuwei andon <owner/repo> --reason "<what is broken>"` and say so in your report. New builds in
    that repository wait until it is cleared; other repositories keep flowing.
@@ -106,9 +108,13 @@ requirement and the running code, not the builder's summary.
 
 This is the one verdict path; a brief never names another. Write it to
 `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
-report with the line `Verdict file: <that path>`. If that file already exists, another seat reviewed
-the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you hand back
-and refuses the hand-back if the shape is wrong, so fix it and hand back again; a verdict counts only as WUWEI recorded it.
+report with the line `Verdict file: <that path>`. Never edit a verdict file once written, yours or
+another seat's: WUWEI counts the bytes it recorded, so an edit uncounts it. If the file already
+exists, another seat reviewed the same head: write yours to `<gate>-<first 7 of head>-2.md` beside it
+(the next free number) and end with its `Verdict file:` line. WUWEI reads the file when you hand back
+and refuses the hand-back if the shape is wrong: write the corrected verdict to the next free
+`-2.md` the same way, name it in your `Verdict file:` line, and hand back again. A verdict counts
+only as WUWEI recorded it.
 
 ```
 Verdict: PASS | FIX | ESCALATE

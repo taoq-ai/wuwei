@@ -28,6 +28,14 @@ and keep the owner's attention for what only the owner decides.
    to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
    Once they pass, the shepherd opens the PR. After review comments, a small fix off risky paths
    needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
+   A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head
+   differential: every route in `tests/fixtures/routes.json` read through the guards at main and at
+   the head, naming each route whose verdict moves.
+   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A
+   `codex-companion` task job is not a seat: nothing attests what it writes, so its verdict never
+   counts. A gate runs on Codex only as a Codex-native seat (`spawn_agent` with `agent_type`
+   `sentinel-<gate>`), and only once codex-attest-probe has recorded that such a seat is attested
+   (#1078); until then gates run as Claude seats.
 3. When the code is judged correct and only test findings remain after the second round, the
    builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
    rounds without a pass is a design problem, not a third round: park the item with the

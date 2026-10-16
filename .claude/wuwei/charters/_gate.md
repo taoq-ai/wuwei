@@ -30,9 +30,13 @@ requirement and the running code, not the builder's summary.
 
 This is the one verdict path; a brief never names another. Write it to
 `.wuwei/verdicts/<item>/<gate>-<first 7 of head>.md` in this shape, then end your
-report with the line `Verdict file: <that path>`. If that file already exists, another seat reviewed
-the same head: write `<gate>-<first 7 of head>-2.md` (the next free number) and never replace it. WUWEI reads the file when you hand back
-and refuses the hand-back if the shape is wrong, so fix it and hand back again; a verdict counts only as WUWEI recorded it.
+report with the line `Verdict file: <that path>`. Never edit a verdict file once written, yours or
+another seat's: WUWEI counts the bytes it recorded, so an edit uncounts it. If the file already
+exists, another seat reviewed the same head: write yours to `<gate>-<first 7 of head>-2.md` beside it
+(the next free number) and end with its `Verdict file:` line. WUWEI reads the file when you hand back
+and refuses the hand-back if the shape is wrong: write the corrected verdict to the next free
+`-2.md` the same way, name it in your `Verdict file:` line, and hand back again. A verdict counts
+only as WUWEI recorded it.
 
 ```
 Verdict: PASS | FIX | ESCALATE
