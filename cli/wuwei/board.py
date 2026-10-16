@@ -7,8 +7,8 @@ from wuwei import evidence, gh, plan, ws
 TTL = 60
 
 
-def _list(root, name, read, ttl=TTL):
-    found = ws.cache_get(root, name, ttl)
+def _list(root, name, read):
+    found = ws.cache_get(root, name, TTL)
     return ws.cache_put(root, name, read()) if found is None else found
 
 
@@ -67,8 +67,7 @@ def compute(root, everything=False):
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
             prs = _list(root, f'prs-{key}', lambda: gh.open_prs(repo))
-            unlinked = any(not any(names(root, pr, repo, i['id']) for pr in prs) for i in mine)  # read fresh: it may have just merged
-            merged = _list(root, f'merged-{key}', lambda: gh.merged_prs(repo, since), -1 if unlinked else 300) if mine else []
+            merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]}

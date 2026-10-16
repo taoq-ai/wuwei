@@ -13,4 +13,5 @@
 - [x] T006 [US2] Read the merged list fresh when an open item has no open PR
 - [x] T007 [US3] Append `evidence.uncounted` to no-PR rows
 - [x] T008 Re-vendor `.claude/` with `setup.vendor('.')`
+- [x] T010 [US1] A footer-less PR links by branch name and by the plan's prs list, and closes on merge (tests/test_watch.py; red against the fallback reversed to `or set()`)
 - [x] T009 [US4] Run the new tests green, the full suite, and confirm the runtime is 3,000 lines or fewer

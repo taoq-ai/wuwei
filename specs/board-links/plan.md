@@ -18,18 +18,18 @@ Python 3.11 stdlib, pytest with the `FakeGh` fixture. The runtime is at 2,939 of
 - II. Evidence over steps: the board reads the merged list and the verdict files themselves.
 - III. An auditor: no new door; the board reports gaps, never commands.
 - V. Test first: three new tests in `tests/test_watch.py` ran red before the change.
-- VI. Budgets: runtime 2,939 to 2,949; no config key.
+- VI. Budgets: runtime +9 lines; no config key.
 
 ## Design
 
 - `evidence.items_named(body)`: `ITEM.findall(body or '')`.
 - `board.names(root, pr, repo, item_id)`: true when the body names the item, or, when the body names
   none, when `item_for` resolves to it.
-- `board.compute`: `linked` and `done` use `names`. The merged list's cache age is -1 (always
-  fresh) when any open item in the repository has no open PR, else 300 seconds. A no-PR row's gaps
-  are the first gap plus `evidence.uncounted(root, item_id)`.
+- `board.compute`: `linked` and `done` use `names`. The merged list is read with
+  `gh.merged_prs(repo, since)` on every compute, without the cache. A no-PR row's gaps are the
+  first gap plus `evidence.uncounted(root, item_id)`.
 - Re-vendor `.claude/` with `setup.vendor('.')`.
 
 ## Rollback
 
-Revert the commit; the board returns to first-item linking and the 300-second merged cache.
+Revert the commits; the board returns to first-item linking and the 300-second merged cache.

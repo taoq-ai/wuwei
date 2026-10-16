@@ -108,3 +108,19 @@ def test_an_item_with_no_pr_names_its_uncounted_verdicts(root, fake):
     texts = [g['text'] for g in board.compute(root)[0]['gaps']]
     assert texts[0] == 'no pull request yet'
     assert texts[1].startswith('verdict .wuwei/verdicts/D/quality-abc1234.md not counted: ')
+
+
+def test_a_footerless_pr_links_by_branch_name_and_closes_the_item_once_merged(root, fake):
+    write_plan(root, [_item('A'), _item('B')])
+    fake.prs['5'] = {**make_pr(5, body='No footer here.'), 'headRefName': 'A-fix'}
+    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#5', 'B': None}
+    fake.prs['5'].update(state='MERGED', mergedAt=ws.now().isoformat(timespec='seconds'))
+    ws.cache_put(root, 'prs-acme__app', None)
+    board.compute(root)
+    assert plan.find(root, 'A')['status'] == 'done' and plan.find(root, 'B')['status'] == 'open'
+
+
+def test_a_footerless_pr_links_through_the_plan_prs_list(root, fake):
+    write_plan(root, [_item('A', prs=['acme/app#6']), _item('B')])
+    fake.prs['6'] = {**make_pr(6, body=''), 'headRefName': 'unrelated'}
+    assert {r['item']: r['pr'] for r in board.compute(root)} == {'A': 'acme/app#6', 'B': None}

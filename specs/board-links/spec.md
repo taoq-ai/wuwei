@@ -14,9 +14,10 @@ links a PR to each of those items, and once the PR merges it closes each of them
 names no item still links through `item_for` (the plan's `prs` list or the branch name).
 
 The merged list was cached for 300 seconds, so an item whose PR had just merged showed "no pull
-request yet" until the cache expired, and the board cache could then hold that answer longer. Now,
-when any open item of a repository has no open PR, the board reads that repository's merged list
-fresh. When every open item has an open PR, the 300-second cache still serves.
+request yet" until the cache expired, and the board cache could then hold that answer longer. Now
+the board reads the merged list fresh on every compute, with no cache of its own. Nearly every
+compute has an open item with no open PR (approved and not started, awaiting approval, or a run),
+so a conditional cache would almost never serve.
 
 An item with no PR now also lists its verdict files that do not count (`evidence.uncounted`). So a
 verdict written while the hooks were down shows on the board before the create door refuses.
@@ -38,10 +39,9 @@ two-item PR reads (`evidence.gaps` still uses `item_for`).
 
 - Ids from a body match plan ids case-insensitively, as `plan.find` does. Overturned if plan ids
   are meant to be case-sensitive.
-- A fresh merged read when any item is unlinked costs one GitHub call per repository per board
-  compute. The board itself is cached for 60 seconds, so this is at most one call a minute per
+- A fresh merged read costs one GitHub call per repository per board compute. The board itself is cached for 60 seconds, so this is at most one call a minute per
   repository. Overturned if rate limits bite on large plans.
 - Uncounted verdicts are listed on every no-PR row, whatever the first gap says (andon, run,
   awaiting approval). Such items rarely have verdicts; when they do, the file is worth showing.
-- The item estimated +3 runtime lines. The change adds 10 (`items_named` and the `names` helper
-  carry the blank lines PEP 8 asks for). The runtime is 2,949 of 3,000.
+- The item estimated +3 runtime lines. The change adds 9 (`items_named` and the `names` helper
+  carry the blank lines PEP 8 asks for).
