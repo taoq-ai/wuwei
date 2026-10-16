@@ -49,7 +49,6 @@ def merge_settings(directory, cloud=False):
 
 PLUGIN = Path(__file__).resolve().parents[2]
 EVENTS = ('SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop')
-HOOK_ROWS = {'refused', 'asked', 'note', 'prompt', 'seat.started', 'seat.stopped', 'stop.reminded', 'hook.error'}
 IGNORE = '# The state travels on the wuwei/state branch (wuwei sync), never in a working branch.\n*\n'
 
 
@@ -147,11 +146,9 @@ def doctor(root):
     have = json.loads(settings.read_text()).get('permissions', {}) if settings.is_file() else {}
     missing = [r for r in DENY if r not in have.get('deny', [])]
     rows.append(('harness rules', 'ok' if not missing else 'warn', 'present' if not missing else 'run wuwei init'))
-    since, mine = set(), Path(root) / ws.DIR / 'ledger' / f'{ws.clone(root)}.jsonl'  # never another clone's rows (#1065)
-    for kind in [row.get('kind') for row in ws._parse(mine.read_text(encoding='utf-8'))] if mine.is_file() else []:
-        since = set() if kind == 'workspace.init' else since | {kind}
-    rows.append(('hooks', 'ok', 'fired') if (Path(root) / ws.DIR / 'executable').is_file() or since & HOOK_ROWS else ('hooks', 'warn',
-                 'no hook has fired here, so the doors and recorded answers are off (cloud: hold only this repository)'))
+    seen = ws.cache_get(root, 'hook-seen', 120)  # PreToolUse writes it, and the doctor's own Bash call fires PreToolUse
+    rows.append(('hooks', 'ok', f'fired {max(0, round(ws.now().timestamp() - seen))}s ago') if isinstance(seen, (int, float))
+                else ('hooks', 'warn', 'no hook fired in the last 2 minutes: inside a session, the doors and attestations are off'))
     for repo in config['repos']:
         try:
             branch = gh.default_branch(repo)
