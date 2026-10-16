@@ -1,6 +1,6 @@
 """The few doors WUWEI holds. Everything else passes; the harness's own permission rules decide
-who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
-read a command lets it through (the audit still sees it)."""
+who may call which tool. A door that cannot read its evidence stays shut, and so does one that
+cannot read a command naming a door program."""
 
 import json
 from pathlib import Path
@@ -12,7 +12,7 @@ from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice'}
-CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')'}
+CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')', '`'}
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
@@ -20,6 +20,8 @@ NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
+DOORS = re.compile(r'\bgit\b.*\bpush\b|\bgh\b.*\b(pr|api|repo)\b|\bwuwei\b.*\bhook\b|\.wuwei/ledger', re.S)
+HEREDOC = re.compile(r'(?<!<)<<(-?)[ \t]*((?:[^\s;&|()<>\'"\\]|\'[^\']*\'|"[^"]*"|\\.)+)')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
 GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators'
                          r'|/hooks|/keys|/actions/secrets|/environments')
@@ -35,74 +37,91 @@ def deny(reason):
     return {'decision': 'deny', 'reason': reason}
 
 
-def origin(cwd):
-    """owner/repo of the origin remote at cwd, or ''."""
+def _git(cwd, *args):
     try:
-        url = subprocess.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True,
-                             text=True, timeout=5).stdout.strip()
+        return subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ''
-    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
+
+
+def origin(cwd):
+    """owner/repo of the origin remote at cwd, or ''."""
+    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', _git(cwd, 'remote', 'get-url', 'origin'))
     return match[1] if match else ''
 
 
 def current_branch(cwd):
-    try:
-        return subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
-                              text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ''
+    return _git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD')
+
+
+def _lines(command):
+    """The command as sh reads its lines: a newline outside quotes ends a command, a backslash-newline joins
+    two lines, a comment ends; a heredoc body is one quoted word after its << (read as commands if it never ends)."""
+    out, quote, waiting, i = [], '', [], 0
+    while i < len(command):
+        c = command[i]
+        if quote and (quote == "'" or c != '\\'):
+            quote = '' if c == quote else quote
+        elif c == '\\':
+            c, i = ('' if command[i + 1:i + 2] == '\n' else command[i:i + 2]), i + 1
+        elif c in '\'"':
+            quote = c
+        elif c == '#' and command[i - 1:i] in ('', ' ', '\t', '\n', ';', '&', '|', '(', ')'):
+            c, i = '', (command + '\n').index('\n', i) - 1
+        elif c == '\n':
+            for delimiter, strip, slot, word in waiting:
+                body = re.match(r'(.*?)^' + ('\t*' if strip else '') + re.escape(delimiter) + r'$\n?', command[i + 1:], re.S | re.M)
+                if body and (word != delimiter or not re.search(r'\$\(|`', body[1])):  # unquoted: sh runs $(...)
+                    out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
+            waiting, c = [], ' ; '
+        elif c == '<' and (here := HEREDOC.match(command, i)):
+            waiting.append((re.sub(r'[\'"\\]', '', here[2]), here[1], len(out) + 1, here[2]))
+            c, i = ['<< ', "''"], here.end() - 1
+        out += c
+        i += 1
+    return ''.join(out)
 
 
 def segments(command):
-    """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        tokens = list(lexer)
-    except ValueError:
-        return []
+    """Each simple command as (argv, redirect targets), with sh -c bodies, heredocs fed to a shell and
+    wrappers unwrapped. Raises ValueError on a command shlex cannot read."""
+    lexer = shlex.shlex(_lines(command), posix=True, punctuation_chars='();<>|&`')
+    lexer.whitespace_split = True
+    lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
     out, current = [], []
-    for token in tokens + [';']:
-        if token in CONTROL:
-            if current:
-                out.extend(_unwrap(current))
-            current = []
-        else:
+    for token in list(lexer) + [';']:
+        if token not in CONTROL:
             current.append(token)
+        elif current:
+            out.extend(_unwrap(current))
+            current = []
     return out
 
 
 def _unwrap(tokens):
-    argv, targets, i = [], [], 0
-    while i < len(tokens):
-        if tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens):
-            targets.append(tokens[i + 1])
-            i += 2
-            continue
-        argv.append(tokens[i])
-        i += 1
+    argv, targets, bodies, rest = [], [], [], iter(tokens)
+    for token in rest:
+        if token in ('>', '>>', '>|', '&>', '2>', '1>', '<<'):
+            (bodies if token == '<<' else targets).append(next(rest, ''))
+        else:
+            argv.append(token)
     while argv and (re.fullmatch(r'[A-Za-z_]\w*=.*', argv[0]) or Path(argv[0]).name in WRAPPERS):
         argv = argv[1:]
         while argv and Path(argv[0]).name not in WRAPPERS and argv[0].startswith('-'):
             argv = argv[1:]
     if len(argv) >= 3 and Path(argv[0]).name in SHELLS and argv[1] == '-c':
         return segments(argv[2]) + ([([], targets)] if targets else [])
-    return [(argv, targets)]
+    return [(argv, targets)] + [s for body in bodies if argv and Path(argv[0]).name in SHELLS for s in segments(body)]
 
 
 def _default(root, repo):
     if not repo:
         return {'main', 'master'}
     name = 'default-' + repo.replace('/', '__')
-    branch = ws.cache_get(root, name, 86400)
-    if branch is None:
-        try:
-            branch = ws.cache_put(root, name, gh.default_branch(repo))
-        except gh.GhError:
-            return {'main', 'master'}
-    return {branch}
+    try:
+        return {ws.cache_get(root, name, 86400) or ws.cache_put(root, name, gh.default_branch(repo))}
+    except gh.GhError:
+        return {'main', 'master'}
 
 
 def git_push(root, args, cwd):
@@ -118,14 +137,11 @@ def git_push(root, args, cwd):
         if destination in ('', 'HEAD'):
             destination = current_branch(cwd)
         targets.append(destination.removeprefix('refs/heads/'))
-        if ref.startswith(':'):
-            deleting = True
-    protected = _default(root, origin(cwd))
-    hit = [t for t in targets if t in protected]
+        deleting = deleting or ref.startswith(':')
+    hit = sorted(set(targets) & _default(root, origin(cwd)))
     if hit:
-        verb = 'deleting' if deleting else 'pushing to'
-        return deny(f'{verb} the default branch {hit[0]} refused: every change reaches it through a pull '
-                    'request with its evidence. Push a branch and open a PR.')
+        return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} refused: every change '
+                    'reaches it through a pull request with its evidence. Push a branch and open a PR.')
     return None
 
 
@@ -206,12 +222,10 @@ def merge_door(root, repo, number, auto=False):
 
 
 def once(root, session, topic):
-    name = f'notes-{session}'
-    seen = ws.cache_get(root, name, 7 * 86400) or []
-    if topic in seen:
-        return False
-    ws.cache_put(root, name, seen + [topic])
-    return True
+    seen = ws.cache_get(root, f'notes-{session}', 7 * 86400) or []
+    if topic not in seen:
+        ws.cache_put(root, f'notes-{session}', seen + [topic])
+    return topic not in seen
 
 
 def leak(root, text):
@@ -220,41 +234,34 @@ def leak(root, text):
     if canary and canary in text:
         return deny('the workspace canary is in this outward call: workspace content would leave the machine.')
     found = SECRETS.search(text)
-    if found:
-        return deny(f'a secret ({found[0][:6]}...) is in this outward call; remove it before sending.')
-    return None
+    return deny(f'a secret ({found[0][:6]}...) is in this outward call; remove it before sending.') if found else None
 
 
 def bash(root, command, cwd, session):
-    for argv, targets in segments(command):
-        if any(LEDGER.search(t) for t in targets):
+    try:
+        parsed = segments(command)
+    except ValueError as exc:
+        return deny(f'cannot read this command ({exc}) and it names a door program (git push, gh pr, gh api, gh repo, '
+                    'wuwei hook or the ledger): close the quote, or pass a PR body by --body-file.') if DOORS.search(command) else None
+    for argv, targets in parsed:
+        program = Path(argv[0]).name if argv else ''
+        if any(LEDGER.search(t) for t in targets) or any(LEDGER.search(a) for a in argv[1:]) and (
+                program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python')):
             return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
-        if not argv:
-            continue
-        program = Path(argv[0]).name
         if program == 'wuwei' and argv[1:2] == ['hook']:
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
-        if any(LEDGER.search(a) for a in argv[1:]) and (program in WRITERS or program == 'sed' and '-i' in argv
-                                                        or program.startswith('python')):
-            return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
-        if program in NETWORK:
-            found = leak(root, ' '.join(argv))
-            if found:
-                return found
+        if program in NETWORK and (found := leak(root, ' '.join(argv))):
+            return found
         if program == 'git':
             rest, i, here = argv[1:], 0, cwd
             while i < len(rest) and rest[i].startswith('-'):
                 if rest[i] == '-C' and i + 1 < len(rest):
                     here = rest[i + 1]
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            if rest[i:i + 1] == ['push']:
-                found = git_push(root, rest[i + 1:], here)
-                if found:
-                    return found
-        elif program == 'gh':
-            found = gh_command(root, argv[1:], cwd, session, command)
-            if found:
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found
+        elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):
+            return found
         elif program in INFRA and INFRA[program] & set(argv[1:]):
             return {'decision': 'ask', 'reason': f'{program} {" ".join(a for a in argv[1:] if a in INFRA[program])} '
                     'changes infrastructure: a one-way door the owner decides.'}
@@ -285,11 +292,9 @@ def pre_tool(root, payload):
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
         unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
-        if not unclassed:
-            return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
-        return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
+        return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}') if unclassed else None
     if tool.startswith('mcp__') and tool.endswith(('merge_pull_request', 'enable_pr_auto_merge')):
         number = data.get('pullNumber', data.get('pull_number'))
         repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''

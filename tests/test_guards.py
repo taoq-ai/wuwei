@@ -300,3 +300,50 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     payload['tool_input']['questions'].append({'question': 'owner review: the grant PR. Merge?'})
     reason = guards.pre_tool(root, payload)['reason']
     assert '"owner review: the grant PR. Merge?" will not be recorded' in reason and 'trust:' in reason
+
+
+@pytest.mark.parametrize('command', [
+    'true\ngit push --force origin x',
+    'git push \\\n  --force origin x',
+    "bash <<'EOF'\ngit push --force origin x\nEOF",
+    'sh <<-EOF\n\tgit push origin main\n\tEOF\necho done',
+    "cat <<'EOF'\nline \\\nEOF\ngit push --force origin x",
+    'cat <<EOF\ngit push --force origin x',
+    'echo $((1<<2))\ngit push --force origin x',
+    'bash -c "true\ngit push --force origin x"',
+    'cd /repo &&\ngit push origin main',
+    'cat <<EOF\n$(git push --force origin x)\nEOF',
+    'cat <<EOF\n`git push --force origin x`\nEOF',
+])
+def test_a_command_on_a_later_line_meets_its_door(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
+
+
+def test_a_create_after_a_heredoc_meets_the_gates(root, fake, repo):
+    write_plan(root, [{'id': 'I-1', 'title': 'c', 'goal': 'G-1', 'repo': 'acme/app', 'tier': 'standard'}])
+    branch(fake, ('src/auth.py', 'tests/test_auth.py'))
+    decision = guards.pre_tool(root, bash("cat > b.md <<'EOF'\nit's done\nEOF\ngh pr create -F b.md"))
+    assert decision['decision'] == 'deny' and 'gates missing at head aaaaaaa' in decision['reason']
+
+
+@pytest.mark.parametrize('command', ["echo it's && gh pr merge 5", 'gh pr merge 5 --body "unclosed'])
+def test_an_unreadable_command_naming_a_door_is_refused(root, fake, repo, command):
+    decision = guards.pre_tool(root, bash(command))
+    assert decision['decision'] == 'deny' and 'cannot read this command' in decision['reason'], command
+
+
+def test_a_quoted_newline_stays_in_its_word(root, fake, repo):
+    command = 'git commit -m "a\nb" && git push origin feature'
+    assert guards.segments(command)[0][0] == ['git', 'commit', '-m', 'a\nb']
+    assert guards.pre_tool(root, bash(command)) is None
+
+
+@pytest.mark.parametrize('command', [
+    'cd /repo\nmake test\nls -la',
+    "echo it's late\nls",
+    "cat > notes.md <<'EOF'\nit's done; git push --force origin main\nEOF\ngit status",
+    "git status\n# don't push yet\nls",
+    'echo acme/app#42\nls',
+])
+def test_ordinary_multi_line_work_passes(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command

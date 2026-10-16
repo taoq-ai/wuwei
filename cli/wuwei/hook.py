@@ -12,7 +12,6 @@ import time
 from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
 
-
 def _hash(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -21,10 +20,9 @@ def last_text(payload):
     text = payload.get('last_assistant_message')
     if isinstance(text, str) and text.strip():
         return text
-    path = payload.get('agent_transcript_path')
     found = ''
     try:
-        for line in Path(path).read_text(encoding='utf-8').splitlines():
+        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
             row = json.loads(line)
             if row.get('type') != 'assistant':
                 continue
@@ -183,11 +181,9 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
-    ws.record(root, 'attest', {'path': rel, 'sha256': sha,
-                               'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
+    ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
-                               'confidence': parsed['confidence'],
-                               'role': role, 'agent': payload.get('agent_id'),
+                               'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path')})
     return None
 
@@ -217,8 +213,7 @@ def post_tool(root, payload):
             ws.record(root, 'sent', {'tool': tool, 'refs': named})
             ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
-    if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
-                              for argv, _ in guards.segments(str(data.get('command', '')))):
+    if tool == 'Bash' and re.search(r'\bgh\s+pr\s+create\b', str(data.get('command', ''))):
         match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
         if match:
             gaps = evidence.visible(evidence.gaps(root, match[1], int(match[2])))
