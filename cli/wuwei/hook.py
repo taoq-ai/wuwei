@@ -50,18 +50,14 @@ def context(event, text):
 
 
 def running(root):
-    """Seats launched today that have not stopped."""
-    today = ws.today()
-    return len(ws.rows(root, 'seat.started', today)) - len(ws.rows(root, 'seat.stopped', today))
+    """Seats launched today, by agent id, with no stop under the same id."""
+    ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
+           for kind in ('seat.started', 'seat.stopped')}
+    return len(ids['seat.started'] - ids['seat.stopped'])
 
 
 def pre_tool(root, payload):
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
-    if payload.get('tool_name') in ('Agent', 'Task'):
-        data = payload.get('tool_input') or {}
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120],
-                                         'session': payload.get('session_id')})
     problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
         root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
     found = {'decision': 'deny', 'reason': problem + '\nThen hand back again.'} if problem else guards.pre_tool(root, payload)
@@ -193,6 +189,11 @@ def post_tool(root, payload):
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
+    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
+        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
+                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
+                                         'agent': response['agentId']})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
@@ -329,7 +330,8 @@ def codex(payload):
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
     if tool == 'spawn_agent':
-        return {**payload, 'tool_name': 'Agent',
+        spawned = re.search(r'"agent_id"\s*:\s*"([^"]+)"', json.dumps(payload.get('tool_response')).replace('\\"', '"'))
+        return {**payload, 'tool_name': 'Agent', 'tool_response': {'agentId': spawned and spawned[1]},
                 'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}

@@ -256,12 +256,54 @@ def test_an_exception_over_two_prs_records_both(root):
 
 def test_stop_stays_quiet_while_a_seat_is_running(root, fake):
     plan_one(root)
-    hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),
-                                     'tool_input': {'subagent_type': 'wuwei:builder', 'prompt': 'Build I-1'}})
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),
+                                      'tool_input': {'subagent_type': 'wuwei:builder', 'prompt': 'Build I-1'},
+                                      'tool_response': {'agentId': 'b1'}})
     assert stop(root) is None
     hook.handle(root, 'SubagentStop', {'session_id': 's1', 'agent_id': 'b1', 'agent_type': 'wuwei:builder',
                                        'last_assistant_message': 'done', 'cwd': str(root)})
     assert stop(root, session='s2')['decision'] == 'block'
+
+
+def test_a_rejected_agent_launch_records_no_seat(root):
+    assert pre(root, 'Agent', {'subagent_type': 'wuwei:nobody', 'prompt': 'Build I-1'}) is None
+    assert ws.rows(root, 'seat.started') == []
+
+
+def test_an_accepted_launch_records_its_seat_with_the_agent_id(root):
+    hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': 'Agent', 'cwd': str(root),
+                                      'tool_input': {'subagent_type': 'wuwei:builder', 'description': 'build I-1',
+                                                     'run_in_background': True},
+                                      'tool_response': {'status': 'async_launched', 'agentId': 'a1'}})
+    [row] = ws.rows(root, 'seat.started')
+    assert (row['data']['agent'], row['data']['role'], row['data']['description']) == ('a1', 'builder', 'build I-1')
+
+
+@pytest.mark.parametrize('tool, response', [('Agent', {'status': 'completed'}), ('Agent', {'agentId': ['a1']}),
+                                            ('Task', {'agentId': ''}), ('Agent', 'launched a1'),
+                                            ('Bash', {'agentId': 'a1'})])
+def test_only_an_agent_launch_with_a_string_id_records_a_seat(root, tool, response):
+    assert hook.handle(root, 'PostToolUse', {'session_id': 's1', 'tool_name': tool, 'cwd': str(root),
+                                             'tool_input': {'subagent_type': 'wuwei:builder'},
+                                             'tool_response': response}) is None
+    assert ws.rows(root, 'seat.started') == [] and ws.rows(root, 'hook.error') == []
+    assert hook.running(root) == 0
+
+
+def test_running_skips_rows_without_a_string_agent_id(root):
+    ws.record(root, 'seat.started', {'role': 'builder'})
+    ws.record(root, 'seat.started', {'role': 'builder', 'agent': ['a1']})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': ['a1']})
+    assert hook.running(root) == 0
+
+
+def test_running_counts_seats_by_agent_id_not_rows(root):
+    for _ in range(3):
+        ws.record(root, 'seat.started', {'role': 'builder', 'agent': 'a1'})
+        ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1'})
+    ws.record(root, 'seat.stopped', {'role': 'builder', 'agent': 'a1'})
+    ws.record(root, 'seat.started', {'role': 'planner', 'agent': 'a2'})
+    assert hook.running(root) == 1
 
 
 def test_stop_lists_at_most_ten_lines_and_says_what_it_left_out(root, fake):
