@@ -7,4 +7,5 @@
 - [x] T005 Read `gh pr create` in the PostToolUse hook from the raw command.
 - [x] T006 Free lines in guards.py and hook.py until the runtime is at 3,000 lines.
 - [x] T008 Fix round 1: read heredoc bodies in order, no heredoc inside `((`, tests for the four guards the gates reversed, refusal names `git commit -F`.
+- [x] T009 Fix round 2: track the `((` depth in the `_lines` loop; tests for quoted and commented `))`, a `<<-` body kept as data, and a nested `$(...)`.
 - [x] T007 Run `python3 -m pytest -q` and `bin/wuwei agents check` from the worktree root.

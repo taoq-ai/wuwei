@@ -57,7 +57,7 @@ def current_branch(cwd):
 def _lines(command):
     """The command as sh reads its lines: a newline outside quotes ends a command, a backslash-newline joins
     two lines, a comment ends; a heredoc body outside (( )) is one quoted word after its <<, or commands if it never ends."""
-    out, quote, waiting, i = [], '', [], 0
+    out, quote, waiting, i, depth = [], '', [], 0, 0
     while i < len(command):
         c = command[i]
         if quote and (quote == "'" or c != '\\'):
@@ -75,7 +75,9 @@ def _lines(command):
                     break  # in order: this body and the ones after it are read as commands
                 out[slot], i = shlex.quote(body[1].removesuffix('\n')), i + body.end()
             waiting, c = [], ' ; '
-        elif c == '<' and command.count('((', 0, i) <= command.count('))', 0, i) and (here := HEREDOC.match(command, i)):
+        elif command.startswith(('((', '))'), i):  # arithmetic, where << is a shift
+            depth, c, i = max(0, depth + (1 if c == '(' else -1)), command[i:i + 2], i + 1
+        elif c == '<' and not depth and (here := HEREDOC.match(command, i)):
             waiting.append((re.sub(r'[\'"\\]', '', here[2]), here[1], len(out) + 1, here[2]))
             c, i = ['<< ', "''"], here.end() - 1
         out += c
@@ -84,8 +86,7 @@ def _lines(command):
 
 
 def segments(command):
-    """Each simple command as (argv, redirect targets), with sh -c bodies, heredocs fed to a shell and
-    wrappers unwrapped. Raises ValueError on a command shlex cannot read."""
+    """(argv, redirect targets) per simple command; sh -c, shell heredocs and wrappers unwrapped; ValueError if unreadable."""
     lexer = shlex.shlex(_lines(command), posix=True, punctuation_chars='();<>|&`')
     lexer.whitespace_split = True
     lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
@@ -272,7 +273,6 @@ def bash(root, command, cwd, session):
 def pre_tool(root, payload):
     tool = payload.get('tool_name', '')
     data = payload.get('tool_input') or {}
-    cwd = payload.get('cwd') or '.'
     if tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
         return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(map(LEDGER.search, paths)) else None
@@ -306,5 +306,5 @@ def pre_tool(root, payload):
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':
-        return bash(root, str(data.get('command', '')), cwd, payload.get('session_id', ''))
+        return bash(root, str(data.get('command', '')), payload.get('cwd') or '.', payload.get('session_id', ''))
     return None

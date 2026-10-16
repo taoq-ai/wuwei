@@ -317,6 +317,10 @@ def test_a_shape_refusal_names_the_question_it_refuses(root):
     "cat <<A <<'B'\n$(git push --force origin x)\nA\nbody\nB",
     'echo $((1<<EOF))\ngit push --force origin x\nEOF',
     '(( x = 1 << EOF ))\ngit push --force origin x\nEOF',
+    'echo "))"; echo $((1<<EOF))\ngit push --force origin x\nEOF',
+    "echo '))' $((1<<EOF))\ngit push --force origin x\nEOF",
+    '# ))\necho $((1<<EOF))\ngit push --force origin x\nEOF',
+    'echo ")) "\n(( x = 1 << EOF ))\ngit push --force origin x\nEOF',
     'echo "hi"\ngit push --force origin x',
     "echo 'a\\'\ngit push --force origin x",
     'git push origin ma\\\nin',
@@ -352,6 +356,9 @@ def test_a_quoted_newline_stays_in_its_word(root, fake, repo):
     "cat > notes.md <<'EOF'\nit's done; git push --force origin main\nEOF\ngit status",
     "git status\n# don't push yet\nls",
     'echo acme/app#42\nls',
+    'cat <<-EOF\n\tgit push --force origin main\n\tEOF\nls',
+    "echo '(('\ncat <<'EOF'\nit's git push --force\nEOF",
+    "x=$(a $(b))\ncat <<'EOF'\nit's git push --force\nEOF",
 ])
 def test_ordinary_multi_line_work_passes(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command

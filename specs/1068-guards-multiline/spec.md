@@ -80,13 +80,17 @@ into a shell (`cat <<EOF | sh`).
   they closed? A: bodies are read in order and the scan stops dropping at the first body it cannot
   drop. A `<<` counts as a heredoc only when the `((` before it are all closed.
 
+- Q (fix round 2): the gates showed the round 1 check counted `((` and `))` in raw text, so a `))`
+  in quotes or a comment cancelled a real `((`. A: the depth lives in the `_lines` loop, which knows
+  the quote state and skips comments; the four gate inputs are tests.
+
 ## Assumptions
 
 - A heredoc body line is read literally when matching its delimiter, even for an unquoted delimiter
   where sh would join a trailing backslash. Overturned by a case where that ends a body early and
   hides a command; ending early only reads more lines as commands, so it fails closed.
-- Arithmetic depth is counted from the raw text before the `<<`, quotes included. A `((` inside an
-  earlier quoted string then keeps a later heredoc from being dropped, so its body is read as
-  commands. That can only add refusals.
+- Arithmetic depth is tracked in the scan itself, outside quotes and comments: `((` opens and `))`
+  closes, never below zero. A `))` that closes a nested `$(...)` (`$(a $(b))`) does not count against
+  a later heredoc. A mispaired `)))` still nets to zero.
 - `gh pr create` text inside a heredoc body now triggers the PostToolUse PR note when the output
   also holds a PR URL. That note is advice only.
