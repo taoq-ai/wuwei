@@ -75,14 +75,17 @@
 Verdict: PASS | FIX | ESCALATE
 Gate: arch | quality | security | goal
 Item: <plan item id>
-PR: <owner/repo>#<number>
+PR: <owner/repo>#<number>   (or <owner/repo> alone before the PR opens)
 Head: <the 40-character sha you reviewed>
 Confidence: low | medium | high
 Breaking: no | yes: <what breaks for which clients>   (arch only)
 
 ## Findings
-- [critical|high|medium|low] <file>:<line> blocks: yes|no. Failure: <the concrete scenario>
+- [critical|high|medium|low] <file>:<line> blocks: yes. Failure: <the concrete scenario>
+- [low] <file>:<line> blocks: no. <a note>   (the <file>:<line> is optional on a note)
 (or none)
 ```
 
-The reviewer ends its report with `Verdict file: <path>`.
+A blocking finding names its `<file>:<line>`; a note without a place in the code leaves it out. The
+reviewer ends its report with `Verdict file: <path>`. A written verdict file is never edited: a
+corrected or second verdict for the same head goes to the next free `<gate>-<sha7>-2.md`.

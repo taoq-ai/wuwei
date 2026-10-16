@@ -44,5 +44,14 @@ The quality gate runs on a different model than the session's on Claude Code (`M
 `cli/wuwei/agents.py`). On Codex the role files name no model: Codex chooses its own, and a Claude
 model name would not resolve there.
 
+## Gates on Codex
+
+A gate counts only when WUWEI attests its verdict from the seat's own hand-back or SubagentStop. A
+`codex-companion` task job started from a Claude session is not a seat: it has no SubagentStop, so
+its verdict file sits unattested and `wuwei evidence` names it as not counted (#1078). A Codex-native
+seat (`spawn_agent` with `agent_type` `sentinel-<gate>`) goes through the same hooks; whether it is
+attested is what the codex-attest-probe item checks. Until that probe records an attested seat, run
+gates as Claude seats.
+
 **Why:** the process is the product, not the harness. The same evidence, doors and questions hold
 whichever agent does the work, and a team can run both without two rule books.

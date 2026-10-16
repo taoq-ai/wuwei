@@ -82,7 +82,7 @@ def pull(root):
             continue
         if _theirs(root, name) or local is None or _digests({name: local})[name] == synced.get(name):
             ws.atomic_write(Path(root) / ws.DIR / name, data.decode('utf-8'))
-        else:
+        elif branch[name] != synced.get(name):  # only here: kept and pushed next, no note
             kept.append(name)
     ws.cache_put(root, 'sync', branch)  # what the branch holds, so push still sends what was kept or is new here (#1060)
     note = f'; kept local {", ".join(kept)} (changed here and on the branch; the next push wins)' if kept else ''
