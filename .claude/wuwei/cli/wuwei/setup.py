@@ -47,7 +47,6 @@ def merge_settings(directory, cloud=False):
     return path
 
 
-PLUGIN = Path(__file__).resolve().parents[2]
 EVENTS = ('SessionStart', 'PreToolUse', 'PostToolUse', 'SubagentStop', 'Stop')
 IGNORE = '# The state travels on the wuwei/state branch (wuwei sync), never in a working branch.\n*\n'
 
@@ -58,14 +57,14 @@ def vendor(directory):
     claude = Path(directory) / '.claude'
     shutil.rmtree(claude / 'wuwei', ignore_errors=True)
     for name in ('bin', 'cli', 'charters', '.claude-plugin'):
-        shutil.copytree(PLUGIN / name, claude / 'wuwei' / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        shutil.copytree(ws.PLUGIN / name, claude / 'wuwei' / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     ws.atomic_write(claude / 'wuwei' / '.gitignore', '__pycache__/\n')
     if (old := claude / 'skills' / 'wuwei' / 'SKILL.md').is_file() and 'name: wuwei\n' in old.read_text(encoding='utf-8'):
         shutil.rmtree(old.parent)  # 2.0 renamed WUWEI's reference skill to wuwei-rules; a repository's own skills stay
-    for skill in (PLUGIN / 'skills').iterdir():
+    for skill in (ws.PLUGIN / 'skills').iterdir():
         shutil.copytree(skill, claude / 'skills' / skill.name, dirs_exist_ok=True)
     (claude / 'agents').mkdir(exist_ok=True)
-    for agent in (PLUGIN / 'agents').glob('*.md'):
+    for agent in (ws.PLUGIN / 'agents').glob('*.md'):
         shutil.copy2(agent, claude / 'agents' / agent.name)
     return claude
 
@@ -76,7 +75,7 @@ def codex_files(directory):
     from wuwei import agents
     base = Path(directory) / '.codex'
     for role in agents.DESCRIPTIONS:
-        ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(PLUGIN, role))
+        ws.atomic_write(base / 'agents' / f'{role}.toml', agents.render_codex(ws.PLUGIN, role))
     pattern = lambda rule: json.dumps(rule[len('Bash('):-len(':*)')].split())  # noqa: E731
     rules = [f'prefix_rule(pattern = {pattern(r)}, decision = "forbidden")' for r in DENY if r.startswith('Bash(')]
     rules += [f'prefix_rule(pattern = {pattern(r)}, decision = "prompt")' for r in ASK]
@@ -106,7 +105,7 @@ def init(directory, cloud=False, codex=False):
         done.append(f'codex: role agents and door rules in {codex_files(directory)} (trust the WUWEI hooks once in Codex)')
     if cloud:
         done.append(f'cloud: the plugin copied into {vendor(directory)}; commit .claude/ so cloud sessions load it')
-    ws.record(directory, 'workspace.init', {'version': json.loads((PLUGIN / '.claude-plugin' / 'plugin.json').read_text())['version']})
+    ws.record(directory, 'workspace.init', {'version': ws.version()})
     return done
 
 
@@ -136,7 +135,7 @@ def doctor(root):
     if roles.is_dir():
         from wuwei import agents
         stale = [r for r in agents.DESCRIPTIONS if not (roles / f'{r}.toml').is_file()
-                 or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(PLUGIN, r)]
+                 or (roles / f'{r}.toml').read_text(encoding='utf-8') != agents.render_codex(ws.PLUGIN, r)]
         rows.append(('codex roles', 'warn' if stale else 'ok',
                      f'stale: {", ".join(stale)}: run wuwei init --codex' if stale else 'match the charters'))
     gone = ws.retired(root)

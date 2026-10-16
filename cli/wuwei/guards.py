@@ -50,30 +50,28 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
-PR_STANDARD = Path(__file__).resolve().parents[2] / 'charters' / '_pr.md'
+PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def deny(reason):
     return {'decision': 'deny', 'reason': reason}
 
 
-def origin(cwd):
-    """owner/repo of the origin remote at cwd, or ''."""
+def _git(cwd, *args):
     try:
-        url = subprocess.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True,
-                             text=True, timeout=5).stdout.strip()
+        return subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ''
-    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
+
+
+def origin(cwd):
+    """owner/repo of the origin remote at cwd, or ''."""
+    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', _git(cwd, 'remote', 'get-url', 'origin'))
     return match[1] if match else ''
 
 
 def current_branch(cwd):
-    try:
-        return subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
-                              text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ''
+    return _git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD')
 
 
 def segments(command):
@@ -225,8 +223,7 @@ def gh_command(root, args, cwd, session, command=''):
         repo, head, base, body, draft = opening  # a draft opens before its gates (#1050, #1074); the flip to ready waits
         found = None if draft else create_door(root, repo, head or current_branch(cwd), base, command + body)
         if found or once(root, session, 'pr-standard'):
-            version = json.loads((PR_STANDARD.parents[1] / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
-            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip().replace('<version>', version)}
+            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip().replace('<version>', ws.version())}
     return None
 
 
