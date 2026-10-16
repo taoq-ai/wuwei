@@ -1,31 +1,6 @@
 {
  "items": [
   {
-   "id": "guard-allowlist-spike",
-   "title": "spike: the gh-doors and shell-doors allowlists, prototyped in scratch against the route corpus",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "light",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 8,
-    "risk": 13,
-    "size": 1
-   },
-   "score": 26.0,
-   "why": "gh-doors is the riskiest item in the queue (draft-raise took five gate rounds of denylist fixes on the same parser); a scratch prototype run against tests/fixtures/routes.json shows in one sitting whether the allowlists fit their line budgets and leave every seat route where it is.",
-   "promise": "A run, not a change. In a copy of main made with git archive into a new empty scratch folder, prototype the rules gh-doors and shell-doors promise: (a) gh pr merge reads --admin and --auto through guards._flags; (b) a gh api graphql write whose query WUWEI cannot read (--input -, -F query=@-, an --input file that is missing or not in a plain one-segment command) is refused, and an --input file's query is read for door mutations; (c) any write to a repositories/<id>/... endpoint is refused with a hint to spell repos/<owner>/<repo>; (d) a shlex token made only of the characters ();<>|& that is not a known separator or redirect makes the command unreadable, and so does $' or $\" quoting; (e) the ledger pattern also matches .wuwei/ledger and .wuwei with no trailing slash. Then run python3 -m pytest -q tests/test_guards.py (or pytest -q) in the copy and count the runtime lines. Record with `wuwei plan run guard-allowlist-spike --reason \"<lines each rule cost, the routes.json rows that moved and why, the suite result>\"`. A row that moves to a refusal a seat needs is evidence to narrow gh-doors or shell-doors before they start. Outside: committing anything; the spike's code is thrown away. Real-execution evidence already taken on main fe5bc0b by the lead (stub git on PATH logging argv; real gh 2.89.0 with http_unix_socket pointed at a logging server): bash runs git push origin main for cat <(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; gh sends POST /graphql with the mutation for --input q.json and for --input -, and POST /repositories/123/pulls/5/requested_reviewers as typed; guards.bash on main passes every one of them. gh pr merge flag shapes were not executed: the merge door refused the probe (correct behaviour), so the merge-flag rules rest on pflag's parsing (a valued short flag takes the next word even when it starts with -).",
-   "acceptance": [
-    "given a git archive copy of main in a new empty scratch folder, when the five prototype rules are applied and tests/test_guards.py runs there, then the run evidence names each rule's runtime line cost and every tests/fixtures/routes.json row whose verdict moved",
-    "given the prototype, when the commands in the promise's real-execution list are read by guards.bash, then each is refused, and the run evidence says so command by command",
-    "given the spike's outcome, when the planner records it with wuwei plan run, then the reason names the line costs, the moved rows (or none) and the suite result, and no file in the repository changed"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "free-lines-3",
    "title": "refactor: one plugin path and version read in ws, one git helper in guards, and two dead or one-caller definitions go",
    "goal": "G-2",
@@ -246,6 +221,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1077"
+  },
+  {
+   "id": "guard-allowlist-spike",
+   "title": "spike: the gh-doors and shell-doors allowlists, prototyped in scratch against the route corpus",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "light",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 26.0,
+   "why": "gh-doors is the riskiest item in the queue (draft-raise took five gate rounds of denylist fixes on the same parser); a scratch prototype run against tests/fixtures/routes.json shows in one sitting whether the allowlists fit their line budgets and leave every seat route where it is.",
+   "promise": "A run, not a change. In a copy of main made with git archive into a new empty scratch folder, prototype the rules gh-doors and shell-doors promise: (a) gh pr merge reads --admin and --auto through guards._flags; (b) a gh api graphql write whose query WUWEI cannot read (--input -, -F query=@-, an --input file that is missing or not in a plain one-segment command) is refused, and an --input file's query is read for door mutations; (c) any write to a repositories/<id>/... endpoint is refused with a hint to spell repos/<owner>/<repo>; (d) a shlex token made only of the characters ();<>|& that is not a known separator or redirect makes the command unreadable, and so does $' or $\" quoting; (e) the ledger pattern also matches .wuwei/ledger and .wuwei with no trailing slash. Then run python3 -m pytest -q tests/test_guards.py (or pytest -q) in the copy and count the runtime lines. Record with `wuwei plan run guard-allowlist-spike --reason \"<lines each rule cost, the routes.json rows that moved and why, the suite result>\"`. A row that moves to a refusal a seat needs is evidence to narrow gh-doors or shell-doors before they start. Outside: committing anything; the spike's code is thrown away. Real-execution evidence already taken on main fe5bc0b by the lead (stub git on PATH logging argv; real gh 2.89.0 with http_unix_socket pointed at a logging server): bash runs git push origin main for cat <(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; gh sends POST /graphql with the mutation for --input q.json and for --input -, and POST /repositories/123/pulls/5/requested_reviewers as typed; guards.bash on main passes every one of them. gh pr merge flag shapes were not executed: the merge door refused the probe (correct behaviour), so the merge-flag rules rest on pflag's parsing (a valued short flag takes the next word even when it starts with -).",
+   "acceptance": [
+    "given a git archive copy of main in a new empty scratch folder, when the five prototype rules are applied and tests/test_guards.py runs there, then the run evidence names each rule's runtime line cost and every tests/fixtures/routes.json row whose verdict moved",
+    "given the prototype, when the commands in the promise's real-execution list are read by guards.bash, then each is refused, and the run evidence says so command by command",
+    "given the spike's outcome, when the planner records it with wuwei plan run, then the reason names the line costs, the moved rows (or none) and the suite result, and no file in the repository changed"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "kind": "run",
+   "reason": ""
   },
   {
    "id": "1067-probe",
