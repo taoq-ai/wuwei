@@ -13,7 +13,7 @@ from wuwei.verdict import GATES
 
 def _days(root):
     days = Path(root) / ws.DIR / 'days'
-    return sorted((d for d in days.iterdir() if d.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', d.name)),
+    return sorted((d for d in days.iterdir() if d.is_dir() and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', d.name)),
                   reverse=True) if days.is_dir() else []
 
 

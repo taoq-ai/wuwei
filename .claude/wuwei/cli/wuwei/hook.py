@@ -206,7 +206,7 @@ def post_tool(root, payload):
         return _replied(root, tool, json.dumps(data))
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
-        match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
+        match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response')))
         if match:
             gaps = evidence.visible(evidence.gaps(root, match[1], int(match[2])))
             ws.cache_put(root, 'board', None)
@@ -222,7 +222,7 @@ def _replied(root, tool, sent):
     for item in plan.items(root):
         if item.get('kind') != 'reply' or item.get('status') != 'open':
             continue
-        thread = re.search(r'/archives/([A-Z0-9]+)/p(\d{10})(\d{6})', item['where'])
+        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})', item['where'])
         keys = [thread[1], f'{thread[2]}.{thread[3]}'] if thread else [item['where']]
         if all(key in sent for key in keys):
             plan.mark(root, item['id'], 'done', f'replied via {tool}')
@@ -242,10 +242,10 @@ def _answers(root, data, response):
     for question in questions:
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
         yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
-        match = re.search(r'owner review: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40})', question)
-        if match and answer:
-            ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3], 'approved': yes,
-                                       'question': question, 'answer': answer})
+        found = re.match(r'\s*(?i:owner review|(breaking)):\s*' + REF.pattern, question)
+        if answer and found and found[2]:
+            ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), 'pr': f'{found[2]}#{found[3]}',
+                                       'head': found[4], 'approved': yes, 'question': question, 'answer': answer})
         refs, gap_text = exception_refs(question)
         if refs and gap_text and answer:
             for repo, number, head in refs:
@@ -256,10 +256,6 @@ def _answers(root, data, response):
                     item = plan.followup(root, f'Close the exception on {ref}: {gap_text}', repo,
                                          _goal(root, ref, repo), f'owner accepted it at {head}')
                     notes.append(f'WUWEI: exception recorded on {ref}; {item["id"]} in the plan closes it later.')
-        found = REF.search(question) if question.lower().startswith('breaking:') else None
-        if found and found[1] and answer:
-            ws.record(root, 'ruling', {'kind': 'breaking', 'pr': f'{found[1]}#{found[2]}', 'head': found[3],
-                                       'approved': yes, 'question': question, 'answer': answer})
         if question.lower().startswith('plan:') and answer:
             if yes:
                 plan.approve(root, answer)
@@ -274,7 +270,7 @@ def _answers(root, data, response):
     return context('PostToolUse', '\n'.join(notes)) if notes else None
 
 
-REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#(\d+) at ([0-9a-f]{7,40})\b')
+REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 
 
 def exception_refs(question):

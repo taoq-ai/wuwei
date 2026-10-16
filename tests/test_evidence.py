@@ -804,3 +804,18 @@ def test_a_moved_head_names_the_gate_owed_and_ci_not_started(root, fake):
     not_started(root, fake, verdict='FIX', head=OLD)
     fake.ancestors.add((OLD, HEAD))
     assert texts(evidence.gaps(root, 'o/r', 5)) == ['gates missing at head aaaaaaa: quality', 'CI not started at aaaaaaa']
+
+
+@pytest.mark.parametrize('text, found', [('see o/r#7 and github.com/o/r/pull/8', {'o/r#7', 'o/r#8'}),
+                                         ('see o/r#\uff17 and github.com/o/r/pull/\u0668', set())])
+def test_refs_reads_ascii_digits_only(text, found):
+    assert evidence.refs(text) == found
+
+
+@pytest.mark.parametrize('ref', ['o/r#\uff17', 'o/r#\u0667', 'o/r#', '#7'])
+def test_evidence_names_the_shape_for_a_pr_not_in_ascii_digits_and_calls_no_gh(root, fake, monkeypatch, ref):
+    from wuwei import __main__ as cli
+    monkeypatch.chdir(root)
+    with pytest.raises(SystemExit, match='owner/repo#number'):
+        cli.main(['evidence', ref])
+    assert fake.calls == []

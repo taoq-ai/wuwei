@@ -157,6 +157,25 @@ def test_an_owner_answer_becomes_a_ruling(root):
     assert ws.rows(root, 'prompt')
 
 
+@pytest.mark.parametrize('question, recorded', [
+    ('owner review: o/r#7 at abc1234. Approve?', [{'pr': 'o/r#7', 'head': 'abc1234'}]),
+    ('owner review: o/r#\uff17 at abc1234. Approve?', []),
+    ('breaking: o/r#7 at abc1234: the flag goes. Proceed?', [{'kind': 'breaking', 'pr': 'o/r#7', 'head': 'abc1234'}]),
+    ('breaking: o/r#\u0667 at abc1234: the flag goes. Proceed?', []),
+    ('owner review: with acme/lib#3 at 1234567 merged, acme/app#9 at abcdef0 is ready. Approve?', []),
+    ('breaking: see x/y#2 at def5678, o/r#7 at abc1234. Proceed?', []),
+    ('  Owner Review: o/r#7 at abc1234. Approve?', [{'pr': 'o/r#7', 'head': 'abc1234'}]),
+    ('BREAKING:o/r#7 at abc1234: the flag goes. Proceed?', [{'kind': 'breaking', 'pr': 'o/r#7', 'head': 'abc1234'}]),
+    ('exception: o/r#7 at abc1234: CI failing. owner review: x/y#2 at def5678. Accept?', []),
+    ('scope: see owner review: o/r#7 at abc1234', [])])
+def test_a_ruling_names_a_pr_in_ascii_digits_only(root, question, recorded):
+    hook.handle(root, 'PostToolUse', {
+        'session_id': 's1', 'tool_name': 'AskUserQuestion', 'cwd': str(root),
+        'tool_input': {'questions': [{'question': question}]}, 'tool_response': {'answers': {question: 'yes'}}})
+    rows = [row['data'] for row in ws.rows(root, 'ruling') if row['data'].get('kind') != 'exception']
+    assert rows == [{**r, 'approved': True, 'question': question, 'answer': 'yes'} for r in recorded]
+
+
 def test_pre_tool_deny_uses_the_harness_shape_and_is_recorded(root):
     out = hook.handle(root, 'PreToolUse', {'session_id': 's1', 'tool_name': 'Write', 'cwd': str(root),
                                            'tool_input': {'file_path': '.wuwei/ledger.jsonl'}})
