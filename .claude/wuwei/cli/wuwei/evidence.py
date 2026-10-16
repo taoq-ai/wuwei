@@ -393,7 +393,13 @@ def gaps(root, repo, number):
             found.append(gap('no Rollback: line (how to undo this change)'))
         found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
         found += breaking_gaps(root, ref, pr, item_id)
-        found += ci_gaps(pr.get('statusCheckRollup'), review_contexts(root, repo, pr.get('statusCheckRollup')))
+        rollup = pr.get('statusCheckRollup')
+        found += ci_gaps(rollup, review_contexts(root, repo, rollup))
+        try:  # no check run and no status at the head of a repository that ran a pull_request workflow (#1085)
+            ci = not rollup and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo, '?event=pull_request&per_page=1'))
+        except (gh.GhError, AttributeError, TypeError):
+            ci = True  # an unreadable Actions host counts as CI, so the gap shows rather than a pass
+        found += [gap(f'CI not started at {head[:7]}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
         if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))

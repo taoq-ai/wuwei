@@ -98,6 +98,10 @@ reads `change request outstanding: <context>`; both are actionable safety gaps. 
 workflows come from the host (its last 100 `pull_request_review` runs, cached for a day), read only
 when the head has an unsettled status. An unreadable Actions host leaves the status CI, never a pass.
 
+CI not started: a head with no checks, in a repository that ran a `pull_request` workflow (one
+Actions read a day), reads `CI not started at <sha7>`; a path-filtered workflow holds a PR it skips
+until an exception.
+
 Breaking changes: a break of an outward contract (declared with `!` or `BREAKING CHANGE:`, or found
 by the arch gate's required `Breaking:` line; a contract file takes the arch gate at any tier)
 needs an `Announcement: <link>` line and then the owner's `breaking:` confirmation at the
