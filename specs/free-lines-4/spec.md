@@ -20,9 +20,11 @@ two dense guard lines into named parts. The changes are fixed by the item:
    booleans, `dollar` and `glued`. The `tokens[2:] + ['']` end sentinel stays, with a comment that
    says why: without it zip drops the last pair.
 4. The input-redirect line in `guards._unwrap` becomes an explicit if/else.
-5. `OPS` drops only `\|\|` and `;;`, which the single-character fallback splits the same way.
-   `&&`, `|&` and `&>` stay, because dropping any of them changes how some punctuation runs split.
-6. The ledger refusal text becomes one constant, `LEDGER_DENIED`.
+5. `OPS` drops only `;;`, which the single-character fallback splits into `;` `;`, read the same.
+   `&&`, `||`, `|&` and `&>` stay, because dropping any of them changes how some punctuation runs
+   split. The item also dropped `\|\|`; the arch gate showed that `||&>` then splits as `|`, `|&`,
+   `>` instead of `||`, `&>` (see Clarifications).
+6. The ledger refusal text becomes one constant, `LEDGER_DENIED`, read at its three call sites.
 
 The vendored copies under `.claude/wuwei/cli/wuwei/` are re-vendored to match.
 
@@ -46,16 +48,17 @@ The acceptance scenarios, restated:
    `program in INFRA`, and `gh` and `git` are not in `INFRA`, so nothing new runs.
 3. Dropping an alternative from `OPS` changes how a run of punctuation splits, so a glued redirect
    or separator reads differently and a door is missed or a clean command is refused. Guarded by
-   the 82,944-command differential probe and by the new split tests, which fail when `&&`, `|&`
-   or `&>` is dropped.
+   the 82,944-command differential probe, an exhaustive probe of every punctuation run over
+   `|&;<>()` up to length 5, and the new split tests, which fail when `&&`, `||`, `|&` or `&>` is
+   dropped.
 
 ## Requirements
 
 - FR-001: `cli/wuwei/` totals 2,977 lines or fewer and adds no line elsewhere in the runtime.
 - FR-002: `guards.segments` returns the same output as at 9d6701e for every probe command.
-- FR-003: `guards.OPS` holds `&&`, `|&` and `&>`; it no longer holds `\|\|` or `;;`.
+- FR-003: `guards.OPS` holds `&&`, `||`, `|&` and `&>`; it no longer holds `;;`.
 - FR-004: the `tokens[2:] + ['']` sentinel stays with a comment naming why.
-- FR-005: the four ledger refusals read `LEDGER_DENIED`.
+- FR-005: the three ledger refusal call sites read `LEDGER_DENIED`.
 - FR-006: `.claude/` matches what `setup.vendor()` writes from the tree.
 
 ## Clarifications
@@ -70,6 +73,12 @@ The acceptance scenarios, restated:
   for, and it costs one line.
 - Q: Which test pins `&>`? A: Acceptance 4 names only the `&&` and `|&` runs. A third split case,
   `x&>;y`, pins `&>` too, since the item keeps it for the same reason.
+- Q: Does `\|\|` leave OPS as the item says? A: No. The arch gate at 50f66d8 found that without it
+  `\|&` matches at the second pipe of `||&>`, so `||&>` and `||&>>` split differently: 72 of 20,736
+  operator pairs trailing both words differ, and `guards.bash` turns 62 targeted denials into
+  allows. `\|\|` is restored, a split case `x||&>y` pins it, and the differential probe now also
+  covers every punctuation run up to length 5 alone, glued, spaced and trailing. This overturns
+  promise (5) for `||`; it costs no line.
 
 ## Assumptions
 

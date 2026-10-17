@@ -14,7 +14,7 @@ from wuwei import evidence, gh, ws
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL, REDIRECTS = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}, {'>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<', '<<<'}
-OPS = r'&>>|<<<|&&|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first (|| and ;; split the same)
+OPS = r'&>>|<<<|&&|\|\||>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first (;; splits the same)
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
@@ -85,7 +85,7 @@ def segments(command):
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens, current = [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';'], []
         dollar = any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command))
-        # '' keeps the last pair: zip stops at its shortest list, so without it the bare redirect ending `x >` reads as clean
+        # '' keeps the last pair: zip stops at its shortest list, so without it `x >` reads as clean (8,400 of 82,944 probes change)
         glued = any(a in REDIRECTS and (b in REDIRECTS and c != '(' or b in CONTROL - {'('})
                     for a, b, c in zip(tokens, tokens[1:], tokens[2:] + ['']))
         out = [UNREAD] if dollar or glued else []
@@ -330,7 +330,7 @@ def bash(root, command, cwd, session):
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
             if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found
-        elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):
+        elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
             return found
         elif program in INFRA and INFRA[program] & set(argv[1:]):
             return {'decision': 'ask', 'reason': f'{program} {" ".join(a for a in argv[1:] if a in INFRA[program])} '

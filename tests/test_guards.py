@@ -573,6 +573,7 @@ def test_a_redirect_anywhere_in_a_command_gives_its_target_and_keeps_the_other_w
     ('x&&>|y', ['x', '&&', '>|', 'y']),  # without && in OPS: & &> |
     ('x|&>y', ['x', '|&', '>', 'y']),  # without |&: | &>
     ('x&>;y', ['x', '&>', ';', 'y']),  # without &>: & > ;
+    ('x||&>y', ['x', '||', '&>', 'y']),  # without ||: | |& >
 ])
 def test_a_punctuation_run_splits_into_the_longest_operators_first(command, tokens):
     assert re.findall(guards.OPS + r'|\w+', command) == tokens

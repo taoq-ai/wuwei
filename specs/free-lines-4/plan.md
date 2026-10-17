@@ -26,9 +26,9 @@ Python 3.11 stdlib, pytest. Runtime budget 3,000 lines in `cli/wuwei/`, at 2,999
 - `guards.segments`: `dollar` and `glued` booleans; `glued` spans two lines under a comment that
   names why the `''` sentinel stays.
 - `guards._unwrap`: nested `if not re.fullmatch(r'<[<&]*', ...)` appends the output redirect target.
-- `guards.OPS`: `\|\|` and `;;` removed.
-- `guards.LEDGER_DENIED`: one constant for the four refusals; the `pre_tool` check joins to one line.
-- `tests/test_guards.py`: three `re.findall(guards.OPS + r'|\w+', ...)` split cases and one
+- `guards.OPS`: `;;` removed; `\|\|` stays (see the spec's Clarifications).
+- `guards.LEDGER_DENIED`: one constant for the three refusal call sites; the `pre_tool` check joins to one line.
+- `tests/test_guards.py`: four `re.findall(guards.OPS + r'|\w+', ...)` split cases and one
   `segments` case for the glued `&&>|` and `|&>` runs.
 - `.claude/`: rewritten by `setup.vendor('.')` from the worktree root.
 
@@ -37,7 +37,10 @@ Python 3.11 stdlib, pytest. Runtime budget 3,000 lines in `cli/wuwei/`, at 2,999
 - Full suite with `/root/.local/bin/pytest -q -p no:cacheprovider`.
 - Differential probe: `git archive` of 9d6701e and of the head into two scratch folders; feed both
   `guards.segments` 82,944 generated commands and count differences. A mutant without the sentinel
-  confirms the probe sees a change (8,400 differ).
+  confirms the probe sees a change (8,400 differ). The same script also feeds every operator pair
+  trailing both words (20,736 commands) and every run over `|&;<>()` up to length 5, alone, glued,
+  spaced and trailing (117,642 commands), and compares the raw OPS split of each run once `;;` is
+  read as `;` `;`.
 
 ## Rollback
 
