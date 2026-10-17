@@ -2,10 +2,9 @@
 
 from collections import Counter
 import datetime
+import hashlib
 import statistics
 from pathlib import Path
-
-import hashlib
 
 from wuwei import board, evidence, gh, plan, ws
 
@@ -125,10 +124,8 @@ def learning(root):
     for row in ws.rows(root, 'seat.stopped'):
         spent[row['data'].get('role')] += row['data'].get('tokens') or 0
     out.append('- tokens by role: ' + (', '.join(f'{k} {v}' for k, v in sorted(spent.items()) if v) or 'unmeasured'))
-    for row in ws.rows(root, 'ruling'):
-        if row['data'].get('kind') == 'exception' and row['data'].get('approved'):
-            d = row['data']
-            out.append(f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}')
+    out += [f'- exception: {d["pr"]} at {d["head"]}: {d["gap"]}' for d in (row['data'] for row in ws.rows(root, 'ruling'))
+            if d.get('kind') == 'exception' and d.get('approved')]
     return out
 
 

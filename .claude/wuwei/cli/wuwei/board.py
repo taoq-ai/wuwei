@@ -57,19 +57,17 @@ def compute(root, everything=False):
     keep = (lambda gaps: gaps) if everything else evidence.visible
     open_items = [item for item in plan.items(root) if item.get('status', 'open') == 'open' and item.get('kind') != 'reply']
     for repo in sorted({item.get('repo') for item in open_items if item.get('repo')} | set(ws.config(root)['repos'])):
-        key = repo.replace('/', '__')
         mine = [item for item in open_items if item.get('repo') == repo]
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
-            prs = evidence._cached(root, f'prs-{key}', lambda: gh.open_prs(repo), TTL)
+            prs = evidence._cached(root, 'prs-' + repo.replace('/', '__'), lambda: gh.open_prs(repo), TTL)
             merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
-                     'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]}
-                    for i in open_items if i.get('repo') == repo]
+                     'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]} for i in mine]
             continue
         out += adopted(root, repo, prs, keep)
-        for item in (i for i in open_items if i.get('repo') == repo):
+        for item in mine:
             linked = [pr for pr in prs if names(root, pr, repo, item['id'])]
             done = [pr for pr in merged if names(root, pr, repo, item['id'])]
             if not linked and done:
@@ -91,8 +89,7 @@ def compute(root, everything=False):
 
 
 def rows(root):
-    found = ws.cache_get(root, 'board', TTL)
-    return ws.cache_put(root, 'board', compute(root)) if found is None else found
+    return evidence._cached(root, 'board', lambda: compute(root), TTL)
 
 
 def text(found, root=None):

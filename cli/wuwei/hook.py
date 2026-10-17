@@ -131,8 +131,7 @@ def subagent_stop(root, payload):
             return None
         return {'decision': 'block', 'reason': 'WUWEI: you ended without a report. End with it as plain text '
                 '(what you did, Blocked:, Gap:); when SubagentHandback is refused, the last message is the report.'}
-    problem = _verdict_problem(root, payload, role)
-    if problem is None:
+    if (problem := _verdict_problem(root, payload, role)) is None:
         return None
     if payload.get('stop_hook_active') or ended:  # a block after either reaches no one: record it instead
         ws.record(root, 'verdict.missing', {'role': role, 'agent': payload.get('agent_id'), 'problem': problem[:300]})
@@ -141,8 +140,7 @@ def subagent_stop(root, payload):
 
 
 def _verdict_problem(root, payload, role):
-    match = re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)
-    if match is None:
+    if (match := re.search(r'^Verdict file:\s*(\S+)\s*$', last_text(payload), re.M)) is None:
         return f'end your report with a line "Verdict file: <path>" naming the verdict you wrote under .wuwei/verdicts/.'
     path = Path(match[1]) if Path(match[1]).is_absolute() else Path(root) / match[1]
     verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
@@ -336,8 +334,7 @@ def codex(payload):
 
 
 def handle(root, event, payload):
-    handler = HANDLERS.get(event)
-    if handler is None:
+    if (handler := HANDLERS.get(event)) is None:
         return None
     try:
         return handler(root, codex(payload))
