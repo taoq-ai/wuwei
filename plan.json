@@ -76,6 +76,33 @@
    "approved": true
   },
   {
+   "id": "charter-review",
+   "title": "docs(charters): decisions and done stated once, repository lessons out of the charters, an architect's arch gate, and fitness tests on the charters and skills",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 5,
+    "risk": 8,
+    "size": 5
+   },
+   "score": 4.2,
+   "why": "the owner's review of the charters against agentskills.io, mgechev/skills-best-practices and arXiv 2606.17819 found rules stated in four places and already drifted, this repository's guard lessons in every workspace's charters, and an arch gate that duplicates security",
+   "promise": "The charters and skills state each rule once (_common.md holds Decisions and Done with the code's thresholds), hold no lesson about this repository's files (those move to AGENTS.md and standards), review architecture as an architect (conformance, coupling, contracts, quality attributes, budgets, decisions, breaking), name the frameworks each gate stands on, carry negative triggers in every skill description, and are held by tests to no sentence over 35 words and each generated agent under a word ceiling. Outside: runtime code, the verdict format, the doors.",
+   "acceptance": [
+    "given the charters at the head, when the suite runs, then every charter and skill sentence is 35 words or fewer and each generated agent is under the word ceiling",
+    "given AGENTS.md at the head, when a seat looks for the guard probe rules, then it finds them under Testing the guards and no charter names guards.py, hook.py, routes.json or an issue number",
+    "given _common.md, when a seat reads Decisions and Done, then it finds the 20-line delta, the 15 percent change failure rate, the 400-line batch and the three-day staleness once, and _way.md, planner.md and wuwei-rules point to it",
+    "given sentinel-arch.md, when the arch gate reads it, then it reviews conformance, dependencies and coupling, contracts, quality attributes, fitness functions, settled decisions and Breaking, and leaves trust boundaries to the security gate",
+    "given the five skills, when their descriptions are read, then each says when to use it and when not, and tests/fixtures/skill-triggers.json holds at least eight should and eight should-not queries per skill with near misses from the other skills"
+   ],
+   "status": "open",
+   "added": "2026-10-17",
+   "approved": false
+  },
+  {
    "id": "git-globals",
    "title": "fix(guards): git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door",
    "goal": "G-2",
