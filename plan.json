@@ -26,32 +26,6 @@
    "approved": true
   },
   {
-   "id": "records",
-   "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 8,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 11.33,
-   "why": "The cache flip is a live two-step bypass of the push door; the spike closes the class at 0 of 196 generated holes, so it is ready behind shell-stdin.",
-   "promise": "Writes to the ledger and the cache meet the ledger door in the spellings sh expands. (1) One path matcher replaces the LEDGER regex. It reads //, /./, globs (*, ?, [...], where * and ? do not match a leading dot, as in sh) and brace expansion ({a,b}, {a..z}), and matches .wuwei itself, .wuwei/ledger, .wuwei/ledger.jsonl and anything under them, as a redirect target, a writer argument or an edit path. (2) A write to .wuwei/cache (a redirect target, a writer argument other than rm, a python argument, a Write or Edit path) is refused, with text naming the cache: its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file still passes, because the next read fetches it again. (3) find with -delete, -exec or -execdir whose start path the matcher matches is refused; find without them passes. (4) cd or pushd into .wuwei or below, followed in the same command by a writer program, is refused; `cd .wuwei && cat plan.json` passes. (5) git clean with x or X in any short cluster is refused unless every pathspec it names lies outside .wuwei: .wuwei is git-ignored, so git clean -fdx deletes the ledger; git clean -fd passes. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, docs/site/concepts/doors.md and the ledger door lines in docs/design.md. Runtime lines: estimate +12 (spike +11 on top of shell-stdin, before narrowing find and cd), budget 18. Order: after free-lines-4 and shell-stdin (all three edit guards.segments, _unwrap or bash). Acceptance comes from real execution under bash in a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json. The builder runs a generated combinatorial probe: ledger spellings (.wuwei/ledger, .wuwei//ledger, ./.wuwei/./ledger, .wuwei/*, .wuwei/l*, .w*/ledger, .wuwei/[l]edger, .wuwei/{ledger,x}, .wuwei/{l,}edger, .wuwei/{k..m}edger, .{v..x}uwei/ledger, .wuwei/{{l,x},}edger, .wuwei/led?er, .wuwei, .wu*, .[w]uwei, .wuwei/ledger/../ledger, \"$PWD\"/.wuwei/ledger, ~+/.wuwei/ledger, .wuwei/ledger/*.jsonl, quoted and escaped forms) x writers (rm -rf, mv, find -delete, cd && rm, echo >, chmod -R, truncate), and cache spellings x writers (echo >, cp, tee, dd of=); holes must be 0. Rollback: revert the commit. Outside: deleting from an ancestor without naming .wuwei (find . -delete, rm -rf ..): the ledger is hash-chained and synced to wuwei/state, and the guard is a tripwire, not a sandbox; .wuwei/plan.json and verdicts (verdicts are attested by hash). Assumptions: no recorded seat route writes into .wuwei/cache by shell or runs git clean -x (the suite's corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
-   "acceptance": [
-    "given a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json, when bash -c runs each of `rm -rf .wuwei/*`, `rm -rf .wuwei/{l,}edger`, `rm -rf .w*/ledger`, `find .wuwei -delete`, `cd .wuwei && rm -rf ledger`, `git clean -fdx` (in a git repository whose .wuwei is ignored) and `echo 0 > .wuwei/cache/c.json`, then the ledger row or the cache value is gone or changed each time, and given each command, when guards.bash reads it, then it is refused",
-    "given the generated probe in the builder's scratch copy (ledger spellings x writers, cache spellings x writers), when it runs every command under real bash in a fresh folder and through guards.bash at the head, then it reports the generated count, the count that changed the records, and 0 holes",
-    "given `echo '\"x\"' > .wuwei/cache/default-taoq-ai__wuwei.json`, when guards.bash reads it, then it is refused with text naming the cache, and given a Write tool call on .wuwei/cache/ci-x.json, when guards.pre_tool reads it, then it is refused",
-    "given `rm -rf *`, `rm -rf .wuwei/cache`, `rm .wuwei/cache/x`, `cat .wuwei/ledger/x.jsonl`, `cd .wuwei && cat plan.json`, `find .wuwei -name x`, `git clean -fd`, `rm foo.wuwei` and `rm -rf .wuwei-x`, when guards.bash reads them, then they pass"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "gh-args",
    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
    "goal": "G-2",
@@ -569,6 +543,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1066"
+  },
+  {
+   "id": "records",
+   "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 8,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 11.33,
+   "why": "The cache flip is a live two-step bypass of the push door; the spike closes the class at 0 of 196 generated holes, so it is ready behind shell-stdin.",
+   "promise": "Writes to the ledger and the cache meet the ledger door in the spellings sh expands. (1) One path matcher replaces the LEDGER regex. It reads //, /./, globs (*, ?, [...], where * and ? do not match a leading dot, as in sh) and brace expansion ({a,b}, {a..z}), and matches .wuwei itself, .wuwei/ledger, .wuwei/ledger.jsonl and anything under them, as a redirect target, a writer argument or an edit path. (2) A write to .wuwei/cache (a redirect target, a writer argument other than rm, a python argument, a Write or Edit path) is refused, with text naming the cache: its entries feed gate inputs (ci-, review-, default-branch). Removing a cache file still passes, because the next read fetches it again. (3) find with -delete, -exec or -execdir whose start path the matcher matches is refused; find without them passes. (4) cd or pushd into .wuwei or below, followed in the same command by a writer program, is refused; `cd .wuwei && cat plan.json` passes. (5) git clean with x or X in any short cluster is refused unless every pathspec it names lies outside .wuwei: .wuwei is git-ignored, so git clean -fdx deletes the ledger; git clean -fd passes. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, docs/site/concepts/doors.md and the ledger door lines in docs/design.md. Runtime lines: estimate +12 (spike +11 on top of shell-stdin, before narrowing find and cd), budget 18. Order: after free-lines-4 and shell-stdin (all three edit guards.segments, _unwrap or bash). Acceptance comes from real execution under bash in a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json. The builder runs a generated combinatorial probe: ledger spellings (.wuwei/ledger, .wuwei//ledger, ./.wuwei/./ledger, .wuwei/*, .wuwei/l*, .w*/ledger, .wuwei/[l]edger, .wuwei/{ledger,x}, .wuwei/{l,}edger, .wuwei/{k..m}edger, .{v..x}uwei/ledger, .wuwei/{{l,x},}edger, .wuwei/led?er, .wuwei, .wu*, .[w]uwei, .wuwei/ledger/../ledger, \"$PWD\"/.wuwei/ledger, ~+/.wuwei/ledger, .wuwei/ledger/*.jsonl, quoted and escaped forms) x writers (rm -rf, mv, find -delete, cd && rm, echo >, chmod -R, truncate), and cache spellings x writers (echo >, cp, tee, dd of=); holes must be 0. Rollback: revert the commit. Outside: deleting from an ancestor without naming .wuwei (find . -delete, rm -rf ..): the ledger is hash-chained and synced to wuwei/state, and the guard is a tripwire, not a sandbox; .wuwei/plan.json and verdicts (verdicts are attested by hash). Assumptions: no recorded seat route writes into .wuwei/cache by shell or runs git clean -x (the suite's corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
+   "acceptance": [
+    "given a fresh folder holding .wuwei/ledger/a.jsonl and .wuwei/cache/c.json, when bash -c runs each of `rm -rf .wuwei/*`, `rm -rf .wuwei/{l,}edger`, `rm -rf .w*/ledger`, `find .wuwei -delete`, `cd .wuwei && rm -rf ledger`, `git clean -fdx` (in a git repository whose .wuwei is ignored) and `echo 0 > .wuwei/cache/c.json`, then the ledger row or the cache value is gone or changed each time, and given each command, when guards.bash reads it, then it is refused",
+    "given the generated probe in the builder's scratch copy (ledger spellings x writers, cache spellings x writers), when it runs every command under real bash in a fresh folder and through guards.bash at the head, then it reports the generated count, the count that changed the records, and 0 holes",
+    "given `echo '\"x\"' > .wuwei/cache/default-taoq-ai__wuwei.json`, when guards.bash reads it, then it is refused with text naming the cache, and given a Write tool call on .wuwei/cache/ci-x.json, when guards.pre_tool reads it, then it is refused",
+    "given `rm -rf *`, `rm -rf .wuwei/cache`, `rm .wuwei/cache/x`, `cat .wuwei/ledger/x.jsonl`, `cd .wuwei && cat plan.json`, `find .wuwei -name x`, `git clean -fd`, `rm foo.wuwei` and `rm -rf .wuwei-x`, when guards.bash reads them, then they pass"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as d1c3d79 (#1116) after four gates: quality and goal pass at 6d4f8af, arch pass at 4fbaabc, security pass at 69e1ce5; owner breaking: approved"
   },
   {
    "id": "door-hardening",
