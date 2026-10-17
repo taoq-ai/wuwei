@@ -26,6 +26,55 @@
    "approved": true
   },
   {
+   "id": "scratch-remotes",
+   "title": "fix(guards): the push door passes a push whose remote is a local path under the session scratch folder",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 5,
+    "size": 1
+   },
+   "score": 21.0,
+   "why": "Real-git acceptance for push-door items needs pushes to a scratch bare remote. Today the door refuses them, so the git-globals builder ran them from Python around the door (the owner accepted that one run, trust:, and asked for this item). Without it every push-door item either routes around the door or loses real-execution evidence.",
+   "promise": "The push door passes a push whose remote is a local path (a filesystem path or file:// URL, given directly or as a remote whose url is one) that resolves under the session scratch folder or a fresh temporary folder, never the working repository or any path holding .wuwei. Files: cli/wuwei/guards.py, tests, routes.json, the vendored copy, SECURITY.md. Runtime lines: estimate +2, budget 3; needs free-lines-5 first. Order: after git-globals and free-lines-5, before push-refspecs. Acceptance from real execution: a push to a scratch bare remote through the door. Rollback: revert the commit. Outside: any network remote. Assumptions: the remote url is read from the command or `git config remote.<name>.url` in the clone; a symlink out of scratch is resolved with realpath before the check.",
+   "acceptance": [
+    "given a scratch bare remote and a clone, when `git push ../r.git main` and `git push origin main` (origin set to the scratch path) run in Bash, then the door passes them and the bare remote has main",
+    "given `git push /home/user/wuwei/.git main`, a remote whose url is a symlink from scratch to the working repository, and `git push origin main` with origin on GitHub, when guards.bash reads them, then each is refused as before"
+   ],
+   "status": "open",
+   "added": "2026-10-17",
+   "approved": true
+  },
+  {
+   "id": "push-refspecs",
+   "title": "fix(guards): the push door reads each refspec's destination the way git does, so feature:heads/main, :, --all and globs meet it",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 19.5,
+   "why": "A second live push-door bypass on main d1c3d79, found by the git-globals security gate and confirmed through guards.bash: `git push origin feature:heads/main`, `git push origin :`, `git push --all origin` and `git push origin 'refs/heads/*:refs/heads/*'` pass, while `feature:main` and `feature:refs/heads/main` are refused. git expands a short destination with its ref rules (heads/main to refs/heads/main), pushes matching branches for `:`, and every local branch for --all and a glob.",
+   "promise": "The push door reads each refspec's destination the way git 2.43 does. (1) A destination is expanded with git's rules: `main`, `heads/main`, `refs/heads/main` (and a leading `+`) all name the default branch. (2) `:` (matching), `--all`/`--branches`, and a glob refspec whose destination pattern can match the default branch are refused as pushes that can reach it, unless the refspec's source names no default-branch ref. (3) Existing refusals (--mirror, explicit main) keep their text. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, the push door lines in docs/design.md and doors.md. Runtime lines: estimate +4, budget 6; needs free-lines-5 first. Order: after scratch-remotes (for real-git evidence) and free-lines-5, before gh-args. Acceptance comes from real execution through the push door's scratch exception. Rollback: revert the commit. Outside: config-steered pushes (git-globals) and config written before the call. Assumptions: git 2.43 refspec rules (remote.c); overturned if the real-git probe shows a destination spelling reaching main that the rules miss.",
+   "acceptance": [
+    "given a scratch bare remote and a clone with branches main and feature, when real git runs each of `git push origin feature:heads/main`, `git push origin :`, `git push --all origin` and `git push origin 'refs/heads/*:refs/heads/*'` through the push door's scratch exception, then the result is recorded, and given the same commands naming the real origin, when guards.bash reads them, then each one that moved main in the scratch run is refused",
+    "given a generated probe of destination spellings (main, heads/main, refs/heads/main, +, globs, :, --all, --branches, --tags) x sources, run under real git against a scratch bare remote, when guards.bash reads each command naming a non-scratch remote, then every command that moved main is refused (holes 0) and pushes that cannot reach main pass",
+    "given `git push origin feature`, `git push origin feature:feature`, `git push --tags origin` and `git push origin 'refs/heads/f/*:refs/heads/f/*'`, when guards.bash reads them, then they pass"
+   ],
+   "status": "open",
+   "added": "2026-10-17",
+   "approved": true
+  },
+  {
    "id": "gh-args",
    "title": "fix(guards): a help request passes the doors, and an --input file's head, base and body are read as JSON",
    "goal": "G-2",
@@ -46,6 +95,30 @@
     "given the same fake host, when real gh runs `gh pr merge 5 -t --help` and `gh pr merge 5 -- --help`, then the guard sends each to the merge door (refused while the PR's evidence has gaps)",
     "given a local bare remote and a clone with a commit on main, when real git runs `git push origin main --help` and `git push origin main -h` from the suite, then the bare remote has no main ref, and guards.bash passes both; `git push origin main` is still refused",
     "given an --input file written by json.dumps with head 'feature', base 'ma\\u0069n' and a body whose WUWEI-Item line is escaped, when guards._api reads it, then head, base and body equal the decoded strings"
+   ],
+   "status": "open",
+   "added": "2026-10-17",
+   "approved": true
+  },
+  {
+   "id": "free-lines-5",
+   "title": "refactor: free runtime lines with no behaviour change and no complexity change",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 2
+   },
+   "score": 8.0,
+   "why": "After git-globals the runtime sits at about 2,997 of 3,000 lines, and gh-args, scratch-remotes and push-refspecs need about 9 more. Line-golf inside feature items made git-globals' segments quadratic (50.7 s vs 1.8 s at 500 KB).",
+   "promise": "Free at least 12 runtime lines in cli/wuwei/*.py with no behaviour change and no complexity change. Every rewritten line is checked by a differential probe (route corpus, test inputs and a generated command set: decisions and reasons identical on both trees, with punctuation runs up to the longest operator plus 2) and timed at 125 KB and 500 KB against the base (no shape slower by more than 20 percent). Files: cli/wuwei/*.py and the vendored copy. Runtime lines: -12 or more. Rollback: revert. Outside: any change to messages, exit codes or CLI output.",
+   "acceptance": [
+    "given main and the head, when the differential probe runs the route corpus, the suite's command inputs and a generated set of at least 5,000 commands through guards.bash, then decisions and reasons are identical",
+    "given each rewritten function, when the timing probe runs its worst shape at 125 KB and 500 KB on both trees, then the head is no more than 20 percent slower on any shape"
    ],
    "status": "open",
    "added": "2026-10-17",
