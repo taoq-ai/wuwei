@@ -123,7 +123,10 @@ item.
 4. Write the retro to `.wuwei/retro/<date>.md`: recurring blockers and gaps with evidence, and at
    most three proposals, each the smallest rule change that would have prevented a recorded
    problem. A proposal that changes how the process runs is applied by the planner to
-   `.wuwei/standards.md`; a goal change waits for the owner.
+   `.wuwei/standards.md`; a goal change waits for the owner. Place each lesson by its scope: a
+   lesson about one repository's code goes in `.wuwei/standards.md` as a line that names that
+   repository; a lesson about how seats work in any repository is a charter proposal for the retro.
+   A lesson that fits both is a charter proposal, never a standards line.
 5. Defect vaccines: for each escaped defect (a revert or a follow-up fix), propose a regression
    test item, and a line under the gate that should have caught it in `.wuwei/standards.md`:
    `<gate>: <the defect class, in one line>`. The planner passes these lines to every seat brief.

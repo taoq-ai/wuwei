@@ -41,6 +41,50 @@ def test_every_gate_carries_the_worktree_write_mutant_and_stub_rules(role):
         assert rule in text, (role, rule)
 
 
+def _flat(path):
+    return ' '.join((PLUGIN / path).read_text().split())
+
+
+@pytest.mark.parametrize('role', ['builder', 'sentinel-security'])
+def test_the_parser_rule_names_the_generated_probe_and_its_three_counts(role):
+    text = _flat(f'agents/{role}.md')
+    for rule in ('generated combinatorial probe', 'under real bash', 'with a stub program on PATH',
+                 'how many commands were generated', 'how many really ran the door program', 'the holes',
+                 'written by code (json.dumps or a Python literal), never typed into a shell'):
+        assert rule in text, (role, rule)
+
+
+def test_every_gate_reruns_the_parser_probe_and_probes_checks_without_door_words():
+    for role in ('sentinel-arch', 'sentinel-goal', 'sentinel-quality', 'sentinel-security'):
+        text = _flat(f'agents/{role}.md')
+        for rule in ('re-runs it and adds a class for each hole it finds',
+                     "When a change to guard parsing makes more commands unreadable or rewrites the guard's parser",
+                     'the checks that do not rely on door words (the program names and paths a guard matches'):
+            assert rule in text, (role, rule)
+
+
+def test_equivalence_needs_a_differential_probe_with_0_differences():
+    text = _flat('agents/sentinel-quality.md')
+    assert ('equivalent or deletable only after a generated differential probe between the head and '
+            'the change shows 0 differences') in text
+    assert 'a surviving mutant alone is reported as untested, `[low] blocks: no`' in text
+    assert 'A mutant that is equivalent' not in text
+
+
+def test_the_planner_forwards_the_verdicts_for_one_head_together():
+    text = _flat('charters/planner.md')
+    assert ('every gate verdict for a head goes to the builder together, once the last gate for that '
+            'head returns') in text
+    assert 'the builder starts fixing only then' in text
+
+
+def test_the_steward_files_a_repository_lesson_in_its_standards_and_a_seat_lesson_as_a_proposal():
+    text = _flat('charters/steward.md')
+    assert "a lesson about one repository's code goes in `.wuwei/standards.md` as a line that names that repository" in text
+    assert 'A lesson that fits both is a charter proposal' in text
+    assert 'a lesson about how seats work in any repository is a charter proposal for the retro' in text
+
+
 def test_every_agent_has_its_reviewed_tool_grant():
     allow = json.loads((PLUGIN / 'agents' / 'allowlist.json').read_text())
     for role, tools in allow.items():

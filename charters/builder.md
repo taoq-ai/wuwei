@@ -57,7 +57,12 @@ FINDING, with the command you ran:
   to the repository's guard code, run its route corpus (`tests/fixtures/routes.json` where it
   exists) on main and on the branch, record the corpus sha256, and list a refusal that names a
   different PR or repository as its own row.
-- VAL: changed parsers tested on blank, malformed, duplicate and boundary input.
+- VAL: changed parsers tested on blank, malformed, duplicate and boundary input. A change to
+  guard parsing (how a guard reads a command) comes with a generated combinatorial probe run under
+  real bash with a stub program on PATH: operator or spelling classes x positions x targets. The PR
+  reports how many commands were generated, how many really ran the door program (the guarded
+  program the stub stands for), and the holes. Probe fixtures that hold JSON escapes are written by
+  code (json.dumps or a Python literal), never typed into a shell.
 - TEST: assertions reach the real consumer; tests of the old contract updated.
 - ERR: validation, timeout and partial failures give the caller an error it can act on.
 - STATE: interleaved writers and replays around read-check-write.
