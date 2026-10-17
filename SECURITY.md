@@ -25,8 +25,16 @@ brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the com
 wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
 
 - `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
-- `$(...)` inside double quotes, process substitution (`<(...)`), and ANSI-C quoting (`$'...'`).
-- A separator glued to a redirect or a pipe (`>;`, `|&`), and quote splicing inside a word.
+- `$(...)` inside double quotes, and quote splicing inside a word.
+- A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
+  as `rm -rf .wuwei/*`, `find -delete` and `git clean`.
+
+A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`, `);`) is split into
+the operators sh reads, so process substitution and glued separators reach their doors; `|&` is a
+pipe. A command with `$'...'` or `$"..."` quoting is unreadable, so it is refused when it names a
+door program. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
+trailing slash, and `.wuwei` itself, as a writer argument (`of=` too), a redirect target or an
+edit path.
 - A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
   unquoted backticks.
 - A shell option before `-c` that takes an argument or is not a single-dash cluster

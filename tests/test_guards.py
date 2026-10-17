@@ -360,6 +360,50 @@ def test_an_unreadable_command_naming_a_door_is_refused(root, fake, repo, comman
     assert decision['decision'] == 'deny' and HINT in decision['reason'], command
 
 
+@pytest.mark.parametrize('command', ['cat <(git push origin main)', 'echo >(git push origin main)', 'true;>x git push origin main',
+                                     'true&&(git push origin main)', 'x=1;(git push origin main)', 'true |& git push origin main',
+                                     'true);git push origin main', 'true|&git push origin main'])
+def test_a_push_glued_to_punctuation_meets_the_push_door(root, fake, repo, command):
+    """shlex hands back <( ;> &&( as one word; sh reads each operator, so bash runs the push (item shell-doors)."""
+    assert ['git', 'push', 'origin', 'main'] in [argv for argv, _ in guards.segments(command)], command
+    assert 'the default branch main' in guards.pre_tool(root, bash(command))['reason'], command
+
+
+@pytest.mark.parametrize('command', ["git push origin $'main'", 'git push origin $"main"', "gh pr merge $'5'",
+                                     "echo ok; git push origin $'ma'\"in\"", "git push origin \"x\"$'main'",
+                                     "git push origin 'x'$\"main\""])
+def test_dollar_quoting_in_a_command_naming_a_door_is_unreadable(root, fake, repo, command):
+    decision = guards.pre_tool(root, bash(command))
+    assert decision['decision'] == 'deny' and HINT in decision['reason'], command
+
+
+@pytest.mark.parametrize('command', ['diff <(sort a) <(sort b)', "echo $'a\\tb'", 'echo "a && b"', "git log --format='%h (%s)'",
+                                     'python3 -c "print(1)"', 'pytest -q > out.txt 2>&1', 'diff <(ls a) <(ls b)',
+                                     'cd x && (pytest -q)', 'git commit -m "fix (scope): thing"', 'cat .wuwei/ledger/x.jsonl',
+                                     'ls .wuwei', 'cp .wuwei/plan.json /tmp/p.json', 'rm -rf .wuwei/cache', 'true |& tee log.txt'])
+def test_everyday_shell_shapes_pass(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+@pytest.mark.parametrize('command', ['x=$(gh pr view 5 --json state); echo $x', 'test -f a || (git push origin i-1-change)',
+                                     'git commit -m "match ^x$" && git push origin i-1-change',
+                                     "grep -n '$\"' a.sh && gh pr view 5", 'echo "it\'s $\'x\'" && gh pr view 5'])
+def test_a_door_command_glued_to_punctuation_or_quoting_a_dollar_reaches_its_door(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+@pytest.mark.parametrize('command', ['rm -rf .wuwei/ledger', 'mv .wuwei/ledger x', 'cp x .wuwei/ledger', 'rm -rf .wuwei',
+                                     'rm -rf /abs/path/.wuwei/ledger', 'rm -rf .wuwei/', 'rm .wuwei/ledger.jsonl/',
+                                     'tee .wuwei/ledger', 'dd if=/dev/zero of=.wuwei/ledger.jsonl', 'echo x > .wuwei/ledger'])
+def test_a_ledger_path_without_a_trailing_slash_is_a_ledger_write(root, repo, command):
+    assert 'the ledger is written only' in guards.pre_tool(root, bash(command))['reason'], command
+
+
+@pytest.mark.parametrize('path', ['.wuwei/ledger', '/w/.wuwei', '/w/.wuwei/ledger/'])
+def test_an_edit_of_a_ledger_path_without_a_file_name_is_refused(root, path):
+    assert guards.pre_tool(root, {'tool_name': 'Write', 'tool_input': {'file_path': path}})['decision'] == 'deny'
+
+
 @pytest.mark.parametrize('command', [
     'cd /repo\nmake test\nls -la',
     "echo it's late\nls",

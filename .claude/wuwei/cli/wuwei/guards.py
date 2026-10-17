@@ -13,7 +13,8 @@ from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
-CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')'}
+CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}
+OPS = r'&>>|<<<|&&|\|\||;;|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # the operators sh reads in a run of punctuation
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
@@ -24,10 +25,10 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei(/ledger|/?(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
+LEDGER = re.compile(r'(^|[/=])\.wuwei(/ledger(\.jsonl)?)?/?$|(^|[/=])\.wuwei/ledger/')
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -82,8 +83,10 @@ def segments(command):
         lexer.whitespace_split = True
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         out, current = [], []
-        for token in list(lexer) + [';']:
-            if token in CONTROL:
+        if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)):
+            return None  # $'..' and $".." quoting outside quotes: sh reads what shlex does not
+        for token in [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';']:
+            if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
                 if current:
                     out.extend(_unwrap(current))
                 current = []
