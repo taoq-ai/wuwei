@@ -569,6 +569,19 @@ def test_a_redirect_anywhere_in_a_command_gives_its_target_and_keeps_the_other_w
     assert guards.segments('then echo a >') == [guards.UNREAD, (['echo', 'a', '>'], [])]  # no word after a redirect: unread
 
 
+@pytest.mark.parametrize('command, tokens', [
+    ('x&&>|y', ['x', '&&', '>|', 'y']),  # without && in OPS: & &> |
+    ('x|&>y', ['x', '|&', '>', 'y']),  # without |&: | &>
+    ('x&>;y', ['x', '&>', ';', 'y']),  # without &>: & > ;
+])
+def test_a_punctuation_run_splits_into_the_longest_operators_first(command, tokens):
+    assert re.findall(guards.OPS + r'|\w+', command) == tokens
+
+
+def test_a_glued_and_or_pipe_ends_the_command_before_the_redirect():
+    assert guards.segments('x&&>|y') == guards.segments('x|&>y') == [(['x'], []), ([], ['y'])]
+
+
 def test_an_unreadable_sh_c_body_naming_a_door_is_refused(root, fake, repo):
     decision = guards.pre_tool(root, bash('bash -c "echo it\'s; gh pr merge 5 --admin"'))
     assert decision['decision'] == 'deny' and HINT in decision['reason']

@@ -163,8 +163,7 @@ def _verdict_problem(root, payload, role):
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
         return None
-    others = [row for row in earlier if row.get('agent') != payload.get('agent_id')]
-    if others:
+    if others := [row for row in earlier if row.get('agent') != payload.get('agent_id')]:
         return (f'{rel} held the {others[-1].get("verdict")} verdict another seat wrote; yours replaced it, and '
                 f'theirs still counts as recorded. Write yours to {path.stem}-2.md beside it (the next free '
                 'number) and end with its Verdict file: line.')
@@ -199,15 +198,13 @@ def post_tool(root, payload):
         return _answers(root, data, payload.get('tool_response'))
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
-        named = sorted(evidence.refs(json.dumps(data)))
-        if named:
+        if named := sorted(evidence.refs(json.dumps(data))):
             ws.record(root, 'sent', {'tool': tool, 'refs': named})
             ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
                               for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
-        match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response')))
-        if match:
+        if match := re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response'))):
             gaps = evidence.visible(evidence.gaps(root, match[1], int(match[2])))
             ws.cache_put(root, 'board', None)
             if gaps:
@@ -389,8 +386,7 @@ def main(event):
     if sync.remote() and event == 'SessionStart':
         root = _sync(sync.restore, payload.get('cwd')) or root
     if root is not None:
-        out = handle(root, event, payload)
-        if out:
+        if out := handle(root, event, payload):
             print(json.dumps(out))
         if sync.remote() and event == 'Stop':
             _sync(sync.push, root)
