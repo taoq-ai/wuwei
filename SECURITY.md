@@ -51,6 +51,15 @@ passes only when every pathspec and `-C` dir is a plain word (letters, digits, `
 pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
 exemption, because a later `--no-dry-run` cancels `-n`.
 
+git's options before the subcommand are read by allowlist, the options git 2.43 takes (git.c): a
+valued option (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`, `--config-env`,
+`--attr-source`, `--shallow-file`) takes the next word, so `git --config-env core.abc=Y push origin
+main` meets the push door. Any other option before a push is refused, naming it. A `-c` or
+`--config-env` that sets `remote.*`, `branch.*`, `url.*` or `push.default` is refused before a push,
+because it decides where the push goes. One that sets an alias or an include (`include.path`,
+`includeIf.*`) is refused whatever the subcommand and whatever option comes first, because an alias
+runs a command the guard never reads. Set either with `git config` before the call.
+
 Known shapes they do not read on one line, reported and not yet fixed:
 
 - `eval`, `source` or `.` on `/dev/stdin` or `<(...)`, and a variable as the program name.
@@ -69,11 +78,9 @@ Known shapes they do not read on one line, reported and not yet fixed:
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
 - Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
-- A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and a git alias
-  set in config before the call. An alias set on the command line is refused only when the word
-  `clean` appears in it as written (`git -c alias.c='clean -fdx' c`); a quoted or escaped name
-  (`git -c 'alias.c=cl"ea"n -fdx' c`, `git -c 'alias.c=!git cl\ean -fdx' c`) or a `!` shell body
-  (`git -c 'alias.c=!rm -rf .wuwei/ledger' c`) passes.
+- A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and git config
+  set before the call (`git config alias.p push`, `git config remote.origin.push HEAD:main`, then
+  `git p` or `git push`), or passed through `GIT_CONFIG_*` environment variables.
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
 

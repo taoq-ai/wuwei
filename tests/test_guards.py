@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -1365,3 +1366,87 @@ def test_a_write_to_a_repositories_id_endpoint_is_refused_naming_the_repos_spell
                                      'gh api -X GET repositories/123/pulls -f state=open'])
 def test_a_read_of_a_repositories_id_endpoint_passes(root, cloud, command):
     assert guards.bash(root, command, '/repo', 's1') is None, command
+
+
+GIT_GLOBALS_REFUSED = ['git --config-env core.abc=Y push origin main', 'git --namespace x push origin main',
+                       'git --attr-source HEAD push origin main', 'git --shallow-file f push origin main',
+                       'git --config-env=core.abc=Y -p --namespace x push origin HEAD:main', 'git -C sub --attr-source x push origin main',
+                       'git --no-pager push origin main', 'git -p push origin main', 'git --bare push origin main']
+GIT_UNKNOWN = ['git --super-prefix x push origin main', 'git --no-advice push origin feature', 'git -cuser.name=x push origin feature',
+               'git --shallow-file=f push origin feature', 'git --frobnicate push origin main']
+GIT_STEERING = ['git -c remote.origin.push=HEAD:main push origin', 'git -c Remote.origin.mirror=true push origin',
+                'git -c push.default=upstream push origin', 'git -c branch.x.merge=refs/heads/main push origin',
+                'git -c url.a.pushInsteadOf=b push', 'PUSHREF=HEAD:main git --config-env=remote.origin.push=PUSHREF --no-pager push origin',
+                'git --no-advice -c remote.origin.push=HEAD:main push origin']
+GIT_ALIASES = ['git -c alias.p=push p origin main', 'git -c ALIAS.p=push p origin main', "git -c 'alias.p=!git push' p origin main",
+               'git --config-env alias.p=V p origin main', 'git --config-env=alias.p=V p', 'git -c include.path=f push origin',
+               'git -c \'alias.c=cl"ea"n -fdx\' c', "git -c 'alias.c=!rm -rf .wuwei/ledger' c", "git -c alias.c='clean -fdx' c",
+               'PUSHVAL=push git --config-env=alias.p=PUSHVAL -p p origin main', 'git --no-lazy-fetch -c alias.p=push p origin main',
+               "git --no-advice -c 'alias.p=!git push origin HEAD:main' p", 'git -c remote.origin.url=x -c includeIf.x.path=f status',
+               'git -c alias.p=push --no-lazy-fetch p origin main', 'git -c alias.p=push -c remote.origin.url=x p origin main']
+GIT_OPTIONS = [['-p'], ['-P'], ['-h'], ['-v'], ['--paginate'], ['--no-pager'], ['--bare'], ['--no-replace-objects'], ['--literal-pathspecs'],
+               ['--no-literal-pathspecs'], ['--glob-pathspecs'], ['--noglob-pathspecs'], ['--icase-pathspecs'], ['--no-optional-locks'],
+               ['--exec-path'], ['--html-path'], ['--man-path'], ['--info-path'], ['--help'], ['--version'], ['-C', 'sub'], ['-c', 'a.b=c'],
+               ['--git-dir', '.git'], ['--work-tree', '.'], ['--namespace', 'x'], ['--config-env', 'a.b=V'], ['--attr-source', 'HEAD'],
+               ['--shallow-file', 'f'], ['--git-dir=.git'], ['--work-tree=.'], ['--namespace=x'], ['--config-env=a.b=V'],
+               ['--attr-source=HEAD'], ['--exec-path=/x'], ['--list-cmds=main']]
+
+
+@pytest.mark.parametrize('command', GIT_GLOBALS_REFUSED)
+def test_a_push_to_main_after_any_git_global_option_meets_the_push_door(root, fake, repo, command):
+    """Item git-globals: each option git 2.43 reads with a separate value takes its word, so the push is the subcommand."""
+    assert 'the default branch main' in guards.pre_tool(root, bash(command))['reason'], command
+
+
+@pytest.mark.parametrize('option', GIT_OPTIONS, ids=' '.join)
+def test_each_git_option_takes_its_words_so_the_push_after_it_is_read(root, fake, repo, option):
+    """Item git-globals: every git 2.43 option, in each form, passes a feature push and meets the push door before main."""
+    assert guards.pre_tool(root, bash(shlex.join(['git', *option, 'push', 'origin', 'feature']))) is None, option
+    assert 'the default branch main' in guards.pre_tool(root, bash(shlex.join(['git', *option, 'push', 'origin', 'main'])))['reason'], option
+
+
+@pytest.mark.parametrize('command', GIT_UNKNOWN)
+def test_an_unknown_git_option_before_a_push_is_refused_naming_it(root, fake, repo, command):
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert shlex.split(command)[1] in reason and 'run git push without it' in reason, command
+
+
+@pytest.mark.parametrize('command', GIT_STEERING)
+def test_a_command_line_push_routing_config_before_a_push_is_refused(root, fake, repo, command):
+    """Item git-globals: remote, branch, url and push.default in -c move the target of a push."""
+    assert 'hides a push' in guards.pre_tool(root, bash(command))['reason'], command
+
+
+@pytest.mark.parametrize('command', GIT_ALIASES)
+def test_a_command_line_alias_or_include_is_refused_whatever_the_subcommand(root, fake, repo, command):
+    """Item git-globals: a -c alias or include runs a command the guard never reads, whatever comes before it."""
+    reason = guards.pre_tool(root, bash(command))['reason']
+    assert 'a command the guard cannot read' in reason and 'git config' in reason, command
+
+
+@pytest.mark.parametrize('command', ['git -C sub push origin feature', 'git -c user.name=x push origin feature', 'git --no-pager log',
+                                     'git --version', 'git -p --git-dir .git --work-tree . push origin feature', 'git --frobnicate status',
+                                     'git --namespace=x --exec-path=/x --list-cmds=main push origin feature', 'git -c alias status',
+                                     'git -c core.sshCommand=ssh -c credential.helper= -c http.extraHeader=A push origin feature',
+                                     'git -c url.https://github.com/.insteadOf=git@github.com: clone x', 'git -c remote.origin.url=x fetch',
+                                     'git -c push.default=current -c branch.x.remote=y status'])
+def test_known_git_options_before_ordinary_work_pass(root, fake, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
+def test_the_git_option_loop_stays_linear_at_125_kb(root, fake, repo):
+    for word in ('-p ', '-c a.b=c ', '--x ', '-c alias.p=x ', '-C . ', '--x -c alias.p=x '):
+        start = time.monotonic()
+        guards.bash(root, 'git ' + word * (125_000 // len(word)) + 'push origin main', '/repo', 's1')
+        assert time.monotonic() - start < 1, word
+
+
+@pytest.mark.parametrize('word', ['true;', '>x '])
+def test_segments_and_redirects_stay_linear_at_125_and_500_kb(root, word):
+    """Item git-globals: a hook that times out lets the tool run, so the split stays linear (quadratic took 50 s at 500 KB)."""
+    took = []
+    for size in (125_000, 500_000):
+        start = time.monotonic()
+        assert guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), word
+        took.append(time.monotonic() - start)
+    assert took[0] < 2 and took[1] < 8 and took[1] < 8 * max(took[0], 0.1), (word, took)
