@@ -608,6 +608,18 @@ def test_an_owner_approval_counts_only_at_the_head(root, fake):
     assert texts(evidence.gaps(root, 'acme/app', 42)) == ['owner review needed (owner_paths: infra/main.tf)']
 
 
+def test_only_an_owner_review_ruling_clears_the_owner_review(root, fake):
+    light(root)
+    fake.prs['42'] = make_pr(files=('infra/main.tf', 'tests/test_x.py'), body='WUWEI-Item: I-1\nRollback: revert the PR')
+    attest(root, 'quality')
+    for kind in ('breaking', 'exception', None, '', 0, False, []):
+        ws.record(root, 'ruling', {'kind': kind, 'pr': 'acme/app#42', 'head': HEAD[:7], 'approved': True})
+    ws.record(root, 'ruling', {'pr': 'acme/app#42', 'head': '', 'approved': True})  # a blank head matches no head
+    assert texts(evidence.gaps(root, 'acme/app', 42)) == ['owner review needed (owner_paths: infra/main.tf)']
+    ws.record(root, 'ruling', {'pr': 'acme/app#42', 'head': HEAD[:7], 'approved': True})
+    assert evidence.gaps(root, 'acme/app', 42) == []
+
+
 def test_a_light_item_touching_a_trust_path_is_raised_to_standard(root, fake):
     light(root)
     fake.prs['42'] = make_pr(files=('src/grants.py', 'tests/test_grants.py'))
@@ -748,9 +760,35 @@ def test_a_repo_that_never_ran_a_pull_request_workflow_gets_no_ci_gap(root, fake
     assert evidence.gaps(root, 'o/r', 5) == []
 
 
-@pytest.mark.parametrize('reply', [gh.GhError('HTTP 403: Resource not accessible by integration'), {'workflow_runs': None},
-                                   'not json'])
-def test_an_unreadable_actions_host_counts_as_having_ci(root, fake, monkeypatch, reply):
+@pytest.mark.parametrize('files, shown', [
+    (('docs/site/x.md', 'specs/a/spec.md'), False), (('specs/a/plan.json',), False), (('LICENSE', 'README.rst'), False),
+    (('docs/site/x.md', 'cli/wuwei/x.py'), True), (('requirements.txt',), True), (('CMakeLists.txt',), True),
+    (('docs/exploit.py',), True), (('src/docs/x.py',), True), (('LICENSE.py',), True), ((), True),
+    (('charters/builder.md',), True), (('agents/builder.md',), True), (('.claude/skills/x/SKILL.md',), True),
+    (('AGENTS.md',), True), (('.claude/wuwei/charters/_gate.md',), True)])
+def test_only_a_docs_or_specs_diff_skips_ci_not_started(root, fake, files, shown):
+    not_started(root, fake)
+    fake.prs['5'] = make_pr(number=5, checks=None, files=files, body='WUWEI-Item: I-1\nNo test: docs')
+    assert ('CI not started at aaaaaaa' in texts(evidence.gaps(root, 'o/r', 5))) == shown
+    assert any('actions/runs' in call[1] for call in fake.calls) == shown  # a docs-only diff makes no Actions read
+
+
+def test_a_file_renamed_out_of_code_keeps_ci_not_started(root, fake):
+    not_started(root, fake)
+    fake.prs['5'] = make_pr(number=5, checks=None, files=('docs/x.md',), body='WUWEI-Item: I-1\nNo test: docs')
+    fake.prs['5']['files'][0]['previous_filename'] = 'cli/wuwei/x.py'
+    assert 'CI not started at aaaaaaa' in texts(evidence.gaps(root, 'o/r', 5))
+
+
+def test_pull_request_target_runs_count_as_ci(root, fake):
+    not_started(root, fake, runs=(('1', '.github/workflows/ci.yml', 'pull_request_target'),))
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+
+
+@pytest.mark.parametrize('reply, error', [
+    (gh.GhError('HTTP 403: Resource not accessible by integration'), 'HTTP 403: Resource not accessible by integration'),
+    ({'workflow_runs': None}, "'NoneType' object is not iterable"), ('not json', "'str' object has no attribute 'get'")])
+def test_an_unreadable_actions_host_counts_as_having_ci(root, fake, monkeypatch, reply, error):
     not_started(root, fake)
 
     def answer(args, timeout=30):
@@ -760,7 +798,7 @@ def test_an_unreadable_actions_host_counts_as_having_ci(root, fake, monkeypatch,
             raise reply
         return reply
     monkeypatch.setattr(gh, 'run', answer)
-    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+    assert texts(evidence.gaps(root, 'o/r', 5)) == [f'CI not started at aaaaaaa (Actions host unreadable: {error})']
 
 
 def test_the_actions_read_is_cached_a_day_per_repository(root, fake):
@@ -785,7 +823,7 @@ def actions_by_repo(monkeypatch, fake, replies):
 
 def test_each_repository_keeps_its_own_cached_actions_answer(root, fake, monkeypatch):
     not_started(root, fake)
-    actions_by_repo(monkeypatch, fake, {'quiet': [{'workflow_runs': []}],
+    actions_by_repo(monkeypatch, fake, {'quiet': [{'workflow_runs': []}] * 2,  # pull_request, then pull_request_target
                                         'busy': [{'workflow_runs': [{'path': '.github/workflows/ci.yml'}]}]})
     assert 'CI not started at aaaaaaa' not in texts(evidence.gaps(root, 'a/quiet', 5))
     assert 'CI not started at aaaaaaa' in texts(evidence.gaps(root, 'b/busy', 5))
@@ -794,10 +832,10 @@ def test_each_repository_keeps_its_own_cached_actions_answer(root, fake, monkeyp
 
 def test_a_failed_actions_read_is_not_cached(root, fake, monkeypatch):
     not_started(root, fake)
-    actions_by_repo(monkeypatch, fake, {'r': [gh.GhError('HTTP 502: Bad Gateway'), {'workflow_runs': []}]})
-    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa']
+    actions_by_repo(monkeypatch, fake, {'r': [gh.GhError('HTTP 502: Bad Gateway')] + [{'workflow_runs': []}] * 2})
+    assert texts(evidence.gaps(root, 'o/r', 5)) == ['CI not started at aaaaaaa (Actions host unreadable: HTTP 502: Bad Gateway)']
     assert evidence.gaps(root, 'o/r', 5) == []
-    assert sum('actions/runs' in call[1] for call in fake.calls) == 2
+    assert sum('actions/runs' in call[1] for call in fake.calls) == 3
 
 
 def test_a_moved_head_names_the_gate_owed_and_ci_not_started(root, fake):
