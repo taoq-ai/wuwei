@@ -76,30 +76,6 @@
    "approved": true
   },
   {
-   "id": "free-lines-5",
-   "title": "refactor: free runtime lines with no behaviour change and no complexity change",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 5,
-    "time": 8,
-    "risk": 3,
-    "size": 2
-   },
-   "score": 8.0,
-   "why": "After git-globals the runtime sits at about 2,997 of 3,000 lines, and gh-args, scratch-remotes and push-refspecs need about 9 more. Line-golf inside feature items made git-globals' segments quadratic (50.7 s vs 1.8 s at 500 KB).",
-   "promise": "Free at least 12 runtime lines in cli/wuwei/*.py with no behaviour change and no complexity change. Every rewritten line is checked by a differential probe (route corpus, test inputs and a generated command set: decisions and reasons identical on both trees, with punctuation runs up to the longest operator plus 2) and timed at 125 KB and 500 KB against the base (no shape slower by more than 20 percent). Files: cli/wuwei/*.py and the vendored copy. Runtime lines: -12 or more. Rollback: revert. Outside: any change to messages, exit codes or CLI output.",
-   "acceptance": [
-    "given main and the head, when the differential probe runs the route corpus, the suite's command inputs and a generated set of at least 5,000 commands through guards.bash, then decisions and reasons are identical",
-    "given each rewritten function, when the timing probe runs its worst shape at 125 KB and 500 KB on both trees, then the head is no more than 20 percent slower on any shape"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "git-globals",
    "title": "fix(guards): git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door",
    "goal": "G-2",
@@ -951,6 +927,31 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "free-lines-5",
+   "title": "refactor: free runtime lines with no behaviour change and no complexity change",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 5,
+    "time": 8,
+    "risk": 3,
+    "size": 2
+   },
+   "score": 8.0,
+   "why": "After git-globals the runtime sits at about 2,997 of 3,000 lines, and gh-args, scratch-remotes and push-refspecs need about 9 more. Line-golf inside feature items made git-globals' segments quadratic (50.7 s vs 1.8 s at 500 KB).",
+   "promise": "Free at least 12 runtime lines in cli/wuwei/*.py with no behaviour change and no complexity change. Every rewritten line is checked by a differential probe (route corpus, test inputs and a generated command set: decisions and reasons identical on both trees, with punctuation runs up to the longest operator plus 2) and timed at 125 KB and 500 KB against the base (no shape slower by more than 20 percent). Files: cli/wuwei/*.py and the vendored copy. Runtime lines: -12 or more. Rollback: revert. Outside: any change to messages, exit codes or CLI output.",
+   "acceptance": [
+    "given main and the head, when the differential probe runs the route corpus, the suite's command inputs and a generated set of at least 5,000 commands through guards.bash, then decisions and reasons are identical",
+    "given each rewritten function, when the timing probe runs its worst shape at 125 KB and 500 KB on both trees, then the head is no more than 20 percent slower on any shape"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as 9c637ab (#1123): four gates pass at a287d44; runtime 2,976 on main"
   },
   {
    "id": "board-links",
