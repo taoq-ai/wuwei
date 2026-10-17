@@ -168,6 +168,22 @@
     {"command": "echo x 2>&1>.wuwei/ledger/a.jsonl", "source": "gates shell-doors at e2950da (bash changed the ledger; refused on main)", "verdict": "refusal"},
     {"command": ">&>x git push origin main", "source": "gates shell-doors at e2950da (a redirect whose target is an operator is unread)", "verdict": "refusal"},
     {"command": "git push origin main2>x", "source": "gates shell-doors at e2950da (a digit ending a word is not an fd number)", "verdict": "pass"},
-    {"command": "cat < .wuwei/ledger/a.jsonl", "source": "gates shell-doors at e2950da (an input redirect reads the ledger)", "verdict": "pass"}
+    {"command": "cat < .wuwei/ledger/a.jsonl", "source": "gates shell-doors at e2950da (an input redirect reads the ledger)", "verdict": "pass"},
+    {"command": "rm -rf .wuwei/*", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "rm -rf .wuwei/{l,}edger", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "rm -rf .w*/ledger", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "find .wuwei -delete", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "cd .wuwei && rm -rf ledger", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -fdx", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "echo 0 > .wuwei/cache/c.json", "source": "item records acceptance 1 (bash changed the records)", "verdict": "refusal"},
+    {"command": "echo '\"x\"' > .wuwei/cache/default-taoq-ai__wuwei.json", "source": "item records acceptance 3 (a cache entry feeds gate inputs)", "verdict": "refusal"},
+    {"command": "rm -rf *", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "rm -rf .wuwei/cache", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "rm .wuwei/cache/x", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "cd .wuwei && cat plan.json", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "find .wuwei -name x", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "git clean -fd", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "rm foo.wuwei", "source": "item records acceptance 4", "verdict": "pass"},
+    {"command": "rm -rf .wuwei-x", "source": "item records acceptance 4", "verdict": "pass"}
   ]
 }

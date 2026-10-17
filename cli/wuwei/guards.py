@@ -59,10 +59,11 @@ PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def records(path, below=LEDGER):  # .wuwei, or what lies below it (None: anything), as sh expands the path
-    if m := re.search(r'\{(?:([^{}]*,[^{}]*)|(\w)\.\.(\w))\}', path):  # brace expansion, innermost first: {a,b}, {a..z}, {z..a}
+    if m := re.search(r'\{(?:([^{}]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
         alts = m[1].split(',') if m[1] is not None else map(chr, range(ord(min(m[2], m[3])), ord(max(m[2], m[3])) + 1))
         return any(records(path[:m.start()] + alt + path[m.end():], below) for alt in alts)
-    parts = [p for p in re.split(r'[/=]', normpath(path.replace('[^', '[!'))) if p not in ('', '.')]  # //, /./, .., of= and [^x] too
+    path = re.sub(r'\[:\w+:\]', '!-~', path.replace('[^', '[!'))  # [^x] negates as [!x]; a [:class:] reads as any printable character
+    parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
     return any(p[:1] == '.' and fnmatchcase('.wuwei', p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
         fnmatchcase(name, parts[i + 1]) for name in below)) for i, p in enumerate(parts))
 

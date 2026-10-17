@@ -451,7 +451,8 @@ def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo,
 
 @pytest.mark.parametrize('command', RECORDS + [
     'rm -rf .wuwei/cache/../ledger', 'rm -rf .wuwei/[^x]edger', 'rm -rf .wuwei/{m..k}edger', 'rm -rf .wuwei/{{l,x},}edger',
-    'rm -rf .{v..x}uwei/ledger', 'rm -rf .wuwei/led?er', 'rm -rf .[w]uwei', 'rm -rf .*', 'chmod -R 000 .wu*',
+    'rm -rf .{v..x}uwei/ledger', 'rm -rf .wuwei/led?er', 'rm -rf .wuwei/[[:lower:]]edger', 'rm -rf .[[:alpha:]]uwei',
+    'rm -rf .wuwei/{k..m..1}edger', 'rm -rf .[w]uwei', 'rm -rf .*', 'chmod -R 000 .wu*',
     "find . -path './.wuwei/*' -delete", 'find .wuwei/ledger -exec rm {} +', 'find .wuwei -execdir truncate -s0 {} ;',
     'cd .wuwei && echo x > ledger/a.jsonl', 'pushd .wuwei/verdicts; rm ../ledger/a.jsonl', 'cd .wuwei; find . -delete',
     'git clean -fdX', 'git clean -f -d -x', 'git clean -fdx .', 'git clean -fdx -e build', 'git clean -fdx .wuwei/ledger',
