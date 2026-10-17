@@ -98,8 +98,10 @@ reads `change request outstanding: <context>`; both are actionable safety gaps. 
 workflows come from the host (its last 100 `pull_request_review` runs, cached for a day), read only
 when the head has an unsettled status. An unreadable Actions host leaves the status CI, never a pass.
 
-CI not started: a head with no checks whose diff holds code (not only docs, `specs/` or `openspec/`),
-in a repository that ran a `pull_request` or `pull_request_target` workflow (Actions reads cached a
+CI not started: a head with no checks whose diff, read by both names of a renamed file, is empty or
+holds more than prose (`.md`, `.rst`, `.adoc`), `LICENSE`, `NOTICE`, `specs/` and `openspec/` (a
+`.txt`, code under `docs/` and the files seats load, such as charters, agents, skills and
+`AGENTS.md`, are not prose), in a repository that ran a `pull_request` or `pull_request_target` workflow (Actions reads cached a
 day), reads `CI not started at <sha7>`; a path-filtered workflow holds a code PR it skips until an
 exception. An unreadable Actions host shows the gap with `(Actions host unreadable: <error>)`.
 

@@ -18,9 +18,14 @@ budget is +6 lines. No new module, CLI flag, config key or guard route.
 4. The cached reader is `workflow_paths(pull_request) or workflow_paths(pull_request_target)`, so
    the second read happens only on an empty first answer. No change to `gh.py`.
 
+5. Gate findings at fc27033: a `PROSE` pattern decides the CI read (both names of each file, an empty
+   list holds), `gh.pr` carries the previous filename in `renamed` (release() still reads it as
+   truthy), and the ruling test is `'kind' not in data` with `head or '-'`. The no-test gap keeps its
+   `DOCS` reading and the generated exemption, as on main.
+
 ## Constitution check
 
-Stdlib only, test first, shortest diff, no speculative abstraction. Runtime 2,977 after the change.
+Stdlib only, test first, shortest diff, no speculative abstraction. Runtime 2,980 after the gate fixes (+4).
 
 ## Rollback
 

@@ -51,6 +51,16 @@ The acceptance scenarios, restated:
   `gh api 'repos/taoq-ai/wuwei/actions/runs?event=pull_request_target&per_page=1'`, answered
   `total_count: 0` and an empty `workflow_runs` list: the same shape `gh.workflow_paths` parses for
   `pull_request`.
+- Q: (arch and security gates at fc27033) Does the CI read reuse the no-test reading? A: No.
+  `DOCS` reads every `.txt`, any path under `docs/` and `LICENSE*` as docs, so a `requirements.txt`
+  or `docs/exploit.py` diff skipped the gap. The CI read uses its own `PROSE` pattern: a `.md`,
+  `.rst` or `.adoc` file, `LICENSE`, `NOTICE`, or anything under `specs/` or `openspec/`, and never
+  `AGENTS.md`, `CLAUDE.md`, `charters/*.md`, `agents/*.md` or `skills/*/SKILL.md` at any depth.
+  Both names of a renamed file must be prose (`gh.pr` now carries the previous filename in
+  `renamed`), and an empty file list keeps the gap. The no-test gap keeps `DOCS`, and `needed()`
+  keeps its own reading, because changing either moves the test or gate rules outside this item.
+- Q: Does any falsy `kind` count as an owner review ruling? A: No. Only a row without the `kind`
+  key counts, and a blank `head` matches no head.
 - Q: Is a failed read cached? A: No, as on main: the exception leaves `_cached` before it writes.
 
 ## How this fails
@@ -66,9 +76,16 @@ The acceptance scenarios, restated:
 
 ## Breaking
 
-An owner review that a `breaking:` or `exception:` ruling cleared on main now holds the merge. A PR
+Three outward changes to what `wuwei evidence` and `wuwei status` report:
+
+1. An owner review that a `breaking:` or `exception:` ruling cleared on main now holds the merge. A PR
 on `owner_paths` that was ready on main reads `owner review needed` until the owner answers
 `owner review: <owner/repo>#<n> at <sha7>` (or approves on GitHub at the head).
+2. When the Actions host is unreadable, the gap text changes from `CI not started at <sha7>` to
+   `CI not started at <sha7> (Actions host unreadable: <error>)`. A reader matching the old text
+   exactly must match the prefix instead; no code in WUWEI matches it exactly.
+3. A head whose diff is only prose or specs (see FR-002) is no longer held by `CI not started`; on
+   main it was held until checks registered.
 
 Migration: for each open PR on `owner_paths` that relied on a breaking or exception answer, ask the
 owner review question at its head.
@@ -79,13 +96,19 @@ owner review question at its head.
   the owner wants docs CI to hold merges, in which case point 2 reads the workflow's paths instead.
 - The error text in the gap is the exception's own message; a `GhError` carries the host's message,
   which holds no secret (it is what `gh` prints). Overturned if a host error ever echoes a token.
+- The cache key `ci-<repo>` is unchanged, so a `[]` cached by main for a repository that runs only
+  `pull_request_target` reads as no CI for up to a day after upgrade. Overturned if that day matters,
+  in which case the key gains a suffix.
+- A docs-only `.txt` or image diff now keeps the gap (fails closed, as on main); overturned if such
+  PRs wait often, in which case `PROSE` widens.
 - The second read is `pull_request_target` only after an empty `pull_request` answer, so a repository
   with both costs one read, as on main.
 
 ## Requirements
 
-- FR-001 `owner_approved` counts a ruling only when it has no `kind`.
-- FR-002 No `CI not started` gap and no Actions read when every file is docs or specs.
+- FR-001 `owner_approved` counts a ruling only when it has no `kind` key and its non-blank head prefixes the PR head.
+- FR-002 No `CI not started` gap and no Actions read when the file list is non-empty and every file, by both
+  names, matches `PROSE`.
 - FR-003 An unreadable Actions host gives `CI not started at <sha7> (Actions host unreadable: <error>)`.
 - FR-004 A `pull_request_target` run counts as CI.
 - FR-005 Vendored `.claude/` copy rewritten; runtime within 3,000 lines.

@@ -22,3 +22,12 @@
 - [x] T012 Re-vendor `.claude/` with `setup.vendor`
 - [x] T013 Full suite green; runtime at 2,977 lines
 - [x] T014 Compare `wuwei evidence` on main and head with a stubbed code host for each acceptance input
+
+## Phase 4: Gate findings at fc27033
+
+- [x] T015 [US2] requirements.txt, CMakeLists.txt, docs/exploit.py, src/docs/x.py, LICENSE.py, an empty list, charters, agents, skills and AGENTS.md keep the gap; specs/a/plan.json and LICENSE plus README.rst skip it with 0 Actions reads (arch blocking, security, quality)
+- [x] T016 [US2] A file renamed from cli/wuwei/x.py to docs/x.md keeps the gap (security)
+- [x] T017 [US1] Falsy kinds and a blank head do not count as owner review (security)
+- [x] T018 [US3] The unreadable-host test pins the exact error text for each reply (quality)
+- [x] T019 Run red: 13 failed; implement `PROSE`, the previous filename and the kind test; run green: 133 passed
+- [x] T020 Name the unreadable-host text and the docs-only relaxation in Breaking and the commit (arch)

@@ -11,6 +11,8 @@ constitution.
 | A2 | Ambiguity | LOW | item promise (2) | Whether a generated release PR skips the CI read | Resolved in Clarifications: no, the generated exemption stays on the no-test gap |
 | C1 | Coverage | LOW | spec How this fails 1 | An exception naming the owner review gap still clears it | Accepted: that is the exception path (`excepted`), outside owner_approved |
 | C2 | Coverage | LOW | spec How this fails 2 | Docs CI that should hold a docs-only merge | Accepted as the plan item's assumption; owner can overturn |
+| G1 | Coverage | HIGH | evidence.py CI read (arch gate fc27033) | DOCS reads .txt and docs/ code as docs, so dependency and code diffs skipped the gap | RESOLVED: PROSE pattern, both names, empty list holds; tests T015, T016 |
+| G2 | Coverage | LOW | owner_approved (security gate fc27033) | A falsy kind or blank head counted | RESOLVED: 'kind' not in data, head or '-'; test T017 |
 | B1 | Breaking | MEDIUM | spec Breaking | A merge that passed on a breaking or exception ruling now holds | Declared with migration; commit carries BREAKING CHANGE |
 
 No open finding above MEDIUM.
