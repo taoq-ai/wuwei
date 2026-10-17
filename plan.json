@@ -53,33 +53,6 @@
    "approved": true
   },
   {
-   "id": "seat-rules",
-   "title": "docs(charters): gate verdicts for a head go to the builder together, parser changes carry a generated probe, equivalence needs a differential probe, and repo lessons have a home",
-   "goal": "G-1",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 12.0,
-   "why": "Gate rounds on guard parsing are the largest cost under G-1; these rules make the generated probe and the differential probe the standard before the next two parser builds.",
-   "promise": "Six charter rules from the findings and this pass. (1) planner.md: the planner forwards every gate verdict for a head to the builder together, once the last gate for that head returns, and the builder starts fixing only then. (2) _gate.md: when a change makes more commands unreadable or rewrites a parser, the gates probe the checks that do not rely on door words (the leak check on network programs, the infra ask) with the new shape. (3) builder.md and _gate.md: a change to guard parsing comes with a generated combinatorial probe run under real bash with a stub program on PATH (operator or spelling classes x positions x targets), and the PR or verdict reports how many commands were generated, how many really ran the door program, and the holes; a gate round on a parser re-runs it and adds a class for each hole it finds. (4) _gate.md: a gate calls code equivalent or deletable only after a generated differential probe between the head and the change shows 0 differences; a surviving mutant alone is reported as untested. (5) steward.md: a lesson about one repository's code goes in that repository's standards lines (.wuwei/standards.md); a lesson about how seats work in any repository is a charter proposal for the retro. (6) builder.md and _gate.md: probe fixtures that hold JSON escapes are written by code (json.dumps or a Python literal), never typed into a shell. Then `bin/wuwei agents build` regenerates agents/ and the vendored copies. Files: charters/planner.md, charters/_gate.md, charters/builder.md, charters/steward.md, agents/ and the vendored charters and agents under .claude/wuwei/. Runtime lines: 0, budget 0. Order: none; it can run beside free-lines-4 (no shared file), and it is best merged before shell-stdin's build starts. Rollback: revert the commit. Outside: the Stop hook wording (with the parent session's #1099) and the #1078 attestation path.",
-   "acceptance": [
-    "given the branch head, when `bin/wuwei agents build` runs, then git status shows no change, and the suite's drift test passes",
-    "given agents/builder.md and agents/sentinel-security.md at the head, when a reader looks for the parser rule, then each names a generated combinatorial probe under real bash with a stub on PATH and the three counts it reports (generated, ran, holes)",
-    "given agents/sentinel-quality.md at the head, when a reader looks for equivalence, then it says code is called equivalent or deletable only after a generated differential probe shows 0 differences, and a surviving mutant alone is untested",
-    "given charters/planner.md at the head, when a reader looks for gate verdicts, then it says the verdicts for one head go to the builder together after the last gate for that head returns",
-    "given charters/steward.md at the head, when a reader looks for a repository-specific lesson, then it names .wuwei/standards.md for lessons about one repository's code and a charter proposal for lessons about seats"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "records",
    "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
    "goal": "G-2",
@@ -515,6 +488,34 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1075"
+  },
+  {
+   "id": "seat-rules",
+   "title": "docs(charters): gate verdicts for a head go to the builder together, parser changes carry a generated probe, equivalence needs a differential probe, and repo lessons have a home",
+   "goal": "G-1",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 12.0,
+   "why": "Gate rounds on guard parsing are the largest cost under G-1; these rules make the generated probe and the differential probe the standard before the next two parser builds.",
+   "promise": "Six charter rules from the findings and this pass. (1) planner.md: the planner forwards every gate verdict for a head to the builder together, once the last gate for that head returns, and the builder starts fixing only then. (2) _gate.md: when a change makes more commands unreadable or rewrites a parser, the gates probe the checks that do not rely on door words (the leak check on network programs, the infra ask) with the new shape. (3) builder.md and _gate.md: a change to guard parsing comes with a generated combinatorial probe run under real bash with a stub program on PATH (operator or spelling classes x positions x targets), and the PR or verdict reports how many commands were generated, how many really ran the door program, and the holes; a gate round on a parser re-runs it and adds a class for each hole it finds. (4) _gate.md: a gate calls code equivalent or deletable only after a generated differential probe between the head and the change shows 0 differences; a surviving mutant alone is reported as untested. (5) steward.md: a lesson about one repository's code goes in that repository's standards lines (.wuwei/standards.md); a lesson about how seats work in any repository is a charter proposal for the retro. (6) builder.md and _gate.md: probe fixtures that hold JSON escapes are written by code (json.dumps or a Python literal), never typed into a shell. Then `bin/wuwei agents build` regenerates agents/ and the vendored copies. Files: charters/planner.md, charters/_gate.md, charters/builder.md, charters/steward.md, agents/ and the vendored charters and agents under .claude/wuwei/. Runtime lines: 0, budget 0. Order: none; it can run beside free-lines-4 (no shared file), and it is best merged before shell-stdin's build starts. Rollback: revert the commit. Outside: the Stop hook wording (with the parent session's #1099) and the #1078 attestation path.",
+   "acceptance": [
+    "given the branch head, when `bin/wuwei agents build` runs, then git status shows no change, and the suite's drift test passes",
+    "given agents/builder.md and agents/sentinel-security.md at the head, when a reader looks for the parser rule, then each names a generated combinatorial probe under real bash with a stub on PATH and the three counts it reports (generated, ran, holes)",
+    "given agents/sentinel-quality.md at the head, when a reader looks for equivalence, then it says code is called equivalent or deletable only after a generated differential probe shows 0 differences, and a surviving mutant alone is untested",
+    "given charters/planner.md at the head, when a reader looks for gate verdicts, then it says the verdicts for one head go to the builder together after the last gate for that head returns",
+    "given charters/steward.md at the head, when a reader looks for a repository-specific lesson, then it names .wuwei/standards.md for lessons about one repository's code and a charter proposal for lessons about seats"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1111"
   },
   {
    "id": "door-fails-closed",
