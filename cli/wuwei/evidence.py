@@ -379,8 +379,8 @@ def gaps(root, repo, number):
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             found += [dict(g, kind='safety') if tier == 'full' else g for g in spec_gaps(repo, spec_engine(root, repo), tier, files, head)]
-        code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
-        if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
+        code = [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
+        if code and not generated and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
         if (size := lines(pr.get('files') or ())) > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
             found.append(gap(f'{size} changed lines: split it, or add a Size: <reason> line'))
@@ -391,11 +391,12 @@ def gaps(root, repo, number):
         found += breaking_gaps(root, ref, pr, item_id)
         rollup = pr.get('statusCheckRollup')
         found += ci_gaps(rollup, review_contexts(root, repo, rollup))
-        try:  # no check run and no status at the head of a repository that ran a pull_request workflow (#1085)
-            ci = not rollup and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo, '?event=pull_request&per_page=1'))
-        except (gh.GhError, AttributeError, TypeError):
-            ci = True  # an unreadable Actions host counts as CI, so the gap shows rather than a pass
-        found += [gap(f'CI not started at {head[:7]}', actionable=False)] if ci else []
+        try:  # no check run and no status at a code head of a repository that ran a pull_request(_target) workflow (#1085)
+            ci, why = not rollup and code and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(
+                repo, '?event=pull_request&per_page=1') or gh.workflow_paths(repo, '?event=pull_request_target&per_page=1')), ''
+        except (gh.GhError, AttributeError, TypeError) as exc:  # an unreadable Actions host shows the gap, never a pass
+            ci, why = True, f' (Actions host unreadable: {exc})'
+        found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
         if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
@@ -435,4 +436,4 @@ def owner_approved(root, repo, pr):
     return any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED'
                and head.startswith(r.get('commit') or '-') for r in pr.get('reviews') or ()) or \
         any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head', '-')) and row['data'].get('approved')
-            for row in ws.rows(root, 'ruling'))
+            and not row['data'].get('kind') for row in ws.rows(root, 'ruling'))  # an owner review ruling has no kind
