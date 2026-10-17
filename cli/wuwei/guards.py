@@ -1,108 +1,121 @@
 """The few doors WUWEI holds. Everything else passes; the harness's own permission rules decide
 who may call which tool. A door that cannot read its evidence stays shut; a guard that cannot
-read a command lets it through (the audit still sees it)."""
+read a command lets it through unless it names a door program (the audit still sees it)."""
 
 import json
 from pathlib import Path
 import re
 import shlex
 import subprocess
+from urllib.parse import unquote
 
 from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
-WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice'}
+WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')'}
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
 NETWORK = {'gh', 'curl', 'wget', 'nc', 'ssh', 'scp', 'http', 'https'}
 WRITERS = {'tee', 'truncate', 'rm', 'mv', 'cp', 'dd', 'chmod', 'ln', 'shred'}
+READ = {'git', 'gh', 'wuwei', 'sed'} | SHELLS | set(INFRA) | NETWORK | WRITERS  # the programs a door reads
+UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body leaves for the raw-text rule
+DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
+         'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
+         'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei/ledger',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
 LEDGER = re.compile(r'(^|/)\.wuwei/ledger(\.jsonl$|/)')
-GUARDED_API = re.compile(r'/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators'
-                         r'|/hooks|/keys|/actions/secrets|/environments')
+WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
+API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
+       (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
+       (REPO + '/(merges|git/refs/.+|contents/.+)', WRITE, 'push'), (REPO, ('DELETE',), 'delete'), (r'(.*/)?\.\.(/.*)?', WRITE, 'dots'),
+       (r'.*(/branches/[^/]+/protection|/rulesets|/statuses/|/collaborators|/hooks|/keys|/actions/secrets|/environments).*',
+        WRITE, 'rules'))  # gh api routes to a door, matched on the whole endpoint
+API_VALUED = set('XfFHqtp') | {'method', 'raw-field', 'field', 'input', 'header', 'jq', 'template', 'preview', 'hostname', 'cache'}
+MUTATIONS = re.compile(r'\w*(mergePullRequest|enablePullRequestAutoMerge|createPullRequest|updateRef|deleteRef|createCommitOnBranch'
+                       r'|mergeBranch|enqueuePullRequest|BranchProtectionRule|RepositoryRuleset|markPullRequestReadyForReview|requestReviews)\w*')
+TRUE, FALSE = ('1', 't', 'T', 'true', 'TRUE', 'True'), ('0', 'f', 'F', 'false', 'FALSE', 'False')  # pflag's; any other makes gh exit
+VALUED = set('aBbFHlmpTtR') | {'assignee', 'base', 'body', 'body-file', 'head', 'label', 'milestone', 'project', 'template', 'title', 'repo'}
+PR_VALUED = {'A', 'r', 'reviewer', 'recover', 'subject', 'match-head-commit', 'author-email', *(f'{verb}-{what}' for verb in (
+    'add', 'remove') for what in ('reviewer', 'assignee', 'label', 'project'))}  # gh pr create, edit and merge add these
+UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-first', 'fill-verbose', 'no-maintainer-edit'}  # gh pr create's
+OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
+READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
+PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
 OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:', 'breaking:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
-PR_STANDARD = Path(__file__).resolve().parents[2] / 'charters' / '_pr.md'
+PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
 def deny(reason):
     return {'decision': 'deny', 'reason': reason}
 
 
-def origin(cwd):
-    """owner/repo of the origin remote at cwd, or ''."""
+def _git(cwd, *args):
     try:
-        url = subprocess.run(['git', '-C', cwd, 'remote', 'get-url', 'origin'], capture_output=True,
-                             text=True, timeout=5).stdout.strip()
+        return subprocess.run(['git', '-C', cwd, *args], capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ''
-    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', url)
+
+
+def origin(cwd):
+    """owner/repo of the origin remote at cwd, or ''."""
+    match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', _git(cwd, 'remote', 'get-url', 'origin'))
     return match[1] if match else ''
 
 
 def current_branch(cwd):
-    try:
-        return subprocess.run(['git', '-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True,
-                              text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return ''
+    return _git(cwd, 'rev-parse', '--abbrev-ref', 'HEAD')
 
 
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n", lambda m: {'\n': ' ; ', '\\\n': ''}.get(
+            m[0], m[0]), command), posix=True, punctuation_chars=True)  # sh's lines: an unquoted newline ends a command
         lexer.whitespace_split = True
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        tokens = list(lexer)
+        out, current = [], []
+        for token in list(lexer) + [';']:
+            if token in CONTROL:
+                if current:
+                    out.extend(_unwrap(current))
+                current = []
+            else:
+                current.append(token)
+        return out
     except ValueError:
-        return []
-    out, current = [], []
-    for token in tokens + [';']:
-        if token in CONTROL:
-            if current:
-                out.extend(_unwrap(current))
-            current = []
-        else:
-            current.append(token)
-    return out
+        return None
 
 
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        if tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens):
-            targets.append(tokens[i + 1])
-            i += 2
-            continue
-        argv.append(tokens[i])
-        i += 1
-    while argv and (re.fullmatch(r'[A-Za-z_]\w*=.*', argv[0]) or Path(argv[0]).name in WRAPPERS):
+        redirect = tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens)
+        (targets if redirect else argv).append(tokens[i + redirect])
+        i += 1 + redirect
+    while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
-        while argv and Path(argv[0]).name not in WRAPPERS and argv[0].startswith('-'):
-            argv = argv[1:]
-    if len(argv) >= 3 and Path(argv[0]).name in SHELLS and argv[1] == '-c':
-        return segments(argv[2]) + ([([], targets)] if targets else [])
+    if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
+        argv = next((argv[i:] for i, a in enumerate(argv) if not a.startswith('-') and '=' not in a  # not an option or VAR=
+                     and (Path(a).name in READ or Path(a).name.startswith('python'))), argv)
+    body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
+    if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
+        return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
     return [(argv, targets)]
 
 
 def _default(root, repo):
-    if not repo:
+    try:
+        return {evidence._cached(root, 'default-' + repo.replace('/', '__'), lambda: gh.default_branch(repo))} if repo else {'main', 'master'}
+    except gh.GhError:
         return {'main', 'master'}
-    name = 'default-' + repo.replace('/', '__')
-    branch = ws.cache_get(root, name, 86400)
-    if branch is None:
-        try:
-            branch = ws.cache_put(root, name, gh.default_branch(repo))
-        except gh.GhError:
-            return {'main', 'master'}
-    return {branch}
 
 
 def git_push(root, args, cwd):
@@ -118,76 +131,133 @@ def git_push(root, args, cwd):
         if destination in ('', 'HEAD'):
             destination = current_branch(cwd)
         targets.append(destination.removeprefix('refs/heads/'))
-        if ref.startswith(':'):
-            deleting = True
+        deleting = deleting or ref.startswith(':')
     protected = _default(root, origin(cwd))
     hit = [t for t in targets if t in protected]
     if hit:
-        verb = 'deleting' if deleting else 'pushing to'
-        return deny(f'{verb} the default branch {hit[0]} refused: every change reaches it through a pull '
-                    'request with its evidence. Push a branch and open a PR.')
+        return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
 
-def _repo_number(args, cwd):
-    repo, number = '', None
-    for i, arg in enumerate(args):
-        if arg in ('--repo', '-R') and i + 1 < len(args):
-            repo = args[i + 1]
-        match = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)/?', arg)
-        if match:
-            repo, number = match[1], int(match[2])
-        elif arg.isdigit() and number is None and (i == 0 or args[i - 1] not in ('--repo', '-R')):
-            number = int(arg)
-    return repo or origin(cwd), number
+def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
+    out, words = [], iter(args)
+    for word in words:
+        if word == '--' or word[:1] != '-' or word == '-':
+            out += [('', w) for w in (words if word == '--' else [word])]
+        elif long := re.fullmatch(r'--([^=]+)(?:=(.*))?', word, re.S):
+            out.append((long[1], long[2] if long[2] is not None or long[1] not in valued else next(words, None)))
+        elif rest := word[1:]:
+            while rest:  # a short cluster: -fd, -dt x, -d=t, -Rx/y
+                name, rest = rest[0], rest[1:]
+                out.append((name, rest[1:] if rest[:1] == '=' else (rest or next(words, None)) if name in valued else None))
+                rest = '' if rest[:1] == '=' or name in valued else rest
+    return out
+
+
+def _repo_number(args, cwd, valued=VALUED | PR_VALUED):  # the last -R (or the URL's repository) and the first positional
+    flags = _flags(args, valued)
+    url = re.fullmatch(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)/?', word := next((v for n, v in flags if not n), ''))
+    repo = url[1] if url else ([v for n, v in flags if n in ('R', 'repo') and v] or [''])[-1]
+    return repo or origin(cwd), int(url[2]) if url else int(word) if word.isascii() and word.isdigit() else None
+
+
+def _draft(args):
+    """gh pr create's --draft as pflag reads it (the last wins); a reviewer, --recover, a bad flag or value or a positional: no."""
+    flags = _flags(args, VALUED)
+    return not any(n not in VALUED | UNVALUED or n in VALUED and v is None or n in ('d', 'draft') and v not in (None, *TRUE, *FALSE)
+                   for n, v in flags) and ([v in (None, *TRUE) for n, v in flags if n in ('d', 'draft')] or [False])[-1]
+
+
+def _read(cwd, path):
+    return Path(cwd, path).read_text(encoding='utf-8') if path != '-' and Path(cwd, path).is_file() else ''  # gh reads - as stdin
+
+
+def _api(args, cwd, alone=True):
+    """gh api's method, fields (-XPUT, --method=put, -fk=v, -F k=@file) and endpoint (//, %xx and . read as GitHub does)."""
+    flags = _flags(args, API_VALUED)  # an empty attached value (-X=, --method=) is a value; a flag with none takes the next word
+    opts, rest = [('-' * min(len(n), 2) + n, v or '') for n, v in flags if n], [v for n, v in flags if not n]
+    pairs = [(f, *kv.split('=', 1)) for f, kv in opts if f in ('-f', '--raw-field', '-F', '--field') and '=' in kv]
+    fields = {k: _read(cwd, v[1:]) if f in ('-F', '--field') and v.startswith('@') else v for f, k, v in pairs}
+    data = ''.join(_read(cwd, v) for f, v in opts if f == '--input')
+    fields |= dict(re.findall(r'"(head|base|body)"\s*:\s*"((?:\\.|[^"\\])*)"', data))  # the --input file's JSON
+    fields |= {'query': fields.get('query', '') + data.encode().decode('unicode_escape', 'replace')} if alone and data else {}  # all of it, \u read
+    unread = any(not (alone and _read(cwd, p)) for f, v in opts if (p := v if f == '--input' else v[7:] if f in ('-F', '--field')
+                                                                     and v[:7] == 'query=@' else None) is not None)  # stdin, missing, cd
+    draft = (alone and (json.loads(data) if data.lstrip()[:1] == '{' else {}).get('draft') is True if '--input' in dict(opts)  # gh reads
+             else ([f in ('-F', '--field') and v == 'true' for f, k, v in pairs if k == 'draft'] or [False])[-1])  # the file in its own cwd
+    method = ([v.upper() for f, v in opts if f in ('-X', '--method')] or ['POST' if fields or '--input' in dict(opts) else 'GET'])[-1]
+    endpoint = '/'.join(p for p in unquote(re.sub(r'(?i)^[a-z][\w+.-]*://[^/]*|[?#].*$', '', rest[0] if rest else '')).split('/') if p not in ('', '.'))
+    owner, name = ((origin(cwd) if '{' in endpoint else '') or '{owner}/{repo}').split('/')
+    return method, endpoint.replace('{owner}', owner).replace('{repo}', name), fields, draft, unread
 
 
 def gh_command(root, args, cwd, session, command=''):
     if args[:2] == ['pr', 'merge']:
-        if '--admin' in args:
+        valued = (VALUED | PR_VALUED) - {'m', 'r'}  # merge's -m and -r are bools; the last --admin or --auto pflag reads wins
+        on = lambda name: ([v in (None, *TRUE) for n, v in _flags(args[2:], valued) if n == name] or [False])[-1]  # noqa: E731
+        if on('admin'):
             return deny('--admin bypasses branch protection; WUWEI never merges around the repository rules.')
-        repo, number = _repo_number(args[2:], cwd)
-        return merge_door(root, repo, number, auto='--auto' in args)
+        return merge_door(root, *_repo_number(args[2:], cwd, valued), auto=on('auto'))
     if args[:2] == ['repo', 'delete']:
         return deny('deleting a repository is the owner\'s act, never an agent\'s.')
+    flag = lambda *names: next((args[i + 1] for i, a in enumerate(args[:-1]) if a in names), '')  # noqa: E731
+    opening = args[:2] in (['pr', 'create'], ['pr', 'new']) and (_repo_number(args, cwd)[0], flag('--head', '-H'), flag(
+        '--base', '-B'), _read(cwd, flag('--body-file', '-F')), _draft(args[2:]))
+    undo = ([a[6:] for a in args if a == '--undo' or a.startswith('--undo=')] or ['no'])[-1] in ('', *('=' + t for t in TRUE))
+    if args[:2] == ['pr', 'ready'] and not undo or args[:2] == ['pr', 'edit'] and any(a.startswith('--add-reviewer') for a in args):
+        return ready_door(root, *_repo_number(args[2:], cwd))
     if args[:1] == ['api'] and len(args) > 1:
-        method = next((args[i + 1].upper() for i, a in enumerate(args[:-1]) if a in ('-X', '--method')), '')
-        if not method and any(a in ('-f', '-F', '--field', '--raw-field', '--input') for a in args):
-            method = 'POST'
-        endpoint = next((a for a in args[1:] if not a.startswith('-') and '/' in a), '')
-        merging = re.search(r'repos/([\w.-]+/[\w.-]+)/pulls/(\d+)/(merge|ccr/auto_merge)$', endpoint)
-        if merging and method == 'PUT':
-            return merge_door(root, merging[1], int(merging[2]), auto=merging[3] != 'merge')
-        if method in ('POST', 'PUT', 'PATCH', 'DELETE') and GUARDED_API.search(endpoint):
-            return deny(f'gh api {method} {endpoint} changes protection, statuses, merges or access: the '
-                        'repository rules and the merge door are not changed from an agent session.')
-    if args[:2] == ['pr', 'create']:
-        flag = lambda *names: next((args[i + 1] for i, a in enumerate(args[:-1]) if a in names), '')  # noqa: E731
-        try:
-            text = command + Path(cwd, flag('--body-file', '-F')).read_text(encoding='utf-8') if flag('--body-file', '-F') else command
-        except OSError:
-            text = command
-        found = create_door(root, _repo_number(args, cwd)[0], flag('--head', '-H') or current_branch(cwd),
-                            flag('--base', '-B'), text)
+        method, endpoint, fields, draft, unread = _api(args[1:], cwd, (words := shlex.split(command))[:1] == ['gh'] and all(
+            re.fullmatch(r'[\w./=@:-]+', w) for w in words))  # an --input or -F query=@ file is the one gh reads: alone, unwrapped, plain words
+        if endpoint.lower() == 'graphql' and unread:
+            return deny('a gh api graphql query WUWEI cannot read (stdin, a missing file, a file outside one plain gh call): pass -f query=...')
+        if method in WRITE and re.match('(?i)repositories/', endpoint):
+            return deny(f'gh api {method} {endpoint}: spell the endpoint repos/<owner>/<repo>/... so WUWEI can read which door it is.')
+        if endpoint.lower() == 'graphql' and (named := MUTATIONS.search(fields.get('query', ''))):
+            return deny(f'gh api graphql {named[0]} goes around the doors: use gh pr merge, gh pr create --draft, gh pr ready or gh pr '
+                        'edit --add-reviewer (in a cloud session gh api -X POST repos/<o>/<r>/pulls[/<n>/ccr/ready_for_review]).')
+        door, m = next(((d, m) for pattern, methods, d in API if method in methods and (m := re.fullmatch(pattern, endpoint, re.I))),
+                       ('', None))
+        if door in ('merge', 'ready'):
+            return merge_door(root, m[1], int(m[2]), auto=m[3].lower() != 'merge') if door == 'merge' else ready_door(root, m[1], int(m[2]))
+        if door in ('push', 'delete', 'rules', 'dots'):
+            return deny({'push': f'gh api {method} {endpoint} writes a branch outside a pull request: like pushing to the '
+                                 'default branch it is ' + PUSHED, 'dots': f'gh api {endpoint} has a .. segment: spell the '
+                                 'endpoint plainly.', 'delete': 'deleting a repository is the owner\'s act, never '
+                         'an agent\'s.'}.get(door, f'gh api {method} {endpoint} changes protection, statuses, merges or access: '
+                                                    'the repository rules and the merge door are not changed from an agent session.'))
+        opening = door == 'create' and (m[1], fields.get('head', ''), fields.get('base', ''), fields.get('body', ''), draft)
+    if opening:
+        repo, head, base, body, draft = opening  # a draft opens before its gates (#1050, #1074); the flip to ready waits
+        found = None if draft else create_door(root, repo, head or current_branch(cwd), base, command + body)
         if found or once(root, session, 'pr-standard'):
-            version = json.loads((PR_STANDARD.parents[1] / '.claude-plugin' / 'plugin.json').read_text(encoding='utf-8'))['version']
-            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip().replace('<version>', version)}
+            return found or {'decision': 'note', 'reason': PR_STANDARD.read_text(encoding='utf-8').strip().replace('<version>', ws.version())}
     return None
 
 
-def create_door(root, repo, branch, base, text):
-    """Gates run on the pushed branch before its PR opens (#1050): review and merge start at a gated head."""
+def create_door(root, repo, branch, base, text, act=OPEN):
+    """Gates run on the pushed head before review (#1050): a PR opens ready, or a draft leaves draft, at a gated head."""
     try:
         diff = gh.compare(repo, base or sorted(_default(root, repo))[0], branch)
     except gh.GhError as exc:
-        return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; its PR opens once its gates pass there.')
-    named = evidence.ITEM.search(text or '')
-    pr = {'body': f'WUWEI-Item: {named[1]}' if named else '', 'headRefName': branch}
+        return deny(f'cannot read {branch} on {repo} ({exc}): push the branch; it {act}.')
+    pr = {'body': f'WUWEI-Item: {named[1]}' if (named := evidence.ITEM.search(text or '')) else '', 'headRefName': branch}
     item_id, tier, gates, why = evidence.gates_for(root, repo, pr, diff['files'], evidence.item_for(root, pr, repo))
-    head = (diff.get('commits') or [{}])[-1].get('sha', '')
-    found = evidence.gate_gaps(root, repo, item_id, gates, head, why, '', tier)
-    return deny(f'{repo} {branch} opens as a PR once its gates pass at the branch head (gates run before review):\n'
-                + '\n'.join('- ' + g['text'] for g in found)) if found else None
+    found = evidence.gate_gaps(root, repo, item_id, gates, (diff.get('commits') or [{}])[-1].get('sha', ''), why, '', tier)
+    found += [{'text': 'no plan item is named, so no gate verdict can count: end the PR body with the WUWEI footer or a '
+               'WUWEI-Item line, passed by --body or a --body-file path WUWEI can read (a literal path, not $VAR)'}] if found and not item_id else []
+    return deny(f'{repo} {branch} {act}:\n' + '\n'.join('- ' + g['text'] for g in found)) if found else None
+
+
+def ready_door(root, repo, number):
+    """The flip to ready and a reviewer request on a draft wait for the gates at the PR head: the create door on its head."""
+    if not repo or number is None:
+        return deny(f'name the PR by number or URL (and --repo when outside its checkout): a draft {READY}.')
+    try:
+        pr = gh.pr(repo, number)
+    except gh.GhError as exc:
+        return deny(f'cannot read {repo}#{number} ({exc}): a draft {READY}.')
+    return create_door(root, repo, pr['headRefName'], pr['baseRefName'], pr['body'], READY) if pr['isDraft'] else None
 
 
 def merge_door(root, repo, number, auto=False):
@@ -197,7 +267,7 @@ def merge_door(root, repo, number, auto=False):
         return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
                     'its evidence before the merge.')
     found = evidence.gaps(root, repo, number)
-    gaps = [g for g in evidence.blocking(found) if not (auto and g['text'] == 'CI running')]  # auto-merge waits for CI
+    gaps = [g for g in evidence.blocking(found) if not (auto and g['text'] == 'CI running')]  # auto-merge waits for running CI, not for none (#1085)
     if gaps:
         return deny(f'{repo}#{number} is not ready to merge:\n' + '\n'.join('- ' + g['text'] for g in gaps))
     ws.record(root, 'merge.checked', {'pr': f'{repo}#{number}', 'auto': auto,
@@ -206,11 +276,10 @@ def merge_door(root, repo, number, auto=False):
 
 
 def once(root, session, topic):
-    name = f'notes-{session}'
-    seen = ws.cache_get(root, name, 7 * 86400) or []
+    seen = ws.cache_get(root, f'notes-{session}', 7 * 86400) or []
     if topic in seen:
         return False
-    ws.cache_put(root, name, seen + [topic])
+    ws.cache_put(root, f'notes-{session}', seen + [topic])
     return True
 
 
@@ -226,7 +295,12 @@ def leak(root, text):
 
 
 def bash(root, command, cwd, session):
-    for argv, targets in segments(command):
+    parts = segments(command)
+    if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
+        return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
+                    '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
+                    'by --body-file, -F or a file written with Write.')
+    for argv, targets in parts or ():
         if any(LEDGER.search(t) for t in targets):
             return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
         if not argv:
@@ -265,19 +339,19 @@ def pre_tool(root, payload):
     tool = payload.get('tool_name', '')
     data = payload.get('tool_input') or {}
     cwd = payload.get('cwd') or '.'
-    if tool in ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'):
+    if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
         return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
             LEDGER.search(path) for path in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
-            r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open \d+ days", q)]
+            r"specs/|openspec/|no spec in the diff|template's sections|changed lines|open [0-9]+ days", q)]
         if process:
             return deny('process gaps never block a merge and are nobody\'s decision: merge when the safety '
                         'evidence is complete; the merge records the process fit for the retro.')
-        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:'))
-                    and not re.search(r'[\w.-]+/[\w.-]+#\d+ at [0-9a-f]{7,40}', q)]
+        unparsed = [q for q in questions if q.strip().lower().startswith(('exception:', 'owner review:', 'breaking:')) and not
+                    re.match(r'\s*(?i:exception:[\s\S]*?|owner review:\s*|breaking:\s*)[\w.-]+/[\w.-]+#[0-9]+ at [0-9a-f]{7,40}\b', q)]
         if unparsed:
             return deny(f'"{unparsed[0][:120]}" will not be recorded as asked (one-way:, scope:, goal:, trust:, infra: '
                         'and plan: take any wording). Use the exact shape: "exception: '
@@ -290,14 +364,19 @@ def pre_tool(root, payload):
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''
         return deny(f'{NOT_OWNERS}\nSent back: {named}.{rest}')
-    if tool.startswith('mcp__') and tool.endswith(('merge_pull_request', 'enable_pr_auto_merge')):
-        number = data.get('pullNumber', data.get('pull_number'))
-        repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
-        return leak(root, json.dumps(data)) or merge_door(root, repo, int(number) if str(number).isdigit() else None,
-                                                          auto=tool.endswith('enable_pr_auto_merge'))
-    if tool.startswith('mcp__') and tool.endswith('create_pull_request'):
+    repo = f'{data.get("owner")}/{data.get("repo")}' if data.get('owner') and data.get('repo') else ''
+    number = int(n) if (n := str(data.get('pullNumber', data.get('pull_number')))).isascii() and n.isdigit() else None
+    if tool.startswith('mcp__') and tool.endswith(DOORS['push']):
+        branch = str(data.get('branch') or '').removeprefix('refs/heads/')
+        return leak(root, json.dumps(data)) or (deny(f'pushing to the default branch {branch or "(no branch named)"} '
+                                                     + PUSHED) if not branch or branch in _default(root, repo) else None)
+    if tool.startswith('mcp__') and tool.endswith(DOORS['merge']):
+        return leak(root, json.dumps(data)) or merge_door(root, repo, number, auto=tool.endswith('auto_merge'))
+    if tool.startswith('mcp__') and tool.endswith(DOORS['create']) and not (data.get('draft') is True and not data.get('reviewers')):
         return leak(root, json.dumps(data)) or create_door(root, f'{data.get("owner")}/{data.get("repo")}', str(
-            data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))
+            data.get('head', '')), str(data.get('base', '')), str(data.get('body', '')))  # a draft opens before its gates
+    if tool.startswith('mcp__') and tool.endswith(DOORS['ready']) and (data.get('draft', True) is not True or data.get('reviewers') or 'copilot' in tool):
+        return leak(root, json.dumps(data)) or ready_door(root, repo, number)
     if tool.startswith('mcp__'):
         return leak(root, json.dumps(data))
     if tool == 'Bash':

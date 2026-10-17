@@ -7,11 +7,6 @@ from wuwei import evidence, gh, plan, ws
 TTL = 60
 
 
-def _list(root, name, read, ttl=TTL):
-    found = ws.cache_get(root, name, ttl)
-    return ws.cache_put(root, name, read()) if found is None else found
-
-
 def andons(root):
     """Repositories where a seat pulled the cord: no new builds there until it is cleared."""
     active = {}
@@ -51,6 +46,11 @@ def adopted(root, repo, prs, keep):
             and (pr.get('createdAt') or '') >= since and evidence.item_for(root, pr, repo) is None]
 
 
+def names(root, pr, repo, item_id):
+    named = {i.lower() for i in evidence.ITEM.findall(pr.get('body') or '')} or {(evidence.item_for(root, pr, repo) or {}).get('id', '').lower()}
+    return item_id.lower() in named
+
+
 def compute(root, everything=False):
     out = replies(root)
     held = andons(root)
@@ -61,8 +61,8 @@ def compute(root, everything=False):
         mine = [item for item in open_items if item.get('repo') == repo]
         since = min((item.get('added', ws.today()) for item in mine), default=ws.today())
         try:
-            prs = _list(root, f'prs-{key}', lambda: gh.open_prs(repo))
-            merged = _list(root, f'merged-{key}', lambda: gh.merged_prs(repo, since), 300) if mine else []
+            prs = evidence._cached(root, f'prs-{key}', lambda: gh.open_prs(repo), TTL)
+            merged = gh.merged_prs(repo, since) if mine else []  # read fresh: an item's PR may have just merged
         except gh.GhError as exc:
             out += [{'item': i['id'], 'title': i['title'], 'pr': None,
                      'gaps': [evidence.gap(f'{repo} unreadable: {exc}', actionable=False)]}
@@ -70,8 +70,8 @@ def compute(root, everything=False):
             continue
         out += adopted(root, repo, prs, keep)
         for item in (i for i in open_items if i.get('repo') == repo):
-            linked = [pr for pr in prs if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]
-            done = [pr for pr in merged if (evidence.item_for(root, pr, repo) or {}).get('id') == item['id']]
+            linked = [pr for pr in prs if names(root, pr, repo, item['id'])]
+            done = [pr for pr in merged if names(root, pr, repo, item['id'])]
             if not linked and done:
                 plan.mark(root, item['id'], 'done', f'merged as {repo}#{done[0]["number"]}')
                 continue
@@ -80,7 +80,7 @@ def compute(root, everything=False):
                          if repo in held else evidence.gap(f'run: {item.get("reason") or "no run evidence yet"}', actionable=False)
                          if item.get('kind') == 'run' else evidence.gap('no pull request yet') if item.get('approved', True)
                          else evidence.gap('awaiting plan approval', actionable=False, owner=True))
-                out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first]})
+                out.append({'item': item['id'], 'title': item['title'], 'pr': None, 'gaps': [first] + evidence.uncounted(root, item['id'])})
             for pr in linked:
                 out.append({'item': item['id'], 'title': item['title'], 'pr': f'{repo}#{pr["number"]}',
                             'gaps': keep(evidence.gaps(root, repo, pr['number']))})

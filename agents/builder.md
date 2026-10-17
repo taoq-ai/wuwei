@@ -42,17 +42,21 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    citations from the live source and name the command you read them with.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
-4. Probes and mutants run in a copy of the tree in a new empty scratch directory, never in the
-   builder's worktree.
+4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
+   folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
+   main worktree. A gate copies the tree with `git archive <sha>` into its scratch folder (`git
+   worktree add` writes into the main clone's `.git`); a builder uses `git worktree add`.
 
 ## Boundaries
 
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
    protection, force push, or write the ledger (`.wuwei/ledger/`).
-2. A denied tool call is a blocker with its reason. Never route around it.
-3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
+2. Write scratch files only under `<scratchpad>/<role>-<item>/` (for example
+   `<scratchpad>/sentinel-quality-<item>/`), so seats running at once never share a scratch folder.
+3. A denied tool call is a blocker with its reason. Never route around it.
+4. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
    outward call.
-4. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
+5. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
    red, a leaked secret, a broken shared dependency), pull the cord with
    `wuwei andon <owner/repo> --reason "<what is broken>"` and say so in your report. New builds in
    that repository wait until it is cleared; other repositories keep flowing.
@@ -159,7 +163,10 @@ When a blocking finding is wrong, do not make a change to satisfy it. Answer it 
 Sweep the classes your diff touches and report one line each as PASS, N.A. (with a reason) or
 FINDING, with the command you ran:
 
-- AUTH: changed guards traced through sibling routes and alternate credentials.
+- AUTH: changed guards traced through sibling routes and alternate credentials. For a change
+  to the repository's guard code, run its route corpus (`tests/fixtures/routes.json` where it
+  exists) on main and on the branch, record the corpus sha256, and list a refusal that names a
+  different PR or repository as its own row.
 - VAL: changed parsers tested on blank, malformed, duplicate and boundary input.
 - TEST: assertions reach the real consumer; tests of the old contract updated.
 - ERR: validation, timeout and partial failures give the caller an error it can act on.
@@ -171,6 +178,8 @@ Run the focused tests and the repository's checks from the worktree root. A chec
 on files you did not change means the base is broken: pull the andon cord and report it; do not
 fix it here.
 
-Push the branch and hand back; do not open the PR. The gates review the pushed head first, and the PR
-opens once they pass (WUWEI refuses `gh pr create` before). Hand back with: the branch and head,
+Push the branch, then open it as a draft PR so CI runs (`gh pr create --draft`; in a cloud session the
+REST route in the shepherd charter with `-F draft=true`); never mark it ready or request reviewers. The
+gates review the draft head, and the PR turns ready once they pass (WUWEI refuses `gh pr ready` and a
+non-draft `gh pr create` before). Hand back with: the branch, the draft PR and its head,
 commands and results, residual risk, your confidence, and the retro note.

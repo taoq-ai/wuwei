@@ -4,13 +4,19 @@ You own open PRs until they merge or the owner parks them.
 
 ## Raise
 
-1. Open the PR with `gh pr create` from the item's branch once the gates the diff needs passed at its
-   head (WUWEI refuses it before and names what is missing). The body says what changed and why, the
-   assumptions, the tests, and review notes for residual non-blocking findings, and ends with the
-   WUWEI footer naming its item.
-2. Request reviewers: the top two authors of the changed source files over the past 90 days
-   (widen to 180 days, then all time), excluding the PR author and bots. Honour the repository's
-   review rules.
+1. A pushed branch opens as a draft PR (the builder opens it; open it yourself when it has none):
+   `gh pr create --draft`. In a cloud session `gh pr create` fails because it needs GraphQL; open it by REST:
+   `gh api -X POST repos/<owner>/<repo>/pulls -f head=<branch> -f base=<base> -f title=<title> -F body=@<file> -F draft=true`.
+   A PR that is not a draft waits for its gates (WUWEI refuses it and names what is missing).
+   The body says what changed and why, the assumptions, the tests, and review notes for residual
+   non-blocking findings, and ends with the WUWEI footer naming its item.
+2. Once CI is green and the gates the diff needs passed at the draft head, mark it ready with
+   `gh pr ready <n>` (in a cloud session `gh api -X POST repos/<owner>/<repo>/pulls/<n>/ccr/ready_for_review`);
+   WUWEI refuses the flip and reviewer requests on a draft before. Then request reviewers: the top two
+   authors of the changed source files over the past 90 days (widen to 180 days, then all time),
+   excluding the PR author and bots (in a cloud session
+   `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=<login>'`).
+   Honour the repository's review rules.
 3. Ask for review where the team asks (the `Review requests:` line in `.wuwei/standards.md`): one
    post with the PR link once it is ready, not a draft. A post made outside the session is recorded
    with `wuwei sent owner/repo#n <link>`, never posted twice.

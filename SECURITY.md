@@ -20,6 +20,54 @@ any local file. The hard boundaries sit outside the owner's user account: the co
 host's protected refs, required checks and required reviews, and publication credentials
 kept out of seat environments.
 
+The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
+brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
+wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
+
+- `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
+- `$(...)` inside double quotes, process substitution (`<(...)`), and ANSI-C quoting (`$'...'`).
+- A separator glued to a redirect or a pipe (`>;`, `|&`), and quote splicing inside a word.
+- A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
+  unquoted backticks.
+- A shell option before `-c` that takes an argument or is not a single-dash cluster
+  (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
+- A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
+  names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
+
+A multi-line command, or one the reader cannot parse, that names a door program is refused
+whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
+that door-word rule; the leak scan does not read it.
+
+When a guard raises on a call, the hook refuses the call if it could pass a door: an edit (the tools
+in `guards.DOORS`, or a Codex `apply_patch`), any MCP tool, or a Bash command naming a door program
+or a network program (`gh`, `curl`, `wget`, `nc`, `ssh`, `scp`, `http`, `https`, the names in
+`guards.NETWORK` read as a program, not inside a URL), with its quotes and backslashes removed. Any other call fails open and the error is recorded.
+
+The Bash guards read a `gh api` call the way gh's flag parser does: the method in every spelling
+(`-X PUT`, `-XPUT`, `--method=put`, and POST when a field or `--input` is given; an empty attached
+value such as `-X=` or `--jq=` is a value, as in gh), the endpoint without a scheme and host in any
+case, a leading `/` or a query and with gh's `{owner}/{repo}` filled from the origin remote, and
+the fields, reading `-F key=@file` and the `--input` file. A REST pull request create meets the
+create door and a REST merge or auto-merge meets the merge door. A REST write to `merges`,
+`git/refs/` or `contents/`, a repository delete, and a `gh api graphql` mutation that merges, opens
+a pull request, moves a ref, commits to a branch or changes protection are refused. A `gh api graphql`
+query WUWEI cannot read is refused: `--input -`, `-F query=@-`, a missing or empty file, or an
+`--input` or `-F query=@` file outside one plain `gh` call; an `--input` file WUWEI reads has its
+whole text, JSON escapes decoded, checked for those mutations. Any REST write on
+`repositories/<id>/...` is refused with the `repos/<owner>/<repo>` spelling to use. `gh pr merge`
+reads `--admin` and `--auto` the way pflag does: `--admin` with any true value is refused, the last
+`--auto` wins, and `--auto` read as another flag's value (`-t --auto`) does not count. The GitHub MCP
+tools `push_files`, `create_or_update_file` and `delete_file` are refused on the default branch or
+with no branch. A draft pull request create passes before its gates (`--draft`, a JSON `draft: true`
+from `-F`, or from an `--input` file read only when gh is the whole command, with no wrapper and
+every word plain: letters, digits and `./=@:-`; the same plain-call rule now covers the graphql
+`--input` file and the `-F query=@` file); the ready door holds the flip to ready and reviewer requests on a
+draft until the gates pass at its head, reading the PR and `--repo` as gh's flag parser does. An
+endpoint is read with percent-escapes decoded, empty and `.` segments dropped and a PR number from its
+leading digits (`7abc`, ` 7`, `7.0` are PR 7, as GitHub reads them); a write through a
+`..` segment is refused. Not read: a `GH_REPO` that fills gh's placeholders with another repository than the
+origin remote, `--hostname`, and a gh alias.
+
 The doors and what they leave to the code host are in section 6 of the
 [design](docs/design.md); `bin/wuwei doctor` prints how strongly each door holds per repository.
 
@@ -29,7 +77,7 @@ The doors and what they leave to the code host are in section 6 of the
   PreToolUse answers with the harness's own deny or ask decision. They act only inside a
   `.wuwei/` workspace; elsewhere they return at once. A door that cannot read its evidence stays
   shut; every other hook fails open and records why.
-- Runtime: Python 3.11+ standard library only, at most 2,500 lines.
+- Runtime: Python 3.11+ standard library only, at most 3,000 lines.
 - Integrity: a release ships `MANIFEST.sha256` signed with the key in `keys/`.
 - Network: the plugin reads the code host through `gh` with the owner's credentials and makes no
   other network call. Telemetry is local traces only.

@@ -59,6 +59,8 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
     rows = items(root)
     item = next((row for row in rows if row.get('id', '').lower() == str(item_id).lower()), None)
     if item is not None:
+        if any(fields[k] and fields[k] != item.get(k) for k in ('promise', 'acceptance')):
+            item['approved'] = False  # the owner approved the old contract, not this one
         item.update({k: v for k, v in fields.items() if v or k in ('scores', 'score', 'tier')}, status='open')
         save(root, rows)
         ws.record(root, 'item.updated', {k: item[k] for k in ('id', 'goal', 'repo', 'tier', 'score')})
@@ -72,12 +74,15 @@ def add(root, item_id, title, goal, repo, tier, scores, why='', promise='', acce
 def add_from(root, path):
     """Add the lead's candidates from its JSON file: a list, or {"candidates": [...]}."""
     data = json.loads(Path(path).read_text(encoding='utf-8'))
+    rows = data.get('candidates') if isinstance(data, dict) else data
+    if not isinstance(rows, list) or not all(isinstance(c, dict) and c.get('id') and c.get('title') for c in rows):
+        raise ValueError(f'{path}: expected a list or {{"candidates": [{{"id", "title", ...}}]}}; nothing added')
     found = []
-    for c in data.get('candidates', []) if isinstance(data, dict) else data:
+    for c in rows:
         scores = c.get('scores') or {k: c[k] for k in (*FIELDS['wsjf'], *FIELDS['rice'], *ALIASES) if k in c}
         found.append(add(root, c['id'], c['title'], c.get('goal', ''), c.get('repo') or c.get('repository', ''),
                          c.get('tier', 'standard'), scores, c.get('why', ''), c.get('promise', ''),
-                         c.get('acceptance') or c.get('scenarios') or ()))
+                         c.get('acceptance') or c.get('scenarios') or c.get('accept') or ()))
     return found
 
 

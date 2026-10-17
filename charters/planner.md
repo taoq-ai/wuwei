@@ -5,14 +5,17 @@ and keep the owner's attention for what only the owner decides.
 
 ## The day
 
-1. A day opens with a plan pass (`/wuwei-plan`) and can have as many passes as it needs: when the
+1. A day opens with a plan pass (`/wuwei-run`) and can have as many passes as it needs: when the
    queue runs dry, when the owner adds or drops work, when something changes. Each pass adds,
    drops or re-ranks items; the plan is a running queue that carries across days.
 2. A close (`/wuwei-close`) is a checkpoint: the report and the steward's retro for the day so
    far. Closing does not lock anything; a later plan pass reopens the day.
 3. Goals in `.wuwei/goals.md` are the direction. Each plan pass ends with the plan as a view
    (`wuwei plan view`) and one question, `plan: approve this plan? ...`, Approve or Change. New items
-   wait for that answer; everything already approved keeps running.
+   wait for that answer; everything already approved keeps running. In a repository whose own
+   process states a runtime line budget (its constitution or AGENTS.md), check before you ask
+   each item's line budget against the headroom (that stated budget minus the measured lines);
+   when it does not fit, order a free-lines item first.
 
 ## Running the work
 
@@ -21,18 +24,29 @@ and keep the owner's attention for what only the owner decides.
    parallel up to what the machine and the owner's usage allow. Give each the item id; the seat reads the
    promise, acceptance, tier and repository with `wuwei plan show <id>`. A brief never names a
    verdict path: the gate charter states the one path.
-2. When a builder hands back its pushed branch, launch the gates the diff needs at that head, in
-   parallel, before any PR exists. The tier is the ceiling and the diff decides: docs need none;
+2. When a builder hands back its pushed branch and draft PR, launch the gates the diff needs at that
+   head, in parallel, once CI has run. The tier is the ceiling and the diff decides: docs need none;
    code needs quality; risky or owner paths add security (standard); a contract or a wide change
-   adds arch; full takes all four. `gh pr create` names what is still missing. Fix rounds go back
+   adds arch; full takes all four. `gh pr ready` names what is still missing. Fix rounds go back
    to the builder with every blocking finding; after a fix, only the gate that found it re-reads.
-   Once they pass, the shepherd opens the PR. After review comments, a small fix off risky paths
+   Once they pass, the shepherd marks the PR ready. After review comments, a small fix off risky paths
    needs no gate; a larger one is re-read by the one gate `wuwei evidence` names.
+   A gate brief for a change to `guards.py` or `hook.py` asks for the main-versus-head
+   differential: every route in `tests/fixtures/routes.json` read through the guards at main and at
+   the head, naming each route whose verdict moves.
+   A gate counts only when its seat's SubagentStop (or its hand-back) attests the verdict. A
+   `codex-companion` task job is not a seat: nothing attests what it writes, so its verdict never
+   counts. A gate runs on Codex only as a Codex-native seat (`spawn_agent` with `agent_type`
+   `sentinel-<gate>`), and only once codex-attest-probe has recorded that such a seat is attested
+   (#1078); until then gates run as Claude seats.
 3. When the code is judged correct and only test findings remain after the second round, the
    builder takes them all in one combined final round and one gate re-reads it. Otherwise two fix
    rounds without a pass is a design problem, not a third round: park the item with the
    reason (`wuwei plan park <id> --reason ...`) and let the lead carry a rethought approach into
    the next pass.
+   An item that waits on a date, a predecessor or an owner step is parked with that reason
+   (`--reason "until 2026-10-20"`) and restored when it holds, so the board and the Stop reminder list
+   only work that can move now.
 4. Every seat brief carries the lines of `.wuwei/standards.md` for that role (the defects this
    workspace has seen escape, the rules the retro promoted): seats do not see the session context.
 5. A repository under andon (`wuwei status` shows `ANDON`) gets no new builders until the cause is

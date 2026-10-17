@@ -42,17 +42,21 @@ Weigh every open choice on two questions: can it be undone cheaply, and how sure
    citations from the live source and name the command you read them with.
 2. An absent measurement is "unmeasured", never clean. A refused or failed step is not done.
 3. Never poll the code host in a loop. Read a PR or its checks once and act on what you read.
-4. Probes and mutants run in a copy of the tree in a new empty scratch directory, never in the
-   builder's worktree.
+4. Probes and mutants run in a copy of the tree in a new empty directory inside your scratch
+   folder (Boundaries 2), never in the builder's worktree. Never check out, reset or build in the
+   main worktree. A gate copies the tree with `git archive <sha>` into its scratch folder (`git
+   worktree add` writes into the main clone's `.git`); a builder uses `git worktree add`.
 
 ## Boundaries
 
 1. Write only the item's worktree or your own verdict file. Never approve a PR, bypass branch
    protection, force push, or write the ledger (`.wuwei/ledger/`).
-2. A denied tool call is a blocker with its reason. Never route around it.
-3. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
+2. Write scratch files only under `<scratchpad>/<role>-<item>/` (for example
+   `<scratchpad>/sentinel-quality-<item>/`), so seats running at once never share a scratch folder.
+3. A denied tool call is a blocker with its reason. Never route around it.
+4. Outward text follows `_common-authoring.md`. Never put a secret or workspace content into an
    outward call.
-4. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
+5. Andon: when you find a problem that breaks work for everyone in a repository (its base branch
    red, a leaked secret, a broken shared dependency), pull the cord with
    `wuwei andon <owner/repo> --reason "<what is broken>"` and say so in your report. New builds in
    that repository wait until it is cleared; other repositories keep flowing.
@@ -110,13 +114,19 @@ You own open PRs until they merge or the owner parks them.
 
 ## Raise
 
-1. Open the PR with `gh pr create` from the item's branch once the gates the diff needs passed at its
-   head (WUWEI refuses it before and names what is missing). The body says what changed and why, the
-   assumptions, the tests, and review notes for residual non-blocking findings, and ends with the
-   WUWEI footer naming its item.
-2. Request reviewers: the top two authors of the changed source files over the past 90 days
-   (widen to 180 days, then all time), excluding the PR author and bots. Honour the repository's
-   review rules.
+1. A pushed branch opens as a draft PR (the builder opens it; open it yourself when it has none):
+   `gh pr create --draft`. In a cloud session `gh pr create` fails because it needs GraphQL; open it by REST:
+   `gh api -X POST repos/<owner>/<repo>/pulls -f head=<branch> -f base=<base> -f title=<title> -F body=@<file> -F draft=true`.
+   A PR that is not a draft waits for its gates (WUWEI refuses it and names what is missing).
+   The body says what changed and why, the assumptions, the tests, and review notes for residual
+   non-blocking findings, and ends with the WUWEI footer naming its item.
+2. Once CI is green and the gates the diff needs passed at the draft head, mark it ready with
+   `gh pr ready <n>` (in a cloud session `gh api -X POST repos/<owner>/<repo>/pulls/<n>/ccr/ready_for_review`);
+   WUWEI refuses the flip and reviewer requests on a draft before. Then request reviewers: the top two
+   authors of the changed source files over the past 90 days (widen to 180 days, then all time),
+   excluding the PR author and bots (in a cloud session
+   `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=<login>'`).
+   Honour the repository's review rules.
 3. Ask for review where the team asks (the `Review requests:` line in `.wuwei/standards.md`): one
    post with the PR link once it is ready, not a draft. A post made outside the session is recorded
    with `wuwei sent owner/repo#n <link>`, never posted twice.

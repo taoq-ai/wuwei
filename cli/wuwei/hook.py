@@ -1,5 +1,5 @@
 """The hooks: teach at the moment, hold the few doors, remind once, and record. A hook that fails
-lets the work go on and records why."""
+lets the work go on and records why; a door call it fails on is refused."""
 
 import datetime
 import hashlib
@@ -12,48 +12,27 @@ import time
 from wuwei import board, evidence, guards, plan, sync, verdict, ws
 
 
-
-def _hash(text):
-    return hashlib.sha256(text.encode()).hexdigest()
+def transcript(payload):
+    """The seat's last report, its input plus output tokens, and whether a hand-back ended its run, read from its
+    transcript ('', None and False when unreadable)."""
+    found, total, ended = '', None, False
+    try:
+        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
+            row = json.loads(line)
+            if usage := row.get('message', {}).get('usage') or {}:
+                total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
+            for part in row.get('message', {}).get('content', []) if row.get('type') == 'assistant' else ():
+                if part.get('type') == 'text' and part.get('text', '').strip():
+                    found, ended = part['text'], False
+                elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
+                    found, ended = part['input']['message'], part.get('name') == 'SubagentHandback'
+    except (OSError, TypeError, ValueError, AttributeError):
+        pass
+    return found, total, ended
 
 
 def last_text(payload):
-    text = payload.get('last_assistant_message')
-    if isinstance(text, str) and text.strip():
-        return text
-    path = payload.get('agent_transcript_path')
-    found = ''
-    try:
-        for line in Path(path).read_text(encoding='utf-8').splitlines():
-            row = json.loads(line)
-            if row.get('type') != 'assistant':
-                continue
-            for part in row.get('message', {}).get('content', []):
-                if part.get('type') == 'text' and part.get('text', '').strip():
-                    found = part['text']
-                elif part.get('type') == 'tool_use' and isinstance(part.get('input', {}).get('message'), str):
-                    found = part['input']['message']
-    except (OSError, TypeError, ValueError, AttributeError):
-        pass
-    return found
-
-
-def tokens(payload):
-    """Input plus output tokens the seat spent, summed from its transcript; None when unreadable."""
-    total = None
-    try:
-        for line in Path(payload.get('agent_transcript_path')).read_text(encoding='utf-8').splitlines():
-            usage = json.loads(line).get('message', {}).get('usage') or {}
-            if usage:
-                total = (total or 0) + usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-    except (OSError, TypeError, ValueError, AttributeError):
-        pass
-    return total
-
-
-def _confidence(text):
-    match = re.search(r'^Confidence:\s*(low|medium|high)\b', text or '', re.M | re.I)
-    return match[1].lower() if match else None
+    return text if isinstance(text := payload.get('last_assistant_message'), str) and text.strip() else transcript(payload)[0]
 
 
 def context(event, text):
@@ -61,23 +40,28 @@ def context(event, text):
 
 
 def running(root):
-    """Seats launched today that have not stopped."""
-    today = ws.today()
-    return len(ws.rows(root, 'seat.started', today)) - len(ws.rows(root, 'seat.stopped', today))
+    """Seats launched today, by agent id, with no stop under the same id."""
+    ids = {kind: {a for row in ws.rows(root, kind, ws.today()) if isinstance(a := row['data'].get('agent'), str)}
+           for kind in ('seat.started', 'seat.stopped')}
+    return len(ids['seat.started'] - ids['seat.stopped'])
 
 
 def pre_tool(root, payload):
-    if payload.get('tool_name') in ('Agent', 'Task'):
-        data = payload.get('tool_input') or {}
-        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
-                                         'description': str(data.get('description', ''))[:120],
-                                         'session': payload.get('session_id')})
-    found = guards.pre_tool(root, payload)
+    try:  # the doctor's hooks row reads it; a failed stamp never changes the guards' decision
+        ws.cache_put(root, 'hook-seen', ws.now().timestamp())
+    except Exception as exc:
+        print(f'wuwei hook PreToolUse: the hook-seen stamp failed: {exc}'[:300], file=sys.stderr)
+    role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]  # the harness's, never the message's
+    problem = payload.get('tool_name') == 'SubagentHandback' and role.startswith('sentinel-') and _verdict_problem(
+        root, {**payload, 'last_assistant_message': str((payload.get('tool_input') or {}).get('message', ''))}, role)
+    found = {'decision': 'deny', 'reason': problem + '\nThen hand back again.'} if problem else guards.pre_tool(root, payload)
     if found is None:
         return None
     kind = {'deny': 'refused', 'ask': 'asked', 'note': 'note'}[found['decision']]
-    ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500],
-                           'session': payload.get('session_id')})
+    try:  # the decision stands even when its record fails
+        ws.record(root, kind, {'tool': payload.get('tool_name'), 'reason': found['reason'][:500], 'session': payload.get('session_id')})
+    except Exception as exc:
+        print(f'wuwei hook PreToolUse: the {kind} record failed: {exc}'[:300], file=sys.stderr)
     if found['decision'] == 'note':
         return context('PreToolUse', found['reason'])
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': found['decision'],
@@ -85,9 +69,8 @@ def pre_tool(root, payload):
 
 
 def closed(root):
-    today = ws.today()
     marks = [row['kind'] for row in ws.ledger(root)
-             if row.get('kind') in ('day.closed', 'plan.pass') and row.get('ts', '').startswith(today)]
+             if row.get('kind') in ('day.closed', 'plan.pass') and row.get('ts', '').startswith(ws.today())]
     return bool(marks) and marks[-1] == 'day.closed'
 
 
@@ -100,20 +83,22 @@ def stop(root, payload):
     waiting = sum(1 for row in rows for gap in row['gaps'] if not gap['actionable'])
     recent = (ws.now() - datetime.timedelta(hours=1)).isoformat(timespec='seconds')
     if not open_work and waiting and not any(r['ts'] >= recent for r in ws.rows(root, 'watch.pass')):
-        open_work = ['nothing will wake this session for the waiting work: arm /wuwei-watch on a schedule '
-                     '(/loop 20m /wuwei-watch locally; in the cloud a PR subscription and a check-in)']
+        open_work = ['nothing will wake this session for the waiting work unless a check-in or PR subscription is armed, which WUWEI '
+                     'cannot see: arm /wuwei-watch on a schedule (/loop 20m /wuwei-watch locally; in the cloud both)']
     elif not rows and (Path(root) / ws.DIR / 'goals.md').is_file():  # the flow never waits on the owner's nudge
-        open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-plan)']
+        open_work = ['the queue is empty: run a plan pass from the goals (/wuwei-run)']
     if not open_work:
         return None
-    name = f'stop-{payload.get("session_id", "")}'
-    key = _hash('\n'.join(sorted(open_work)))
-    if ws.cache_get(root, name, 7 * 86400) == key:
+    name, last = f'stop-{payload.get("session_id", "")}', ws.cache_get(root, f'stop-{payload.get("session_id", "")}', 7 * 86400)
+    seen, since = (last.get('lines', []), last.get('ts', '')) if isinstance(last, dict) else ([], '')
+    new = [line for line in open_work if line not in seen]  # only what changed since the last reminder (#1099)
+    ws.cache_put(root, name, {'lines': open_work, 'ts': ws.now().isoformat(timespec='minutes') if new else since})
+    if not new:
         return None
-    ws.cache_put(root, name, key)
     ws.record(root, 'stop.reminded', {'open': len(open_work), 'session': payload.get('session_id')})
-    shown = '\n'.join('- ' + line for line in open_work[:10])
-    more = f'\nand {len(open_work) - 10} more (wuwei status lists all)' if len(open_work) > 10 else ''
+    shown = '\n'.join('- ' + line for line in new[:10])
+    more = f'\nand {len(new) - 10} more (wuwei status lists all)' if len(new) > 10 else ''
+    more += f'\n{len(open_work) - len(new)} more unchanged since {since} (wuwei status lists all)' if len(new) < len(open_work) else ''
     held = f'\nLeft out: {waiting} waiting on CI, the owner, plan approval or an andon.' if waiting else ''
     return {'decision': 'block', 'reason': 'WUWEI: open work you can close now:\n' + shown + more + held +
             '\nThe plan is your mandate: do not ask the owner whether to continue. Close these, or say in '
@@ -122,8 +107,7 @@ def stop(root, payload):
 
 def _settled(payload):
     """The seat's last message, rereading a transcript the harness may still be writing (about 2 s)."""
-    text = last_text(payload)
-    path = payload.get('agent_transcript_path')
+    text, path = last_text(payload), payload.get('agent_transcript_path')
     for _ in range(8):
         if text.strip() or not path or not Path(path).is_file():
             break
@@ -135,8 +119,9 @@ def _settled(payload):
 def subagent_stop(root, payload):
     payload = {**payload, 'last_assistant_message': _settled(payload)}
     role = str(payload.get('agent_type', '')).rsplit(':', 1)[-1]
-    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens(payload),
-                                     'confidence': _confidence(last_text(payload)),
+    _, tokens, ended = transcript(payload)
+    ws.record(root, 'seat.stopped', {'role': role, 'agent': payload.get('agent_id'), 'tokens': tokens,
+                                     'confidence': (m := re.search(r'^Confidence:\s*(low|medium|high)\b', last_text(payload), re.M | re.I)) and m[1].lower(),
                                      'session': payload.get('session_id')})
     if not role.startswith('sentinel-'):
         if payload['last_assistant_message'].strip():
@@ -149,7 +134,7 @@ def subagent_stop(root, payload):
     problem = _verdict_problem(root, payload, role)
     if problem is None:
         return None
-    if payload.get('stop_hook_active'):
+    if payload.get('stop_hook_active') or ended:  # a block after either reaches no one: record it instead
         ws.record(root, 'verdict.missing', {'role': role, 'agent': payload.get('agent_id'), 'problem': problem[:300]})
         return None
     return {'decision': 'block', 'reason': 'WUWEI: ' + problem}
@@ -163,10 +148,17 @@ def _verdict_problem(root, payload, role):
     verdicts = (Path(root) / ws.DIR / 'verdicts').resolve()
     try:
         path = path.resolve()
+        if not path.is_relative_to(verdicts) and '/.wuwei/verdicts/' in path.as_posix():  # written in a worktree: copied in
+            copy, body = verdicts / path.as_posix().split('/.wuwei/verdicts/', 1)[1], path.read_bytes()
+            if copy.exists() and copy.read_bytes() != body:
+                return f'{copy} already holds another verdict: write yours beside it as {copy.stem}-2.md.'
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.write_bytes(body)
+            path = copy
         path.relative_to(verdicts)
         body = path.read_bytes()
     except (OSError, ValueError):
-        return f'the verdict must be a readable file under .wuwei/verdicts/ (got {match[1]}).'
+        return f'the verdict must be a readable file under {verdicts}/ (got {match[1]}).'
     rel, sha = str(path.relative_to(Path(root).resolve())), hashlib.sha256(body).hexdigest()
     earlier = [row['data'] for row in ws.rows(root, 'attest') if row['data'].get('path') == rel]
     if any(row.get('sha256') == sha for row in earlier):
@@ -183,33 +175,28 @@ def _verdict_problem(root, payload, role):
     gate = role.removeprefix('sentinel-')
     if parsed['gate'] != gate:
         return f'you are {role}; your verdict must say Gate: {gate}.'
-    ws.record(root, 'attest', {'path': rel, 'sha256': sha,
-                               'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
+    ws.record(root, 'attest', {'path': rel, 'sha256': sha, 'gate': gate, 'item': parsed['item'], 'head': parsed['head'],
                                'pr': f'{parsed["repo"]}#{parsed["pr"]}' if parsed['pr'] else parsed['repo'], 'verdict': parsed['verdict'],
-                               'confidence': parsed['confidence'],
-                               'role': role, 'agent': payload.get('agent_id'),
+                               'confidence': parsed['confidence'], 'role': role, 'agent': payload.get('agent_id'),
                                'transcript': payload.get('agent_transcript_path')})
     return None
 
 
 def post_tool(root, payload):
-    tool = payload.get('tool_name', '')
-    data = payload.get('tool_input') or {}
+    tool, data = payload.get('tool_name', ''), payload.get('tool_input') or {}
     if ws.config(root)['telemetry']:
         target = data.get('command') or data.get('file_path') or data.get('url') or ''
         ws.trace(root, {'session': payload.get('session_id'), 'agent': payload.get('agent_id'), 'tool': tool,
+                        'role': str(payload.get('agent_type', '')).rsplit(':', 1)[-1],
                         'target': guards.SECRETS.sub('***', str(target))[:160],
                         'duration_ms': payload.get('duration_ms')})
+    response = payload.get('tool_response') if tool in ('Agent', 'Task') else None  # runs only for an accepted launch
+    if isinstance(response, dict) and isinstance(response.get('agentId'), str) and response['agentId']:
+        ws.record(root, 'seat.started', {'role': str(data.get('subagent_type', '')).rsplit(':', 1)[-1],
+                                         'description': str(data.get('description', ''))[:120], 'session': payload.get('session_id'),
+                                         'agent': response['agentId']})
     if tool == 'AskUserQuestion':
         return _answers(root, data, payload.get('tool_response'))
-    role = str(data.get('subagent_type', '')).rsplit(':', 1)[-1]
-    if tool in ('Agent', 'Task') and role.startswith('sentinel-'):
-        # The handback carries the seat's last message: attest from it when the stop could not read it (#1039).
-        response = payload.get('tool_response')
-        parts = response.get('content') if isinstance(response, dict) else None
-        text = '\n'.join(p.get('text', '') for p in parts if isinstance(p, dict)) if isinstance(parts, list) else str(response)
-        _verdict_problem(root, {'last_assistant_message': text, 'agent_id': payload.get('agent_id')}, role)
-        return None
     if tool.startswith('mcp__') and re.search(r'send|post|reply|comment|write', tool.lower()) \
             and not re.search(r'read|get|list|search|fetch', tool.lower()):
         named = sorted(evidence.refs(json.dumps(data)))
@@ -218,8 +205,8 @@ def post_tool(root, payload):
             ws.cache_put(root, 'board', None)
         return _replied(root, tool, json.dumps(data))
     if tool == 'Bash' and any(argv[:1] == ['gh'] and argv[1:3] == ['pr', 'create']
-                              for argv, _ in guards.segments(str(data.get('command', '')))):
-        match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)', json.dumps(payload.get('tool_response')))
+                              for argv, _ in guards.segments(str(data.get('command', ''))) or ()):
+        match = re.search(r'https://github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)', json.dumps(payload.get('tool_response')))
         if match:
             gaps = evidence.visible(evidence.gaps(root, match[1], int(match[2])))
             ws.cache_put(root, 'board', None)
@@ -235,7 +222,7 @@ def _replied(root, tool, sent):
     for item in plan.items(root):
         if item.get('kind') != 'reply' or item.get('status') != 'open':
             continue
-        thread = re.search(r'/archives/([A-Z0-9]+)/p(\d{10})(\d{6})', item['where'])
+        thread = re.search(r'/archives/([A-Z0-9]+)/p([0-9]{10})([0-9]{6})', item['where'])
         keys = [thread[1], f'{thread[2]}.{thread[3]}'] if thread else [item['where']]
         if all(key in sent for key in keys):
             plan.mark(root, item['id'], 'done', f'replied via {tool}')
@@ -254,11 +241,11 @@ def _answers(root, data, response):
     notes = []
     for question in questions:
         answer = str(answers.get(question, '')) if isinstance(answers, dict) else ''
-        yes = answer.strip().lower().startswith(('yes', 'approve', 'accept'))
-        match = re.search(r'owner review: ([\w.-]+/[\w.-]+)#(\d+) at ([0-9a-f]{7,40})', question)
-        if match and answer:
-            ws.record(root, 'ruling', {'pr': f'{match[1]}#{match[2]}', 'head': match[3], 'approved': yes,
-                                       'question': question, 'answer': answer})
+        yes = answer.strip().lower().startswith(('yes', 'approve', 'accept', 'proceed'))
+        found = re.match(r'\s*(?i:owner review|(breaking)):\s*' + REF.pattern, question)
+        if answer and found and found[2]:
+            ws.record(root, 'ruling', {**({'kind': 'breaking'} if found[1] else {}), 'pr': f'{found[2]}#{found[3]}',
+                                       'head': found[4], 'approved': yes, 'question': question, 'answer': answer})
         refs, gap_text = exception_refs(question)
         if refs and gap_text and answer:
             for repo, number, head in refs:
@@ -269,10 +256,6 @@ def _answers(root, data, response):
                     item = plan.followup(root, f'Close the exception on {ref}: {gap_text}', repo,
                                          _goal(root, ref, repo), f'owner accepted it at {head}')
                     notes.append(f'WUWEI: exception recorded on {ref}; {item["id"]} in the plan closes it later.')
-        found = REF.search(question) if question.lower().startswith('breaking:') else None
-        if found and found[1] and answer:
-            ws.record(root, 'ruling', {'kind': 'breaking', 'pr': f'{found[1]}#{found[2]}', 'head': found[3],
-                                       'approved': yes, 'question': question, 'answer': answer})
         if question.lower().startswith('plan:') and answer:
             if yes:
                 plan.approve(root, answer)
@@ -287,7 +270,7 @@ def _answers(root, data, response):
     return context('PostToolUse', '\n'.join(notes)) if notes else None
 
 
-REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#(\d+) at ([0-9a-f]{7,40})\b')
+REF = re.compile(r'(?:([\w.-]+/[\w.-]+))?#([0-9]+) at ([0-9a-f]{7,40})\b')
 
 
 def exception_refs(question):
@@ -310,14 +293,11 @@ def _goal(root, ref, repo):
     return found[0]['goal'] if found else 'unplanned'
 
 
-PLUGIN = Path(__file__).resolve().parents[2]
-
-
 def session_start(root, payload):
-    cli = str(PLUGIN / 'bin' / 'wuwei')
+    cli = str(ws.PLUGIN / 'bin' / 'wuwei')
     ws.atomic_write(Path(root) / ws.DIR / 'executable', cli + '\n')
-    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(PLUGIN / 'charters' / name).read_text(
-        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (PLUGIN / 'charters' / name).is_file()]
+    parts = [f'WUWEI CLI: {cli} (call it by this path; it is not on PATH)'] + [(ws.PLUGIN / 'charters' / name).read_text(
+        encoding='utf-8').strip() for name in ('_way.md', '_common.md', 'planner.md') if (ws.PLUGIN / 'charters' / name).is_file()]
     for name in ('goals.md', 'standards.md'):
         path = Path(root) / ws.DIR / name
         if path.is_file() and path.read_text(encoding='utf-8').strip():
@@ -344,7 +324,8 @@ def codex(payload):
         paths = [(m[1] or m[2]).strip() for m in PATCHED.finditer(str(data.get('command', '')))]
         return {**payload, 'tool_name': 'Edit', 'tool_input': {'file_paths': paths}}
     if tool == 'spawn_agent':
-        return {**payload, 'tool_name': 'Agent',
+        spawned = re.search(r'"agent_id"\s*:\s*"([^"]+)"', json.dumps(payload.get('tool_response')).replace('\\"', '"'))
+        return {**payload, 'tool_name': 'Agent', 'tool_response': {'agentId': spawned and spawned[1]},
                 'tool_input': {'subagent_type': data.get('agent_type') or '', 'description': data.get('task_name') or ''}}
     if tool == 'request_user_input':
         ids = {q.get('id'): q.get('question', '') for q in data.get('questions') or () if isinstance(q, dict)}
@@ -358,23 +339,35 @@ def codex(payload):
 
 
 def handle(root, event, payload):
-    payload = codex(payload)
     handler = HANDLERS.get(event)
     if handler is None:
         return None
     try:
-        return handler(root, payload)
-    except Exception as exc:  # fail open: work goes on, the audit records why
+        return handler(root, codex(payload))
+    except Exception as exc:  # fail open: work goes on, the audit records why; a door that cannot judge stays shut
         message = f'{type(exc).__name__}: {exc}'[:300]
         print(f'wuwei hook {event}: {message}', file=sys.stderr)
         try:
             ws.record(root, 'hook.error', {'event': event, 'error': message})
         except Exception:
             pass
+        if event == 'PreToolUse' and door(payload):
+            return {'hookSpecificOutput': {'hookEventName': event, 'permissionDecision': 'deny', 'permissionDecisionReason':
+                    f'WUWEI: this call names a door and the hook failed while checking it ({message}); fix the cause and retry.'}}
         return None
 
 
-VENDORED = PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
+def door(payload):
+    """An edit (guards.DOORS, or a Codex apply_patch), any MCP tool (the leak check), or a Bash command naming a door
+    program (guards.DOOR_WORDS) or a network program, read with its quotes and backslashes removed."""
+    tool, data = str(payload.get('tool_name') or ''), payload.get('tool_input')
+    command = re.sub(r'[\'"\\]', '', str(data.get('command', ''))) if isinstance(data, dict) else ''
+    network = rf'(^|[\s;&|(`/])({"|".join(guards.NETWORK)})(\s|$)'
+    return tool in (*guards.DOORS['edit'], 'apply_patch') or tool.startswith('mcp__') or tool == 'Bash' and (any(
+        all(re.search(w, command) for w in words) for words in guards.DOOR_WORDS) or re.search(network, command))
+
+
+VENDORED = ws.PLUGIN.parent.name == '.claude'  # copied into a repository by wuwei init --cloud
 
 
 def _sync(step, arg):

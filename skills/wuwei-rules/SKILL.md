@@ -1,5 +1,5 @@
 ---
-name: wuwei
+name: wuwei-rules
 description: How work runs under WUWEI, the process auditor. Use when unsure what done means, why a call was refused, whether to ask the owner, or how to pull the andon cord.
 ---
 
@@ -25,7 +25,7 @@ The rest is process fit: follow it, and the merge records any misfit for the ret
   at the head: spec-kit `spec.md`, `plan.md`, `tasks.md` all checked (full adds `## Clarifications`, an
   `analysis.md` with no open CRITICAL or HIGH, checked checklists); OpenSpec `proposal.md`, a capability
   spec, `tasks.md` all checked.
-- The gates the diff needs passed on the branch before its PR opened (`gh pr create` waits for them).
+- The gates the diff needs passed at the draft head before the PR turned ready (`gh pr ready` waits for them).
   The tier is the ceiling: docs need none; code quality; at standard, risky or owner paths add
   security and a wide change adds arch; a contract file takes arch at any tier; full takes all four.
   After review fixes, a delta of docs or at most 20 lines off risky paths carries the passes; a
@@ -38,7 +38,7 @@ The rest is process fit: follow it, and the merge records any misfit for the ret
 
 ## The doors
 
-WUWEI refuses: a merge with gaps; a PR opened before its gates pass; a force push, a push to or deletion of the default branch; admin
+WUWEI refuses: a merge with gaps; a PR opened ready, marked ready or given reviewers before its gates pass (a draft opens first); a force push, a push to or deletion of the default branch; admin
 merges, protection, status and access writes through `gh api`; a secret or the workspace canary in
 an outward call; writes to `.wuwei/ledger.jsonl`; a hand-made `wuwei hook` call; and a question to
 the owner that the process answers. Infrastructure commands ask the owner through the harness.

@@ -3,7 +3,9 @@
 import datetime
 import fnmatch
 import hashlib
+import json
 from pathlib import Path
+import posixpath
 import re
 
 from wuwei import gh, plan, ws
@@ -31,8 +33,8 @@ SPEC_RULES = {
 ITEM = re.compile(r'(?:WUWEI-Item:|\[WUWEI[^\]\n]*\]\([^)\n]*\)[^\n]*?\bItem\b)[ \t:]*\\?`?([\w.-]+)')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
 # Process fit, never a block: recorded at merge for the retro, shown to nobody while the work flows.
-PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|\d+ changed lines"
-                     r"|open \d+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
+PROCESS = re.compile(r"^(specs/|openspec/|no spec in the diff|PR body misses the repository template|[0-9]+ changed lines"
+                     r"|open [0-9]+ days|no Rollback: line|not linked to a plan item|no reviewer requested)")
 CONTRACT = re.compile(r'(^|/)(openapi|swagger)[^/]*\.(ya?ml|json)$|\.proto$|\.graphql$|\.schema\.json$', re.I)
 # Trust paths raise a light item to standard (#1016); with data, infrastructure and dependencies they call security.
 TRUST = r'(^|[/_.-])(auth|oauth|login|session|token|secret|password|permission|grant|polic|iam|acl|rbac)'
@@ -41,11 +43,13 @@ RISKY = re.compile(TRUST + r'|(^|[/_.-])(crypt|secur|sql|migrat)|(^|/)(infra|ter
 RAISE = {'light': 'standard', 'standard': 'full', 'full': 'full'}
 MAX_LINES, STALE_DAYS, BUDGET, TRIVIAL, WIDE = 400, 3, 0.15, 20, 200
 FAILED = {'FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR'}
-
-
+RELEASE_BOTS = ('github-actions[bot]', 'release-please[bot]')  # the logins release-please opens its PRs as
+VERSION_LINE = re.compile(r'[+-][ \t]*"([\w./-]+)":[ \t]*"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?",?', re.A)
 # A duty: work the team owes that does not hold the merge, yet reaches it until done.
 DUTY = re.compile(r'^(review not requested|the approval from)')
-REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)|([\w.-]+/[\w.-]+)#(\d+)')
+DEFERRED = re.compile(r'^(#+)\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
+REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
+REF = re.compile(r'github\.com/([\w.-]+/[\w.-]+)/pull/([0-9]+)|([\w.-]+/[\w.-]+)#([0-9]+)')
 
 
 def gap(text, actionable=True, owner=False):
@@ -89,14 +93,32 @@ def review_duty(root, ref, pr):
 def item_for(root, pr, repo=None):
     """The plan item a PR names in its WUWEI footer, records among its PRs, or whose id starts
     its branch name."""
-    match = ITEM.search(pr.get('body') or '')
-    if match:
+    if match := ITEM.search(pr.get('body') or ''):
         return plan.find(root, match[1])
     ref = f'{repo}#{pr.get("number")}' if repo else None
     linked = next((item for item in plan.items(root) if ref and ref in item.get('prs', ())), None)
     branch = (pr.get('headRefName') or '').lower()
     return linked or next((item for item in plan.items(root)
                            if branch == item['id'].lower() or branch.startswith(item['id'].lower() + '-')), None)
+
+
+def release(repo, pr):
+    """A release-please PR, read as generated (X-1): a bot author, a release-please-- branch, and only CHANGELOG.md, the
+    manifest and the extra-files that release-please-config.json names on the base branch, these changing version lines
+    only (a missing patch or a rename does not count). Unreadable keeps every gap."""
+    files, allowed = pr.get('files') or (), {'.release-please-manifest.json'}
+    if (pr.get('author') or {}).get('login') not in RELEASE_BOTS or not (pr.get('headRefName') or '').startswith('release-please--'):
+        return False
+    try:
+        packages = json.loads(gh.file(repo, 'release-please-config.json', pr['baseRefName']))['packages'].items()
+        allowed |= {posixpath.normpath(posixpath.join(where, e if isinstance(e, str) else e['path'])).lstrip('/')
+                    for where, package in packages for e in [] + package.get('extra-files', [])}  # [] + refuses a string
+    except Exception:  # anything unreadable, malformed or nested too deep counts only the manifest
+        pass
+    def bumped(f):  # every +/- line, split on \n only as git does, is a whole "key": "<semver>" line; key "version" bar the manifest
+        return isinstance(f.get('patch'), str) and f['patch'] != '' and all((m := VERSION_LINE.fullmatch(x)) and (
+            m[1] == 'version' or f['path'] == '.release-please-manifest.json') for x in f['patch'].split('\n') if x[:1] in ('+', '-'))
+    return bool(files) and all(not f.get('renamed') and (f['path'] == 'CHANGELOG.md' or f['path'] in allowed and bumped(f)) for f in files)
 
 
 def _cached(root, name, read, max_age=86400):
@@ -121,10 +143,6 @@ def template_sections(root, repo):
     return _cached(root, 'template-' + repo.replace('/', '__'), read)
 
 
-DEFERRED = re.compile(r'^(#+)\s+(?:\d+(?:\.\d+)*\.?\s*)?(Deferred|Out of this PR)\b', re.I)
-REASON = re.compile(r'\(.+\)|\bbecause\b|\bwaits? on\b|\bblocked by\b|\breason:', re.I)
-
-
 def _counted(text):
     """The checklist lines that count: a box under a Deferred or Out of this PR heading is left out
     when its line says why (#1037); the section ends at the next heading of the same or a higher level."""
@@ -145,10 +163,9 @@ def _counted(text):
 
 def _unchecked(path, text):
     boxes = BOX.findall(_counted(text))
-    open_boxes = sum(1 for box in boxes if box == ' ')
     if not boxes:
         return f'{path} has no checklist items'
-    return f'{path} has {open_boxes} unchecked item{"s" if open_boxes > 1 else ""}' if open_boxes else None
+    return f'{path} has {boxes.count(" ")} unchecked item{"s" if boxes.count(" ") > 1 else ""}' if ' ' in boxes else None
 
 
 def _rule(repo, path, rule, head):
@@ -157,20 +174,15 @@ def _rule(repo, path, rule, head):
         entries = gh.listing(repo, path.rstrip('/'), head)
         if not entries:
             return f'{path} missing: run the spec engine step that writes it'
-        if rule != 'checked':
-            return None
-        for entry in (e for e in entries if e.get('type') == 'file' and e['name'].endswith('.md')):
-            problem = _unchecked(entry['path'], gh.file(repo, entry['path'], head))
-            if problem:
-                return problem
-        return None
+        return next((problem for e in entries if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')
+                     if (problem := _unchecked(e['path'], gh.file(repo, e['path'], head)))), None)
     try:
         text = gh.file(repo, path, head)
     except gh.GhError:
         return f'{path} missing: run the spec engine step that writes it'
     if rule == 'checked':
         return _unchecked(path, text)
-    if rule == 'clarified' and not re.search(r'^##\s+(?:\d+(?:\.\d+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
+    if rule == 'clarified' and not re.search(r'^##\s+(?:[0-9]+(?:\.[0-9]+)*\.?\s*)?Clarifications\b', text, re.M | re.I):
         return f'{path} has no ## Clarifications section: run clarify'
     if rule == 'clean':
         for line in text.splitlines():
@@ -190,17 +202,11 @@ def spec_gaps(repo, engine, tier, files, head):
     pattern, rules = SPEC_RULES[engine]
     features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
     if not features:
-        if any(path.startswith(('specs/', 'openspec/')) for path in files):
-            return []
-        return [gap(f'no spec in the diff (the repository uses {engine})')]
+        return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
+            gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
-    found = []
-    for feature in features:
-        for name, rule in wanted:
-            problem = _rule(repo, feature + name, rule, head)
-            if problem and gap(problem) not in found:
-                found.append(gap(problem))
-    return found
+    problems = (_rule(repo, feature + name, rule, head) for feature in features for name, rule in wanted)
+    return [gap(problem) for problem in dict.fromkeys(problems) if problem]
 
 
 def budget(root, repo):
@@ -289,8 +295,7 @@ def gate_gaps(root, repo, item_id, gates, head, why='', ref='', tier='standard')
             latest[found['gate']] = found
             last = found['head'] if found['verdict'] == 'PASS' else last
     passed = {gate: v for gate, v in latest.items() if v['verdict'] == 'PASS'}
-    missing = [gate for gate in gates if gate not in passed]
-    if missing:
+    if missing := [gate for gate in gates if gate not in passed]:
         return [gap(f'gates missing at head {head[:7]}: {", ".join(missing)}{why}')] + uncounted(root, item_id)
     if not gates or any(head.startswith(v['head']) for v in passed.values()):
         return []
@@ -344,7 +349,7 @@ def review_contexts(root, repo, rollup):
     """Unsettled statuses whose target_url run is of a workflow the repo runs on pull_request_review (1067-probe)."""
     try:
         runs = {c['context']: m[1] for c in rollup or () if 'context' in c and c.get('state') != 'SUCCESS'
-                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/(\d+)', c.get('url') or '', re.I))}
+                and (m := re.search(rf'github\.com/{re.escape(repo)}/actions/runs/([0-9]+)', c.get('url') or '', re.I))}
         paths = runs and _cached(root, 'review-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo))
         return {context for context, run in runs.items() if paths and gh.workflow_paths(repo, f'/{run}')[0] in paths}
     except (gh.GhError, AttributeError, KeyError, IndexError, TypeError):
@@ -362,40 +367,41 @@ def ci_gaps(rollup, review=()):
             failed.append(name)
         elif check.get('status', 'COMPLETED').upper() != 'COMPLETED' or state in ('PENDING', 'EXPECTED'):
             running = True
-    if failed:
-        return found + [gap('CI failing: ' + ', '.join(failed))]
-    return found + ([gap('CI running', actionable=False)] if running else [])
+    return found + ([gap('CI failing: ' + ', '.join(failed))] if failed else [gap('CI running', actionable=False)] if running else [])
 
 
 def gaps(root, repo, number):
     try:
         pr = gh.pr(repo, number)
-        item, ref = item_for(root, pr, repo), f'{repo}#{number}'
+        item, ref, generated = item_for(root, pr, repo), f'{repo}#{number}', release(repo, pr)
         found = [] if item else [gap('not linked to a plan item (end the PR body with the WUWEI footer naming its item)')]
         tier = (item or {}).get('tier', 'standard')
-        item_id, raised, gates, why = gates_for(root, repo, pr, pr.get('files') or (), item)
+        item_id, raised, gates, why = gates_for(root, repo, pr, () if generated else pr.get('files') or (), item)
         files, body, head = [f['path'] for f in pr.get('files') or ()], pr.get('body') or '', pr['headRefOid']
-        missing = [s for s in template_sections(root, repo) if s.lower() not in body.lower()]
-        if missing:
+        if missing := [s for s in template_sections(root, repo) if s.lower() not in body.lower()]:
             found.append(gap(f"PR body misses the repository template's sections: {', '.join(missing)}"))
         if tier != 'light':
             # At full tier the spec is part of the safety case; below it, process fit for the retro.
             found += [dict(g, kind='safety') if tier == 'full' else g for g in spec_gaps(repo, spec_engine(root, repo), tier, files, head)]
-        code = [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
+        code = [] if generated else [path for path in files if not DOCS.search(path) and not path.startswith(('specs/', 'openspec/'))]
         if code and not any(TEST.search(path) for path in files) and not re.search(r'^No test:\s*\S', body, re.M):
             found.append(gap('no test in the diff'))
-        size = lines(pr.get('files') or ())
-        if size > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
+        if (size := lines(pr.get('files') or ())) > MAX_LINES and not re.search(r'^Size:\s*\S', body, re.M):
             found.append(gap(f'{size} changed lines: split it, or add a Size: <reason> line'))
         owners = owned(root, files)
         if (tier == 'full' or owners) and not re.search(r'^Rollback:\s*\S', body, re.M):
             found.append(gap('no Rollback: line (how to undo this change)'))
         found += gate_gaps(root, repo, item_id, gates, head, why, ref, raised)
         found += breaking_gaps(root, ref, pr, item_id)
-        found += ci_gaps(pr.get('statusCheckRollup'), review_contexts(root, repo, pr.get('statusCheckRollup')))
+        rollup = pr.get('statusCheckRollup')
+        found += ci_gaps(rollup, review_contexts(root, repo, rollup))
+        try:  # no check run and no status at the head of a repository that ran a pull_request workflow (#1085)
+            ci = not rollup and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo, '?event=pull_request&per_page=1'))
+        except (gh.GhError, AttributeError, TypeError):
+            ci = True  # an unreadable Actions host counts as CI, so the gap shows rather than a pass
+        found += [gap(f'CI not started at {head[:7]}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
-        threads = gh.unanswered_threads(repo, number, author)
-        if threads:
+        if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
         if not pr.get('reviewRequests') and all((r.get('author') or {}).get('login') == author for r in pr.get('reviews') or ()):
             found.append(gap('no reviewer requested'))
