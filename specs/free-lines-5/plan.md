@@ -29,7 +29,7 @@ Python 3.11 stdlib, pytest. Runtime budget 3,000 lines in `cli/wuwei/`, at 2,996
 | board | `compute` reuses `mine` in the unreadable path and the item loop; the cache key is built in place | -2 |
 | report | `import hashlib` joins the sorted stdlib block | -1 |
 | report | `learning`'s exception loop is one comprehension | -2 |
-| agents | `stale` is one comprehension | -2 |
+| agents | `stale` is one comprehension | -3 |
 | upgrade | `items` counts imports as `len(known) - before` | -2 |
 | evidence | `verdicts` reads the path in place | -1 |
 | hook | walrus in `handle`, `subagent_stop`, `_verdict_problem` | -3 |
