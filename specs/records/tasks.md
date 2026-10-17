@@ -27,3 +27,11 @@
 - [x] T017 Generated probes at head: 0 holes
 - [x] T018 Route corpus dumped at main and head with the corpus sha256
 - [x] T019 Full suite green; runtime 2,995
+
+## Phase 4: Gate fix round (head 6d4f8af)
+
+- [x] T020 Tests and routes.json rows for the security gate's holes (brackets, git clean pathspecs and `!` excludes, python -c) and the quality gate's surviving mutants: red at 6d4f8af
+- [x] T021 Brace cap counts words (512), bracket classes read as `*`, linear regexes; timing test red (4.0 s), then green
+- [x] T022 git clean refuses `$ ~ { backtick` pathspecs, records() matches and `!` excludes; `-n` passes
+- [x] T023 Writer arguments are also split at quotes and punctuation, so a python -c body is read
+- [x] T024 Docs, spec and vendored copy follow; runtime stays 2,995

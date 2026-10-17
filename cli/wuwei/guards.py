@@ -58,11 +58,11 @@ LEDGER_DENIED = ("the ledger is written only by WUWEI's hooks; it is the audit r
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
-def records(path, below=LEDGER):  # .wuwei, or what lies below it (None: anything), as sh expands the path
-    if m := re.search(r'\{(?:([^{}]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
-        alts = m[1].split(',') if m[1] is not None else map(chr, range(ord(min(m[2], m[3])), ord(max(m[2], m[3])) + 1))
-        return path.count('{') > 9 or any(records(path[:m.start()] + alt + path[m.end():], below) for alt in alts)  # 2^n: cap n
-    path = re.sub(r'\[:\w+:\]', '!-~', path.replace('[^', '[!'))  # [^x] negates as [!x]; a [:class:] reads as any printable character
+def records(path, below=LEDGER, cap=512):  # .wuwei, or what lies below it (None: anything), as sh expands the path (cap: words left)
+    if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
+        alts = m[1].split(',') if m[1] is not None else [*map(chr, range(ord(min(m[2], m[3])), ord(max(m[2], m[3])) + 1))]
+        return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2)) for a in alts)
+    path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
     return any(p[:1] == '.' and fnmatchcase('.wuwei', p) and (below is None or i + 1 == len(parts) or any(  # * ? [..] skip a leading dot
         fnmatchcase(name, parts[i + 1]) for name in below)) for i, p in enumerate(parts))
@@ -324,9 +324,9 @@ def bash(root, command, cwd, session):
                     'by --body-file, -F or a file written with Write.')
     inside = records(cwd, None)  # after cd .wuwei (or in it), a relative path reaches the records unnamed
     for argv, targets in parts or ():
-        program = Path(argv[0]).name if argv else ''
+        program, words = Path(argv[0]).name if argv else '', argv[1:] + re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
-        if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in argv[1:]) or (
+        if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
             return deny(LEDGER_DENIED)
         inside = inside or program in ('cd', 'pushd') and any(records(a, None) for a in argv[1:])
@@ -337,11 +337,11 @@ def bash(root, command, cwd, session):
         if program == 'git':
             rest, i, here = argv[1:], 0, cwd
             while i < len(rest) and rest[i].startswith('-'):
-                if rest[i] == '-C' and i + 1 < len(rest):
-                    here = rest[i + 1]
+                here = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            if rest[i:i + 1] == ['clean'] and {'x', 'X'} & dict(flags := _flags(rest[i + 1:], {'e', 'exclude'})).keys() and (  # .wuwei is
-                    inside or records(here, None) or not all([re.match(r'[^./*?[:\\]', normpath(v)) for n, v in flags if not n] or [None])):  # ignored
+            if rest[i:i + 1] == ['clean'] and ({'x', 'X'} & dict(flags := _flags(rest[i + 1:], {'e', 'exclude'})).keys() or any(  # .wuwei is
+                    str(v)[:1] == '!' for n, v in flags if n in ('e', 'exclude'))) and 'n' not in dict(flags) and (inside or records(here, None) or
+                    not all([re.match(r'[^./*?[:\\$~{`]', normpath(v)) and not records(v, None) for n, v in flags if not n] or [None])):  # ignored
                 return deny(LEDGER_DENIED)
             if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found

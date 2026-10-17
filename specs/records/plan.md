@@ -14,8 +14,9 @@
 
 ## Design
 
-1. `records(path, below=LEDGER)`: expand the innermost brace group and recurse (more than nine
-   groups returns true at once); rewrite `[^` to `[!` and a POSIX class to `!-~`; `normpath`; split
+1. `records(path, below=LEDGER, cap=512)`: expand the innermost brace group and recurse, dividing
+   the word budget by the group's width (at least 2); a group wider than the budget returns true at
+   once. Rewrite `[^` to `[!` and a bracket holding `[:`, `[=` or `[.` to `*`; `normpath`; split
    on `/` and `=`; true when a component starting with `.` matches `.wuwei` by `fnmatchcase` and is
    the last, or `below` is `None`, or the next component matches a name in `below`. `LEDGER` and
    `CACHE` become the tuples of names below `.wuwei`.

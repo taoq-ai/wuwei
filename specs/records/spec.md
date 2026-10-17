@@ -11,13 +11,15 @@ door reads, and the next `git push origin main` passes.
 
 1. One function, `guards.records(path, below)`, replaces the `LEDGER` regex. It expands braces
    (`{a,b}`, `{a..z}`, nested, descending, stepped), collapses `//`, `/./` and `..`, and matches each
-   path component with sh's glob rules (`*`, `?`, `[...]`, `[^...]`, POSIX classes), where a glob
+   path component with sh's glob rules (`*`, `?`, `[...]`, `[^...]`; a bracket holding a POSIX
+   class, `[=x=]` or `[.x.]` reads as `*`, which over-approximates and fails closed), where a glob
    only matches the leading dot of `.wuwei` when the pattern itself starts with a dot. It is true for
    `.wuwei`, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under them, wherever the path
    appears: a redirect target, a writer argument or an edit path.
 2. The cache (`.wuwei/cache`) holds entries that feed gate inputs (`ci-`, `review-`,
    `default-branch`). A redirect into it, a writer argument naming it (any writer but `rm`), a python
-   argument, or a Write or Edit path is refused, and the reason names the cache. `rm` of a cache file
+   argument (each path inside a `python -c` body too), or a Write or Edit path is refused, and the
+   reason names the cache. `rm` of a cache file
    or the cache folder passes: the next read fetches it again.
 3. `find` with `-delete`, `-exec` or `-execdir` (also `-fprint`, `-fprintf`, `-fls`, which write a
    file) and an argument the matcher matches is refused. `find .wuwei -name x` passes.
@@ -56,9 +58,21 @@ Out of scope (the item's Outside): deleting from an ancestor without naming `.wu
   (not an fd duplicate such as `>&2` or `2>&1`, and not `/dev/...`). Without it,
   `cd .wuwei && echo x > ledger/a.jsonl` truncates the ledger unrefused.
 - Q: What does "lies outside .wuwei" mean for a `git clean` pathspec? A: the normalized pathspec
-  starts with a plain character: not `.`, `..`, `/`, a glob character or `:` (pathspec magic).
-  `git clean -fdx build/` passes; `.`, `*`, `/abs/x` and `:(top)x` are refused because each can
-  reach `.wuwei`. A `-e`/`--exclude` value is not a pathspec.
+  starts with a plain character: not `.`, `..`, `/`, a glob character, `:` (pathspec magic), `$`,
+  `~`, `{` or a backtick (sh expands those to a path the guard does not see), and `records()` does
+  not match it. `git clean -fdx build/` passes; `.`, `*`, `/abs/x`, `:(top)x`, `"$PWD"`, `~+`,
+  `{.,}wuwei` and `$(pwd)` are refused because each can reach `.wuwei`. A `-e`/`--exclude` value is
+  not a pathspec, but one starting with `!` un-ignores `.wuwei` (`git clean -fd -e '!*'` deletes
+  the ledger), so it counts like `x`. A dry run (`-n`) passes.
+- Q: Does the `find` rule apply the cache too? A: yes. `find` reads every argument against the
+  ledger and the cache, so `find .wuwei/cache -delete` and a read such as
+  `find .wuwei/cache -name '*.json' -exec cat {} +` are refused, while `rm -rf .wuwei/cache`
+  passes. Telling a reading `-exec` from a writing one is not possible from the command line; the
+  refusal costs a seat `ls` or `cat` instead.
+- Q: How does the guard read a `python -c` body? A: every writer's arguments are also split at
+  whitespace, quotes, parentheses, commas and semicolons, and each piece meets the matcher, so
+  `open('.wuwei/cache/c.json','w')` is read. The whole arguments are still read as before, so a
+  glob such as `.[,w]uwei` keeps its meaning.
 - Q: Does a session whose directory is already inside `.wuwei` count as "cd into .wuwei"? A: yes.
   The Bash tool keeps the directory between calls, so `cd .wuwei` in one call and `rm -rf ledger` in
   the next would otherwise pass. The rule starts from `records(cwd)`.
@@ -68,8 +82,10 @@ Out of scope (the item's Outside): deleting from an ancestor without naming `.wu
 1. A seat route writes into `.wuwei/cache` by shell or runs `git clean -x` (for example to reset a
    scratch tree) and is now refused. Guarded by the route corpus: no recorded route moves, and the
    refusal names the cache and says removal passes.
-2. The matcher over-reaches and refuses a common read or a write elsewhere, for example `cp` reading
-   a cache file, or `rm -rf .*` in a scratch folder. Measured: every acceptance-4 row passes, the
+2. The matcher over-reaches and refuses a common read or a write elsewhere, for example
+   `rm -rf .*` in a scratch folder. `cp .wuwei/cache/c.json /tmp/x` (cp reading a cache file) is
+   refused by design: a writer argument naming the cache is refused wherever it stands, as main
+   already does for the ledger. Measured: every acceptance-4 row passes, the
    route corpus keeps every verdict, and 164 of the 462 probe commands name the records without
    bash changing them (an ambiguous redirect, a failed `mv`); those are refused by design.
 3. A spelling sh expands that the matcher does not read stays a hole: `shopt -s dotglob`, a
@@ -85,7 +101,8 @@ Out of scope (the item's Outside): deleting from an ancestor without naming `.wu
   without outside pathspecs are refused.
 - FR-004: routes.json records the acceptance rows; every older row keeps its verdict.
 - FR-005: docs (doors.md, design.md, SECURITY.md) and the vendored `guards.py` match.
-- FR-006: runtime within +15 lines (the coordinator's budget update); measured +15 (2,995).
+- FR-006: runtime within +15 lines (the coordinator's budget update); measured +15 (2,995), and
+  the fix round after the gates at 6d4f8af stays at 2,995.
 
 ## Breaking
 
@@ -93,7 +110,9 @@ Commands that passed on main are now refused:
 
 - any write into `.wuwei/cache` by shell or by the Write and Edit tools;
 - glob and brace spellings of the ledger (`rm -rf .wuwei/*`, `rm -rf .*`, `rm -rf .w*/ledger`);
-- `find` with `-delete` or `-exec` on a records path;
+- `find` with `-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` on a records path, the cache included (reads too);
+- a `python -c` body naming a path in the ledger or the cache;
+- `git clean -fd -e '!...'` (an exclude that un-ignores `.wuwei`) without outside pathspecs;
 - a writer or redirect after `cd .wuwei` in the same command, or in a session whose directory is
   inside `.wuwei`;
 - `git clean -fdx` and `git clean -fdX` without pathspecs that lie outside `.wuwei`.
@@ -111,7 +130,12 @@ and the commit a `BREAKING CHANGE:` line.
   tool does not give. Overturned if a harness feeds stdin to Bash calls.
 - The refusal text for ledger and cache is one message naming both, to stay in the line budget.
   Overturned if a seat reads the ledger message as being about the cache and acts wrongly.
-- A writer path with more than nine brace groups is refused without expanding it, because
-  expansion is 2^n. No recorded route has more than two groups.
+- A writer path whose braces expand to more than 512 words is refused without expanding it,
+  because expansion multiplies (five `{a..z}` groups took 36 s). Each group, even one of a single
+  word, halves the budget, which bounds the depth. No recorded route has more than two groups.
+  Overturned if a seat route expands more than 512 words in one writer path.
+- Splitting every writer's arguments at quotes and punctuation refuses a few more names, such as
+  `python3 -c "p = Path('.wuwei') / 'cache'"` or a file named `x .wuwei`. Overturned if a seat
+  route is refused this way.
 
 Rollback: revert the commits on this branch; no data or config migrates.

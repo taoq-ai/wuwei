@@ -145,9 +145,10 @@ branch protection or rulesets (among them `mergeBranch` and `enqueuePullRequest`
 every form; pushes to or deletion of the default branch, including the GitHub MCP `push_files`,
 `create_or_update_file` and `delete_file` tools on the default branch or with no branch; a secret
 or the canary in an MCP call or network command; writes to the ledger or the cache in the spellings
-sh expands (`//`, `/./`, `..`, globs, braces; `find -delete` or `-exec` on them; a writer or redirect
-after `cd .wuwei`; `git clean -x` unless every pathspec lies outside `.wuwei`), while removing a cache
-file passes; a hand-made `wuwei hook` call; an owner question without a class.
+sh expands (`//`, `/./`, `..`, globs, braces; `find` with `-delete`, `-exec`, `-execdir`, `-fprint`,
+`-fprintf` or `-fls` on them; a path in a `python -c` body; a writer or redirect after `cd .wuwei`;
+`git clean -x`, or an exclude starting with `!`, unless every pathspec lies outside `.wuwei`), while
+removing a cache file passes; a hand-made `wuwei hook` call; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting

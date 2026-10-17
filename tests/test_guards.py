@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
 
 import pytest
 
@@ -432,10 +433,17 @@ def test_a_ledger_write_through_any_redirect_or_doubled_slash_is_refused(root, r
 
 RECORDS = ['rm -rf .wuwei/*', 'rm -rf .wuwei/{l,}edger', 'rm -rf .w*/ledger', 'find .wuwei -delete', 'cd .wuwei && rm -rf ledger',
            'git clean -fdx', 'echo 0 > .wuwei/cache/c.json']
+HOLES = ['rm -rf .wuwei/[[:alpha:]l]edger', 'rm -rf .wuwei/[[:alpha:][:digit:]]edger', 'rm -rf .[[:alpha:]w]uwei/ledger',
+         'rm -rf .wuwei/[[=l=]]edger', 'rm -rf .wuwei/[[.l.]]edger', 'echo 0 > .wuwei/[[:alpha:]c]ache/c.json',
+         'rm -rf .wuwei/[]l[:alpha:]]edger', 'git clean -fdx "$PWD"', 'git clean -fdx $PWD', 'git clean -fdx "${PWD}"',
+         'git clean -fdx ~+', 'git clean -fdx {.wuwei,src}', 'git clean -fdx {src,.wuwei}', 'git clean -fdx {.,}wuwei',
+         'git clean -fdx "$PWD"/.wuwei', 'git clean -fdx $(pwd)', 'git clean -fdx `pwd`', "git clean -fd -e '!*'",
+         "git clean -fd --exclude='!*'", 'python3 -c "open(\'.wuwei/cache/c.json\',\'w\').write(\'0\')"',
+         'python3 -c "import json; json.dump(0, open(\'.wuwei/cache/c.json\', \'w\'))"']  # security gate records at 6d4f8af
 
 
 @pytest.mark.skipif(not shutil.which('bash') or not shutil.which('git'), reason='needs bash and git')
-@pytest.mark.parametrize('command', RECORDS)
+@pytest.mark.parametrize('command', RECORDS + HOLES)
 def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo, command):
     """Item records acceptance 1: real bash in a fresh folder changes the ledger row or the cache value; the guard refuses it."""
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
@@ -449,8 +457,9 @@ def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo,
     assert guards.bash(root, command, str(tmp_path), 's1')['decision'] == 'deny', command
 
 
-@pytest.mark.parametrize('command', RECORDS + [
-    'rm -rf .wuwei/cache/../ledger', 'rm -rf .wuwei/[^x]edger', 'rm -rf .wuwei/{m..k}edger', 'rm -rf .wuwei/{{l,x},}edger',
+@pytest.mark.parametrize('command', RECORDS + HOLES + [
+    'rm -rf .wuwei/{k..l}edger', 'rm -rf .wuwei/{x,ledger}', 'find . -fprint .wuwei/ledger/a.jsonl', 'git clean -fdx x/../.wuwei',
+    'git clean -fdx src/.wuwei', 'rm -rf .wuwei/cache/../ledger', 'rm -rf .wuwei/[^x]edger', 'rm -rf .wuwei/{m..k}edger', 'rm -rf .wuwei/{{l,x},}edger',
     'rm -rf .{v..x}uwei/ledger', 'rm -rf .wuwei/led?er', 'rm -rf .wuwei/[[:lower:]]edger', 'rm -rf .[[:alpha:]]uwei',
     'rm -rf .wuwei/{k..m..1}edger', 'rm -rf .[w]uwei', 'rm -rf .*', 'chmod -R 000 .wu*',
     "find . -path './.wuwei/*' -delete", 'find .wuwei/ledger -exec rm {} +', 'find .wuwei -execdir truncate -s0 {} ;',
@@ -475,7 +484,8 @@ def test_a_cache_write_is_refused_naming_the_cache(root, repo):
                                      'cd .wuwei && cat plan.json', 'find .wuwei -name x', 'git clean -fd', 'rm foo.wuwei',
                                      'rm -rf .wuwei-x', 'git clean -fdx build/ src/gen', 'find . -name "*.pyc" -delete',
                                      'cd .wuwei && cat plan.json 2>/dev/null', 'cd sub && rm -rf build', 'cat .wuwei/cache/c.json',
-                                     'rm -rf .wuwei/verdicts/x', 'cd .wuwei && ls >&2'])
+                                     'rm -rf .wuwei/verdicts/x', 'cd .wuwei && ls >&2', 'git clean -n -x',
+                                     'python3 -c "open(\'.wuwei/plan.json\')"', 'git clean -fd -e build'])
 def test_reading_the_records_or_removing_a_cache_file_passes(root, repo, command):
     """Item records acceptance 4: the next read fetches a removed cache entry again; reads never change the records."""
     assert guards.pre_tool(root, bash(command)) is None, command
@@ -484,6 +494,16 @@ def test_reading_the_records_or_removing_a_cache_file_passes(root, repo, command
 def test_a_writer_path_with_more_brace_groups_than_the_matcher_expands_is_refused_at_once(root, repo):
     assert guards.pre_tool(root, bash('rm -rf build/x' + '{a,b}' * 40))['decision'] == 'deny'
     assert guards.pre_tool(root, bash('rm -rf build/x' + '{a,b}' * 9)) is None
+
+
+def test_a_brace_path_expands_at_most_512_words_and_answers_at_once(root, repo):
+    """Security gate records at 6d4f8af: the cap counts words, not groups ('{a..z}' five times took 36 s)."""
+    start = time.monotonic()
+    assert guards.pre_tool(root, bash("rm -rf '" + '{a..z}' * 5 + "' .wuwei/ledger"))['decision'] == 'deny'
+    assert guards.pre_tool(root, bash('rm -rf build/{a..z}{a..z}'))['decision'] == 'deny'
+    assert guards.pre_tool(root, bash('rm -rf' + ' build/{a..h}{a..h}{a..h}' * 20)) is None  # 512 words each, the most it reads
+    assert not guards.records('{' + ',' * 20000) and not guards.records('[' * 1000 + '[:' * 1000)  # no regex backtracks past linear
+    assert time.monotonic() - start < 1
 
 
 def test_a_session_whose_directory_is_inside_the_records_writes_none(root, repo):

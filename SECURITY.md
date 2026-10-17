@@ -34,15 +34,17 @@ segments still meet the leak, infrastructure and ledger checks. An input redirec
 `<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write.
 
 The records rule matches `.wuwei` itself, `.wuwei/ledger`, `.wuwei/ledger.jsonl` and anything under
-them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]` with POSIX
-classes, which never match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a path with
-more than nine brace groups is refused unexpanded), as a writer argument (`of=` too), a redirect
+them in the spellings sh expands (`//`, `/./`, `..`, the globs `*`, `?` and `[...]`, which never
+match a leading dot, and brace expansion `{a,b}` and `{a..z}`; a bracket holding a POSIX class,
+`[=x=]` or `[.x.]` reads as `*`, and a path whose braces expand to more than 512 words is refused
+unexpanded), as a writer argument (`of=` too, and each path inside a `python -c` body), a redirect
 target or an edit path. A write to `.wuwei/cache` is refused the same way, because its entries
 feed gate inputs; removing a cache file passes. `find` with
 `-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` and an argument naming the records
 is refused. After `cd` or `pushd` into `.wuwei` or below, or in a session whose directory is inside
-it, a writer or a redirect to a file is refused. `git clean` with `x` or `X` is refused unless every
-pathspec starts with a plain name (not `.`, `..`, `/`, a glob or `:`).
+it, a writer or a redirect to a file is refused. `git clean` with `x` or `X`, or with an exclude
+starting with `!`, is refused unless every pathspec starts with a plain name (not `.`, `..`, `/`, a
+glob, `:`, `$`, `~`, `{` or a backtick) and does not name `.wuwei`; a dry run (`-n`) passes.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 
@@ -55,8 +57,8 @@ Known shapes they do not read on one line, reported and not yet fixed:
   unquoted backticks.
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
-- A records write through a path the guards do not see: a symlink, a quote glued before the path
-  (`python3 -c "open('.wuwei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
+- A records write through a path the guards do not see: a symlink, a path a program builds at
+  run time (`python3 -c "open('.wu' + 'wei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
   (`install`), `cd` to a variable or `cd -`, paths fed by a pipe (`find .wuwei | xargs rm`), and
   globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
