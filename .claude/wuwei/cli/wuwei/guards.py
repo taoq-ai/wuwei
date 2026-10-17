@@ -79,9 +79,9 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])(?<![<>]&)[0-9]+(?=[<>])",
-            lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0].isdigit() else m[0]), command), posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 is a redirect, not a word
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])(?<![<>]&)([0-9]+|\{[A-Za-z_]\w*\})(?=[<>])",
+            lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0][0] in '{0123456789' else m[0]), command), posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 and {fd} of {fd}>x are a redirect, not a word
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens, current = [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';'], []
         dollar = any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command))
@@ -119,7 +119,7 @@ def _unwrap(tokens):
     body = next((i for i, a in enumerate(argv) if i and not a.startswith('-')), 0)  # bash -c, -lc, -e -c
     if body and Path(argv[0]).name in SHELLS and any(re.fullmatch(r'-\w*c\w*', a) for a in argv[1:body]):
         return (n if (n := segments(argv[body])) is not None else [UNREAD]) + ([([], targets)] if targets else [])
-    return [(argv, targets)]
+    return [(argv, targets)] + ([UNREAD] if argv and Path(argv[0]).name in SHELLS else [])  # its commands come from stdin or a file
 
 
 def _default(root, repo):

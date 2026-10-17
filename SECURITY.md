@@ -25,7 +25,8 @@ brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the com
 wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
 `);`) is split into the operators sh reads, so process substitution and glued separators reach
 their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
-`&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), is read as a redirect, so the program
+`&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), or with a named fd glued before it
+(`{fd}>x`, `{a_b}<x`), is read as a redirect, so the program
 after it is the command. A redirect whose next token is another operator or nothing (`>&>x`,
 `git push origin main >`) is a shape they do not read, and so is a command with `$'...'` or
 `$"..."` quoting outside other quotes: either is refused when it names a door program, and its
@@ -36,15 +37,15 @@ too), a redirect target or an edit path.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 
-- `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
+- `eval`, `source` or `.` on `/dev/stdin` or `<(...)`, and a variable as the program name.
+- A `-c` body that is a variable or a substitution (`bash -c "$C"`, `xargs -I{} bash -c {}`).
+- `env -S 'bash -s'` fed on stdin (the quoted string hides the shell), and shells outside the
+  guards' list (`ksh`, `busybox sh`).
 - `$(...)` inside double quotes, and quote splicing inside a word.
 - A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
   unquoted backticks.
-- A shell option before `-c` that takes an argument or is not a single-dash cluster
-  (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
-- A named fd (`{fd}>x git push origin main`).
 - A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
   as `rm -rf .wuwei/*`, a path through a symlink, a quote glued before the path
   (`python3 -c "open('.wuwei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
@@ -52,7 +53,12 @@ Known shapes they do not read on one line, reported and not yet fixed:
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
-that door-word rule; the leak scan does not read it.
+that door-word rule; the leak scan does not read it. A shell (`sh`, `bash`, `zsh`, `dash`) with no
+readable `-c` body reads text the guards never see: input piped or fed to it (`| sh`, a
+here-string, `-s`, `< file`), a script path, or a `-c` after an option they do not read
+(`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`, `bash --command`). Such a
+command is refused when its text names a door program; the fed text still meets no leak or
+infrastructure check.
 
 When a guard raises on a call, the hook refuses the call if it could pass a door: an edit (the tools
 in `guards.DOORS`, or a Codex `apply_patch`), any MCP tool, or a Bash command naming a door program
