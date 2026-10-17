@@ -48,6 +48,10 @@ UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-fir
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
+GIT_OPTS = re.compile(r'(?P<steer>(-c|--config-env)[=\0](?i:(alias|remote|branch|url|include\w*)\.|push\.default))|((?P<pair>-[Cc]|--(git-dir|'
+                      r'work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|((no-)?literal|'
+                      r'(no)?glob|icase)-pathspecs|no-optional-locks|(exec|html|man|info)-path|help|version|(git-dir|work-tree|namespace|config-env|'
+                      r'attr-source|exec-path|list-cmds)=[^\0]*))\0')  # git 2.43's options (git.c) read on word\0next\0: a steering -c, a pair, a word
 OWNER_CLASSES = ('one-way:', 'scope:', 'goal:', 'trust:', 'infra:', 'owner review:', 'exception:', 'plan:', 'breaking:')
 NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
@@ -79,8 +83,7 @@ def _git(cwd, *args):
         return ''
 
 
-def origin(cwd):
-    """owner/repo of the origin remote at cwd, or ''."""
+def origin(cwd):  # owner/repo of the origin remote at cwd, or ''
     match = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(\.git)?$', _git(cwd, 'remote', 'get-url', 'origin'))
     return match[1] if match else ''
 
@@ -104,9 +107,7 @@ def segments(command):
         out = [UNREAD] if dollar or glued else []
         for token in tokens:  # $'..', $".." or a redirect with no word after it (<(x) is one) is unread; its segments are still read
             if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
-                if current:
-                    out.extend(_unwrap(current))
-                current = []
+                out, current = out + (_unwrap(current) if current else []), []
             else:
                 current.append(token)
         return out
@@ -118,9 +119,7 @@ def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
         if tokens[i] in REDIRECTS and i + 1 < len(tokens):
-            if not re.fullmatch(r'<[<&]*', tokens[i]):  # an input redirect's word is read, never written
-                targets.append(tokens[i + 1])
-            i += 1
+            targets, i = targets + [tokens[i + 1]] * (not re.fullmatch(r'<[<&]*', tokens[i])), i + 1  # an input redirect's word is read, never written
         else:
             argv.append(tokens[i])
         i += 1
@@ -284,8 +283,7 @@ def ready_door(root, repo, number):
 
 
 def merge_door(root, repo, number, auto=False):
-    """Every merge route (gh pr merge, gh api PUT .../merge, a GitHub MCP merge tool) meets the same
-    evidence: only safety gaps hold it; the process fit it flows past is recorded."""
+    """Every merge route (gh pr merge, gh api PUT .../merge, an MCP merge tool) meets one evidence: safety gaps hold it, process fit is recorded."""
     if not repo or number is None:
         return deny('name the PR by number or URL (and --repo when outside its checkout) so WUWEI can read '
                     'its evidence before the merge.')
@@ -335,10 +333,12 @@ def bash(root, command, cwd, session):
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
         if program in ('git', 'git-clean'):
-            rest, i, here, plain = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd, lambda w: re.fullmatch(r'[\w./-]+', w or '')
-            while i < len(rest) and rest[i].startswith('-'):
-                here = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here
-                i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
+            rest, i, here, plain, odd = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd, lambda w: re.fullmatch(r'[\w./-]+', w or ''), ''
+            while i < len(rest) and rest[i].startswith('-'):  # git 2.43's options (git.c); a -c that steers a push or an alias, or any other, is odd
+                here, m = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here, GIT_OPTS.match('\0'.join(rest[i:i + 2]) + '\0')
+                odd, i = odd or (not m or m['steer']) and ' '.join(rest[i:i + 1 + bool(m)]), i + (2 if m and m['pair'] else 1)
+            if odd and ('push' in rest or ' ' in odd):  # an unknown option before a push, or a steering -c (two words) anywhere
+                return deny(f'git {odd}: an unknown option, or -c alias, remote, branch, url, include or push.default, hides a push: run git push without it.')
             flags, dirs, top = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], normpath(join('.', *rest[1:i:2]))
             if 'clean' in str(rest) and ((other := {*rest[:i:2]} - {'-C'}) or rest[i:i + 1] == ['clean']) and ('GIT_' in command or other or any(  # only -C
                     n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(

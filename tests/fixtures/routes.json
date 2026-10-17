@@ -237,6 +237,16 @@
     {"command": "env -C src git clean -fdx t", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
     {"command": "make -C build", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
     {"command": "tar -C out -xf a.tar", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
-    {"command": "git -C .wuwei status", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"}
+    {"command": "git -C .wuwei status", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
+    {"command": "git --config-env core.abc=Y push origin main", "source": "item git-globals, real git 2.43 against a local bare remote (moved main; main passed it)", "verdict": "push"},
+    {"command": "git --namespace x push origin main", "source": "item git-globals, real git 2.43 against a local bare remote (left main as it was over a local path; main passed it)", "verdict": "push"},
+    {"command": "git --attr-source HEAD push origin main", "source": "item git-globals, real git 2.43 against a local bare remote (moved main; main passed it)", "verdict": "push"},
+    {"command": "git -c alias.p=push p origin main", "source": "item git-globals, real git 2.43 against a local bare remote (a command-line alias moved main; main passed it)", "verdict": "refusal"},
+    {"command": "git -c remote.origin.push=HEAD:main push origin", "source": "item git-globals, real git 2.43 against a local bare remote (a push refspec in -c moved main; main passed it)", "verdict": "refusal"},
+    {"command": "git --super-prefix x push origin main", "source": "item git-globals, real git 2.43 against a local bare remote (an option git 2.43 does not take: unknown before a push)", "verdict": "refusal"},
+    {"command": "git -C sub push origin i-1-change", "source": "item git-globals acceptance (a known valued option before a feature push)", "verdict": "pass"},
+    {"command": "git -c user.name=x push origin i-1-change", "source": "item git-globals acceptance (a -c that steers nothing)", "verdict": "pass"},
+    {"command": "git --no-pager log", "source": "item git-globals acceptance (a known option, no push)", "verdict": "pass"},
+    {"command": "git --version", "source": "item git-globals acceptance (git reads --version as the version command)", "verdict": "pass"}
   ]
 }
