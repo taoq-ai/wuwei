@@ -1,31 +1,6 @@
 {
  "items": [
   {
-   "id": "git-globals",
-   "title": "fix(guards): git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 13,
-    "risk": 13,
-    "size": 1
-   },
-   "score": 39.0,
-   "why": "A live push-door bypass on main: guards.bash skips git global options one word at a time except -C, -c, --git-dir and --work-tree, so an option that takes its value as the next word hides the subcommand. Real git 2.43 pushed `git --config-env core.abc=Y push origin main` to main of a local bare remote, and guards.bash on main 5fa32fe passes it; it also passes `git --namespace x`, `--super-prefix x` and `--attr-source x` before push. Found by the records builder in round 2.",
-   "promise": "git options before the subcommand are read by allowlist, so a push to the default branch meets the push door whatever global options come first. (1) In guards.bash's git branch, the options git takes with a separate value (-C, -c, --git-dir, --work-tree, --namespace, --super-prefix, --config-env, --attr-source) consume the next word; options with no value or an =value consume one. (2) A word before the subcommand that is an option git does not document refuses the command when any later word is push, with text naming the option and the route (run git push without it). (3) The records allowlist for git clean keeps its own rule. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json and the vendored guards.py. Runtime lines: estimate +1, budget 2; if gh-args and this item together pass the 3,000 cap, the builder tightens existing lines first and reports. Order: after records, beside gh-args (both edit the git branch); build it first, it is the live bypass. Acceptance comes from real execution: real git against a local bare remote shows which spellings push to main. Rollback: revert the commit. Outside: wrappers that change directory or environment (env -C, sudo -D), the cd stand-in class already logged. Assumptions: the value-taking global options are those git 2.43 git.c handles with a separate argv word; overturned if the probe shows another one pushing.",
-   "acceptance": [
-    "given a local bare remote and a clone with a commit on main, when real git runs `git --config-env core.abc=Y push origin main`, `git --namespace x push origin main` and `git --attr-source HEAD push origin main`, then each result is recorded (pushed or not), and given each command, when guards.bash reads it, then it is refused",
-    "given a generated probe of git global options (every option in git 2.43's git.c, with = and separate values, alone and combined) x push targets (main, a feature branch) run under real git against a local bare remote, when guards.bash reads each command at the head, then every command that moved main is refused (holes 0) and every feature-branch push without an unknown option passes",
-    "given `git -C sub push origin feature`, `git -c user.name=x push origin feature`, `git --no-pager log` and `git --version`, when guards.bash reads them, then they pass"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "scratch-remotes",
    "title": "fix(guards): the push door passes a push whose remote is a local path under the session scratch folder",
    "goal": "G-2",
@@ -123,6 +98,32 @@
    "status": "open",
    "added": "2026-10-17",
    "approved": true
+  },
+  {
+   "id": "git-globals",
+   "title": "fix(guards): git options before the subcommand are read by allowlist, so git --config-env x push origin main meets the push door",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 13,
+    "risk": 13,
+    "size": 1
+   },
+   "score": 39.0,
+   "why": "A live push-door bypass on main: guards.bash skips git global options one word at a time except -C, -c, --git-dir and --work-tree, so an option that takes its value as the next word hides the subcommand. Real git 2.43 pushed `git --config-env core.abc=Y push origin main` to main of a local bare remote, and guards.bash on main 5fa32fe passes it; it also passes `git --namespace x`, `--super-prefix x` and `--attr-source x` before push. Found by the records builder in round 2.",
+   "promise": "git options before the subcommand are read by allowlist, so a push to the default branch meets the push door whatever global options come first. (1) In guards.bash's git branch, the options git takes with a separate value (-C, -c, --git-dir, --work-tree, --namespace, --super-prefix, --config-env, --attr-source) consume the next word; options with no value or an =value consume one. (2) A word before the subcommand that is an option git does not document refuses the command when any later word is push, with text naming the option and the route (run git push without it). (3) The records allowlist for git clean keeps its own rule. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json and the vendored guards.py. Runtime lines: estimate +1, budget 2; if gh-args and this item together pass the 3,000 cap, the builder tightens existing lines first and reports. Order: after records, beside gh-args (both edit the git branch); build it first, it is the live bypass. Acceptance comes from real execution: real git against a local bare remote shows which spellings push to main. Rollback: revert the commit. Outside: wrappers that change directory or environment (env -C, sudo -D), the cd stand-in class already logged. Assumptions: the value-taking global options are those git 2.43 git.c handles with a separate argv word; overturned if the probe shows another one pushing.",
+   "acceptance": [
+    "given a local bare remote and a clone with a commit on main, when real git runs `git --config-env core.abc=Y push origin main`, `git --namespace x push origin main` and `git --attr-source HEAD push origin main`, then each result is recorded (pushed or not), and given each command, when guards.bash reads it, then it is refused",
+    "given a generated probe of git global options (every option in git 2.43's git.c, with = and separate values, alone and combined) x push targets (main, a feature branch) run under real git against a local bare remote, when guards.bash reads each command at the head, then every command that moved main is refused (holes 0) and every feature-branch push without an unknown option passes",
+    "given `git -C sub push origin feature`, `git -c user.name=x push origin feature`, `git --no-pager log` and `git --version`, when guards.bash reads them, then they pass"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as c84913e (#1122): quality, security, arch pass at 783522a, goal pass at 6f40026; owner breaking: approved"
   },
   {
    "id": "codex-attest-probe",
