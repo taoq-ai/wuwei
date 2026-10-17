@@ -481,6 +481,11 @@ def test_reading_the_records_or_removing_a_cache_file_passes(root, repo, command
     assert guards.pre_tool(root, bash(command)) is None, command
 
 
+def test_a_writer_path_with_more_brace_groups_than_the_matcher_expands_is_refused_at_once(root, repo):
+    assert guards.pre_tool(root, bash('rm -rf build/x' + '{a,b}' * 40))['decision'] == 'deny'
+    assert guards.pre_tool(root, bash('rm -rf build/x' + '{a,b}' * 9)) is None
+
+
 def test_a_session_whose_directory_is_inside_the_records_writes_none(root, repo):
     assert guards.bash(root, 'rm -rf ledger', '/w/.wuwei', 's1')['decision'] == 'deny'
     assert guards.bash(root, 'cat plan.json', '/w/.wuwei', 's1') is None
