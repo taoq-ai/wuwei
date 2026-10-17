@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "free-lines-4",
-   "title": "refactor: free runtime lines with no behaviour change, and make the dense guard lines readable",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 8,
-    "risk": 20,
-    "size": 2
-   },
-   "score": 18.0,
-   "why": "The 1-line headroom blocks every runtime fix; a prototype in scratch frees 26 lines with no behaviour change and showed that 3 of the 5 OPS alternatives called equivalent are not.",
-   "promise": "Free at least 22 runtime lines with no behaviour change, and make the two dense guard lines the shell-doors quality gate named readable. (1) Each `x = f(...)` followed by `if x:` or `if not x:` becomes `if x := f(...):` where the line stays within 150 characters and reads at least as clearly, in guards, sync, plan, upgrade, evidence, report, hook, setup and verdict; a rewrite that reads worse (for example `if repo := match[1] or repo:`) is skipped. (2) In guards.bash the found-then-return checks for leak, git push and gh take the same form. (3) In guards.segments the $'/$\" check and the glued-redirect check become two named booleans; the `tokens[2:] + ['']` end sentinel stays, with a comment saying why: without it the last pair is skipped, and a generated probe shows 8,400 of 82,944 commands change. (4) The input-redirect line in guards._unwrap becomes an explicit if/else. (5) OPS drops only `\\|\\|` and `;;`, which split the same through the single-character fallback. `&&`, `|&` and `&>` stay: dropping one alone changes how 45, 45 and 630 of 25,200 generated punctuation runs split (`&&>|`, `|&>;`, `&><;`). This overturns the shell-doors quality note that all five were equivalent. (6) The ledger refusal text becomes one constant. Files: cli/wuwei/guards.py, sync.py, plan.py, upgrade.py, evidence.py, report.py, hook.py, setup.py, verdict.py and their vendored copies under .claude/wuwei/cli/wuwei/. Runtime lines: estimate -26 (scratch prototype at 9d6701e: 2,999 to 2,973, 1192 passed, 2 skipped); floor: frees at least 22; adds none. Order: first; every other runtime item in this pass starts after it merges. Proof of no behaviour change: the suite passes unchanged, and a generated differential probe of guards.segments between 9d6701e and the branch (operators x operators x words x four positions) shows 0 differences. Rollback: revert the commit. Outside: any behaviour change, and the readability notes on the DOOR_WORDS and LEDGER regexes (records replaces LEDGER). Assumptions: the walrus form fits this code (guards.py uses it already); overturned if the quality gate finds a rewritten line harder to read, in which case that line is dropped while the item stays above the floor.",
-   "acceptance": [
-    "given the branch head, when `cat cli/wuwei/*.py | wc -l` runs, then it prints 2,977 or less, and the vendored copies under .claude/wuwei/cli/wuwei/ are identical to cli/wuwei/",
-    "given the branch head, when `python3 -m pytest -q` (or `pytest -q`) runs from the repository root, then every test passes and no test file changed except where a test reads a removed name",
-    "given a git archive of 9d6701e and of the branch head in two scratch folders, when a generated probe feeds both guards.segments every command built from 24 operators (empty, ;, &&, ||, |, |&, &, ;;, (, ), >, >>, >|, &>, &>>, <, <>, >&, <&, <<, <<<, 2>, 10>, {fd}>) taken in pairs, 6 words (x, .wuwei/ledger, git push origin main, $'a', \"a b\", <(true)) taken in pairs and 4 positions, then the outputs differ for 0 commands",
-    "given the branch head, when guards.OPS is read, then it still holds `&&`, `|&` and `&>`, and a test splits `x&&>|y` into x, &&, >|, y and `x|&>y` into x, |&, >, y"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "shell-stdin",
    "title": "fix(guards): a shell fed its commands on stdin and a named-fd redirect meet the doors",
    "goal": "G-2",
@@ -243,6 +217,33 @@
    "approved": true,
    "kind": "run",
    "reason": "probe answered: target_url run id -> workflow path -> on: names pull_request_review; run event alone does not classify"
+  },
+  {
+   "id": "free-lines-4",
+   "title": "refactor: free runtime lines with no behaviour change, and make the dense guard lines readable",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 8,
+    "risk": 20,
+    "size": 2
+   },
+   "score": 18.0,
+   "why": "The 1-line headroom blocks every runtime fix; a prototype in scratch frees 26 lines with no behaviour change and showed that 3 of the 5 OPS alternatives called equivalent are not.",
+   "promise": "Free at least 22 runtime lines with no behaviour change, and make the two dense guard lines the shell-doors quality gate named readable. (1) Each `x = f(...)` followed by `if x:` or `if not x:` becomes `if x := f(...):` where the line stays within 150 characters and reads at least as clearly, in guards, sync, plan, upgrade, evidence, report, hook, setup and verdict; a rewrite that reads worse (for example `if repo := match[1] or repo:`) is skipped. (2) In guards.bash the found-then-return checks for leak, git push and gh take the same form. (3) In guards.segments the $'/$\" check and the glued-redirect check become two named booleans; the `tokens[2:] + ['']` end sentinel stays, with a comment saying why: without it the last pair is skipped, and a generated probe shows 8,400 of 82,944 commands change. (4) The input-redirect line in guards._unwrap becomes an explicit if/else. (5) OPS drops only `\\|\\|` and `;;`, which split the same through the single-character fallback. `&&`, `|&` and `&>` stay: dropping one alone changes how 45, 45 and 630 of 25,200 generated punctuation runs split (`&&>|`, `|&>;`, `&><;`). This overturns the shell-doors quality note that all five were equivalent. (6) The ledger refusal text becomes one constant. Files: cli/wuwei/guards.py, sync.py, plan.py, upgrade.py, evidence.py, report.py, hook.py, setup.py, verdict.py and their vendored copies under .claude/wuwei/cli/wuwei/. Runtime lines: estimate -26 (scratch prototype at 9d6701e: 2,999 to 2,973, 1192 passed, 2 skipped); floor: frees at least 22; adds none. Order: first; every other runtime item in this pass starts after it merges. Proof of no behaviour change: the suite passes unchanged, and a generated differential probe of guards.segments between 9d6701e and the branch (operators x operators x words x four positions) shows 0 differences. Rollback: revert the commit. Outside: any behaviour change, and the readability notes on the DOOR_WORDS and LEDGER regexes (records replaces LEDGER). Assumptions: the walrus form fits this code (guards.py uses it already); overturned if the quality gate finds a rewritten line harder to read, in which case that line is dropped while the item stays above the floor.",
+   "acceptance": [
+    "given the branch head, when `cat cli/wuwei/*.py | wc -l` runs, then it prints 2,977 or less, and the vendored copies under .claude/wuwei/cli/wuwei/ are identical to cli/wuwei/",
+    "given the branch head, when `python3 -m pytest -q` (or `pytest -q`) runs from the repository root, then every test passes and no test file changed except where a test reads a removed name",
+    "given a git archive of 9d6701e and of the branch head in two scratch folders, when a generated probe feeds both guards.segments every command built from 24 operators (empty, ;, &&, ||, |, |&, &, ;;, (, ), >, >>, >|, &>, &>>, <, <>, >&, <&, <<, <<<, 2>, 10>, {fd}>) taken in pairs, 6 words (x, .wuwei/ledger, git push origin main, $'a', \"a b\", <(true)) taken in pairs and 4 positions, then the outputs differ for 0 commands",
+    "given the branch head, when guards.OPS is read, then it still holds `&&`, `|&` and `&>`, and a test splits `x&&>|y` into x, &&, >|, y and `x|&>y` into x, |&, >, y"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1112"
   },
   {
    "id": "route-fixtures",
