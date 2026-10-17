@@ -114,6 +114,12 @@ Acceptance 5. Red:
 - The fixture rule binds builders and gates only, the seats that write probes. Overturned if
   another seat starts writing probe fixtures.
 
+- Arch review at bec74db: the door-word-free probe binds only a change to guard parsing, and
+  "door words" is glossed in place; there is one standards file per workspace, so a repository
+  lesson is a line that names its repository; a lesson that fits both homes is a charter proposal;
+  the older equivalent-mutant sentence is merged into the differential-probe rule, and untested is
+  `[low] blocks: no`.
+
 ## Rollback
 
 Rollback: revert the commit, then run `bin/wuwei agents build` and `setup.vendor('.')`. Charter
