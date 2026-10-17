@@ -23,4 +23,13 @@
 - [x] T013 Re-vendor `.claude/` with `setup.vendor`
 - [x] T014 Route corpus probe on main and head with the corpus sha256
 - [x] T015 Traced Bash commands read by main's and head's guards offline
-- [x] T016 Full suite green; runtime at 2,999 lines
+- [x] T016 Full suite green; runtime at 2,998 lines
+
+## Phase 4: Gate findings at 67b367a
+
+- [x] T017 Merge origin/main a7fe6d5 (release 2.0.0)
+- [x] T018 `$'` keeps the segments: leak and infra probes refused or asked as on main (arch, security high)
+- [x] T019 Every redirect operator and glued fd number read by `_unwrap`; stub-git probes (security medium)
+- [x] T020 `true;>|x git push origin main` row kills the `>|` mutant (security medium)
+- [x] T021 SECURITY.md: the "now read" text leaves the gap list; `//` and `/./` covered (arch medium)
+- [x] T022 Spec: How this fails 3, Assumptions for the OPS split, copy-out migration (notes)

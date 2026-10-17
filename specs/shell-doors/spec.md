@@ -16,17 +16,22 @@ Allow the plain shapes WUWEI can read; never chase spellings.
    `guards.segments` splits such a word into the operators sh reads, so each part reaches its own
    door: the push after `<(` or `;>` is a segment of its own and meets the push door. `|&` joins
    `CONTROL` as a pipe. A word that could not be split into known operators would be unreadable;
-   with every single character an operator, every such word splits.
-2. A command with `$'...'` or `$"..."` quoting outside other quotes is unreadable (`segments`
-   returns None), so the existing rule refuses it when it names a door program and passes it when
-   it names none.
+   with every single character an operator, every such word splits. `_unwrap` reads every redirect
+   operator the split yields (`<`, `<>`, `>&`, `<&`, `&>>`, `<<<` beside `>`, `>>`, `>|`, `&>`), and
+   an fd number glued before a redirect (`2>&1`, `2>/dev/null`) is dropped as sh drops it, so the
+   program after a redirect is the command.
+2. A command with `$'...'` or `$"..."` quoting outside other quotes is unreadable (`segments` puts
+   `UNREAD` first), so the existing rule refuses it when it names a door program and passes it when
+   it names none. Its segments are still read, so the leak, infrastructure and ledger checks run.
 3. `LEDGER` matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a trailing slash, and
-   `.wuwei` itself, at the start of a word or after `/` or `=`, as a writer argument, a redirect
+   `.wuwei` itself, also spelled with `//` or `/./`, at the start of a word or after `/` or `=`, as
+   a writer argument, a redirect
    target or an edit path. The ledger entry in `DOOR_WORDS` also matches bare `.wuwei`, so the
    multi-line rule and the hook's fail-closed path cover `rm -rf .wuwei`.
 
 Out of scope, recorded gaps: a ledger write after `cd .wuwei` (cwd is not tracked), a glob such as
-`rm -rf .wuwei/*`, `find -delete`, `git clean`, and wrappers beyond those `guards.py` lists.
+`rm -rf .wuwei/*`, a symlink, a quote glued before the path, `install`, `find -delete`, `git clean`,
+and wrappers beyond those `guards.py` lists.
 
 The acceptance scenarios, restated:
 
@@ -57,6 +62,14 @@ The acceptance scenarios, restated:
 - Q: Should the ledger rule read `of=.wuwei/ledger.jsonl`? A: Yes. The promise names `dd`, whose
   target comes after `of=`; the rule now accepts `=` before `.wuwei` as well as `/` and the word
   start, at no extra line.
+- Q: (gates at 67b367a) Does an unreadable `$'` command skip the other doors? A: It did: `segments`
+  returned None, so `curl -H $'Authorization: token ghp_...'` passed the leak check and `terraform
+  apply $'x'` skipped the infrastructure ask. Now `segments` keeps the segments and puts `UNREAD`
+  first, so the door-word refusal and every per-segment check both apply.
+- Q: (security gate at 67b367a) Do the split redirects reach `_unwrap`? A: They did not: `<x git push
+  origin main`, `>&2 git push origin main` and `&>>x git push origin main` passed while bash pushed.
+  The redirect tuple now holds every operator the split yields, and the fd number of `2>&1` is
+  dropped before the lexer, at no extra line.
 - Q: Is bare `.wuwei` a door word? A: Yes, as the lead asked: `.wuwei` not followed by another path
   character (`.wuwei`, `.wuwei/`), so `.wuwei/plan.json` and `.wuwei.bak` stay ordinary.
 
@@ -69,10 +82,12 @@ The acceptance scenarios, restated:
    `.wuwei` directory to a Python script, and is refused as a ledger write. One traced command
    (`python3 -I rows.py /home/user/wuwei/.wuwei`) moves. The fix is to name the file
    (`dry/.wuwei/plan.json`).
-3. An operator split reads a word differently from sh, for example `>>(` or `<<(`. The split only
-   ever makes more segments, so a program after the run starts its own segment and meets its door;
-   the cost would be a missed redirect target, not a missed door. The corpus and the everyday
-   probes show no false refusal.
+3. A redirect operator `_unwrap` does not know hides the program after it: the word after the
+   operator becomes the command and the door program becomes an argument. The security gate at
+   67b367a showed this for `<x git push origin main` and `>&2 git push origin main`; bash pushed
+   while the guard passed. The redirect tuple now lists every operator in `OPS` that takes a word,
+   and the redirect tests pin each one. A new operator added to `OPS` without the tuple would
+   reopen it.
 
 ## User scenarios
 
@@ -95,15 +110,17 @@ fail-closed cases `rm -rf .wuwei` and `rm -rf .wuwei/`, with `cat .wuwei/plan.js
 
 ### US4: the route corpus holds (P1)
 
-Acceptance 4. `test_every_route_reads_as_recorded` with 18 new rows.
+Acceptance 4. `test_every_route_reads_as_recorded` with 27 new rows.
 
 ## Requirements
 
 - FR-001: `segments` splits a word made only of `();<>|&` into the operators sh reads (`OPS`);
-  `|&` is in `CONTROL`.
-- FR-002: `segments` returns None when `$'` or `$"` opens a quote span outside other quotes.
+  `|&` is in `CONTROL`; `_unwrap` reads every redirect operator, and a glued fd number is dropped.
+- FR-002: `segments` puts `UNREAD` first when `$'` or `$"` opens a quote span outside other
+  quotes, and still returns every segment.
 - FR-003: `LEDGER` matches `.wuwei`, `.wuwei/ledger` and `.wuwei/ledger.jsonl`, each with an
-  optional trailing `/`, and any path under `.wuwei/ledger/`, after the word start, `/` or `=`.
+  optional trailing `/`, and any path under `.wuwei/ledger/`, after the word start, `/` or `=`;
+  `//` and `/./` count as `/`.
 - FR-004: the ledger entry of `DOOR_WORDS` matches `.wuwei/ledger` and bare `.wuwei`.
 - FR-005: routes.json gains a row per new shape naming its source; docs, SECURITY.md and
   `.claude/` follow.
@@ -118,13 +135,18 @@ Commands that passed on main and are now refused:
 - Any command naming a door program that uses `$'...'` or `$"..."` quoting outside other quotes.
 - A writer (`rm`, `mv`, `cp`, `tee`, `dd`, `chmod`, `ln`, `shred`, `truncate`, `sed -i`, python)
   or redirect naming `.wuwei`, `.wuwei/`, `.wuwei/ledger`, `.wuwei/ledger.jsonl` (with or without a
-  trailing slash), also after `=`; an edit of such a path. This includes `cp file dir/.wuwei/` and
-  `python3 script.py <path>/.wuwei`.
+  trailing slash, with `//` or `/./`), also after `=`; an edit of such a path. This includes
+  read-only shapes: `cp file dir/.wuwei/`, `cp -r .wuwei /tmp/bk`, `python3 script.py
+  <path>/.wuwei` and `python3 -m pytest .wuwei`.
+- A door command after a redirect: `<x git push origin main`, `2>&1 git push origin main`, `git
+  2>/dev/null push origin main` now meet the push door.
 - A multi-line command naming bare `.wuwei` or `.wuwei/`.
 
 Migration: run a door command in its own plain one-line call, with plain quotes (`'main'`, not
 `$'main'`). Name the file when copying into a `.wuwei/` tree (`cp plan.json dry/.wuwei/plan.json`)
-or pass a script the file it reads. Put a multi-line script that reads `.wuwei` in a file written
+or pass a script the file it reads. To copy the workspace out, name the files or use `tar` or
+`rsync` (`tar -cf /tmp/bk.tar .wuwei`); run tests on a path inside it (`pytest .wuwei/tests`) or from
+inside the directory. Put a multi-line script that reads `.wuwei` in a file written
 with Write. No pre-existing row in `tests/fixtures/routes.json` changes its verdict.
 
 ## Assumptions
@@ -134,6 +156,10 @@ with Write. No pre-existing row in `tests/fixtures/routes.json` changes its verd
 - The change is breaking by the rule "commands that passed on main now refused", though every
   moved shape is a door bypass or a ledger write spelling. Overturned if the owner reads the
   guards' refusals as outside the outward contract.
+- Splitting a punctuation run into sh's operators (maximal munch over `OPS`) reads it as sh does,
+  so no punctuation word is refused as unreadable, unlike the promise's wording. Every character of
+  `();<>|&` is an sh operator, so the split only adds segments. Overturned if a probe shows sh
+  reading a run as one word, or the planner keeps the promise's refusal.
 - The `$'` check leaves a backslash-escaped `\$'` to sh's reading (an escaped `$`, then a quote).
   Overturned if a probe shows sh reading it as ANSI-C quoting.
 

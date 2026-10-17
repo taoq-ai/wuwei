@@ -22,25 +22,30 @@ kept out of seat environments.
 
 The Bash guards read a one-line command with `shlex`. They read the body of a loop, an if or a
 brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the command after a
-wrapper's options. Known shapes they do not read on one line, reported and not yet fixed:
+wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
+`);`) is split into the operators sh reads, so process substitution and glued separators reach
+their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
+`&>>x`, `<>x`, `2>&1`, `2>/dev/null`), is read as a redirect, so the program after it is the
+command. A command with `$'...'` or `$"..."` quoting outside other quotes is unreadable, so it is
+refused when it names a door program; its segments still meet the leak, infrastructure and ledger
+checks. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
+trailing slash, and `.wuwei` itself, also spelled with `//` or `/./`, as a writer argument (`of=`
+too), a redirect target or an edit path.
+
+Known shapes they do not read on one line, reported and not yet fixed:
 
 - `eval`, input piped or fed to a shell (`| sh`, a here-string), and a variable as the program name.
 - `$(...)` inside double quotes, and quote splicing inside a word.
-- A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
-  as `rm -rf .wuwei/*`, `find -delete` and `git clean`.
-
-A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`, `);`) is split into
-the operators sh reads, so process substitution and glued separators reach their doors; `|&` is a
-pipe. A command with `$'...'` or `$"..."` quoting is unreadable, so it is refused when it names a
-door program. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
-trailing slash, and `.wuwei` itself, as a writer argument (`of=` too), a redirect target or an
-edit path.
 - A function body (`f() { ...; }`, `function f { ...; }`), `coproc`, `builtin command`, and
   unquoted backticks.
 - A shell option before `-c` that takes an argument or is not a single-dash cluster
   (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
+- A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
+  as `rm -rf .wuwei/*`, a path through a symlink, a quote glued before the path
+  (`python3 -c "open('.wuwei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
+  (`install`), `find -delete` and `git clean`.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only

@@ -8,5 +8,5 @@
 - [x] Each new route is a routes.json row naming its source
 - [x] The breaking change has a section with migration notes
 - [x] Vendored copy rewritten; drift test passes
-- [x] Runtime at 2,999 lines, within the budget
+- [x] Runtime at 2,998 lines, within the budget
 - [x] No emojis, no em dashes

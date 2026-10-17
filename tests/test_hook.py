@@ -538,7 +538,7 @@ def test_a_door_stays_shut_when_the_error_cannot_be_recorded(root, monkeypatch):
 
 
 @pytest.mark.parametrize('tool, data', [('Bash', {'command': 'ls'}), ('Read', {'file_path': 'a.py'}), ('Glob', {'pattern': '*'}),
-                                        ('Bash', {'command': 'cat .wuwei/plan.json'}), ('Bash', {'command': 'ls .wuwei.bak'}),
+                                        ('Bash', {'command': 'cat .wuwei/plan.json'}), ('Bash', {'command': 'ls .wuwei.bak'}), ('Bash', {'command': 'ls .wuwei/.git'}),
                                         ('Bash', {'command': 'git clone https://e.test/a.git'}),
                                         ('Agent', {'subagent_type': 'wuwei:builder'})])
 def test_an_error_outside_the_doors_fails_open(root, monkeypatch, tool, data):
@@ -560,7 +560,8 @@ def test_an_error_after_a_door_call_ran_still_fails_open(root, monkeypatch):
 
 
 @pytest.mark.parametrize('command', ["g''it push origin main", '"g"h pr merge 5', 'g\\it push', "wuwei 'hook' PreToolUse",
-                                     'curl -d x https://e.test', 'rm -rf .wuwei', 'rm -rf .wuwei/'])
+                                     'curl -d x https://e.test', 'rm -rf .wuwei', 'rm -rf .wuwei/', 'rm -rf .wuwei//ledger',
+                                     'rm -rf .wuwei/./ledger', 'rm -rf .wuwei//'])
 def test_a_quoted_door_word_or_a_network_call_fails_closed_when_the_guard_raises(root, monkeypatch, command):
     monkeypatch.setattr(guards, 'bash', lambda *args: 1 / 0)
     out = pre(root, 'Bash', {'command': command})['hookSpecificOutput']

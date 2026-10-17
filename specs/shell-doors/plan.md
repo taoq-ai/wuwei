@@ -18,13 +18,19 @@
 
 1. `OPS` lists sh's operators, longest first, then each single character of `();<>|&`. A word that
    is all punctuation is replaced by `re.findall(OPS, word)`; every other word is kept.
-2. `|&` joins `CONTROL`.
-3. Before the loop, `segments` scans quote spans left to right (`$'`, `$"`, a single-quoted span,
-   a double-quoted span, a backslash escape) and returns None when a span opens with `$`.
-4. `LEDGER` becomes `(^|[/=])\.wuwei(/ledger(\.jsonl)?)?/?$|(^|[/=])\.wuwei/ledger/`.
-5. The ledger `DOOR_WORDS` entry becomes `\.wuwei(/ledger|/?(?![\w./-]))`.
+2. `|&` joins `CONTROL`. `_unwrap`'s redirect tuple holds every operator `OPS` yields that takes a
+   word: `>`, `>>`, `>|`, `&>`, `&>>`, `<`, `<>`, `>&`, `<&`, `<<<`. The dead `2>` and `1>` entries go
+   (shlex never returns them in punctuation mode).
+3. The pre-lexer `re.sub` drops an fd number glued before `<` or `>` when it starts a word, outside
+   quotes, so `2>&1 git push` reads `git` as the command.
+4. Before the loop, `segments` scans quote spans left to right (`$'`, `$"`, a single-quoted span,
+   a double-quoted span, a backslash escape). When a span opens with `$`, `out` starts with
+   `UNREAD`, so `bash` applies the door-word refusal and still reads every segment.
+5. `LEDGER` becomes `(^|[/=])\.wuwei(/(\.?/)*ledger(\.jsonl)?)?(/\.?)*$|(^|[/=])\.wuwei/(\.?/)*ledger/`.
+6. The ledger `DOOR_WORDS` entry becomes `\.wuwei[/.]*(/ledger|(?![\w./-]))`; the multi-line
+   refusal names `.wuwei or .wuwei/ledger`.
 
-Line cost: +3 runtime lines (2,996 to 2,999), inside the +4 budget.
+Line cost: +2 runtime lines (2,996 to 2,998), inside the +4 budget.
 
 ## Constitution check
 

@@ -25,10 +25,10 @@ UNREAD = ([], ['<an unreadable sh -c body>'])  # the segment an unreadable body 
 DOORS = {'edit': ('Write', 'Edit', 'MultiEdit', 'NotebookEdit'), 'merge': ('merge_pull_request', 'enable_pr_auto_merge'),
          'create': ('create_pull_request',), 'push': ('push_files', 'create_or_update_file', 'delete_file'),
          'ready': ('update_pull_request', 'request_copilot_review')}  # hook.door() reads it
-DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei(/ledger|/?(?![\w./-]))',))
+DOOR_WORDS = ((r'\bgit\b', r'\bpush\b'), (r'\bgh\b', r'\b(pr|api|repo)\b'), (r'\bwuwei[\'"]?(\s|\\\n)+[\'"]?hook\b',), (r'\.wuwei[/.]*(/ledger|(?![\w./-]))',))
 SECRETS = re.compile(r'gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{22,}|sk-ant-[\w-]{20,}|sk-[A-Za-z0-9]{32,}'
                      r'|AKIA[0-9A-Z]{16}|xox[abpr]-[\w-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[\w-]{35}')
-LEDGER = re.compile(r'(^|[/=])\.wuwei(/ledger(\.jsonl)?)?/?$|(^|[/=])\.wuwei/ledger/')
+LEDGER = re.compile(r'(^|[/=])\.wuwei(/(\.?/)*ledger(\.jsonl)?)?(/\.?)*$|(^|[/=])\.wuwei/(\.?/)*ledger/')  # // and /./ too
 WRITE, REPO = ('POST', 'PUT', 'PATCH', 'DELETE'), r'repos/([^/]+/[^/]+)'
 API = ((REPO + '/pulls', ('POST',), 'create'), (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(merge|ccr/auto_merge)', ('PUT',), 'merge'),
        (REPO + r'/pulls/[^/0-9]*([0-9]+)[^/]*/(ccr/ready_for_review|requested_reviewers)', ('POST',), 'ready'),  # 7abc, %207: PR 7
@@ -78,13 +78,12 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n", lambda m: {'\n': ' ; ', '\\\n': ''}.get(
-            m[0], m[0]), command), posix=True, punctuation_chars=True)  # sh's lines: an unquoted newline ends a command
-        lexer.whitespace_split = True
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])[0-9]+(?=[<>])",
+            lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0].isdigit() else m[0]), command), posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 is a redirect, not a word
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        out, current = [], []
-        if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)):
-            return None  # $'..' and $".." quoting outside quotes: sh reads what shlex does not
+        out = [UNREAD] if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)) else []
+        current = []  # $'..' or $".." outside quotes: sh reads what shlex does not, so unread, while its segments are still read
         for token in [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';']:
             if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
                 if current:
@@ -100,7 +99,7 @@ def segments(command):
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        redirect = tokens[i] in ('>', '>>', '>|', '&>', '2>', '1>') and i + 1 < len(tokens)
+        redirect = tokens[i] in ('>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<<') and i + 1 < len(tokens)
         (targets if redirect else argv).append(tokens[i + redirect])
         i += 1 + redirect
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
@@ -301,7 +300,7 @@ def bash(root, command, cwd, session):
     parts = segments(command)
     if (parts is None or UNREAD in parts or re.search('[\r\n]', command)) and any(all(re.search(w, command) for w in d) for d in DOOR_WORDS):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
-                    '.wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
+                    '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
     for argv, targets in parts or ():
         if any(LEDGER.search(t) for t in targets):

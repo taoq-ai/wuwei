@@ -151,6 +151,15 @@
     {"command": "rm -rf /abs/path/.wuwei/ledger", "source": "item shell-doors acceptance 3", "verdict": "refusal"},
     {"command": "cat .wuwei/ledger/x.jsonl", "source": "item shell-doors acceptance 3", "verdict": "pass"},
     {"command": "ls .wuwei", "source": "item shell-doors acceptance 3", "verdict": "pass"},
-    {"command": "x=$(gh pr view 5 --json state); echo $x", "source": "allowlist spike for shell-doors (a punctuation-only word split into the operators sh reads, not refused)", "verdict": "pass"}
+    {"command": "x=$(gh pr view 5 --json state); echo $x", "source": "allowlist spike for shell-doors (a punctuation-only word split into the operators sh reads, not refused)", "verdict": "pass"},
+    {"command": "true;>|x git push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": "<x git push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": ">&2 git push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": "&>>x git push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": "2>&1 git push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": "git 2>/dev/null push origin main", "source": "security gate shell-doors at 67b367a (a stub git logged the push; the program after a redirect is the command)", "verdict": "push"},
+    {"command": "echo x &>>.wuwei/ledger/a.jsonl", "source": "security gate shell-doors at 67b367a (bash changed the ledger)", "verdict": "refusal"},
+    {"command": "rm -rf .wuwei//ledger", "source": "security gate shell-doors at 67b367a (bash changed the ledger)", "verdict": "refusal"},
+    {"command": "rm -rf .wuwei/./ledger", "source": "security gate shell-doors at 67b367a (bash changed the ledger)", "verdict": "refusal"}
   ]
 }
