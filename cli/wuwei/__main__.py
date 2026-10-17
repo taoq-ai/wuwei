@@ -8,8 +8,7 @@ from wuwei import agents, board, evidence, hook, plan, report, setup, ws
 
 
 def _root():
-    root = ws.find()
-    if root is None:
+    if (root := ws.find()) is None:
         raise SystemExit('wuwei: no .wuwei/ here or above; run wuwei init')
     return root
 
@@ -51,8 +50,7 @@ def cmd_plan(args):
     elif args.action == 'restore':
         print(f'{plan.restore(root, args.id)["id"]} open again')
     elif args.action == 'show' and args.id:
-        item = plan.find(root, args.id)
-        if item is None:
+        if (item := plan.find(root, args.id)) is None:
             raise ValueError(f'{args.id} is not in the plan')
         print(json.dumps(item, indent=1))
     elif args.action == 'pass':

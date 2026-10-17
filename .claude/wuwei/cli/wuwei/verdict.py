@@ -45,15 +45,13 @@ def parse(text, strict=False):
         result['repo'], result['pr'] = match[1], int(match[2]) if match[2] else None
     else:
         errors.append('PR: must be <owner/repo>#<number>, or <owner/repo> before its draft PR exists')
-    section = re.search(r'^## Findings[ \t]*$(.*?)(?=^## |\Z)', text, re.M | re.S)
-    if section is None:
+    if (section := re.search(r'^## Findings[ \t]*$(.*?)(?=^## |\Z)', text, re.M | re.S)) is None:
         errors.append('Findings: the verdict needs a "## Findings" section (a finding per line, or none)')
     else:
         lines = [line.strip() for line in section[1].splitlines() if line.strip()]
         if lines != ['none']:
             for line in lines:
-                found = FINDING.match(line)
-                if found is None:
+                if (found := FINDING.match(line)) is None:
                     errors.append(f'finding not in the shape "- [severity] <file>:<line> blocks: yes|no. ...": {line[:80]}')
                     continue
                 blocks, rest = found[3].lower() == 'yes', found[4]

@@ -232,9 +232,8 @@ def verdicts(root, item_id, ref=''):
         data = row['data']
         if str(data.get('item', '')).lower() != str(item_id).lower() and not (ref and data.get('pr', '').lower() == ref.lower()):
             continue
-        path = Path(root) / data.get('path', '')
         try:
-            body = path.read_bytes()
+            body = (Path(root) / data.get('path', '')).read_bytes()
         except OSError:
             continue
         changed = hashlib.sha256(body).hexdigest() != data.get('sha256')

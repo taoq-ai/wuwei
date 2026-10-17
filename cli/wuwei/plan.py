@@ -91,8 +91,7 @@ def restore(root, item_id):
 
 def mark(root, item_id, status, reason='', **fields):
     rows = items(root)
-    item = next((row for row in rows if row['id'].lower() == item_id.lower()), None)
-    if item is None:
+    if (item := next((row for row in rows if row['id'].lower() == item_id.lower()), None)) is None:
         raise ValueError(f'{item_id} is not in the plan')
     item.update(fields, status=status, reason=reason)
     save(root, rows)
