@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "shell-stdin",
-   "title": "fix(guards): a shell fed its commands on stdin and a named-fd redirect meet the doors",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 5,
-    "risk": 13,
-    "size": 2
-   },
-   "score": 15.5,
-   "why": "The spike in scratch closed 586 real push-door holes with one line; the item is ready to build behind free-lines-4.",
-   "promise": "A shell that reads its commands from stdin or a file, and a redirect on a named fd, meet the doors. (1) In guards._unwrap, sh, bash, zsh or dash with no -c body (fed by a pipe, a here-string, -s or < file, or given a script path) leaves the unread segment beside its own, so the existing multi-line or unreadable rule refuses the command when its raw text names a door program; a command naming none still passes. (2) In guards.segments, a {name} glued before a redirect operator at the start or after a separator ({fd}>x, {a_b}<x) is dropped the way an fd number is, so the program after it is read. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, and docs/site/concepts/doors.md if it lists the unreadable shapes. Runtime lines: estimate +1 (spike on top of the free-lines prototype: 2,973 to 2,974, 1192 passed), budget 2. Order: after free-lines-4. Acceptance comes from real execution with a stub git on PATH. The builder runs a generated combinatorial probe under real bash: fd spellings ({fd}, {a_b}, {A1}, {_}, 3, 10) x redirect operators x targets x positions (start, end, after ;, after &&, after |, inside ( )), and shells (bash, sh, dash, /bin/bash, env bash, command bash) x flags (none, -s, -e, -x) x feeders (<<< glued and spaced, a pipe, |&, 0<<<) x both quotes; holes must be 0. Rollback: revert the commit. Outside: a script file that holds a door command while the command line names none (bash run.sh: the guard is not a sandbox), and heredocs, which the multi-line rule already refuses. Assumptions: no recorded seat route pipes text naming a door program into a shell (the suite's seat-command corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
-   "acceptance": [
-    "given a stub git on PATH that appends its argv to a log, when bash -c runs each of `{fd}>x git push origin main`, `{a_b}<x git push origin main`, `bash <<< 'git push origin main'`, `echo 'git push origin main' | bash`, `printf %s 'git push origin main' |& sh -s` and `env bash -s <<<\"git push origin main\"`, then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
-    "given the generated probe in the builder's scratch copy (fd spellings x redirect operators x targets x positions, and shells x flags x feeders x quotes), when it runs every command under real bash with the stub git and through guards.bash at the head, then it reports the generated count, the count that ran the push, and 0 holes",
-    "given `bash run.sh`, `echo hi | bash`, `bash -c 'echo hi'`, `echo {a,b}>x` and `diff <(sort a) <(sort b)`, when guards.bash reads them, then they pass (no door program named)",
-    "given the suite's seat-command corpus and tests/fixtures/routes.json, when the suite runs at the head, then every recorded route keeps its verdict"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
    "id": "records",
    "title": "fix(guards): writes to the ledger and the cache meet the ledger door in the spellings sh expands",
    "goal": "G-2",
@@ -73,32 +47,6 @@
     "given the same fake host, when real gh runs `gh pr merge 5 -t --help` and `gh pr merge 5 -- --help`, then the guard sends each to the merge door (refused while the PR's evidence has gaps)",
     "given a local bare remote and a clone with a commit on main, when real git runs `git push origin main --help` and `git push origin main -h` from the suite, then the bare remote has no main ref, and guards.bash passes both; `git push origin main` is still refused",
     "given an --input file written by json.dumps with head 'feature', base 'ma\\u0069n' and a body whose WUWEI-Item line is escaped, when guards._api reads it, then head, base and body equal the decoded strings"
-   ],
-   "status": "open",
-   "added": "2026-10-17",
-   "approved": true
-  },
-  {
-   "id": "merge-evidence",
-   "title": "fix(evidence): owner review reads only owner review rulings, and the CI-not-started read covers docs-only diffs, an unreadable Actions host and pull_request_target",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 8,
-    "time": 3,
-    "risk": 8,
-    "size": 2
-   },
-   "score": 9.5,
-   "why": "An approved breaking or exception answer clears the owner review hold today; the CI follow-ups from the ci-not-started gates share the same function.",
-   "promise": "(1) evidence.owner_approved counts a ledger ruling only when it is an owner review ruling (one with no kind); an approved breaking or exception ruling at the head no longer counts as the owner's review on owned paths. An approving GitHub review by the owner at the head still counts. (2) The CI-not-started gap is not raised when the diff holds only docs or specs (the same DOCS, specs/ and openspec/ reading the no-test gap uses) and the rollup is empty. (3) When the Actions read fails (a 403 or any gh error), the gap still shows and its text says the Actions host was unreadable, with the error. (4) A repository whose CI runs only on pull_request_target is read as having CI. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py if the pull_request_target read lands there, tests/test_evidence.py, the vendored copies, and docs/site/concepts/evidence.md if it describes the gap. Runtime lines: estimate +4, budget 6. Order: after free-lines-4. It shares no file with the guard items; if the headroom at its approval is under 6 lines, it frees its own. Rollback: revert the commit. Outside: reading a workflow's path filters (YAML, not stdlib), and the Codex attestation path (#1078). Assumptions: a docs-only change is safe to merge before docs CI registers, because a rollup with any check still holds the merge on running or failing CI; overturned if the owner wants docs CI to hold merges, in which case (2) reads the workflow's paths instead.",
-   "acceptance": [
-    "given an owned path in the diff, a ledger ruling {kind: breaking, approved: true} and one {kind: exception, approved: true} at the head, and no owner review, when evidence.gaps reads the PR, then the owner review gap shows; and given an owner review ruling {approved: true} at the head, when it reads again, then the gap is gone",
-    "given a diff of only docs/site/x.md and specs/a/spec.md, an empty status rollup and a repository that ran a pull_request workflow, when evidence.gaps reads the PR, then no 'CI not started' gap shows; and given a diff with cli/wuwei/x.py, then it shows",
-    "given gh.run raising GhError('HTTP 403') on the Actions read and an empty rollup, when evidence.gaps reads the PR, then a 'CI not started' gap shows whose text names the unreadable Actions host and the error",
-    "given a repository whose only workflow runs are pull_request_target runs and an empty rollup, when evidence.gaps reads the PR, then the 'CI not started' gap shows"
    ],
    "status": "open",
    "added": "2026-10-17",
@@ -297,6 +245,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged"
+  },
+  {
+   "id": "shell-stdin",
+   "title": "fix(guards): a shell fed its commands on stdin and a named-fd redirect meet the doors",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 5,
+    "risk": 13,
+    "size": 2
+   },
+   "score": 15.5,
+   "why": "The spike in scratch closed 586 real push-door holes with one line; the item is ready to build behind free-lines-4.",
+   "promise": "A shell that reads its commands from stdin or a file, and a redirect on a named fd, meet the doors. (1) In guards._unwrap, sh, bash, zsh or dash with no -c body (fed by a pipe, a here-string, -s or < file, or given a script path) leaves the unread segment beside its own, so the existing multi-line or unreadable rule refuses the command when its raw text names a door program; a command naming none still passes. (2) In guards.segments, a {name} glued before a redirect operator at the start or after a separator ({fd}>x, {a_b}<x) is dropped the way an fd number is, so the program after it is read. Files: cli/wuwei/guards.py, tests/test_guards.py, tests/fixtures/routes.json, the vendored guards.py, and docs/site/concepts/doors.md if it lists the unreadable shapes. Runtime lines: estimate +1 (spike on top of the free-lines prototype: 2,973 to 2,974, 1192 passed), budget 2. Order: after free-lines-4. Acceptance comes from real execution with a stub git on PATH. The builder runs a generated combinatorial probe under real bash: fd spellings ({fd}, {a_b}, {A1}, {_}, 3, 10) x redirect operators x targets x positions (start, end, after ;, after &&, after |, inside ( )), and shells (bash, sh, dash, /bin/bash, env bash, command bash) x flags (none, -s, -e, -x) x feeders (<<< glued and spaced, a pipe, |&, 0<<<) x both quotes; holes must be 0. Rollback: revert the commit. Outside: a script file that holds a door command while the command line names none (bash run.sh: the guard is not a sandbox), and heredocs, which the multi-line rule already refuses. Assumptions: no recorded seat route pipes text naming a door program into a shell (the suite's seat-command corpus passed under the spike); overturned if a corpus row moves from pass to refuse.",
+   "acceptance": [
+    "given a stub git on PATH that appends its argv to a log, when bash -c runs each of `{fd}>x git push origin main`, `{a_b}<x git push origin main`, `bash <<< 'git push origin main'`, `echo 'git push origin main' | bash`, `printf %s 'git push origin main' |& sh -s` and `env bash -s <<<\"git push origin main\"`, then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
+    "given the generated probe in the builder's scratch copy (fd spellings x redirect operators x targets x positions, and shells x flags x feeders x quotes), when it runs every command under real bash with the stub git and through guards.bash at the head, then it reports the generated count, the count that ran the push, and 0 holes",
+    "given `bash run.sh`, `echo hi | bash`, `bash -c 'echo hi'`, `echo {a,b}>x` and `diff <(sort a) <(sort b)`, when guards.bash reads them, then they pass (no door program named)",
+    "given the suite's seat-command corpus and tests/fixtures/routes.json, when the suite runs at the head, then every recorded route keeps its verdict"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1115"
   },
   {
    "id": "vendored-drift",
@@ -708,6 +683,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1109"
+  },
+  {
+   "id": "merge-evidence",
+   "title": "fix(evidence): owner review reads only owner review rulings, and the CI-not-started read covers docs-only diffs, an unreadable Actions host and pull_request_target",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 8,
+    "time": 3,
+    "risk": 8,
+    "size": 2
+   },
+   "score": 9.5,
+   "why": "An approved breaking or exception answer clears the owner review hold today; the CI follow-ups from the ci-not-started gates share the same function.",
+   "promise": "(1) evidence.owner_approved counts a ledger ruling only when it is an owner review ruling (one with no kind); an approved breaking or exception ruling at the head no longer counts as the owner's review on owned paths. An approving GitHub review by the owner at the head still counts. (2) The CI-not-started gap is not raised when the diff holds only docs or specs (the same DOCS, specs/ and openspec/ reading the no-test gap uses) and the rollup is empty. (3) When the Actions read fails (a 403 or any gh error), the gap still shows and its text says the Actions host was unreadable, with the error. (4) A repository whose CI runs only on pull_request_target is read as having CI. Files: cli/wuwei/evidence.py, cli/wuwei/gh.py if the pull_request_target read lands there, tests/test_evidence.py, the vendored copies, and docs/site/concepts/evidence.md if it describes the gap. Runtime lines: estimate +4, budget 6. Order: after free-lines-4. It shares no file with the guard items; if the headroom at its approval is under 6 lines, it frees its own. Rollback: revert the commit. Outside: reading a workflow's path filters (YAML, not stdlib), and the Codex attestation path (#1078). Assumptions: a docs-only change is safe to merge before docs CI registers, because a rollup with any check still holds the merge on running or failing CI; overturned if the owner wants docs CI to hold merges, in which case (2) reads the workflow's paths instead.",
+   "acceptance": [
+    "given an owned path in the diff, a ledger ruling {kind: breaking, approved: true} and one {kind: exception, approved: true} at the head, and no owner review, when evidence.gaps reads the PR, then the owner review gap shows; and given an owner review ruling {approved: true} at the head, when it reads again, then the gap is gone",
+    "given a diff of only docs/site/x.md and specs/a/spec.md, an empty status rollup and a repository that ran a pull_request workflow, when evidence.gaps reads the PR, then no 'CI not started' gap shows; and given a diff with cli/wuwei/x.py, then it shows",
+    "given gh.run raising GhError('HTTP 403') on the Actions read and an empty rollup, when evidence.gaps reads the PR, then a 'CI not started' gap shows whose text names the unreadable Actions host and the error",
+    "given a repository whose only workflow runs are pull_request_target runs and an empty rollup, when evidence.gaps reads the PR, then the 'CI not started' gap shows"
+   ],
+   "status": "done",
+   "added": "2026-10-17",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1114"
   },
   {
    "id": "compound-doors",
