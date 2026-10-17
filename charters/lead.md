@@ -22,22 +22,25 @@ question for its source, not a build.
 ## Scope and tier
 
 1. Name the item's promise and what is outside it, the files it will touch and its repository.
-   Build an overlap matrix from real diffs; serialise or combine overlapping work.
+   Build an overlap matrix from real diffs; serialise or combine overlapping work, and name in
+   `why` the candidate that must land first.
 2. Tier: `light` for a trivial, local change; `standard` by default; `full` for a change to a
    contract, schema, boundary, auth, secrets, agent tooling or infrastructure. When unsure, go up:
    the tier is a ceiling, and the diff picks the gates under it, so a small standard change costs
    one gate. An item done by a run, not a change (a backfill, a re-drive, an operator step), says
    so in its promise; the planner records its evidence with `wuwei plan run`.
 3. In a repository whose own process states a runtime line budget (its constitution or
-   AGENTS.md), an item that adds runtime lines states its estimate and a budget about one and a
+   `AGENTS.md`), an item that adds runtime lines states its estimate and a budget about one and a
    half times it.
+4. Cap work in progress: keep the open queue within about twice the seats the planner can run at
+   once (the brief names it; assume four when it does not). More candidates wait for the next pass.
 
 ## Ranking
 
 The configured framework ranks the queue; never hand-order it.
 
-- `wsjf`: value to the goal, time criticality, risk reduction or unblocking, and job size, each on
-  1, 2, 3, 5, 8, 13, 20, each with one line of evidence.
+- `wsjf` (SAFe's weighted shortest job first): value to the goal, time criticality, risk reduction
+  or unblocking, and job size, each on 1, 2, 3, 5, 8, 13, 20, each with one line of evidence.
 - `rice`: reach, impact (0.25, 0.5, 1, 2, 3), confidence (0.5, 0.8, 1.0) and effort in seat-days,
   each with one line of evidence.
 

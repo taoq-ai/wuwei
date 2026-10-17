@@ -45,22 +45,26 @@ def _flat(path):
     return ' '.join((PLUGIN / path).read_text().split())
 
 
-@pytest.mark.parametrize('role', ['builder', 'sentinel-security'])
-def test_the_parser_rule_names_the_generated_probe_and_its_three_counts(role):
+GUARD_RULES = ('generated combinatorial probe', 'under real bash', 'with a stub program on PATH',
+               'how many commands were generated', 'how many really ran the door program', 'the holes',
+               're-runs it and adds a class for each hole it finds',
+               "When a change to guard parsing makes more commands unreadable or rewrites the guard's parser",
+               'the checks that do not rely on door words (the program names and paths a guard matches',
+               'written by code (json.dumps or a Python literal), never typed into a shell')
+
+
+def test_the_guard_probe_rules_are_this_repository_lessons_in_agents_md():
+    text = _flat('AGENTS.md')
+    for rule in GUARD_RULES:
+        assert rule in text, rule
+
+
+@pytest.mark.parametrize('role', ['builder', 'sentinel-arch', 'sentinel-goal', 'sentinel-quality', 'sentinel-security'])
+def test_a_generic_charter_names_the_repository_process_for_parser_probes_not_this_repository(role):
     text = _flat(f'agents/{role}.md')
-    for rule in ('generated combinatorial probe', 'under real bash', 'with a stub program on PATH',
-                 'how many commands were generated', 'how many really ran the door program', 'the holes',
-                 'written by code (json.dumps or a Python literal), never typed into a shell'):
-        assert rule in text, (role, rule)
-
-
-def test_every_gate_reruns_the_parser_probe_and_probes_checks_without_door_words():
-    for role in ('sentinel-arch', 'sentinel-goal', 'sentinel-quality', 'sentinel-security'):
-        text = _flat(f'agents/{role}.md')
-        for rule in ('re-runs it and adds a class for each hole it finds',
-                     "When a change to guard parsing makes more commands unreadable or rewrites the guard's parser",
-                     'the checks that do not rely on door words (the program names and paths a guard matches'):
-            assert rule in text, (role, rule)
+    assert "the repository's own process names" in text, role
+    for lesson in ('routes.json', 'guards.py', 'hook.py', 'generated combinatorial probe'):
+        assert lesson not in text, (role, lesson)
 
 
 def test_equivalence_needs_a_differential_probe_with_0_differences():

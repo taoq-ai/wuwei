@@ -10,4 +10,7 @@ another seat's summary.
 3. Check drift both ways: a required outcome missing, and a claim no requirement asked for.
 4. Verify universal claims by enumerating the complement; check counts against their population.
 5. For a document, read it in its delivery medium; links and citations resolve.
-6. A goal change or a one-way choice is ESCALATE.
+6. Defects the gates caught on real days: a measure fixed in advance whose computation stays open,
+   so a choice follows the result; a count in the PR body copied from memory rather than read at
+   the head.
+7. A goal change or a one-way choice is ESCALATE.

@@ -1,0 +1,125 @@
+{
+  "wuwei-run": {
+    "should": [
+      "start the day",
+      "good morning, let's plan today's work",
+      "the queue is empty, what should we build next",
+      "add this bug to the plan and rank it",
+      "drop the release item, the owner changed their mind",
+      "re-rank the plan, G-2 is more urgent now",
+      "resume where we left off yesterday",
+      "plan pass please",
+      "I added two issues on GitHub, pick them up",
+      "approve the plan and start building"
+    ],
+    "should_not": [
+      "check whether the open PRs moved",
+      "any review threads waiting on us",
+      "close the day and write the retro",
+      "where do things stand, I'm pausing for today",
+      "why did wuwei refuse my merge",
+      "what does done mean here",
+      "run the test suite",
+      "explain the andon cord",
+      "merge PR 1123 once CI is green"
+    ]
+  },
+  "wuwei-watch": {
+    "should": [
+      "check whether the open PRs moved",
+      "any review threads waiting on us",
+      "a PR event woke the session, handle it",
+      "hourly pass over work in progress",
+      "did CI finish on the draft",
+      "anyone waiting on a reply from the team",
+      "merge PR 1123 once CI is green",
+      "nudge the open work along",
+      "/loop 20m watch the PRs",
+      "mark the draft ready now that gates passed"
+    ],
+    "should_not": [
+      "start the day",
+      "add this bug to the plan and rank it",
+      "close the day and write the retro",
+      "re-rank the plan, G-2 is more urgent now",
+      "why did wuwei refuse my merge",
+      "what does done mean here",
+      "approve the plan and start building",
+      "show me the git log",
+      "what is a one-way door"
+    ]
+  },
+  "wuwei-close": {
+    "should": [
+      "close the day and write the retro",
+      "where do things stand, I'm pausing for today",
+      "I'm done for today, checkpoint",
+      "write today's report",
+      "run the steward",
+      "end of day summary please",
+      "pause here, sync the state",
+      "what did we learn today",
+      "wrap up and send me the summary",
+      "checkpoint the day so far"
+    ],
+    "should_not": [
+      "start the day",
+      "check whether the open PRs moved",
+      "plan pass please",
+      "any review threads waiting on us",
+      "resume where we left off yesterday",
+      "why did wuwei refuse my merge",
+      "merge PR 1123 once CI is green",
+      "delete the retro file",
+      "what does done mean here"
+    ]
+  },
+  "wuwei-rules": {
+    "should": [
+      "why did wuwei refuse my merge",
+      "what does done mean here",
+      "explain the andon cord",
+      "should I ask the owner about this schema change",
+      "what is a one-way door",
+      "which gates does a docs change need",
+      "is a missing reviewer a blocker",
+      "what goes in the PR footer",
+      "how do I record an exception",
+      "the hook rejected gh pr ready, what is missing"
+    ],
+    "should_not": [
+      "start the day",
+      "check whether the open PRs moved",
+      "close the day and write the retro",
+      "plan pass please",
+      "merge PR 1123 once CI is green",
+      "run the steward",
+      "approve the plan and start building",
+      "explain the rules of chess",
+      "what are the house rules for the office kitchen"
+    ]
+  },
+  "wuwei-plan": {
+    "should": [
+      "/wuwei-plan",
+      "run wuwei-plan",
+      "the morning routine calls /wuwei-plan",
+      "wuwei plan skill",
+      "invoke the old plan command",
+      "my habit is /wuwei-plan, do that",
+      "the 1.x routine still says wuwei-plan",
+      "start with wuwei-plan like yesterday"
+    ],
+    "should_not": [
+      "start the day",
+      "plan pass please",
+      "check whether the open PRs moved",
+      "close the day and write the retro",
+      "why did wuwei refuse my merge",
+      "wuwei plan show scratch-remotes",
+      "run wuwei plan add for this item",
+      "plan my holiday",
+      "draw a floor plan"
+    ]
+  }
+}

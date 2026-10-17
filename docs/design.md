@@ -188,8 +188,10 @@ flow.
 At each checkpoint the steward writes the retro with at most three proposals: defect vaccines (a
 regression test item and a gate standard per escaped defect), calibration and gate yield findings,
 skills and memory lines for a repository (landed through a PR there), and rules to retire (a rule
-that caught nothing in 30 days; a new rule is a note for its first five days). A kind of owner
-question always answered with the recommendation becomes a rule.
+that caught nothing in 30 days; a new rule is a note for its first five days). Charters shrink the
+same way: a line nothing cited in 30 days, or one that names one repository's files, is proposed
+for deletion or for a standards line, and a test holds each generated agent under a word ceiling.
+A kind of owner question always answered with the recommendation becomes a rule.
 
 ## 10. Records, report, DORA
 

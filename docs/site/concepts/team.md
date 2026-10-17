@@ -5,7 +5,7 @@
 | planner | your session: plans with the lead, launches seats, follows the board, asks you what is yours | one place where your attention is spent |
 | lead | discovery, readiness, scope, tier, ranking, red-teaming the plan | deciding what to build is a different skill from building it |
 | builder | one item, test first, in its own branch and worktree | small, isolated changes are easier to review and undo |
-| sentinel-arch | architecture gate | contracts and boundaries break quietly |
+| sentinel-arch | architecture gate: conformance to the written design, coupling, contracts, quality attributes, budgets | coupling and contracts erode quietly |
 | sentinel-quality | quality gate, on a different model | tests that do not test, code that should not exist |
 | sentinel-security | security gate | trust boundaries need a reviewer who looks only at them |
 | sentinel-goal | goal gate (full tier) | building the wrong thing well is still wrong |
@@ -21,6 +21,11 @@ in `agents/` are generated from them (`wuwei agents build`) with a reviewed tool
 
 **Why:** a rule written in two places drifts. The charter is where a rule lives; the agent is how
 the harness receives it.
+
+The charters hold only what every workspace needs. A lesson about one repository's code lives in
+that repository (`AGENTS.md` or `CLAUDE.md`) and in the workspace's `.wuwei/standards.md`, never in
+a charter. Tests hold the charters to the plain-tone rule (no sentence over 35 words) and each
+generated agent under a word ceiling, so the set cannot grow by accretion.
 
 ## Independence
 
