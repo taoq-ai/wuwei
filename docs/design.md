@@ -131,7 +131,10 @@ CI runs; the flip to ready (`gh pr ready`, a REST POST on `pulls/<n>/ccr/ready_f
 --add-reviewer`, a REST POST on `pulls/<n>/requested_reviewers`, MCP `reviewers` or
 `request_copilot_review`) before the gates pass at the PR head, so review starts at a gated head
 (#1050, #1074);
-`--admin`; `gh api` writes to protection, rulesets, statuses,
+`--admin` (and `--admin=true` in any spelling pflag reads as true; `--auto` counts only where pflag
+reads it as the flag); a `gh api` write to an endpoint under `repositories/<id>` (spell it
+`repos/<owner>/<repo>`); a `gh api graphql` query WUWEI cannot read (`--input -`, `-F query=@-`, a
+missing file, or a file outside one plain one-line `gh` call); `gh api` writes to protection, rulesets, statuses,
 collaborators, hooks, keys, secrets and environments; `gh api` writes to `merges`, `git/refs/` or
 `contents/` on any branch; `gh repo delete` and a REST DELETE on the repository; a `gh api graphql`
 mutation that merges, arms auto-merge, opens a PR, marks one ready, requests reviewers, moves a ref, commits to a branch or changes

@@ -50,11 +50,18 @@ case, a leading `/` or a query and with gh's `{owner}/{repo}` filled from the or
 the fields, reading `-F key=@file` and the `--input` file. A REST pull request create meets the
 create door and a REST merge or auto-merge meets the merge door. A REST write to `merges`,
 `git/refs/` or `contents/`, a repository delete, and a `gh api graphql` mutation that merges, opens
-a pull request, moves a ref, commits to a branch or changes protection are refused. The GitHub MCP
+a pull request, moves a ref, commits to a branch or changes protection are refused. A `gh api graphql`
+query WUWEI cannot read is refused: `--input -`, `-F query=@-`, a missing or empty file, or an
+`--input` or `-F query=@` file outside one plain `gh` call; an `--input` file WUWEI reads has its
+whole text, JSON escapes decoded, checked for those mutations. Any REST write on
+`repositories/<id>/...` is refused with the `repos/<owner>/<repo>` spelling to use. `gh pr merge`
+reads `--admin` and `--auto` the way pflag does: `--admin` with any true value is refused, the last
+`--auto` wins, and `--auto` read as another flag's value (`-t --auto`) does not count. The GitHub MCP
 tools `push_files`, `create_or_update_file` and `delete_file` are refused on the default branch or
 with no branch. A draft pull request create passes before its gates (`--draft`, a JSON `draft: true`
 from `-F`, or from an `--input` file read only when gh is the whole command, with no wrapper and
-every word plain: letters, digits and `./=@:-`); the ready door holds the flip to ready and reviewer requests on a
+every word plain: letters, digits and `./=@:-`; the same plain-call rule now covers the graphql
+`--input` file and the `-F query=@` file); the ready door holds the flip to ready and reviewer requests on a
 draft until the gates pass at its head, reading the PR and `--repo` as gh's flag parser does. An
 endpoint is read with percent-escapes decoded, empty and `.` segments dropped and a PR number from its
 leading digits (`7abc`, ` 7`, `7.0` are PR 7, as GitHub reads them); a write through a
