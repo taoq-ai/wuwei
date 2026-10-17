@@ -2,8 +2,8 @@
 
 A pull request is done when its safety evidence is complete. `wuwei evidence owner/repo#n` lists one
 PR's safety gaps; `wuwei status` lists every open item's. Each gap is **actionable** (the team can close it
-now), **waiting** (CI running, CI not started at a head with no checks yet, the code host unreadable, an
-andon) or **yours** (an owner review).
+now), **waiting** (CI running, CI not started at a code head with no checks yet, the code host unreadable,
+an andon) or **yours** (an owner review).
 
 WUWEI never asks how the work was done. A test is in the diff or it is not; a reviewer passed this
 head or did not.
@@ -22,7 +22,7 @@ head or did not.
 | A review status settled (see [review statuses](#review-statuses)) | a commit status from a workflow the repo runs on `pull_request_review` | safety | a gate waiting on a reviewer needs someone to act; it is not a build |
 | Every review thread answered | every PR | safety | people's questions are obligations |
 | A reviewer requested | every PR | process | a PR nobody is asked to read is not reviewed |
-| Owner review | `owner_paths` touched | safety | what you chose to review yourself |
+| Owner review: your approving review, or your `owner review:` answer, at the head (a `breaking:` or `exception:` answer is not one) | `owner_paths` touched | safety | what you chose to review yourself |
 | Not stale (under three days open) | every PR | process | inventory rots; flow over stock |
 
 ## Review statuses

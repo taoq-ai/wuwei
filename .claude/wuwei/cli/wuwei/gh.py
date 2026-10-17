@@ -56,7 +56,7 @@ def pr(repo, number):
     statuses = run(['api', f'repos/{repo}/commits/{head}/status']).get('statuses', [])
     return {**_summary(data),
             'files': [{'path': f['filename'], 'additions': f.get('additions', 0), 'deletions': f.get('deletions', 0),
-                       'patch': f.get('patch'), 'renamed': bool(f.get('previous_filename'))} for f in pages(f'{base}/files')],
+                       'patch': f.get('patch'), 'renamed': f.get('previous_filename') or ''} for f in pages(f'{base}/files')],
             'statusCheckRollup': [{'name': c['name'], 'status': (c.get('status') or '').upper(),
                                    'conclusion': (c.get('conclusion') or '').upper()} for c in checks]
             + [{'context': s['context'], 'state': (s.get('state') or '').upper(), 'url': s.get('target_url')} for s in statuses],

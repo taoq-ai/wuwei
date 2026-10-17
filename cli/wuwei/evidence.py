@@ -15,6 +15,8 @@ REQUIRED = {'light': ('quality',), 'standard': ('arch', 'quality', 'security'),
             'full': ('arch', 'quality', 'security', 'goal')}
 TEST = re.compile(r'(^|/)(tests?|spec|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$')
 DOCS = re.compile(r'\.(md|rst|txt|adoc)$|(^|/)docs/|^LICENSE|^NOTICE')
+# What a diff may hold and still skip CI not started: prose, a license, specs; never a .txt, code under docs/ or a file seats load.
+PROSE = re.compile(r'^(?!(.*/)?(AGENTS\.md|CLAUDE\.md|(charters|agents)/[^/]+\.md|skills/[^/]+/SKILL\.md)$)(.+\.(md|rst|adoc)|LICENSE|NOTICE|(open)?specs/.+)$')
 GENERATED = re.compile(r'(^|/)([\w.-]+\.lock|package-lock\.json|pnpm-lock\.yaml|go\.sum)$|\.min\.(js|css)$'
                        r'|(^|/)(dist|vendor|__snapshots__)/')
 TEMPLATES = ('.github/pull_request_template.md', '.github/PULL_REQUEST_TEMPLATE.md', 'PULL_REQUEST_TEMPLATE.md',
@@ -391,11 +393,13 @@ def gaps(root, repo, number):
         found += breaking_gaps(root, ref, pr, item_id)
         rollup = pr.get('statusCheckRollup')
         found += ci_gaps(rollup, review_contexts(root, repo, rollup))
-        try:  # no check run and no status at the head of a repository that ran a pull_request workflow (#1085)
-            ci = not rollup and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(repo, '?event=pull_request&per_page=1'))
-        except (gh.GhError, AttributeError, TypeError):
-            ci = True  # an unreadable Actions host counts as CI, so the gap shows rather than a pass
-        found += [gap(f'CI not started at {head[:7]}', actionable=False)] if ci else []
+        try:  # no check run and no status at a code head of a repository that ran a pull_request(_target) workflow (#1085)
+            held = not files or any(not PROSE.match(p) for f in pr['files'] for p in (f['path'], f.get('renamed')) if p)
+            ci, why = not rollup and held and _cached(root, 'ci-' + repo.replace('/', '__'), lambda: gh.workflow_paths(
+                repo, '?event=pull_request&per_page=1') or gh.workflow_paths(repo, '?event=pull_request_target&per_page=1')), ''
+        except (gh.GhError, AttributeError, TypeError) as exc:  # an unreadable Actions host shows the gap, never a pass
+            ci, why = True, f' (Actions host unreadable: {exc})'
+        found += [gap(f'CI not started at {head[:7]}{why}', actionable=False)] if ci else []
         author = (pr.get('author') or {}).get('login', '')
         if threads := gh.unanswered_threads(repo, number, author):
             found.append(gap(f'{threads} review thread{"s" if threads > 1 else ""} unanswered'))
@@ -434,5 +438,5 @@ def owner_approved(root, repo, pr):
     login, head, ref = owner_login(root), pr['headRefOid'], f'{repo}#{pr["number"]}'  # a review or ruling at the head only (#886)
     return any((r.get('author') or {}).get('login') == login and r.get('state') == 'APPROVED'
                and head.startswith(r.get('commit') or '-') for r in pr.get('reviews') or ()) or \
-        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head', '-')) and row['data'].get('approved')
-            for row in ws.rows(root, 'ruling'))
+        any(row['data'].get('pr') == ref and head.startswith(row['data'].get('head') or '-') and row['data'].get('approved')
+            and 'kind' not in row['data'] for row in ws.rows(root, 'ruling'))  # an owner review ruling has no kind
