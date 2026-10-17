@@ -146,8 +146,9 @@ call; an owner question without a class.
 A multi-line or unreadable Bash command whose raw text names a door program (git and push; gh with
 pr, api or repo; wuwei followed by hook; `.wuwei/ledger` or `.wuwei` itself), with a hint to run the door command in its own
 one-line call (#1068); other multi-line commands are read line by line. `$'...'` and `$"..."` quoting
-makes a command unreadable, while its segments still meet the other doors; a run of punctuation such
-as `<(` or `;>` is split into the operators sh reads, and every redirect (`<x`, `>&2`, `2>&1`, `<<x`) is
+makes a command unreadable, and so does a shell with no `-c` body (fed by a pipe, a here-string, `-s` or
+`< file`), while its segments still meet the other doors; a run of punctuation such
+as `<(` or `;>` is split into the operators sh reads, and every redirect (`<x`, `>&2`, `2>&1`, `{fd}>x`, `<<x`) is
 read as one, so process substitution, glued separators and redirects reach their doors. The doors read a command
 inside a loop, an if or a brace group, a shell's `-c` body after combined flags (`bash -lc`), and,
 after a wrapper (env, timeout, nice, sudo, xargs), the first program a door reads.
