@@ -13,7 +13,7 @@ from wuwei import evidence, gh, ws
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
-CONTROL = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}
+CONTROL, REDIRECTS = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}, {'>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<', '<<<'}
 OPS = r'&>>|<<<|&&|\|\||;;|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
@@ -78,13 +78,14 @@ def current_branch(cwd):
 def segments(command):
     """Each simple command as (argv, redirect targets), with sh -c bodies and wrappers unwrapped."""
     try:
-        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])[0-9]+(?=[<>])",
+        lexer = shlex.shlex(re.sub(r"'[^']*'|\"(\\[\s\S]|[^\"\\])*\"|\\[\s\S]|\n|(?<![^\s;&|()<>])(?<![<>]&)[0-9]+(?=[<>])",
             lambda m: {'\n': ' ; ', '\\\n': ''}.get(m[0], '' if m[0].isdigit() else m[0]), command), posix=True, punctuation_chars=True)
         lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 is a redirect, not a word
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
-        out = [UNREAD] if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)) else []
-        current = []  # $'..' or $".." outside quotes: sh reads what shlex does not, so unread, while its segments are still read
-        for token in [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';']:
+        tokens, current = [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';'], []
+        out = [UNREAD] if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)) or any(
+            a in REDIRECTS and (b in REDIRECTS and c != '(' or b in CONTROL - {'('}) for a, b, c in zip(tokens, tokens[1:], tokens[2:] + [''])) else []
+        for token in tokens:  # $'..', $".." or a redirect with no word after it (<(x) is one) is unread; its segments are still read
             if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
                 if current:
                     out.extend(_unwrap(current))
@@ -99,8 +100,8 @@ def segments(command):
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        redirect = tokens[i] in ('>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<<') and i + 1 < len(tokens)
-        (targets if redirect else argv).append(tokens[i + redirect])
+        redirect = tokens[i] in REDIRECTS and i + 1 < len(tokens)  # an input redirect's word is read, never written
+        (([] if re.fullmatch(r'<[<&]*', tokens[i]) else targets) if redirect else argv).append(tokens[i + redirect])
         i += 1 + redirect
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]

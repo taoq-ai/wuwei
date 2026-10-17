@@ -409,7 +409,10 @@ def test_an_edit_of_a_ledger_path_without_a_file_name_is_refused(root, path):
                                      'git <x push origin main', 'git >&2 push origin main', '&>>x git push origin main',
                                      '<>x git push origin main', 'true;>&2 git push origin main', 'true;>|x git push origin main',
                                      '2>&1 git push origin main', 'git 2>/dev/null push origin main', 'git 1>x push origin main',
-                                     'true;2>x git push origin main', '<<<x git push origin main'])
+                                     'true;2>x git push origin main', '<<<x git push origin main', '10>x git push origin main',
+                                     'true;12>x git push origin main', '<<x git push origin main', '<<-x git push origin main',
+                                     '<&0 git push origin main', 'git <&0 push origin main', '2>&1>x git push origin main',
+                                     'git 2>&1>x push origin main', '2>&1<x git push origin main', 'true;2>&1>x git push origin main'])
 def test_a_push_after_any_redirect_meets_the_push_door(root, fake, repo, command):
     """Security gate shell-doors at 67b367a: bash runs each push; the program after a redirect is the command."""
     assert 'the default branch main' in guards.pre_tool(root, bash(command))['reason'], command
@@ -418,16 +421,29 @@ def test_a_push_after_any_redirect_meets_the_push_door(root, fake, repo, command
 @pytest.mark.parametrize('command', ['echo x &>>.wuwei/ledger/a.jsonl', 'echo x 1<>.wuwei/ledger/a.jsonl',
                                      'echo x >&.wuwei/ledger/a.jsonl', 'rm -rf .wuwei//ledger', 'rm -rf .wuwei/./ledger',
                                      'rm -rf .wuwei//', 'cp src/f .wuwei//ledger/a.jsonl', 'dd if=src/f of=.wuwei//ledger/a.jsonl',
-                                     'rm -rf .wuwei/.', 'mv .wuwei/./ledger.jsonl/ x'])
+                                     'rm -rf .wuwei/.', 'mv .wuwei/./ledger.jsonl/ x', 'echo x 2>&1>.wuwei/ledger/a.jsonl',
+                                     'echo x 2>&1>>.wuwei/ledger/a.jsonl', 'echo x 10>.wuwei/ledger/a.jsonl'])
 def test_a_ledger_write_through_any_redirect_or_doubled_slash_is_refused(root, repo, command):
     assert 'the ledger is written only' in guards.pre_tool(root, bash(command))['reason'], command
 
 
 @pytest.mark.parametrize('command', ['gh pr view 5 2>&1 | tail -3', 'echo 2 > x', 'git log -n 5 2>/dev/null', 'rm .wuwei/cache/x',
                                      'rm -rf .wuwei/.cache', 'cat < in.txt 2>&1', 'sort 2>err.txt <in.txt',
-                                     'rm foo.wuwei', "git push origin \\$'main'"])
+                                     'rm foo.wuwei', "git push origin \\$'main'", 'git push origin main2>x', 'echo a2>x',
+                                     'cat < .wuwei/ledger/a.jsonl', 'wc -l < .wuwei/ledger.jsonl', 'grep x <<< .wuwei',
+                                     'while read l; do echo $l; done < <(gh pr list)', 'cat <(gh pr view 5)',
+                                     'tee >(cat) < in.txt', 'gh pr diff 5 > >(tee d.txt)'])
 def test_redirects_and_workspace_paths_that_reach_no_door_pass(root, fake, repo, command):
     assert guards.pre_tool(root, bash(command)) is None, command
+
+
+@pytest.mark.parametrize('command', ['>&>x git push origin main', 'git push origin main >', 'git push origin main > <x',
+                                     'echo x >& >.wuwei/ledger/a.jsonl', 'git >< push origin main'])
+def test_a_redirect_whose_target_is_an_operator_or_missing_is_unread(root, fake, repo, command):
+    """Gates shell-doors at e2950da: a redirect needs a word; an operator or nothing after it is a shape WUWEI does not read."""
+    assert guards.segments(command)[0] == guards.UNREAD, command
+    assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
+
 
 
 TOKEN = 'ghp_' + 'a1' * 18
@@ -550,7 +566,7 @@ def test_a_wrapper_assignment_naming_a_tool_does_not_hide_the_infra_ask(root, re
 
 def test_a_redirect_anywhere_in_a_command_gives_its_target_and_keeps_the_other_words():
     assert guards.segments('echo a > out.txt b >> log.txt') == [(['echo', 'a', 'b'], ['out.txt', 'log.txt'])]
-    assert guards.segments('then echo a >') == [(['echo', 'a', '>'], [])]
+    assert guards.segments('then echo a >') == [guards.UNREAD, (['echo', 'a', '>'], [])]  # no word after a redirect: unread
 
 
 def test_an_unreadable_sh_c_body_naming_a_door_is_refused(root, fake, repo):

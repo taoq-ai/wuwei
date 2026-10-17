@@ -70,6 +70,12 @@ The acceptance scenarios, restated:
   origin main`, `>&2 git push origin main` and `&>>x git push origin main` passed while bash pushed.
   The redirect tuple now holds every operator the split yields, and the fd number of `2>&1` is
   dropped before the lexer, at no extra line.
+- Q: (gates at e2950da) How is the redirect class closed rather than its instances? A: A redirect
+  operator must be followed by a word. When the next token is another operator (other than the `(`
+  of process substitution, as in `< <(gh pr list)`) or nothing, the command is unread with the same
+  `UNREAD` marker as `$'`. A probe of every ordered pair of 12 redirect operators with fd numbers
+  `''`, `1`, `2`, `10`, in five positions around `git push origin main` and against a ledger file,
+  finds no shape where bash pushes or writes the ledger and the guard passes.
 - Q: Is bare `.wuwei` a door word? A: Yes, as the lead asked: `.wuwei` not followed by another path
   character (`.wuwei`, `.wuwei/`), so `.wuwei/plan.json` and `.wuwei.bak` stay ordinary.
 
@@ -110,12 +116,14 @@ fail-closed cases `rm -rf .wuwei` and `rm -rf .wuwei/`, with `cat .wuwei/plan.js
 
 ### US4: the route corpus holds (P1)
 
-Acceptance 4. `test_every_route_reads_as_recorded` with 27 new rows.
+Acceptance 4. `test_every_route_reads_as_recorded` with 35 new rows.
 
 ## Requirements
 
 - FR-001: `segments` splits a word made only of `();<>|&` into the operators sh reads (`OPS`);
-  `|&` is in `CONTROL`; `_unwrap` reads every redirect operator, and a glued fd number is dropped.
+  `|&` is in `CONTROL`; `_unwrap` reads every redirect operator in `REDIRECTS`, a glued fd number
+  is dropped (never the target of `>&1` or `<&0`), and a redirect whose next token is an operator
+  other than `(`, or nothing, makes the command unread. An input redirect's word is not a target.
 - FR-002: `segments` puts `UNREAD` first when `$'` or `$"` opens a quote span outside other
   quotes, and still returns every segment.
 - FR-003: `LEDGER` matches `.wuwei`, `.wuwei/ledger` and `.wuwei/ledger.jsonl`, each with an
@@ -139,7 +147,14 @@ Commands that passed on main and are now refused:
   read-only shapes: `cp file dir/.wuwei/`, `cp -r .wuwei /tmp/bk`, `python3 script.py
   <path>/.wuwei` and `python3 -m pytest .wuwei`.
 - A door command after a redirect: `<x git push origin main`, `2>&1 git push origin main`, `git
-  2>/dev/null push origin main` now meet the push door.
+  2>/dev/null push origin main`, `<<x git push origin main`, `10>x git push origin main` now meet
+  the push door.
+- A command naming a door program in which a redirect is followed by another operator or by
+  nothing (`>&>x git push origin main`, `git push origin main >`) is refused as unreadable. sh
+  rejects most such shapes as syntax errors; the ones it runs are what the rule closes.
+- One loosening against the previous head, none against main: an input redirect's word (`cat <
+  .wuwei/ledger/a.jsonl`, `wc -l < .wuwei/ledger.jsonl`) is read and never checked as a ledger
+  write, as on main.
 - A multi-line command naming bare `.wuwei` or `.wuwei/`.
 
 Migration: run a door command in its own plain one-line call, with plain quotes (`'main'`, not

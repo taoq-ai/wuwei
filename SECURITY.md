@@ -25,10 +25,12 @@ brace group, a `bash -c` body after combined flags (`-lc`, `-e -c`), and the com
 wrapper's options. A run of punctuation that `shlex` hands back as one word (`<(`, `;>`, `&&(`,
 `);`) is split into the operators sh reads, so process substitution and glued separators reach
 their doors; `|&` is a pipe. Every redirect operator, with or without an fd number (`<x`, `>&2`,
-`&>>x`, `<>x`, `2>&1`, `2>/dev/null`), is read as a redirect, so the program after it is the
-command. A command with `$'...'` or `$"..."` quoting outside other quotes is unreadable, so it is
-refused when it names a door program; its segments still meet the leak, infrastructure and ledger
-checks. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
+`&>>x`, `<>x`, `<<x`, `<&0`, `2>&1`, `10>x`, `2>/dev/null`), is read as a redirect, so the program
+after it is the command. A redirect whose next token is another operator or nothing (`>&>x`,
+`git push origin main >`) is a shape they do not read, and so is a command with `$'...'` or
+`$"..."` quoting outside other quotes: either is refused when it names a door program, and its
+segments still meet the leak, infrastructure and ledger checks. An input redirect (`<`, `<&`,
+`<<`, `<<<`) reads its word, so `cat < .wuwei/ledger/a.jsonl` is not a ledger write. The ledger rule matches `.wuwei/ledger` and `.wuwei/ledger.jsonl` with or without a
 trailing slash, and `.wuwei` itself, also spelled with `//` or `/./`, as a writer argument (`of=`
 too), a redirect target or an edit path.
 
@@ -42,6 +44,7 @@ Known shapes they do not read on one line, reported and not yet fixed:
   (`bash -o pipefail -c`, `+e -c`, `-O extglob -c`, `--rcfile f -c`).
 - A wrapper not in the guards' list (`setsid`, `flock`, `ionice`), and a wrapper option whose value
   names a program a door reads (`sudo -u gh gh pr merge 5`, `env -C /x/git git push`).
+- A named fd (`{fd}>x git push origin main`).
 - A ledger write after `cd .wuwei` (the guards do not track the working directory), a glob such
   as `rm -rf .wuwei/*`, a path through a symlink, a quote glued before the path
   (`python3 -c "open('.wuwei/ledger/a.jsonl', 'w')"`), a writer not in the guards' list
