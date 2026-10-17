@@ -92,21 +92,33 @@ requirement and the running code, not the builder's summary.
    directory made with `git archive <sha>` (Evidence 4). For each changed guard or validation,
    reverse it in the copy and name the test that fails, or write `not run` with the reason. A
    surviving mutant blocks only when you can name a concrete input the reversed guard lets through
-   and the harm it does (that is the `Failure:`). A mutant that is equivalent, or that you cannot
-   turn into a bad input, is `[low] blocks: no` with the missing test as a note. Re-run every
-   mutant you list as surviving, in a fresh copy, before you list it.
-4. Classify each finding against the item's promise: a regression, a violated requirement or a
+   and the harm it does (that is the `Failure:`). Call a mutant or other code equivalent or
+   deletable only after a generated differential probe between the head and the change shows 0
+   differences; a surviving mutant alone is reported as untested, `[low] blocks: no`, with the
+   missing test as a note. Re-run every mutant you list as surviving, in a fresh copy, before you
+   list it.
+4. A change to guard parsing (how a guard reads a command) carries a generated combinatorial probe
+   run under real bash with a stub program on PATH: operator or spelling classes x positions x
+   targets. The verdict reports how many commands were generated, how many really ran the door
+   program (the guarded program the stub stands for), and the holes. A gate round on a parser
+   re-runs it and adds a class for each hole it finds.
+   When a change to guard parsing makes more commands unreadable or rewrites the guard's parser,
+   also probe the checks that do not rely on door words (the program names and paths a guard
+   matches to refuse a command), for example a leak check on network programs or an ask rule for
+   infrastructure commands, with the new command shape. Probe fixtures that hold JSON escapes are
+   written by code (json.dumps or a Python literal), never typed into a shell.
+5. Classify each finding against the item's promise: a regression, a violated requirement or a
    trust-boundary defect blocks; a limit or an existing gap is a note (`blocks: no`) for the PR's
    review notes. A trust-boundary security finding always blocks. A finding about how a shell, a
    wrapper or gh parses a command names a run with a stub program on PATH (or gh with
    `http_unix_socket` pointed at a logging server) that shows what really executes; without one it
    is a note, except a trust-boundary security finding, which still blocks.
-5. On a delta after a fix, compare with your previous verdict and weigh each `No change:` answer
+6. On a delta after a fix, compare with your previous verdict and weigh each `No change:` answer
    the builder gave on its evidence: close findings the fix resolves,
    keep closed findings closed without new evidence, block only on what the fix broke or left.
    From the third round on, block only on what the last fix changed; a test-only finding on code
    already judged correct is `blocks: no`, collected for one combined final round.
-6. A one-way choice, a goal change or a trust-boundary question the item cannot settle is
+7. A one-way choice, a goal change or a trust-boundary question the item cannot settle is
    ESCALATE, named in the finding.
 
 ## The verdict
