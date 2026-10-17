@@ -1,6 +1,6 @@
 ---
 name: wuwei-watch
-description: One WUWEI watch pass over work in progress, so nothing waits on the owner's nudge. Use on a schedule (/loop 20m /wuwei-watch locally, or an hourly routine in the cloud), when a PR or chat event wakes the session, or whenever open work may have moved.
+description: One WUWEI watch pass over work in progress, so nothing waits on the owner's nudge. Use on a schedule (/loop 20m /wuwei-watch locally, or an hourly routine in the cloud), when a PR or chat event wakes the session, or whenever open work may have moved. Not for adding, dropping or re-ranking work (/wuwei-run) or the checkpoint and retro (/wuwei-close); a watch pass only moves what is already planned.
 ---
 
 # /wuwei-watch
@@ -16,15 +16,16 @@ One pass. Act on what the team can close; record it; say nothing when nothing ch
    for mentions of the owner or the team and direct questions since the last pass. Record each one
    not yet owed: `wuwei owe <thread link> "<what was asked>" --who <name> [--within 4h]`. Skip what
    is already answered.
-4. Open PRs, as the shepherd charter says: red CI, conflicts, unanswered review threads, a missing
-   reviewer, a review request not yet posted where the team asks (`review not requested in ...`), a
-   PR open three days or more (finish, rebase or close it), process gaps that are cheap to close.
-   `unplanned` rows are PRs raised by hand: follow them the same way. Merge what has no safety gaps; arm auto-merge where only CI is running.
+4. Open PRs, as the shepherd charter says: red CI; conflicts; unanswered review threads; a missing
+   reviewer; a review request not yet posted where the team asks (`review not requested in ...`); a
+   PR open three days or more (finish, rebase or close it); process gaps that are cheap to close.
+   `unplanned` rows are PRs raised by hand: follow them the same way. Merge what has no safety
+   gaps; arm auto-merge where only CI is running.
 5. Keep the flow going: an approved item with no pull request and no running seat gets its builder,
-   highest score first; a pushed branch whose builder handed back gets its draft PR and its gates; a draft
-   whose gates passed turns ready with reviewers. An operations item (`run:` on the board) gets its run checked and its
-   evidence recorded with `wuwei plan run <id> --reason "..."`. When the queue is empty, run a plan
-   pass from the goals (`/wuwei-run`).
+   highest score first. A pushed branch whose builder handed back gets its draft PR and its gates.
+   A draft whose gates passed turns ready with reviewers. An operations item (`run:` on the board)
+   gets its run checked and its evidence recorded with `wuwei plan run <id> --reason "..."`. When
+   the queue is empty, run a plan pass from the goals (`/wuwei-run`).
 6. Record the pass: `wuwei watch --record "<one line: what you did>"`. If you did nothing, record
    `nothing changed` and end the turn without a message to the owner.
 
