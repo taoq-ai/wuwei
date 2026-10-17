@@ -27,34 +27,6 @@
    "approved": true
   },
   {
-   "id": "gh-doors",
-   "title": "fix(guards): gh api graphql queries WUWEI cannot read, repositories/<id> writes, and merge flags read the way gh reads them meet the doors",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 5,
-    "risk": 13,
-    "size": 5
-   },
-   "score": 6.2,
-   "why": "On main fe5bc0b guards.bash passes gh api graphql --input q.json carrying markPullRequestReadyForReview, gh api graphql --input -, and gh api -X POST repositories/123/pulls/5/requested_reviewers, -X PUT repositories/123/pulls/5/merge and contents writes; real gh 2.89.0 sends each of them (logged through http_unix_socket). gh pr merge reads --auto and --admin from raw argv (guards.py lines 195 and 198).",
-   "promise": "Allowlist plain shapes, never denylist spellings. (1) gh pr merge reads --admin and --auto through guards._flags with merge's value flags: --admin and --admin=<any value gh accepts as true> are refused; --auto counts only when pflag reads it as the auto flag (so in 'gh pr merge 5 -t --auto' it is -t's subject, and the CI-running exemption does not apply); the last --auto wins and --auto=false is off. (2) A gh api graphql call is refused when it could carry a write WUWEI cannot read: --input - or -F query=@-, an --input or -F @ file that is missing, or an --input file in a command that is not one plain segment. An --input file WUWEI reads has its query checked for door mutations like -f query=. (3) Any write method to an endpoint starting repositories/ is refused with a hint to spell repos/<owner>/<repo>/...; reads pass. (4) The redundant len(segments(command) or ()) == 1 clause (guards.py line 208) goes. Each new route is a tests/fixtures/routes.json row naming its source. Acceptance comes from real execution: gh with http_unix_socket pointed at a logging server shows the request each shape sends; merge shapes rest on pflag's parsing because the merge door refuses running them. Starts after guard-allowlist-spike reports, and after free-lines-3 and ascii-digits (guards.py). Rollback: revert the commit. Outside: shell parsing (shell-doors), ready_door comparing the branch by name for fork PRs, repository settings that auto-request reviewers, ?draft=false on a POST (unmeasured: needs GitHub itself). Assumption: no seat route uses gh api graphql --input (none in .wuwei/traces.jsonl's 2,799 rows or routes.json); overturned if the spike or the corpus shows one.",
-   "acceptance": [
-    "given a file q.json holding {\"query\":\"mutation{markPullRequestReadyForReview(input:{pullRequestId:\\\"X\\\"}){clientMutationId}}\"} and gh pointed by http_unix_socket at a logging server, when gh api graphql --input q.json runs, then the server logs POST /graphql with that mutation, and given the same command, when guards.bash reads it, then it is refused naming markPullRequestReadyForReview",
-    "given gh pointed at the logging server, when echo '<a mergePullRequest query>' | gh api graphql --input - runs, then the server logs POST /graphql, and given gh api graphql --input - or -F query=@-, when guards.bash reads it, then it is refused as a query WUWEI cannot read, while gh api graphql -f query=@threads.graphql -F number=5 still passes",
-    "given gh pointed at the logging server, when gh api -X POST repositories/123/pulls/5/requested_reviewers -f reviewers[]=a runs, then the server logs that path, and given it and -X PUT repositories/123/pulls/5/merge and -X PUT repositories/123/contents/x, when guards.bash reads them, then each is refused naming repos/<owner>/<repo>, and gh api repositories/123 (a GET) passes",
-    "given PR 5 with only 'CI running', when gh pr merge 5 -t --auto is read, then it is refused (pflag reads --auto as -t's value), while gh pr merge 5 --auto passes and gh pr merge 5 --auto=false is refused",
-    "given gh pr merge 5 --admin=true or --admin=1, when guards.bash reads it, then it is refused as --admin",
-    "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict and the new rows hold the shapes above"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "codex-attest-probe",
    "title": "probe: does a Codex-native sentinel seat get its verdict attested",
    "goal": "G-1",
@@ -775,6 +747,35 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1102"
+  },
+  {
+   "id": "gh-doors",
+   "title": "fix(guards): gh api graphql queries WUWEI cannot read, repositories/<id> writes, and merge flags read the way gh reads them meet the doors",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 5,
+    "risk": 13,
+    "size": 5
+   },
+   "score": 6.2,
+   "why": "On main fe5bc0b guards.bash passes gh api graphql --input q.json carrying markPullRequestReadyForReview, gh api graphql --input -, and gh api -X POST repositories/123/pulls/5/requested_reviewers, -X PUT repositories/123/pulls/5/merge and contents writes; real gh 2.89.0 sends each of them (logged through http_unix_socket). gh pr merge reads --auto and --admin from raw argv (guards.py lines 195 and 198).",
+   "promise": "Allowlist plain shapes, never denylist spellings. (1) gh pr merge reads --admin and --auto through guards._flags with merge's value flags: --admin and --admin=<any value gh accepts as true> are refused; --auto counts only when pflag reads it as the auto flag (so in 'gh pr merge 5 -t --auto' it is -t's subject, and the CI-running exemption does not apply); the last --auto wins and --auto=false is off. (2) A gh api graphql call is refused when it could carry a write WUWEI cannot read: --input - or -F query=@-, an --input or -F @ file that is missing, or an --input file in a command that is not one plain segment. An --input file WUWEI reads has its query checked for door mutations like -f query=. (3) Any write method to an endpoint starting repositories/ is refused with a hint to spell repos/<owner>/<repo>/...; reads pass. (4) The redundant len(segments(command) or ()) == 1 clause (guards.py line 208) goes. Each new route is a tests/fixtures/routes.json row naming its source. Acceptance comes from real execution: gh with http_unix_socket pointed at a logging server shows the request each shape sends; merge shapes rest on pflag's parsing because the merge door refuses running them. Starts after guard-allowlist-spike reports, and after free-lines-3 and ascii-digits (guards.py). Rollback: revert the commit. Outside: shell parsing (shell-doors), ready_door comparing the branch by name for fork PRs, repository settings that auto-request reviewers, ?draft=false on a POST (unmeasured: needs GitHub itself). Assumption: no seat route uses gh api graphql --input (none in .wuwei/traces.jsonl's 2,799 rows or routes.json); overturned if the spike or the corpus shows one.",
+   "acceptance": [
+    "given a file q.json holding {\"query\":\"mutation{markPullRequestReadyForReview(input:{pullRequestId:\\\"X\\\"}){clientMutationId}}\"} and gh pointed by http_unix_socket at a logging server, when gh api graphql --input q.json runs, then the server logs POST /graphql with that mutation, and given the same command, when guards.bash reads it, then it is refused naming markPullRequestReadyForReview",
+    "given gh pointed at the logging server, when echo '<a mergePullRequest query>' | gh api graphql --input - runs, then the server logs POST /graphql, and given gh api graphql --input - or -F query=@-, when guards.bash reads it, then it is refused as a query WUWEI cannot read, while gh api graphql -f query=@threads.graphql -F number=5 still passes",
+    "given gh pointed at the logging server, when gh api -X POST repositories/123/pulls/5/requested_reviewers -f reviewers[]=a runs, then the server logs that path, and given it and -X PUT repositories/123/pulls/5/merge and -X PUT repositories/123/contents/x, when guards.bash reads them, then each is refused naming repos/<owner>/<repo>, and gh api repositories/123 (a GET) passes",
+    "given PR 5 with only 'CI running', when gh pr merge 5 -t --auto is read, then it is refused (pflag reads --auto as -t's value), while gh pr merge 5 --auto passes and gh pr merge 5 --auto=false is refused",
+    "given gh pr merge 5 --admin=true or --admin=1, when guards.bash reads it, then it is refused as --admin",
+    "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict and the new rows hold the shapes above"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1108"
   },
   {
    "id": "plan-accuracy",
