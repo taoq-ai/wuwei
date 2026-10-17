@@ -13,7 +13,7 @@ gh and the repository's tools directly. `wuwei status` shows every open item's g
 
 The plugin's `charters/_common.md` (`.claude/wuwei/charters/_common.md` when vendored) states once
 what done means (Done) and how to decide and when to ask the owner (Decisions). Read it there;
-this skill does not restate it. In short: only safety gaps hold a merge (a test, the gates the diff
+this skill gives only the short form. Only safety gaps hold a merge (a test, the gates the diff
 needs at the head, green CI, threads answered, owner review on `owner_paths`, a breaking change
 confirmed, the spec at `full`). The rest is process fit: follow it, and the merge records any
 misfit for the retro. Ask the owner only for a hard-to-undo choice you are unsure of, a change of

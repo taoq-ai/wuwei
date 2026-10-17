@@ -10,7 +10,9 @@ and acceptance and the constitution.
 | A1 | Decision reversal | MEDIUM | charters/_gate.md, AGENTS.md | seat-rules (merged this week) put the parser-probe rules in the generic charters; this item moves them out | Two-way: the text moves, a revert restores it; recorded under Assumptions and in the PR body |
 | A2 | Test brittleness | LOW | tests/test_charters.py | The 35-word test reads sentences with a splitter | The failure prints the sentence; code spans count as one word; semicolons split; the spec says the test, not the rule, is wrong when no honest split exists |
 | A3 | Reach | LOW | .wuwei/standards.md | The standards lines are workspace state, not in the PR | AGENTS.md is the committed home; `wuwei sync` carries the standards to `wuwei/state` |
-| A4 | Size | LOW | the diff | 58 files; generated and vendored copies triple the hand-written diff of about 23 files | `Size:` line in the PR body; one coherent rewrite, since splitting it would keep the rules stated twice between PRs |
+| A4 | Size | LOW | the diff | 65 files against main (`git diff --stat origin/main`), 30 of them hand-written (charters, skills, tests, AGENTS.md, docs, spec); the rest is `agents/` and `.claude/` rebuilt | `Size:` line in the PR body; one coherent rewrite, since splitting it would keep the rules stated twice between PRs |
+| A5 | Gate selection | MEDIUM | charters/sentinel-arch.md | A contract file off a risky path runs arch without security (`evidence.needed`), so the arch gate cannot defer a trust defect | Fixed at the delta: a trust defect the arch gate sees blocks under gate rule 5 |
+| A6 | Evidence | MEDIUM | spec.md, tasks.md, PR body | Red-first and size counts at 7021905 were from an earlier test version and did not reproduce | Fixed at the delta: every count re-derived from a run and named with its command |
 
 No open finding at CRITICAL or HIGH.
 

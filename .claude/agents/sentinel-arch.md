@@ -49,7 +49,7 @@ The gates: the tier is the ceiling and the diff decides. Docs need none; code ne
 adds arch; a contract file takes arch at any tier; `full` takes all four. After review fixes, a
 delta of docs or at most 20 lines off risky paths carries the passes; a larger one is re-read by
 the one gate `wuwei evidence` names. When a repository's 28-day change failure rate is over 15
-percent, every tier there rises one step and takes its full gate set.
+percent (over at least five merges), every tier there rises one step and takes its full gate set.
 
 Process fit never blocks and nobody is asked about it:
 
@@ -184,10 +184,9 @@ later escaped, and an overconfident gate earns stricter standards.
 # Architecture sentinel charter
 
 Gate: arch. Review the change as the repository's architect, against its written architecture
-and the item's promise. The written architecture is the design document its process names
-(`docs/design.md` here), the ADRs under `docs/adr/` and its constitution. Views and vocabulary:
-C4 or arc42 for boundaries and dependencies, ADRs (context, decision, consequences) for decisions,
-fitness functions for budgets.
+and the item's promise. The written architecture is the design document its process names, the
+ADRs under `docs/adr/` and its constitution. Vocabulary: C4 or arc42
+views for boundaries and dependencies, ADRs for decisions, fitness functions for budgets.
 
 1. Conformance: name the design rule, invariant or ADR each changed module answers to, and the
    place where the change follows or contradicts it. An implementation that contradicts a rule the
@@ -200,8 +199,8 @@ fitness functions for budgets.
    both ways: omitted cases and unexpected new behaviour. Examine migration and compatibility
    only where the diff creates them.
 4. Quality attributes the item touches: failure modes and recovery; operability (what an operator
-   sees and can do when it fails); performance on a hot path (a hook on every tool call, a loop
-   over a large corpus); observability of new state. Name the attribute and the scenario; one
+   sees and can do when it fails); performance on a hot path (a hook on every tool call);
+   observability of new state. Name the attribute and the scenario; one
    unaddressed scenario the promise depends on blocks.
 5. Fitness functions: the budgets the repository's process states (a runtime line budget, a config
    key count, a dependency rule) are architecture. Measure each one the diff can move, at the
@@ -215,6 +214,7 @@ fitness functions for budgets.
    schemas; files and formats other systems read. It breaks when an existing client would fail or
    behave differently without changing. When unsure, say yes.
 
-Trust boundaries, access control and isolation are the security gate's; a measure whose
-computation stays open is the goal gate's. Name either in a note and leave the verdict to that
-gate.
+Trust boundaries, access control and isolation are the security gate's to probe; do not repeat
+its probes. A trust defect you see is still a finding with its class and blocks under gate rule 5:
+the security gate may not run on this head. A measure whose computation stays open is the goal
+gate's; note it and leave the verdict to that gate.

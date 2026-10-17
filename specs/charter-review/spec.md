@@ -74,9 +74,11 @@ The acceptance scenarios, restated:
    prints the sentence, so the fix is a split, not a cut. The steward's rule 9 names deletion as a
    proposal, never a quiet edit.
 3. The arch gate, now told that trust boundaries belong to security, passes a change at `standard`
-   where only arch runs (a contract file) and a trust defect slips. Held: `evidence.needed` adds
-   security for any risky path at `standard`, so a trust path never runs arch alone; and the arch
-   charter still says to name a trust finding in a note.
+   where only arch runs (a contract file) and a trust defect slips. Not held by gate selection:
+   `evidence.needed('.', 'standard', [api/openapi.yaml])` returns arch and quality, no security,
+   because `RISKY` matches path names and not contract content (probed by the arch and security
+   gates at 7021905). Held by the charter instead: the arch gate does not repeat the security
+   probes, but a trust defect it sees is a finding with its class and blocks under gate rule 5.
 
 ## Clarifications
 
@@ -92,8 +94,10 @@ The acceptance scenarios, restated:
 - Q: The tests in `tests/test_setup.py` asserted the probe rules in the agents. A: They now assert
   them in `AGENTS.md`, and assert that the generic agents name the repository's process instead
   and hold none of this repository's file names.
-- Q: The word ceiling. A: 2,250 words per generated agent; the largest (sentinel-arch) is about
-  2,200 after this change. The steward's rule 9 lowers it by proposal, never raises it in passing.
+- Q: The word ceiling. A: 2,250 words per generated agent; the largest (sentinel-arch) is 2,230
+  after this change (`wc -w agents/*.md`). The steward's rule 9 lowers it by proposal, never
+  raises it in passing. The ceiling guards growth: every agent on main is already under it (the
+  largest, sentinel-arch, 1,896), so that test was never red on the old tree.
 - Q: Does the arXiv paper's full text inform anything here? A: Only its headline result (adherence
   to skill instructions varies widely across models), which argues for shorter, single-source
   charters on the Sonnet quality gate. The full text was unreachable from the session.
@@ -102,9 +106,17 @@ The acceptance scenarios, restated:
 
 ### US1: the charters hold their own tone rule (P1)
 
-Acceptance 1. Red before the rewrite: `test_no_sentence_is_over_35_words` failed on 16 of 19
-files; `test_a_generated_agent_stays_under_the_word_ceiling` failed on 5 of 8 agents at the old
-ceiling check. Green at the head.
+Acceptance 1. Red first, reproduced on `git archive origin/main` (9c637ab) with the head's
+`tests/test_charters.py`, `tests/test_setup.py` and `tests/fixtures/skill-triggers.json` copied in,
+`pytest -q tests/test_charters.py tests/test_setup.py`:
+
+```
+32 failed, 85 passed
+```
+
+Of these, `test_no_sentence_is_over_35_words` fails on 11 of 19 files and
+`test_a_generated_agent_stays_under_the_word_ceiling` on 0 of 8 (it guards growth; see
+Clarifications). Green at the head: `pytest -q` gives `1682 passed, 2 skipped`.
 
 ### US2: repository lessons have one home (P1)
 
@@ -153,6 +165,10 @@ Acceptance 5. `test_every_skill_description_says_when_to_use_it_and_when_not` an
   case the test, not the rule, is wrong.
 - Frameworks are named, not linked: seats have no network tool, and a name is enough to activate
   what the model already knows. Overturned if a gate cites a framework rule that does not exist.
+- The owner's instruction "address all these" covers every finding of the review, including the
+  cuts (SOLID and clean-code lines, the humanizer list), the lead's capacity cap, the security
+  gate's supply-chain rule and the quality gate's test-quality rule, which the item's five
+  acceptance scenarios do not name. Overturned by the owner saying `scope:`.
 - The lead's default capacity of four seats stands until a brief names another. Overturned by a
   planner that runs more builders at once by default.
 

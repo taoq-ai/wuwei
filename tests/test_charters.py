@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from wuwei import evidence
+
 PLUGIN = Path(__file__).resolve().parents[1]
 CHARTERS = sorted((PLUGIN / 'charters').glob('*.md'))
 SKILLS = sorted((PLUGIN / 'skills').glob('*/SKILL.md'))
@@ -44,9 +46,9 @@ def test_no_sentence_is_over_35_words(path):
 
 
 @pytest.mark.parametrize('path', CHARTERS + SKILLS, ids=lambda p: p.relative_to(PLUGIN).as_posix())
-def test_sentences_average_under_30_words(path):
+def test_sentences_average_under_20_words(path):
     found = sentences(path)
-    assert sum(len(s.split()) for s in found) / len(found) < 30
+    assert sum(len(s.split()) for s in found) / len(found) < 20
 
 
 @pytest.mark.parametrize('path', sorted((PLUGIN / 'agents').glob('*.md')), ids=lambda p: p.stem)
@@ -65,9 +67,10 @@ def test_a_charter_names_no_issue_number_and_no_file_of_this_repository(path):
 def test_decisions_and_done_are_stated_once_in_common():
     common = (PLUGIN / 'charters' / '_common.md').read_text(encoding='utf-8')
     assert '## Done' in common and '| Hard to undo | act, with a `Rollback:` line | ask the owner |' in common
-    for thresholds in ('at most 20 lines off risky paths', '28-day change failure rate is over 15', 'about 400 changed lines',
-                       'three days or more'):
-        assert thresholds in ' '.join(common.split()), thresholds
+    days = {3: 'three'}[evidence.STALE_DAYS]
+    for threshold in (f'at most {evidence.TRIVIAL} lines off risky paths', f'28-day change failure rate is over {evidence.BUDGET:.0%}'.replace('%', ' percent'),
+                      f'about {evidence.MAX_LINES} changed lines', f'{days} days or more', f'over {evidence.WIDE} lines or 10 code files'):
+        assert threshold in ' '.join(common.split()), threshold
     for other in ('_way.md', 'planner.md'):
         text = (PLUGIN / 'charters' / other).read_text(encoding='utf-8')
         assert '| Hard to undo |' not in text and 'Docs need none' not in text, other
@@ -79,8 +82,8 @@ def test_decisions_and_done_are_stated_once_in_common():
 def test_a_requested_reviewer_and_staleness_are_process_fit_everywhere():
     for path in (PLUGIN / 'charters' / '_common.md', PLUGIN / 'skills' / 'wuwei-rules' / 'SKILL.md'):
         text = ' '.join(path.read_text(encoding='utf-8').split())
-        done = text.split('## Done', 1)[1] if '## Done' in text else text.split('## Done and deciding', 1)[1]
-        safety = done.split('The rest is process fit', 1)[0] if 'The rest is process fit' in done else done.split('Process fit never blocks', 1)[0]
+        done = text.split('## Done', 1)[1]
+        safety = re.split(r'The rest is process fit|Process fit never blocks', done, maxsplit=1)[0]
         assert 'reviewer' not in safety and 'stale' not in safety and 'three days' not in safety, path.name
 
 

@@ -49,7 +49,7 @@ The gates: the tier is the ceiling and the diff decides. Docs need none; code ne
 adds arch; a contract file takes arch at any tier; `full` takes all four. After review fixes, a
 delta of docs or at most 20 lines off risky paths carries the passes; a larger one is re-read by
 the one gate `wuwei evidence` names. When a repository's 28-day change failure rate is over 15
-percent, every tier there rises one step and takes its full gate set.
+percent (over at least five merges), every tier there rises one step and takes its full gate set.
 
 Process fit never blocks and nobody is asked about it:
 
