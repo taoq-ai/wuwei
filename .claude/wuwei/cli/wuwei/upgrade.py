@@ -38,8 +38,7 @@ def review_channel(root):
 
 
 def config(root):
-    gone = ws.retired(root)
-    if not gone:
+    if not (gone := ws.retired(root)):
         return []
     backup = Path(root) / ws.DIR / 'config.0x.toml'
     if not backup.exists():

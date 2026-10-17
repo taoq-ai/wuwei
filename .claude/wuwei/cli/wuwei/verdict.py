@@ -41,8 +41,7 @@ def parse(text, strict=False):
     result['confidence'] = confident[1] if confident else result['confidence']
     if not confident:
         errors.append('Confidence: must start with low, medium or high')
-    match = re.fullmatch(r'([\w.-]+/[\w.-]+)(?:#([0-9]+))?', _field(text, 'PR'))
-    if match:
+    if match := re.fullmatch(r'([\w.-]+/[\w.-]+)(?:#([0-9]+))?', _field(text, 'PR')):
         result['repo'], result['pr'] = match[1], int(match[2]) if match[2] else None
     else:
         errors.append('PR: must be <owner/repo>#<number>, or <owner/repo> before its draft PR exists')

@@ -14,7 +14,7 @@ from wuwei import evidence, gh, ws
 SHELLS = {'sh', 'bash', 'zsh', 'dash'}
 WRAPPERS = {'env', 'command', 'exec', 'nohup', 'time', 'sudo', 'xargs', 'nice', 'timeout', 'stdbuf'}
 CONTROL, REDIRECTS = {'&&', '||', ';', '|', '&', ';;', '(', ')', '|&'}, {'>', '>>', '>|', '&>', '&>>', '<', '<>', '>&', '<&', '<<', '<<<'}
-OPS = r'&>>|<<<|&&|\|\||;;|>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first
+OPS = r'&>>|<<<|&&|\|\||>>|<<|>&|<&|<>|>\||&>|\|&|[();<>|&]'  # sh's operators in a run of punctuation, longest first (;; splits the same)
 INFRA = {'terraform': {'apply', 'destroy', 'import'}, 'tofu': {'apply', 'destroy', 'import'},
          'pulumi': {'up', 'destroy'}, 'kubectl': {'apply', 'delete', 'create', 'replace', 'patch', 'scale'},
          'helm': {'install', 'upgrade', 'uninstall', 'rollback'}}
@@ -51,6 +51,7 @@ NOT_OWNERS = ('''question sent back: the process answers it, not the owner.
 Take your recommendation, record it under Assumptions in the spec or PR body (what you assumed, why, what would overturn it) and go on. Ask the owner only for a
 decision of one of these classes, named at the start of the question: ''' + ', '.join(OWNER_CLASSES)
               + '. The plan is your mandate: never ask whether to continue planned work.')
+LEDGER_DENIED = "the ledger is written only by WUWEI's hooks; it is the audit record."
 PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 
@@ -83,8 +84,11 @@ def segments(command):
         lexer.whitespace_split = True  # sh's lines: an unquoted newline ends a command; the 2 of 2>&1 is a redirect, not a word
         lexer.commenters = ''  # '#' inside a word is literal in sh: owner/repo#42 must not hide the rest (#1038)
         tokens, current = [t for word in lexer for t in (re.findall(OPS, word) if re.fullmatch(r'[();<>|&]+', word) else [word])] + [';'], []
-        out = [UNREAD] if any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command)) or any(
-            a in REDIRECTS and (b in REDIRECTS and c != '(' or b in CONTROL - {'('}) for a, b, c in zip(tokens, tokens[1:], tokens[2:] + [''])) else []
+        dollar = any(m[0][0] == '$' for m in re.finditer(r'\$[\'"]|\'[^\']*\'|"(\\[\s\S]|[^"\\])*"|\\[\s\S]', command))
+        # '' keeps the last pair: zip stops at its shortest list, so without it `x >` reads as clean (8,400 of 82,944 probes change)
+        glued = any(a in REDIRECTS and (b in REDIRECTS and c != '(' or b in CONTROL - {'('})
+                    for a, b, c in zip(tokens, tokens[1:], tokens[2:] + ['']))
+        out = [UNREAD] if dollar or glued else []
         for token in tokens:  # $'..', $".." or a redirect with no word after it (<(x) is one) is unread; its segments are still read
             if token in CONTROL:  # <( ;> &&( |& ); split into the operators sh reads
                 if current:
@@ -100,9 +104,13 @@ def segments(command):
 def _unwrap(tokens):
     argv, targets, i = [], [], 0
     while i < len(tokens):
-        redirect = tokens[i] in REDIRECTS and i + 1 < len(tokens)  # an input redirect's word is read, never written
-        (([] if re.fullmatch(r'<[<&]*', tokens[i]) else targets) if redirect else argv).append(tokens[i + redirect])
-        i += 1 + redirect
+        if tokens[i] in REDIRECTS and i + 1 < len(tokens):
+            if not re.fullmatch(r'<[<&]*', tokens[i]):  # an input redirect's word is read, never written
+                targets.append(tokens[i + 1])
+            i += 1
+        else:
+            argv.append(tokens[i])
+        i += 1
     while argv and re.fullmatch(r'[A-Za-z_]\w*=.*|do|then|else|elif|if|while|until|!|\{', argv[0]):  # a body opens
         argv = argv[1:]
     if argv and Path(argv[0]).name in WRAPPERS:  # a wrapper's options hide nothing: the command is the first program read
@@ -136,8 +144,7 @@ def git_push(root, args, cwd):
         targets.append(destination.removeprefix('refs/heads/'))
         deleting = deleting or ref.startswith(':')
     protected = _default(root, origin(cwd))
-    hit = [t for t in targets if t in protected]
-    if hit:
+    if hit := [t for t in targets if t in protected]:
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
 
@@ -291,8 +298,7 @@ def leak(root, text):
     canary = canary_file.read_text(encoding='utf-8').strip() if canary_file.is_file() else ''
     if canary and canary in text:
         return deny('the workspace canary is in this outward call: workspace content would leave the machine.')
-    found = SECRETS.search(text)
-    if found:
+    if found := SECRETS.search(text):
         return deny(f'a secret ({found[0][:6]}...) is in this outward call; remove it before sending.')
     return None
 
@@ -305,7 +311,7 @@ def bash(root, command, cwd, session):
                     'by --body-file, -F or a file written with Write.')
     for argv, targets in parts or ():
         if any(LEDGER.search(t) for t in targets):
-            return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
+            return deny(LEDGER_DENIED)
         if not argv:
             continue
         program = Path(argv[0]).name
@@ -313,25 +319,19 @@ def bash(root, command, cwd, session):
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if any(LEDGER.search(a) for a in argv[1:]) and (program in WRITERS or program == 'sed' and '-i' in argv
                                                         or program.startswith('python')):
-            return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.')
-        if program in NETWORK:
-            found = leak(root, ' '.join(argv))
-            if found:
-                return found
+            return deny(LEDGER_DENIED)
+        if program in NETWORK and (found := leak(root, ' '.join(argv))):
+            return found
         if program == 'git':
             rest, i, here = argv[1:], 0, cwd
             while i < len(rest) and rest[i].startswith('-'):
                 if rest[i] == '-C' and i + 1 < len(rest):
                     here = rest[i + 1]
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            if rest[i:i + 1] == ['push']:
-                found = git_push(root, rest[i + 1:], here)
-                if found:
-                    return found
-        elif program == 'gh':
-            found = gh_command(root, argv[1:], cwd, session, command)
-            if found:
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found
+        elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
+            return found
         elif program in INFRA and INFRA[program] & set(argv[1:]):
             return {'decision': 'ask', 'reason': f'{program} {" ".join(a for a in argv[1:] if a in INFRA[program])} '
                     'changes infrastructure: a one-way door the owner decides.'}
@@ -344,8 +344,7 @@ def pre_tool(root, payload):
     cwd = payload.get('cwd') or '.'
     if tool in DOORS['edit']:
         paths = [str(data.get('file_path') or data.get('notebook_path') or ''), *map(str, data.get('file_paths') or ())]
-        return deny('the ledger is written only by WUWEI\'s hooks; it is the audit record.') if any(
-            LEDGER.search(path) for path in paths) else None
+        return deny(LEDGER_DENIED) if any(LEDGER.search(path) for path in paths) else None
     if tool == 'AskUserQuestion':
         questions = [str(q.get('question', '')) for q in data.get('questions') or () if isinstance(q, dict)]
         process = [q for q in questions if q.strip().lower().startswith('exception:') and re.search(
@@ -361,8 +360,7 @@ def pre_tool(root, payload):
                         'owner/repo#n at <sha7> [and #m at <sha7>]: <the gap as wuwei evidence prints it>. <question>" or '
                         '"owner review: owner/repo#n at <sha7>. <question>" or "breaking: owner/repo#n at <sha7>: '
                         '<what breaks>. Announced at <link>. Proceed?".')
-        unclassed = [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]
-        if not unclassed:
+        if not (unclassed := [q for q in questions if not q.strip().lower().startswith(OWNER_CLASSES)]):
             return None
         named = '; '.join(f'"{q[:120]}"' for q in unclassed)
         rest = ' Decide those yourself and resend the classed questions on their own.' if len(unclassed) < len(questions) else ''

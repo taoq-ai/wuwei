@@ -66,11 +66,9 @@ def _theirs(root, name):
 
 def pull(root):
     """Bring the state branch into .wuwei/."""
-    top = _top(root)
-    if not top:
+    if not (top := _top(root)):
         return 'not a git repository: the state stays local'
-    commit = _fetch(top)
-    if not commit:
+    if not (commit := _fetch(top)):
         return f'no {BRANCH} branch yet'
     synced = ws.cache_get(root, 'sync', float('inf')) or {}
     here, kept, branch = files(root), [], {}
@@ -91,8 +89,7 @@ def pull(root):
 
 def push(root):
     """Commit .wuwei/ onto the state branch, beside the working branch, and push it."""
-    top = _top(root)
-    if not top:
+    if not (top := _top(root)):
         return 'not a git repository: the state stays local'
     here = files(root)
     if (ws.cache_get(root, 'sync', float('inf')) or {}) == _digests(here):
@@ -135,8 +132,7 @@ def restore(cwd):
     if root is not None:
         pull(root)
         return root
-    top = _top(cwd or os.getcwd())
-    if not top:
+    if not (top := _top(cwd or os.getcwd())):
         return None
     base = Path(top) / ws.DIR
     base.mkdir()

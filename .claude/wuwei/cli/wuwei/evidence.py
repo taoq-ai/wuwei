@@ -151,8 +151,7 @@ def _counted(text):
         heading = re.match(r'^(#+)\s', line)
         if heading and level is not None and len(heading[1]) <= level:
             level = None
-        deferred = DEFERRED.match(line)
-        if deferred:
+        if deferred := DEFERRED.match(line):
             level = len(deferred[1])
             continue
         if level is not None and BOX.match(line) and REASON.search(line):
@@ -162,8 +161,7 @@ def _counted(text):
 
 
 def _unchecked(path, text):
-    boxes = BOX.findall(_counted(text))
-    if not boxes:
+    if not (boxes := BOX.findall(_counted(text))):
         return f'{path} has no checklist items'
     return f'{path} has {boxes.count(" ")} unchecked item{"s" if boxes.count(" ") > 1 else ""}' if ' ' in boxes else None
 
@@ -171,8 +169,7 @@ def _unchecked(path, text):
 def _rule(repo, path, rule, head):
     """None when the artifact at the head meets its rule, else the gap text."""
     if path.endswith('/'):
-        entries = gh.listing(repo, path.rstrip('/'), head)
-        if not entries:
+        if not (entries := gh.listing(repo, path.rstrip('/'), head)):
             return f'{path} missing: run the spec engine step that writes it'
         return next((problem for e in entries if rule == 'checked' and e.get('type') == 'file' and e['name'].endswith('.md')
                      if (problem := _unchecked(e['path'], gh.file(repo, e['path'], head)))), None)
@@ -200,8 +197,7 @@ def spec_gaps(repo, engine, tier, files, head):
     if not engine:
         return []
     pattern, rules = SPEC_RULES[engine]
-    features = sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})
-    if not features:
+    if not (features := sorted({m[1] for m in (re.match(pattern, path) for path in files) if m})):
         return [] if any(p.startswith(('specs/', 'openspec/')) for p in files) else [
             gap(f'no spec in the diff (the repository uses {engine})')]
     wanted = rules['standard'] + (rules['full'] if tier == 'full' else ())
