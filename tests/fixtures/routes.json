@@ -251,6 +251,12 @@
     {"command": "git --no-pager push origin main", "source": "item git-globals fix round 1 at 6f40026 (quality: a lone valueless option before a push to main)", "verdict": "push"},
     {"command": "PUSHVAL=push git --config-env=alias.p=PUSHVAL -p p origin main", "source": "item git-globals fix round 1 at 6f40026 (security: a one-word steering option, then a known one)", "verdict": "refusal"},
     {"command": "git --no-lazy-fetch -c alias.p=push p origin main", "source": "item git-globals fix round 1 at 6f40026 (arch: an option newer git takes, then an alias)", "verdict": "refusal"},
-    {"command": "git -c remote.origin.url=x fetch", "source": "item git-globals fix round 1 at 6f40026 (arch: push routing config with no push passes)", "verdict": "pass"}
+    {"command": "git -c remote.origin.url=x fetch", "source": "item git-globals fix round 1 at 6f40026 (arch: push routing config with no push passes)", "verdict": "pass"},
+    {"command": "git push ../r.git main", "source": "item scratch-remotes acceptance 1 (passes only from a checkout under the temp folder; the corpus runs at /repo)", "verdict": "push"},
+    {"command": "git push -u origin main", "source": "item scratch-remotes acceptance 1 (passes only from a checkout under the temp folder; the corpus runs at /repo)", "verdict": "push"},
+    {"command": "git -C ../c push file:///repo/r.git main", "source": "item scratch-remotes acceptance 1 (passes only from a checkout under the temp folder; the corpus runs at /repo)", "verdict": "push"},
+    {"command": "git push https://github.com/o/r.git main", "source": "item scratch-remotes acceptance 2 (refused as before)", "verdict": "push"},
+    {"command": "git push /repo/.git main", "source": "item scratch-remotes acceptance 2 (refused as before)", "verdict": "push"},
+    {"command": "git push ../r.git i-1-change", "source": "item scratch-remotes (a feature branch passes wherever the remote is)", "verdict": "pass"}
   ]
 }

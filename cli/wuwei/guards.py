@@ -4,11 +4,12 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
-from os.path import join, normpath
+from os.path import join, normpath, realpath
 from pathlib import Path
 import re
 import shlex
 import subprocess
+from tempfile import gettempdir
 from urllib.parse import unquote
 
 from wuwei import evidence, gh, ws
@@ -47,6 +48,7 @@ PR_VALUED = {'A', 'r', 'reviewer', 'recover', 'subject', 'match-head-commit', 'a
 UNVALUED = set('defw') | {'draft', 'editor', 'fill', 'web', 'dry-run', 'fill-first', 'fill-verbose', 'no-maintainer-edit'}  # gh pr create's
 OPEN = 'opens ready for review only once its gates pass at its head: open a draft now (gh pr create --draft, gh api -F draft=true)'
 READY = 'leaves draft or asks reviewers only once its gates pass at the PR head (gates run before review)'
+PLAIN = r'git( -C [\w./-]+)* push( -[uqvn]+| --(set-upstream|dry-run)| [\w./:+][\w./:+-]*)+'  # a one-line push whose remote may be scratch
 PUSHED = 'refused: every change reaches it through a pull request with its evidence. Push a branch and open a PR.'
 GIT_OPTS = re.compile(r'(?=(?P<steer>(-c|--config-env)[=\0](?i:(?P<run>alias|include\w*)\.|(remote|branch|url)\.|push\.default)))?((?P<pair>-[Cc]|'
                       r'--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))|-[pPhv]|--(paginate|no-pager|bare|no-replace-objects|'
@@ -141,7 +143,7 @@ def _default(root, repo):
         return {'main', 'master'}
 
 
-def git_push(root, args, cwd):
+def git_push(root, args, cwd, line='', base=''):  # line: the whole Bash command; base: the folder git runs in
     if any(a.startswith('--force') or a == '--mirror' or re.fullmatch(r'-[a-z]*f[a-z]*', a) for a in args):
         return deny('force push refused: history on a shared branch does not come back. Push a new commit instead.')
     positional = [a for a in args if not a.startswith('-')]
@@ -156,9 +158,18 @@ def git_push(root, args, cwd):
         targets.append(destination.removeprefix('refs/heads/'))
         deleting = deleting or ref.startswith(':')
     protected = _default(root, origin(cwd))
-    if hit := [t for t in targets if t in protected]:
+    if (hit := [t for t in targets if t in protected]) and not (positional and re.fullmatch(PLAIN, line.strip()) and scratch(base, positional[0])):
         return deny(f'{"deleting" if deleting else "pushing to"} the default branch {hit[0]} ' + PUSHED)
     return None
+
+
+def scratch(base, name):  # a plain push from a checkout's top (git reads relative paths from there) to a path, a file:// URL or a remote
+    conf = [e.split('\n', 1) for e in _git(base, 'config', '-z', '--get-regexp', r'^url\.|^remote\.').split('\0') if '\n' in e]
+    urls = [v for k, v in conf if k in (f'remote.{name}.url', f'remote.{name}.pushurl')] or [name]  # every url and pushurl; no remote: a path
+    moved = any(re.fullmatch(r'remote\..*\.(receivepack|vcs)', k) or k[:4] == 'url.' and any(u.startswith(v) for u in urls) for k, v in conf)
+    paths = [realpath(join(base, m[1])) if (m := re.fullmatch(r'(?:file://(?=/))?([\w./+-]+)', u)) else '' for u in urls]  # a local path or ''
+    return Path(base, '.git').exists() and not moved and all(p.startswith(realpath(gettempdir()) + '/') and not any(  # under the temp folder,
+        Path(d, n).exists() for d in (p, *Path(p).parents) for n in ('.git', '.wuwei')) for p in paths)  # outside every checkout and .wuwei
 
 
 def _flags(args, valued):  # (name, value) per flag as pflag reads it (a value flag takes =x, the cluster's rest or the next word)
@@ -345,7 +356,7 @@ def bash(root, command, cwd, session):
                     n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
                     not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
                 return deny(LEDGER_DENIED)
-            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
+            if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here, command, join(cwd, top))):
                 return found
         elif program == 'gh' and (found := gh_command(root, argv[1:], cwd, session, command)):  # a clean gh falls to INFRA: no gh key
             return found

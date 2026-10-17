@@ -1450,3 +1450,115 @@ def test_segments_and_redirects_stay_linear_at_125_and_500_kb(root, word):
         assert guards.bash(root, word * (size // len(word)) + ' git push origin main', '/repo', 's1'), word
         took.append(time.monotonic() - start)
     assert took[0] < 2 and took[1] < 8 and took[1] < 8 * max(took[0], 0.1), (word, took)
+
+
+@pytest.fixture
+def scratch(tmp_path_factory, monkeypatch):
+    """A bare remote r.git and a clone c beside it in a fresh temporary folder, with origin on ../r.git: no push ever runs."""
+    monkeypatch.setattr(guards, 'current_branch', lambda cwd: 'i-1-change')
+    base = tmp_path_factory.mktemp('scratch')
+    git = lambda *args: subprocess.run(['git', *args], check=True, capture_output=True)  # noqa: E731
+    git('init', '-q', '--bare', str(base / 'r.git'))
+    git('init', '-q', '-b', 'main', str(base / 'c'))
+    git('-C', str(base / 'c'), 'remote', 'add', 'origin', '../r.git')
+    return base, git
+
+
+def scratch_push(root, scratch, command, cwd='c'):
+    base, _ = scratch
+    return guards.bash(root, command.format(base=base), str(base / cwd), 's1')
+
+
+@pytest.mark.parametrize('command', ['git push ../r.git main', 'git push origin main', 'git push -u origin main', 'git push {base}/r.git main',
+                                     'git push file://{base}/r.git main', 'git push origin HEAD:main', 'git push -n -u ../r.git main:main',
+                                     'git -C {base}/c push origin main', 'git -C {base} -C c push ../r.git main', 'git push ../r.git/ main',
+                                     'git push --set-upstream ../r.git main ', ' git push origin main'])
+def test_a_plain_push_to_a_scratch_remote_passes_the_push_door(root, fake, scratch, command):
+    """Item scratch-remotes acceptance 1: the remote is a local path under the temp folder, given directly or as origin's url."""
+    assert scratch_push(root, scratch, command, '.' if '-C' in command else 'c') is None, command
+
+
+def test_a_named_remote_passes_only_when_every_url_and_pushurl_is_scratch(root, fake, scratch):
+    base, git = scratch
+    git('-C', str(base / 'c'), 'remote', 'add', 'two', str(base / 'r.git'))
+    git('-C', str(base / 'c'), 'config', '--add', 'remote.two.pushurl', f'file://{base}/r.git')
+    assert scratch_push(root, scratch, 'git push two main') is None
+    git('-C', str(base / 'c'), 'config', '--add', 'remote.two.pushurl', 'https://github.com/o/r.git')
+    assert 'the default branch main' in scratch_push(root, scratch, 'git push two main')['reason']
+
+
+@pytest.mark.parametrize('command', ['git push https://github.com/o/r.git main', 'git push git@github.com:o/r.git main',
+                                     'git push {base}/c/.git main', 'git push {base}/c main', 'git push . main', 'git push .git main',
+                                     'git push ../../r.git main', 'git push ~/r.git main', 'git push /srv/r.git main', 'git push link main',
+                                     'git push ../link main', 'git push ../ws/r.git main', 'git push ../ws/.wuwei main', 'git push gh main',
+                                     'git push lnk main', 'git push -o x ../r.git main', 'git push --repo=../r.git origin main',
+                                     'git push --receive-pack=x ../r.git main', 'cd . && git push ../r.git main', 'git push ../r.git main; true',
+                                     'env git push ../r.git main', 'GIT_DIR=x git push ../r.git main', 'git --git-dir=.git push ../r.git main',
+                                     'git -c x.y=z push ../r.git main', 'git push "../r.git" main', 'git push ../r.git main | cat',
+                                     'git push file://localhost{base}/r.git main', 'git push file://../r.git main', 'git push ../r%2egit main',
+                                     'git push ext::sh main', 'git push $R main', 'git push ../r.git main > out'])
+def test_a_push_to_anything_but_a_plain_scratch_remote_keeps_the_push_door(root, fake, scratch, command):
+    """Item scratch-remotes acceptance 2: the working repository, its .git, a symlink out of scratch, a path holding .wuwei,
+    GitHub, an option that names another remote or command, and a command that is more than one plain git push keep the door."""
+    base, git = scratch
+    (base / 'link').symlink_to(base / 'c')
+    (base / 'c' / 'sub').mkdir()
+    (base / 'ws' / '.wuwei').mkdir(parents=True)
+    git('init', '-q', '--bare', str(base / 'ws' / 'r.git'))
+    git('-C', str(base / 'c'), 'remote', 'add', 'gh', 'https://github.com/o/r.git')
+    git('-C', str(base / 'c'), 'remote', 'add', 'lnk', str(base / 'link' / '.git'))
+    decision = scratch_push(root, scratch, command, 'c/sub' if command.startswith('git push ../../') else 'c')
+    assert decision and decision['decision'] == 'deny', command
+
+
+@pytest.mark.parametrize('key', ['url.https://github.com/o/r.git.pushInsteadOf', 'url.https://github.com/o/r.git.insteadOf',
+                                 'remote.origin.receivepack', 'remote.origin.vcs'])
+def test_url_rewriting_or_a_remote_command_in_config_keeps_a_scratch_push_at_the_door(root, fake, scratch, key):
+    """Item scratch-remotes: insteadOf and pushInsteadOf move a scratch path to the network; receivepack and vcs run a command."""
+    base, git = scratch
+    git('-C', str(base / 'c'), 'config', key, '../r.git')
+    for command in ('git push origin main', 'git push ../r.git main'):
+        assert 'the default branch main' in scratch_push(root, scratch, command)['reason'], (key, command)
+
+
+def test_a_rewrite_that_matches_no_scratch_url_leaves_the_scratch_push_passing(root, fake, scratch):
+    base, git = scratch
+    git('-C', str(base / 'c'), 'config', 'url.https://github.com/.insteadOf', 'git@github.com:')
+    git('-C', str(base / 'c'), 'config', 'url.https://github.com/.pushInsteadOf', '/srv/')
+    assert scratch_push(root, scratch, 'git push origin main') is None
+
+
+def test_a_scratch_push_keeps_the_force_door_and_an_unreadable_config_keeps_the_push_door(root, fake, scratch, monkeypatch):
+    assert 'force push refused' in scratch_push(root, scratch, 'git push -f ../r.git main')['reason']
+    assert 'force push refused' in scratch_push(root, scratch, 'git push origin +main')['reason']
+    monkeypatch.setattr(guards, '_git', lambda cwd, *args: '')
+    assert 'the default branch main' in scratch_push(root, scratch, 'git push origin main')['reason']
+
+
+def test_a_scratch_remote_outside_the_temp_folder_keeps_the_push_door(root, fake, scratch, monkeypatch):
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', '/nonexistent-tmp')
+    assert 'the default branch main' in scratch_push(root, scratch, 'git push ../r.git main')['reason']
+
+
+def test_the_scratch_check_stays_linear_at_125_and_500_kb(root, fake, scratch):
+    """Item scratch-remotes: the plain-push shape is read once per command, so many pushes or one long push stay linear."""
+    for prefix, word in (('', 'git push ../r.git main;'), ('git push ../r.git ', 'a' * 99 + ' '), ('git push ../r.git ', 'a ')):
+        took = []
+        for size in (125_000, 500_000):
+            start = time.monotonic()
+            scratch_push(root, scratch, prefix + word * (size // len(word)) + ' main')
+            took.append(time.monotonic() - start)
+        assert took[0] < 2 and took[1] < 8 and took[1] < 8 * max(took[0], 0.1), (word[:20], took)
+
+
+def test_the_scratch_shape_is_not_reread_for_each_segment(root, fake, repo, scratch):
+    """Item scratch-remotes: the plain shape is read only for a push to the default branch, which it decides, so a long
+    first push followed by many short ones stays linear."""
+    took = []
+    for size in (125_000, 500_000):
+        command = 'git push ../r.git ' + 'a ' * (size // 4) + ';' + 'git push ../r.git b;' * (size // 40)
+        start = time.monotonic()
+        assert scratch_push(root, scratch, command) is None
+        took.append(time.monotonic() - start)
+    assert took[1] < 8 * max(took[0], 0.1), took

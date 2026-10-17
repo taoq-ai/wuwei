@@ -60,6 +60,19 @@ because it decides where the push goes. One that sets an alias or an include (`i
 `includeIf.*`) is refused whatever the subcommand and whatever option comes first, because an alias
 runs a command the guard never reads. Set either with `git config` before the call.
 
+A push to a scratch remote is the one exception to the default-branch push door, so a seat can
+prove a push-door change by real execution. It applies only when the whole command is one plain
+`git [-C <dir>]... push`: every word plain (letters, digits, `_ . / : + -`), no option but `-u`,
+`-q`, `-v`, `-n`, `--set-upstream` and `--dry-run`, run from the top of a checkout (git reads a
+relative path from there). The remote, given as a path, a `file:///` URL or the name of a remote
+whose every `url` and `pushurl` (read with `git config`) is one, must resolve with symlinks followed
+to a path under the temp folder (`tempfile.gettempdir()`, where the session scratch folder lies),
+and neither that path nor any folder above it may hold `.git` or `.wuwei`. So the working
+repository, its `.git`, any other checkout and any workspace never count, and neither does a
+symlink from scratch to one of them. An `insteadOf` or `pushInsteadOf` prefix that matches the
+remote, or a `receivepack` or `vcs` set on any remote, keeps the door, as does an unreadable git
+config. Force pushes stay refused everywhere; every other push meets the push door as before.
+
 Known shapes they do not read on one line, reported and not yet fixed:
 
 - `eval`, `source` or `.` on `/dev/stdin` or `<(...)`, and a variable as the program name.
@@ -83,6 +96,9 @@ Known shapes they do not read on one line, reported and not yet fixed:
   `git p` or `git push`), or passed through `GIT_CONFIG_*` environment variables.
 - `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
   removes it from the tree; `git stash pop` brings it back.
+- A scratch push is judged by the git config and the files as they are when the hook runs: a
+  pre-push hook, a path another process swaps for a symlink before git runs, a `GIT_DIR` exported
+  in the harness environment, or a real remote kept under the temp folder is not seen.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only
