@@ -440,10 +440,14 @@ HOLES = ['rm -rf .wuwei/[[:alpha:]l]edger', 'rm -rf .wuwei/[[:alpha:][:digit:]]e
          'git clean -fdx "$PWD"/.wuwei', 'git clean -fdx $(pwd)', 'git clean -fdx `pwd`', "git clean -fd -e '!*'",
          "git clean -fd --exclude='!*'", 'python3 -c "open(\'.wuwei/cache/c.json\',\'w\').write(\'0\')"',
          'python3 -c "import json; json.dump(0, open(\'.wuwei/cache/c.json\', \'w\'))"']  # security gate records at 6d4f8af
+CLEANS = ["git clean -fd --exc='!*'", "git clean -fd --excl '!*'", 'git clean -n --no-dry-run -fdx', 'git clean -n --no-d -fdx',
+          'git clean -fdx -n --no-dry-ru', 'git --namespace x clean -fdx', "git -c alias.c='clean -fdx' c", 'git --work-tree=.wuwei clean -fdx ledger',
+          'git --work-tree .wuwei clean -fdx ledger', 'GIT_WORK_TREE=.wuwei git clean -fdx ledger', 'git --git-dir=.git --work-tree=.wuwei clean -fdx ledger',
+          'X=\'!*\'; git clean -fd -e "$X"', 'git clean -fdx --ex src', '/usr/lib/git-core/git-clean -fdx']  # security and arch gates at 4f99d48
 
 
 @pytest.mark.skipif(not shutil.which('bash') or not shutil.which('git'), reason='needs bash and git')
-@pytest.mark.parametrize('command', RECORDS + HOLES)
+@pytest.mark.parametrize('command', RECORDS + HOLES + CLEANS)
 def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo, command):
     """Item records acceptance 1: real bash in a fresh folder changes the ledger row or the cache value; the guard refuses it."""
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
@@ -451,6 +455,8 @@ def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo,
     for name, text in (('ledger/a.jsonl', 'row\n'), ('cache/c.json', 'true')):
         (tmp_path / '.wuwei' / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / '.wuwei' / name).write_text(text)
+    if command.startswith('/') and not Path(command.split()[0]).exists():
+        pytest.skip('no ' + command.split()[0])
     subprocess.run(['bash', '-c', command], cwd=tmp_path, stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
     row, value = (tmp_path / '.wuwei' / 'ledger' / 'a.jsonl'), (tmp_path / '.wuwei' / 'cache' / 'c.json')
     assert not row.is_file() or row.read_text() != 'row\n' or value.read_text() != 'true', command
@@ -467,7 +473,9 @@ def test_bash_changes_the_records_in_each_refused_spelling(tmp_path, root, repo,
     'git clean -fdX', 'git clean -f -d -x', 'git clean -fdx .', 'git clean -fdx -e build', 'git clean -fdx .wuwei/ledger',
     'git clean -xfd -- "*"', 'git -C .wuwei clean -fdx ledger', 'cd .wuwei && git clean -fdx ledger',
     'cp /dev/null .wuwei/cache/c.json', 'tee .wuwei/c*/c.json', 'dd if=/dev/null of=.wuwei/{cache,x}/c.json',
-    'python3 fix.py .wuwei/cache/ci-x.json', 'mv x .w*/cache/c.json'])
+    'python3 fix.py .wuwei/cache/ci-x.json', 'mv x .w*/cache/c.json', 'git clean -n -x', 'git clean --dry-run -x', 'git clean -fdx :/src',
+    'git clean -fdx /w', 'git -C src clean -fdx ..', 'git -C /w clean -fdx src', 'git -C ~ clean -fdx w', 'git clean -fdx src/..',
+    'git --no-pager clean -fdx src', 'git clean -fd -e "*" src/"$X"', 'git -C .wuwei clean -fd -e "!*" x', 'echo $GIT_DIR; git clean -fd'])
 def test_a_write_to_the_records_in_any_spelling_sh_expands_is_refused(root, repo, command):
     assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
 
@@ -484,8 +492,9 @@ def test_a_cache_write_is_refused_naming_the_cache(root, repo):
                                      'cd .wuwei && cat plan.json', 'find .wuwei -name x', 'git clean -fd', 'rm foo.wuwei',
                                      'rm -rf .wuwei-x', 'git clean -fdx build/ src/gen', 'find . -name "*.pyc" -delete',
                                      'cd .wuwei && cat plan.json 2>/dev/null', 'cd sub && rm -rf build', 'cat .wuwei/cache/c.json',
-                                     'rm -rf .wuwei/verdicts/x', 'cd .wuwei && ls >&2', 'git clean -n -x',
-                                     'python3 -c "open(\'.wuwei/plan.json\')"', 'git clean -fd -e build'])
+                                     'rm -rf .wuwei/verdicts/x', 'cd .wuwei && ls >&2', 'git clean -fdx src', 'git -C sub clean -fdX build',
+                                     'python3 -c "open(\'.wuwei/plan.json\')"', 'git clean -fd -e build', "git clean -fd -e '!*' src",
+                                     'git -C /w clean -fd', 'git commit -m clean', 'git clean -fdx -- -x .venv', 'git -C a -C b clean -fdx c'])
 def test_reading_the_records_or_removing_a_cache_file_passes(root, repo, command):
     """Item records acceptance 4: the next read fetches a removed cache entry again; reads never change the records."""
     assert guards.pre_tool(root, bash(command)) is None, command
@@ -504,6 +513,19 @@ def test_a_brace_path_expands_at_most_512_words_and_answers_at_once(root, repo):
     assert guards.pre_tool(root, bash('rm -rf' + ' build/{a..h}{a..h}{a..h}' * 20)) is None  # 512 words each, the most it reads
     assert not guards.records('{' + ',' * 20000) and not guards.records('[' * 1000 + '[:' * 1000)  # no regex backtracks past linear
     assert time.monotonic() - start < 1
+
+
+def test_a_wide_brace_range_is_measured_before_it_is_built(root, repo):
+    """Security gate records at 4f99d48: 3,600 words of x{0..U+3134A} after git clean -fdx . took 62 s; bash keeps the range literal."""
+    start = time.monotonic()
+    assert guards.pre_tool(root, bash('git clean -fdx .' + ' x{0..\U0003134a}' * 3600))['decision'] == 'deny'
+    assert guards.pre_tool(root, bash('rm -rf' + ' x{0..\U0003134a}' * 3600))['decision'] == 'deny'
+    assert guards.records('{a..a}' * 11) and not guards.records('{a..a}' * 10)  # a width-1 group still halves the budget
+    assert time.monotonic() - start < 2
+
+
+def test_a_python_body_split_only_at_a_parenthesis_names_the_records(root, repo):
+    assert guards.pre_tool(root, bash('python3 -c "open(.wuwei/cache/x)"'))['decision'] == 'deny'
 
 
 def test_a_session_whose_directory_is_inside_the_records_writes_none(root, repo):

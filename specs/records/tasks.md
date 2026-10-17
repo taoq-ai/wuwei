@@ -35,3 +35,10 @@
 - [x] T022 git clean refuses `$ ~ { backtick` pathspecs, records() matches and `!` excludes; `-n` passes
 - [x] T023 Writer arguments are also split at quotes and punctuation, so a python -c body is read
 - [x] T024 Docs, spec and vendored copy follow; runtime stays 2,995
+
+## Phase 5: Gate fix round (head 4f99d48)
+
+- [x] T025 Tests and routes.json rows for `--no-dry-run`, `--exc`, `--work-tree`, `--git-dir`, `--namespace`, `GIT_WORK_TREE`, a `-c` alias, `--ex src`, `git-clean` and the wide range: red at 4f99d48
+- [x] T026 git clean read by allowlist; the dry-run pass is dropped and `git clean -n -x` flips to a refusal
+- [x] T027 A brace range builds at most cap + 1 words; tests for width-1 halving and the `(` split
+- [x] T028 Docs, spec and vendored copy follow; runtime 2,996

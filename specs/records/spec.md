@@ -57,13 +57,16 @@ Out of scope (the item's Outside): deleting from an ancestor without naming `.wu
 - Q: Does "a writer program" after `cd .wuwei` include a redirect? A: yes, a redirect to a file
   (not an fd duplicate such as `>&2` or `2>&1`, and not `/dev/...`). Without it,
   `cd .wuwei && echo x > ledger/a.jsonl` truncates the ledger unrefused.
-- Q: What does "lies outside .wuwei" mean for a `git clean` pathspec? A: the normalized pathspec
-  starts with a plain character: not `.`, `..`, `/`, a glob character, `:` (pathspec magic), `$`,
-  `~`, `{` or a backtick (sh expands those to a path the guard does not see), and `records()` does
-  not match it. `git clean -fdx build/` passes; `.`, `*`, `/abs/x`, `:(top)x`, `"$PWD"`, `~+`,
-  `{.,}wuwei` and `$(pwd)` are refused because each can reach `.wuwei`. A `-e`/`--exclude` value is
-  not a pathspec, but one starting with `!` un-ignores `.wuwei` (`git clean -fd -e '!*'` deletes
-  the ledger), so it counts like `x`. A dry run (`-n`) passes.
+- Q: What does "lies outside .wuwei" mean for a `git clean` pathspec? A: it is read by allowlist,
+  since two denylists were each beaten by the next spelling. The pathspec and every `-C` dir are
+  plain words (letters, digits, `_ . / -`), the pathspec joined to the `-C` dirs does not normalize
+  to `.`, an absolute path or one climbing with `..`, and `records()` does not match it.
+  `git clean -fdx build/` passes; `.`, `*`, `/abs/x`, `:(top)x`, `"$PWD"`, `~+`, `{.,}wuwei` and
+  `$(pwd)` are refused. An exclude (`-e` or any prefix of `--exclude`, as git abbreviates) whose
+  value is not a plain word counts like `x`, because one starting with `!` un-ignores `.wuwei`.
+  Any git option before `clean` other than `-C <dir>` (`--work-tree`, `--git-dir`, `--namespace`,
+  `-c`) and any `GIT_` in the command refuse it, because they move where git resolves pathspecs.
+  A dry run gets no exemption: `--no-dry-run` and its abbreviations cancel `-n`.
 - Q: Does the `find` rule apply the cache too? A: yes. `find` reads every argument against the
   ledger and the cache, so `find .wuwei/cache -delete` and a read such as
   `find .wuwei/cache -name '*.json' -exec cat {} +` are refused, while `rm -rf .wuwei/cache`
@@ -111,11 +114,14 @@ Commands that passed on main are now refused:
 - any write into `.wuwei/cache` by shell or by the Write and Edit tools;
 - glob and brace spellings of the ledger (`rm -rf .wuwei/*`, `rm -rf .*`, `rm -rf .w*/ledger`);
 - `find` with `-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` on a records path, the cache included (reads too);
-- a `python -c` body naming a path in the ledger or the cache;
-- `git clean -fd -e '!...'` (an exclude that un-ignores `.wuwei`) without outside pathspecs;
+- a `python -c` body naming a path in the ledger or the cache, reads too, and a writer argument
+  whose quote or punctuation pieces name a records path (`cp a "x .wuwei"`);
+- `git clean -fd -e '!...'` (an exclude that un-ignores `.wuwei`) without plain outside pathspecs,
+  a git clean after a git option other than `-C`, or with `GIT_` in the command;
 - a writer or redirect after `cd .wuwei` in the same command, or in a session whose directory is
   inside `.wuwei`;
-- `git clean -fdx` and `git clean -fdX` without pathspecs that lie outside `.wuwei`.
+- `git clean -fdx` and `git clean -fdX` without plain pathspecs that lie outside `.wuwei`, dry runs
+  (`git clean -n -x`) included.
 
 Migration: WUWEI writes the cache itself; remove a stale entry with `rm .wuwei/cache/<name>` and the
 next read fetches it. Name what `git clean -x` may delete (`git clean -fdx build/ dist/`). Run
@@ -135,7 +141,16 @@ and the commit a `BREAKING CHANGE:` line.
   word, halves the budget, which bounds the depth. No recorded route has more than two groups.
   Overturned if a seat route expands more than 512 words in one writer path.
 - Splitting every writer's arguments at quotes and punctuation refuses a few more names, such as
-  `python3 -c "p = Path('.wuwei') / 'cache'"` or a file named `x .wuwei`. Overturned if a seat
-  route is refused this way.
+  `python3 -c "p = Path('.wuwei') / 'cache'"` or a file named `x .wuwei`. A `python -c` body that
+  only reads the cache or the ledger (`print(open('.wuwei/cache/c.json').read())`) is refused too.
+  Overturned if a seat route is refused this way.
+- git clean with `x`, `X` or an exclude is read by allowlist, which refuses some safe commands:
+  `git clean -n -x` and `git clean --dry-run -x` (a later `--no-dry-run` would cancel them, so no
+  dry run is exempt), `git clean -fdx :/src` (pathspec magic), `git -C /abs/repo clean -fdx build`
+  (an absolute `-C` dir), and any git command after an option other than `-C` whose words contain
+  `clean` (`git --no-pager log --grep clean`). This is the safe side: a two-way choice, undone by
+  widening the allowlist. Overturned if a seat route is refused this way.
+- A brace range is measured before it is built: at most cap + 1 words are made, so a range up to
+  U+3134A costs no more than a small one.
 
 Rollback: revert the commits on this branch; no data or config migrates.

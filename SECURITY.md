@@ -42,9 +42,12 @@ target or an edit path. A write to `.wuwei/cache` is refused the same way, becau
 feed gate inputs; removing a cache file passes. `find` with
 `-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` and an argument naming the records
 is refused. After `cd` or `pushd` into `.wuwei` or below, or in a session whose directory is inside
-it, a writer or a redirect to a file is refused. `git clean` with `x` or `X`, or with an exclude
-starting with `!`, is refused unless every pathspec starts with a plain name (not `.`, `..`, `/`, a
-glob, `:`, `$`, `~`, `{` or a backtick) and does not name `.wuwei`; a dry run (`-n`) passes.
+it, a writer or a redirect to a file is refused. `git clean` is read by allowlist. After any git
+option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refused. With `x` or
+`X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
+passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
+pathspec, joined to the `-C` dirs, lies below them and outside `.wuwei`. A dry run gets no
+exemption, because a later `--no-dry-run` cancels `-n`.
 
 Known shapes they do not read on one line, reported and not yet fixed:
 
@@ -63,6 +66,10 @@ Known shapes they do not read on one line, reported and not yet fixed:
   globs that reach dot files once `shopt -s dotglob` or `GLOBIGNORE` is set (`rm -rf *`).
 - Deleting from an ancestor without naming `.wuwei` (`find . -delete`, `rm -rf ..`): the ledger is
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
+- Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
+- A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and a git alias
+  set in config before the call. An alias set on the command line (`git -c alias.c='clean -fdx' c`)
+  is refused, since git clean after `-c` is.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only

@@ -4,7 +4,7 @@ read a command lets it through unless it names a door program (the audit still s
 
 from fnmatch import fnmatchcase
 import json
-from os.path import normpath
+from os.path import join, normpath
 from pathlib import Path
 import re
 import shlex
@@ -60,7 +60,7 @@ PR_STANDARD = ws.PLUGIN / 'charters' / '_pr.md'
 
 def records(path, below=LEDGER, cap=512):  # .wuwei, or what lies below it (None: anything), as sh expands the path (cap: words left)
     if m := re.search(r'\{(?:([^{},]*,[^{}]*)|(\w)\.\.(\w)(\.\.-?[0-9]+)?)\}', path):  # brace expansion, innermost first: {a,b}, {z..a..2}
-        alts = m[1].split(',') if m[1] is not None else [*map(chr, range(ord(min(m[2], m[3])), ord(max(m[2], m[3])) + 1))]
+        alts = m[1].split(',') if m[1] is not None else [*map(chr, range(lo := ord(min(m[2], m[3])), min(ord(max(m[2], m[3])), lo + cap) + 1))]
         return len(alts) > cap or any(records(path[:m.start()] + a + path[m.end():], below, cap // max(len(alts), 2)) for a in alts)
     path = re.sub(r'(?<![^/])([^/[]*)\[(?=[^/]*?\[[:=.])[^/]*\]', r'\1*', path.replace('[^', '[!'))  # [^x] is [!x]; [[:a:]x] [[=a=]] [[.a.]]: *
     parts = [p for p in re.split(r'[/=]', normpath(path)) if p not in ('', '.')]  # //, /./, .. and of= too
@@ -334,14 +334,15 @@ def bash(root, command, cwd, session):
             return deny('wuwei hook is called by the harness, never by a session: a hand-made call would forge the record.')
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
-        if program == 'git':
-            rest, i, here = argv[1:], 0, cwd
+        if program in ('git', 'git-clean'):
+            rest, i, here = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd
             while i < len(rest) and rest[i].startswith('-'):
                 here = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            if rest[i:i + 1] == ['clean'] and ({'x', 'X'} & dict(flags := _flags(rest[i + 1:], {'e', 'exclude'})).keys() or any(  # .wuwei is
-                    str(v)[:1] == '!' for n, v in flags if n in ('e', 'exclude'))) and 'n' not in dict(flags) and (inside or records(here, None) or
-                    not all([re.match(r'[^./*?[:\\$~{`]', normpath(v)) and not records(v, None) for n, v in flags if not n] or [None])):  # ignored
+            flags, dirs, plain = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], lambda w: re.fullmatch(r'[\w./-]+', w or '')
+            if 'clean' in str(rest) and ((other := {*rest[:i:2]} - {'-C'}) or rest[i:i + 1] == ['clean']) and ('GIT_' in command or other or any(  # only -C
+                    n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
+                    not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(*dirs, w))) or records(p, None) for w in paths))):
                 return deny(LEDGER_DENIED)
             if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found

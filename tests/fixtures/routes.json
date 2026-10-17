@@ -210,6 +210,23 @@
     {"command": "rm -rf .wuwei/{x,ledger}", "source": "item records, quality gate at 6d4f8af (a surviving mutant)", "verdict": "refusal"},
     {"command": "find . -fprint .wuwei/ledger/a.jsonl", "source": "item records, quality gate at 6d4f8af (a surviving mutant)", "verdict": "refusal"},
     {"command": "git clean -fdx x/../.wuwei", "source": "item records, quality gate at 6d4f8af (a surviving mutant)", "verdict": "refusal"},
-    {"command": "git clean -n -x", "source": "item records, security gate at 6d4f8af (a dry run changes nothing)", "verdict": "pass"}
+    {"command": "git clean -n -x", "source": "item records, security and arch gates at 4f99d48 (a later --no-dry-run cancels -n)", "verdict": "refusal"},
+    {"command": "git clean -fd --exc='!*'", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -fd --excl '!*'", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -n --no-dry-run -fdx", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -n --no-d -fdx", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -fdx -n --no-dry-ru", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git --namespace x clean -fdx", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git -c alias.c='clean -fdx' c", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git --work-tree=.wuwei clean -fdx ledger", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git --work-tree .wuwei clean -fdx ledger", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "GIT_WORK_TREE=.wuwei git clean -fdx ledger", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git --git-dir=.git --work-tree=.wuwei clean -fdx ledger", "source": "item records, security gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -fdx -n --no-dry-run", "source": "item records, arch gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "X='!*'; git clean -fd -e \"$X\"", "source": "item records, arch gate at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git clean -fdx --ex src", "source": "item records, builder at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "/usr/lib/git-core/git-clean -fdx", "source": "item records, builder at 4f99d48 (bash changed the records)", "verdict": "refusal"},
+    {"command": "git -C src clean -fdx /w", "source": "item records, builder at 4f99d48 (an absolute pathspec after -C)", "verdict": "refusal"},
+    {"command": "git clean -fdx . x{0..\ud884\udf4a} x{0..\ud884\udf4a} x{0..\ud884\udf4a}", "source": "item records, security gate at 4f99d48 (a range measured before it is built)", "verdict": "refusal"}
   ]
 }
