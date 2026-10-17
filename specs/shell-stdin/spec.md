@@ -70,7 +70,9 @@ The acceptance scenarios, restated:
 
 Commands that passed on main are now refused: a command that runs a shell without `-c` and whose
 text names a door program anywhere, for example `echo 'git push origin feature' | bash` or
-`bash run.sh && gh pr view 5`.
+`bash run.sh && gh pr view 5`. Some forms that carry `-c` are newly refused too, when `-c` follows
+an option the guard does not read: `bash -o pipefail -c '<door command>'`, `bash --rcfile f -c
+'<door command>'` and `bash --command '<door command>'`.
 
 Migration: run the door command in its own one-line Bash call (`git push origin feature`), and run
 the script in a separate call. Commands that name no door program are unaffected. The PR title

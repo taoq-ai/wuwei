@@ -531,6 +531,12 @@ def test_a_push_after_a_named_fd_redirect_meets_the_push_door(root, fake, repo, 
     assert 'the default branch main' in guards.pre_tool(root, bash(command))['reason'], command
 
 
+@pytest.mark.parametrize('word', ['{1a}', '{a-b}'])
+def test_a_brace_word_that_is_not_a_name_stays_the_program(word):
+    """bash reads {1a}>x and {a-b}>x as a program named {1a} or {a-b}, not a named fd: the push never runs."""
+    assert guards.segments(f'{word}>x git push origin main') == [([word, 'git', 'push', 'origin', 'main'], ['x'])]
+
+
 @pytest.mark.parametrize('command', STDIN_SHELLS)
 def test_a_shell_fed_its_commands_naming_a_door_is_refused(root, fake, repo, command):
     """Item shell-stdin: a shell with no -c body reads text WUWEI never sees; naming a door program, it is refused."""
