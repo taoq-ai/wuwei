@@ -1,5 +1,47 @@
 # Changelog
 
+## [2.0.0](https://github.com/taoq-ai/wuwei/compare/v1.2.1...v2.0.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **guards:** gh api graphql --input -, -F query=@-, a missing or empty --input file, and --input or -F query=@ files outside a plain one-line gh api graphql call are refused; any write to repositories/<id>/... is refused; gh pr merge --admin=true (and other true spellings) is refused outright; and --auto read by pflag as another flag's value, or turned off by a later --auto=false, loses the CI-running exemption.
+* **guards:** on a draft PR, gh pr ready, the REST ready_for_review route, MCP update_pull_request leaving draft, and any reviewer request (gh pr edit --add-reviewer, REST requested_reviewers, MCP reviewers, request_copilot_review) now wait for the gates. GraphQL markPullRequestReadyForReview and requestReviews, and gh api writes through a .. segment, are refused. gh api endpoints with //, %xx, . segments or characters around the PR number now meet the doors their plain spelling meets. PR numbers are ASCII digits only. gh pr merge reads the PR and repository the way gh does. A draft create now passes before its gates.
+* **skills:** /wuwei-plan is renamed /wuwei-run (a stub keeps /wuwei-plan working for one release) and the /wuwei skill is renamed /wuwei-rules.
+* **guards:** gh api writes to merges, git/refs/ or contents/ on any branch, a REST DELETE on the repository, gh api graphql mutations that merge, arm auto-merge, open a PR, move a ref, commit to a branch or change protection (mergeBranch and enqueuePullRequest among them), and the GitHub MCP push_files, create_or_update_file and delete_file tools on the default branch or with no branch are refused. REST PR creates and gh pr new meet the create door, and every REST merge spelling meets the merge door. Migrate by pushing branches with git and opening PRs with gh pr create or gh api -X POST repos/<owner>/<repo>/pulls.
+* **plan:** a wrong-shape candidates file and a bare plan run are refused, and a changed promise needs approval again ([#1093](https://github.com/taoq-ai/wuwei/issues/1093))
+* **guards:** the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options ([#1083](https://github.com/taoq-ai/wuwei/issues/1083))
+
+### Features
+
+* **skills:** /wuwei-run starts or resumes the day; the reference skill is /wuwei-rules ([#1101](https://github.com/taoq-ai/wuwei/issues/1101)) ([034d067](https://github.com/taoq-ai/wuwei/commit/034d067768ef1f27efde086376725f0c1c5c5ae3))
+
+
+### Bug Fixes
+
+* **board:** a PR naming two items links both, a just-merged item closes, and uncounted verdicts show before a PR ([#1094](https://github.com/taoq-ai/wuwei/issues/1094)) ([a222902](https://github.com/taoq-ai/wuwei/commit/a2229023db9ac9cb348ad5dcc57f0412637ca632))
+* **doctor:** the hooks check says ok only when a hook fired in the last two minutes ([#1091](https://github.com/taoq-ai/wuwei/issues/1091)) ([a5ed3aa](https://github.com/taoq-ai/wuwei/commit/a5ed3aacda2b01eeb96d7581ceb35aaeeef62245))
+* **evidence:** a head with no CI checks registered yet reads as CI not started, never as ready to merge ([#1106](https://github.com/taoq-ai/wuwei/issues/1106)) ([23625f3](https://github.com/taoq-ai/wuwei/commit/23625f3e7154c2d11c741fc8c3176b0ab8ba6446))
+* **evidence:** a release-please PR is read as generated, so its version bump needs no test or gate ([#1076](https://github.com/taoq-ai/wuwei/issues/1076)) ([e82f5c8](https://github.com/taoq-ai/wuwei/commit/e82f5c832c76b7e9000ad46d2e50bb66ade1ffc3))
+* **guards:** a create with no readable item names that cause, not only the missing gates ([#1103](https://github.com/taoq-ai/wuwei/issues/1103)) ([e34586d](https://github.com/taoq-ai/wuwei/commit/e34586dddd77e940cec333923c50e34d3a33892e))
+* **guards:** a draft PR opens before its gates, and the flip to ready waits for them ([#1102](https://github.com/taoq-ai/wuwei/issues/1102)) ([fe5bc0b](https://github.com/taoq-ai/wuwei/commit/fe5bc0bdac185f9b01652d83fdb9f59419e638b5))
+* **guards:** a multi-line command that names a door program is refused, with a hint to run it alone ([#1077](https://github.com/taoq-ai/wuwei/issues/1077)) ([478e899](https://github.com/taoq-ai/wuwei/commit/478e8993058a66bb5b284ce7cdde8a942ce484f2))
+* **guards:** an empty attached gh flag value and any API host case meet the doors ([470a29e](https://github.com/taoq-ai/wuwei/commit/470a29e98863dd0ea730490a5ff6d08c3d40f3ab))
+* **guards:** every code-host route to a door meets that door ([45c1bf4](https://github.com/taoq-ai/wuwei/commit/45c1bf498ccd7481861990bed5f501dbd720a678))
+* **guards:** gh api graphql queries WUWEI cannot read, repositories/&lt;id&gt; writes and merge flags read by pflag meet the doors ([#1108](https://github.com/taoq-ai/wuwei/issues/1108)) ([83f1f09](https://github.com/taoq-ai/wuwei/commit/83f1f09ad248efa1c3190fe6f7c604dfa41bc232))
+* **guards:** the doors read a command inside a loop or if body, after shell flags, and after a wrapper's options ([#1083](https://github.com/taoq-ai/wuwei/issues/1083)) ([69a74e5](https://github.com/taoq-ai/wuwei/commit/69a74e55997cae5eab116bb33d4d158eaa30a5cd))
+* **guards:** the graphql endpoint is read in any case ([8ea4192](https://github.com/taoq-ai/wuwei/commit/8ea419239b784d5d5cdb757b8fd244928e0797c5))
+* **hook:** a "Proceed" answer to the breaking: question records the owner's approval ([#1087](https://github.com/taoq-ai/wuwei/issues/1087)) ([e2d0e2d](https://github.com/taoq-ai/wuwei/commit/e2d0e2d04c46a37921a2a2e82459bb986da903af))
+* **hook:** a gate's verdict is linted before its hand-back, and a stop that cannot block records verdict.missing ([#1082](https://github.com/taoq-ai/wuwei/issues/1082)) ([651f32f](https://github.com/taoq-ai/wuwei/commit/651f32f232025c2964710137e1bfc416431dd310))
+* **hook:** a seat counts as started only when the harness launched it, and once ([#1084](https://github.com/taoq-ai/wuwei/issues/1084)) ([51875c0](https://github.com/taoq-ai/wuwei/commit/51875c026a23b312ffd739223974e6bfa9a0c70e))
+* **hook:** an error inside a door refuses the call instead of letting it pass ([#1081](https://github.com/taoq-ai/wuwei/issues/1081)) ([2aa89fb](https://github.com/taoq-ai/wuwei/commit/2aa89fb53815580c0500c5dbfe747edb306caa90))
+* **hook:** PR numbers in owner answers, verdicts, refs and the evidence CLI are ASCII digits only ([#1107](https://github.com/taoq-ai/wuwei/issues/1107)) ([9dee4e8](https://github.com/taoq-ai/wuwei/commit/9dee4e87ad71a8487b937069823950a1ba7b1b8f))
+* **hook:** the fail-closed check reads the doors from one table, through quotes, and covers the leak check ([#1095](https://github.com/taoq-ai/wuwei/issues/1095)) ([40a966b](https://github.com/taoq-ai/wuwei/commit/40a966bde96245aecb715cc3326214b19efd35b2))
+* **hook:** the Stop reminder names only new work, a worktree verdict is copied in, candidates keep accept lines ([#1100](https://github.com/taoq-ai/wuwei/issues/1100)) ([7f31a51](https://github.com/taoq-ai/wuwei/commit/7f31a51f97ccca1990e5878cd6680b217b95be1b))
+* **plan:** a wrong-shape candidates file and a bare plan run are refused, and a changed promise needs approval again ([#1093](https://github.com/taoq-ai/wuwei/issues/1093)) ([0b5f9f9](https://github.com/taoq-ai/wuwei/commit/0b5f9f9881fd41cad42a833ed37b99b3e45cc1b7))
+* **sync:** a file changed only here is not reported as changed on both sides ([#1086](https://github.com/taoq-ai/wuwei/issues/1086)) ([8647e96](https://github.com/taoq-ai/wuwei/commit/8647e9692bbfade6382d8862c8264b0629fb6882))
+* **ws:** a ledger line that is not a well-formed row is skipped by every reader ([#1075](https://github.com/taoq-ai/wuwei/issues/1075)) ([e3d70da](https://github.com/taoq-ai/wuwei/commit/e3d70da856dbccc40f71a3808ef0d8b34185d622))
+
 ## [1.2.1](https://github.com/taoq-ai/wuwei/compare/v1.2.0...v1.2.1) (2026-10-16)
 
 
