@@ -24,3 +24,10 @@
 - [x] T014 Generated probes at head: 0 holes
 - [x] T015 Route corpus dumped at main and head with the corpus sha256
 - [x] T016 Full suite green
+
+## Phase 4: Gate fixes at f7e30fb
+
+- [x] T017 SECURITY.md: `{fd}>x` read as a redirect, the fed-shell refusal and its limits, the confirmed existing gaps
+- [x] T018 design.md names a script path among the unreadable shell shapes
+- [x] T019 Breaking names the `-c` forms after an unread option
+- [x] T020 `{1a}>x` and `{a-b}>x` stay the program; the `\w+` and `[^}]*` mutants of the name rule fail the test
