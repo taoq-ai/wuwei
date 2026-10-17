@@ -1,32 +1,6 @@
 {
  "items": [
   {
-   "id": "shell-doors",
-   "title": "fix(guards): process substitution, glued separators, $'...' quoting and ledger paths without a trailing slash meet the doors",
-   "goal": "G-2",
-   "repo": "taoq-ai/wuwei",
-   "tier": "full",
-   "framework": "wsjf",
-   "scores": {
-    "value": 13,
-    "time": 5,
-    "risk": 13,
-    "size": 3
-   },
-   "score": 10.33,
-   "why": "A stub git on PATH shows bash runs git push origin main for cat <(git push origin main), echo >(...), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; guards.bash on main fe5bc0b passes all seven, and passes rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger and rm -rf .wuwei (LEDGER needs a trailing / or .jsonl, guards.py line 30).",
-   "promise": "Allowlist plain shapes. (1) In guards.segments, a token made only of the characters ();<>|& that is not one of the known separators (CONTROL) or redirects makes the command unreadable (segments returns None), so a command naming a door program is refused by the existing multi-line or unreadable rule; a command naming none still passes. (2) $' and $\" quoting in a command naming a door program makes it unreadable the same way. (3) The ledger pattern matches .wuwei/ledger and .wuwei/ledger.jsonl with or without a trailing slash, and .wuwei itself, as a writer argument, redirect target or edit path, so rm, mv, cp, tee, dd and the rest naming them are refused. Each shape is a tests/fixtures/routes.json row or a test case. Acceptance comes from real execution with a stub program on PATH that logs its argv. Starts after gh-doors (guards.py). Rollback: revert the commit. Outside: a ledger write after cd .wuwei (cwd is not tracked), find -delete, git clean, and wrappers beyond those guards.py lists; these stay recorded gaps. Assumption: no seat route puts a door program inside process substitution or $'...'; overturned if the corpus moves a recorded route.",
-   "acceptance": [
-    "given a stub git on PATH that appends its argv to a log, when bash -c runs each of cat <(git push origin main), echo >(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and git push origin $\"main\", then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
-    "given diff <(sort a) <(sort b) and echo $'a\\tb', when guards.bash reads them, then they pass (no door program named)",
-    "given rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger, rm -rf .wuwei and rm -rf /abs/path/.wuwei/ledger, when guards.bash reads them, then each is refused as a ledger write, while cat .wuwei/ledger/x.jsonl and ls .wuwei pass",
-    "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict"
-   ],
-   "status": "open",
-   "added": "2026-10-16",
-   "approved": true
-  },
-  {
    "id": "codex-attest-probe",
    "title": "probe: does a Codex-native sentinel seat get its verdict attested",
    "goal": "G-1",
@@ -548,6 +522,33 @@
    "added": "2026-10-16",
    "approved": true,
    "reason": "merged as taoq-ai/wuwei#1091"
+  },
+  {
+   "id": "shell-doors",
+   "title": "fix(guards): process substitution, glued separators, $'...' quoting and ledger paths without a trailing slash meet the doors",
+   "goal": "G-2",
+   "repo": "taoq-ai/wuwei",
+   "tier": "full",
+   "framework": "wsjf",
+   "scores": {
+    "value": 13,
+    "time": 5,
+    "risk": 13,
+    "size": 3
+   },
+   "score": 10.33,
+   "why": "A stub git on PATH shows bash runs git push origin main for cat <(git push origin main), echo >(...), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and $\"main\"; guards.bash on main fe5bc0b passes all seven, and passes rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger and rm -rf .wuwei (LEDGER needs a trailing / or .jsonl, guards.py line 30).",
+   "promise": "Allowlist plain shapes. (1) In guards.segments, a token made only of the characters ();<>|& that is not one of the known separators (CONTROL) or redirects makes the command unreadable (segments returns None), so a command naming a door program is refused by the existing multi-line or unreadable rule; a command naming none still passes. (2) $' and $\" quoting in a command naming a door program makes it unreadable the same way. (3) The ledger pattern matches .wuwei/ledger and .wuwei/ledger.jsonl with or without a trailing slash, and .wuwei itself, as a writer argument, redirect target or edit path, so rm, mv, cp, tee, dd and the rest naming them are refused. Each shape is a tests/fixtures/routes.json row or a test case. Acceptance comes from real execution with a stub program on PATH that logs its argv. Starts after gh-doors (guards.py). Rollback: revert the commit. Outside: a ledger write after cd .wuwei (cwd is not tracked), find -delete, git clean, and wrappers beyond those guards.py lists; these stay recorded gaps. Assumption: no seat route puts a door program inside process substitution or $'...'; overturned if the corpus moves a recorded route.",
+   "acceptance": [
+    "given a stub git on PATH that appends its argv to a log, when bash -c runs each of cat <(git push origin main), echo >(git push origin main), true;>x git push origin main, true&&(git push origin main), x=1;(git push origin main), git push origin $'main' and git push origin $\"main\", then the log holds 'push origin main' each time, and given each command, when guards.bash reads it, then it is refused",
+    "given diff <(sort a) <(sort b) and echo $'a\\tb', when guards.bash reads them, then they pass (no door program named)",
+    "given rm -rf .wuwei/ledger, mv .wuwei/ledger x, cp x .wuwei/ledger, rm -rf .wuwei and rm -rf /abs/path/.wuwei/ledger, when guards.bash reads them, then each is refused as a ledger write, while cat .wuwei/ledger/x.jsonl and ls .wuwei pass",
+    "given tests/fixtures/routes.json, when the suite runs, then every pre-existing row keeps its verdict"
+   ],
+   "status": "done",
+   "added": "2026-10-16",
+   "approved": true,
+   "reason": "merged as taoq-ai/wuwei#1109"
   },
   {
    "id": "compound-doors",
