@@ -42,3 +42,9 @@
 - [x] T026 git clean read by allowlist; the dry-run pass is dropped and `git clean -n -x` flips to a refusal
 - [x] T027 A brace range builds at most cap + 1 words; tests for width-1 halving and the `(` split
 - [x] T028 Docs, spec and vendored copy follow; runtime 2,996
+
+## Phase 6: Gate fix round (head 4fbaabc)
+
+- [x] T029 Tests and routes.json rows for the -C x pathspec timing, env -C/--chdir and sudo -D, and the range-unsized mutant: red at 4fbaabc (114 s)
+- [x] T030 git clean joins its -C dirs once; -C, --chdir and -D values naming `.wuwei` read as cd; writer words and those values read as sets
+- [x] T031 SECURITY.md lists command-line aliases with quoted or `!` bodies and `git stash --all`; doors.md and design.md follow; runtime stays 2,996

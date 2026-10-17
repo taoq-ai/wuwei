@@ -227,6 +227,16 @@
     {"command": "git clean -fdx --ex src", "source": "item records, builder at 4f99d48 (bash changed the records)", "verdict": "refusal"},
     {"command": "/usr/lib/git-core/git-clean -fdx", "source": "item records, builder at 4f99d48 (bash changed the records)", "verdict": "refusal"},
     {"command": "git -C src clean -fdx /w", "source": "item records, builder at 4f99d48 (an absolute pathspec after -C)", "verdict": "refusal"},
-    {"command": "git clean -fdx . x{0..\ud884\udf4a} x{0..\ud884\udf4a} x{0..\ud884\udf4a}", "source": "item records, security gate at 4f99d48 (a range measured before it is built)", "verdict": "refusal"}
+    {"command": "git clean -fdx . x{0..\ud884\udf4a} x{0..\ud884\udf4a} x{0..\ud884\udf4a}", "source": "item records, security gate at 4f99d48 (a range measured before it is built)", "verdict": "refusal"},
+    {"command": "env -C .wuwei git clean -fdx ledger", "source": "item records, security gate at 4fbaabc (bash changed the records)", "verdict": "refusal"},
+    {"command": "env --chdir=.wuwei git clean -fdx ledger", "source": "item records, security gate at 4fbaabc (bash changed the records)", "verdict": "refusal"},
+    {"command": "env --chdir .wuwei git clean -fdx ledger", "source": "item records, security gate at 4fbaabc (bash changed the records)", "verdict": "refusal"},
+    {"command": "env -C.wuwei git clean -fdx ledger", "source": "item records, security gate at 4fbaabc (bash changed the records)", "verdict": "refusal"},
+    {"command": "env -C .wuwei rm -rf ledger", "source": "item records, security gate at 4fbaabc (bash changed the records)", "verdict": "refusal"},
+    {"command": "git -C . -C . -C . clean -fdx b b .wuwei", "source": "item records, security gate at 4fbaabc (dirs joined once)", "verdict": "refusal"},
+    {"command": "env -C src git clean -fdx t", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
+    {"command": "make -C build", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
+    {"command": "tar -C out -xf a.tar", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"},
+    {"command": "git -C .wuwei status", "source": "item records, builder at 4fbaabc (a directory option outside the records)", "verdict": "pass"}
   ]
 }

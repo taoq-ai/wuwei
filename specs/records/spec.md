@@ -79,6 +79,15 @@ Out of scope (the item's Outside): deleting from an ancestor without naming `.wu
 - Q: Does a session whose directory is already inside `.wuwei` count as "cd into .wuwei"? A: yes.
   The Bash tool keeps the directory between calls, so `cd .wuwei` in one call and `rm -rf ledger` in
   the next would otherwise pass. The rule starts from `records(cwd)`.
+- Q: Do `env -C`, `env --chdir` and `sudo -D` count as `cd`? A: yes, wider than promise (4), which
+  names `cd` and `pushd`. Each changes the directory for the program after it, so
+  `env -C .wuwei git clean -fdx ledger` deleted the ledger unrefused. The guard reads every `-C`,
+  `--chdir` and `-D` value on the command line, of any program, and a value that names `.wuwei`
+  (or expands past 64 words) turns on the same rule as `cd .wuwei`. So `tar -C .wuwei -xf x.tar`
+  with a redirect, which does write there, is refused too, and a writer in another segment of the
+  same command is refused as well. `git -C .wuwei status`, `env -C src git clean -fdx t`,
+  `make -C build` and `sort -D` pass. The values are read as a set, and a writer's words too, so
+  repeating one slow word costs one check.
 
 ## How this fails
 
@@ -119,7 +128,10 @@ Commands that passed on main are now refused:
 - `git clean -fd -e '!...'` (an exclude that un-ignores `.wuwei`) without plain outside pathspecs,
   a git clean after a git option other than `-C`, or with `GIT_` in the command;
 - a writer or redirect after `cd .wuwei` in the same command, or in a session whose directory is
-  inside `.wuwei`;
+  inside `.wuwei`, or in a command where a `-C`, `--chdir` or `-D` value names `.wuwei`
+  (`env -C .wuwei rm -rf ledger`, `sudo -D .wuwei ...`, `tar -C .wuwei -xf x.tar > log`);
+- any git command after a git option other than `-C` whose words contain `clean`
+  (`git -c user.name=L commit -m "clean up"`, `git --no-pager log --grep clean`);
 - `git clean -fdx` and `git clean -fdX` without plain pathspecs that lie outside `.wuwei`, dry runs
   (`git clean -n -x`) included.
 
@@ -152,5 +164,10 @@ and the commit a `BREAKING CHANGE:` line.
   widening the allowlist. Overturned if a seat route is refused this way.
 - A brace range is measured before it is built: at most cap + 1 words are made, so a range up to
   U+3134A costs no more than a small one.
+- The `-C`, `--chdir` and `-D` values are read from the whole command line, not only after `env`
+  and `sudo`, because one regular expression costs 0 lines where a wrapper parser does not. A value
+  is read with a 64-word brace cap, since a directory option takes one directory. The trace replay
+  (4,052 unique rows) and the route corpus move no verdict. Overturned if a seat route that
+  names `.wuwei` after one of these options, with a writer or redirect, is refused.
 
 Rollback: revert the commits on this branch; no data or config migrates.

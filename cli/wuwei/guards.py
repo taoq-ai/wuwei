@@ -322,9 +322,9 @@ def bash(root, command, cwd, session):
         return deny('a multi-line or unreadable command naming a door program (git push, gh pr/api/repo, wuwei hook, '
                     '.wuwei or .wuwei/ledger) is refused: run the door command in its own one-line Bash call, and pass long text '
                     'by --body-file, -F or a file written with Write.')
-    inside = records(cwd, None)  # after cd .wuwei (or in it), a relative path reaches the records unnamed
+    inside = records(cwd, None) or any(records(w, None, 64) for w in {*re.findall(r'''(?:-C|--chdir|-D)[=\s]*['"]?([^\s'"]+)''', command)})  # or env -C
     for argv, targets in parts or ():
-        program, words = Path(argv[0]).name if argv else '', argv[1:] + re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))  # and python -c's paths
+        program, words = Path(argv[0]).name if argv else '', {*argv[1:], *re.findall(r'[^\s\'"(),;]+', ' '.join(argv[1:]))}  # and python -c's paths
         writer = program in WRITERS or program == 'sed' and '-i' in argv or program.startswith('python') or program == 'find' and FIND & {*argv}
         if any(records(t, CACHE) for t in targets) or writer and any(records(a, LEDGER if program == 'rm' else CACHE) for a in words) or (
                 inside and (writer or any(not re.fullmatch(r'[0-9]*-?|/dev/\w+', t) for t in targets))):
@@ -335,14 +335,14 @@ def bash(root, command, cwd, session):
         if program in NETWORK and (found := leak(root, ' '.join(argv))):
             return found
         if program in ('git', 'git-clean'):
-            rest, i, here = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd
+            rest, i, here, plain = ['clean'] * (program == 'git-clean') + argv[1:], 0, cwd, lambda w: re.fullmatch(r'[\w./-]+', w or '')
             while i < len(rest) and rest[i].startswith('-'):
                 here = rest[i + 1] if rest[i] == '-C' and i + 1 < len(rest) else here
                 i += 2 if rest[i] in ('-C', '-c', '--git-dir', '--work-tree') else 1
-            flags, dirs, plain = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], lambda w: re.fullmatch(r'[\w./-]+', w or '')
+            flags, dirs, top = _flags(rest[i + 1:], ex := {'exclude'[:j] for j in range(1, 8)}), rest[1:i:2], normpath(join('.', *rest[1:i:2]))
             if 'clean' in str(rest) and ((other := {*rest[:i:2]} - {'-C'}) or rest[i:i + 1] == ['clean']) and ('GIT_' in command or other or any(  # only -C
                     n in ('x', 'X') or n in ex and not plain(v) for n, v in flags) and (inside or not (paths := [v for n, v in flags if not n]) or any(
-                    not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(*dirs, w))) or records(p, None) for w in paths))):
+                    not plain(w) for w in dirs + paths) or any(re.match(r'\.{0,2}(/|$)', normpath(p := join(top, w))) or records(p, None) for w in paths))):
                 return deny(LEDGER_DENIED)
             if rest[i:i + 1] == ['push'] and (found := git_push(root, rest[i + 1:], here)):
                 return found

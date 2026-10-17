@@ -42,7 +42,9 @@ target or an edit path. A write to `.wuwei/cache` is refused the same way, becau
 feed gate inputs; removing a cache file passes. `find` with
 `-delete`, `-exec`, `-execdir`, `-fprint`, `-fprintf` or `-fls` and an argument naming the records
 is refused. After `cd` or `pushd` into `.wuwei` or below, or in a session whose directory is inside
-it, a writer or a redirect to a file is refused. `git clean` is read by allowlist. After any git
+it, a writer or a redirect to a file is refused. So is any writer or file redirect in a command
+where a `-C`, `--chdir` or `-D` value names `.wuwei` (`env -C .wuwei rm -rf ledger`,
+`sudo -D .wuwei ...`, `tar -C .wuwei -xf x.tar > log`), or expands past 64 words. `git clean` is read by allowlist. After any git
 option other than `-C <dir>`, or with `GIT_` anywhere in the command, it is refused. With `x` or
 `X`, or with an exclude (`-e` or any prefix of `--exclude`) whose value is not a plain word, it
 passes only when every pathspec and `-C` dir is a plain word (letters, digits, `_ . / -`) and each
@@ -68,8 +70,12 @@ Known shapes they do not read on one line, reported and not yet fixed:
   hash-chained and synced to `wuwei/state`, and the guard is a tripwire, not a sandbox.
 - Two steps that un-ignore the ledger: `rm .wuwei/.gitignore` (or `mv`) and then `git clean -fd`.
 - A `python -c` body that builds the path (`'.wu' + 'wei'`, `'.wuwei\x2fcache'`), and a git alias
-  set in config before the call. An alias set on the command line (`git -c alias.c='clean -fdx' c`)
-  is refused, since git clean after `-c` is.
+  set in config before the call. An alias set on the command line is refused only when the word
+  `clean` appears in it as written (`git -c alias.c='clean -fdx' c`); a quoted or escaped name
+  (`git -c 'alias.c=cl"ea"n -fdx' c`, `git -c 'alias.c=!git cl\ean -fdx' c`) or a `!` shell body
+  (`git -c 'alias.c=!rm -rf .wuwei/ledger' c`) passes.
+- `git stash --all` (or `-a`, `git stash push --all`) moves the ignored `.wuwei` into a stash and
+  removes it from the tree; `git stash pop` brings it back.
 
 A multi-line command, or one the reader cannot parse, that names a door program is refused
 whatever its shape. The text of an unreadable `sh -c` body inside a readable command meets only

@@ -23,7 +23,8 @@
 2. In `bash`, compute `program` and `writer` (the writers, `sed -i`, python, `find` with a writing
    action) once per segment. Refuse a redirect target matching `CACHE`, a writer argument matching
    `LEDGER` for `rm` and `CACHE` for the rest, and, once `inside`, any writer or file redirect.
-   `inside` starts as `records(cwd, None)` and turns on after `cd` or `pushd` into `.wuwei`. The
+   `inside` starts as `records(cwd, None)`, or true when a `-C`, `--chdir` or `-D` value names
+   `.wuwei`, and turns on after `cd` or `pushd` into `.wuwei`. The
    empty-argv `continue` goes: every later check is false for an empty program.
 3. In the `git` branch, refuse `clean` with `x` or `X` (read by `_flags`, with `-e` valued) when
    `inside`, when `-C` names `.wuwei`, or when any pathspec does not start with a plain character,

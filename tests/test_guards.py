@@ -524,6 +524,37 @@ def test_a_wide_brace_range_is_measured_before_it_is_built(root, repo):
     assert time.monotonic() - start < 2
 
 
+def test_a_wide_brace_range_alone_is_built_only_to_its_cap(root, repo):
+    """Security gate records at 4fbaabc: the range-unsized mutant built all 200,523 words of one range before it measured them."""
+    start = time.monotonic()
+    assert all(guards.records('x{0..\U0003134a}') for _ in range(500))
+    assert time.monotonic() - start < 0.5
+
+
+def test_git_clean_joins_its_directories_once_however_many_pathspecs_follow(root, repo):
+    """Security gate records at 4fbaabc: 10,000 -C dirs joined to each of 25,000 pathspecs took 56.7 s, then bash deleted the ledger."""
+    start = time.monotonic()
+    assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000 + ' .wuwei'))['decision'] == 'deny'
+    assert guards.pre_tool(root, bash('git' + ' -C .' * 10000 + ' clean -fdx' + ' b' * 25000)) is None
+    assert time.monotonic() - start < 2
+
+
+@pytest.mark.parametrize('command', ['env -C .wuwei git clean -fdx ledger', 'env --chdir=.wuwei git clean -fdx ledger',
+                                     'env --chdir .wuwei git clean -fdx ledger', 'env -C.wuwei git clean -fdx ledger',
+                                     'env -C .wuwei rm -rf ledger', 'env -C ".wuwei" rm -rf ledger', "env -C '.wu*' rm -rf ledger",
+                                     'sudo -D .wuwei rm -rf ledger', 'env -C .wuwei/ledger tee a.jsonl', 'tar -C .wuwei -xf x.tar > log',
+                                     'env -C d{a..z}{a..c} rm -rf ledger'])
+def test_a_writer_after_a_directory_option_into_the_records_is_refused(root, repo, command):
+    """Security gate records at 4fbaabc: env -C, env --chdir and sudo -D stand in for cd, so a relative path reaches the records unnamed."""
+    assert guards.pre_tool(root, bash(command))['decision'] == 'deny', command
+
+
+@pytest.mark.parametrize('command', ['env -C src git clean -fdx t', 'git -C sub status', 'make -C build', 'tar -C out -xf a.tar',
+                                     'sort -D -o out.txt in.txt', 'env -C src rm -rf build', 'sudo -D /srv cp a b', 'git -C .wuwei status'])
+def test_a_directory_option_outside_the_records_passes(root, repo, command):
+    assert guards.pre_tool(root, bash(command)) is None, command
+
+
 def test_a_python_body_split_only_at_a_parenthesis_names_the_records(root, repo):
     assert guards.pre_tool(root, bash('python3 -c "open(.wuwei/cache/x)"'))['decision'] == 'deny'
 
