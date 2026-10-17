@@ -1,0 +1,26 @@
+Verdict: PASS
+Gate: security
+Item: merge-evidence
+PR: taoq-ai/wuwei#1114
+Head: fc27033543ad8c0a57ec39f84fd0082d5d8587f2
+Confidence: medium
+
+## Findings
+- [medium] cli/wuwei/evidence.py:382 blocks: no. The docs-only skip uses the DOCS reading the promise names, and that reading is wider than docs. The CI not started gap now goes away, where main held it, for a file renamed out of code (`cli/wuwei/x.py` renamed to `docs/x.py` or `specs/x.py`; pr() carries `renamed`, which `code` ignores), executable code under any `docs/` component (`docs/exploit.py`, `src/docs/x.py`, `cli/wuwei/docs/x.py`), dependency manifests (`requirements.txt`, `CMakeLists.txt`), `LICENSE.py`, files seats load (`charters/*.md`, `agents/*.md`, `.claude/skills/*/SKILL.md`, `AGENTS.md`), and an empty file list. This is a limit of the promise, not a defect in the build: the gap only matters while the rollup is empty, and gates, owner review and branch protection still apply. Suggested follow-up: leave renamed files, executable extensions and manifests out of the docs-only reading the CI gap uses.
+- [low] cli/wuwei/evidence.py:439 blocks: no. `not row['data'].get('kind')` treats any falsy kind as an owner review ruling (kind None, '', 0, False, [] all clear the hold), and `get('head', '-')` lets head '' match every head (an existing gap; breaking_gaps and excepted use `or '-'`). No current writer can produce these rows: hook._answers writes either no kind or the string 'breaking'/'exception', with a head of at least 7 hex characters, and agents cannot write the ledger. `'kind' not in row['data']` and `or '-'` would be stricter.
+- [low] cli/wuwei/evidence.py:425 blocks: no. Existing gap, which the spec keeps on purpose: excepted() matches substrings both ways, so an approved exception whose gap text is any substring of the owner review gap ("needed", "main.tf") also clears the owner review hold. The owner still has to answer yes to that exception question.
+- [low] blocks: no. The gap text now carries the GhError message. gh.run keeps only the last stderr line, capped at 200 characters (a stub gh on PATH showed that earlier lines holding a token-shaped string and a forged gap line were dropped). Control characters on that last line are not stripped. `evidence unreadable: {exc}` on main already does the same thing.
+- [low] blocks: no. The cache key `ci-<repo>` did not change, so a cached `[]` written by main for a repository that runs only pull_request_target keeps it reading as having no CI for up to a day after upgrade.
+
+## Probes
+- probe.py (stubbed FakeGh, evidence.gaps called directly) run on main 86135fa and head copies made with git archive, then diffed. Owner: an approved breaking ruling, an approved exception ruling (gap "CI failing"), kind 1 and kind ["x"] cleared the hold on main and HOLD it on head. No ruling, a ruling at another head, approved False, another PR, another repo, an approving review by alice at the head, an owner review at another commit, an owner COMMENTED review, and an "OWNER" login all HOLD on both. An owner APPROVED review at the head and a ruling with no kind clear it on both.
+- Falsy kinds (None, '', 0, False, []), head '' and head 'a' clear the hold on head (unreachable from hook._answers, see finding). Exception gaps "owner review needed", "needed" and "main.tf" clear it through excepted on both trees.
+- Docs-only: docs/site/x.md had no gap and no Actions read; cli/wuwei/x.py, a deleted cli file and .github/workflows/ci.yml still show the gap. The classes in the medium note all lose the gap compared with main.
+- Read order: only pull_request_target runs show the gap after 2 reads, with no runs there is no gap after 2 reads. When the pull_request read is empty and the pull_request_target read fails with GhError, workflow_runs None, a string or a list, the gap shows with the error text; on main these showed no gap. A pull_request_target reply of {} or {"message":...} gives "evidence unreadable: 'path'" (KeyError reaches the outer handler). Both outcomes fail closed.
+- Stub gh on PATH (multi-line stderr holding a token-shaped string, a forged gap line and a 300-character tail): the GhError text was only the last line, cut to 200 characters. gh log: one call, api repos/o/r/actions/runs?event=pull_request&per_page=1.
+- Suite in a head copy: 1207 passed, 2 skipped. Mutants in fresh copies, all killed: dropping the kind check (test_only_an_owner_review_ruling_clears_the_owner_review fails), dropping `code and` (test_a_docs_only_diff_gets_no_ci_not_started fails), dropping the pull_request_target read (test_pull_request_target_runs_count_as_ci fails), blanking the error text and flipping the except branch to False (test_an_unreadable_actions_host_counts_as_having_ci fails).
+- The vendored .claude/wuwei/cli/wuwei/evidence.py is byte-identical to cli/wuwei/evidence.py at the head. No agent tooling or dependency changed, so no scanner was needed.
+- Confidence is medium, not high: the probes run against FakeGh, not live GitHub, and the docs-only reading leaves real code classes out of the CI hold by design.
+
+## Residual risk
+The CI not started hold is now skipped for any diff the DOCS regex reads as docs, which includes renames out of code, manifests and seat charters. Other safety evidence still applies. The owner review fix holds for every ruling the hook can write.
